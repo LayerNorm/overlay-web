@@ -3,6 +3,7 @@ import { mutation, query } from '../_generated/server'
 import type { QueryCtx } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { visibleRow } from './directory'
+import { resolveThreadActivity } from '../../src/shared/agents/thread-activity'
 import {
   createAgentThread,
   deleteAgentThread,
@@ -42,6 +43,26 @@ export const bundle = query({
     const owned = { ...args, userId: viewer.userId }
     const [threads, automations] = await Promise.all([listAgentThreads(ctx, owned), listAgentAutomations(ctx, owned)])
     return { threads, automations }
+  }),
+})
+
+/** Live thread status for the signed-in member, with the same visibility as the thread list. */
+export const activity = query({
+  args: agentArgs,
+  handler: async (ctx, args) => await readable(async () => {
+    const { viewer } = await visibleAgent(ctx, args, { live: true })
+    const threads = await listAgentThreads(ctx, { ...args, userId: viewer.userId })
+    const statuses = await Promise.all(threads.map(async thread => {
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', q => q.eq('conversationId', thread.conversationId)
+          .eq('principalId', viewer.principal.principalId)).unique()
+      if (!participant || participant.workspaceId !== viewer.workspaceId || participant.principalType !== 'human'
+        || participant.status !== 'active' || participant.removedAt !== undefined || participant.archivedAt !== undefined) return null
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', thread.conversationId)).order('desc').first()
+      return { conversationId: thread.conversationId, status: resolveThreadActivity(run, participant) }
+    }))
+    return statuses.filter((item): item is NonNullable<typeof item> => item !== null)
   }),
 })
 

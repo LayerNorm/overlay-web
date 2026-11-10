@@ -15,8 +15,8 @@ export function OnboardingIntro({ onDone }: { onDone(): void }) {
   return (
     <div className={styles.intro} data-out={out} aria-hidden={out}>
       <div className="text-center">
-        <BrandLockup className={styles.introLockup} />
-        <p className={styles.introLine}>Your AI chief of staff.</p>
+        <BrandLockup className={styles.introLockup} motion="look" />
+        <p className={styles.introLine}>Your AI Chief of Staff.</p>
       </div>
     </div>
   )

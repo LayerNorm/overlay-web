@@ -105,6 +105,7 @@ export function remoteAgentCommands(parts: RoomMessagePart[] | undefined): Remot
 
 export type RoomMessageRecord = {
   id: string
+  conversationId?: string
   turnId: string
   authorKind: 'human' | 'agent' | 'model' | 'system'
   authorPrincipalId?: string
@@ -127,6 +128,12 @@ export type RoomMessageRecord = {
   delivery?: 'sending' | 'failed'
   deliveryError?: string
   status?: 'generating' | 'completed' | 'error'
+  publicStreamCheckpoint?: {
+    runId: string
+    executionGeneration: number
+    receiptId: string
+    invocation: number
+  }
 }
 
 export function isRoomAgentResponding(messages: readonly Pick<RoomMessageRecord, 'authorKind' | 'status'>[], pendingAgent: string | null): boolean {

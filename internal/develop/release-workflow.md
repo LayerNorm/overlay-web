@@ -33,6 +33,12 @@ for `overlay-landing`, production branch `main`, on 2026-10-14. Keep root
 `git.deploymentEnabled.main=true`. The custom production workflow, promotion
 script and deployment token are retired. Native Git deploys web only; backend
 synchronization and application smoke remain Integration responsibilities.
+Merge-queue branches (`gh-readonly-queue/*`) get an intentionally BLOCKED native
+Preview, and that `Vercel – overlay-landing` failure lands on the merged SHA. It is
+not the production result. Verify that a `target: production` deployment for the
+main SHA exists and reaches READY. If none starts (seen once, for #405 on
+2026-11-09, cause unknown), the local owner may fast-forward a small, real
+follow-up commit to trigger the native deployment. Never disable the Vercel check.
 Automatic main Docker publications cancel obsolete main publishers and keep the
 latest revision as the automatic publisher, reducing stale mutable-tag races. Tag and manual publications
 remain independent; this does not cancel required quality checks or Vercel builds.

@@ -658,6 +658,7 @@ function ChatListRow({
 
 function ChatListBody({
   loading,
+  activityOnly,
   personalUnavailable,
   chatView,
   chats,
@@ -682,6 +683,7 @@ function ChatListBody({
   cancelRename,
 }: {
   loading: boolean
+  activityOnly: boolean
   personalUnavailable: boolean
   chatView: ChatView
   chats: Conversation[]
@@ -712,9 +714,14 @@ function ChatListBody({
       : chatView === 'channels'
         ? chats.filter((chat) => chat.conversationType === 'channel')
         : chats
+  const activeChats = activityOnly ? viewChats.filter((chat) =>
+    sessions[chat._id]?.status === 'streaming' || (nativePersonalIds.has(chat._id)
+      ? Boolean(chat.unread)
+      : Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0) > 0),
+  ) : viewChats
   const filteredChats = searchQuery.trim()
-    ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : viewChats
+    ? activeChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : activeChats
   const emptyLabel = {
     personal: 'No personal chats yet',
     'workspace-chats': 'No workspace chats yet',
@@ -738,7 +745,8 @@ function ChatListBody({
           <p className="px-2 py-1.5 text-xs text-(--muted-light)">
             {personalUnavailable
               ? 'Personal chats are unavailable'
-              : viewChats.length === 0 ? emptyLabel : 'No results'}
+                : activityOnly && !searchQuery.trim() ? 'No activity yet'
+                : viewChats.length === 0 ? emptyLabel : 'No results'}
           </p>
         </SidebarMenuSubItem>
         {hasMore ? (
@@ -845,12 +853,14 @@ function useChatPanelRoute({
 
 export function ChatInlinePanel({
   searchQuery = '',
+  activityOnly = false,
   onNavigate,
   baseHref = '/app/chat',
   workspaceId,
   view: sectionView,
 }: {
   searchQuery?: string
+  activityOnly?: boolean
   onNavigate?: () => void
   baseHref?: string
   workspaceId?: string | null
@@ -867,6 +877,18 @@ export function ChatInlinePanel({
   const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
     baseHref, workspaceId, sectionView,
   })
+
+  // Same-surface switches update history directly and tell the conversation
+  // router to re-read the URL; `router.push` alone leaves the pane rendering
+  // the previous room until Next commits its own history update.
+  const navigateChatHref = useCallback((href: string, detail: { chatId: string | null; view: string }) => {
+    if (isSameChatSurface(pathname, baseHref)) {
+      window.history.pushState(null, '', href)
+      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail }))
+    } else {
+      router.push(href)
+    }
+  }, [baseHref, pathname, router])
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'
@@ -886,16 +908,9 @@ export function ChatInlinePanel({
     }))
     // Soft-navigate on the same chat surface so Next does not remount the app
     // shell (and WorkspaceProvider) on every switch.
-    if (isSameChatSurface(pathname, baseHref)) {
-      window.history.pushState(null, '', href)
-      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-        detail: { chatId: chat._id, view: targetView },
-      }))
-    } else {
-      router.push(href)
-    }
+    navigateChatHref(href, { chatId: chat._id, view: targetView })
     onNavigate?.()
-  }, [baseHref, buildWorkspaceHref,  onNavigate, pathname, router, workspaceId])
+  }, [baseHref, buildWorkspaceHref, navigateChatHref, onNavigate, workspaceId])
 
   const {
     newDirectMessageOpen,
@@ -1081,6 +1096,7 @@ export function ChatInlinePanel({
     <>
     <ChatListBody
       loading={listLoading}
+      activityOnly={activityOnly}
       personalUnavailable={listUnavailable}
       chatView={chatView}
       chats={chats}
@@ -1107,7 +1123,7 @@ export function ChatInlinePanel({
     <ChatListDialogs
       workspaceId={workspaceId}
       buildHref={buildWorkspaceHref}
-
+      navigateChatHref={navigateChatHref}
       router={router}
       onNavigate={onNavigate}
       newDirectMessageOpen={newDirectMessageOpen}
@@ -1128,7 +1144,7 @@ export function ChatInlinePanel({
 function ChatListDialogs({
   workspaceId,
   buildHref,
-
+  navigateChatHref,
   router,
   onNavigate,
   newDirectMessageOpen,
@@ -1144,7 +1160,7 @@ function ChatListDialogs({
 }: {
   workspaceId?: string | null
   buildHref: ReturnType<typeof useWorkspaceHref>
-
+  navigateChatHref: (href: string, detail: { chatId: string | null; view: string }) => void
   router: ReturnType<typeof useRouter>
   onNavigate?: () => void
   newDirectMessageOpen: boolean
@@ -1168,14 +1184,15 @@ function ChatListDialogs({
           onCreated={({ id, title, agentId }) => {
             // Agent DMs are threads under the agent — they open on the agents
             // surface and never appear in the chat list.
-            const href = agentId
-              ? agentThreadHref(buildHref(workspaceId, '/app/agents'), agentId, id)
-              : buildHref(
+            if (agentId) {
+              router.push(agentThreadHref(buildHref(workspaceId, '/app/agents'), agentId, id))
+            } else {
+              navigateChatHref(buildHref(
                 workspaceId,
                 `/app/chat?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`,
                 'workspace',
-              )
-            router.push(href)
+              ), { chatId: id, view: 'dms' })
+            }
             onNavigate?.()
           }}
         />
@@ -1187,11 +1204,11 @@ function ChatListDialogs({
 
           onOpenChange={setNewChannelOpen}
           onCreated={({ id, title }) => {
-            router.push(buildHref(
+            navigateChatHref(buildHref(
               workspaceId ?? null,
               `/app/chat?${new URLSearchParams({ view: 'channels', id, title }).toString()}`,
               'workspace',
-            ))
+            ), { chatId: id, view: 'channels' })
             onNavigate?.()
           }}
         />

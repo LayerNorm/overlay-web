@@ -5,8 +5,25 @@ import Link from 'next/link'
 import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
-import { THREAD_ACTIVITY_LABELS, resolveThreadActivity } from '@/shared/agents/thread-activity'
+import { THREAD_ACTIVITY_LABELS, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
 import type { AssignmentOrigin } from '@/shared/work/assignment-execution'
+
+function assignmentActivityStatus(status: string): ThreadActivityStatus {
+  switch (status) {
+    case 'queued':
+    case 'publication_pending':
+    case 'running':
+    case 'waiting_for_children': return 'working'
+    case 'waiting_for_input':
+    case 'waiting_for_approval':
+    case 'waiting_for_authorization':
+    case 'waiting_for_resources': return 'needs_input'
+    case 'completed': return 'completed'
+    case 'failed': return 'failed'
+    case 'cancelled': return 'cancelled'
+    default: return 'idle'
+  }
+}
 
 export type AssignmentNavigation = {
   assignmentId: string
@@ -55,7 +72,7 @@ export function AgentAssignments({ parent, assignments, origin }: {
           </Button>
           <ul id={listId} hidden={!expanded} className="border-t border-(--border) p-1">
             {assignments.map(item => {
-              const status = resolveThreadActivity({ status: item.status, updatedAt: 0 }, null)
+              const status = assignmentActivityStatus(item.status)
               return (
                 <li key={item.assignmentId}>
                   <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 rounded-lg px-3 py-2.5 text-left font-normal">

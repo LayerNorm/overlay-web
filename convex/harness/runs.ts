@@ -10,7 +10,8 @@ import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
-import { uniqueWorkspaceAccount } from '../billing/accountModel'
+import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
+import { readActivePublicStreams } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import { isSharedRoom } from '../../src/shared/agents/room-access'
 import {
@@ -22,8 +23,6 @@ import {
   claimHarnessExecution,
   createHarnessSnapshot,
   finishHarness,
-  applyHarnessResourceGrant,
-  consumeHarnessResourcePause,
   HarnessPlanValidationError,
   recordHarnessDiagnostic,
   recordHarnessEvidence,
@@ -32,13 +31,9 @@ import {
   recordHarnessChildReceipt,
   recordHarnessReceipt,
   reserveHarnessModel,
-  reservedHarnessCostMicros,
-  pauseHarnessForResources,
-  pauseHarnessForFunding,
   pauseHarnessForAuthorization,
   replaceHarnessPlan,
   resumeHarness,
-  resumeHarnessFunding,
   settleHarnessChild,
   terminateHarness,
   transitionHarnessStep,
@@ -50,16 +45,6 @@ import {
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
 import { createHarnessDiagnostic, type HarnessDiagnostic } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
-import {
-  assertSafeResourceMicros,
-  calculateHarnessResourceGrantReceipt,
-  MAX_HARNESS_RESOURCE_SPEND_MICROS,
-  type HarnessResourceGrant,
-  type HarnessResourceGrantReceipt,
-  type HarnessResourceRequest,
-  type HarnessResourceRequestRecord,
-  type HarnessResourceRequestReference,
-} from '../../packages/overlay-agent-runtime/src/harness-resource'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -89,7 +74,6 @@ const MAX_HARNESS_DEPTH = 32
 const MAX_OPERATION_JSON_BYTES = 256 * 1024
 const MAX_PLAN_JSON_BYTES = 512 * 1024
 const MAX_WAIT_REQUESTS = 128
-const MAX_TRANSCRIPT_STEP_JSON_BYTES = 256 * 1024
 
 const waitRequestValidator = v.union(
   v.object({
@@ -117,9 +101,9 @@ const waitReferenceFields = {
 const policyValidator = v.object({
   actorUserId: v.string(),
   workspaceId: v.optional(v.string()),
-  resourcePauseVersion: v.optional(v.literal(1)),
   executionPolicyVersion: v.optional(v.literal(2)),
   publicProgressVersion: v.optional(v.literal(1)),
+  publicStreamVersion: v.optional(v.literal(1)),
   spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
@@ -142,7 +126,6 @@ const admissionValidator = v.object({
   policy: policyValidator,
   source: sourceValidator,
   deliveryAgentRunId: v.optional(v.string()),
-  resourcePauseAuthority: v.optional(v.literal('personal_chat_work')),
 })
 
 const planInputValidator = v.object({
@@ -280,7 +263,7 @@ const operationValidator = v.union(
     diagnostic: v.optional(v.object({
       diagnosticId: v.string(),
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
-        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
         v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
@@ -297,7 +280,7 @@ const operationValidator = v.union(
     diagnostic: v.object({
       diagnosticId: v.string(),
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
-        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
         v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
@@ -310,23 +293,6 @@ const operationValidator = v.union(
     }),
   }),
   v.object({ type: v.literal('resume') }),
-  v.object({
-    type: v.literal('pause_for_funding'),
-    pause: v.object({
-      reason: v.union(
-        v.literal('disabled'), v.literal('pending'), v.literal('payment_failed'), v.literal('monthly_limit_reached'),
-        v.literal('missing_payment_method'), v.literal('missing_consent'), v.literal('amount_shortfall'),
-        v.literal('not_paid'), v.literal('authorization_changed'), v.literal('insufficient_budget'),
-        v.literal('task_deadline_expired'), v.literal('unknown_receipt'),
-      ),
-      requiredCents: v.number(),
-      availableCents: v.number(),
-      reservedCents: v.optional(v.number()),
-      receiptId: v.string(),
-      autoTopUpReason: v.optional(v.string()),
-    }),
-  }),
-  v.object({ type: v.literal('resume_funding') }),
   v.object({ type: v.literal('pause_for_authorization') }),
   v.object({ type: v.literal('wait_for_children') }),
   v.object({
@@ -352,7 +318,7 @@ const operationValidator = v.union(
     diagnostic: v.optional(v.object({
       diagnosticId: v.string(),
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
-        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
         v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
@@ -370,7 +336,6 @@ type HarnessMetadata = Omit<HarnessSnapshot, 'plan' | 'evidence' | 'children'>
 type ReadContext = Pick<QueryCtx, 'db'>
 type RunRow = Doc<'harnessRuns'>
 type WaitRow = Doc<'harnessWaits'>
-type ResourceRow = Doc<'harnessResourceRequests'>
 
 function isHarnessDeliveryRun(
   run: Pick<RunRow, 'runId' | 'rootRunId' | 'parentRunId' | 'deliveryAgentRunId'>,
@@ -421,9 +386,6 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     policy: snapshot.policy,
     status: snapshot.status,
     revision: snapshot.revision,
-    ...(snapshot.policyRevision === undefined ? {} : { policyRevision: snapshot.policyRevision }),
-    ...(snapshot.resourceRequestToken === undefined ? {} : { resourceRequestToken: snapshot.resourceRequestToken }),
-    ...(snapshot.resourcePause === undefined ? {} : { resourcePause: snapshot.resourcePause }),
     ...(snapshot.authorizationPause === undefined ? {} : { authorizationPause: snapshot.authorizationPause }),
     progressRevision: snapshot.progressRevision,
     planRevision: snapshot.planRevision,
@@ -495,82 +457,9 @@ function assertBoundedAdmission(input: HarnessAdmission) {
   }
   if ((input.policy.executionPolicyVersion === 2
       && (!input.policy.spendingMode || input.policy.maxCostMicros !== 0
-        || (input.policy.spendingMode === 'workspace' && !input.policy.workspaceId)
-        || input.policy.resourcePauseVersion === 1))
+        || (input.policy.spendingMode === 'workspace' && !input.policy.workspaceId)))
     || (input.policy.executionPolicyVersion !== 2 && input.policy.spendingMode !== undefined)) {
     throw new Error('Invalid versioned execution policy.')
-  }
-  if (input.resourcePauseAuthority !== undefined && input.policy.resourcePauseVersion !== 1) {
-    throw new Error('Resource-pause admission authority requires version 1.')
-  }
-  if (input.policy.resourcePauseVersion === 1 && (
-    input.resourcePauseAuthority !== 'personal_chat_work'
-    || input.policy.workspaceId === undefined
-    || input.policy.maxDepth !== 0
-    || input.policy.maxParallelChildren !== 0
-    || input.policy.maxCostMicros > MAX_HARNESS_RESOURCE_SPEND_MICROS
-    || !input.deliveryAgentRunId
-    || !('conversationId' in input.source)
-  )) {
-    throw new Error('Resource-pause admission is limited to an owned personal chat/work root.')
-  }
-}
-
-async function requireActivePersonalWorkspaceMembership(
-  ctx: MutationCtx,
-  actorUserId: string,
-  workspaceId: string,
-): Promise<Doc<'workspaces'>> {
-  const [preference, workspace] = await Promise.all([
-    ctx.db.query('workspaceUserPreferences')
-      .withIndex('by_userId', q => q.eq('userId', actorUserId))
-      .unique(),
-    ctx.db.query('workspaces')
-      .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId))
-      .unique(),
-  ])
-  if (!preference || preference.activeWorkspaceId !== workspaceId
-    || !workspace || workspace.kind !== 'personal' || workspace.status !== 'active'
-    || workspace.personalOwnerUserId !== actorUserId) {
-    throw new Error('HARNESS_RESOURCE_WORKSPACE_DENIED')
-  }
-  const principals = await ctx.db.query('workspacePrincipals')
-    .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', workspaceId).eq('userId', actorUserId))
-    .take(2)
-  if (principals.length !== 1 || principals[0]!.type !== 'human' || principals[0]!.archivedAt !== undefined) {
-    throw new Error('HARNESS_RESOURCE_MEMBERSHIP_DENIED')
-  }
-  const membership = await ctx.db.query('workspaceMemberships')
-    .withIndex('by_workspaceId_principalId', q => (
-      q.eq('workspaceId', workspaceId).eq('principalId', principals[0]!.principalId)
-    ))
-    .unique()
-  if (membership?.status !== 'active' || membership.role !== 'owner') {
-    throw new Error('HARNESS_RESOURCE_MEMBERSHIP_DENIED')
-  }
-  return workspace
-}
-
-function hasUnsupportedResourceConversationSurface(conversation: Doc<'conversations'>): boolean {
-  return Boolean(conversation.isAutomation || conversation.externalPlatform !== undefined
-    || conversation.externalChannelId !== undefined || conversation.externalThreadId !== undefined
-    || conversation.surfaceBindingId !== undefined)
-}
-
-async function assertResourcePauseAdmissionContext(ctx: MutationCtx, admission: HarnessAdmission): Promise<void> {
-  if (admission.policy.resourcePauseVersion !== 1) return
-  if (!('conversationId' in admission.source) || !admission.policy.workspaceId
-    || admission.resourcePauseAuthority !== 'personal_chat_work') {
-    throw new Error('HARNESS_RESOURCE_ADMISSION_DENIED')
-  }
-  await requireActivePersonalWorkspaceMembership(ctx, admission.policy.actorUserId, admission.policy.workspaceId)
-  const conversationId = ctx.db.normalizeId('conversations', (admission.source as Extract<HarnessSource, { conversationId: string }>).conversationId)
-  const conversation = conversationId ? await ctx.db.get(conversationId) : null
-  if (!conversation || conversation.deletedAt || conversation.userId !== admission.policy.actorUserId
-    || hasUnsupportedResourceConversationSurface(conversation)
-    || (conversation.conversationType ?? 'personal') !== 'personal'
-    || conversation.workspaceId !== admission.policy.workspaceId) {
-    throw new Error('HARNESS_RESOURCE_ADMISSION_DENIED')
   }
 }
 
@@ -598,9 +487,6 @@ async function validatePersonalDeliveryAdmission(
     || delivery.workflowRunId !== undefined || delivery.harnessRunId !== undefined
     || delivery.completedAt !== undefined || delivery.failedAt !== undefined || delivery.cancelledAt !== undefined) {
     throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
-  }
-  if (admission.policy.resourcePauseVersion === 1 && delivery.mode !== 'chat' && delivery.mode !== 'work') {
-    throw new Error('HARNESS_RESOURCE_DELIVERY_DENIED')
   }
   return delivery
 }
@@ -742,12 +628,6 @@ function assertBoundedOperation(operation: HarnessOperation) {
       if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH
         || (operation.diagnostic && !isValidDiagnostic(operation.diagnostic))) {
         throw new Error('Harness blocker exceeds its bounds.')
-      }
-      break
-    case 'pause_for_funding':
-      if (!operation.pause.receiptId.trim() || operation.pause.receiptId.length > MAX_ID_LENGTH
-        || (operation.pause.autoTopUpReason !== undefined && operation.pause.autoTopUpReason.length > MAX_EVIDENCE_SUMMARY_LENGTH)) {
-        throw new Error('Harness funding pause exceeds its bounds.')
       }
       break
     case 'record_diagnostic':
@@ -1412,7 +1292,7 @@ function childAdmission(
       executionPolicyVersion: 2 as const,
       spendingMode: parent.policy.spendingMode!,
     } : {}),
-    maxCostMicros: parent.policy.executionPolicyVersion === 2 ? 0 : operation.child.maxCostMicros,
+    maxCostMicros: 0,
     maxParallelChildren: parent.policy.maxParallelChildren,
     maxDepth: parent.policy.maxDepth,
   }
@@ -1550,10 +1430,6 @@ async function applyReducer(
       return { snapshot: recordHarnessDiagnostic(current, operation.diagnostic, now) }
     case 'resume':
       return { snapshot: resumeHarness(current, now) }
-    case 'pause_for_funding':
-      return { snapshot: pauseHarnessForFunding(current, operation.pause, now) }
-    case 'resume_funding':
-      return { snapshot: resumeHarnessFunding(current, now) }
     case 'pause_for_authorization':
       return { snapshot: pauseHarnessForAuthorization(current, now) }
     case 'wait_for_children':
@@ -1676,7 +1552,6 @@ export const admit = mutation({
     const { serverSecret, ...rawAdmission } = args
     const input = rawAdmission as HarnessAdmission
     assertBoundedAdmission(input)
-    await assertResourcePauseAdmissionContext(ctx, input)
     await bindLegacyPersonalSource(ctx, input)
     const source = await normalizeAndCheckSource(
       ctx,
@@ -1707,9 +1582,6 @@ export const admit = mutation({
     const delivery = admission.deliveryAgentRunId
       ? await validateHarnessDeliveryAdmission(ctx, admission, source, serverSecret)
       : undefined
-    if (admission.policy.resourcePauseVersion === 1 && (!delivery || (delivery.mode !== 'chat' && delivery.mode !== 'work'))) {
-      throw new Error('HARNESS_RESOURCE_DELIVERY_DENIED')
-    }
     if ('conversationId' in source && typeof source.conversationId === 'string') {
       const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
       const conversation = conversationId ? await ctx.db.get(conversationId) : null
@@ -1997,6 +1869,7 @@ export const listMessageTranscriptSteps = query({
       resultSummary: metadata?.resultSummary ?? null,
       steps: await Promise.all(rows.map(async row => ({
         sequence: row.sequence,
+        executionGeneration: row.executionGeneration ?? 0,
         persistence: parseJson<{ content: string; parts: Array<Record<string, unknown>> }>(row.persistenceJson),
         ...(row.fullPersistenceStorageId ? {
           fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
@@ -2015,7 +1888,7 @@ export const writeTranscriptStep = mutation({
     workflowRunId: v.string(),
     receiptId: v.string(),
     stepNumber: v.number(),
-    persistence: v.object({ content: v.string(), parts: v.array(v.any()) }),
+    persistence: v.object({ content: v.string(), parts: v.array(v.any()), outputLimitReached: v.optional(v.literal(true)) }),
     fullPersistenceStorageId: v.optional(v.id('_storage')),
     fullPersistenceDigest: v.optional(v.string()),
     serverSecret: v.string(),
@@ -2023,17 +1896,17 @@ export const writeTranscriptStep = mutation({
   handler: async (ctx, args) => {
     requireHarnessServerSecret(args.serverSecret)
     const sequenceMatch = /^model:(\d+)$/.exec(args.receiptId)
-    if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
       || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
       || !sequenceMatch || !Number.isSafeInteger(Number(sequenceMatch[1])) || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0
-      || args.persistence.content.length > 160_000 || args.persistence.parts.length > 81
       || args.persistence.parts.some(part => !part || typeof part !== 'object' || part.type === 'reasoning')) {
       throw new Error('Invalid harness transcript step.')
     }
-    const persistenceJson = stableJson(args.persistence as HarnessTranscriptPersistence)
-    if (new TextEncoder().encode(persistenceJson).byteLength > MAX_TRANSCRIPT_STEP_JSON_BYTES) {
-      throw new Error('Harness transcript step exceeds its storage limit.')
-    }
+    // A large step is never refused: the stored row keeps a shortened copy that fits
+    // Convex's document limit, and the full step lives in file storage when uploaded.
+    // Compaction is idempotent, so a replayed write still matches the stored row.
+    const persistenceJson = stableJson(compactTranscriptSnapshot(args.persistence as HarnessTranscriptPersistence))
     const run = await findRun(ctx, args.runId)
     if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
@@ -2064,6 +1937,7 @@ export const writeTranscriptStep = mutation({
     await ctx.db.insert('harnessTranscriptSteps', {
       runId: run.runId,
       receiptId: args.receiptId,
+      executionGeneration: lineage[0]!.metadata.executionGeneration ?? 0,
       sequence: Number(sequenceMatch[1]),
       stepNumber: args.stepNumber,
       persistenceJson,
@@ -2074,7 +1948,280 @@ export const writeTranscriptStep = mutation({
       createdAt: receipt.createdAt,
     })
     await projectNativePersonalProgress(ctx, run, lineage[0]!.metadata, Number(sequenceMatch[1]))
+    const activeStream = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', query => query.eq('runId', run.runId)).unique()
+    if (lineage[0]!.metadata.policy.publicStreamVersion === 1 && activeStream
+      && activeStream.receiptId === args.receiptId
+      && activeStream.executionGeneration === (lineage[0]!.metadata.executionGeneration ?? 0)) {
+      const message = await ctx.db.get(activeStream.assistantMessageId)
+      if (message?.publicStreamCheckpoint?.runId === run.runId
+        && message.publicStreamCheckpoint.executionGeneration === activeStream.executionGeneration
+        && message.publicStreamCheckpoint.receiptId === args.receiptId) {
+        await clearPublicStreamSegments(ctx, run.runId)
+        await ctx.db.delete(activeStream._id)
+      }
+    }
     return { persisted: true }
+  },
+})
+
+const MAX_PUBLIC_STREAM_SEGMENT_BYTES = 8 * 1024
+const MAX_PUBLIC_STREAM_VISIBLE_CHARS = 160_000
+const PUBLIC_STREAM_TRUNCATION_MARKER = '[Additional output omitted]'
+
+function publicStreamByteLength(text: string) {
+  return new TextEncoder().encode(text).byteLength
+}
+
+function takePublicStreamPrefix(text: string, maxBytes: number): { prefix: string; rest: string } {
+  let prefix = ''
+  let bytes = 0
+  let offset = 0
+  for (const character of text) {
+    const size = publicStreamByteLength(character)
+    if (bytes + size > maxBytes) break
+    prefix += character
+    bytes += size
+    offset += character.length
+  }
+  return { prefix, rest: text.slice(offset) }
+}
+
+async function clearPublicStreamSegments(ctx: MutationCtx, runId: string) {
+  const rows = await ctx.db.query('harnessPublicStreamSegments')
+    .withIndex('by_runId', q => q.eq('runId', runId)).take(100)
+  for (const row of rows) await ctx.db.delete(row._id)
+}
+
+export const appendPublicStream = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    receiptId: v.string(),
+    modelId: v.string(),
+    sequence: v.number(),
+    text: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const invocationMatch = /^model:(0|[1-9]\d*)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !args.modelId.trim() || args.modelId.length > MAX_ID_LENGTH || args.receiptId.length > MAX_ID_LENGTH
+      || !invocationMatch || !Number.isSafeInteger(Number(invocationMatch[1])) || !Number.isSafeInteger(args.executionGeneration)
+      || args.executionGeneration < 0 || !Number.isSafeInteger(args.sequence) || args.sequence < 0
+      || !args.text || publicStreamByteLength(args.text) > MAX_PUBLIC_STREAM_SEGMENT_BYTES) {
+      throw new Error('Invalid public stream batch.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId || run.rootRunId !== run.runId || run.parentRunId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    }
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const metadata = lineage[0]!.metadata
+    const invocation = Number(invocationMatch[1])
+    const reservation = metadata.modelReservation
+    if (metadata.policy.publicStreamVersion !== 1 || metadata.status !== 'running'
+      || metadata.workflowRunId !== args.workflowRunId
+      || (metadata.executionGeneration ?? 0) !== args.executionGeneration
+      || reservation?.id !== args.receiptId || reservation.dispatch?.modelId !== args.modelId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+    }
+    const source = parseJson<HarnessSource>(run.sourceJson)
+    if (!('conversationId' in source) || typeof source.conversationId !== 'string') {
+      throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    }
+    const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+    const deliveryId = run.deliveryAgentRunId
+      ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
+    const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+    if (!conversationId || !delivery || delivery.conversationId !== conversationId
+      || delivery.status !== 'running' || delivery.userId !== args.actorUserId
+      || delivery.harnessRunId !== run.runId || delivery.workflowRunId !== args.workflowRunId
+      || delivery.executionEngine !== 'overlay_harness' || delivery.runner !== 'workflow') {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.deletedAt !== undefined) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    if (delivery.mode !== 'room' && delivery.mode !== 'work' && conversation.userId !== args.actorUserId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+    const deliveryAssistantMessageId = delivery.assistantMessageId
+    if (!deliveryAssistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    const assistantMessageId = ctx.db.normalizeId('conversationMessages', deliveryAssistantMessageId)
+    if (!assistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    const message = assistantMessageId ? await ctx.db.get(assistantMessageId) : null
+    if (!message || message.deletedAt !== undefined || message.conversationId !== conversationId || message.role !== 'assistant'
+      || message.status !== 'generating' || message.turnId !== delivery.turnId
+      || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)
+      || ((delivery.mode === 'room' || delivery.mode === 'work')
+        ? (!delivery.agentPrincipalId || message.authorKind !== 'agent' || message.authorPrincipalId !== delivery.agentPrincipalId)
+        : (message.userId !== args.actorUserId || message.authorKind === 'agent' || message.authorPrincipalId !== undefined))) {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+
+    let active = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', q => q.eq('runId', run.runId)).unique()
+    const startsInvocation = !active || args.executionGeneration > active.executionGeneration
+      || (args.executionGeneration === active.executionGeneration && invocation > active.invocation)
+    if (active && (args.executionGeneration < active.executionGeneration
+      || (args.executionGeneration === active.executionGeneration && invocation < active.invocation))) {
+      throw new Error('HARNESS_PUBLIC_STREAM_STALE')
+    }
+    if (startsInvocation) {
+      if (args.sequence !== 0) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+      if (active) {
+        await clearPublicStreamSegments(ctx, run.runId)
+        await ctx.db.delete(active._id)
+      }
+      const streamId = await ctx.db.insert('harnessPublicStreams', {
+        runId: run.runId, workflowRunId: args.workflowRunId,
+        executionGeneration: args.executionGeneration, receiptId: args.receiptId, invocation,
+        conversationId, assistantMessageId, nextSequence: 0, lastSequence: -1, lastText: '',
+        nextSegmentIndex: 0, visibleCharacters: 0, truncated: false, active: true, updatedAt: Date.now(),
+      })
+      active = await ctx.db.get(streamId)
+      if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+    } else {
+      if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+      if (active.receiptId !== args.receiptId || active.workflowRunId !== args.workflowRunId
+        || active.assistantMessageId !== assistantMessageId || !active.active) {
+        throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+      }
+    }
+
+    if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+    const current = active
+    if (args.sequence === current.lastSequence) {
+      if (current.lastText !== args.text) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
+      return { accepted: true, duplicate: true, truncated: current.truncated }
+    }
+    if (args.sequence !== current.nextSequence) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+
+    let visible = args.text
+    const remaining = Math.max(0, MAX_PUBLIC_STREAM_VISIBLE_CHARS - current.visibleCharacters)
+    if (visible.length > remaining) {
+      let used = 0
+      let prefix = ''
+      for (const character of visible) {
+        if (used + character.length > remaining) break
+        prefix += character
+        used += character.length
+      }
+      visible = prefix
+    }
+    const truncated = visible.length < args.text.length
+    let segmentIndex = current.nextSegmentIndex
+    let remainder = visible
+    let tail = segmentIndex > 0
+      ? await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
+        q.eq('runId', run.runId).eq('receiptId', current.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+      : null
+    while (remainder) {
+      const available = MAX_PUBLIC_STREAM_SEGMENT_BYTES - (tail ? publicStreamByteLength(tail.text) : 0)
+      if (available <= 0) {
+        tail = null
+        continue
+      }
+      const chunk = takePublicStreamPrefix(remainder, available)
+      if (!chunk.prefix) {
+        tail = null
+        continue
+      }
+      if (tail) {
+        await ctx.db.patch(tail._id, {
+          text: tail.text + chunk.prefix,
+          lastSequence: args.sequence,
+          ...(truncated && !chunk.rest ? { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER } : {}),
+          updatedAt: Date.now(),
+        })
+      } else {
+        await ctx.db.insert('harnessPublicStreamSegments', {
+          runId: run.runId, workflowRunId: args.workflowRunId,
+          executionGeneration: args.executionGeneration, receiptId: args.receiptId,
+          segmentIndex, firstSequence: args.sequence, lastSequence: args.sequence,
+          text: chunk.prefix,
+          ...(truncated && !chunk.rest ? { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER } : {}),
+          createdAt: Date.now(), updatedAt: Date.now(),
+        })
+        segmentIndex++
+      }
+      remainder = chunk.rest
+      tail = null
+    }
+    if (truncated) {
+      const last = segmentIndex > 0
+        ? await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
+          q.eq('runId', run.runId).eq('receiptId', active!.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+        : null
+      if (last) {
+        if (!last.truncatedMarker) await ctx.db.patch(last._id, { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER })
+      } else {
+        await ctx.db.insert('harnessPublicStreamSegments', {
+          runId: run.runId, workflowRunId: args.workflowRunId,
+          executionGeneration: args.executionGeneration, receiptId: args.receiptId,
+          segmentIndex, firstSequence: args.sequence, lastSequence: args.sequence,
+          text: '', truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER,
+          createdAt: Date.now(), updatedAt: Date.now(),
+        })
+        segmentIndex++
+      }
+    }
+    await ctx.db.patch(current._id, {
+      lastSequence: args.sequence, lastText: args.text, nextSequence: args.sequence + 1,
+      nextSegmentIndex: segmentIndex,
+      visibleCharacters: current.visibleCharacters + visible.length,
+      truncated: current.truncated || truncated,
+      updatedAt: Date.now(),
+    })
+    return { accepted: true, duplicate: false, truncated: current.truncated || truncated }
+  },
+})
+
+export const readPublicStreamState = query({
+  args: {
+    actorUserId: v.string(), runId: v.string(), afterSequence: v.optional(v.number()), serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || (args.afterSequence !== undefined
+        && (!Number.isSafeInteger(args.afterSequence) || args.afterSequence < -1))) {
+      throw new Error('Invalid public stream read request.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId || run.rootRunId !== run.runId || run.parentRunId) return null
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const metadata = lineage[0]!.metadata
+    if (metadata.policy.publicStreamVersion !== 1) return null
+    const source = parseJson<HarnessSource>(run.sourceJson)
+    if (!('conversationId' in source) || typeof source.conversationId !== 'string') return null
+    const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+    const active = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', q => q.eq('runId', run.runId)).unique()
+    const snapshot = conversationId && active?.assistantMessageId
+      ? (await readActivePublicStreams(ctx, conversationId, [active.assistantMessageId]))[0] ?? null
+      : null
+    const steps = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_sequence', q =>
+      q.eq('runId', run.runId).gt('sequence', args.afterSequence ?? -1)).order('asc').take(10)
+    return {
+      status: metadata.status,
+      workflowRunId: metadata.workflowRunId ?? null,
+      executionGeneration: metadata.executionGeneration ?? 0,
+      snapshot,
+      transcriptSteps: steps.map(step => ({
+        receiptId: step.receiptId,
+        sequence: step.sequence,
+        executionGeneration: step.executionGeneration ?? 0,
+        persistence: parseJson<HarnessTranscriptPersistence>(step.persistenceJson),
+      })),
+      nextSequence: steps.length === 10 ? steps.at(-1)!.sequence : null,
+    }
   },
 })
 
@@ -2108,6 +2255,7 @@ export const listTranscriptSteps = query({
         receiptId: row.receiptId,
         stepNumber: row.stepNumber,
         sequence: row.sequence,
+        executionGeneration: row.executionGeneration ?? 0,
         persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
       })),
       cursor: page.continueCursor,
@@ -2279,15 +2427,10 @@ export const apply = mutation({
       await persistChildren(ctx, run.runId, current.children, next.children)
     }
     if (operation.type === 'terminate' && next.status === 'cancelled') await cancelOutstandingAssignments(ctx, run.runId, args.serverSecret)
-    if (run.deliveryAgentRunId && (operation.type === 'pause_for_funding' || operation.type === 'resume_funding'
-      || operation.type === 'pause_for_authorization')) {
+    if (run.deliveryAgentRunId && operation.type === 'pause_for_authorization') {
       const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
       if (delivery && delivery.harnessRunId === run.runId && delivery.workflowRunId === workflowRunId) {
-        await ctx.db.patch(delivery._id, operation.type === 'pause_for_funding'
-          ? { status: 'waiting_for_resources', fundingPause: next.resourcePause, updatedAt: now }
-          : operation.type === 'pause_for_authorization'
-            ? { status: 'waiting_for_authorization', authorizationPause: next.authorizationPause, updatedAt: now }
-            : { status: 'running', fundingPause: undefined, updatedAt: now })
+        await ctx.db.patch(delivery._id, { status: 'waiting_for_authorization', authorizationPause: next.authorizationPause, updatedAt: now })
       }
     }
     if (operation.type === 'claim_execution') {
@@ -2430,7 +2573,7 @@ export const renewLease = mutation({
         && entry.metadata.policy.taskDeadlineAt <= args.now)) {
       throw new Error('The explicit harness task deadline was reached while waiting.')
     }
-    if (current.policy.executionPolicyVersion !== 2 || current.policy.resourcePauseVersion === 1
+    if (current.policy.executionPolicyVersion !== 2
       || ['completed', 'cancelled', 'failed', 'waiting_for_authorization'].includes(current.status)
       || lineage.some(entry => isTerminalStatus(entry.metadata.status))) {
       throw new Error('HARNESS_LEASE_RENEWAL_NOT_AUTHORIZED')
@@ -2517,7 +2660,7 @@ export const publishWait = mutation({
       workflowRunId: args.workflowRunId,
     }
     const { run, lineage, metadata } = await loadWaitAuthority(ctx, reference, args.serverSecret)
-    if (metadata.status === 'waiting_for_resources' || metadata.resourceRequestToken !== undefined) {
+    if (metadata.status === 'waiting_for_resources') {
       throw new Error('HARNESS_RESOURCE_PAUSE_ACTIVE')
     }
     const { request, requestJson } = canonicalWaitRequest(args.request)
@@ -2637,7 +2780,7 @@ export const resolveWait = mutation({
     }
     const { run } = await loadWaitAuthority(ctx, reference, args.serverSecret)
     const current = await hydrateSnapshot(ctx, run)
-    if (current.status === 'waiting_for_resources' || current.resourceRequestToken !== undefined) {
+    if (current.status === 'waiting_for_resources') {
       throw new Error('HARNESS_RESOURCE_PAUSE_ACTIVE')
     }
     assertWaitText(args.token, 'token')
@@ -2697,285 +2840,6 @@ export const listPendingWaits = query({
       waits.push(waitFromRow(candidate))
     }
     return waits.sort((left, right) => left.createdAt - right.createdAt || left.token.localeCompare(right.token))
-  },
-})
-
-function resourceRecord(row: ResourceRow): HarnessResourceRequestRecord {
-  const request = parseJson<HarnessResourceRequest>(row.requestJson)
-  const authority = parseJson<HarnessResourceRequestRecord['authority']>(row.authorityJson)
-  const previousBlocker = row.previousBlockerJson
-    ? parseJson<HarnessResourceRequestRecord['previousBlocker']>(row.previousBlockerJson)
-    : undefined
-  const receipt = row.receiptJson ? parseJson<HarnessResourceGrantReceipt>(row.receiptJson) : undefined
-  return {
-    request,
-    previousStatus: row.previousStatus,
-    ...(previousBlocker ? { previousBlocker } : {}),
-    authority,
-    state: row.state,
-    ...(receipt ? { receipt } : {}),
-    wakePending: row.wakePending,
-    ...(row.consumedAt === undefined ? {} : { consumedAt: row.consumedAt }),
-  }
-}
-
-function resourceDeliveryProjection(record: HarnessResourceRequestRecord, awaitingReceipt: boolean) {
-  return {
-    request: record.request,
-    ...(record.receipt ? { receipt: record.receipt } : {}),
-    awaitingReceipt,
-  }
-}
-
-async function projectResourceRequest(
-  ctx: MutationCtx,
-  delivery: Doc<'conversationAgentRuns'>,
-  record: HarnessResourceRequestRecord,
-  awaitingReceipt: boolean,
-  now: number,
-): Promise<void> {
-  const projection = resourceDeliveryProjection(record, awaitingReceipt)
-  if (stableJson(delivery.resourceRequest) === stableJson(projection)) return
-  await ctx.db.patch(delivery._id, { resourceRequest: projection, updatedAt: now })
-}
-
-function assertResourceRequestBinding(
-  record: HarnessResourceRequestRecord,
-  authority: Awaited<ReturnType<typeof loadResourceMutationAuthority>>,
-  actorUserId: string,
-): void {
-  if (record.authority.actorUserId !== actorUserId
-    || record.authority.workspaceId !== authority.workspace.workspaceId
-    || record.authority.billingAccountId !== authority.account.billingAccountId
-    || record.authority.conversationId !== authority.source.conversationId
-    || record.authority.deliveryAgentRunId !== authority.delivery._id
-    || record.authority.admissionMarker !== 'personal_chat_work') {
-    throw new Error('HARNESS_RESOURCE_AUTHORITY_CHANGED')
-  }
-}
-
-function resourceGrantArgValidator() {
-  return v.union(
-    v.object({ kind: v.literal('model_spend'), newMaxCostMicros: v.number() }),
-    v.object({ kind: v.literal('time'), durationMs: v.number() }),
-  )
-}
-
-async function loadResourceMutationAuthority(
-  ctx: MutationCtx,
-  reference: HarnessResourceRequestReference,
-  serverSecret: string,
-) {
-  const { run, lineage, metadata } = await loadWaitAuthority(ctx, reference, serverSecret)
-  if (lineage.some(entry => isTerminalStatus(entry.metadata.status))
-    || metadata.policy.resourcePauseVersion !== 1
-    || metadata.policy.workspaceId === undefined) {
-    throw new Error('HARNESS_RESOURCE_NOT_AUTHORIZED')
-  }
-  const admission = parseJson<HarnessAdmission>(run.admissionJson)
-  if (admission.resourcePauseAuthority !== 'personal_chat_work'
-    || admission.policy.resourcePauseVersion !== 1
-    || run.parentRunId !== undefined || run.rootRunId !== run.runId
-    || run.deliveryAgentRunId === undefined) {
-    throw new Error('HARNESS_RESOURCE_NOT_AUTHORIZED')
-  }
-  const workspace = await requireActivePersonalWorkspaceMembership(ctx, reference.actorUserId, metadata.policy.workspaceId)
-  const account = await uniqueWorkspaceAccount(ctx, workspace.workspaceId)
-  if (!account || account.status !== 'active' || account.scope !== 'workspace'
-    || account.workspaceId !== workspace.workspaceId) {
-    throw new Error('HARNESS_RESOURCE_PAYER_DENIED')
-  }
-  const source = parseJson<HarnessSource>(run.sourceJson)
-  if (!('conversationId' in source)) throw new Error('HARNESS_RESOURCE_SOURCE_DENIED')
-  const conversationId = ctx.db.normalizeId('conversations', (source as { conversationId: string }).conversationId)
-  const conversation = conversationId ? await ctx.db.get(conversationId) : null
-  const deliveryId = ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId)
-  const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
-  if (!conversation || conversation.deletedAt || conversation.workspaceId !== workspace.workspaceId
-    || hasUnsupportedResourceConversationSurface(conversation)
-    || (conversation.conversationType ?? 'personal') !== 'personal'
-    || conversation.userId !== reference.actorUserId
-    || !delivery || delivery.conversationId !== conversation._id || delivery.userId !== reference.actorUserId
-    || delivery.harnessRunId !== run.runId || delivery.runner !== 'workflow'
-    || delivery.executionEngine !== 'overlay_harness'
-    || (delivery.mode !== 'chat' && delivery.mode !== 'work')
-    || delivery.workflowRunId !== reference.workflowRunId
-    || delivery.status === 'completed' || delivery.status === 'failed' || delivery.status === 'cancelled'
-    || delivery.completedAt !== undefined || delivery.failedAt !== undefined || delivery.cancelledAt !== undefined) {
-    throw new Error('HARNESS_RESOURCE_SOURCE_DENIED')
-  }
-  return { run, lineage, metadata, workspace, account, source, delivery }
-}
-
-export const pauseForResources = mutation({
-  args: {
-    actorUserId: v.string(), runId: v.string(), workflowRunId: v.string(), expectedRevision: v.number(),
-    token: v.string(), reason: v.union(v.literal('model_spend'), v.literal('time')),
-    requiredCostMicros: v.number(), serverSecret: v.string(),
-  },
-  handler: async (ctx, args): Promise<HarnessResourceRequestRecord> => {
-    requireHarnessServerSecret(args.serverSecret)
-    const reference = { actorUserId: args.actorUserId, runId: args.runId, workflowRunId: args.workflowRunId, token: args.token }
-    const authority = await loadResourceMutationAuthority(ctx, reference, args.serverSecret)
-    const existing = await ctx.db.query('harnessResourceRequests').withIndex('by_token', q => q.eq('token', args.token)).unique()
-    if (existing) {
-      const old = resourceRecord(existing)
-      if (existing.runId !== args.runId || existing.workflowRunId !== args.workflowRunId
-        || existing.stateRevisionAtRequest !== args.expectedRevision
-        || old.request.reason !== args.reason || old.request.requiredCostMicros !== args.requiredCostMicros
-        || old.authority.actorUserId !== args.actorUserId) {
-        throw new Error('HARNESS_RESOURCE_TOKEN_CONFLICT')
-      }
-      return old
-    }
-    if (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0) throw new Error('Invalid harness state revision.')
-    assertSafeResourceMicros(args.requiredCostMicros, 'Required cost')
-    const rootRows = await ctx.db.query('harnessRuns').withIndex('by_rootRunId', q => q.eq('rootRunId', args.runId)).take(2)
-    if (rootRows.length !== 1 || rootRows[0]!.runId !== args.runId || authority.run.activeDescendantCount !== 0) {
-      throw new Error('HARNESS_RESOURCE_CHILDREN_DENIED')
-    }
-    const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
-    if (snapshot.revision !== args.expectedRevision) throw new Error('HARNESS_STATE_CONFLICT')
-    const reserved = reservedHarnessCostMicros(snapshot)
-    assertSafeResourceMicros(snapshot.usage.costMicros, 'Used cost')
-    assertSafeResourceMicros(reserved, 'Reserved cost')
-    assertSafeResourceMicros(
-      snapshot.usage.costMicros + reserved + args.requiredCostMicros,
-      'Current commitments and forecast',
-    )
-    const now = Date.now()
-    const budgetExhausted = snapshot.usage.costMicros + reserved + args.requiredCostMicros > snapshot.policy.maxCostMicros
-    const timeExhausted = now >= snapshot.policy.deadlineAt
-    if ((args.reason === 'time' && !timeExhausted) || (args.reason === 'model_spend' && !budgetExhausted)) {
-      throw new Error('HARNESS_RESOURCE_NOT_EXHAUSTED')
-    }
-    const previousStatus = snapshot.status as HarnessResourceRequestRecord['previousStatus']
-    const previousBlocker = snapshot.blocker?.kind === 'input'
-      || snapshot.blocker?.kind === 'approval'
-      || snapshot.blocker?.kind === 'stuck'
-      ? { kind: snapshot.blocker.kind, question: snapshot.blocker.question } : undefined
-    const request: HarnessResourceRequest = {
-      token: args.token, runId: snapshot.runId, rootRunId: snapshot.rootRunId, workflowRunId: args.workflowRunId,
-      policyRevision: snapshot.policyRevision ?? 0, reason: args.reason,
-      currentMaxCostMicros: snapshot.policy.maxCostMicros, usedCostMicros: snapshot.usage.costMicros,
-      reservedCostMicros: reserved, requiredCostMicros: args.requiredCostMicros,
-      deadlineAt: snapshot.policy.deadlineAt, requestedAt: now,
-    }
-    const pendingRows = await ctx.db.query('harnessResourceRequests')
-      .withIndex('by_runId_pending', q => q.eq('runId', args.runId).eq('state', 'pending'))
-      .take(1)
-    const acceptedRows = await ctx.db.query('harnessResourceRequests')
-      .withIndex('by_runId_pending', q => q.eq('runId', args.runId).eq('state', 'accepted'))
-      .take(1)
-    if (pendingRows.length || acceptedRows.length) throw new Error('HARNESS_RESOURCE_ALREADY_PENDING')
-    const next = pauseHarnessForResources(snapshot, args.token, now)
-    const row = {
-      runId: snapshot.runId, rootRunId: snapshot.rootRunId, workflowRunId: args.workflowRunId, token: args.token,
-      policyRevision: request.policyRevision, stateRevisionAtRequest: args.expectedRevision, requestJson: stableJson(request),
-      previousStatus, ...(previousBlocker ? { previousBlockerJson: stableJson(previousBlocker) } : {}),
-      authorityJson: stableJson({
-        actorUserId: args.actorUserId, workspaceId: authority.workspace.workspaceId,
-        conversationId: authority.source.conversationId, deliveryAgentRunId: authority.delivery._id,
-        billingAccountId: authority.account.billingAccountId, admissionMarker: 'personal_chat_work' as const,
-      }),
-      state: 'pending' as const, wakePending: false, createdAt: now, updatedAt: now,
-    }
-    await ctx.db.insert('harnessResourceRequests', row)
-    await persistMetadata(ctx, authority.run, next)
-    await ctx.db.patch(authority.delivery._id, {
-      status: 'waiting_for_resources',
-      resourceRequest: resourceDeliveryProjection(resourceRecord(row as ResourceRow), Boolean(snapshot.modelReservation)),
-      updatedAt: now,
-    })
-    return resourceRecord(row as ResourceRow)
-  },
-})
-
-export const getResourceRequest = query({
-  args: { actorUserId: v.string(), runId: v.string(), workflowRunId: v.string(), token: v.string(), serverSecret: v.string() },
-  handler: async (ctx, args): Promise<HarnessResourceRequestRecord | null> => {
-    requireHarnessServerSecret(args.serverSecret)
-    const { run } = await loadWaitAuthority(ctx, { actorUserId: args.actorUserId, runId: args.runId, workflowRunId: args.workflowRunId }, args.serverSecret)
-    const row = await ctx.db.query('harnessResourceRequests').withIndex('by_token', q => q.eq('token', args.token)).unique()
-    if (!row || row.runId !== run.runId || row.workflowRunId !== args.workflowRunId) return null
-    return resourceRecord(row)
-  },
-})
-
-export const grantResources = mutation({
-  args: {
-    actorUserId: v.string(), workspaceId: v.string(), runId: v.string(), workflowRunId: v.string(), token: v.string(),
-    policyRevision: v.number(), grant: resourceGrantArgValidator(), serverSecret: v.string(),
-  },
-  handler: async (ctx, args): Promise<HarnessResourceGrantReceipt> => {
-    requireHarnessServerSecret(args.serverSecret)
-    const reference = { actorUserId: args.actorUserId, runId: args.runId, workflowRunId: args.workflowRunId, token: args.token }
-    const authority = await loadResourceMutationAuthority(ctx, reference, args.serverSecret)
-    if (args.workspaceId !== authority.workspace.workspaceId) throw new Error('HARNESS_RESOURCE_WORKSPACE_DENIED')
-    const row = await ctx.db.query('harnessResourceRequests').withIndex('by_token', q => q.eq('token', args.token)).unique()
-    if (!row || row.runId !== args.runId || row.workflowRunId !== args.workflowRunId) throw new Error('HARNESS_RESOURCE_NOT_FOUND')
-    const record = resourceRecord(row)
-    assertResourceRequestBinding(record, authority, args.actorUserId)
-    if (record.receipt) {
-      if (args.policyRevision !== record.request.policyRevision || stableJson(args.grant) !== stableJson(record.receipt.grant)) throw new Error('HARNESS_RESOURCE_GRANT_CONFLICT')
-      return record.receipt
-    }
-    if (row.state !== 'pending' || authority.metadata.status !== 'waiting_for_resources'
-      || authority.metadata.resourceRequestToken !== args.token || (authority.metadata.policyRevision ?? 0) !== args.policyRevision) {
-      throw new Error('HARNESS_RESOURCE_STALE')
-    }
-    const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
-    const currentReservedCostMicros = reservedHarnessCostMicros(snapshot)
-    assertSafeResourceMicros(snapshot.usage.costMicros, 'Current used cost')
-    assertSafeResourceMicros(currentReservedCostMicros, 'Current reserved cost')
-    assertSafeResourceMicros(record.request.requiredCostMicros, 'Required forecast')
-    const currentCommitments = snapshot.usage.costMicros + currentReservedCostMicros + record.request.requiredCostMicros
-    assertSafeResourceMicros(currentCommitments, 'Current commitments and forecast')
-    if (args.grant.kind === 'model_spend' && args.grant.newMaxCostMicros < currentCommitments) {
-      throw new Error('The model-spend grant must cover current commitments and the forecast.')
-    }
-    const receipt = calculateHarnessResourceGrantReceipt({ request: record.request, grant: args.grant as HarnessResourceGrant, grantedAt: Date.now() })
-    const next = applyHarnessResourceGrant(snapshot, receipt, receipt.grantedAt)
-    await ctx.db.patch(row._id, { state: 'accepted', receiptJson: stableJson(receipt), wakePending: true, updatedAt: receipt.grantedAt })
-    await persistMetadata(ctx, authority.run, next)
-    await ctx.db.patch(authority.delivery._id, {
-      resourceRequest: resourceDeliveryProjection({ ...record, receipt }, Boolean(snapshot.modelReservation)),
-      updatedAt: receipt.grantedAt,
-    })
-    return receipt
-  },
-})
-
-export const consumeResourceGrant = mutation({
-  args: { actorUserId: v.string(), runId: v.string(), workflowRunId: v.string(), token: v.string(), serverSecret: v.string() },
-  handler: async (ctx, args): Promise<import('../../packages/overlay-agent-runtime/src/harness-resource').HarnessResourceConsumeResult> => {
-    requireHarnessServerSecret(args.serverSecret)
-    const reference = { actorUserId: args.actorUserId, runId: args.runId, workflowRunId: args.workflowRunId, token: args.token }
-    const authority = await loadResourceMutationAuthority(ctx, reference, args.serverSecret)
-    const row = await ctx.db.query('harnessResourceRequests').withIndex('by_token', q => q.eq('token', args.token)).unique()
-    if (!row || row.runId !== args.runId || row.workflowRunId !== args.workflowRunId) return { status: 'pending' }
-    const record = resourceRecord(row)
-    assertResourceRequestBinding(record, authority, args.actorUserId)
-    if (row.state === 'consumed') return { status: 'consumed', request: record }
-    const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
-    const now = Date.now()
-    if (row.state === 'pending' || !record.receipt) {
-      await projectResourceRequest(ctx, authority.delivery, record, Boolean(snapshot.modelReservation), now)
-      return { status: 'pending' }
-    }
-    await projectResourceRequest(ctx, authority.delivery, record, Boolean(snapshot.modelReservation), now)
-    if (snapshot.modelReservation) return { status: 'pending', reason: 'awaiting_receipt' }
-    const next = consumeHarnessResourcePause(snapshot, {
-      token: args.token, previousStatus: record.previousStatus, previousBlocker: record.previousBlocker,
-    }, now)
-    await ctx.db.patch(row._id, { state: 'consumed', wakePending: false, consumedAt: now, updatedAt: now })
-    await persistMetadata(ctx, authority.run, next)
-    await ctx.db.patch(authority.delivery._id, {
-      status: next.status as 'running' | 'waiting_for_input' | 'waiting_for_approval',
-      resourceRequest: undefined,
-      updatedAt: now,
-    })
-    return { status: 'consumed', request: resourceRecord({ ...row, state: 'consumed', wakePending: false, consumedAt: now }) }
   },
 })
 

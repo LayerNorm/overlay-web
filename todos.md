@@ -4,6 +4,10 @@
 
 - [ ] **Specialist-to-specialist communication** (added 2026-11-09). Today specialists only talk to the Chief through their assignment result (reply, blocker, failure); they cannot message each other. Design a permissioned way for one assignment to consult another (shared parent only, same requester authority, inherited shared-room restrictions, hop limit) without creating a second orchestration path. Depends on the specialist-to-Chief event path landing first.
 
+## Work recurrence
+
+- Add recurring tasks / a Repeat setting to the Work composer. This needs a persisted schedule field and a job that creates the next task.
+
 ## Observability
 
 - [ ] **Measure first-reply time in production** (added 2026-11-06). Nothing reports how long a user waits for a reply's first text; `NEXT_PUBLIC_TTFT_DEBUG` and `TTFT_DEBUG` are off-by-default debug tools, and the server flag collects phases it never logs. Once the Convex-native chat work settles, send one PostHog event per reply with the time to first text, the model and whether it was a new chat, and no message content. Then compare typical and worst-case times over time.

@@ -235,23 +235,7 @@ function fixture(args: {
     billingProvider: () => args.provider ?? provider(),
     repository: args.repository ?? repository(),
     billingEnabled: async () => true,
-    usage: {
-      async getBillingAccountOperationalReport() {
-        return {
-          actualProviderCostCents: 0,
-          costCoveragePercent: 100,
-          meteredReservations: 0,
-          oldestReconciliationAgeMs: 0,
-          periodEnd: 2,
-          periodStart: 1,
-          realizedMarginPercent: null,
-          retailCostCents: 0,
-          retailCredits: 0,
-          staleReconciliationReservations: 0,
-          reconciliationReservations: 0,
-        }
-      },
-    } as UsageRepository,
+    usage: {} as UsageRepository,
     workspaces: {
       resolveActiveWorkspace: async () => access(args.role as 'member', args.kind),
       getSharingPolicy: async () => ({ usageTopUpBy: args.usageTopUpBy ?? 'admins' }) as never,

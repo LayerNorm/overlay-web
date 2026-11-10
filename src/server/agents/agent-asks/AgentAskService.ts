@@ -10,7 +10,6 @@ import {
   MAX_AGENT_ASKS_PER_TURN,
   MAX_AGENT_POSTS_PER_ROOT,
   MAX_AGENT_POSTS_PER_TURN,
-  MAX_CHAIN_TOKENS,
   MAX_OUTSIDE_ASKS_PER_DAY,
   MAX_OUTSIDE_ASKS_PER_HOUR,
   nextLineage,
@@ -32,7 +31,7 @@ const REPLY_WAIT_MS = 80_000
 const REPLY_POLL_MS = 2_000
 const MAX_REPLY_CHARS = 20_000
 const MAX_QUESTION_CHARS = 8_000
-const MAX_MENTIONS = 3
+const MAX_MENTIONS = 20
 
 export class AgentAskError extends Error {
   constructor(message: string, readonly statusCode: number, readonly code: string) {
@@ -98,8 +97,6 @@ export class AgentAskService {
     /** Gives back a question taken by `claimBudget` when it could not be asked. */
     releaseBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; dispatchId?: string }) => Promise<void>
     /** Remembers a reply a request's question started, and lists them, to add up what a chain has used. */
-    recordReply: (args: { workspaceId: string; rootKey: string; conversationId: string; turnId: string }) => Promise<void>
-    listReplies: (args: { workspaceId: string; rootKey: string }) => Promise<Array<{ conversationId: string; turnId: string }>>
     /** Starts the addressed agents' turns for a message; returns the turns it opened. */
     startTurns: StartTurns
     sleep?: (ms: number) => Promise<void>
@@ -144,7 +141,6 @@ export class AgentAskService {
       parentConversationId: args.caller.conversationId,
     })
     if (!next.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[next.refusal], 409, `ask_${next.refusal}`)
-    await this.refuseIfChainSpentTooMuch(args, lineage)
     const keys = { workspaceId: args.workspaceId, rootKey: `root:${lineage.rootTurnId}`, turnKey: `turn:${args.caller.turnId}` }
     const dispatchId = args.nativeAssignment?.idempotencyKey
     const claim = await this.dependencies.claimBudget({
@@ -188,7 +184,7 @@ export class AgentAskService {
       assignmentCreated = Boolean(args.nativeAssignment)
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: room.conversationId, content, turnId: questionTurnId, lineage: next.lineage,
-        mentions: [target], rootKey: keys.rootKey, startTurns: args.startTurns,
+        mentions: [target], startTurns: args.startTurns,
       })
       const turn = posted.turns.find((candidate) => candidate.agentId === target.id)
       if (!turn) throw new AgentAskError(`${target.name} could not be reached.`, 502, 'agent_unreachable')
@@ -248,7 +244,6 @@ export class AgentAskService {
         })
       : null
     if (next && !next.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[next.refusal], 409, `ask_${next.refusal}`)
-    if (targets.length > 0) await this.refuseIfChainSpentTooMuch(args, lineage)
 
     // Posting spends the post budget; mentioning agents spends the ask budget too, one question per agent.
     const spent: Array<{ workspaceId: string; rootKey: string; turnKey: string }> = []
@@ -275,7 +270,7 @@ export class AgentAskService {
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: args.conversationId, content: text, turnId,
         ...(next?.ok ? { lineage: next.lineage } : {}), mentions: targets,
-        rootKey: `root:${lineage.rootTurnId}`, startTurns: args.startTurns,
+        startTurns: args.startTurns,
       })
       return { posted: true, messageId: posted.messageId, conversationId: args.conversationId, asked: targets.map((target) => target.name) }
     } catch (error) {
@@ -361,22 +356,6 @@ export class AgentAskService {
     return message
   }
 
-  /** Refuses the next question once the replies this request's earlier questions started have used too much. */
-  private async refuseIfChainSpentTooMuch(person: Person, lineage: AgentLineage) {
-    const replies = await this.dependencies.listReplies({ workspaceId: person.workspaceId, rootKey: `root:${lineage.rootTurnId}` })
-    if (replies.length === 0) return
-    const byConversation = new Map<string, Set<string>>()
-    for (const reply of replies) byConversation.set(reply.conversationId, (byConversation.get(reply.conversationId) ?? new Set()).add(reply.turnId))
-    let used = 0
-    for (const [conversationId, turnIds] of byConversation) {
-      const rows = await this.dependencies.collaboration.listMessages({
-        actorUserId: person.actorUserId, conversationId, limit: 50, workspaceId: person.workspaceId,
-      })
-      for (const row of rows) if (turnIds.has(row.turnId) && row.authorKind === 'agent') used += (row.tokens?.input ?? 0) + (row.tokens?.output ?? 0)
-    }
-    if (used >= MAX_CHAIN_TOKENS) throw new AgentAskError(ASK_REFUSAL_MESSAGE.spend, 429, 'ask_spend')
-  }
-
   /** Posts a message as an agent (with a lineage when it asks someone), and starts the turns of the agents it mentions. */
   private async postAsAgent(args: {
     person: Person
@@ -386,7 +365,6 @@ export class AgentAskService {
     turnId: string
     lineage?: AgentLineage
     mentions: WorkspaceAgentDirectoryItem[]
-    rootKey: string
     startTurns?: StartTurns
   }) {
     const messageId = await this.dependencies.collaboration.addAgentMessage({
@@ -412,11 +390,6 @@ export class AgentAskService {
       turnId: args.turnId,
       workspaceId: args.person.workspaceId,
     })
-    for (const turn of turns) {
-      await this.dependencies.recordReply({
-        workspaceId: args.person.workspaceId, rootKey: args.rootKey, conversationId: args.conversationId, turnId: turn.turnId,
-      }).catch((_error) => undefined)
-    }
     return { messageId, turns }
   }
 

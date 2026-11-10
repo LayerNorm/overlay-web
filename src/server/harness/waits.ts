@@ -4,7 +4,6 @@ import { effectiveHarnessDeadlineAt, type HarnessSnapshot } from '@overlay/agent
 import { z } from 'zod'
 import type { HarnessExecutionPorts } from './ports'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
-import { waitForHarnessHumanReply } from './resource-boundary'
 import { sameHarnessApprovalRequests } from './tool-approvals'
 import {
   listHarnessWaits, notifyHarnessAncestors,
@@ -23,13 +22,12 @@ export function createHarnessWaitPorts(input: {
   reference: HarnessExecutionReference
   deliveryRunId?: string
   renewLease: () => Promise<void>
-  checkFunding: (requiredCents: number) => Promise<boolean>
   projectWait: (projection: HarnessWaitProjection) => Promise<'projected' | 'stale' | 'inactive'>
   readState?: (reference: HarnessExecutionReference) => Promise<HarnessSnapshot>
   // The workflow registers this hook before launching any children, and keeps
   // it alive until finalization. Notifications are buffered while the model runs.
   wake: AsyncIterator<unknown>
-}): Pick<HarnessExecutionPorts, 'waitForInput' | 'waitForApproval' | 'waitForChildren' | 'waitForFunding' | 'checkFunding'> {
+}): Pick<HarnessExecutionPorts, 'waitForInput' | 'waitForApproval' | 'waitForChildren'> {
   const access = input.reference
   const segmentStartedAt = Date.now()
   const checkRollover = () => {
@@ -88,9 +86,7 @@ export function createHarnessWaitPorts(input: {
     const state = await readHarnessState(access)
     await notifyHarnessAncestors(access)
     if (ownsDelivery(state) && await input.projectWait({ wait }) === 'inactive') return null
-    const result = state.policy.resourcePauseVersion === 1
-      ? await waitForHarnessHumanReply(access, hook, request.kind, () => readHarnessState(access))
-      : await withDeadline(hook, effectiveHarnessDeadlineAt(state.policy))
+    const result = await withDeadline(hook, effectiveHarnessDeadlineAt(state.policy))
     if (result === null) return null
     await resolveHarnessWait(access, wait.token)
     await notifyHarnessAncestors(access)
@@ -161,15 +157,5 @@ export function createHarnessWaitPorts(input: {
         }
       }
     },
-    waitForFunding: async () => {
-      const state = await readState()
-      if (['completed', 'failed', 'cancelled'].includes(state.status)) return
-      await Promise.race([nextWake(), sleep(new Date(Date.now() + 60_000))])
-      const current = await readState()
-      if (['completed', 'failed', 'cancelled'].includes(current.status)
-        || current.status !== 'waiting_for_resources') return
-      await input.renewLease()
-    },
-    checkFunding: input.checkFunding,
   }
 }

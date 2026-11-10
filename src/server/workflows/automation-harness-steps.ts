@@ -4,8 +4,10 @@ import { FatalError } from 'workflow'
 import { automationService } from '@/server/automations/http'
 import {
   ensureAutomationConversation,
+  turnBillingKeys,
   type AutomationAgentTurnInput,
 } from '@/server/automations/automation-turn-runner'
+import { chargeAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentRunService } from '@/server/conversations/http'
 import { isHarnessBackendReady } from '@/server/harness/backend-readiness'
@@ -13,6 +15,7 @@ import { assertAutomationAdmissionSource } from '@/server/harness/automation-acc
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import { personalHarnessPolicy } from '@/server/harness/personal-admission-policy'
+import { recordPublicStreamMetric } from '@/server/harness/public-stream-metrics'
 
 async function ensureConversationStep(input: AutomationAgentTurnInput): Promise<{
   conversationId: string
@@ -211,8 +214,11 @@ async function admitAutomationHarnessStep(input: {
   deliveryAgentRunId: string
 }) {
   'use step'
-  return await new ConvexHarnessRepository().admit({
-    runId: `personal:${input.deliveryAgentRunId}`,
+  const repository = new ConvexHarnessRepository()
+  const runId = `personal:${input.deliveryAgentRunId}`
+  const existing = await repository.get({ actorUserId: input.actorUserId, runId })
+  const admitted = await repository.admit({
+    runId,
     goal: input.goal.slice(0, 32_000) || 'Respond to the automation instructions.',
     constraints: [],
     policy: personalHarnessPolicy({
@@ -222,9 +228,26 @@ async function admitAutomationHarnessStep(input: {
       modelId: input.modelId,
       paid: input.paid,
       createdAt: input.createdAt,
+      existingPolicy: existing?.policy,
     }),
     source: { conversationId: input.conversationId },
     deliveryAgentRunId: input.deliveryAgentRunId,
+  })
+  if (admitted.policy?.publicStreamVersion === 1) recordPublicStreamMetric({
+    event: 'admission_accepted', runId, generation: admitted.executionGeneration ?? 0, modelId: input.modelId,
+  })
+  return admitted
+}
+
+/** Charges the run's flat workflow-step price after it ran; nothing was held before. */
+async function chargeAutomationWorkflowRunStep(input: AutomationAgentTurnInput & { workspaceId: string }): Promise<void> {
+  'use step'
+  const { billingProgrammaticSubjectId, requestIdempotencyKey } = turnBillingKeys(input)
+  await chargeAutomationWorkflowRun({
+    idempotencyKey: requestIdempotencyKey,
+    programmaticSubjectId: billingProgrammaticSubjectId,
+    userId: input.userId,
+    workspaceId: input.workspaceId,
   })
 }
 
@@ -252,6 +275,7 @@ export async function checkAutomationEnabled(input: {
 export {
   admitAutomationHarnessStep,
   admitAutomationSourceStep,
+  chargeAutomationWorkflowRunStep,
   ensureConversationStep,
   readAutomationDeliveryStep,
   reconcileAutomationHarnessTerminalStep,

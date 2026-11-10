@@ -16,6 +16,9 @@ import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 import { enqueueNativeTurn } from './nativeTurnQueue'
+import { cleanupTerminalPublicStreams, readActivePublicStreams } from '../lib/publicStreamRead'
+import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
+import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
@@ -468,6 +471,7 @@ export const listMessages = query({
 export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemoteMessages>>[number]) {
   return {
     id: message._id,
+    conversationId: message.conversationId,
     turnId: message.turnId,
     authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
     authorPrincipalId: message.authorPrincipalId,
@@ -486,6 +490,7 @@ export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemote
     clientNonce: message.clientNonce,
     threadRootMessageId: message.threadRootMessageId,
     status: message.status,
+    publicStreamCheckpoint: message.publicStreamCheckpoint,
   }
 }
 
@@ -699,29 +704,7 @@ export const enqueueMemoryExtraction = mutation({
       ) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
     }
 
-    const today = new Date().toISOString().split('T')[0]
-    let dailyUsage = await ctx.db.query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', args.actorUserId).eq('date', today))
-      .first()
-    if (!dailyUsage) {
-      const dailyUsageId = await ctx.db.insert('dailyUsage', {
-        userId: args.actorUserId,
-        date: today,
-        askCount: 0,
-        agentCount: 0,
-        writeCount: 0,
-        transcriptionSeconds: 0,
-        memoryExtractionCount: 0,
-      })
-      dailyUsage = await ctx.db.get(dailyUsageId)
-    }
-    if ((dailyUsage?.memoryExtractionCount ?? 0) >= 120) return
-    if (dailyUsage) {
-      await ctx.db.patch(dailyUsage._id, {
-        memoryExtractionCount: (dailyUsage.memoryExtractionCount ?? 0) + 1,
-      })
-    }
-
+    // No daily count: extraction is charged to the workspace budget like other work.
     await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
       billingActorUserId: args.actorUserId,
       conversationId: args.conversationId,
@@ -982,6 +965,7 @@ export const recordAgentStartFailure = mutation({
     clientNonce: v.string(),
     content: v.string(),
     conversationId: v.id('conversations'),
+    failure: v.optional(v.object({ code: v.string(), message: v.string(), retryable: v.boolean() })),
     modelId: v.string(),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     turnId: v.string(),
@@ -1003,17 +987,27 @@ export const recordAgentStartFailure = mutation({
     if (existingMessage) {
       await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
     }
-    const { messageId } = await openAgentMessageRow(ctx, args)
+    const { failure, ...rowArgs } = args
+    const { messageId } = await openAgentMessageRow(ctx, rowArgs)
     const message = await ctx.db.get(messageId)
     if (message?.status !== 'generating') return messageId
     const run = await ctx.db.query('conversationAgentRuns')
       .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', messageId)).unique()
     if (run) assertSupportedAgentExecution(run)
+    const now = Date.now()
     await ctx.db.patch(messageId, {
       content: args.content,
-      parts: [{ type: 'text', text: args.content }],
+      // The error part carries a short reason, replacing the generic
+      // "No failure reason is available" line under the reply.
+      parts: [
+        { type: 'text', text: args.content },
+        ...(failure ? [{
+          type: 'data-native-agent-error' as const,
+          data: { runId: args.turnId, code: failure.code, message: failure.message.slice(0, 2_000), retryable: failure.retryable, failedAt: now },
+        }] : []),
+      ],
       status: 'error',
-      updatedAt: Date.now(),
+      updatedAt: now,
     })
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId, workspaceId: args.workspaceId,
@@ -1064,6 +1058,7 @@ export const appendAgentMessageDelta = mutation({
       type: 'message.delta',
       messageId: args.messageId,
     })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
   },
 })
 
@@ -1107,6 +1102,7 @@ export const finalizeAgentMessage = mutation({
       type: 'message.completed',
       messageId: args.messageId,
     })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
       messageId: args.messageId,
     })
@@ -1153,9 +1149,25 @@ export const failAgentMessage = mutation({
     const merged = mergeHarnessFailureTranscript({
       liveContent, liveParts, settledContent, settledParts,
     })
+    const activeStream = (await readActivePublicStreams(ctx, message.conversationId, [message._id]))[0]
+    const activeText = activeStream
+      ? [activeStream.text, activeStream.truncatedMarker].filter(Boolean).join('\n\n')
+      : ''
+    const activePart = activeStream && activeText
+      ? {
+        type: 'text',
+        id: transcriptPartIdentity(activeStream.runId, activeStream.receiptId, 0, activeStream.executionGeneration),
+        text: activeText,
+      }
+      : undefined
+    const activeContinues = activeStream?.continuesPrevious === true
     await ctx.db.patch(args.messageId, {
-      content: merged.content,
-      parts: merged.parts,
+      content: joinStepText(merged.content, activeText, activeContinues),
+      parts: activePart ? appendStepParts(merged.parts, [activePart], activeContinues) as typeof merged.parts : merged.parts,
+      ...(activeStream ? { publicStreamCheckpoint: {
+        runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,
+        receiptId: activeStream.receiptId, invocation: activeStream.invocation,
+      } } : {}),
       status: 'error',
       updatedAt: Date.now(),
     })
@@ -1166,6 +1178,7 @@ export const failAgentMessage = mutation({
       type: 'message.failed',
       messageId: args.messageId,
     })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
   },
 })
 
@@ -1311,9 +1324,28 @@ export const createDirectMessage = mutation({
           q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
         ))
         .unique()
-      if (actorParticipant?.archivedAt) {
-        const now = Date.now()
-        await ctx.db.patch(actorParticipant._id, { archivedAt: undefined, updatedAt: now })
+      // Starting a DM you archived, left or were removed from reopens it for you; otherwise it would hand back a
+      // room you cannot read.
+      const now = Date.now()
+      if (!actorParticipant) {
+        await ctx.db.insert('conversationParticipants', {
+          conversationId: existing._id,
+          workspaceId: args.workspaceId,
+          principalId: actor.principalId,
+          principalType: 'human',
+          role: 'member',
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+          lastReadAt: now,
+        })
+      } else if (actorParticipant.status !== 'active' || actorParticipant.archivedAt) {
+        await ctx.db.patch(actorParticipant._id, {
+          status: 'active', archivedAt: undefined, removedAt: undefined, updatedAt: now,
+        })
+      }
+      if (!actorParticipant || actorParticipant.status !== 'active' || actorParticipant.archivedAt) {
         await recordConversationEvent(ctx, {
           conversationId: existing._id,
           workspaceId: args.workspaceId,

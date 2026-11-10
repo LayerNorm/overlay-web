@@ -69,3 +69,23 @@ test('forced refresh cannot reuse an in-flight non-forced token read', async (t)
   finish(Response.json({ token: 'previous', userId: 'user-a' }))
   await stale
 })
+
+test('a failed token request for a signed-in user reports the failure so the caller can retry', async (t) => {
+  const responses = [new Response('busy', { status: 503 }), Response.json({ token: 'later-token', userId: 'user-a' })]
+  t.mock.method(globalThis, 'fetch', async () => responses.shift()!)
+  let failures = 0
+  const fetchToken = createNativeConvexTokenFetcher('user-a', async () => {}, () => { failures++ })
+  assert.equal(await fetchToken({ forceRefreshToken: false }), null)
+  assert.equal(failures, 1)
+  assert.equal(await fetchToken({ forceRefreshToken: false }), 'later-token')
+  assert.equal(failures, 1)
+})
+
+test('network errors and timeouts also report a failure; signed-out callers never do', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => { throw new TypeError('network down') })
+  let failures = 0
+  assert.equal(await createNativeConvexTokenFetcher('user-a', async () => {}, () => { failures++ })({ forceRefreshToken: true }), null)
+  assert.equal(failures, 1)
+  assert.equal(await createNativeConvexTokenFetcher(null, async () => {}, () => { failures++ })({ forceRefreshToken: true }), null)
+  assert.equal(failures, 1)
+})

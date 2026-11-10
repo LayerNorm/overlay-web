@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   assertSurface: vi.fn(),
   server: {
     appData: { repositories: { conversations: { getLatestAgentRun: vi.fn() } } },
-    chatUsagePolicy: { reserveForAttempt: vi.fn() },
+    chatUsagePolicy: { ensureBudgetNotLow: vi.fn() },
   },
 }))
 
@@ -85,7 +85,7 @@ test('builds native input from the persisted delivery identity without reservati
   })
   expect(input.instructions).toBe('Complete system prompt')
   expect(input.definitions[0]).not.toHaveProperty('execute')
-  expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
+  expect(mocks.server.chatUsagePolicy.ensureBudgetNotLow).not.toHaveBeenCalled()
 })
 
 test('a new root in an assignment conversation resolves inherited restrictions before admission', async () => {

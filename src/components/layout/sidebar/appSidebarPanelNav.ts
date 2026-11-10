@@ -296,12 +296,10 @@ export function resolveSecondaryPanelNav({
   findRooms?: FindRooms
 }): SecondaryPanelNav | undefined {
   if (panelKind === 'chat') {
-    const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
     const chatUnreadBadges: Record<(typeof chatsInlineItems)[number]['id'], number> = {
       personal: totalUnread,
       dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
       channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
-      activity: cumulativeChatUnread,
     }
     return buildChatPanelNav({
 

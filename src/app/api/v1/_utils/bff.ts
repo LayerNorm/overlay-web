@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import type { CapabilityCheck } from '@overlay/app-core'
 import type {
   AccountAppApiRouteContext,
@@ -177,7 +177,13 @@ async function handleScopedBffRoute(
       responseBytes,
       retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
     }))
-    await flushPostHog()
+    try {
+      after(async () => {
+        await flushPostHog()
+      })
+    } catch (_error) {
+      void flushPostHog()
+    }
   }
 
   let capabilities: CapabilityCheck

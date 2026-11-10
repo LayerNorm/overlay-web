@@ -37,3 +37,9 @@ test('small default avatars use enlarged eyes inside the same box', () => {
   assert.match(html, /width:20px;height:20px/)
   assert.match(html, /M347.0 -447.0A46.0/)
 })
+
+test('a working default agent moves its eyes instead of blinking', () => {
+  const html = renderToStaticMarkup(<AgentCreature agent={{ name: 'Overlay' }} isDefault working />)
+  assert.match(html, /overlay-mark--look/)
+  assert.doesNotMatch(html, /overlay-mark--blink/)
+})

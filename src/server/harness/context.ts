@@ -1,5 +1,5 @@
 import { HARNESS_PUBLIC_PROGRESS_INSTRUCTION } from './public-progress'
-import { harnessCompletionIssues, reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { harnessCompletionIssues, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 import { buildHarnessCheckpoint } from './continuity'
 
@@ -50,7 +50,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
           ? '\nInternal continuation: finish the remaining plan steps. This is not a new user request.'
           : '\nInternal continuation of the current request. Only work shown in the observations has been done, so carry on with what remains.'
         : '')
-    + (context.truncatedResponse ? '\nThe previous response reached its output limit, not task completion. Continue from the saved partial response without repeating it.' : '')
+    + (context.truncatedResponse ? '\nThe previous response reached its output limit, not task completion. It is the latest assistant message in the conversation. Resume from its exact last character, mid-sentence if needed, with no preamble, and do not repeat any of it.' : '')
     + (context.stagnationRecoveryAttempt !== undefined
       ? `\nRecovery attempt ${context.stagnationRecoveryAttempt}: inspect recent failed tool results and missing capabilities, then try a different approach. Do not repeat the same plan or tool call. Ask with harness_report_blocker only if you need a decision from the person.`
       : '')
@@ -60,34 +60,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
       : '')
 }
 
-function safeFailedEvidenceSummary(state: HarnessSnapshot): string {
-  const failed = state.evidence
-    .filter(evidence => evidence.kind === 'tool_result' && evidence.verdict === 'failed')
-    .slice(-3)
-    .map(evidence => {
-      const summary = evidence.summary
-        .replace(/\b(?:authorization|bearer|cookie|password|secret|token|api[_ -]?key)\b(?:\s*[:=]\s*|\s+(?:is\s+)?)(?:"[^"]*"|'[^']*'|\S+)/gi, '[redacted]')
-        .replace(/\bbearer\s+\S+/gi, 'Bearer [redacted]')
-        .replace(/\b(?:sk|pk|rk|api)[-_][A-Za-z0-9_-]{10,}\b/gi, '[redacted]')
-        .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g, '[redacted]')
-        .replace(/https?:\/\/\S+/gi, '[URL]')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 180)
-      const id = evidence.id.replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 120)
-      const source = evidence.source.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80)
-      return `${id || 'tool result'} (${source || 'tool'}): ${summary || 'failed tool result'}`
-    })
-  return failed.join('; ')
-}
-
-export function buildHarnessStuckQuestion(state: HarnessSnapshot): string {
-  const evidence = safeFailedEvidenceSummary(state)
-  return `I'm stuck on this task and need your help to continue. What should I try next?${evidence ? ` Most recent errors: ${evidence}` : ''}`
-}
-
 export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
-  const reservedCostMicros = reservedHarnessCostMicros(state)
   const authoritativeCheckpoint = buildHarnessCheckpoint(state)
   const evidenceById = new Map(state.evidence.map(evidence => [evidence.id, evidence]))
   return JSON.stringify({
@@ -118,9 +91,7 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
     budget: {
       deadlineAt: state.policy.deadlineAt,
       ...(state.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: state.policy.taskDeadlineAt } : {}),
-      ...(state.policy.executionPolicyVersion === 2
-        ? { spendingMode: state.policy.spendingMode, remainingCostMicros: state.policy.spendingMode === 'workspace' ? null : 0 }
-        : { remainingCostMicros: Math.max(0, state.policy.maxCostMicros - state.usage.costMicros - reservedCostMicros) }),
+      ...(state.policy.spendingMode ? { spendingMode: state.policy.spendingMode } : {}),
       remainingDepth: state.policy.maxDepth - state.depth,
     },
   })

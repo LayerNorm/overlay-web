@@ -11,7 +11,8 @@ import { matchesFilter, parseWorkFilter, sortByRank, type WorkFilter, type WorkV
 import type { AssignmentExecution } from '@/shared/work/assignment-execution'
 import { assignmentWorkState } from '@/shared/work/assignment-state'
 import { useWorkRoute } from '../lib/use-work-route'
-import { useLiveAssignments, useLiveWork } from '../lib/use-live-work'
+import { useLiveWork, useWorkSignedOut } from '../lib/use-live-work'
+import { useLiveAssignments } from '../lib/use-live-work'
 import { WORK_ASSIGNMENT_PARAM, WORK_TASK_PARAM } from '../lib/use-work-url-state'
 import { StatusIcon } from './work-ui'
 import { AssignmentGlyphIcon } from './WorkAssignments'
@@ -31,7 +32,8 @@ const EMPTY_LABEL: Record<WorkFilter, string> = {
 function useSidebarWork(): SidebarWork | null {
   const { listView } = useWorkRoute()
   const { items, context } = useLiveWork(listView)
-  return useMemo(() => (items === undefined ? null : { items: items ?? [], context }), [context, items])
+  const signedOut = useWorkSignedOut()
+  return useMemo(() => (items === undefined && !signedOut ? null : { items: items ?? [], context }), [context, items, signedOut])
 }
 
 /** Agent assignments listed with the tasks: open ones under Everything, those waiting on a person under Needs you. */

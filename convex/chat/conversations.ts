@@ -1,4 +1,7 @@
 import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
+import { cleanupTerminalPublicStreams } from '../lib/publicStreamRead'
+import { readActivePublicStreams, readRetainedPublicStream } from '../lib/publicStreamRead'
+import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
@@ -17,6 +20,7 @@ import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/na
 import { nativeAgentErrorPart } from '../lib/nativeAgentErrorPart'
 import { harnessDiagnosticValidator } from '../lib/harnessDiagnosticValidator'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
+import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
 import { NATIVE_AGENT_ERROR_PART, nativeAgentErrorMessage } from '../../src/shared/agents/native-agent-error'
 import { createHarnessDiagnostic, harnessDiagnosticMessage } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
 
@@ -349,7 +353,8 @@ async function getLinkedAutomationConversationIds(
 type MessageDoc = Doc<'conversationMessages'>
 type MessagePart = NonNullable<MessageDoc['parts']>[number]
 type MessageParts = NonNullable<MessageDoc['parts']>
-const MAX_HISTORY_TOOL_VALUE_CHARS = 1000
+// Earlier tool inputs and outputs a model reads back; the model context window is the real bound.
+const MAX_HISTORY_TOOL_VALUE_CHARS = 20_000
 
 function sameMessageVariant(
   message: MessageDoc,
@@ -918,32 +923,7 @@ export const addMessage = mutation({
 
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
-	        const today = new Date().toISOString().split('T')[0]
-	        let dailyUsage = await ctx.db
-	          .query('dailyUsage')
-	          .withIndex('by_userId_date', (q) => q.eq('userId', args.userId).eq('date', today))
-	          .first()
-	        if (!dailyUsage) {
-	          const dailyUsageId = await ctx.db.insert('dailyUsage', {
-	            userId: args.userId,
-	            date: today,
-	            askCount: 0,
-	            agentCount: 0,
-	            writeCount: 0,
-	            transcriptionSeconds: 0,
-	            memoryExtractionCount: 0,
-	          })
-	          dailyUsage = await ctx.db.get(dailyUsageId)
-	        }
-	        if ((dailyUsage?.memoryExtractionCount ?? 0) >= 120) {
-	          return msgId
-	        }
-	        if (dailyUsage) {
-	          await ctx.db.patch(dailyUsage._id, {
-	            memoryExtractionCount: (dailyUsage.memoryExtractionCount ?? 0) + 1,
-	          })
-	        }
-
+	        // No daily count: extraction is charged to the workspace budget like other work.
 	        await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
 	          billingAccountId: args.billingAccountId,
 	          billingActorUserId: args.billingActorUserId,
@@ -1183,6 +1163,7 @@ export const completeAgentRun = mutation({
         status: 'completed',
         updatedAt: now,
       })
+      await cleanupTerminalPublicStreams(ctx, message._id)
     }
     await ctx.db.patch(run._id, {
       status: 'completed',
@@ -1247,6 +1228,8 @@ export const failAgentRun = mutation({
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
+      const active = (await readActivePublicStreams(ctx, run.conversationId, [message._id]))[0]
+      const activeText = active ? [active.text, active.truncatedMarker].filter(Boolean).join('\n\n') : ''
       const merged = args.failureTranscript
         ? mergeHarnessFailureTranscript({
           liveContent: message.content,
@@ -1255,15 +1238,22 @@ export const failAgentRun = mutation({
           settledParts: args.failureTranscript.parts,
         })
         : undefined
-      const parts = (merged?.parts ?? message.parts ?? []).filter((part) =>
+      const settledParts = (merged?.parts ?? message.parts ?? []).filter((part) =>
         part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
         && part.type !== NATIVE_AGENT_ERROR_PART)
+      const activeContinues = active?.continuesPrevious === true
+      const parts = active && activeText ? appendStepParts(settledParts, [{
+        type: 'text',
+        id: transcriptPartIdentity(active.runId, active.receiptId, 0, active.executionGeneration),
+        text: activeText,
+      }], activeContinues) as typeof settledParts : settledParts
       if (isNative) {
         parts.push({ type: NATIVE_AGENT_ERROR_PART, data: {
           ...args.error, message: nativeAgentErrorMessage(args.error.message), runId: String(run._id), failedAt: now,
         } })
       }
-      const content = merged?.content || (isNative ? message.content : message.content || args.errorText)
+      const baseContent = merged?.content || (isNative ? message.content : message.content || args.errorText)
+      const content = joinStepText(baseContent, activeText, activeContinues)
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
         ...(message.status === 'generating' || message.status === 'error'
@@ -1275,6 +1265,7 @@ export const failAgentRun = mutation({
           : { content, parts, ...(isNative ? { status: 'error' as const } : {}) }),
         updatedAt: now,
       })
+      await cleanupTerminalPublicStreams(ctx, message._id)
     }
     await ctx.db.patch(run._id, {
       status: 'failed',
@@ -1474,24 +1465,34 @@ export const cancelAgentRuns = mutation({
       assertAgentRunTransition(run.status, 'cancelled')
     }
     const cancelledHarnessRoots: Array<{ agentRunId: string; runId: string }> = []
-    for (const run of activeRuns) {
-      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
-    }
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
     )
+    // Runs on the unified stream keep their live text in rows the executor rewrites several
+    // times a second. Reading them here made this mutation lose every optimistic-concurrency
+    // retry while output was flowing, so Stop failed and the run kept going. Cancel first
+    // without touching those rows (which also makes the executor's next write stale), then
+    // copy the retained text into the message in a follow-up mutation nobody contends with.
+    const streamed = activeRuns.map(run => Boolean(run.harnessRunId
+      && publicStreamVersionOf(harnessRuns.get(run.harnessRunId)) === 1))
+    for (const run of activeRuns) {
+      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
+    }
+    const deferredMessageIds: Array<Doc<'conversationMessages'>['_id']> = []
     await Promise.all(activeRuns.flatMap((run, i) => {
       const message = runMessages[i]
       const writes = []
-      if (message?.status === 'generating') {
+      if (message?.status === 'generating' && streamed[i]) {
+        deferredMessageIds.push(message._id)
+      } else if (message?.status === 'generating') {
         const baseContent = args.partialContent ?? message.content
-        const baseParts = args.partialParts?.length
-          ? args.partialParts
-          : message.parts ?? [{ type: 'text', text: baseContent }]
+        const baseParts = args.partialParts?.length ? args.partialParts : message.parts ?? [{ type: 'text', text: baseContent }]
         writes.push(ctx.db.patch(message._id, {
           content: `${baseContent.trimEnd()}${sentinel}`,
-          parts: [...baseParts.filter((part) =>
-            part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'), { type: 'text', text: sentinel }],
+          parts: [
+            ...baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
+            { type: 'text', text: sentinel.trimStart() },
+          ],
           status: 'completed',
           updatedAt: now,
         }))
@@ -1523,6 +1524,11 @@ export const cancelAgentRuns = mutation({
       }))
       return writes
     }))
+    for (const messageId of deferredMessageIds) {
+      await ctx.scheduler.runAfter(0, internal.chat.conversations.settleCancelledPublicStream, {
+        conversationId: args.conversationId, messageId, cancelledAt: now,
+      })
+    }
     if (activeRuns.length > 0) {
       await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     }
@@ -1536,6 +1542,62 @@ export const cancelAgentRuns = mutation({
       remoteRunIds,
       stoppedCount: activeRuns.length + remoteRunIds.length,
     }
+  },
+})
+
+function publicStreamVersionOf(run: CancellationHarnessRun | undefined): number | undefined {
+  if (!run) return undefined
+  try {
+    return (JSON.parse(run.metadataJson) as { policy?: { publicStreamVersion?: number } }).policy?.publicStreamVersion
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Second half of cancelling a unified-stream run: keeps the text that was streaming when the
+ * user stopped, marks the response interrupted and retires the stream rows. Scheduled by
+ * `cancelAgentRuns` after the run is cancelled, so the executor can no longer write.
+ */
+export const settleCancelledPublicStream = internalMutation({
+  args: {
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    cancelledAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId) return
+    if (message.status === 'generating') {
+      const retained = await readRetainedPublicStream(ctx, args.conversationId, args.messageId)
+      const sentinel = `\n\n${INTERRUPTED_RESPONSE_NOTICE}`
+      const activeText = retained ? [retained.text, retained.truncatedMarker].filter(Boolean).join('\n\n') : ''
+      const baseParts = message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : [])
+      const retainedContinues = retained?.continuesPrevious === true
+      const baseContent = retainedContinues ? message.content : message.content.trimEnd()
+      await ctx.db.patch(message._id, {
+        content: `${joinStepText(baseContent, activeText, retainedContinues).trimEnd()}${sentinel}`,
+        parts: [
+          ...appendStepParts(
+            baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
+            retained && activeText ? [{
+              type: 'text',
+              id: transcriptPartIdentity(retained.runId, retained.receiptId, 0, retained.executionGeneration),
+              text: activeText,
+            }] : [],
+            retainedContinues,
+          ) as typeof baseParts,
+          { type: 'text', text: sentinel.trimStart() },
+        ],
+        ...(retained ? { publicStreamCheckpoint: {
+          runId: retained.runId, executionGeneration: retained.executionGeneration,
+          receiptId: retained.receiptId, invocation: retained.invocation,
+        } } : {}),
+        status: 'completed',
+        updatedAt: args.cancelledAt,
+      })
+    }
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
   },
 })
 

@@ -3,6 +3,7 @@ import 'server-only'
 import { PostHog } from 'posthog-node'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { getObservabilityContext } from './context'
+import { logger } from './logger'
 import type { LifecycleEvent, LifecycleEventSink } from '@/server/lifecycle-events'
 
 /**
@@ -60,7 +61,7 @@ export async function flushPostHog(): Promise<void> {
   try {
     await posthog.flush()
   } catch (_error) {
-    // flush failure must not break the request
+    logger.warn('[observability] PostHog flush failed')
   }
 }
 

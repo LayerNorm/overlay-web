@@ -132,6 +132,15 @@ test('unowned generation is retired while explicit non-execution posts and atomi
   expect(await convex.mutation(mutation('collaboration/directMessages:recordAgentStartFailure'), { ...args, content: 'Replay' })).toBe(messageId)
   const message = await convex.run(ctx => ctx.db.get(messageId))
   expect(message).toMatchObject({ status: 'error', content: 'Admission failed' })
+  const reasoned = await convex.mutation(mutation('collaboration/directMessages:recordAgentStartFailure'), {
+    ...args, clientNonce: 'unpaid', turnId: 'unpaid-turn', content: 'Overlay can\'t start because this workspace doesn\'t have a paid plan.',
+    failure: { code: 'subscription_required', message: 'Paid plan required.', retryable: false },
+  })
+  const reasonedRow = await convex.run(ctx => ctx.db.get(reasoned))
+  expect(reasonedRow?.parts?.[1]).toMatchObject({
+    type: 'data-native-agent-error',
+    data: { runId: 'unpaid-turn', code: 'subscription_required', message: 'Paid plan required.', retryable: false },
+  })
   const greeting = await convex.mutation(mutation('collaboration/directMessages:addAgentMessage'), {
     ...args, clientNonce: 'greeting', turnId: 'greeting', messagePurpose: 'greeting', content: 'Hello',
   })

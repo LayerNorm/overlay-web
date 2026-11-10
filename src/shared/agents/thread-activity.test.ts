@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
+import { hasThreadActivity, resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
 
 test('active work and actionable pauses use different indicators', () => {
-  for (const status of ['queued', 'running', 'waiting_for_children']) {
+  for (const status of ['queued', 'publication_pending', 'running', 'waiting_for_children']) {
     assert.equal(resolveThreadActivity({ status, updatedAt: 20 }, null), 'working')
   }
   for (const status of ['waiting_for_input', 'waiting_for_approval', 'waiting_for_authorization', 'waiting_for_resources']) {
     assert.equal(resolveThreadActivity({ status, updatedAt: 20 }, null), 'needs_input')
   }
+})
+
+test('activity filters keep actionable statuses and omit new, reviewed and cancelled threads', () => {
+  for (const status of ['working', 'needs_input', 'ready', 'failed'] as const) assert.equal(hasThreadActivity(status), true)
+  for (const status of ['idle', 'completed', 'cancelled'] as const) assert.equal(hasThreadActivity(status), false)
 })
 
 test('only unread completed responses are ready, including completions after an earlier read', () => {
@@ -24,6 +29,17 @@ test('new, failed and cancelled threads never show success checks', () => {
   assert.equal(resolveThreadActivity(null, null), 'idle')
   assert.equal(resolveThreadActivity({ status: 'failed', updatedAt: 20 }, null), 'failed')
   assert.equal(resolveThreadActivity({ status: 'cancelled', updatedAt: 20 }, null), 'cancelled')
+})
+
+test('reviewing a failed or cancelled thread settles it like a completed one', () => {
+  for (const status of ['failed', 'cancelled'] as const) {
+    const run = { status, completedAt: 20, updatedAt: 30 }
+    assert.equal(resolveThreadActivity(run, { lastReadAt: 19 }), status)
+    assert.equal(resolveThreadActivity(run, { lastReadAt: 20 }), 'completed')
+    assert.equal(resolveThreadActivity(run, { lastReadAt: 40, markedUnreadAt: 50 }), status)
+  }
+  // Needs-input stays until it is answered, whatever was read.
+  assert.equal(resolveThreadActivity({ status: 'waiting_for_input', updatedAt: 20 }, { lastReadAt: 40 }), 'needs_input')
 })
 
 test('agent summaries count actionable states and omit idle or reviewed threads', () => {

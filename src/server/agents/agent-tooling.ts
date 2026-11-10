@@ -8,6 +8,7 @@ import { logger } from '@/server/observability/logger'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { resolveSharedRoom } from '@/server/agents/shared-room'
+import { assignedTaskToolIdsToAdd, findAssignedTaskId, scopeAssignedTaskTools } from '@/server/agents/assigned-task-tools'
 import {
   agentToolCapabilities,
   allAgentToolGrantIds,
@@ -59,16 +60,24 @@ export function resolveAgentGrant(grant: WorkspaceAgentToolGrant): {
  * are the ones assembled by provider paths that carry no stable per-tool id:
  * web search, connected apps, and MCP servers.
  */
+export function agentWithheldToolIds(args: {
+  capabilities: ReadonlySet<AgentToolCapability>
+  integrationToolIds: readonly string[]
+}): Set<string> {
+  const withheld = new Set<string>()
+  if (!args.capabilities.has('web_search')) WEB_SEARCH_TOOL_IDS.forEach((id) => withheld.add(id))
+  if (!args.capabilities.has('mcp')) MCP_TOOL_IDS.forEach((id) => withheld.add(id))
+  if (!args.capabilities.has('integrations')) args.integrationToolIds.forEach((id) => withheld.add(id))
+  return withheld
+}
+
 export function applyAgentCapabilityFilter(args: {
   capabilities: ReadonlySet<AgentToolCapability>
   integrationToolIds: readonly string[]
   overlayToolIds: readonly string[]
   tools: ToolSet
 }): ToolSet {
-  const withheld = new Set<string>()
-  if (!args.capabilities.has('web_search')) WEB_SEARCH_TOOL_IDS.forEach((id) => withheld.add(id))
-  if (!args.capabilities.has('mcp')) MCP_TOOL_IDS.forEach((id) => withheld.add(id))
-  if (!args.capabilities.has('integrations')) args.integrationToolIds.forEach((id) => withheld.add(id))
+  const withheld = agentWithheldToolIds(args)
   if (withheld.size === 0) return args.tools
   return Object.fromEntries(
     Object.entries(args.tools).filter(([toolId]) => !withheld.has(toolId)),
@@ -166,18 +175,28 @@ export async function buildWorkspaceAgentTooling(args: {
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant(args.grant)
   // The room rule: in a room others can read, the summoner's private reach is withheld (see `prepareActTooling`).
-  const localSharedRoom = await resolveSharedRoom({
-    actorUserId: args.actorUserId,
-    conversationId: args.conversationId,
-    workspaceId: args.workspaceId,
-  })
+  const [localSharedRoom, assignedTaskId] = await Promise.all([
+    resolveSharedRoom({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    }),
+    findAssignedTaskId({
+      actorUserId: args.actorUserId,
+      agentPrincipalId: args.agentPrincipalId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    }),
+  ])
   const sharedRoom = Boolean(args.inheritedSharedRoom || localSharedRoom)
+  // An assigned task's thread carries the tools to work that task, scoped to it below.
+  const assignmentToolIds = assignedTaskId ? assignedTaskToolIdsToAdd(overlayToolIds) : []
   const tooling = await prepareActTooling({
     accessToken: args.accessToken,
     // The agent's overlay grant enters as account policy, which the pipeline
     // only ever intersects — so a grant can never widen what the workspace
     // already allows.
-    accountAllowedToolIds: overlayToolIds,
+    accountAllowedToolIds: [...overlayToolIds, ...assignmentToolIds],
     agentId: args.grant.agentId,
     agentPrincipalId: args.agentPrincipalId,
     baseUrl: getInternalApiBaseUrl(),
@@ -212,15 +231,19 @@ export async function buildWorkspaceAgentTooling(args: {
     workspaceId: args.workspaceId,
   })
 
-  const tools = applyAgentCapabilityFilter({
+  const filtered = applyAgentCapabilityFilter({
     capabilities,
     integrationToolIds: tooling.integrationToolIds,
     overlayToolIds: tooling.allowedOverlayToolIds,
     tools: tooling.tools,
   })
+  const tools = assignedTaskId
+    ? scopeAssignedTaskTools(filtered, { taskId: assignedTaskId, addedToolIds: assignmentToolIds })
+    : filtered
 
   logger.info('[workspace-agent] tools', {
     agentId: args.grant.agentId,
+    assignedTask: Boolean(assignedTaskId),
     capabilities: [...capabilities].join(',') || '(none)',
     conversationId: args.conversationId,
     exposedToolCount: Object.keys(tools).length,

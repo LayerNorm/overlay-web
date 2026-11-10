@@ -3,7 +3,7 @@ import 'server-only'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
-import { quoteHarnessModel } from './model-quote'
+import { prepareHarnessModelCallOptions } from './model-call-options'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import { serializePersonalHarnessAuthentication } from './personal-authentication'
 import type { HarnessModelReference } from './secure-model'
@@ -32,17 +32,17 @@ export async function preparePersonalHarnessModel(input: {
   context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>
   receiptId: string
   purpose?: 'response' | 'summary' | 'verification'
+  publicStreamVersion?: 1
   options: LanguageModelV4CallOptions
 }): Promise<{
   model: HarnessModelReference
   options: LanguageModelV4CallOptions
   contextWindow: number | null
-  estimatedCostMicros: number
 }> {
   'use step'
 
   const context = await refreshPersonalHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
-  const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
+  const { options, contextWindow, maxOutputTokens } = await prepareHarnessModelCallOptions({
     modelId: context.effectiveModelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
   })
   const access = input.access
@@ -51,6 +51,7 @@ export async function preparePersonalHarnessModel(input: {
       modelId: context.effectiveModelId, credentialOwnerId: access.actorUserId,
       sessionId: access.conversationId,
       ...(input.purpose ? { purpose: input.purpose } : {}),
+      ...(input.publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
       personal: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,
@@ -67,9 +68,9 @@ export async function preparePersonalHarnessModel(input: {
           integrationToolIds: context.integrationToolIds ?? [],
         } } : {}),
         ...(context.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: context.billingProgrammaticSubjectId } : {}),
-        inputTokenBudget, maxOutputTokens: maxOutputTokens!, contextWindow,
+        maxOutputTokens, contextWindow,
       },
     },
-    options, contextWindow, estimatedCostMicros,
+    options, contextWindow,
   }
 }

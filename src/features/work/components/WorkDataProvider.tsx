@@ -22,9 +22,9 @@ import { newItemScope } from '@/shared/workspaces/panel-scope'
 import type { WorkViewer } from '@/shared/work/query'
 import { api } from '../../../../convex/_generated/api'
 import { useWorkRoute } from '../lib/use-work-route'
-import { useLiveWork, useWorkCommands } from '../lib/use-live-work'
+import { useLiveWork, useWorkCommands, useWorkSignedOut } from '../lib/use-live-work'
 
-export type WorkLoadState = 'loading' | 'ready' | 'error'
+export type WorkLoadState = 'loading' | 'ready' | 'error' | 'signed_out'
 
 export interface WorkData {
   state: WorkLoadState
@@ -97,12 +97,13 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   }, [activeWorkspaceId])
 
   const items = useMemo(() => liveItems ?? [], [liveItems])
-  const state: WorkLoadState = liveItems === undefined ? 'loading' : liveItems === null ? 'error' : 'ready'
+  const signedOut = useWorkSignedOut()
+  const state: WorkLoadState = signedOut ? 'signed_out' : liveItems === undefined ? 'loading' : liveItems === null ? 'error' : 'ready'
 
   const createTask = useCallback<WorkData['createTask']>(async (input) => {
     const scopeToSend = newItemScope(scope)
     const withScope = { ...input, ...(scopeToSend ? { scope: scopeToSend } : {}) }
-    // Giving a new task to an agent starts that agent's turn, which only the server can do.
+    // The server starts assigned agents once their dependencies are done.
     if (input.assigneePrincipalId) {
       return reported(async () => (await overlayAppClient.work.create(withScope)).item, 'Could not add the task.')
     }

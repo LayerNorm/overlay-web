@@ -22,7 +22,7 @@ const TEXT_BUTTON =
  * Move to Workspace/Personal, Archive, and Restore for one item. Only what the person may do is shown (the server
  * enforces the same rules), so it renders nothing when there is nothing to offer.
  *
- * `icons` is for hover rows; `buttons` is for dialogs and detail panes.
+ * `icons` is for hover rows; `header` is for side-panel headers; `buttons` is for dialogs and detail panes.
  */
 export function ScopeItemActions({
   kind,
@@ -35,7 +35,7 @@ export function ScopeItemActions({
   kind: ResourceKind
   resource: ScopedResourceKind
   item: ScopedItem
-  variant?: 'icons' | 'buttons'
+  variant?: 'icons' | 'header' | 'buttons'
   /** The item's name, for the "Archived" note; read from the item's `name` or `title` when omitted. */
   label?: string
   onChanged?: (change: ScopeChange) => void
@@ -91,6 +91,17 @@ export function ScopeItemActions({
           </Button>
         ))}
       </div>
+    )
+  }
+  if (variant === 'header') {
+    return (
+      <>
+        {items.map(({ key, label, icon: Icon, onClick }) => (
+          <Button key={key} variant="ghost" size="icon-sm" type="button" title={label} aria-label={label} disabled={busy} onClick={onClick} className="text-(--muted) hover:text-(--foreground)">
+            <Icon size={16} aria-hidden />
+          </Button>
+        ))}
+      </>
     )
   }
   return (

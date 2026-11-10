@@ -3,7 +3,7 @@ import { createHook, FatalError, getWorkflowMetadata } from 'workflow'
 import { start } from 'workflow/api'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createNativeHarnessTools } from '@/server/harness/native-tools'
-import { authorizeNativeHarnessExecution, renewNativeHarnessWait, checkNativeHarnessFunding, createNativeHarnessExecutionPorts } from '@/server/harness/native-ports'
+import { authorizeNativeHarnessExecution, renewNativeHarnessWait, createNativeHarnessExecutionPorts } from '@/server/harness/native-ports'
 import { createHarnessWaitPorts } from '@/server/harness/waits'
 import { admitNativeHarnessChild } from '@/server/harness/native-child-steps'
 import { buildNativeHarnessDelivery } from '@/server/harness/native-tool-metrics'
@@ -84,7 +84,6 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       ...createHarnessWaitPorts({
         reference: access, deliveryRunId: `workspace:${access.agentRunId}`, wake: wake[Symbol.asyncIterator](),
         renewLease: () => renewNativeHarnessWait(access, input.context),
-        checkFunding: requiredCents => checkNativeHarnessFunding(access, input.context, requiredCents),
         projectWait: projection => projectNativeHarnessWait(access, projection),
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),

@@ -26,13 +26,17 @@ explicit role/flags, never the agent name. See Bring Your Own Agents for isolati
 
 An optional run questionnaire skipped without an answer sends an explicit `(skipped)` reply, including a single-question panel, so the waiting run can resume. Required empty answers remain blocked.
 
-The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating; another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.
+The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating, except Chats, which starts a fresh Personal draft and keeps the panel open. Another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.
 
 `src/app/double-sidebar.css` scopes the rounded content frame, default light/dark chrome, compact chat presentation, and curved agent-thread guides to this layout at desktop widths. Custom theme presets retain semantic colors. The mobile drawer, onboarding, and compact native desktop panel retain their existing layouts; macOS keeps a dedicated drag region above the shell.
 
-The contextual sidebar and right detail panels use the same 1px border and 12px radius as the main surface, with an 8px gap between docked surfaces. `AppScreenShell` exposes separate main and right-panel slots so details do not share one enclosing content border. Only the outer screen gets the frame; embedded editor shells are not framed again. Floating panels and mobile overlays keep their positioning and dismissal behavior. Established conversations retain the shared `max-w-4xl` transcript/composer width, including agent-room transcripts; the centered empty-chat composer remains compact. The approved follow-up is `internal/plans/mockups/double-sidebar-bordered-mockup.html`.
+The contextual sidebar and right detail panels use the same 1px border and 12px radius as the main surface, with an 8px gap between docked surfaces. `AppScreenShell` exposes separate main and right-panel slots so details do not share one enclosing content border. Side-panel headers in this shell are 48px with the same top edge as the main header and the contextual sidebar title row. Only the outer screen gets the frame; embedded editor shells are not framed again. Floating panels and mobile overlays keep their positioning and dismissal behavior. Established conversations retain the shared `max-w-4xl` transcript/composer width, including agent-room transcripts. New chats and new automations use the same bottom-docked `max-w-4xl` composer: the greeting (and any automation intro) is centred in the free space with suggestions just above the composer, so nothing moves when the first message is sent (`internal/plans/mockups/composer-at-bottom.html`). The approved follow-up is `internal/plans/mockups/double-sidebar-bordered-mockup.html`.
 
 While onboarding hides navigation, the desktop double-sidebar shell uses equal 8px left and right gutters, including its loading and error states. `OnboardingShell` exposes its existing locked state through `data-onboarding-locked`; unlocking restores the rail's normal zero left padding. Mobile spacing and macOS top drag-region clearance are unchanged.
+
+Chats primary navigation opens the existing unsaved Personal chat surface, not the most recent conversation in the current scope. Onboarding payment controls stay mounted across task-save revisions and pending actions so checkout consent is preserved. Only the intentional checkout redirect suppresses unload guards, after task preparation succeeds. Completion stores the completed response, deactivates setup and navigates to the canonical Personal Work URL with the task query already included; personal scope lives in the path, not a redundant query parameter. `OnboardingWorkHandoff` lays out route content behind an opaque retained onboarding surface, rather than using `display: none`. Only the loaded selected-task peek (or a settled unavailable state), not its entry in the Work list, can finish the handoff. It waits for the panel's presence, opacity and layout to settle, then retains onboarding through that paint before revealing Work. If navigation loses the task query, it restores the intended URL first. It does not launch a navigation tour, and later navigation cannot reactivate the retained session.
+
+The guided onboarding conversation shares live room read markers with Chats. Room query arguments and the optimistic notification-read mutation retain their identities across live updates, so acknowledging a read cannot restart its own effect or repeatedly reload the sidebar conversation directory.
 
 `useSecondarySidebar` still means rail-and-panel. New settings default to `true`. The owner requested a one-time reset of existing accounts to double sidebar; the internal `migrations/doubleSidebar:enableExistingAccounts` mutation supports bounded pages and dry runs, changing only this preference. Run it once during rollout, never as a scheduled reconciliation. Later explicit `false` choices still select `UnifiedSidebar`. This is an account-wide setting that applies across all workspaces; there is no separate workspace sidebar preference. The frontend contract and Convex new-row defaults must agree. Deploy backend default changes only through the normal isolated preview/canonical-main release process, never to shared development from a feature branch.
 
@@ -316,6 +320,10 @@ collision/dialog/mobile tests and all 39 preset variable checks. Set
 
 ## Work: tasks, board, and timeline
 
+Work has a bottom-pinned prompt composer in Personal and Workspace scope. It is the same `PromptInput` box as chat and agent threads: one outlined card centered at `max-w-4xl`, a 44px text area, and one footer row with context +, Assignee, Schedule, Depends on, the settings gear and submit. The page header has no New task button; the composer (and the C shortcut) is how a task starts. Enter creates a task from the first line (200 characters maximum); Shift+Enter adds description lines. Assignee and Depends on use searchable Popover/Command pickers; Schedule has Start/Due date inputs and presets. Inline settings offer Backlog/Todo and Low/Medium/High (Medium by default). Successful creation clears all fields and refocuses. Context reuses Work's file/note/chat/link search; dictation appears only in Desktop when supported. There is no expand control or Repeat setting yet.
+
+An agent assignment starts immediately unless a dependency is not done. Blocked assignments retain a pending execution; completing the final blocker through either a field edit or a board move schedules a deployment-secret callback under the original assigner's identity. The callback rechecks visibility and budget, and the Convex claim rechecks dependency status atomically with the assignment generation/status, so concurrent releases cannot dispatch twice. Transient callback failures retry six times with capped exponential backoff; terminal failures are logged. Removing dependencies also reevaluates pending assignments.
+
 The Work page (`src/features/work/`) follows the existing patterns and adds a few of its own:
 
 - **One page, three views.** List, Board and Timeline show the same tasks. Scope (`?scope=`), view (`?view=`), filter
@@ -324,10 +332,18 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
 - **Edit in place, save at once.** There are no save bars. Every change appears immediately, is confirmed by the
   server's answer, and rolls back with a plain message in an inline alert if the server refuses.
 - **The task panel is a docked right panel** (`AppScreenSidePanel`), not a modal. Escape closes it unless a picker or a
-  text field has it first.
+  text field has it first. The task title is the panel header, edited in place; its move/archive and close buttons are
+  32px like every other header button. A Thread row under Owner links to the agent thread doing the task, with its live
+  state (Working, Finished, Stopped). Only the member who assigned the task owns that thread, so others see no link.
+- **Scope is settled before anything acts on it.** The remembered Personal/Workspace choice is shared by every caller in
+  the tab. Until it is read (only the hydration render of a URL without a scope), the content boundary waits instead of
+  redirecting and Work queries stay skipped, so a Personal guess never flashes, redirects or opens the wrong list.
+- **Loading never waits silently.** Work's live queries wait for Convex auth. `ConvexAuthProvider` retries a failed
+  token request with backoff (1s doubling to 30s), because Convex asks a fetcher once and otherwise stays signed
+  out. A signed-out session shows a sign-in empty state, not skeletons.
 - **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
   one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
-- Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance; assigning an owner never starts a run.
+- Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance.
 - **The done-when checklist is the one place a box is ticked.** Each condition is a `button role="checkbox"`, not an
   `<input type="checkbox">`: it is part of a task's content (a list the person writes), not an on/off setting, so the
   Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.

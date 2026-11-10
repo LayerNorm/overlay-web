@@ -2,6 +2,10 @@ export type ThreadActivityStatus = 'idle' | 'working' | 'needs_input' | 'ready' 
 
 export type ThreadActivity = { conversationId: string; status: ThreadActivityStatus }
 
+export function hasThreadActivity(status: ThreadActivityStatus): boolean {
+  return status === 'working' || status === 'needs_input' || status === 'ready' || status === 'failed'
+}
+
 export function resolveThreadActivity(
   run: { status: string; completedAt?: number; updatedAt: number } | null,
   participant: { lastReadAt?: number; markedUnreadAt?: number } | null,
@@ -16,12 +20,20 @@ export function resolveThreadActivity(
     case 'publication_pending':
     case 'running':
     case 'waiting_for_children': return 'working'
-    case 'completed': return participant?.markedUnreadAt
-      || (participant?.lastReadAt ?? 0) < (run.completedAt ?? run.updatedAt) ? 'ready' : 'completed'
-    case 'failed': return 'failed'
-    case 'cancelled': return 'cancelled'
+    // A finished run stays active until someone opens the thread after it ended (or marks it unread). Once reviewed,
+    // a failed or cancelled run settles like a completed one: no icon, no count.
+    case 'completed': return unreviewed(run, participant) ? 'ready' : 'completed'
+    case 'failed': return unreviewed(run, participant) ? 'failed' : 'completed'
+    case 'cancelled': return unreviewed(run, participant) ? 'cancelled' : 'completed'
     default: return 'idle'
   }
+}
+
+function unreviewed(
+  run: { completedAt?: number; updatedAt: number },
+  participant: { lastReadAt?: number; markedUnreadAt?: number } | null,
+): boolean {
+  return Boolean(participant?.markedUnreadAt) || (participant?.lastReadAt ?? 0) < (run.completedAt ?? run.updatedAt)
 }
 
 export const THREAD_ACTIVITY_LABELS: Record<ThreadActivityStatus, string> = {

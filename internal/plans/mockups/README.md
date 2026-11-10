@@ -1,5 +1,8 @@
 # Mockup reference rules
 
+New mockups always go in this folder, without asking. Use the gitignored root
+`artifacts/` folder only when the owner explicitly asks for it.
+
 ## Approved workspace structure
 
 Use [agent-thread-activity.html](agent-thread-activity.html) as the canonical

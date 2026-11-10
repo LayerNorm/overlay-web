@@ -1,10 +1,8 @@
 import type {MutationCtx} from '../_generated/server'
 import type {Doc} from '../_generated/dataModel'
-import type {z} from 'zod/v3'
-import type {nativeRecoverySnapshotSchema} from './nativeRecoveryPayload'
 
 export async function nativeRecoveryIsAuthorized(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>,
-  attempt: Doc<'agentRemoteSessions'>, snapshot: z.infer<typeof nativeRecoverySnapshotSchema>) {
+  attempt: Doc<'agentRemoteSessions'>) {
   const environment = await ctx.db.query('agentEnvironments')
     .withIndex('by_environmentId', q => q.eq('environmentId', attempt.environmentId)).unique()
   if (!environment || environment.kind === 'overlay_cloud') return false
@@ -28,7 +26,6 @@ export async function nativeRecoveryIsAuthorized(ctx: MutationCtx, run: Doc<'con
   if (conversation?.workspaceId !== attempt.workspaceId || binding?.agentId !== run.agentId
     || !binding?.enabled || binding.workspaceId !== attempt.workspaceId || binding.environmentId !== attempt.environmentId
     || membership?.status !== 'active' || participant?.status !== 'active') return false
-  const ids = [snapshot.billing?.reservationId, snapshot.sandboxBilling.reservationId].filter((id): id is string => typeof id === 'string')
-  const reservations = await Promise.all(ids.map(id => ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', id)).unique()))
-  return reservations.every(reservation => reservation && ['reserved', 'reconcile_required'].includes(reservation.status))
+  // Nothing is held before a run, so recovery needs no funding hold; the workspace budget is checked when work runs.
+  return true
 }

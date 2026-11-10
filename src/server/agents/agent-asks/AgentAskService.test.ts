@@ -274,7 +274,7 @@ test('an agent cannot ask itself, an agent already in the chain, or someone the 
 })
 
 test('the chain stops at the hop limit, and a refusal spends nothing', async () => {
-  const deep = setup({ trigger: { _id: 'm1', turnId: 'ask-9', authorKind: 'agent', parts: [agentLineagePart({ rootTurnId: 'r', hop: 3, chain: ['a', 'b', 'c', 'scout'], askedByAgentId: 'c' })] } as Row })
+  const deep = setup({ trigger: { _id: 'm1', turnId: 'ask-9', authorKind: 'agent', parts: [agentLineagePart({ rootTurnId: 'r', hop: 10, chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'scout'], askedByAgentId: 'j' })] } as Row })
   await assert.rejects(deep.ask(), (error: AgentAskError) => error.code === 'ask_hop_limit')
   assert.equal(deep.claims.length, 0)
   assert.equal(deep.posted.length, 0)
@@ -325,7 +325,6 @@ test('an agent posts into a conversation it is part of; mentioned agents answer 
   assert.deepEqual(lineage.chain, ['scout', 'planner'])
   assert.deepEqual(room.started[0]!.mentionedPrincipalIds, ['p-planner'])
   assert.equal(room.claims.length, 2, 'one post and one question were taken from the budgets')
-  assert.equal(room.recordedReplies.length, 1)
 
   const plain = setup()
   await plain.post()
@@ -340,17 +339,12 @@ test('posting is refused outside the person\'s reach: a personal chat, an unseen
   assert.equal((await code(setup({ roomParticipants: ['p-planner', 'human-1'] }).post()))?.code, 'not_in_conversation')
   assert.equal((await code(setup({ roomParticipants: ['p-scout', 'human-1'] }).post({ mentions: ['Planner'] })))?.code, 'agent_not_in_conversation')
   assert.equal((await code(setup().post({ mentions: ['scout'] })))?.code, 'ask_self')
-  assert.equal((await code(setup().post({ mentions: ['Planner', 'Writer', 'Scout', 'Extra'] })))?.code, 'too_many_mentions')
+  assert.equal((await code(setup().post({ mentions: Array.from({ length: 21 }, (_, i) => `Agent ${i}`) })))?.code, 'too_many_mentions')
 })
 
-test('a chain that has used its token budget cannot ask again, and a refusal posts nothing', async () => {
-  const spent = setup({ recorded: [{ conversationId: 'room-1', turnId: 'agent_q1_planner' }], replyTokens: 600_000 })
-  await assert.rejects(spent.ask(), (error: AgentAskError) => error.code === 'ask_spend')
-  assert.equal(spent.posted.length, 0)
-  assert.equal(spent.claims.length, 0)
-
-  const fine = setup({ recorded: [{ conversationId: 'room-1', turnId: 'agent_q1_planner' }], replyTokens: 1_000 })
-  assert.equal((await fine.ask()).status, 'completed')
+test('a chain whose replies used many tokens can still ask: the workspace budget is the only spending limit', async () => {
+  const busy = setup({ replyTokens: 5_000_000 })
+  assert.equal((await busy.ask()).status, 'completed')
 })
 
 test('an outside app asks an agent as the person: their own message, a fresh chain, limited per hour and per day', async () => {

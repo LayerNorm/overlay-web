@@ -20,7 +20,6 @@ export type HarnessDelegation = {
   goal: string
   constraints: string[]
   allowedToolIds: string[]
-  maxCostMicros: number
 }
 
 export type HarnessApprovalRequest = {
@@ -71,9 +70,6 @@ export interface HarnessExecutionPorts {
     cursor?: string,
     limit?: number,
   ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }>
-  waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
-  waitForFunding?(): Promise<void>
-  checkFunding?(requiredCents: number): Promise<boolean>
   renewLease(): Promise<void>
   continueExecution(checkpoint: HarnessRunnerCheckpoint): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
@@ -89,7 +85,6 @@ export interface HarnessExecutionPorts {
   }): Promise<{
     messages: LanguageModelV4Prompt
     activeToolNames: string[]
-    estimatedCostMicros: number
     model?: HarnessModelReference
     instructions?: string
     settings?: HarnessModelSettings

@@ -163,6 +163,114 @@ Transcript pages are capped at 100 rows. Generated outputs are authorized with
 through the existing authorized file-content URL. Missing or stale output
 policy suppresses file metadata without suppressing text history.
 
+### Unified durable public streaming
+
+New root Harness runs may carry immutable `publicStreamVersion: 1` when their
+workspace ID is an exact entry in the server-only
+`OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` comma-separated allowlist. Empty is
+disabled; `*` is not a wildcard. Personal, workspace-agent and automation
+admissions use the same policy helper. Existing roots keep the publishing path
+recorded in their admission policy when the environment changes; removing an ID
+stops future enrollment but does not switch an in-flight run.
+
+The versioned path publishes filtered response text from the executor's secure
+model boundary. It does not publish reasoning, child/summary/verification output
+or raw tool payloads. Convex active output is provisional and distinct from
+settled transcript checkpoints. Active rows are limited to one stream per root;
+each segment is at most 8 KiB UTF-8 and visible text is capped at 160,000
+UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
+Settling a transcript step atomically writes its checkpoint identity
+`(runId, generation, receiptId, invocation)` and retires that invocation's
+active segments. Every enrolled chat kind must settle through this projection
+(personal and owner-only workspace-scope chats, automations, rooms and work);
+a kind it skips keeps live text on screen beside the legacy progress copy.
+Only chat deliveries share one turn id between the person's message and the reply;
+agent threads (room and work) give the person's message its own turn id, so the
+projection matches only the reply's turn there. Requiring both once skipped every
+agent-thread reply, which then showed tool rows and only the latest sentence.
+The browser places live stream text before the trailing tool rows that native tool
+progress stores for the running call (they have no part `id`; settled transcript
+parts do), so a sentence stays ahead of the tool it starts.
+Cancellation never reads the live
+stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
+cancels the run, then the scheduled `settleCancelledPublicStream` keeps the
+retained text and retires the rows. Finalize, failure and cancellation paths preserve safe partial
+output where needed, mark the canonical message terminal, and perform bounded
+cleanup; active rows are not retained as a second transcript.
+
+Step text joins in one place, `src/shared/chat/step-text-join.ts`. Separate model
+calls are joined with a blank line. A call that stopped at its output-token cap
+(`finishReason: 'length'`) is saved with `outputLimitReached: true` on its
+transcript step and keeps the whitespace it stopped on; the next call's text then
+joins it directly and extends the same text part, so a cut-off Markdown list stays
+one list. The settled checkpoint, final delivery, legacy progress copy, failure
+and cancellation settlement all use this rule, and the active-stream readers
+return `continuesPrevious: true` so the live projection joins the same way. Workspace-agent
+and room deliveries that stream straight into the message get the same rule: the
+model ports pass `continuesPrevious` into native preparation, which sets
+`continuesPreviousOutput` on the dispatch so the delivery stream skips its
+paragraph break. Work (a tool call) between the calls still starts a new block. Steps saved before the
+flag existed keep the blank-line join.
+
+The continuation call must see what the cut-off call wrote. `@ai-sdk/workflow`
+ends its loop on `finishReason: 'length'` without adding that response to its
+message history, so the harness runner (`withCutOffResponse` in
+`src/server/harness/runner.ts`) appends it as the last assistant message, followed
+by a user message asking to continue from the exact character where it stopped.
+The working state's `unverifiedNarrative` names the response's real ending
+(`cutOffResponseNarrative`), never its opening excerpt, because the model treats
+the working state as authoritative and would resume from where that excerpt ends.
+The continuation instruction asks the model to start with the next space or
+punctuation when the cut fell after a complete word; models otherwise often drop
+the leading space and run two words together.
+
+`compactAssistantPersistenceForConvex` lets the final answer text part use the whole
+180,000-character part-text budget (other text parts keep the 80,000 cap), because
+continued calls are joined into one part and a single 32,000-token call can exceed
+80,000 characters.
+
+Per-call output limits come from `harnessOutputLimits` in
+`src/server/harness/model-ports.ts`. Personal chat and workspace agents request
+32,000 tokens per model call; 32,000 is also the default when neither the request
+nor the catalog names a maximum. The working context is the model's real context
+window from the catalog (200,000 tokens when the catalog does not know the model,
+such as BYOK and subscription models). Compaction runs only as the prompt approaches
+that window and reserves up to a quarter of it for output; the response is bounded
+by the model's own output maximum. Thinking tokens count against the same limit, so
+a reasoning model needs room for both. A reply longer than one call continues in the
+next call as described above. `HARNESS_PREVIEW_CONTEXT_TOKENS` is a Preview-only QA
+hook that shrinks the working context for one test user to exercise compaction.
+
+A settled transcript step is never refused for its size. `harness/runs:writeTranscriptStep`
+stores a shortened copy (`compactTranscriptSnapshot`, at most 240 KiB) so the row
+fits Convex's document limit; the full step is uploaded to file storage first and
+linked by `fullPersistenceStorageId`.
+
+Thinking is not carried into the next call. If a call reaches its limit having
+produced only thinking (the provider-reported reasoning tokens cover all but a few
+output tokens), `harnessReasoningSetting` runs the continuation with
+`reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
+
+The native personal Act request remains pending until the durable root's
+authoritative Convex state is terminal. Its SSE adapter reads the same persisted
+active stream and settled transcript steps, including source metadata and
+ordered tool-part metadata; it never forwards a losing Workflow handle or raw
+SDK output. It reads only the stream projection rather than repeatedly loading
+the full root snapshot. Runs without `publicStreamVersion` retain their
+existing transport/projector. Rollback is therefore an enrollment change, not
+a mid-run protocol switch.
+
+Stream timing fields are local monotonic measurements: provider-first-text is
+measured within the executor process and publish-ack within the publisher.
+`model_dispatch` is recorded immediately before provider invocation, so
+provider-first-text includes provider setup. Browser `receive_to_next_frame_ms`
+measures receipt to the next scheduled animation frame, not a confirmed DOM
+paint. Authorization, context, history, tools and admission spans use a local
+monotonic clock. Do not subtract clocks from different hosts or infer
+p95/baselines from unrepeated samples. Output size is reported in characters,
+not tokens. Logs and telemetry must never include prompts, generated text or
+credentials.
+
 `nativeSubmittedAt`, `userMetadata`, `conversationMessages.by_conversationId_turnId_role`,
 and `files.by_userId_conversationId_turnId` are additive. Roll back browser
 ownership before removing any of them; keep the fields and indexes through

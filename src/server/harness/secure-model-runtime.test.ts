@@ -6,6 +6,7 @@ import type { HarnessModelReference } from './secure-model'
 import { secureModelDoGenerate, secureModelDoStream } from './secure-model-runtime'
 import { harnessExecutionFailureReason } from './execution-failure'
 
+vi.mock('server-only', () => ({}))
 const mocks = vi.hoisted(() => ({ model: vi.fn(), record: vi.fn(), confirmed: vi.fn() }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./model-rejection', () => ({ recordHarnessModelRejection: mocks.record, isConfirmedHarnessModelRejection: mocks.confirmed }))
@@ -13,7 +14,7 @@ vi.mock('./model-rejection', () => ({ recordHarnessModelRejection: mocks.record,
 const reference: HarnessModelReference = { modelId: 'openai/gpt-4.1-mini', credentialOwnerId: 'user', personal: {
   access: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
     workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' } },
-  receiptId: 'model:0', memoryEnabled: false, requestFingerprint: 'request', inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: null,
+  receiptId: 'model:0', memoryEnabled: false, requestFingerprint: 'request', maxOutputTokens: 100, contextWindow: null,
 } }
 
 const nativeReference: HarnessModelReference = { modelId: 'openai/gpt-4.1-mini', credentialOwnerId: 'user', native: {
@@ -21,7 +22,7 @@ const nativeReference: HarnessModelReference = { modelId: 'openai/gpt-4.1-mini',
     principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
     agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
   receiptId: 'model:0', memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request',
-  inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: null,
+  maxOutputTokens: 100, contextWindow: null,
 } }
 
 beforeEach(() => { vi.resetAllMocks(); mocks.confirmed.mockReturnValue(false) })

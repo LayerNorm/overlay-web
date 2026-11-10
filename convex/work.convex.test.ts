@@ -478,6 +478,69 @@ describe('fields, assignees and validation', () => {
     expect(await work.update('alice', shared._id, { reviewerUserId: 'owner' })).toMatchObject({ reviewerUserId: 'owner' })
   })
 
+  test.each([['personal', 'update'], ['workspace', 'update'], ['personal', 'move'], ['workspace', 'move']] as const)('dependencies hold assignment claims and completing the last blocker releases once in %s via %s', async (scope, finish) => {
+    vi.useFakeTimers()
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://example.test')
+    vi.stubEnv('OVERLAY_BFF_URL', 'https://example.test')
+    vi.stubEnv('CONVEX_DEPLOYMENT', 'dev:test-work')
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    let starts = 0
+    const callback = vi.fn(async (_url: unknown, init: RequestInit) => {
+      const body = JSON.parse(init.body as string)
+      const claimed = await work.prepareAssignment(body.userId, body.id, 'p-agent', body.generation, 'Start')
+      if (claimed?.claimed) {
+        starts++
+        await convex.mutation(m('work/workItems:completeAssignment'), { ...auth(body.userId), id: body.id, assigneePrincipalId: 'p-agent', generation: body.generation, status: 'started' })
+      }
+      return new Response('{}', { status: 202 })
+    })
+    vi.stubGlobal('fetch', callback)
+    try {
+      const first = await work.create('alice', { title: 'First', scope })
+      const last = await work.create('alice', { title: 'Last', scope })
+      const task = await work.create('alice', { title: 'Waiting', scope, assigneePrincipalId: 'p-agent', blockedBy: [first._id, last._id] })
+      const generation = task.assignmentExecution!.generation
+      expect((await work.prepareAssignment('alice', task._id, 'p-agent', generation, 'Wait'))?.claimed).toBe(false)
+      await work.update('alice', first._id, { status: 'done' })
+      await convex.finishAllScheduledFunctions(vi.runAllTimers)
+      expect(callback).not.toHaveBeenCalled()
+      callback.mockImplementationOnce(async () => new Response('{}', { status: 503 }))
+      await work[finish]('alice', last._id, { status: 'done' })
+      await convex.finishAllScheduledFunctions(vi.runAllTimers)
+      expect(starts).toBe(1)
+      expect(callback).toHaveBeenCalledTimes(2)
+      expect(callback.mock.calls[0][0]).toBe('https://example.test/api/v1/work/resume-assignment')
+      await work.update('alice', last._id, { status: 'done' })
+      await convex.finishAllScheduledFunctions(vi.runAllTimers)
+      expect(starts).toBe(1)
+      expect((await work.get('alice', task._id))?.assignmentExecution?.status).toBe('started')
+    } finally { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs() }
+  })
+
+  test('removing the final dependency schedules the original pending assignment generation', async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://example.test')
+    vi.stubEnv('OVERLAY_BFF_URL', 'https://example.test')
+    vi.stubEnv('CONVEX_DEPLOYMENT', 'dev:test-work')
+    const callback = vi.fn(async () => new Response('{}', { status: 202 }))
+    vi.stubGlobal('fetch', callback)
+    try {
+      const convex = convexTest(schema, modules)
+      await seed(convex)
+      const work = api(convex)
+      const blocker = await work.create('alice', { scope: 'personal' })
+      const task = await work.create('alice', { scope: 'personal', assigneePrincipalId: 'p-agent', blockedBy: [blocker._id] })
+      await work.update('alice', task._id, { blockedBy: [] })
+      await convex.finishAllScheduledFunctions(vi.runAllTimers)
+      expect(callback).toHaveBeenCalledTimes(1)
+      expect(JSON.parse((callback.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ userId: 'alice', id: task._id, generation: task.assignmentExecution!.generation })
+      const claims = await Promise.all([work.prepareAssignment('alice', task._id, 'p-agent', task.assignmentExecution!.generation, 'Start'), work.prepareAssignment('alice', task._id, 'p-agent', task.assignmentExecution!.generation, 'Start')])
+      expect(claims.filter(claim => claim?.claimed)).toHaveLength(1)
+    } finally { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs() }
+  })
+
   test('assignment preparation is atomic and reuses one agent thread and task message', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
@@ -510,6 +573,27 @@ describe('fields, assignees and validation', () => {
     expect(stored.messages[0]).toMatchObject({ content: 'Task instructions', clientNonce: first!.execution.clientNonce, turnId: `work_assignment_${task._id}_${generation}` })
     expect(stored.participants).toHaveLength(2)
     expect(stored.participants.map((participant) => participant.principalId)).toEqual(expect.arrayContaining(['p-alice', 'p-agent']))
+  })
+
+  test('an assignment thread resolves to its task for the assigned agent only, while the task is active and readable', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const assigned = (userId: string, agentPrincipalId: string, conversationId: string) =>
+      convex.query(q('work/workItems:assignedTaskForConversation'), { ...auth(userId), agentPrincipalId, conversationId }) as Promise<string | null>
+    const task = await work.create('alice', { title: 'Private assignment', scope: 'personal', assigneePrincipalId: 'p-agent' })
+    const prepared = await work.prepareAssignment('alice', task._id, 'p-agent', task.assignmentExecution!.generation, 'Start')
+    const conversationId = prepared!.execution.conversationId!
+
+    expect(await assigned('alice', 'p-agent', conversationId)).toBe(task._id)
+    // Another agent, another thread, or someone who cannot read the personal task get nothing.
+    expect(await assigned('alice', 'p-agent-other', conversationId)).toBeNull()
+    expect(await assigned('alice', 'p-agent', 'other-conversation')).toBeNull()
+    expect(await assigned('bob', 'p-agent', conversationId)).toBeNull()
+    expect(await convex.query(q('work/workItems:assignedTaskForConversation'), { ...auth('alice'), serverSecret: 'wrong', agentPrincipalId: 'p-agent', conversationId })).toBeNull()
+
+    await work.archive('alice', task._id)
+    expect(await assigned('alice', 'p-agent', conversationId)).toBeNull()
   })
 
   test('stale and archived agent assignments cannot prepare a run', async () => {

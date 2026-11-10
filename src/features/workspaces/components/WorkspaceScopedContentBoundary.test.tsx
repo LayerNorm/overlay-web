@@ -43,6 +43,7 @@ function renderBoundary(
         pathname,
         routeSearch: search,
         currentScope: 'personal',
+        scopeKnown: true,
 
       }}
     >
@@ -115,6 +116,7 @@ test('rejected activation preserves hidden source state, but a target route disc
       pathname,
       routeSearch: 'scope=personal',
       currentScope: 'personal' as const,
+      scopeKnown: true,
     }
   }
   const source = stateFor('source')

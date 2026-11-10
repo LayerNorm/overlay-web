@@ -10,6 +10,15 @@ failures; notification permissions remain in macOS System Settings.
 
 ## Brand, Theme, And Navigation
 
+The saved `useSecondarySidebar` setting selects the same sidebar component at every
+viewport width. Below 768px, the selected single sidebar or icon-rail/context-panel
+layout opens inside the navigation drawer rather than switching to the legacy
+two-step mobile navigator. Drawer panels fit the available width without changing
+the desktop collapse preference or either sidebar's design.
+
+Threads without a status render their title directly, without an empty icon slot;
+status icons only occupy space when there is a status to display.
+
 Account is the workspace-independent `/account` page, linked above Settings in the
 workspace menu. It shows account identity, memberships, sign out and account deletion;
 it must remain usable when workspace loading fails or there are no memberships.
@@ -38,8 +47,42 @@ The default brand mark is the inline SVG O-with-eyes `OverlayMark` from
 `@overlay/ui`, re-exported at `src/components/brand/OverlayMark.tsx`.
 The sidebar renders it whenever `brand.logoSrc` is the default
 `/assets/overlay-logo.png`; custom overrides still render their configured image.
-`BrandLockup` combines the mark with "verlay" in Libre Baskerville Regular to
-read "Overlay". The PNG remains available for lifecycle email and static metadata.
+`BrandLockup` uses one SVG outlined from Libre Baskerville Regular, with the approved
+5% icon enlargement, 3 px extra icon-to-text spacing and 2 px downward O offset at
+40 px display size. It never depends on browser font metrics. The generated
+components and SVG/PNG exports come from `internal/plans/mockups/build-aligned-brand.py`
+and `export-brand-pngs.cjs` in the same directory. The PNG remains available for
+lifecycle email and static metadata; custom white-label overrides are unchanged.
+
+## Help and bug reports
+
+Help opens on hover or click, with Docs and Submit a bug. The authenticated,
+same-origin bug-report routes create issues in the public `LayerNorm/overlay-web`
+repository and notify the owner using the configured Resend provider. Set these
+server-only environment variables before enabling submission:
+
+- `OVERLAY_BUG_REPORT_GITHUB_TOKEN`: a fine-grained token restricted to this repository,
+  with Issues read/write permission. Do not reuse a deployment or personal admin token.
+- `OVERLAY_BUG_REPORT_EMAIL_TO`: the owner's notification address. Existing
+  `OVERLAY_EMAIL_FROM` and Resend configuration are reused.
+- `OVERLAY_BUG_REPORT_ATTACHMENT_SECRET`: a random signing secret of at least 32
+  characters. Keep it stable; rotating it invalidates existing attachment links.
+
+Reports warn that descriptions and attachments are public. Files upload directly
+to the existing object store, with short-lived, create-only signed upload URLs,
+a 5 MB combined cap, a maximum of ten supported files, per-user/IP limits and
+server verification of stored size/type before issue creation. The signed upload
+ticket is bound to the authenticated user and expires after ten minutes. Issue
+links exchange a durable signature for a short-lived storage download URL. Keep
+the object-store CORS configuration compatible with the app's normal direct
+uploads, including the `If-None-Match` header. Files live under `bug-reports/`;
+abandoned uploads can be removed by operators after checking issue references.
+
+Submissions use the existing durable idempotency repository. An email failure
+does not undo the issue or invite a duplicate submission: the dialog shows the
+created issue and notes the missing notification. Missing integration settings
+fail closed without creating an issue. Local automated tests mock GitHub, Resend
+and storage; do not create real issues or send real mail for UI QA.
 
 Chat tool rails, reasoning rows, streaming markers, loading states and notebook
 panels use the same mark. Running markers use `motion="look"`, completed markers
@@ -87,6 +130,8 @@ export const overlayAppShell = defineOverlayAppConfig({
 Registries merge with defaults by `id`. If you provide an item with the same `id`, Overlay replaces that item’s metadata. Unspecified default items remain available.
 
 Work leads the default primary navigation and `/app/work` is the authenticated home (the brand link, the default password/SSO sign-in redirect and `/app` all go there; explicit Account/desktop return destinations remain unchanged; a deployment with `OVERLAY_FEATURE_WORK=0` shows a notice with a link to Agents). The authenticated Agents surface uses the contextual sidebar as its roster; selecting an agent opens that agent's direct conversation. The conversation header's settings control composes the existing agent editor inside `AppScreenSidePanel`, which is docked on desktop and presented as an overlay dialog on smaller screens. The full-page `/app/agents/new` and `/app/agents/:id` routes remain compatibility entry points.
+
+Agent thread titles remain single-line rows inside the curved tree, including the mobile drawer. A live, viewer-scoped Convex projection (`agents/threads:activity`) supplies a spinner for running/queued/child-waiting work, an amber question bubble for input, approval, authorization or resource pauses, a green check for an unread completed response, and no indicator once that response has been reviewed (the row reads as an ordinary thread). Unreviewed failed and cancelled runs have distinct non-success indicators; once the thread is opened after the run ended they settle like a reviewed completion (no icon, no count), while needs-input stays until it is answered. Empty threads have no indicator. Agent subtitles summarize working, ready and needs-you counts even while collapsed; chief ownership remains the fallback when there is no actionable activity. Archived, deleted, automation-owned and other users' threads are excluded. Read state uses the participant's read timestamp relative to the latest run's completion, with explicit Mark unread respected; visible transcript settlement and returning to the tab refresh the read marker. The query uses native Convex identity and the thread list's workspace and agent visibility checks, not browser-supplied tokens or user IDs. Subscriptions wait for native authentication; revoked access clears activity, while unexpected query failures reach the error boundary instead of silently looking idle. No schema migration is needed. Deploy the matching web and isolated backend revision for Preview acceptance.
 
 While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Agents; it should not be inserted at the top of the primary navigation.
 

@@ -3,11 +3,11 @@
 import Link from 'next/link'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { ListChecks, Plus } from 'lucide-react'
+import { ListChecks } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { Button, HeaderSearch } from '@overlay/ui/primitives'
+import { HeaderSearch } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
@@ -20,13 +20,14 @@ import { useWorkData, WorkDataProvider } from './WorkDataProvider'
 import { WorkBoard } from './WorkBoard'
 import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
-import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
+import { WorkTaskComposer, type WorkTaskComposerHandle } from './WorkTaskComposer'
 import { WorkTimeline } from './WorkTimeline'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { WorkAssignmentGroup, WorkAssignmentPeek } from './WorkAssignments'
 import { useLiveAssignments } from '../lib/use-live-work'
 import { matchesAssignmentQuery } from '@/shared/work/assignment-state'
 import type { AssignmentExecution } from '@/shared/work/assignment-execution'
+import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 
 function ListSkeleton() {
   return (
@@ -86,6 +87,7 @@ function WorkBody({
 }) {
   const { state, items, byId } = useWorkData()
   if (state === 'loading') return <ListSkeleton />
+  if (state === 'signed_out') return <EmptyState title="Sign in to see your tasks" description="Tasks you and your agents create appear here." />
   if (state === 'error') {
     return (
       <EmptyState
@@ -101,7 +103,7 @@ function WorkBody({
     return (
       <EmptyState
         title="No tasks yet"
-        description={scope === 'workspace' && !solo ? 'Tasks added to the workspace are shared with its members.' : 'Add a task above. It lands in Todo.'}
+        description={scope === 'workspace' && !solo ? 'Tasks added to the workspace are shared with its members.' : 'Describe a task below. It lands in Todo.'}
       />
     )
   }
@@ -134,7 +136,7 @@ function WorkScreen() {
   const { state, items, viewer, truncated } = useWorkData()
   const assignments = useLiveAssignments(listView)
   const [query, setQuery] = useState('')
-  const quickAdd = useRef<WorkQuickAddHandle>(null)
+  const quickAdd = useRef<WorkTaskComposerHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
 
   // C starts a new task from anywhere on the page (typing in a field is left alone).
@@ -146,6 +148,7 @@ function WorkScreen() {
   const title = WORK_VIEW_LABELS[view]
   const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
+  useOnboardingWorkReady(taskId, state === 'error' || state === 'signed_out' || (loaded && !taskId))
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || (visible.length === 0 && assignmentItems.length === 0)
 
@@ -167,18 +170,11 @@ function WorkScreen() {
           tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
-          actions={(
-            <Button variant="primary" size="sm" onClick={() => quickAdd.current?.focus()} data-testid="work-new-task">
-              <Plus size={14} aria-hidden />
-              New task
-            </Button>
-          )}
         />
       )}
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full min-h-0 flex-col" data-testid="work-page">
         {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
-        <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
         <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
           <WorkBody
             view={view}
@@ -192,12 +188,15 @@ function WorkScreen() {
             assignments={{ items: assignmentItems, selectedId: assignmentId, onOpen: openAssignment, canLoadMore: assignments.status === 'CanLoadMore', onLoadMore: () => assignments.loadMore(25) }}
           />
         </div>
+        <WorkTaskComposer ref={quickAdd} disabled={!loaded} />
       </AppScreenBody>
     </AppScreenShell>
   )
 }
 
 function WorkUnavailable() {
+  const { taskId } = useWorkUrlState()
+  useOnboardingWorkReady(taskId, true)
   return (
     <AppScreenShell>
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center px-6">

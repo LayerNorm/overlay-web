@@ -4,7 +4,7 @@ import type { ComponentProps } from 'react'
 import { Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
-import { THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
+import { hasThreadActivity, THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
 import {
   SidebarMenuAction,
   SidebarMenuSkeleton,
@@ -22,6 +22,7 @@ export function AgentThreadRows({
   bundle,
   activeConversationId,
   activity,
+  activityOnly = false,
   onOpenThread,
   onOpenAutomation,
   onArchiveThread,
@@ -31,6 +32,7 @@ export function AgentThreadRows({
   bundle: WorkspaceAgentBundle | 'loading' | 'error'
   activeConversationId: string | null
   activity?: ThreadActivity[]
+  activityOnly?: boolean
   onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
   onOpenAutomation(automationId: string): void
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
@@ -56,14 +58,16 @@ export function AgentThreadRows({
       </SidebarMenu>
     )
   }
-  const threads = bundle.threads.filter((thread) => !thread.archivedAt)
   const statuses = new Map(activity?.map(item => [item.conversationId, item.status]))
+  const threads = bundle.threads.filter((thread) => !thread.archivedAt && (!activityOnly || (statuses.has(thread.conversationId) && hasThreadActivity(statuses.get(thread.conversationId)!))))
   const automations = bundle.automations
   return (
     <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
       {threads.map((thread) => {
         const active = activeConversationId === thread.conversationId
-        const status = statuses.get(thread.conversationId)
+        // Idle and reviewed threads are plain rows: no icon, and no status in their label.
+        const raw = statuses.get(thread.conversationId)
+        const status = raw === 'idle' || raw === 'completed' ? undefined : raw
         return (
           <SidebarMenuSubItem key={thread.conversationId}>
             <ThreadButton
@@ -103,7 +107,7 @@ export function AgentThreadRows({
           </SidebarMenuSubItem>
         )
       })}
-      {automations.map((automation) => {
+      {(activityOnly ? [] : automations).map((automation) => {
         const target = automation.conversationId
         const active = target != null && activeConversationId === target
         return (

@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { mutation, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
 async function counter(ctx: MutationCtx | QueryCtx, workspaceId: string, key: string) {
@@ -59,27 +59,5 @@ export const claimAgentAskByServer = mutation({
       })
     }
     return args.dispatchId ? { ok: true, alreadyClaimed: false } : { ok: true }
-  },
-})
-
-const MAX_RECORDED_REPLIES = 40
-
-/** Remembers a reply a question of this request started, to add up what the chain has used. */
-export const recordAgentAskReplyByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), rootKey: v.string(), conversationId: v.string(), turnId: v.string(), now: v.number() },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const row = await counter(ctx, args.workspaceId, args.rootKey)
-    if (!row) return
-    const replies = [...(row.replies ?? []), { conversationId: args.conversationId, turnId: args.turnId }].slice(-MAX_RECORDED_REPLIES)
-    await ctx.db.patch(row._id, { replies, updatedAt: args.now })
-  },
-})
-
-export const listAgentAskRepliesByServer = query({
-  args: { serverSecret: v.string(), workspaceId: v.string(), rootKey: v.string() },
-  handler: async (ctx, args): Promise<Array<{ conversationId: string; turnId: string }>> => {
-    requireServerSecret(args.serverSecret)
-    return (await counter(ctx, args.workspaceId, args.rootKey))?.replies ?? []
   },
 })

@@ -13,6 +13,7 @@ const fn = {
   update: makeFunctionReference<'mutation'>('work/browse:update'),
   move: makeFunctionReference<'mutation'>('work/browse:move'),
   addComment: makeFunctionReference<'mutation'>('work/browse:addComment'),
+  linkedThread: makeFunctionReference<'query'>('work/browse:linkedThread'),
 }
 const backendUrl = 'https://fixture.convex.cloud'
 
@@ -177,4 +178,32 @@ test('assignment cannot be changed natively, because it starts an agent turn on 
   const { as, ids } = await fixture()
   await expect(as('alice').mutation(fn.update, { workspaceId: 'ws', id: ids.first, assigneePrincipalId: 'p-bob' } as never)).rejects.toThrow()
   await expect(as('alice').mutation(fn.create, { workspaceId: 'ws', title: 'x', assigneePrincipalId: 'p-bob' } as never)).rejects.toThrow()
+})
+
+test('a task links to the agent thread working on it, for the member who owns that thread', async () => {
+  const { t, as, ids } = await fixture()
+  const threadId = await t.run(async ctx => {
+    const conversationId = await ctx.db.insert('conversations', {
+      userId: 'alice', workspaceId: 'ws', agentId: 'agent-1', title: 'Task: Shared', lastModified: 7, createdAt: 7,
+      lastMode: 'act', askModelIds: [], actModelId: 'model',
+    } as never)
+    await ctx.db.patch(ids.shared, { assignmentExecution: {
+      assignedByUserId: 'alice', assigneePrincipalId: 'p-agent', generation: 1, status: 'started', conversationId,
+    } } as never)
+    return conversationId
+  })
+  // No turn recorded yet: the agent is starting, which reads as working.
+  expect(await as('alice').query(fn.linkedThread, { workspaceId: 'ws', id: ids.shared })).toEqual({
+    visible: true, conversationId: String(threadId), agentId: 'agent-1', title: 'Task: Shared', state: 'working', updatedAt: 7,
+  })
+  // Bob sees the shared task but not Alice's thread, so he gets no link into it.
+  expect(await as('bob').query(fn.linkedThread, { workspaceId: 'ws', id: ids.shared })).toEqual({ visible: false })
+  // A personal task Bob cannot read, and a task no agent picked up, have no thread.
+  expect(await as('bob').query(fn.linkedThread, { workspaceId: 'ws', id: ids.first })).toBeNull()
+  expect(await as('alice').query(fn.linkedThread, { workspaceId: 'ws', id: ids.first })).toBeNull()
+  await t.run(async ctx => {
+    const row = await ctx.db.get(ids.shared) as { assignmentExecution: Record<string, unknown> }
+    await ctx.db.patch(ids.shared, { assignmentExecution: { ...row.assignmentExecution, status: 'failed' } } as never)
+  })
+  expect(await as('alice').query(fn.linkedThread, { workspaceId: 'ws', id: ids.shared })).toMatchObject({ state: 'stopped' })
 })

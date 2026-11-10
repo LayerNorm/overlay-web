@@ -8,7 +8,7 @@ import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createPersonalHarnessTools } from '@/server/harness/personal-tools'
-import { admitPersonalHarnessExecution, authorizePersonalHarnessExecution, renewPersonalHarnessWait, checkPersonalHarnessFunding, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
+import { admitPersonalHarnessExecution, authorizePersonalHarnessExecution, renewPersonalHarnessWait, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
 import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
 import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
 import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
@@ -27,6 +27,7 @@ import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-wor
 import { persistPersonalChatWorkProgress } from '@/server/conversations/personal-chat-work-lifecycle'
 import { hasSamePersonalHarnessAuthentication } from '@/server/harness/personal-authentication'
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
+import { joinStepText, keepCutOffTrailingWhitespace } from '@/shared/chat/step-text-join'
 import {
   isHarnessTaskDeadlineExpired,
   isTerminalHarnessStatus,
@@ -152,6 +153,8 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
   let result: HarnessExecutionResult | undefined
   let progress = input.continuation?.deliveryProgress ?? ''
+  // A segment handed off after a cut-off call continues that call's text.
+  let progressContinues = input.continuation?.truncatedResponse === true
   let activeToolNames = new Set<string>(HARNESS_CONTROL_TOOLS)
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
@@ -162,7 +165,6 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
         access,
         wake: wake[Symbol.asyncIterator](),
         renewLease: () => renewPersonalHarnessWait(execution),
-        checkFunding: requiredCents => checkPersonalHarnessFunding(execution, requiredCents),
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),
       continueExecution: checkpoint => handoffHarnessContinuation({
@@ -189,10 +191,16 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     const recordModelStep = ports.recordModelStep
     ports.recordModelStep = async (step, receiptId) => {
       await recordModelStep(step, receiptId)
+      const continues = progressContinues
+      // Work after the text starts a new block, even after a cut-off call.
+      if (step.toolCalls.length) progressContinues = false
       if (shouldCapturePersonalProgress(isRoot, step.text)) {
-        const text = stripTextualToolCalls(step.text, activeToolNames)
+        const cutOff = step.finishReason === 'length'
+        const sanitized = stripTextualToolCalls(step.text, activeToolNames)
+        const text = cutOff ? keepCutOffTrailingWhitespace(step.text, sanitized) : sanitized
         if (!text) return
-        progress = `${progress}${progress ? '\n\n' : ''}${text}`
+        progress = joinStepText(progress, text, continues)
+        progressContinues = cutOff && !step.toolCalls.length
         await persistPersonalChatWorkProgress({ agentRunId: access.agentRunId, resourceUserId: access.actorUserId, content: progress })
       }
     }

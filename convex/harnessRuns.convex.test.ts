@@ -144,7 +144,7 @@ describe('durable harness runs', () => {
     try {
       let state = await admit(convex, input)
       state = (await apply(convex, input, 'reserve-final', state.revision, {
-        type: 'reserve_model', id: 'final', maxCostMicros: input.policy.maxCostMicros,
+        type: 'reserve_model', id: 'final', maxCostMicros: 0,
       })).snapshot
       clock.mockReturnValue(input.policy.deadlineAt + 1)
       await expect(apply(convex, input, 'finish-held', state.revision, { type: 'finish' }))
@@ -181,7 +181,7 @@ describe('durable harness runs', () => {
     const recoveryKey = prefix === 'model' ? 'modelRecovery' : 'summaryRecovery'
     await admit(convex, input)
     let state = (await apply(convex, input, 'reserve-empty', 0, {
-      type: 'reserve_model', id: `${prefix}:0`, maxCostMicros: 100,
+      type: 'reserve_model', id: `${prefix}:0`, maxCostMicros: 0,
     })).snapshot
     state = (await apply(convex, input, 'dispatch-empty', state.revision, {
       type: 'bind_model_dispatch', id: `${prefix}:0`, modelId: 'fixture/model', billingReservationId: 'billing-empty',
@@ -211,7 +211,7 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.usage.costMicros).toBe(1)
 
     state = (await apply(convex, input, 'reserve-usable', replay.snapshot.revision, {
-      type: 'reserve_model', id: `${prefix}:1`, maxCostMicros: 100,
+      type: 'reserve_model', id: `${prefix}:1`, maxCostMicros: 0,
     })).snapshot
     state = (await apply(convex, input, 'dispatch-usable', state.revision, {
       type: 'bind_model_dispatch', id: `${prefix}:1`, modelId: 'fixture/model', billingReservationId: 'billing-usable',
@@ -234,7 +234,7 @@ describe('durable harness runs', () => {
     const convex = convexTest(schema, modules)
     const input = admission('rejection', await seedConversation(convex))
     await admit(convex, input)
-    let state = (await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })).snapshot
+    let state = (await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'model:0', maxCostMicros: 0 })).snapshot
     if (rejectionReason !== 'budget') {
       state = (await apply(convex, input, 'dispatch', state.revision, { type: 'bind_model_dispatch', id: 'model:0',
         modelId: 'fixture/model', billingReservationId: 'billing-reservation' })).snapshot
@@ -262,7 +262,7 @@ describe('durable harness runs', () => {
     const input = admission('route-interruption', await seedConversation(convex))
     await admit(convex, input)
     const state = (await apply(convex, input, 'route-interruption-reserve-0', 0, {
-      type: 'reserve_model', id: 'model:0', maxCostMicros: 600,
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
     })).snapshot
     const dispatched = (await apply(convex, input, 'route-interruption-dispatch-0', state.revision, {
       type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'hold',
@@ -299,7 +299,7 @@ describe('durable harness runs', () => {
     const convex = convexTest(schema, modules)
     const input = admission('dispatch', await seedConversation(convex))
     await admit(convex, input)
-    const reserved = await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'receipt', maxCostMicros: 600 })
+    const reserved = await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'receipt', maxCostMicros: 0 })
     const operation = { type: 'bind_model_dispatch' as const, id: 'receipt', modelId: 'fixture/model', billingReservationId: 'billing-reservation' }
     const bound = await apply(convex, input, 'dispatch', reserved.snapshot.revision, operation)
     expect((await get(convex, input.runId))?.modelReservation?.dispatch).toEqual({ modelId: 'fixture/model', billingReservationId: 'billing-reservation' })
@@ -319,16 +319,12 @@ describe('durable harness runs', () => {
     const input = admission('reserved-model', await seedConversation(convex))
     await admit(convex, input)
     const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('read') })
-    const reserved = await apply(convex, input, 'reserve', plan.snapshot.revision, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })
-    expect((await get(convex, input.runId))?.modelReservation).toEqual({ id: 'model:0', maxCostMicros: 600 })
-    const replay = await apply(convex, input, 'reserve', plan.snapshot.revision, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })
+    const reserved = await apply(convex, input, 'reserve', plan.snapshot.revision, { type: 'reserve_model', id: 'model:0', maxCostMicros: 0 })
+    expect((await get(convex, input.runId))?.modelReservation).toEqual({ id: 'model:0', maxCostMicros: 0 })
+    const replay = await apply(convex, input, 'reserve', plan.snapshot.revision, { type: 'reserve_model', id: 'model:0', maxCostMicros: 0 })
     expect(replay.applied).toBe(false)
-    await expect(apply(convex, input, 'delegate', reserved.snapshot.revision, {
-      type: 'admit_child', child: { id: 'worker', stepId: 'read', allowedToolIds: ['tool:read'], maxCostMicros: 401, costMicros: 0, status: 'running', evidenceRefs: [] },
-      goal: 'Read source', constraints: [],
-    })).rejects.toThrow(/spending/)
     const cancelled = await apply(convex, input, 'cancel', reserved.snapshot.revision, { type: 'terminate', status: 'cancelled', reason: 'User stopped.' })
-    expect(cancelled.snapshot.modelReservation?.maxCostMicros).toBe(600)
+    expect(cancelled.snapshot.modelReservation?.maxCostMicros).toBe(0)
     const receipt = { id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 10, outputTokens: 1,
       reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 500 }
     const settled = await apply(convex, input, 'receipt', cancelled.snapshot.revision, { type: 'record_receipt', receipt })
@@ -351,7 +347,7 @@ describe('durable harness runs', () => {
       const input = admission(scenario.runId, await seedConversation(convex))
       await admit(convex, input)
       const reserved = await apply(convex, input, 'reserve', 0, {
-        type: 'reserve_model', id: `model:${scenario.runId}`, maxCostMicros: scenario.maxCostMicros,
+        type: 'reserve_model', id: `model:${scenario.runId}`, maxCostMicros: 0,
       })
       await apply(convex, input, 'dispatch', reserved.snapshot.revision, {
         type: 'bind_model_dispatch', id: `model:${scenario.runId}`,
@@ -364,7 +360,7 @@ describe('durable harness runs', () => {
       const reloaded = await get(convex, scenario.runId)
       expect(reloaded?.modelReservation).toMatchObject({
         id: `model:${scenario.runId}`,
-        maxCostMicros: scenario.maxCostMicros,
+        maxCostMicros: 0,
         dispatch: {
           modelId: scenario.modelId,
           billingReservationId: scenario.billingReservationId,
@@ -908,7 +904,7 @@ describe('durable harness runs', () => {
     expect(admitted.snapshot.children).toMatchObject([{
       id: 'run-child',
       allowedToolIds: ['tool:read'],
-      maxCostMicros: 400,
+      maxCostMicros: 0,
       status: 'running',
     }])
     expect(admitted.snapshot.plan.find(step => step.id === 'delegated')?.childRunId).toBe('run-child')
@@ -929,7 +925,7 @@ describe('durable harness runs', () => {
         actorUserId: 'alice',
         allowedToolIds: ['tool:read'],
         requiresPlan: false,
-        maxCostMicros: 400,
+        maxCostMicros: 0,
       },
     })
     const childRows = await convex.run(async ctx => ({
@@ -938,7 +934,7 @@ describe('durable harness runs', () => {
         .withIndex('by_runId_childRunId', q => q.eq('runId', input.runId).eq('childRunId', 'run-child')).unique(),
     }))
     expect(childRows.run).not.toBeNull()
-    expect(JSON.parse(childRows.reservation!.childJson).maxCostMicros).toBe(400)
+    expect(JSON.parse(childRows.reservation!.childJson).maxCostMicros).toBe(0)
 
     await apply(convex, { ...input, runId: 'run-child' }, 'child-plan', 0, {
       type: 'replace_plan',
@@ -1041,6 +1037,48 @@ describe('durable harness runs', () => {
     expect(persisted.operations).toHaveLength(0)
   })
 
+  test('stores an oversized transcript step as a shortened copy instead of failing the run', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('transcript-oversized', await seedConversation(convex))
+    let state = await admit(convex, input)
+    state = (await apply(convex, input, 'claim-large', state.revision, {
+      type: 'claim_execution', workflowRunId: 'workflow-large',
+    })).snapshot
+    state = (await apply(convex, input, 'reserve-large', state.revision, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+    })).snapshot
+    await apply(convex, input, 'settle-large', state.revision, {
+      type: 'record_receipt', receipt: {
+        id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+        reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1,
+      },
+    })
+    const fullPersistenceStorageId = await convex.run(ctx => ctx.storage.store(new Blob(['full transcript'])))
+    const args = {
+      actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'workflow-large',
+      receiptId: 'model:0', stepNumber: 0,
+      // Over 160,000 characters, more than 81 parts and well over 256 KiB encoded.
+      persistence: {
+        content: '界'.repeat(200_000),
+        parts: Array.from({ length: 120 }, (_, i) => ({
+          type: 'tool-invocation',
+          toolInvocation: { toolCallId: `call-${i}`, toolName: 'lookup', toolOutput: '界'.repeat(20_000) },
+        })),
+      },
+      fullPersistenceStorageId,
+      fullPersistenceDigest: createHash('sha256').update('full transcript').digest('hex'),
+      serverSecret: secret,
+    }
+    const write = mutation('writeTranscriptStep')
+    expect(await convex.mutation(write, args)).toEqual({ persisted: true })
+    // A replay of the same oversized step matches the shortened stored copy.
+    expect(await convex.mutation(write, args)).toEqual({ persisted: false })
+    const row = await convex.run(ctx => ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', q => q.eq('runId', input.runId).eq('receiptId', 'model:0')).unique())
+    expect(new TextEncoder().encode(row!.persistenceJson).byteLength).toBeLessThanOrEqual(240 * 1024)
+    expect(row!.fullPersistenceStorageId).toBe(fullPersistenceStorageId)
+  })
+
   test('writes bounded settled transcript rows idempotently and rejects conflicting replay', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('transcript-journal', await seedConversation(convex))
@@ -1049,7 +1087,7 @@ describe('durable harness runs', () => {
       type: 'claim_execution', workflowRunId: 'workflow-transcript',
     })).snapshot
     state = (await apply(convex, input, 'reserve-transcript', state.revision, {
-      type: 'reserve_model', id: 'model:0', maxCostMicros: 100,
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
     })).snapshot
     await apply(convex, input, 'settle-transcript', state.revision, {
       type: 'record_receipt', receipt: {

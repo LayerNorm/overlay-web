@@ -1,14 +1,18 @@
 'use client'
 
-import { useEffect, useMemo, type ReactNode } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { useMemo, useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useConvexAuth, useQuery } from 'convex/react'
 import { Archive, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button, EmptyState } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { ARCHIVED_SETTINGS_PATH } from '@/shared/workspaces/panel-scope'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
@@ -60,27 +64,11 @@ function useArchivedConversations(userId: string | null, selectedId: string | nu
     || (waitingForSelected && !selectedUnavailable)
     || archived.status === 'loading'
   return {
-    archived,
     conversations,
     loading,
-    waitingForSelected,
     selectedUnavailable,
     unavailable: roomsUnavailable || archived.status === 'unavailable',
   }
-}
-
-/** Points the URL at the selected archived chat, or the newest one when none (or a missing one) is selected. */
-function useSelectArchivedChat(conversations: ArchivedConversation[], selectedId: string | null, ready: boolean) {
-  const pathname = usePathname() ?? ''
-  useEffect(() => {
-    if (!ready || conversations.length === 0) return
-    const selected = conversations.find((conversation) => conversation._id === selectedId) ?? conversations[0]
-    if (!selected || selected._id === selectedId) return
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-    params.set('id', selected._id)
-    window.history.replaceState(null, '', `${pathname}?${params.toString()}`)
-    window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail: { chatId: selected._id } }))
-  }, [conversations, pathname, ready, selectedId])
 }
 
 function ArchivedNotice({ children }: { children: ReactNode }) {
@@ -102,9 +90,45 @@ function ArchivedSpinner({ label }: { label: string }) {
   )
 }
 
+/** Replaces the composer of an archived personal chat: it is read-only until restored. */
+function ArchivedChatFooter({ conversationId }: { conversationId: string }) {
+  const nativePersonal = usePersonalChat()
+  const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? null
+  const buildWorkspaceHref = useWorkspaceHref()
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const summary = nativePersonal.archived.rows.find((row) => row._id === conversationId)
+    ?? (nativePersonal.selectedSummary?._id === conversationId ? nativePersonal.selectedSummary : null)
+
+  const restore = async () => {
+    if (!summary || busy) return
+    setBusy(true)
+    try {
+      await nativePersonal.setArchived(summary, false)
+      const scope = summary.scope === 'workspace' ? 'workspace' : 'personal'
+      const href = `/app/chat?${new URLSearchParams({ id: conversationId, scope }).toString()}`
+      router.push(workspaceId ? buildWorkspaceHref(workspaceId, href, scope) : href)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not restore this chat.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex shrink-0 flex-wrap items-center justify-center gap-3 px-4 py-4">
+      <p role="status" className="text-center text-xs text-(--muted)">This chat is archived.</p>
+      {summary ? (
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => { void restore() }}>
+          {busy ? 'Restoring…' : 'Restore'}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 /**
  * Archived chats open as the conversation itself. Settings → Archived is the index; this page shows the selected
- * archived chat (or the most recent one). Personal AI chats come from the live chat list and channels and DMs from
+ * archived chat named by `?id=`; an id that is not archived in this workspace says so instead of opening another chat. Personal AI chats come from the live chat list and channels and DMs from
  * the live archived-rooms query, so an archive or restore anywhere shows at once.
  */
 export function ChatArchivedView({
@@ -116,9 +140,8 @@ export function ChatArchivedView({
 }) {
   const searchParams = useSearchParams()
   const selectedId = readSelectedId(searchParams?.get('id') ?? null)
-  const { archived, conversations, loading, waitingForSelected, selectedUnavailable, unavailable } =
+  const { conversations, loading, selectedUnavailable, unavailable } =
     useArchivedConversations(userId, selectedId)
-  useSelectArchivedChat(conversations, selectedId, !loading && !waitingForSelected)
 
   if (loading) return <ArchivedSpinner label="Loading archived chat…" />
   const selected = conversations.find((conversation) => conversation._id === selectedId)
@@ -134,26 +157,25 @@ export function ChatArchivedView({
       </ArchivedNotice>
     )
   }
-  if (conversations.length === 0) {
+  if (!selected) {
     return (
       <ArchivedNotice>
         <EmptyState
           className="h-full min-h-72 px-6 py-12"
           icon={<Archive size={28} />}
-          title={unavailable ? 'Archived chats are unavailable' : 'Nothing archived'}
+          title={unavailable ? 'Archived chats are unavailable' : 'Archived chat not found'}
           description={unavailable
             ? 'Archived conversations could not be loaded.'
-            : 'Archived direct messages and channels are kept here. Archive one from its conversation menu.'}
-          action={archived.hasMore ? (
-            <Button size="sm" disabled={archived.loadingMore} onClick={() => archived.loadMore()}>
-              {archived.loadingMore ? 'Loading…' : 'Load more'}
+            : 'It may have been restored or deleted, or it belongs to another workspace.'}
+          action={(
+            <Button size="sm" variant="outline" asChild>
+              <Link href={ARCHIVED_SETTINGS_PATH}>Open Archived</Link>
             </Button>
-          ) : undefined}
+          )}
         />
       </ArchivedNotice>
     )
   }
-  if (!selected) return <ArchivedSpinner label="Opening archived chat…" />
   if (selected.conversationType === 'channel' || selected.conversationType === 'dm') {
     return (
       <DirectMessageExperience
@@ -163,5 +185,12 @@ export function ChatArchivedView({
       />
     )
   }
-  return <ChatExperience userId={userId} firstName={firstName} hideSidebar />
+  return (
+    <ChatExperience
+      userId={userId}
+      firstName={firstName}
+      hideSidebar
+      readOnlyFooter={<ArchivedChatFooter conversationId={selected._id} />}
+    />
+  )
 }

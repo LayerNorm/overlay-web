@@ -276,6 +276,12 @@ export function createOverlayServerContext(
     payerResolver: billingPayerResolver,
     getEntitlements: async (billingAccountId) =>
       await appData.repositories.billing.getBillingAccountEntitlementsByServer({ billingAccountId }) as Entitlements | null,
+    ensureBudgetNotLow: async (input) => await generationUsagePolicy.ensureBudgetNotLow({
+      ...input,
+      kind: 'sandbox',
+      modelId: 'sandbox/box',
+      operationId: `computer-admission:${input.workspaceId}:${input.programmaticSubjectId ?? input.userId}`,
+    }),
   })
   computerAdmissionRef.current = computerAdmission
   const computerLimits: ComputerLimits = {
@@ -333,12 +339,6 @@ export function createOverlayServerContext(
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
       { throwOnError: true },
     )) ?? { ok: false, reason: 'budget' },
-    recordReply: async (args) => {
-      await lazyConvex.mutation('agents/agentAsks:recordAgentAskReplyByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
-    },
-    listReplies: async (args) => (await lazyConvex.query<Array<{ conversationId: string; turnId: string }>>(
-      'agents/agentAsks:listAgentAskRepliesByServer', { serverSecret: getInternalApiSecret(), ...args }, { throwOnError: true },
-    )) ?? [],
     releaseBudget: async (args) => {
       await lazyConvex.mutation('agents/agentAsks:releaseAgentAskByServer', { serverSecret: getInternalApiSecret(), now: Date.now(), ...args }, { throwOnError: true })
     },
@@ -386,30 +386,24 @@ export function createOverlayServerContext(
       })
     },
     meterSandboxLease: async (lease) => {
-      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0, idleStop: 'none' })
+      await managedAgentSandboxBilling.meterLease(lease, { idleStop: 'none' })
     },
     settleUsage: async (usage) => {
       if (!usage.userId) return
       try {
         // Host-owned/BYOK model calls are observable token counts, not Overlay model spend.
-        if (usage.modelUsageBilling !== 'overlay') {
-          if (usage.reservationId) await chatUsagePolicy.releaseReservation({
-            reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_byok',
-          })
-          return
-        }
-        if (usage.outcome === 'cancelled') {
-          await chatUsagePolicy.releaseReservation({
-            reservationId: usage.reservationId, userId: usage.userId, reason: 'remote_agent_cancelled',
-          })
-          return
-        }
-        if (usage.outcome !== 'completed' && usage.inputTokens === 0 && usage.outputTokens === 0) {
-          await chatUsagePolicy.markReservationForReconcile({ reservationId: usage.reservationId,
-            userId: usage.userId, errorMessage: `remote_agent_${usage.outcome}` })
-          return
-        }
-        await chatUsagePolicy.recordFinishedUsage(usage)
+        // Overlay-billed runs are charged their reported tokens directly, whatever the outcome;
+        // a run that used nothing charges nothing. The run's operation id keeps the charge once-only.
+        if (usage.modelUsageBilling !== 'overlay' || (usage.inputTokens === 0 && usage.outputTokens === 0)) return
+        await chatUsagePolicy.recordFinishedUsage({
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          modelId: usage.modelId,
+          operationId: usage.operationId,
+          programmaticSubjectId: usage.agentId ? `agent:${usage.agentId}` : undefined,
+          userId: usage.userId,
+          workspaceId: usage.workspaceId || undefined,
+        })
       } finally {
         await managedAgentSandboxBilling.settle(usage)
       }

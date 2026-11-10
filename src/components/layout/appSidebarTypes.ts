@@ -4,6 +4,7 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 export interface AppSidebarNavigateContext {
   onNavigate: () => void
+  activityOnly?: boolean
 }
 
 export interface AppSidebarChatPanelContext extends AppSidebarNavigateContext {

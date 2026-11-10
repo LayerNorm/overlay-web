@@ -39,6 +39,40 @@ export class ConvexAuditRepository implements AuditRepository {
   async list(_args: Parameters<AuditRepository['list']>[0] = {}): Promise<AuditEventRecord[]> {
     throw new Error('Operator audit reads require the standalone admin console')
   }
+
+  async listForWorkspace(
+    args: Parameters<AuditRepository['listForWorkspace']>[0],
+  ): Promise<AuditEventRecord[]> {
+    const rows = await convex.query<ConvexAuditRow[]>(
+      'collaboration/workspaces:listWorkspaceAuditEventsByServer',
+      {
+        workspaceId: args.workspaceId,
+        ...(args.fromRecordedAt === undefined ? {} : { fromRecordedAt: args.fromRecordedAt }),
+        ...(args.limit === undefined ? {} : { limit: args.limit }),
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    return (rows ?? []).map(fromRow)
+  }
+
+  async pageForWorkspace(
+    args: Parameters<AuditRepository['pageForWorkspace']>[0],
+  ): ReturnType<AuditRepository['pageForWorkspace']> {
+    const result = await convex.query<{ page: ConvexAuditRow[]; isDone: boolean; continueCursor: string }>(
+      'collaboration/workspaces:pageWorkspaceAuditEventsByServer',
+      {
+        workspaceId: args.workspaceId,
+        ...(args.fromRecordedAt === undefined ? {} : { fromRecordedAt: args.fromRecordedAt }),
+        cursor: args.cursor,
+        numItems: args.numItems,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to read workspace audit events')
+    return { events: result.page.map(fromRow), isDone: result.isDone, continueCursor: result.continueCursor }
+  }
 }
 
 function fromRow(row: ConvexAuditRow): AuditEventRecord {

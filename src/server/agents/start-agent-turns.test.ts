@@ -62,6 +62,7 @@ function fixture(
   const nativeStarts: string[] = []
   const remoteStarts: string[] = []
   const failures: string[] = []
+  const failureRows: Array<{ content: string; failure?: { code: string; message: string; retryable: boolean } }> = []
   const turnInputs: Array<Record<string, unknown>> = []
   const harnessStarts: string[] = []
   const admissions: boolean[] = []
@@ -72,8 +73,13 @@ function fixture(
       turnInputs.push(input)
       return { resumed: options.resumed ?? true, runId: 'run-1', messageId: 'turn-message-1' }
     },
-    async recordAgentStartFailure(input: { authorPrincipalId: string }) {
+    async recordAgentStartFailure(input: {
+      authorPrincipalId: string
+      content: string
+      failure?: { code: string; message: string; retryable: boolean }
+    }) {
       failures.push(input.authorPrincipalId)
+      failureRows.push({ content: input.content, failure: input.failure })
       return 'failure-message'
     },
     async failAgentMessage() {},
@@ -104,6 +110,7 @@ function fixture(
     nativeStarts,
     remoteStarts,
     failures,
+    failureRows,
     turnInputs,
     harnessStarts,
     admissions,
@@ -162,6 +169,16 @@ test('agent starts require workspace admission before opening a durable turn', a
   assert.deepEqual(f.nativeStarts, [])
   assert.deepEqual(f.harnessStarts, [])
   assert.deepEqual(f.failures, ['principal-native'])
+})
+
+test('an unpaid workspace tells the user why the agent did not start', async () => {
+  const f = fixture([invocation('native')], async () => {}, { admissionFails: true })
+
+  await f.run()
+
+  assert.equal(f.failureRows.length, 1)
+  assert.match(f.failureRows[0]!.content, /doesn't have a paid plan\. Open Workspace Billing/)
+  assert.deepEqual(f.failureRows[0]!.failure, { code: 'subscription_required', message: 'Paid plan required.', retryable: false })
 })
 
 test('an unfunded BYO turn is refused before remote dispatch', async () => {

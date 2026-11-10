@@ -68,10 +68,6 @@ const checks = [
       /buildDocumentContextBundle/,
       /resolveMentionsContext/,
       /emitChat(Completed|Failed)/,
-      /reserveProviderBudget/,
-      /finalizeProviderBudgetReservation/,
-      /releaseProviderBudgetReservation/,
-      /markProviderBudgetReconcile/,
     ],
   },
 ]

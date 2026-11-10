@@ -540,6 +540,10 @@ func supportsStatelessResponses(payload *ojson.Doc) bool {
 				continue
 			}
 			kind := strings.ToLower(item.Get("type").String())
+			// Every pinned translator converts Responses input images.
+			if kind == "input_image" {
+				continue
+			}
 			for _, unsupported := range []string{"image", "audio", "video", "file", "computer", "browser", "web_search", "code_interpreter"} {
 				if strings.Contains(kind, unsupported) {
 					return false
@@ -549,7 +553,8 @@ func supportsStatelessResponses(payload *ojson.Doc) bool {
 			if content.IsArray() {
 				for _, part := range content.Array() {
 					partType := strings.ToLower(part.Get("type").String())
-					if partType != "" && partType != "input_text" && partType != "output_text" && partType != "text" {
+					if partType != "" && partType != "input_text" && partType != "output_text" && partType != "text" &&
+						partType != "input_image" {
 						return false
 					}
 				}

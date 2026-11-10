@@ -335,10 +335,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
   {
-    path: '/api/v1/conversations/run/resources',
-    methods: { POST: authenticated() },
-  },
-  {
     path: '/api/v1/conversations/run/remote',
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
@@ -380,6 +376,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
   { path: '/api/v1/automations/project-events', methods: { POST: internal() } },
   { path: '/api/v1/harness/continuation', methods: { POST: internal() } },
+  { path: '/api/v1/work/resume-assignment', methods: { POST: internal() } },
   { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
   { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
   {

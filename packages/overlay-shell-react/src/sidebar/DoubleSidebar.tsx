@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Loader2, Plus, Search } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Bell, Loader2, Plus, Search } from 'lucide-react'
 import { cn } from '@overlay/ui'
 import { Button, PanelResizeHandle, Sidebar, SidebarContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
@@ -16,7 +16,7 @@ const MORE_GROUPS = [{ ids: ['files', 'extensions', 'automations'] }]
 
 export function selectDoubleSidebarItem(item: PrimaryRailItem, collapsed: boolean, onCollapsedChange: (collapsed: boolean) => void) {
   if (item.disabled) return
-  if (item.active) {
+  if (item.active && item.id !== 'chat') {
     onCollapsedChange(!collapsed)
     return
   }
@@ -59,7 +59,7 @@ export interface DoubleSidebarProps extends UnifiedSidebarProps {
 /** The rail stays mounted and usable while only the contextual panel collapses. */
 export function DoubleSidebar({
   railBrand, title, collapsed, onCollapsedChange, items, footerItems = [], panelKind,
-  panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, scope,
+  panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, activityOnly, onToggleActivity, helpMenu, scope,
   account, keyboardShortcut = false, resizable = false, settingsGroups, children,
   className, panelId, themePreset,
 }: DoubleSidebarProps) {
@@ -120,7 +120,7 @@ export function DoubleSidebar({
           </nav>
         </SidebarContent>
         <div className="mt-auto flex flex-col gap-1">
-          <SidebarMenu className="gap-1">{footerItems.map((item) => <NavRow key={item.id} item={item.id === 'settings' ? select(item) : item} collapsed />)}</SidebarMenu>
+          <SidebarMenu className="gap-1">{footerItems.map((item) => item.id === 'help' && helpMenu ? <Fragment key={item.id}>{helpMenu}</Fragment> : <NavRow key={item.id} item={item.id === 'settings' ? select(item) : item} collapsed />)}</SidebarMenu>
           {account}
         </div>
       </Sidebar>
@@ -137,6 +137,7 @@ export function DoubleSidebar({
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[inherit]">
           <div className="flex h-12 min-h-12 items-center gap-0.5 pl-3 pr-1.5">
             <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold capitalize tracking-tight">{title}</h2>
+            {onToggleActivity ? <DelayedTooltip label="Show activity only" side="bottom"><Button variant="ghost" size="icon" aria-label="Show activity only" aria-pressed={Boolean(activityOnly)} onClick={onToggleActivity} className="size-8 text-(--muted) aria-pressed:bg-(--surface-subtle) aria-pressed:text-(--foreground)"><Bell size={16} aria-hidden /></Button></DelayedTooltip> : null}
             {onSearch ? <DelayedTooltip label="Search" side="bottom"><Button variant="ghost" size="icon" aria-label={`Search ${title.toLowerCase()}`} onClick={onSearch} className="size-8 text-(--muted)"><Search size={16} aria-hidden /></Button></DelayedTooltip> : null}
             {panelAction ? <DelayedTooltip label={panelAction.label} side="bottom"><Button variant="ghost" size="icon" aria-label={panelAction.label} onClick={panelAction.onClick} className="size-8 text-(--muted)"><Plus size={16} aria-hidden /></Button></DelayedTooltip> : null}
           </div>

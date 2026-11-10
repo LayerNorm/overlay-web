@@ -55,6 +55,13 @@ test('secondary destinations are behind More; header actions and scope stay in t
   assert.doesNotMatch(render({ items: items.slice(0, 3), panelAction: null }), /aria-label="More"|aria-label="New agent"/)
 })
 
+test('activity is an accessible toggle before search, not a destination', () => {
+  const html = render({ activityOnly: true, onToggleActivity: noop })
+  assert.match(html, /aria-label="Show activity only" aria-pressed="true"/)
+  assert.ok(html.indexOf('aria-label="Show activity only"') < html.indexOf('aria-label="Search agents"'))
+  assert.doesNotMatch(render(), /Show activity only/)
+})
+
 test('active destination toggles without selecting or resetting its current thread', () => {
   const selected: string[] = []
   const collapsed: boolean[] = []
@@ -69,6 +76,18 @@ test('active destination toggles without selecting or resetting its current thre
   selectDoubleSidebarItem({ ...active, disabled: true }, true, (next) => collapsed.push(next))
   assert.deepEqual(selected, ['agents'])
   assert.deepEqual(collapsed, [true, false, false])
+})
+
+test('active Chats selects a new draft and keeps the contextual panel open', () => {
+  for (const initiallyCollapsed of [false, true]) {
+    const selected: string[] = []
+    const collapsed: boolean[] = []
+    selectDoubleSidebarItem({ ...items[2], active: true, onSelect: () => selected.push('draft') }, initiallyCollapsed, (next) => collapsed.push(next))
+    assert.deepEqual(selected, ['draft'])
+    assert.deepEqual(collapsed, [false])
+    selectDoubleSidebarItem({ ...items[2], active: true, disabled: true }, initiallyCollapsed, (next) => collapsed.push(next))
+    assert.deepEqual(collapsed, [false])
+  }
 })
 
 test('work keeps view navigation plus separately rendered task groups', () => {

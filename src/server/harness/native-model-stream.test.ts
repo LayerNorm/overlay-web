@@ -20,7 +20,7 @@ const reference: HarnessModelReference = { modelId: 'openrouter/free', credentia
     principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
     agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
   receiptId: 'model:0', memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request', streamToDelivery: true,
-  inputTokenBudget: 2_000, maxOutputTokens: 100, contextWindow: null,
+  maxOutputTokens: 100, contextWindow: null,
 } }
 const message = { _id: 'answer', turnId: 'turn', authorKind: 'agent', authorPrincipalId: 'agent-principal', status: 'generating', content: '', parts: [] }
 const finish: LanguageModelV4StreamPart = { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: {
@@ -161,4 +161,18 @@ test('live text remains bounded while provider output is untouched', async () =>
   expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
   expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('\n\nMore o')
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('old secret')
+})
+
+test('a call continuing cut-off output joins the delivery text without a paragraph break', async () => {
+  mocks.list.mockResolvedValue([{ ...message, content: '22. The Thames Barrier.\n23', parts: [{ type: 'text', text: '22. The Thames Barrier.\n23' }] }])
+  const continued = { ...reference, native: { ...reference.native!, continuesPreviousOutput: true } }
+  await drain(await projectNativeHarnessStream(continued, source([text('. The Tagus estuary barrier.'), finish])))
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible).toBe('. The Tagus estuary barrier.')
+  const parts = mocks.append.mock.calls.at(-1)![0].parts as Array<{ type: string; text?: string }>
+  expect(parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(['22. The Thames Barrier.\n23. The Tagus estuary barrier.'])
+
+  mocks.append.mockClear()
+  await drain(await projectNativeHarnessStream(reference, source([text('Done.'), finish])))
+  expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('\n\nDone.')
 })

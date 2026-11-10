@@ -281,22 +281,11 @@ export class ActContextService {
       }
     })()
 
-    const [effectiveMemories, enabledSkills, memoryProfile] = await Promise.all([
+    const baseContextTask = Promise.all([
       memoriesTask,
       skillsTask,
       memoryProfileTask,
     ])
-
-    const mentionsContextTask = externalContextEnabled
-      ? (async () => {
-          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
-          return await resolveMentionsContext(args.mentions, {
-            userId: args.userId,
-            serverSecret: args.serverSecret,
-            enabledSkills,
-          })
-        })()
-      : Promise.resolve('')
 
     const autoRetrievalTask: Promise<{
       extension: string
@@ -349,6 +338,18 @@ export class ActContextService {
             })
           })()
         : Promise.resolve(emptyDocumentContextBundle)
+
+    const [effectiveMemories, enabledSkills, memoryProfile] = await baseContextTask
+    const mentionsContextTask = externalContextEnabled
+      ? (async () => {
+          const { resolveMentionsContext } = await import('@/server/knowledge/mention-resolver')
+          return await resolveMentionsContext(args.mentions, {
+            userId: args.userId,
+            serverSecret: args.serverSecret,
+            enabledSkills,
+          })
+        })()
+      : Promise.resolve('')
 
     const [autoRetrievalBundle, mentionsContext, docContextBundle] =
       await Promise.all([

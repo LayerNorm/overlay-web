@@ -39,8 +39,9 @@ export function useScopeFollowsTask(item: WorkItem | undefined) {
     const next = new URLSearchParams(params?.toString() ?? '')
     next.delete('scope')
     const query = next.toString()
-    const route = buildWorkspaceHref(null, pathname, item.scope)
-    router.replace(`${route}${query ? `?${query}` : ''}`, { scroll: false })
+    // The href builder merges the task's own query with the scope it adds; appending it afterwards produced
+    // `?scope=personal?task=…`, which dropped the open task and fell back to the other scope.
+    router.replace(buildWorkspaceHref(null, `${pathname}${query ? `?${query}` : ''}`, item.scope), { scroll: false })
   }, [buildWorkspaceHref, item, params, pathname, router, scope])
   return scopeMatches
 }

@@ -192,6 +192,7 @@ export function SecondaryPanelResourceList({
   renderFilesPanel,
   renderAgentsPanel,
   onNavigate,
+  activityOnly = false,
   section = false,
 }: {
   panelKind: SecondaryPanelKind
@@ -204,6 +205,7 @@ export function SecondaryPanelResourceList({
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderAgentsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   onNavigate: () => void
+  activityOnly?: boolean
   section?: boolean
 }) {
   return (
@@ -213,6 +215,7 @@ export function SecondaryPanelResourceList({
           onNavigate,
           view: chatsView,
           section,
+          activityOnly,
         })
         : null}
       {panelKind === 'files' || panelKind === 'notes' ? (
@@ -222,12 +225,13 @@ export function SecondaryPanelResourceList({
       ) : null}
       {panelKind === 'agents' ? (
         renderAgentsPanel
-          ? renderAgentsPanel({ onNavigate })
+          ? renderAgentsPanel({ onNavigate, activityOnly })
           : <AgentsInlinePanel
             workspaceId={activeWorkspaceId}
             baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents') : undefined}
             view={agentsView}
             onNavigate={onNavigate}
+            activityOnly={activityOnly}
           />
       ) : null}
       {panelKind === 'automations' && renderAutomationsPanel

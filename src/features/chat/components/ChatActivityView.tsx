@@ -28,17 +28,6 @@ const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: 
   { value: 'reactions', label: 'Reactions', icon: Smile },
 ]
 
-const EMPTY_STATES: Record<
-  WorkspaceNotificationFilter,
-  { title: string; description: string }
-> = {
-  all: { title: 'No activity yet', description: 'You are all caught up.' },
-  unread: { title: 'Nothing unread', description: 'New unread activity will appear here.' },
-  mentions: { title: 'No mentions', description: 'Mentions from people and agents will appear here.' },
-  threads: { title: 'No thread replies', description: 'Replies in threads you follow will appear here.' },
-  reactions: { title: 'No reactions', description: 'Reactions to your messages will appear here.' },
-}
-
 function notificationIcon(type: WorkspaceNotification['type']) {
   if (type === 'mention') return <AtSign size={13} />
   if (type === 'thread') return <MessageCircle size={13} />
@@ -80,7 +69,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     if (!notification.readAt) markNotificationsRead([notification.id])
     if (!notification.conversationId) return
     if (notification.conversationState === 'archived') {
-      const workspaceId = readWorkspaceIdFromPath(pathname)
+      // The chat lives in the notification's workspace; handle-based routes carry no id to read.
+      const workspaceId = notification.workspaceId || readWorkspaceIdFromPath(pathname)
       const archivedBase = workspaceId
         ? buildWorkspaceHref(workspaceId, '/app/archived')
         : '/app/archived'
@@ -131,9 +121,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
           </div>
         ) : notifications.length === 0 ? (
           <ChatSurfaceEmptyState
-            icon={Inbox}
-            title={EMPTY_STATES[filter].title}
-            description={EMPTY_STATES[filter].description}
+            title="No activity yet"
+            description=""
           />
         ) : (
           <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">

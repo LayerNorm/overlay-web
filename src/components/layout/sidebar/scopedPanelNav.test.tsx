@@ -4,7 +4,6 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { InlineNavChildren } from '@/components/layout/AppSidebarInlinePanels'
 import { buildWorkspaceHandleHref } from '@/shared/workspaces/routing'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { chatScopeForView, resolveSidebarRouteState, scopePanelAction, type PanelCreateRules } from './appSidebarNav'
 import { buildChatPanelNav, resolveRecentChatHref } from './chatPanelNav'
@@ -308,7 +307,6 @@ test('solo Workspace AI chats stay under Workspace scope', async () => {
   assert.deepEqual(workspaceNav.items.find((item) => item.id === 'workspace')?.children?.map((item) => item.id), [
     'workspace:workspace-chats',
     'workspace:channels',
-    'workspace:activity',
   ])
 
   await nav.onSelect('workspace')

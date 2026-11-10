@@ -1,10 +1,9 @@
 import 'server-only'
 
 import {
-  finalizeProviderBudgetReservation,
+  chargeProviderUsage,
+  ensureProviderBudgetNotLow,
   getPayerEntitlements,
-  reserveProviderBudget,
-  type ProviderUsageEvent,
 } from '@/server/billing/billing-runtime'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
@@ -16,16 +15,12 @@ import { verifyAgentGatewayToken, type AgentGatewayTokenClaims } from './token'
  *
  * Boxes get `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` pointed here plus a scoped
  * gateway token, so `claude`, `codex`, `opencode`, etc. authenticate through
- * Overlay instead of holding real provider keys. Every upstream call is
- * reserved against the workspace/agent budget before it leaves and finalized
- * with the provider-reported token usage afterward — the same reserve/finalize
- * pipeline chat and sandbox metering use.
+ * Overlay instead of holding real provider keys. Before each upstream call the
+ * workspace must have at least 2% of its budget left; nothing is held. The
+ * provider-reported token usage is charged directly afterward.
  */
 
-const DEFAULT_RESERVE_USD = 0.25
 const FALLBACK_USAGE_USD = 0.05
-const ESTIMATED_INPUT_TOKENS = 32_000
-const MAX_RESERVE_OUTPUT_TOKENS = 200_000
 const UPSTREAM_TIMEOUT_MS = 280_000
 
 type GatewayProviderId = 'anthropic' | 'openai'
@@ -99,11 +94,6 @@ function extractToken(request: Request, upstream: GatewayUpstream): string | nul
   return null
 }
 
-function reserveUsd(): number {
-  const configured = Number(process.env.OVERLAY_AGENT_GATEWAY_RESERVE_USD)
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_RESERVE_USD
-}
-
 function fallbackUsageUsd(): number {
   const configured = Number(process.env.OVERLAY_AGENT_GATEWAY_FALLBACK_USD)
   return Number.isFinite(configured) && configured >= 0 ? configured : FALLBACK_USAGE_USD
@@ -130,14 +120,6 @@ export async function pricedModelId(provider: GatewayProviderId, rawModel: strin
     if (cost !== null) return candidate
   }
   return null
-}
-
-async function estimateReserveUsd(modelId: string | null, maxOutputTokens: number): Promise<number> {
-  const floor = reserveUsd()
-  if (!modelId) return floor
-  const outputTokens = Math.min(Math.max(maxOutputTokens, 1), MAX_RESERVE_OUTPUT_TOKENS)
-  const estimate = await calculateLanguageModelTokenCostOrNull(modelId, ESTIMATED_INPUT_TOKENS, 0, outputTokens)
-  return estimate !== null && estimate > 0 ? Math.max(estimate, floor) : floor
 }
 
 function parseJsonBody(raw: string): Record<string, unknown> | null {
@@ -252,44 +234,40 @@ export async function consumeSseUsage(stream: ReadableStream<Uint8Array>, provid
   return acc.inputTokens + acc.cachedInputTokens + acc.outputTokens > 0 ? acc : null
 }
 
-async function finalizeUsage(params: {
+/** Charges the call's reported usage. A call with no reported usage charges nothing. */
+async function chargeUsage(params: {
   claims: AgentGatewayTokenClaims
   modelId: string | null
-  reservationId: string | null | undefined
   requestedModel: string
   usage: ParsedTokenUsage | null
 }) {
-  const costUsd = params.usage && params.modelId
+  if (!params.usage) return
+  const costUsd = params.modelId
     ? await calculateLanguageModelTokenCostOrNull(
         params.modelId,
         params.usage.inputTokens,
         params.usage.cachedInputTokens,
         params.usage.outputTokens,
       ) ?? fallbackUsageUsd()
-    : params.usage
-      ? fallbackUsageUsd()
-      : 0
-  if (params.usage && !params.modelId) {
+    : fallbackUsageUsd()
+  if (!params.modelId) {
     logger.warn('[agent-gateway] unpriced model; billed fallback', { model: params.requestedModel.slice(0, 120) })
   }
-  const events: ProviderUsageEvent[] | undefined = params.usage
-    ? [{
-        type: 'agent',
-        modelId: params.modelId ?? params.requestedModel,
-        inputTokens: params.usage.inputTokens,
-        outputTokens: params.usage.outputTokens,
-        cachedTokens: params.usage.cachedInputTokens,
-        cost: costUsd,
-        timestamp: Date.now(),
-      }]
-    : undefined
-  await finalizeProviderBudgetReservation({
+  await chargeProviderUsage({
     userId: params.claims.userId,
-    reservationId: params.reservationId,
-    actualProviderCostUsd: costUsd,
-    events,
+    workspaceId: params.claims.workspaceId,
+    programmaticSubjectId: params.claims.agentId ? `agent:${params.claims.agentId}` : undefined,
+    operationId: `agent-gateway:${globalThis.crypto.randomUUID()}`,
+    providerCostUsd: costUsd,
+    usage: {
+      kind: 'agent',
+      modelId: params.modelId ?? params.requestedModel,
+      inputTokens: params.usage.inputTokens,
+      outputTokens: params.usage.outputTokens,
+      cachedTokens: params.usage.cachedInputTokens,
+    },
   }).catch((error) => {
-    logger.error('[agent-gateway] usage finalize failed', {
+    logger.error('[agent-gateway] usage charge failed', {
       error: error instanceof Error ? error.message : String(error),
     })
   })
@@ -321,7 +299,6 @@ export async function handleAgentGatewayRequest(
   const bodyText = request.method === 'POST' ? await request.text() : ''
   const body = bodyText ? parseJsonBody(bodyText) : null
   const requestedModel = typeof body?.model === 'string' ? body.model : ''
-  const maxOutputTokens = numericField(body?.max_tokens ?? body?.max_completion_tokens) || 8_192
 
   const programmaticSubjectId = claims.agentId ? `agent:${claims.agentId}` : undefined
   const entitlements = await getPayerEntitlements({
@@ -334,33 +311,27 @@ export async function handleAgentGatewayRequest(
   }
 
   const modelId = requestedModel ? await pricedModelId(provider, requestedModel) : null
-  const reservation = await reserveProviderBudget({
+  const check = await ensureProviderBudgetNotLow({
     userId: claims.userId,
     entitlements,
-    providerCostUsd: await estimateReserveUsd(modelId, maxOutputTokens),
     kind: 'agent',
     modelId: modelId ?? requestedModel,
     operationId: `agent-gateway:${provider}`,
-    requestFingerprint: `${claims.workspaceId}:${claims.agentId ?? claims.userId}:${provider}`,
     workspaceId: claims.workspaceId,
     programmaticSubjectId,
   })
-  if (!reservation.ok) {
-    return errorShape(provider, reservation.status, 'billing_error',
-      'Overlay budget is exhausted; the agent cannot make model calls until budget is added.')
+  if (!check.ok) {
+    return errorShape(provider, check.status, 'billing_error',
+      'Less than 2% of the Overlay workspace budget is left; the agent cannot make model calls until budget is added.')
   }
 
   const serverKey = await getServerProviderKey(upstream.keyProvider)
   if (!serverKey) {
-    await finalizeProviderBudgetReservation({
-      userId: claims.userId, reservationId: reservation.reservationId, actualProviderCostUsd: 0,
-    }).catch((_error) => undefined)
     return errorShape(provider, 503, 'api_error', 'Model provider is not configured on this Overlay deployment.')
   }
 
   return respondWithUpstream({
-    request, provider, upstream, path, bodyText, claims, modelId,
-    reservationId: reservation.reservationId, requestedModel, serverKey,
+    request, provider, upstream, path, bodyText, claims, modelId, requestedModel, serverKey,
   })
 }
 
@@ -372,11 +343,10 @@ async function respondWithUpstream(args: {
   bodyText: string
   claims: AgentGatewayTokenClaims
   modelId: string | null
-  reservationId: string | null | undefined
   requestedModel: string
   serverKey: string
 }): Promise<Response> {
-  const { provider, upstream, claims, modelId, reservationId, requestedModel } = args
+  const { provider, upstream, claims, modelId, requestedModel } = args
   const headers = new Headers(args.request.headers)
   for (const name of HOP_BY_HOP_HEADERS) headers.delete(name)
   if (provider === 'anthropic') headers.set('x-api-key', args.serverKey)
@@ -392,9 +362,6 @@ async function respondWithUpstream(args: {
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     })
   } catch (error) {
-    await finalizeProviderBudgetReservation({
-      userId: claims.userId, reservationId, actualProviderCostUsd: 0,
-    }).catch((_error) => undefined)
     return errorShape(provider, 502, 'api_error', `Upstream model call failed: ${error instanceof Error ? error.message : 'unreachable'}`)
   }
 
@@ -406,14 +373,13 @@ async function respondWithUpstream(args: {
 
   const isSse = (upstreamResponse.headers.get('content-type') ?? '').includes('text/event-stream')
   if (!upstreamResponse.body) {
-    await finalizeUsage({ claims, modelId, reservationId, requestedModel, usage: null })
     return new Response(null, { status: upstreamResponse.status, headers: responseHeaders })
   }
 
   if (isSse) {
     const [clientBranch, meterBranch] = upstreamResponse.body.tee()
-    void consumeSseUsage(meterBranch, provider).then((usage) => finalizeUsage({
-      claims, modelId, reservationId, requestedModel, usage,
+    void consumeSseUsage(meterBranch, provider).then((usage) => chargeUsage({
+      claims, modelId, requestedModel, usage,
     }))
     return new Response(clientBranch, { status: upstreamResponse.status, headers: responseHeaders })
   }
@@ -423,6 +389,6 @@ async function respondWithUpstream(args: {
   const usage = parsed
     ? provider === 'anthropic' ? usageFromAnthropicJson(parsed) : usageFromOpenAiJson(parsed)
     : null
-  await finalizeUsage({ claims, modelId, reservationId, requestedModel, usage })
+  await chargeUsage({ claims, modelId, requestedModel, usage })
   return new Response(raw, { status: upstreamResponse.status, headers: responseHeaders })
 }

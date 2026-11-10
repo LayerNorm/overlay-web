@@ -135,7 +135,8 @@ export async function projectNativeHarnessStream(
     const markers = TEXTUAL_TOOL_CALL_MARKERS
     const appendVisibleText = (text: string) => {
       if (!text || remaining <= 0) return
-      const visible = `${firstText && message.content.trim() ? '\n\n' : ''}${text}`.slice(0, remaining)
+      const separator = firstText && message.content.trim() && native.continuesPreviousOutput !== true ? '\n\n' : ''
+      const visible = `${separator}${text}`.slice(0, remaining)
       if (!visible) return
       firstText = false
       remaining -= visible.length

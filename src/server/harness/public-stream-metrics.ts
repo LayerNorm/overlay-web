@@ -1,0 +1,20 @@
+import 'server-only'
+
+export type PublicStreamMetric = {
+  event: 'admission_accepted' | 'workflow_claimed' | 'preparation_complete' | 'model_dispatch'
+  runId: string
+  generation: number
+  modelId?: string
+  receiptId?: string
+  durationMs?: number
+}
+
+export function recordPublicStreamMetric(metric: PublicStreamMetric): void {
+  try {
+    // This helper also runs in Workflow's sandbox, which cannot import AsyncLocalStorage.
+    // eslint-disable-next-line no-console
+    console.info('[harness] unified public stream', metric)
+  } catch (_error) {
+    // Telemetry is best-effort and must not affect the workflow.
+  }
+}

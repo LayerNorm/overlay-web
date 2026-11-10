@@ -79,6 +79,16 @@ export interface ActRouteDependencies {
   entitlementService?: Pick<ActEntitlementService, 'gateModelAccess'>
 }
 
+function recordActPhase(phase: string, requestId: string, startedAt: number) {
+  try {
+    logger.info('[conversations/act] orchestration_phase', {
+      phase, requestId, durationMs: Math.round(performance.now() - startedAt),
+    })
+  } catch (_error) {
+    // Instrumentation must not affect turn admission.
+  }
+}
+
 export async function executeActTurn(
   request: NextRequest,
   context: AppApiRouteContext,
@@ -200,6 +210,7 @@ export async function executeActTurn(
     const requestedToolIds = normalizeChatToolRequestIds(rawRequestedToolIds)
     const memoryEnabled = rawMemoryEnabled !== false
     const authorizationService = dependencies.authorizationService ?? overlayContext.authorizationService
+    const authorizationStartedAt = performance.now()
     const dynamicAuthorization = await authorizeActRequest({
       authorization: authorizationService,
       context,
@@ -228,6 +239,7 @@ export async function executeActTurn(
       paid,
       runtimeEntitlements,
     } = modelGate
+    recordActPhase('authorization', requestId, authorizationStartedAt)
     const readiness = decidePersonalActRoute({
       authType: auth.authType,
       automationExecution,
@@ -378,6 +390,7 @@ export async function executeActTurn(
       })
       return undefined
     })
+    const contextStartedAt = performance.now()
     const turnContextTask = actContextService.loadTurnContext({
       accessToken,
       conversationId: cid,
@@ -408,10 +421,8 @@ export async function executeActTurn(
         userId,
         accessToken,
         entitlements: runtimeEntitlements,
-        idempotencyKey: context.requestIdempotencyKey,
         operationId: 'conversation.act.media-intent',
         programmaticSubjectId: billingProgrammaticSubjectId,
-        requestFingerprint: context.requestFingerprint,
         workspaceId: billingWorkspaceId,
       })
     })()
@@ -439,10 +450,12 @@ export async function executeActTurn(
       skillsContext,
       sourceCitationMap,
     } = turnContext
+    recordActPhase('context', requestId, contextStartedAt)
 
     const indexedNote = hasPreloadedDocContext
       ? indexedFilesSystemNotePreloaded(indexedAttachmentList)
       : indexedFilesSystemNote(indexedAttachmentList)
+    const historyStartedAt = performance.now()
     let messagesForModel = await actContextService.buildMessagesForModel({
       requestMessages: uiMessages,
       latestUserMessage,
@@ -456,9 +469,11 @@ export async function executeActTurn(
     messagesForModel = sanitizeUiMessagesForModelApi(
       mergeReplyContextIntoMessagesForModel(messagesForModel, replyContextForModel),
     )
+    recordActPhase('history', requestId, historyStartedAt)
     const userSystemPromptExtension = buildSecondarySystemPromptExtension(systemPrompt)
 
 	    if (_ttftDebug) _tPrep = performance.now()
+    const toolsStartedAt = performance.now()
     const agentRunTask = agentRunService.startPersonalWorkflow({
       conversationId: cid,
       modelId: effectiveModelId,
@@ -495,7 +510,8 @@ export async function executeActTurn(
 	        workspaceId: billingWorkspaceId,
 	        billingProgrammaticSubjectId,
 	      }),
-		    ])
+	    ])
+    recordActPhase('tools', requestId, toolsStartedAt)
     if (!agentRun) {
       throw new Error('Failed to establish AgentRun before generation')
     }
@@ -529,11 +545,11 @@ export async function executeActTurn(
 
     if (!agentRun || !cid) throw new Error('Personal harness requires an admitted AgentRun.')
     const personalAgentRun = agentRun
-    return await startPersonalHarnessTurn({
+    const admissionStartedAt = performance.now()
+    const admissionResponse = await startPersonalHarnessTurn({
         agentRun: personalAgentRun,
         auth,
         budget: {
-          maxProviderCostUsd: harnessBudget?.maxProviderCostUsd,
           durationMs: harnessBudget?.durationMs
             ?? (actAbortTimeoutMs !== undefined
               ? resolveActAbortTimeoutMs({ requestedTimeoutMs: actAbortTimeoutMs })
@@ -562,6 +578,7 @@ export async function executeActTurn(
           })
         },
         sourceCitations: sourceCitationMap,
+        signal: request.signal,
         tools,
         toolingContext: {
           accountAllowedConnectorIds: [...accountAllowedConnectorIds],
@@ -582,6 +599,8 @@ export async function executeActTurn(
         },
         workspaceId: billingWorkspaceId,
       })
+    recordActPhase('admission', requestId, admissionStartedAt)
+    return admissionResponse
   } catch (error) {
     const serviceResponse = actConversationErrorResponse(error)
     if (serviceResponse) {

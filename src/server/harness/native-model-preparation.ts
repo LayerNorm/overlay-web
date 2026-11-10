@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnessContext } from './native-access'
-import { quoteHarnessModel } from './model-quote'
+import { prepareHarnessModelCallOptions } from './model-call-options'
 import type { HarnessModelPurpose, PreparedHarnessModel } from './model-ports'
 
 export async function prepareNativeHarnessModel(input: {
@@ -10,12 +10,14 @@ export async function prepareNativeHarnessModel(input: {
   context: NativeHarnessContext
   receiptId: string
   purpose?: HarnessModelPurpose
+  publicStreamVersion?: 1
+  continuesPrevious?: boolean
   options: LanguageModelV4CallOptions
 }): Promise<PreparedHarnessModel> {
   'use step'
 
   const context = await refreshNativeHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
-  const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
+  const { options, contextWindow, maxOutputTokens } = await prepareHarnessModelCallOptions({
     modelId: input.context.modelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
   })
   const access = input.access
@@ -24,6 +26,7 @@ export async function prepareNativeHarnessModel(input: {
       modelId: input.context.modelId, credentialOwnerId: access.actorUserId,
       sessionId: access.conversationId,
       ...(input.purpose ? { purpose: input.purpose } : {}),
+      ...(input.publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
       native: {
         access: {
           actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
@@ -34,10 +37,12 @@ export async function prepareNativeHarnessModel(input: {
           userMessageId: access.userMessageId, assistantMessageId: access.assistantMessageId, turnId: access.turnId,
         },
         receiptId: input.receiptId, memoryEnabled: input.context.memoryEnabled, sharedRoom: input.context.sharedRoom,
-        ...(input.purpose === 'response' && access.runId === `workspace:${access.agentRunId}` ? { streamToDelivery: true } : {}),
-        requestFingerprint: input.context.requestFingerprint, inputTokenBudget, maxOutputTokens, contextWindow,
+        ...(input.purpose === 'response' && access.runId === `workspace:${access.agentRunId}` ? {
+          streamToDelivery: true, ...(input.continuesPrevious ? { continuesPreviousOutput: true } : {}),
+        } : {}),
+        requestFingerprint: input.context.requestFingerprint, maxOutputTokens, contextWindow,
       },
     },
-    options, contextWindow, estimatedCostMicros,
+    options, contextWindow,
   }
 }

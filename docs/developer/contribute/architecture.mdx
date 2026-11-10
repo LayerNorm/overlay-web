@@ -203,24 +203,18 @@ Migration balance parity sums only active `reserved` and `reconcile_required` ro
 
 The app bootstrap and subscription read use that same resolver. Active members of an eligible organization therefore receive the workspace account's plan and budget for model gating, while mutating billing operations remain restricted to owners and admins. Workspace-scoped clients send the active workspace header explicitly; a member's personal subscription is not treated as the organization's entitlement or payment fallback.
 
-All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution are bounded to 12 tool steps per agent turn and 50,000 response characters; file ingestion is bounded to 20 requests per user per hour plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
+All enabled hosted-cost boundaries now pass the resource workspace plus a member or programmatic subject into the resolver. This includes shared chat and named agents, Convex knowledge embeddings, browser/Daytona, hosted media and transcription, gateway search, and automation/API execution. Scheduled automations use `automation:{id}` and API keys use `api-key:{id}`. Vercel Workflow overhead is a separate 20-event estimate charged at the provider event rate plus `markup_25_v1`. Integrations, functions, and MCP execution have no per-turn step limit; the workspace budget stops the work, and an MCP result is shortened only past 400,000 characters. File ingestion has an abuse rate limit (500 requests per user and 1,000 per IP per hour) plus the plan storage cap. `src/server/billing/billable-feature-coverage.ts` is the launch inventory and its test fails when a category lacks metering or a concrete quota.
 
-Chat reservations price the full 12-step model-call envelope, including the
-per-step 8,192 output-token ceiling. A tool loop must not reserve only its first
-model call: later completed steps would otherwise exceed the reservation and be
-quarantined even when provider usage is valid.
-
-Box is the managed sandbox provider (Vercel Sandbox and Daytona were removed; E2B is planned for self-hosting). Agent-environment leases no longer hold a
-worst-case 24-hour reservation: `ManagedAgentSandboxBilling.reserve` takes only a small bootstrap
-hold (the low-balance floor plus a short coverage window), and a per-lease meter debits the wallet
-periodically while the sandbox runs. Each tick reads provider `instance.usage()` counters, computes
+Box is the managed sandbox provider (Vercel Sandbox and Daytona were removed; E2B is planned for self-hosting). Machines hold nothing in advance: a machine
+starts only when its workspace has at least 2% of its budget left, and a per-lease meter charges
+observed usage periodically while the sandbox runs. Each tick reads provider `instance.usage()` counters, computes
 the delta against a cursor persisted on the lease (`usage.meteredUsage` + `meterVersion`), and
 commits debit + cursor atomically through `meterSandboxLease` on the connected-agent repository —
-retries replay as `lease_conflict` instead of double-charging. When the payer's remaining balance
-drops under the floor (`OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS`, default $1) or a tick debit is
-declined, the lease flips to `stopping`, pending commands and queued/running turns are cancelled
+retries replay as `lease_conflict` instead of double-charging. When a charge leaves the workspace
+under 2% of its budget (after one automatic top-up attempt), uses up an admin spend limit, or a
+tick is refused, the lease flips to `stopping`, pending commands and queued/running turns are cancelled
 with a `usage_limited` terminal error, and the provider sandbox is deleted by the reaper pass; a
-turn's settle is just the final meter tick plus bootstrap-hold release. All metering and cleanup
+turn's settle is just the final meter tick. All metering and cleanup
 reconnects use `{resume:false}` — passive reads never wake an idle-stopped sandbox. Some providers
 only publish cumulative usage counters once a session stops, so while a sandbox runs the
 meter bills the elapsed window against a virtual wall-time cursor instead; teardown paths
@@ -229,9 +223,11 @@ against the virtual cursor, then delete — session usage is never lost. The met
 the lease's idle window: Box has no native idle timer, so a running sandbox whose lease shows no activity for
 `usage.idleTimeoutMs` (default 15 minutes) is provider-stopped while the lease stays `running` —
 every turn-slice acquire heartbeats `usage.lastActiveAt`, so an actively working sandbox never
-cools mid-turn, and the next turn's `resume:true` acquire wakes it again. A `running` lease past
-`reservedUntil` (the 24-hour hard cap) is reaped on the next tick regardless of whether its
-sandbox still answers. The meter driver runs from
+cools mid-turn, and the next turn's `resume:true` acquire wakes it again. A Computer lease's
+`reservedUntil` is a rolling session window, not a cap: while the Computer is in use (recent
+activity, an open action or a live run) the meter pushes it forward, and only the idle check stops
+the machine. A legacy environment lease (none are created any more) is still reaped once it runs
+past `reservedUntil`. The meter driver runs from
 the BFF `agent-environments/operations/reconcile` route (Convex cron calls it).
 The standalone sandbox route keeps the worst-case reservation model
 because it always denies outbound network access and can make a byte-exact provider-cost promise;
@@ -242,9 +238,7 @@ conservative defaults rather than silently becoming zero.
 
 Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. The Convex Stripe webhook preserves the personal metadata path, deduplicates event IDs, and rejects stale subscription state with `providerEventCreatedAt`.
 
-Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron exposes queue depth and oldest age but never guesses an ambiguous charge.
-
-Finalized usage preserves retail cost and actual provider cost independently. `UsageRepository.getBillingAccountOperationalReport` reports retail credits, actual cost, realized margin, cost coverage, reconcile queue depth, and the count older than the 15-minute response SLA. The workspace billing UI exposes this only to owners and admins.
+Paid usage is never estimated or held before a call. Each paid call checks the workspace balance first (refusing only when less than 2% of the budget is left, after one automatic top-up attempt) and charges the actual cost afterwards through `UsageRepository.recordBatch`, keyed by a unique operation id. The `budgetReservations` table holds only historical rows; `convex/billing/retireHolds.ts` released the holds left from before this change.
 
 Important code:
 
@@ -264,12 +258,10 @@ Important code:
 - `convex/billing/accountSubscriptions.ts`
 - `convex/billing/spendLimits.ts`
 - `convex/platform/usage.ts`
-- `src/shared/billing/usage-reconciliation.ts`
 - `src/server/usage/UsageRepository.ts`
-- `scripts/qa/usage-reconciliation-audit.ts`
 
 Personal account plans and their verification script are retired. Billing QA
-targets workspace plans, balances, and holds through
+targets workspace plans, balances, and payer resolution through
 `src/server/app-data/contracts/convex-workspace-billing-provider-contract.test.ts`.
 
 ## Storage

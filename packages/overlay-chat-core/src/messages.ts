@@ -580,7 +580,7 @@ export const USAGE_EXHAUSTED_LABEL =
 
 export function isUsageExhaustedError(text: string | null | undefined): boolean {
   if (!text) return false
-  return /insufficient_credits|insufficient_budget|payment_required|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|usage credit|workspace billing is required|subscribe to this workspace|top up your account|you('re| are) out of credits|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
+  return /insufficient_credits|insufficient_budget|payment_required|no budget remaining|budget is exhausted|budget exhausted|of its (usage )?budget left|paid budget is empty|add budget|usage credit|workspace billing is required|subscribe to this workspace|top up your account|you('re| are) out of credits|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
     text,
   )
 }

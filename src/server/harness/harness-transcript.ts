@@ -14,6 +14,7 @@ import { stripTextualToolCalls } from './textual-tool-calls'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { HarnessAuthorizationError, HarnessPersistenceError } from './harness-diagnostics'
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
+import { joinStepTranscripts, keepCutOffTrailingWhitespace } from '@/shared/chat/step-text-join'
 
 function transcriptError(error: unknown): Error {
   if (error instanceof HarnessAuthorizationError || error instanceof HarnessPersistenceError) return error
@@ -69,9 +70,16 @@ export function publicHarnessStepPersistence(
     // into additional assistant narration at every journal boundary.
     persistence = { content: '', parts: persistence.parts.filter(part => part.type !== 'text') }
   }
+  const parts = persistence.parts.filter(part => part.type !== 'reasoning')
+  if (step.finishReason !== 'length') return { ...persistence, parts }
+  // The next model call continues this text, so keep the whitespace it stopped on.
+  const rawText = typeof step.text === 'string' ? step.text : ''
+  const lastText = parts.findLastIndex(part => part.type === 'text' && typeof part.text === 'string')
   return {
-    ...persistence,
-    parts: persistence.parts.filter(part => part.type !== 'reasoning'),
+    content: keepCutOffTrailingWhitespace(rawText, persistence.content),
+    parts: parts.map((part, index) => index === lastText
+      ? { ...part, text: keepCutOffTrailingWhitespace(rawText, part.text as string) } : part),
+    outputLimitReached: true,
   }
 }
 
@@ -86,7 +94,7 @@ export async function writeSettledHarnessTranscriptStep(
     const repository = new ConvexHarnessRepository()
     const state = await repository.get(reference)
     if (!state) throw new HarnessAuthorizationError()
-    if (state.policy.publicProgressVersion !== 1) return
+    if (state.policy.publicProgressVersion !== 1 && state.policy.publicStreamVersion !== 1) return
     await repository.writeTranscriptStep({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
@@ -94,7 +102,7 @@ export async function writeSettledHarnessTranscriptStep(
       receiptId,
       stepNumber,
       persistence: reference.runId.startsWith('personal:')
-        ? withTranscriptPartIds(reference.runId, receiptId, persistence) : persistence,
+        ? withTranscriptPartIds(reference.runId, receiptId, persistence, state.executionGeneration ?? 0) : persistence,
     })
   } catch (error) {
     throw transcriptError(error)
@@ -110,7 +118,7 @@ export async function readSettledHarnessTranscriptPage(
     const repository = new ConvexHarnessRepository()
     const state = await repository.get(reference)
     if (!state) throw new HarnessAuthorizationError()
-    if (state.policy.publicProgressVersion !== 1) return { steps: [], cursor: '', isDone: true }
+    if (state.policy.publicProgressVersion !== 1 && state.policy.publicStreamVersion !== 1) return { steps: [], cursor: '', isDone: true }
     const page = await repository.listTranscriptSteps({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
@@ -120,7 +128,7 @@ export async function readSettledHarnessTranscriptPage(
     return reference.runId.startsWith('personal:') ? {
       ...page,
       steps: page.steps.map(step => ({
-        ...step, persistence: withTranscriptPartIds(reference.runId, step.receiptId, step.persistence),
+        ...step, persistence: withTranscriptPartIds(reference.runId, step.receiptId, step.persistence, step.executionGeneration ?? 0),
       })),
     } : page
   } catch (error) {
@@ -202,10 +210,8 @@ export async function readSettledHarnessTranscript(
   const newestSequence = newestFirst[0]?.sequence ?? null
   const oldestSequence = newestFirst.at(-1)?.sequence ?? null
   const steps = newestFirst.reverse()
-  const persistence = compactHarnessTranscriptPersistence({
-    content: steps.map(step => step.persistence.content).filter(Boolean).join('\n\n'),
-    parts: steps.flatMap(step => step.persistence.parts),
-  })
+  const joined = joinStepTranscripts(steps.map(step => step.persistence))
+  const persistence = compactHarnessTranscriptPersistence({ content: joined.content, parts: joined.parts })
   return {
     persistence, steps, truncated,
     newestSequence,

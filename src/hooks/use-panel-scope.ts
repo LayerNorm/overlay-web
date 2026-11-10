@@ -29,9 +29,16 @@ function readSavedPanelScope(): PanelScope | null {
   }
 }
 
+// The remembered scope as last read in this tab, shared by every caller. Undefined until it has been read once, which
+// only happens after hydration, so server and first client renders still agree. Later mounts (route changes, remounts
+// keyed by workspace or scope) start from it instead of from "nothing remembered", so the scope never flips back to
+// Personal for a render and the page never asks for the wrong list.
+let savedSnapshot: { scope: PanelScope | null } | undefined
+
 /** Remembers the scope for the next page (the URL still carries it for the current one). */
 export function rememberPanelScope(scope: PanelScope): void {
   if (typeof window === 'undefined') return
+  savedSnapshot = { scope }
   try {
     window.localStorage.setItem(PANEL_SCOPE_STORAGE_KEY, scope)
   } catch {
@@ -41,16 +48,20 @@ export function rememberPanelScope(scope: PanelScope): void {
 }
 
 /**
- * The remembered scope, or null on the server, on the first render, and before anything was chosen.
+ * The remembered scope, and whether it has been read yet. Before the first read (on the server and during hydration)
+ * it is unknown, not Personal.
  *
- * It is read after mount rather than through useSyncExternalStore: a snapshot that differs from the server's during
- * hydration made the production app shell hang on its loading screen. Reading it in an effect keeps the first client
- * render identical to the server's; the saved scope applies right after.
+ * The first read happens after mount rather than through useSyncExternalStore: a snapshot that differs from the
+ * server's during hydration made the production app shell hang on its loading screen. Reading it in an effect keeps
+ * the first client render identical to the server's; every later mount starts from the shared snapshot.
  */
-export function useSavedPanelScope(): PanelScope | null {
-  const [saved, setSaved] = useState<PanelScope | null>(null)
+function useSavedPanelScopeState(): { saved: PanelScope | null; known: boolean } {
+  const [snapshot, setSnapshot] = useState(savedSnapshot)
   useEffect(() => {
-    const read = () => setSaved(readSavedPanelScope())
+    const read = () => {
+      savedSnapshot = { scope: readSavedPanelScope() }
+      setSnapshot(savedSnapshot)
+    }
     read()
     window.addEventListener('storage', read)
     window.addEventListener(CHANGED_EVENT, read)
@@ -59,17 +70,23 @@ export function useSavedPanelScope(): PanelScope | null {
       window.removeEventListener(CHANGED_EVENT, read)
     }
   }, [])
-  return saved
+  return { saved: snapshot?.scope ?? null, known: snapshot !== undefined }
+}
+
+/** The remembered scope, or null on the server, during hydration, and before anything was chosen. */
+export function useSavedPanelScope(): PanelScope | null {
+  return useSavedPanelScopeState().saved
 }
 
 /**
- * The scope every scoped page shows: `?scope=` in the URL, else the remembered choice, else Personal.
- * Pages that list resources read it here so they always agree with the secondary panel.
+ * The scope every scoped page shows: the URL's scope, else the remembered choice, else Personal. `known` is false
+ * only while the URL names no scope and the remembered choice has not been read yet (the hydration render); callers
+ * that redirect or load data wait for it instead of acting on a Personal guess.
  */
-export function usePanelScope(): PanelScope {
+export function usePanelScopeState(): { scope: PanelScope; known: boolean } {
   const pathname = usePathname() ?? ''
   const params = useSearchParams()
-  const saved = useSavedPanelScope()
+  const { saved, known: savedKnown } = useSavedPanelScopeState()
   const pathScope = readWorkspacePathScope(pathname)
   const scopeLessHandleRoot = /^\/w\/[^/]+\/?$/.test(pathname)
   const queryParams = new URLSearchParams(params?.toString() ?? '')
@@ -81,12 +98,20 @@ export function usePanelScope(): PanelScope {
   // A scope arriving in the URL (a shared link, a deep link) becomes the remembered one, so links inside the page that
   // carry no `scope` keep showing it.
   useEffect(() => {
-    if (scopeLessHandleRoot) return
+    if (scopeLessHandleRoot || !savedKnown) return
     const requested = pathScope ?? param
     if (requested && requested !== saved) rememberPanelScope(requested)
-  }, [param, pathScope, saved, scopeLessHandleRoot])
-  if (scopeLessHandleRoot) return 'personal'
-  return resolvePanelScope({ pathScope, param, saved })
+  }, [param, pathScope, saved, savedKnown, scopeLessHandleRoot])
+  if (scopeLessHandleRoot) return { scope: 'personal', known: true }
+  return {
+    scope: resolvePanelScope({ pathScope, param, saved }),
+    known: Boolean(pathScope ?? param) || savedKnown,
+  }
+}
+
+/** The selected scope; see usePanelScopeState for whether it is settled yet. */
+export function usePanelScope(): PanelScope {
+  return usePanelScopeState().scope
 }
 
 /** The `view` for a list request always follows the selected feature scope. */

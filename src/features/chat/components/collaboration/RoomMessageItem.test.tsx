@@ -129,6 +129,14 @@ test('streaming agent controls stay hidden until their own response is hovered o
   assert.match(html, /-ml-1\.5/)
 })
 
+test('a streaming agent reply shows one avatar, whose eyes move, and no second indicator', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Searching memory first.' }), 'Agent', false, true)
+  assert.doesNotMatch(html, /animate-pulse rounded-full/)
+  assert.match(html, /aria-label="Agent is responding"/)
+  const settled = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Agent')
+  assert.doesNotMatch(settled, /is responding/)
+})
+
 test('provider Markdown paths use saved Files ids while source text and external links stay intact', () => {
   const text = '[the briefing](briefing/INDEX.md) and [NASA](https://science.nasa.gov/earth/)'
   const message = record({ authorKind: 'agent', authorPrincipalId: 'agent', content: text, parts: [

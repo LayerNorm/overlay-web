@@ -1,5 +1,8 @@
 import { ConvexError, v, type ObjectType } from 'convex/values'
-import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { mutation, query, internalQuery, internalAction, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { makeFunctionReference } from 'convex/server'
+import { fetchAppCallback } from '../lib/appCallback'
+import { workDependenciesDone, scheduleReadyAssignment, releaseDependentsRef, dispatchReadyAssignmentRef } from '../lib/workDependencies'
 import type { Id } from '../_generated/dataModel'
 import { validateServerSecret } from '../lib/auth'
 import { insertCollaborationMessage } from '../collaboration/directMessages'
@@ -375,6 +378,31 @@ export const get = query({
   },
 })
 
+/**
+ * The active task whose assignment started an agent in this conversation, when the caller can read it. Agent tooling
+ * uses it to hand the assigned agent the tools for that one task.
+ */
+export const assignedTaskForConversation = query({
+  args: { ...auth, agentPrincipalId: v.string(), conversationId: v.string() },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, agentPrincipalId, conversationId }) => {
+    try {
+      await authorize({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const rows = await ctx.db.query('workItems')
+      .withIndex('by_workspaceId_assignee', (q) => q.eq('workspaceId', workspaceId).eq('assigneePrincipalId', agentPrincipalId))
+      .take(WORK_LIMITS.listCap)
+    const row = rows.find((candidate) => candidate.archivedAt === undefined
+      && candidate.assignmentExecution?.assigneePrincipalId === agentPrincipalId
+      && candidate.assignmentExecution.conversationId !== undefined
+      && String(candidate.assignmentExecution.conversationId) === conversationId)
+    if (!row) return null
+    const readable = await getReadableRow(ctx, { row, userId, workspaceId })
+    return readable ? String(readable._id) : null
+  },
+})
+
 /** A parent must be an active task in the same workspace and scope that the caller can see, and must not make a loop. */
 async function assertParent(ctx: MutationCtx, args: { id?: string; parentId: string; workspaceId: string; scope: 'personal' | 'workspace'; userId: string }) {
   const parent = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.parentId), userId: args.userId, workspaceId: args.workspaceId })
@@ -668,6 +696,10 @@ export async function updateWorkFor(ctx: MutationCtx, args: Omit<ObjectType<type
   for (const event of events) {
     await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, ...event })
   }
+  if (patch.status === 'done' && row.status !== 'done') {
+    await ctx.scheduler.runAfter(0, releaseDependentsRef, { workspaceId: row.workspaceId, completedId: String(row._id) })
+  }
+  if (patch.blockedBy !== undefined) await scheduleReadyAssignment(ctx, (await ctx.db.get(row._id))!)
   return await ctx.db.get(row._id)
 }
 
@@ -713,6 +745,9 @@ export const prepareAssignment = mutation({
       }
     } else if (row.updatedAt !== args.generation) {
       return null
+    }
+    if (!await workDependenciesDone(ctx, row)) {
+      return current ? { execution: current, claimed: false } : null
     }
 
     await assertAssignable(ctx, {
@@ -844,8 +879,57 @@ export async function moveWorkFor(ctx: MutationCtx, args: Omit<ObjectType<typeof
     await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, kind: 'status', data: { from: row.status, to: status } })
   }
   if (needsRebalance(rank)) await rebalanceColumn(ctx, row.workspaceId, status)
+  if (status === 'done' && row.status !== 'done') {
+    await ctx.scheduler.runAfter(0, releaseDependentsRef, { workspaceId: row.workspaceId, completedId: String(row._id) })
+  }
   return await ctx.db.get(row._id)
 }
+
+export const pendingDependentPage = internalQuery({
+  args: { workspaceId: v.string(), completedId: v.string(), cursor: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db.query('workItems').withIndex('by_workspaceId_status_rank', q => q.eq('workspaceId', args.workspaceId))
+      .paginate({ cursor: args.cursor ?? null, numItems: 100 })
+    const candidates = []
+    for (const row of page.page) {
+      const execution = row.assignmentExecution
+      if (row.archivedAt !== undefined || row.status === 'done' || execution?.status !== 'pending'
+        || row.assigneePrincipalId !== execution.assigneePrincipalId
+        || !row.blockedBy?.some(id => String(id) === args.completedId) || !await workDependenciesDone(ctx, row)) continue
+      candidates.push({ workspaceId: row.workspaceId, userId: execution.assignedByUserId, id: String(row._id), generation: execution.generation })
+    }
+    return { candidates, cursor: page.isDone ? null : page.continueCursor }
+  },
+})
+
+export const releaseDependents = internalAction({
+  args: { workspaceId: v.string(), completedId: v.string(), cursor: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const page: { candidates: Array<{ workspaceId: string; userId: string; id: string; generation: number }>; cursor: string | null } = await ctx.runQuery(makeFunctionReference<'query'>('work/workItems:pendingDependentPage'), args)
+    for (const candidate of page.candidates) await ctx.scheduler.runAfter(0, dispatchReadyAssignmentRef, candidate)
+    if (page.cursor) await ctx.scheduler.runAfter(0, releaseDependentsRef, { ...args, cursor: page.cursor })
+  },
+})
+
+export const dispatchReadyAssignment = internalAction({
+  args: { workspaceId: v.string(), userId: v.string(), id: v.string(), generation: v.number(), attempt: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    try {
+      const origin = process.env.OVERLAY_BFF_URL || process.env.NEXT_PUBLIC_APP_URL
+      const secret = process.env.INTERNAL_API_SECRET
+      if (!origin || !secret) throw new Error('Work assignment callback is not configured')
+      const response = await fetchAppCallback(new URL('/api/v1/work/resume-assignment', origin).href, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-internal-api-secret': secret },
+        body: JSON.stringify(args), signal: AbortSignal.timeout(30_000),
+      })
+      if (!response.ok) throw new Error(`Work assignment callback HTTP ${response.status}`)
+    } catch (error) {
+      const attempt = (args.attempt ?? 0) + 1
+      if (attempt <= 6) await ctx.scheduler.runAfter(Math.min(60_000, 1000 * 2 ** attempt), dispatchReadyAssignmentRef, { ...args, attempt })
+      else console.error('Work dependency dispatch failed', { id: args.id, generation: args.generation, error: error instanceof Error ? error.message : 'unknown' })
+    }
+  },
+})
 
 export type WorkItemId = Id<'workItems'>
 

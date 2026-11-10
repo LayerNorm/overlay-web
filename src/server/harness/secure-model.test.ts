@@ -7,6 +7,7 @@ import { generateHarnessModel, HarnessLanguageModel, streamHarnessModel } from '
 import { authorizePersonalHarnessModelDispatch, type PersonalHarnessModelDispatch } from './personal-model-dispatch'
 import { authorizeNativeHarnessModelDispatch, type NativeHarnessModelDispatch } from './native-model-dispatch'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: vi.fn() }))
 vi.mock('./native-model-dispatch', () => ({ authorizeNativeHarnessModelDispatch: vi.fn() }))
@@ -39,7 +40,7 @@ beforeEach(() => {
 const personal: PersonalHarnessModelDispatch = {
   access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', executionGeneration: 7, conversationId: 'conversation',
     workspaceId: 'workspace', principalId: 'principal', agentRunId: 'delivery', authentication: { type: 'api-key', apiKeyId: 'key-reference' } },
-  receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 10_000,
+  receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint',
   maxOutputTokens: 100, contextWindow: 100_000,
 }
 
@@ -48,7 +49,7 @@ const native: NativeHarnessModelDispatch = {
     conversationId: 'room', agentRunId: 'delivery', workspaceId: 'workspace', principalId: 'principal',
     agentId: 'agent', agentPrincipalId: 'agent-principal', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
   receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request', streamToDelivery: true,
-  inputTokenBudget: 10_000, maxOutputTokens: 100, contextWindow: 100_000,
+  maxOutputTokens: 100, contextWindow: 100_000,
 }
 
 test('native authority round-trips without secrets and both provider methods reauthorize first', async () => {

@@ -5,7 +5,9 @@ import { useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionArgs } from 'convex/server'
 import type { UpdateWorkItemRequest, WorkContext, WorkEvent, WorkItem } from '@overlay/app-core'
+import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { usePanelScopeState } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { api } from '../../../../convex/_generated/api'
 import { applyItemPatch, endRankOf, rankForDrop } from './work-state'
@@ -13,11 +15,21 @@ import { applyItemPatch, endRankOf, rankForDrop } from './work-state'
 type UpdateArgs = FunctionArgs<typeof api.work.browse.update>
 type MoveArgs = FunctionArgs<typeof api.work.browse.move>
 
-/** The workspace live queries run in, once the session can read it; null before that. */
+/**
+ * The workspace live queries run in, once the session can read it and the scope is settled; null before that. Waiting
+ * for the scope keeps a Personal guess from opening (and then dropping) a subscription for the wrong list.
+ */
 function useWorkWorkspace(): string | null {
   const { activeWorkspaceId, status } = useWorkspace()
   const { isAuthenticated, isLoading } = useConvexAuth()
-  return status === 'ready' && activeWorkspaceId && isAuthenticated && !isLoading ? activeWorkspaceId : null
+  const { known: scopeKnown } = usePanelScopeState()
+  return status === 'ready' && activeWorkspaceId && isAuthenticated && !isLoading && scopeKnown ? activeWorkspaceId : null
+}
+
+/** True once the session is known to be signed out: Work has nothing to load, so it must not wait. */
+export function useWorkSignedOut(): boolean {
+  const { user, isLoading } = useAuth()
+  return !isLoading && !user
 }
 
 /**
@@ -45,6 +57,16 @@ export function useLiveAssignments(listView: PanelScope | undefined) {
 export function useLiveWorkTask(id: string | null): WorkItem | null | undefined {
   const workspaceId = useWorkWorkspace()
   return useQuery(api.work.browse.get, workspaceId && id ? { workspaceId, id } : 'skip') as WorkItem | null | undefined
+}
+
+export type WorkLinkedThread =
+  | { visible: false }
+  | { visible: true; conversationId: string; agentId: string; title: string; state: 'working' | 'finished' | 'stopped'; updatedAt: number }
+
+/** The agent thread working on a task, live. Undefined while loading; null when no agent has picked it up. */
+export function useLiveWorkThread(id: string, enabled: boolean): WorkLinkedThread | null | undefined {
+  const workspaceId = useWorkWorkspace()
+  return useQuery(api.work.browse.linkedThread, workspaceId && enabled ? { workspaceId, id } : 'skip') as WorkLinkedThread | null | undefined
 }
 
 /** A task's activity and comments, live. */
