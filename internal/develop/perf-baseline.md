@@ -85,7 +85,18 @@ npm run analyze        # existing: analyzer build + /app/chat budget check
 npm run perf:bundle    # initial JS for /app/chat, /app/files, /app/agents, /app/notes
 ```
 
-Both scripts read `analyze/entrypoints.json`, emitted from the actual client Webpack compilation. They do not import removed Next.js internal size helpers. Route-only JS excludes the runtime and ancestor layouts; entry JS is the deduplicated union of page, ancestor layouts, `main-app` and `app-pages-internals` JS. Raw sizes come from emitted files and gzip sizes compress each file independently. Async imports, CSS, RSC/HTML payloads and browser/CDN transfer effects are not included. This is a static entrypoint budget, not an observed network-transfer measurement or a count of modules executed during startup.
+For a local compilation without service credentials, use the same non-production fixture configuration as the repository's production-compilation CI job:
+
+```sh
+OVERLAY_DEPLOYMENT_ENV=test \
+NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud \
+INTERNAL_API_SECRET=test-internal-secret \
+NODE_OPTIONS=--max-old-space-size=12288 npm run analyze
+```
+
+This produces bundle artifacts, not an authenticated app for browser measurements. The 12 GiB heap completed the analyzer in the QA VM; 4 and 6 GiB heaps failed. Use sufficient machine memory rather than removing analysis or raising budgets. A successful compilation followed by a failed budget check is not a passing budget. Keep the emitted analyzer and entrypoint files together with the exact source revision and configuration used.
+
+Both scripts read `analyze/entrypoints.json`, emitted from the actual client Webpack compilation. They do not import removed Next.js internal size helpers. Route-only JS excludes the runtime and ancestor layouts; entry JS is the deduplicated union of page, ancestor layouts, `main-app` and (when separately emitted) `app-pages-internals` JS. Raw sizes come from emitted files and gzip sizes compress each file independently. Async imports, CSS, RSC/HTML payloads and browser/CDN transfer effects are not included. This is a static entrypoint budget, not an observed network-transfer measurement or a count of modules executed during startup.
 
 `perf:bundle` reports sizes and fails if expected route measurements are unavailable. Missing or ambiguous routes, unsupported manifests and missing files fail closed. Both `--dist-dir=value` and `--dist-dir value` are supported. Budgets stay in `scripts/ci/bundle-budgets.json`; thresholds are not silently raised by the compatibility repair. Use the analyzer's import graph to justify splitting and validate the affected first-use UI separately. Turbopack analysis is not a substitute for this app's production Webpack build.
 

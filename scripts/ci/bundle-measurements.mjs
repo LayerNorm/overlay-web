@@ -21,7 +21,7 @@ export function routeEntrypointFiles(manifest, route) {
   if (matches.length !== 1 || matches[0].includes('/@')) throw new Error(`Missing or ambiguous bundle entrypoint for ${route}`)
   const page = matches[0]
   const segments = page.split('/').slice(0, -1)
-  const parents = ['main-app', 'app-pages-internals']
+  const parents = ['main-app', ...('app-pages-internals' in entries ? ['app-pages-internals'] : [])]
   for (let length = 1; length <= segments.length; length++) {
     const layout = `${segments.slice(0, length).join('/')}/layout`
     if (layout in entries) parents.push(layout)

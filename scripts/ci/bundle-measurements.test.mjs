@@ -57,6 +57,13 @@ test('both dist-dir argument forms work and missing values fail', () => {
   }
 })
 
+test('Next 16 builds without a separate app-pages-internals entry remain measurable', () => {
+  const entries = { ...manifest.entries }
+  delete entries['app-pages-internals']
+  assert.deepEqual(routeEntrypointFiles({ version: 1, entries }, '/app/chat'),
+    routeEntrypointFiles(manifest, '/app/chat'))
+})
+
 test('Webpack plugin records emitted entry JS, not async chunks, CSS or source maps', () => {
   let emitted
   class RawSource { constructor(value) { this.value = value } }
