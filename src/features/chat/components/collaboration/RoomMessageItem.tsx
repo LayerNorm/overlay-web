@@ -36,6 +36,7 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
+import { roomMessageTime } from './room-message-time'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
@@ -311,12 +312,7 @@ export function RoomMessageItem({
   const { mine } = message
   const isAgent =
     message.authorKind === 'agent' || message.authorKind === 'model'
-  // Locale pinned to 'en-US' — SSR and client output are identical.
-  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
-  const timeLabel = new Date(message.createdAt).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
+  const timeLabel = roomMessageTime(message.createdAt)
   const rootProps = {
     id: roomMessageDomId(message.id),
     'data-room-message': message.id,
