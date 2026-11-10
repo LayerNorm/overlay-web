@@ -43,7 +43,7 @@ export function WorkAssignmentRow({ item, selected, onOpen }: { item: Assignment
       className={`flex h-10 cursor-pointer items-center gap-3 border-b border-(--border)/60 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
     >
       <AssignmentGlyphIcon glyph={state.glyph} />
-      <span className={`min-w-0 flex-1 truncate text-left text-sm leading-5 ${item.status === 'completed' ? 'text-(--muted)' : 'text-(--foreground)'}`} title={item.title}>{item.title}</span>
+      <Button variant="ghost" type="button" className={unstyledButton(`min-w-0 flex-1 truncate text-left text-sm leading-5 ${item.status === 'completed' ? 'text-(--muted)' : 'text-(--foreground)'}`)} title={item.title}>{item.title}</Button>
       <div className="flex shrink-0 items-center gap-3.5 text-[12.5px] text-(--muted)">
         {state.tag ? <Tag tone={state.tag.tone}>{state.tag.text}</Tag> : null}
         <span className="hidden max-w-36 truncate md:inline" title={item.parent.title}>{item.parent.title}</span>
@@ -163,12 +163,10 @@ export function WorkAssignmentPeek({ assignmentId, items, loading, onClose }: {
           <PropertyRow icon={<CornerDownRight size={13} />} label="Assigned from">
             <Link href={threadHref(item.parent)} className="min-w-0 truncate hover:underline" title={item.parent.title}>{item.parent.title}</Link>
           </PropertyRow>
-          {item.attemptOrdinal && item.attemptOrdinal > 1 ? (
-            <PropertyRow icon={<RotateCcw size={13} />} label="Attempt">
-              {item.attemptOrdinal}
-              <span className="text-(--muted)">· revised in the same thread</span>
-            </PropertyRow>
-          ) : null}
+          <PropertyRow icon={<RotateCcw size={13} />} label="Attempt">
+            {`Attempt ${item.attemptOrdinal ?? 1}`}
+            {(item.attemptOrdinal ?? 1) > 1 ? <span className="text-(--muted)">· revised in the same thread</span> : null}
+          </PropertyRow>
           {item.origin ? (
             <PropertyRow icon={<Hash size={13} />} label="Origin">
               Slack · {item.origin.channelName ? `#${item.origin.channelName.replace(/^#/, '')}` : item.origin.channelId}
