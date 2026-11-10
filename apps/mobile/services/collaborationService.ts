@@ -1,89 +1,90 @@
-/**
- * Collaboration service facade — wraps the typed `mobileOverlayAppClient`
- * conversations surface for multiplayer chat: rooms (DMs/channels),
- * participants, presence, reactions, pins, saved messages, threads,
- * notifications, and notification preferences.
- *
- * Every call flows through `appFetch`, so the active workspace header from
- * Phase 0 applies automatically. Workspace-scoped creates use the explicit
- * `createWorkspace*` variants like the web client does.
- */
 import type {
-  ChannelCreateInput,
-  ChannelSummary,
-  ConversationParticipant,
-  ConversationParticipantStateInput,
-  ConversationPin,
-  ConversationPresence,
-  ConversationSavedMessage,
-  ConversationThreadFollow,
-  DirectMessageSummary,
-  MessageReaction,
-  WorkspaceManagementItem,
-  WorkspaceManagementResponse,
-  WorkspaceNotification,
-  WorkspaceNotificationFilter,
-  WorkspaceNotificationPreferences,
+  ChannelCreateInput, ChannelSummary, ConversationParticipantStateInput,
+  DirectMessageSummary, WorkspaceNotification, WorkspaceNotificationFilter,
+  WorkspaceNotificationPreferences, WorkspaceManagementResponse,
 } from '@overlay/workspace-contracts'
-import { appJson } from './appApi'
+import type { FunctionReturnType } from 'convex/server'
 import { mobileOverlayAppClient } from './overlayClient'
+import { api, convexWorkspaceId, mutateConvex, queryConvex, subscribeConvex, type Id } from './convexClient'
 import type { RoomMessageRecord } from '../lib/roomMessages'
+import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
 
-// Convex-native in Phase 1
-export const COLLABORATION_NATIVE_READY = false
+export const COLLABORATION_NATIVE_READY = true
+export type NativeRoomState = NonNullable<FunctionReturnType<typeof api.collaboration.rooms.state>>
 
-// ---------------------------------------------------------------------------
-// Room transcript — `GET /conversations?conversationId&messages` with the
-// collaboration query flags web uses (mainOnly/threadRootMessageId/before).
-// ---------------------------------------------------------------------------
+function roomArgs(conversationId: string) {
+  return { workspaceId: convexWorkspaceId(), conversationId: conversationId as Id<'conversations'> }
+}
+function messageArgs(conversationId: string, messageId: string) {
+  return { ...roomArgs(conversationId), messageId: messageId as Id<'conversationMessages'> }
+}
 
 export interface RoomTranscriptPage {
   title?: string
   conversationType?: 'personal' | 'dm' | 'channel'
   messages: RoomMessageRecord[]
   hasMore: boolean
+  cursor?: string
+}
+type TranscriptOptions = { threadRootMessageId?: string; mainOnly?: boolean; beforeCreatedAt?: number; messageId?: string; limit?: number; cursor?: string }
+
+function transcriptArgs(conversationId: string, options: TranscriptOptions) {
+  return {
+    ...roomArgs(conversationId),
+    ...(options.threadRootMessageId ? { threadRootMessageId: options.threadRootMessageId as Id<'conversationMessages'> } : {}),
+    paginationOpts: { numItems: Math.min(options.limit ?? 100, 100), cursor: options.cursor ?? null },
+  }
 }
 
-export async function loadRoomMessages(
-  conversationId: string,
-  options: {
-    threadRootMessageId?: string
-    mainOnly?: boolean
-    beforeCreatedAt?: number
-    messageId?: string
-    limit?: number
-  } = {},
-): Promise<RoomTranscriptPage> {
-  const data = await appJson<{
-    title?: string
-    conversationType?: 'personal' | 'dm' | 'channel'
-    messages?: Array<RoomMessageRecord & { content?: string; parts?: Array<{ type?: string; text?: string }> }>
-    hasMore?: boolean
-  }>('/api/v1/conversations', {
-    query: {
-      conversationId,
-      messages: true,
-      limit: options.limit ?? 100,
-      ...(options.threadRootMessageId ? { threadRootMessageId: options.threadRootMessageId } : {}),
-      ...(options.mainOnly ? { mainOnly: true } : {}),
-      ...(options.beforeCreatedAt ? { beforeCreatedAt: options.beforeCreatedAt } : {}),
-      ...(options.messageId ? { messageId: options.messageId } : {}),
-    },
-  })
-  const messages = (data.messages ?? []).map((message) => ({
-    ...message,
-    content:
-      message.content ??
-      message.parts?.find((part) => part.type === 'text')?.text ??
-      '',
-    turnId: message.turnId ?? message.id,
-  }))
-  return {
-    title: data.title,
-    conversationType: data.conversationType,
-    messages,
-    hasMore: data.hasMore === true,
+export async function loadRoomMessages(conversationId: string, options: TranscriptOptions = {}): Promise<RoomTranscriptPage> {
+  const args = roomArgs(conversationId)
+  const access = await queryConvex(api.collaboration.rooms.access, args)
+  if (!access) return { messages: [], hasMore: false }
+  const [page, root] = await Promise.all([
+    queryConvex(api.collaboration.rooms.messages, transcriptArgs(conversationId, options)),
+    options.messageId || options.threadRootMessageId
+      ? queryConvex(api.collaboration.rooms.message, messageArgs(conversationId, options.messageId ?? options.threadRootMessageId!))
+      : null,
+  ])
+  return { ...access, messages: [...page.page, ...(root ? [root] : [])], hasMore: !page.isDone, cursor: page.continueCursor }
+}
+
+export function subscribeRoomState(conversationId: string, onValue: (state: NativeRoomState | null) => void) {
+  return subscribeConvex(api.collaboration.rooms.state, roomArgs(conversationId), onValue)
+}
+
+export function subscribeRoomMessages(conversationId: string, options: TranscriptOptions, onValue: (page: RoomTranscriptPage) => void) {
+  const stops: Array<() => void> = []
+  let access: FunctionReturnType<typeof api.collaboration.rooms.access> | undefined
+  let messages: RoomMessageRecord[] = []
+  let root: RoomMessageRecord | null = null
+  let hasMore = false
+  let pageReady = false
+  let cursor: string | undefined
+  let streams: ActivePublicStreamSnapshot[] = []
+  let stopStreams: (() => void) | undefined
+  let streamKey = ''
+  const emit = () => {
+    if (access === undefined || (access && !pageReady)) return
+    onValue({ ...(access ?? {}), messages: access ? projectActivePublicStreams([...messages, ...(root ? [root] : [])], streams) : [], hasMore: Boolean(access) && hasMore, cursor })
   }
+  stops.push(subscribeConvex(api.collaboration.rooms.access, roomArgs(conversationId), value => { access = value; emit() }))
+  stops.push(subscribeConvex(api.collaboration.rooms.scope, roomArgs(conversationId), value => { if (!value) { access = null; emit() } }))
+  stops.push(subscribeConvex(api.collaboration.rooms.messages, transcriptArgs(conversationId, options), value => {
+    messages = value.page
+    pageReady = true
+    hasMore = !value.isDone
+    cursor = value.continueCursor
+    const messageIds = messages.filter(row => row.status === 'generating').slice(0, 50).map(row => row.id as Id<'conversationMessages'>)
+    const key = messageIds.join(',')
+    if (key !== streamKey) {
+      stopStreams?.(); streams = []; streamKey = key
+      stopStreams = messageIds.length ? subscribeConvex(api.collaboration.rooms.activePublicStreams, { ...roomArgs(conversationId), messageIds }, value => { streams = value; emit() }) : undefined
+    }
+    emit()
+  }))
+  if (options.threadRootMessageId) stops.push(subscribeConvex(api.collaboration.rooms.message, messageArgs(conversationId, options.threadRootMessageId), value => { root = value; emit() }))
+  return () => { stops.forEach(stop => stop()); stopStreams?.() }
 }
 
 export async function sendRoomMessage(input: {
@@ -118,115 +119,50 @@ export async function sendRoomMessage(input: {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Collaborative message edits — PATCH/DELETE the message row directly.
-// ---------------------------------------------------------------------------
 
-export async function editRoomMessage(
-  conversationId: string,
-  messageId: string,
-  content: string,
-): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+export async function editRoomMessage(conversationId: string, messageId: string, content: string): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.editMessage, { ...messageArgs(conversationId, messageId), content })
 }
-
 export async function deleteRoomMessage(conversationId: string, messageId: string): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+  await mutateConvex(api.collaboration.rooms.deleteMessage, messageArgs(conversationId, messageId))
 }
-
-// ---------------------------------------------------------------------------
-// Participants + presence
-// ---------------------------------------------------------------------------
-
-export async function fetchRoomParticipants(
-  conversationId: string,
-): Promise<{ participants: ConversationParticipant[]; currentPrincipalId: string }> {
-  return mobileOverlayAppClient.conversations.participants(conversationId)
+async function roomState(conversationId: string) {
+  return queryConvex(api.collaboration.rooms.state, roomArgs(conversationId))
 }
-
-export async function addRoomParticipant(
-  conversationId: string,
-  principalId: string,
-): Promise<void> {
-  await mobileOverlayAppClient.conversations.addParticipant(conversationId, principalId)
+export async function fetchRoomParticipants(conversationId: string) {
+  const state = await roomState(conversationId)
+  return { participants: state?.participants ?? [], currentPrincipalId: state?.currentPrincipalId ?? '' }
 }
-
-export async function removeRoomParticipant(
-  conversationId: string,
-  principalId: string,
-): Promise<void> {
-  await mobileOverlayAppClient.conversations.removeParticipant(conversationId, principalId)
+export async function addRoomParticipant(conversationId: string, principalId: string): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.addParticipant, { ...roomArgs(conversationId), principalId })
 }
-
-export async function updateRoomParticipantState(
-  conversationId: string,
-  state: ConversationParticipantStateInput,
-): Promise<void> {
-  await mobileOverlayAppClient.conversations.updateParticipantState(conversationId, state)
+export async function removeRoomParticipant(conversationId: string, principalId: string): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.removeParticipant, { ...roomArgs(conversationId), principalId })
 }
-
-export async function fetchRoomPresence(conversationId: string): Promise<ConversationPresence[]> {
-  // Convex-native in Phase 1
-  return []
+export async function updateRoomParticipantState(conversationId: string, state: ConversationParticipantStateInput): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.updateMyState, {
+    ...roomArgs(conversationId),
+    archived: state.archived, markRead: state.markRead, markUnread: state.markUnread,
+    notificationLevel: state.notificationLevel,
+  })
 }
-
-export async function sendRoomPresence(
-  conversationId: string,
-  body: { status: 'online' | 'away' | 'offline'; sessionId?: string; typing?: boolean },
-): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+export async function fetchRoomPresence(conversationId: string) { return (await roomState(conversationId))?.presence ?? [] }
+export async function sendRoomPresence(conversationId: string, body: { status: 'online' | 'away' | 'offline'; sessionId?: string; typing?: boolean }): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.heartbeat, { ...roomArgs(conversationId), ...body, sessionId: body.sessionId ?? 'mobile' })
 }
-
-// ---------------------------------------------------------------------------
-// Reactions / pins / saved
-// ---------------------------------------------------------------------------
-
-export async function fetchRoomReactions(conversationId: string): Promise<MessageReaction[]> {
-  // Convex-native in Phase 1
-  return []
+export async function fetchRoomReactions(conversationId: string) { return (await roomState(conversationId))?.reactions ?? [] }
+export async function setRoomReaction(conversationId: string, messageId: string, emoji: string, enabled: boolean) {
+  await mutateConvex(api.collaboration.rooms.setReaction, { ...messageArgs(conversationId, messageId), emoji, enabled })
+  return fetchRoomReactions(conversationId)
 }
-
-export async function setRoomReaction(
-  conversationId: string,
-  messageId: string,
-  emoji: string,
-  enabled: boolean,
-): Promise<MessageReaction[]> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+export async function fetchRoomPins(conversationId: string) { return (await roomState(conversationId))?.pins ?? [] }
+export async function setRoomPinned(conversationId: string, messageId: string, pinned: boolean): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.setPinned, { ...messageArgs(conversationId, messageId), pinned })
 }
-
-export async function fetchRoomPins(conversationId: string): Promise<ConversationPin[]> {
-  // Convex-native in Phase 1
-  return []
+export async function fetchSavedMessages(conversationId: string) { return (await roomState(conversationId))?.saved ?? [] }
+export async function setMessageSaved(conversationId: string, messageId: string, saved: boolean): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.setSaved, { ...messageArgs(conversationId, messageId), saved })
 }
-
-export async function setRoomPinned(
-  conversationId: string,
-  messageId: string,
-  pinned: boolean,
-): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
-}
-
-export async function fetchSavedMessages(): Promise<ConversationSavedMessage[]> {
-  // Convex-native in Phase 1
-  return []
-}
-
-export async function setMessageSaved(
-  conversationId: string,
-  messageId: string,
-  saved: boolean,
-): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
-}
-
 export async function reportRoomMessage(
   conversationId: string,
   body: { messageId?: string; reason: string; note?: string },
@@ -234,36 +170,18 @@ export async function reportRoomMessage(
   await mobileOverlayAppClient.conversations.reportMessage(conversationId, body)
 }
 
-// ---------------------------------------------------------------------------
-// Threads
-// ---------------------------------------------------------------------------
 
-export async function fetchThreadFollow(
-  conversationId: string,
-  threadRootMessageId: string,
-): Promise<{ following: boolean; follows: ConversationThreadFollow[] }> {
-  // Convex-native in Phase 1
-  return { following: false, follows: [] }
+export async function fetchThreadFollow(conversationId: string, threadRootMessageId: string) {
+  const follows = (await roomState(conversationId))?.follows ?? []
+  return { following: follows.some(row => row.threadRootMessageId === threadRootMessageId), follows }
 }
-
-export async function setThreadFollowed(
-  conversationId: string,
-  threadRootMessageId: string,
-  followed: boolean,
-): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+export async function setThreadFollowed(conversationId: string, threadRootMessageId: string, followed: boolean): Promise<void> {
+  await mutateConvex(api.collaboration.rooms.setThreadFollow, { ...roomArgs(conversationId), threadRootMessageId: threadRootMessageId as Id<'conversationMessages'>, followed })
 }
-
-// ---------------------------------------------------------------------------
-// Channels + direct messages
-// ---------------------------------------------------------------------------
-
-export async function listChannels(): Promise<ChannelSummary[]> {
-  // Convex-native in Phase 1
-  return []
+export async function listChannels() {
+  const result = await queryConvex(api.collaboration.roomList.list, { workspaceId: convexWorkspaceId(), kind: 'channel', limit: 100 })
+  return result?.rooms ?? []
 }
-
 export async function createChannel(
   workspaceId: string,
   body: ChannelCreateInput,
@@ -286,10 +204,6 @@ export async function createDirectMessage(
   return directMessage
 }
 
-// ---------------------------------------------------------------------------
-// Workspace principal search — `management('people')` + `management('chats-agents')`
-// merged like the web NewDirectMessageDialog.
-// ---------------------------------------------------------------------------
 
 export interface RoomPrincipalOption {
   principalId: string
@@ -297,62 +211,49 @@ export interface RoomPrincipalOption {
   name: string
   description?: string
 }
-
-export async function searchWorkspacePrincipals(
-  workspaceId: string,
-): Promise<{ options: RoomPrincipalOption[]; currentPrincipalId: string }> {
+export async function searchWorkspacePrincipals(workspaceId: string): Promise<{ options: RoomPrincipalOption[]; currentPrincipalId: string }> {
   const [people, agents] = await Promise.all([
-    mobileOverlayAppClient.workspaces.management(workspaceId, 'people'),
-    mobileOverlayAppClient.workspaces.management(workspaceId, 'chats-agents'),
+    queryConvex(api.collaboration.management.view, { workspaceId, view: 'people' }),
+    queryConvex(api.collaboration.management.view, { workspaceId, view: 'chats-agents' }),
   ])
-  const byId = new Map<string, WorkspaceManagementItem>()
-  for (const item of [...people.items, ...agents.items]) {
-    if (item.kind === 'member' && item.principalId) byId.set(item.principalId, item)
+  const items = [...(people?.items ?? []), ...(agents?.items ?? [])]
+  const options = new Map<string, RoomPrincipalOption>()
+  for (const item of items) {
+    if (item.kind !== 'member' || !item.principalId || item.status !== 'active' || item.principalId === people?.currentPrincipalId) continue
+    options.set(item.principalId, { principalId: item.principalId, principalType: item.principalType === 'agent' ? 'agent' : 'human', name: item.name, description: item.description })
   }
-  const options = [...byId.values()]
-    .filter((item) => item.status === 'active' && item.principalId !== people.currentPrincipalId)
-    .map((item) => ({
-      principalId: item.principalId!,
-      principalType: item.principalType === 'agent' ? 'agent' as const : 'human' as const,
-      name: item.name,
-      description: item.description,
-    }))
-  return { options, currentPrincipalId: people.currentPrincipalId }
+  return { options: [...options.values()], currentPrincipalId: people?.currentPrincipalId ?? '' }
 }
 
-// ---------------------------------------------------------------------------
-// Notifications — activity feed + unread badges.
-// ---------------------------------------------------------------------------
-
-export async function fetchNotifications(
-  filter: WorkspaceNotificationFilter = 'all',
-  options: { unreadOnly?: boolean; limit?: number } = {},
-): Promise<WorkspaceNotification[]> {
-  // Convex-native in Phase 1
-  return []
+export function filterNotifications(items: WorkspaceNotification[], filter: WorkspaceNotificationFilter, options: { unreadOnly?: boolean; limit?: number } = {}) {
+  return items.filter(item => {
+    if ((options.unreadOnly || filter === 'unread') && item.readAt) return false
+    if (filter === 'mentions') return item.type === 'mention'
+    if (filter === 'threads') return item.type === 'thread'
+    if (filter === 'reactions') return item.type === 'reaction'
+    return true
+  }).slice(0, options.limit ?? 100)
 }
-
+export async function fetchNotifications(filter: WorkspaceNotificationFilter = 'all', options: { unreadOnly?: boolean; limit?: number } = {}): Promise<WorkspaceNotification[]> {
+  const items = await queryConvex(api.collaboration.activity.notifications, { workspaceId: convexWorkspaceId() })
+  return filterNotifications(items ?? [], filter, options)
+}
+export function subscribeNotifications(onValue: (items: WorkspaceNotification[]) => void) {
+  return subscribeConvex(api.collaboration.activity.notifications, { workspaceId: convexWorkspaceId() }, items => onValue(items ?? []))
+}
 export async function markNotificationsRead(notificationIds: string[]): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+  if (!notificationIds.length) return
+  await mutateConvex(api.collaboration.activity.markRead, { workspaceId: convexWorkspaceId(), notificationIds })
 }
-
 export async function markConversationNotificationsRead(conversationId: string): Promise<void> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+  await mutateConvex(api.collaboration.activity.markRead, roomArgs(conversationId))
 }
 
-// Notification preferences
+// Convex has no member-facing preferences function yet; keep these controls hidden.
 export async function fetchNotificationPreferences(): Promise<WorkspaceNotificationPreferences> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+  throw new Error('Notification preferences are not available on mobile yet.')
 }
-
-export async function updateNotificationPreferences(
-  preferences: Partial<WorkspaceNotificationPreferences>,
-): Promise<WorkspaceNotificationPreferences> {
-  // Convex-native in Phase 1
-  throw new Error('This collaboration feature is unavailable until Phase 1.')
+export async function updateNotificationPreferences(_preferences: Partial<WorkspaceNotificationPreferences>): Promise<WorkspaceNotificationPreferences> {
+  throw new Error('Notification preferences are not available on mobile yet.')
 }
-
 export type { WorkspaceManagementResponse }

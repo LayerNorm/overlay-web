@@ -33,9 +33,10 @@ import { GlassSurface } from '../ui/GlassSurface'
 import { ChatActionsSheet } from './ChatActionsSheet'
 import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 import { NewChannelSheet } from './NewChannelSheet'
-import { COLLABORATION_NATIVE_READY, fetchNotifications } from '../../services/collaborationService'
-import { loadChatsMetaByView, type ChatListView } from '../../services/chatStorage'
+import { subscribeNotifications } from '../../services/collaborationService'
+import { subscribeChats } from '../../services/chatStorage'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 
 /** Recents subview filter — mirrors the web `view=` switcher (ChatInlinePanel). */
 type ChatListFilter = 'all' | 'personal' | 'dms' | 'channels'
@@ -311,73 +312,38 @@ function DrawerContent({
   const { user } = useAuth()
   const { destinations, featureFlags, capabilities, isFeatureEnabled } = useAppSession()
   const { activeWorkspaceId } = useWorkspace()
+  const nativeReady = useNativeDataReady()
   const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
   const [chatFilter, setChatFilter] = useState<ChatListFilter>('all')
   const [collabChats, setCollabChats] = useState<ChatMeta[]>([])
-  const collabChatsCache = useRef<Map<ChatListView, ChatMeta[]>>(new Map())
   const [newDmOpen, setNewDmOpen] = useState(false)
   const [newChannelOpen, setNewChannelOpen] = useState(false)
   const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({})
   const [unreadActivityCount, setUnreadActivityCount] = useState(0)
 
-  // Unread badges = unread collaboration notifications per conversation —
-  // same derivation as the web sidebar (`collaborationUnread`).
-  const refreshUnread = useCallback(() => {
-    if (!COLLABORATION_NATIVE_READY) return
-    void fetchNotifications('unread', { unreadOnly: true, limit: 100 })
-      .then((items) => {
-        const counts: Record<string, number> = {}
-        for (const notification of items) {
-          if (notification.readAt || !notification.conversationId) continue
-          counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
-        }
-        setUnreadByConversation(counts)
-        setUnreadActivityCount(items.filter((notification) => !notification.readAt).length)
-      })
-      .catch(() => undefined)
-  }, [])
+  useEffect(() => {
+    setUnreadByConversation({})
+    setUnreadActivityCount(0)
+    if (!nativeReady || !activeWorkspaceId) return
+    return subscribeNotifications(items => {
+      const counts: Record<string, number> = {}
+      for (const item of items) {
+        if (item.readAt || !item.conversationId) continue
+        counts[item.conversationId] = (counts[item.conversationId] ?? 0) + 1
+      }
+      setUnreadByConversation(counts)
+      setUnreadActivityCount(items.filter(item => !item.readAt).length)
+    })
+  }, [nativeReady, activeWorkspaceId])
 
   useEffect(() => {
-    refreshUnread()
-    const interval = setInterval(refreshUnread, 20_000)
-    return () => clearInterval(interval)
-  }, [refreshUnread])
+    setCollabChats([])
+    if (!nativeReady || !activeWorkspaceId || chatFilter === 'personal') return
+    return subscribeChats(chatFilter, setCollabChats)
+  }, [nativeReady, activeWorkspaceId, chatFilter])
 
-  // Re-check when the drawer opens so badges reflect the latest activity.
-  useEffect(() => {
-    if (drawerVisible) refreshUnread()
-  }, [drawerVisible, refreshUnread])
-
-  // Collaboration lists load per view — the `chats` prop stays the personal
-  // default list; dms/channels/all fetch on demand and cache per filter.
-  useEffect(() => {
-    if (chatFilter === 'personal') return
-    const cached = collabChatsCache.current.get(chatFilter)
-    if (cached) {
-      setCollabChats(cached)
-      return
-    }
-    let cancelled = false
-    void loadChatsMetaByView(chatFilter)
-      .then((items) => {
-        if (cancelled) return
-        collabChatsCache.current.set(chatFilter, items)
-        setCollabChats(items)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [chatFilter])
-
-  // Invalidate collaboration list caches when the drawer reopens or a
-  // mutation lands (rename/archive/delete from the actions sheet).
-  useEffect(() => {
-    if (drawerVisible) collabChatsCache.current.clear()
-  }, [drawerVisible])
   const handleChatsChanged = useCallback(
     (removedChatId?: string) => {
-      collabChatsCache.current.clear()
       onChatsChanged?.(removedChatId)
     },
     [onChatsChanged],

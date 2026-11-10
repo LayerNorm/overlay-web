@@ -1,7 +1,7 @@
 import { AUTH_BASE_URL } from './appConfig'
 import {
   loadAuthSession,
-  saveAuthSession,
+  saveRefreshedAuthSession,
   refreshAuthSession,
   clearAuthSession,
   type AuthSession,
@@ -97,6 +97,14 @@ function createUrl(
 // 5 min early avoids racing against the clock during long API calls.
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000
 
+async function recoverRefreshFailure(session: AuthSession): Promise<AuthSession> {
+  const current = await loadAuthSession()
+  if (!current || current.user.id !== session.user.id) throw new Error('Session changed. Please sign in again.')
+  if (current.refreshToken !== session.refreshToken || current.accessToken !== session.accessToken) return current
+  await clearAuthSession()
+  throw new Error('Session expired. Please sign in again.')
+}
+
 /**
  * Return a session with a still-valid access token, refreshing it proactively
  * if it has expired (or is about to expire). If refresh fails, the stored
@@ -117,12 +125,11 @@ async function getValidSession(): Promise<AuthSession | null> {
     console.log('[appApi] getValidSession: no expiresAt, forcing refresh')
     try {
       const refreshed = await refreshAuthSession(session)
-      await saveAuthSession(refreshed)
+      await saveRefreshedAuthSession(refreshed, session)
       return refreshed
     } catch (error) {
       console.error('[appApi] getValidSession: refresh failed for legacy session', error)
-      await clearAuthSession()
-      throw new Error('Session expired. Please sign in again.')
+      return recoverRefreshFailure(session)
     }
   }
 
@@ -139,13 +146,12 @@ async function getValidSession(): Promise<AuthSession | null> {
   )
   try {
     const refreshed = await refreshAuthSession(session)
-    await saveAuthSession(refreshed)
+    await saveRefreshedAuthSession(refreshed, session)
     console.log('[appApi] getValidSession: refresh succeeded')
     return refreshed
   } catch (error) {
     console.error('[appApi] getValidSession: refresh failed', error)
-    await clearAuthSession()
-    throw new Error('Session expired. Please sign in again.')
+    return recoverRefreshFailure(session)
   }
 }
 

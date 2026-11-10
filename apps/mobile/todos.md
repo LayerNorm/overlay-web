@@ -33,9 +33,11 @@ mobile launch and stay reachable on getoverlay.io.
 
 Projects and Knowledge Bases are obsolete and removed. Historical items below
 about their screens, sharing, mentions, or project scoping are no longer planned.
-Collaboration notifications, reactions, pins, presence, saved messages, follows,
-message editing/deletion, workspace search and mentions are deferred to Convex-native
-subscriptions in Phase 1. Do not restore the retired HTTP endpoints.
+Phase 1 restores collaboration notifications, reactions, pins, presence, saved
+messages, follows, message editing/deletion, workspace search, mentions, personal
+chats and the workspace directory through native Convex. Do not restore the retired
+HTTP endpoints. Notification preferences stay hidden until a member-facing native
+function exists. See PHASE1_HTTP_INVENTORY.md for Phase 2 screen-data work and QA.
 
 ### Deferred web-side changes (plan §9 — owner approval required)
 

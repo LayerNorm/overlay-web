@@ -1,7 +1,9 @@
 import type { AgentRunResource } from '@overlay/api-client'
-import { appJson, appRequest, appXhrStreamSse } from './appApi'
+import { appRequest, appXhrStreamSse } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
-import { updateChatTitle } from './chatStorage'
+import { setPersonalChatArchived, updateChatTitle } from './chatStorage'
+import { api, convexWorkspaceId, queryConvex, type Id } from './convexClient'
+import { updateRoomParticipantState } from './collaborationService'
 import type { ChatMentionItem } from './chatTypes'
 
 // ---------------------------------------------------------------------------
@@ -17,16 +19,17 @@ export async function archiveConversation(
   conversationId: string,
   scope: ConversationLifecycleScope = 'self',
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.updateParticipantState(conversationId, {
-    archived: true,
-    archiveScope: scope,
-  })
+  if (scope !== 'self') throw new Error('Archiving for everyone is not available on mobile.')
+  const args = { workspaceId: convexWorkspaceId(), conversationId: conversationId as Id<'conversations'> }
+  const room = await queryConvex(api.collaboration.rooms.scope, args)
+  if (room) await updateRoomParticipantState(conversationId, { archived: true })
+  else await setPersonalChatArchived(conversationId, true)
 }
 
 export async function unarchiveConversation(conversationId: string): Promise<void> {
-  await mobileOverlayAppClient.conversations.updateParticipantState(conversationId, {
-    archived: false,
-  })
+  const room = await queryConvex(api.collaboration.rooms.scope, { workspaceId: convexWorkspaceId(), conversationId: conversationId as Id<'conversations'> })
+  if (room) await updateRoomParticipantState(conversationId, { archived: false })
+  else await setPersonalChatArchived(conversationId, false)
 }
 
 export async function deleteConversation(
@@ -103,8 +106,15 @@ export async function fetchChatSuggestions(): Promise<string[]> {
 
 
 export async function searchMentions(query: string): Promise<ChatMentionItem[]> {
-  // Convex-native in Phase 1
-  return []
+  const result = await queryConvex(api.search.browse.mentions, { workspaceId: convexWorkspaceId(), query })
+  if (!result) return []
+  return [
+    ...result.chats.map(row => ({ type: 'chat' as const, id: row.id, name: row.title })),
+    ...result.files.map(row => ({ type: 'file' as const, id: row.id, name: row.name })),
+    ...result.automations.map(row => ({ type: 'automation' as const, ...row, name: row.name || 'Automation' })),
+    ...result.skills.map(row => ({ type: 'skill' as const, ...row, name: row.name || 'Skill' })),
+    ...result.mcpServers.map(row => ({ type: 'mcp' as const, ...row, name: row.name || 'MCP server' })),
+  ]
 }
 
 // ---------------------------------------------------------------------------

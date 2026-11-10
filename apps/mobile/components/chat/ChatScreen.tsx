@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { hapticImpact, hapticNotify } from '../../lib/haptics'
@@ -36,6 +36,9 @@ import {
   loadChat,
   loadChatsMeta,
   saveChat,
+  subscribeChats,
+  subscribePersonalChat,
+  setPersonalChatRead,
   setLastOpenedChatId,
 } from '../../services/chatStorage'
 import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
@@ -70,6 +73,8 @@ import { AUTH_BASE_URL } from '../../services/appConfig'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import * as DocumentPicker from 'expo-document-picker'
 
 const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
@@ -360,6 +365,8 @@ export function ChatScreen({
   const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels, imageModels, videoModels, uiSettings, capabilities } = useAppSession()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
+  const nativeReady = useNativeDataReady()
+  const { activeWorkspaceId } = useWorkspace()
   const insets = useSafeAreaInsets()
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -601,9 +608,20 @@ export function ChatScreen({
     [entitlements?.tier, router, uiSettings.defaultActModelId],
   )
 
+  const previousWorkspaceId = useRef(activeWorkspaceId)
+  useEffect(() => {
+    if (previousWorkspaceId.current === activeWorkspaceId) return
+    previousWorkspaceId.current = activeWorkspaceId
+    chatRef.current = null
+    setActiveChatId(null)
+    setMessages([])
+    setChatTitle('New chat')
+  }, [activeWorkspaceId])
+
   useEffect(() => {
     let isMounted = true
 
+    if (!nativeReady || !activeWorkspaceId) return
     // Guard: skip re-initialization if we already have an active chat session.
     if (chatRef.current !== null && !conversationId) {
       return
@@ -683,6 +701,8 @@ export function ChatScreen({
       isMounted = false
     }
   }, [
+    nativeReady,
+    activeWorkspaceId,
     chatModels,
     conversationId,
     createConversation,
@@ -728,22 +748,32 @@ export function ChatScreen({
     }
   }, [drawerVisible, refreshHistory])
 
-  // Poll the conversation list while this screen is focused for near-real-time
-  // sync with the web app and other devices.
-  useFocusEffect(
-    useCallback(() => {
-      let intervalId: ReturnType<typeof setInterval> | null = null
+  useEffect(() => {
+    setHistory([])
+    if (!nativeReady || !activeWorkspaceId) return
+    return subscribeChats('personal', setHistory)
+  }, [nativeReady, activeWorkspaceId])
 
-      void refreshHistory().catch(() => {})
-      intervalId = setInterval(() => {
-        void refreshHistory().catch(() => {})
-      }, 15000)
-
-      return () => {
-        if (intervalId) clearInterval(intervalId)
+  useEffect(() => {
+    if (!nativeReady || !activeWorkspaceId || !activeChatId || !/^[0-9a-z]{20,40}$/.test(activeChatId) || isTemporary || isSending) return
+    let lastReadMessageId: string | undefined
+    return subscribePersonalChat(activeChatId, chat => {
+      if (!chat) {
+        chatRef.current = null
+        setMessages([])
+        return
       }
-    }, [refreshHistory]),
-  )
+      chatRef.current = chat
+      setChatTitle(chat.title)
+      setMessages(chat.messages)
+      setShowingCachedCopy(false)
+      const lastMessageId = chat.messages.at(-1)?.id
+      if (lastMessageId && lastReadMessageId !== lastMessageId) {
+        lastReadMessageId = lastMessageId
+        void setPersonalChatRead(chat.id, false, lastMessageId).catch(() => undefined)
+      }
+    })
+  }, [nativeReady, activeWorkspaceId, activeChatId, isTemporary, isSending])
 
   // ── Agent run lifecycle ───────────────────────────────────────────────────
   // The server runs each act turn as an AgentRunResource; `currentRun` is the

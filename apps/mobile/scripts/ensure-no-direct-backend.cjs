@@ -13,20 +13,8 @@ const ignoredDirs = new Set([
 
 const forbiddenPatterns = [
   {
-    pattern: /from\s+['"]convex(?:\/|['"])|require\(['"]convex(?:\/|['"])/g,
-    message: 'direct Convex imports are forbidden in overlay-mobile',
-  },
-  {
-    pattern: /convexClient/g,
-    message: 'direct convex client usage is forbidden in overlay-mobile',
-  },
-  {
-    pattern: /EXPO_PUBLIC_CONVEX_URL/g,
-    message: 'Convex runtime config must not be referenced from overlay-mobile',
-  },
-  {
     pattern: /users:getUserProfile|users:syncUserProfile|usage:getEntitlements/g,
-    message: 'product data must flow through overlay-landing /api/v1 APIs only',
+    message: 'privileged profile and entitlement functions must stay server-owned',
   },
   {
     pattern: /from\s+['"](?:@workos-inc\/|stripe|@ai-sdk\/|openai|anthropic|groq-sdk|@aws-sdk\/|@convex-dev\/)|require\(['"](?:@workos-inc\/|stripe|@ai-sdk\/|openai|anthropic|groq-sdk|@aws-sdk\/|@convex-dev\/)/g,

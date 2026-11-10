@@ -17,6 +17,7 @@ import {
   loadAuthSession,
   refreshAuthSession,
   saveAuthSession,
+  saveRefreshedAuthSession,
 } from '../services/authService'
 import { clearBootstrapCache } from '../services/bootstrapService'
 import { clearUiSettingsCache } from '../services/settingsService'
@@ -71,7 +72,7 @@ export function AuthProvider({
 
     void refreshAuthSession(storedSession)
       .then(async (nextSession) => {
-        await saveAuthSession(nextSession)
+        await saveRefreshedAuthSession(nextSession, storedSession)
         await hydrateSession(nextSession)
         console.log('[AuthContext] restoreStoredSession: background refresh saved')
       })
@@ -97,7 +98,7 @@ export function AuthProvider({
 
     try {
       const nextSession = await refreshAuthSession(storedSession)
-      await saveAuthSession(nextSession)
+      await saveRefreshedAuthSession(nextSession, storedSession)
       await hydrateSession(nextSession)
     } catch (error) {
       const message = getErrorMessage(error)

@@ -26,6 +26,7 @@
     "@overlay/workspace-contracts": "file:../packages/overlay-workspace-contracts",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-masked-view/masked-view": "0.3.2",
+    "convex": "^1.41.0",
     "expo": "~55.0.17",
     "expo-auth-session": "~55.0.15",
     "expo-blur": "~55.0.14",

@@ -32,6 +32,7 @@ import type { ConversationParticipant, ConversationPresence } from '@overlay/wor
 import { useTheme } from '../../hooks/useTheme'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import {
   compareRoomMessageRecords,
@@ -54,7 +55,6 @@ import {
   COLLABORATION_NATIVE_READY,
   fetchRoomReactions,
   fetchSavedMessages,
-  fetchThreadFollow,
   loadRoomMessages,
   markConversationNotificationsRead,
   removeRoomParticipant,
@@ -66,6 +66,8 @@ import {
   setRoomReaction,
   setThreadFollowed,
   updateRoomParticipantState,
+  subscribeRoomState,
+  subscribeRoomMessages,
 } from '../../services/collaborationService'
 import { uploadDocument } from '../../services/aiService'
 import type { ChatMentionItem } from '../../services/chatTypes'
@@ -81,7 +83,6 @@ import { Badge, ListRow, Section } from '../ui/primitives'
 import { FeatureGate } from '../ui/FeatureGate'
 import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 
-const POLL_INTERVAL_MS = 8_000
 const PRESENCE_HEARTBEAT_MS = 25_000
 const TYPING_THROTTLE_MS = 2_500
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '🙏']
@@ -154,6 +155,11 @@ export function RoomScreen({
   const router = useRouter()
   const { capabilities, isFeatureEnabled } = useAppSession()
   const { activeWorkspaceId } = useWorkspace()
+  const nativeReady = useNativeDataReady()
+  const [accessDenied, setAccessDenied] = useState(false)
+  const olderCursor = useRef<string | undefined>(undefined)
+  const olderSubscriptions = useRef<Array<() => void>>([])
+  const hasOlderPages = useRef(false)
 
   const [state, setState] = useState<RoomState>({
     title: '',
@@ -197,7 +203,10 @@ export function RoomScreen({
   const nearBottomRef = useRef(true)
   const inputRef = useRef<TextInput | null>(null)
   const mountedRef = useRef(true)
-  useEffect(() => () => { mountedRef.current = false }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const isThread = Boolean(threadRootMessageId)
 
@@ -217,7 +226,7 @@ export function RoomScreen({
             fetchRoomPresence(conversationId).catch(() => []),
             fetchRoomReactions(conversationId).catch(() => []),
             fetchRoomPins(conversationId).catch(() => []),
-            fetchSavedMessages().catch(() => []),
+            fetchSavedMessages(conversationId).catch(() => []),
           ])
         if (!mountedRef.current) return
         setState((current) => ({
@@ -257,30 +266,48 @@ export function RoomScreen({
     [conversationId, isThread, threadRootMessageId],
   )
 
-  // Convex-native in Phase 1: replace transcript polling with subscriptions.
   useFocusEffect(
     useCallback(() => {
-      setState((current) => ({ ...current, loading: true }))
-      void loadAll('initial')
-      const interval = setInterval(() => void loadAll('poll'), POLL_INTERVAL_MS)
-      return () => clearInterval(interval)
-    }, [loadAll]),
-  )
-
-  // Thread follow state.
-  useEffect(() => {
-    if (!COLLABORATION_NATIVE_READY || !threadRootMessageId) return
-    void fetchThreadFollow(conversationId, threadRootMessageId)
-      .then(({ following: value }) => {
-        if (mountedRef.current) setFollowing(value)
+      if (!nativeReady || !activeWorkspaceId) return
+      let active = true
+      olderCursor.current = undefined
+      hasOlderPages.current = false
+      setAccessDenied(false)
+      setState((current) => ({ ...current, messages: [], participants: [], presence: [], reactions: {}, pinnedIds: new Set(), savedIds: new Set(), loading: true }))
+      const stopState = subscribeRoomState(conversationId, value => {
+        if (!active) return
+        setAccessDenied(value === null)
+        setState(current => ({ ...current,
+          participants: value?.participants ?? [], currentPrincipalId: value?.currentPrincipalId ?? '',
+          presence: value?.presence ?? [], reactions: groupReactions(value?.reactions ?? []),
+          pinnedIds: new Set(value?.pins.map(pin => pin.messageId) ?? []),
+          savedIds: new Set(value?.saved.map(row => row.messageId) ?? []),
+          ...(value === null ? { messages: [], loading: false } : {}),
+        }))
+        setFollowing(Boolean(value?.follows.some(row => row.threadRootMessageId === threadRootMessageId)))
+        const me = value?.participants.find(row => row.principalId === value.currentPrincipalId)
+        setMuted(me?.notificationLevel === 'muted')
       })
-      .catch(() => undefined)
-  }, [conversationId, threadRootMessageId])
+      const stopMessages = subscribeRoomMessages(conversationId, { threadRootMessageId }, page => {
+        if (!active) return
+        if (!hasOlderPages.current) olderCursor.current = page.cursor
+        setState(current => ({ ...current, title: page.title ?? current.title,
+          messages: mergeRoomMessages(page.messages, current.messages), hasMore: hasOlderPages.current ? current.hasMore : page.hasMore, loading: false }))
+      })
+      void markConversationNotificationsRead(conversationId).catch(() => undefined)
+      void updateRoomParticipantState(conversationId, { markRead: true }).catch(() => undefined)
+      return () => {
+        active = false; stopState(); stopMessages()
+        olderSubscriptions.current.forEach(stop => stop())
+        olderSubscriptions.current = []
+      }
+    }, [nativeReady, activeWorkspaceId, conversationId, threadRootMessageId]),
+  )
 
   // Presence heartbeat while the room is open.
   useFocusEffect(
     useCallback(() => {
-      if (!COLLABORATION_NATIVE_READY) return
+      if (!nativeReady || !activeWorkspaceId) return
       const beat = () =>
         void sendRoomPresence(conversationId, {
           status: 'online',
@@ -295,7 +322,7 @@ export function RoomScreen({
           sessionId: sessionIdRef.current,
         }).catch(() => undefined)
       }
-    }, [conversationId]),
+    }, [conversationId, nativeReady, activeWorkspaceId]),
   )
 
   // ── Derived views ──────────────────────────────────────────────────────────
@@ -744,31 +771,28 @@ export function RoomScreen({
     })
   }, [conversationId, threadRootMessageId, following])
 
-  const handleLoadOlder = useCallback(async () => {
+  const handleLoadOlder = useCallback(() => {
     if (loadingOlder || !state.hasMore) return
-    const earliest = state.messages
-      .filter((message) => !message.threadRootMessageId)
-      .reduce<number | undefined>(
-        (value, message) => (value === undefined ? message.createdAt : Math.min(value, message.createdAt)),
-        undefined,
-      )
-    if (earliest === undefined) return
     setLoadingOlder(true)
     try {
-      const page = await loadRoomMessages(conversationId, {
-        mainOnly: true,
+      hasOlderPages.current = true
+      let previousCursor = olderCursor.current
+      const stop = subscribeRoomMessages(conversationId, {
+        threadRootMessageId,
         limit: 100,
-        beforeCreatedAt: earliest,
+        cursor: olderCursor.current,
+      }, page => {
+        if (!mountedRef.current) return
+        const isLastPage = olderCursor.current === previousCursor
+        if (isLastPage) { olderCursor.current = page.cursor; previousCursor = page.cursor }
+        setState(current => ({ ...current, messages: mergeRoomMessages(page.messages, current.messages), hasMore: isLastPage ? page.hasMore : current.hasMore }))
+        setLoadingOlder(false)
       })
-      setState((current) => ({
-        ...current,
-        messages: mergeRoomMessages(page.messages, current.messages),
-        hasMore: page.hasMore,
-      }))
-    } finally {
+      olderSubscriptions.current.push(stop)
+    } catch {
       setLoadingOlder(false)
     }
-  }, [loadingOlder, state.hasMore, state.messages, conversationId])
+  }, [loadingOlder, state.hasMore, conversationId, threadRootMessageId])
 
   const loadOlderRef = useRef(handleLoadOlder)
   loadOlderRef.current = handleLoadOlder
@@ -809,6 +833,8 @@ export function RoomScreen({
   }, [conversationId, muted])
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (accessDenied) return <FeatureGate title="Room unavailable" description="You no longer have access to this conversation." />
 
   if (!capabilities.chat) {
     return <FeatureGate title="Chat is turned off" />

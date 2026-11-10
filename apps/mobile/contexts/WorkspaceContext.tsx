@@ -9,11 +9,13 @@ import React, {
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { useAuth } from './AuthContext'
 import { useAppSession } from './AppSessionContext'
+import { useNativeDataReady } from './ConvexAuthProvider'
 import { setRequestWorkspaceId } from '../services/appApi'
 import {
   activateWorkspace,
   applyWorkspaceLocally,
   fetchWorkspaces,
+  subscribeWorkspaces,
   isPersonalWorkspace,
   loadPersistedWorkspaceId,
 } from '../services/workspaceService'
@@ -58,6 +60,7 @@ export function WorkspaceProvider({
   children: React.ReactNode
 }): React.ReactElement {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const nativeReady = useNativeDataReady()
   const { capabilities, isLoading: sessionLoading, refresh: refreshSession } = useAppSession()
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
@@ -75,7 +78,7 @@ export function WorkspaceProvider({
   }, [])
 
   const refresh = useCallback(async () => {
-    if (!isAuthenticated || !workspacesEnabled) {
+    if (!isAuthenticated || !workspacesEnabled || !nativeReady) {
       return
     }
     setIsLoading(true)
@@ -91,7 +94,16 @@ export function WorkspaceProvider({
     } finally {
       setIsLoading(false)
     }
-  }, [applyActiveWorkspace, isAuthenticated, workspacesEnabled])
+  }, [applyActiveWorkspace, isAuthenticated, workspacesEnabled, nativeReady])
+
+  useEffect(() => {
+    if (!nativeReady || !workspacesEnabled) return
+    return subscribeWorkspaces(({ workspaces: list, activeWorkspaceId: serverActiveId }) => {
+      setWorkspaces(list)
+      setIsLoading(false)
+      applyActiveWorkspace(resolveActiveWorkspaceId(list, serverActiveId))
+    })
+  }, [nativeReady, workspacesEnabled, applyActiveWorkspace])
 
   // Warm-start: apply the persisted selection so requests issued before the
   // workspaces fetch completes still carry the right scope. Skipped once the

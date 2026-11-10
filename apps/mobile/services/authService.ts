@@ -114,12 +114,31 @@ export async function loadAuthSession(): Promise<AuthSession | null> {
   }
 }
 
-export async function saveAuthSession(session: AuthSession): Promise<void> {
-  await SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(session))
+let sessionWrite: Promise<void> = Promise.resolve()
+
+function serializeSessionWrite(write: () => Promise<void>): Promise<void> {
+  const request = sessionWrite.then(write)
+  sessionWrite = request.catch(() => undefined)
+  return request
+}
+
+export function saveAuthSession(session: AuthSession): Promise<void> {
+  return serializeSessionWrite(() => SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(session)))
+}
+
+export function saveRefreshedAuthSession(session: AuthSession, previous: AuthSession): Promise<void> {
+  return serializeSessionWrite(async () => {
+    const current = await loadAuthSession()
+    if (current?.user.id === session.user.id && current.accessToken === session.accessToken) return
+    if (session.user.id !== previous.user.id || current?.user.id !== previous.user.id || current.refreshToken !== previous.refreshToken) {
+      throw new Error('The stored session changed during refresh.')
+    }
+    await SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(session))
+  })
 }
 
 export async function clearAuthSession(): Promise<void> {
-  await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY)
+  await serializeSessionWrite(() => SecureStore.deleteItemAsync(AUTH_STORAGE_KEY))
   try {
     await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
     await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
@@ -362,7 +381,19 @@ export async function consumeTransferToken(token: string): Promise<AuthSession> 
   }
 }
 
-export async function refreshAuthSession(session: AuthSession): Promise<AuthSession> {
+const refreshFlights = new Map<string, Promise<AuthSession>>()
+
+export function refreshAuthSession(session: AuthSession): Promise<AuthSession> {
+  const key = `${session.user.id}:${session.refreshToken}`
+  const pending = refreshFlights.get(key)
+  if (pending) return pending
+  const request = requestRefreshedAuthSession(session)
+  refreshFlights.set(key, request)
+  void request.finally(() => { if (refreshFlights.get(key) === request) refreshFlights.delete(key) }).catch(() => undefined)
+  return request
+}
+
+async function requestRefreshedAuthSession(session: AuthSession): Promise<AuthSession> {
   console.log('[Auth] refreshAuthSession: refreshing for user=%s', session.user?.id)
   const response = await fetchWithTimeout(`${AUTH_BASE_URL}/api/auth/native/refresh`, {
     method: 'POST',

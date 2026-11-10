@@ -62,25 +62,12 @@ test('empty knowledge queries do not request; empty results and errors propagate
   await assert.rejects(failingApi.searchKnowledge('roadmap', 'memory'), (actual) => actual === error)
 })
 
-test('deferred collaboration reads are empty and writes explicitly reject without HTTP', async () => {
-  const unavailable = new Proxy({}, { get() { throw new Error('Unexpected HTTP request') } })
-  const api = load('services/collaborationService.ts', { './appApi': unavailable, './overlayClient': { mobileOverlayAppClient: unavailable } })
-  assert.equal(api.COLLABORATION_NATIVE_READY, false)
-  for (const name of ['fetchRoomPresence', 'fetchRoomReactions', 'fetchRoomPins', 'fetchSavedMessages', 'listChannels', 'fetchNotifications']) {
-    assert.equal((await api[name]('conversation')).length, 0, name)
-  }
-  assert.equal((await api.fetchThreadFollow('conversation', 'message')).following, false)
-  for (const name of ['editRoomMessage', 'deleteRoomMessage', 'sendRoomPresence', 'setRoomReaction', 'setRoomPinned', 'setMessageSaved', 'setThreadFollowed', 'markNotificationsRead', 'markConversationNotificationsRead', 'fetchNotificationPreferences', 'updateNotificationPreferences']) {
-    await assert.rejects(api[name]('conversation', 'message', true), /unavailable until Phase 1/, name)
-  }
-})
-
-test('workspace search is explicitly deferred and global mention lookup never requests', async () => {
-  const { searchWorkspace } = load('services/searchService.ts')
-  await assert.rejects(searchWorkspace('roadmap'), /Phase 1/)
-  const api = load('services/conversationActionsService.ts', { './appApi': {}, './overlayClient': {}, './chatStorage': {} })
-  assert.equal((await api.searchMentions('')).length, 0)
-  assert.equal((await api.searchMentions('Scout')).length, 0)
+test('restored collaboration and search do not bring back retired HTTP endpoints', () => {
+  const source = ['services/collaborationService.ts', 'services/searchService.ts', 'services/conversationActionsService.ts']
+    .map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n')
+  assert.doesNotMatch(source, /unavailable until Phase 1|Workspace search will be available/)
+  assert.match(source, /api\.collaboration\.rooms\.setReaction/)
+  assert.match(source, /api\.search\.browse\.mentions/)
 })
 
 test('Hermes is not offered by built-in or environment-advertised adapters', () => {

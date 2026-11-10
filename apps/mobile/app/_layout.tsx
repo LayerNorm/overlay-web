@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import { AppSessionProvider } from '../contexts/AppSessionContext'
 import { WorkspaceProvider } from '../contexts/WorkspaceContext'
+import { ConvexAuthProvider } from '../contexts/ConvexAuthProvider'
 import { useNotificationWatcher } from '../hooks/useNotificationWatcher'
 import { openNotificationDestination } from '../lib/notificationRouting'
 import {
@@ -226,11 +227,13 @@ export default function RootLayout(): React.ReactElement {
     <SafeAreaProvider>
       <AuthProvider>
         <ThemeProvider>
+          <ConvexAuthProvider>
           <AppSessionProvider>
             <WorkspaceProvider>
               <RootLayoutNav />
             </WorkspaceProvider>
           </AppSessionProvider>
+          </ConvexAuthProvider>
         </ThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>

@@ -1,13 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type {
   ConversationMessage,
-  ConversationSummary,
 } from '@overlay/app-core'
 import { normalizeTranscriptAssistantParts } from '@overlay/chat-core'
-import { appJson, appRequest } from './appApi'
+import { api, convexWorkspaceId, mutateConvex, queryConvex, subscribeConvex, type Id } from './convexClient'
+import { appRequest } from './appApi'
+import type { FunctionReturnType } from 'convex/server'
+import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
+import { queryAllPages, subscribeAllPages } from './convexPagination'
 import {
   generateChatId,
-  getConversationSummaryLastMessage,
   type Chat,
   type ChatMeta,
   type Message,
@@ -82,9 +84,10 @@ function toMessageContent(parts: ConversationMessage['parts']): string {
     .join('')
 }
 
-function mapConversationMessageToMessage(message: ConversationMessage): Message {
-  const text = toMessageContent(message.parts)
-  const generatedFiles = message.parts
+function mapConversationMessageToMessage(message: ConversationMessage & { createdAt?: number; content?: string }): Message {
+  const parts = message.parts ?? []
+  const text = toMessageContent(parts) || message.content || ''
+  const generatedFiles = parts
     .filter(
       (part): part is Extract<ConversationMessage['parts'][number], { type: 'file' }> =>
         part.type === 'file' && !!part.url,
@@ -94,7 +97,7 @@ function mapConversationMessageToMessage(message: ConversationMessage): Message 
       mediaType: part.mediaType || 'application/octet-stream',
     }))
 
-  const toolInvocations = message.parts
+  const toolInvocations = parts
     .filter((part) => part.type === 'tool-invocation')
     .map((part) => ({
       toolCallId: part.toolInvocation.toolCallId,
@@ -107,7 +110,7 @@ function mapConversationMessageToMessage(message: ConversationMessage): Message 
   // Normalized render model — same normalizer the web transcript uses, so
   // reasoning, grouped tools, sources, and generated-ui survive the round trip.
   const { blocks, sources } = message.role === 'assistant'
-    ? normalizeTranscriptAssistantParts(message.parts)
+    ? normalizeTranscriptAssistantParts(parts)
     : { blocks: undefined, sources: undefined }
 
   return {
@@ -117,7 +120,7 @@ function mapConversationMessageToMessage(message: ConversationMessage): Message 
     turnId: message.turnId,
     role: message.role,
     content: text,
-    timestamp: Date.now(),
+    timestamp: message.createdAt ?? Date.now(),
     selectedModelId: message.model,
     responses:
       message.role === 'assistant'
@@ -140,110 +143,112 @@ function mapConversationMessageToMessage(message: ConversationMessage): Message 
   }
 }
 
-function mapConversationSummary(summary: ConversationSummary): ChatMeta {
-  const runtime = summary as ConversationSummary & {
-    conversationType?: 'personal' | 'dm' | 'channel'
-    archivedAt?: number
-  }
-  return {
-    id: summary._id,
-    title: summary.title,
-    createdAt: summary.createdAt,
-    updatedAt: summary.updatedAt,
-    lastMessage: undefined,
-    lastMode: summary.lastMode,
-    askModelIds: summary.askModelIds,
-    actModelId: summary.actModelId,
-    clientId: summary.clientId,
-    conversationType: runtime.conversationType,
-    archivedAt: runtime.archivedAt,
-  }
+type NativeSummary = NonNullable<FunctionReturnType<typeof api.chat.personal.getSummary>>
+function personalArgs(id: string) { return { workspaceId: convexWorkspaceId(), conversationId: id as Id<'conversations'> } }
+function mapNativeSummary(summary: NativeSummary): ChatMeta {
+  return { id: summary._id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.lastModified,
+    lastMode: summary.lastMode, askModelIds: summary.askModelIds, actModelId: summary.actModelId,
+    conversationType: 'personal', archivedAt: summary.archivedAt }
 }
-
-export async function loadChatsMeta(): Promise<ChatMeta[]> {
-  const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations')
-  return summaries
-    .map(mapConversationSummary)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
+export async function loadChatsMeta(): Promise<ChatMeta[]> { return loadChatsMetaByView('personal') }
 export type ChatListView = 'personal' | 'dms' | 'channels' | 'all'
 
-/**
- * Collaboration-aware list — `?view=` returns a paginated envelope
- * (`{ data, nextCursor, hasMore }`) unlike the bare-array default list.
- * Mirrors the web sidebar's Personal/DMs/Channels/All filtering.
- */
+function roomListArgs(view: ChatListView) {
+  return { workspaceId: convexWorkspaceId(), kind: view === 'dms' ? 'dm' as const : view === 'channels' ? 'channel' as const : 'all' as const, limit: 500 }
+}
+type RoomList = NonNullable<FunctionReturnType<typeof api.collaboration.roomList.list>>
+function roomMetas(result: RoomList | null): ChatMeta[] {
+  return (result?.rooms ?? []).map(room => ({ id: room._id, title: room.title, createdAt: room.createdAt, updatedAt: room.updatedAt, conversationType: room.conversationType }))
+}
 export async function loadChatsMetaByView(view: ChatListView): Promise<ChatMeta[]> {
-  const response = await appJson<{ data?: ConversationSummary[] } | ConversationSummary[]>(
-    '/api/v1/conversations',
-    { query: { view, limit: 100 } },
-  )
-  const summaries = Array.isArray(response) ? response : (response.data ?? [])
-  return summaries
-    .map(mapConversationSummary)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const [personal, rooms] = await Promise.all([
+    view === 'personal' || view === 'all' ? queryAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: false }).then(rows => rows.map(mapNativeSummary)) : [],
+    view !== 'personal' ? queryConvex(api.collaboration.roomList.list, roomListArgs(view)).then(roomMetas) : [],
+  ])
+  return [...personal, ...rooms].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-/** Archived conversations — `GET /conversations?archived=true` (web ChatArchivedView). */
+export function subscribeChats(view: ChatListView, onValue: (chats: ChatMeta[]) => void) {
+  let personal: ChatMeta[] = []
+  let rooms: ChatMeta[] = []
+  const emit = () => onValue([...personal, ...rooms].sort((a, b) => b.updatedAt - a.updatedAt))
+  const stops: Array<() => void> = []
+  if (view === 'personal' || view === 'all') stops.push(subscribeAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: false }, rows => { personal = rows.map(mapNativeSummary); emit() }))
+  if (view !== 'personal') stops.push(subscribeConvex(api.collaboration.roomList.list, roomListArgs(view), result => { rooms = roomMetas(result); emit() }))
+  return () => stops.forEach(stop => stop())
+}
+
 export async function loadArchivedChats(): Promise<ChatMeta[]> {
-  const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations', {
-    query: { archived: true },
-  })
-  return summaries
-    .map(mapConversationSummary)
-    .sort((a, b) => (b.archivedAt ?? b.updatedAt) - (a.archivedAt ?? a.updatedAt))
+  return (await queryAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: true })).map(mapNativeSummary)
 }
-
+export async function setPersonalChatRead(id: string, unread = false, throughMessageId?: string): Promise<void> {
+  await mutateConvex(api.chat.personal.setRead, { ...personalArgs(id), unread, throughMessageId: throughMessageId as Id<'conversationMessages'> | undefined })
+}
+export async function setPersonalChatArchived(id: string, archived: boolean): Promise<void> {
+  await mutateConvex(api.chat.personal.setArchived, { ...personalArgs(id), archived })
+}
 export async function saveChat(chat: Chat): Promise<void> {
-  await appJson('/api/v1/conversations', {
-    method: 'PATCH',
-    json: {
-      conversationId: chat.id,
-      title: chat.title,
-      askModelIds: chat.askModelIds,
-      actModelId: chat.actModelId || chat.modelId,
-      lastMode: chat.lastMode,
-    },
-  })
+  await Promise.all([
+    updateChatTitle(chat.id, chat.title),
+    mutateConvex(api.chat.personal.setPreferences, {
+      ...personalArgs(chat.id), askModelIds: chat.askModelIds ?? [], actModelId: chat.actModelId || chat.modelId || '', lastMode: chat.lastMode ?? 'act',
+    }),
+  ])
 }
-
+function nativeChat(summary: NativeSummary, rows: FunctionReturnType<typeof api.chat.personal.getMessages>['page']): Chat {
+  const records = rows.map(row => ({ ...row.message, id: row.message._id }) as ConversationMessage).reverse()
+  const messages = records.map(mapConversationMessageToMessage)
+  return { ...mapNativeSummary(summary), modelId: summary.actModelId || summary.askModelIds[0], messages,
+    lastMessage: messages.at(-1)?.content.slice(0, 100) }
+}
 export async function loadChat(id: string): Promise<Chat | null> {
-  try {
-    const [summary, messagesResponse] = await Promise.all([
-      appJson<ConversationSummary>(`/api/v1/conversations`, {
-        query: { conversationId: id },
-      }),
-      appJson<{ messages: ConversationMessage[] }>(`/api/v1/conversations`, {
-        query: { conversationId: id, messages: true },
-      }),
-    ])
-
-    const messages = messagesResponse.messages.map(mapConversationMessageToMessage)
-    const chat: Chat = {
-      ...mapConversationSummary(summary),
-      lastMessage: getConversationSummaryLastMessage(summary, messagesResponse.messages),
-      modelId: summary.actModelId || summary.askModelIds[0],
-      messages,
-    }
-    void saveChatSnapshot(chat)
-    return chat
-  } catch {
-    // Read-through: server unreachable → fall back to the last synced copy.
-    return loadChatSnapshot(id)
-  }
+  const args = personalArgs(id)
+  const summary = await queryConvex(api.chat.personal.getSummary, args)
+  if (!summary) return null
+  const rows = await queryAllPages(api.chat.personal.getMessages, args)
+  const chat = nativeChat(summary, rows)
+  void saveChatSnapshot(chat)
+  return chat
 }
-
-export async function deleteChat(id: string): Promise<void> {
-  await appRequest('/api/v1/conversations', {
-    method: 'DELETE',
-    query: { conversationId: id },
-  })
-
-  const lastId = await getLastOpenedChatId()
-  if (lastId === id) {
-    await AsyncStorage.removeItem(LAST_CHAT_ID_KEY)
+export function subscribePersonalChat(id: string, onValue: (chat: Chat | null) => void) {
+  const args = personalArgs(id)
+  let summary: NativeSummary | null | undefined
+  let rows: FunctionReturnType<typeof api.chat.personal.getMessages>['page'] | undefined
+  let stopMessages: (() => void) | undefined
+  let stopStreams: (() => void) | undefined
+  let streams: ActivePublicStreamSnapshot[] = []
+  let streamKey = ''
+  const emit = () => {
+    if (summary === null) { onValue(null); return }
+    if (summary && rows) {
+      const projected = projectActivePublicStreams(rows.map(row => row.message), streams)
+      const chat = nativeChat(summary, rows.map((row, index) => ({ ...row, message: projected[index] })))
+      void saveChatSnapshot(chat)
+      onValue(chat)
+    }
   }
+  const stopSummary = subscribeConvex(api.chat.personal.getSummary, args, value => {
+    summary = value
+    if (!value) {
+      stopMessages?.(); stopMessages = undefined; rows = undefined
+      stopStreams?.(); stopStreams = undefined; streams = []; streamKey = ''
+    } else if (!stopMessages) stopMessages = subscribeAllPages(api.chat.personal.getMessages, args, value => {
+      rows = value
+      const messageIds = rows.filter(row => row.message.status === 'generating').slice(0, 50).map(row => row.message._id)
+      const key = messageIds.join(',')
+      if (key !== streamKey) {
+        stopStreams?.(); streams = []; streamKey = key
+        stopStreams = messageIds.length ? subscribeConvex(api.chat.personal.activePublicStreams, { ...args, messageIds }, value => { streams = value; emit() }) : undefined
+      }
+      emit()
+    })
+    emit()
+  })
+  return () => { stopSummary(); stopMessages?.(); stopStreams?.() }
+}
+export async function deleteChat(id: string): Promise<void> {
+  await appRequest('/api/v1/conversations', { method: 'DELETE', query: { conversationId: id } })
+  if (await getLastOpenedChatId() === id) await AsyncStorage.removeItem(LAST_CHAT_ID_KEY)
   void removeChatSnapshot(id)
 }
 
@@ -256,10 +261,7 @@ export async function setLastOpenedChatId(id: string): Promise<void> {
 }
 
 export async function updateChatTitle(id: string, title: string): Promise<void> {
-  await appJson('/api/v1/conversations', {
-    method: 'PATCH',
-    json: { conversationId: id, title },
-  })
+  await mutateConvex(api.chat.personal.rename, { ...personalArgs(id), title })
 }
 
 export async function updateChatMessages(_id: string, _messages: Message[]): Promise<void> {
@@ -272,26 +274,11 @@ export async function createNewChat(
   options: { title?: string; clientId?: string } = {},
 ): Promise<Chat> {
   const clientId = options.clientId ?? generateChatId()
-  const response = await appJson<{
-    id: string
-    conversation: ConversationSummary
-  }>('/api/v1/conversations', {
-    method: 'POST',
-    json: {
-      clientId,
-      title: options.title || 'New Chat',
-      askModelIds: modelId ? [modelId] : undefined,
-      actModelId: modelId,
-      lastMode: 'act',
-    },
+  const id = await mutateConvex(api.chat.personal.create, {
+    workspaceId: convexWorkspaceId(), clientId, title: options.title || 'New Chat',
+    askModelIds: modelId ? [modelId] : [], actModelId: modelId ?? '', lastMode: 'act',
   })
-
-  const conversation = response.conversation
-  return {
-    ...mapConversationSummary(conversation),
-    id: conversation._id,
-    modelId: conversation.actModelId || conversation.askModelIds[0],
-    messages: [],
-    clientId,
-  }
+  const chat = await loadChat(id)
+  if (!chat) throw new Error('Could not open the new chat.')
+  return { ...chat, clientId }
 }
