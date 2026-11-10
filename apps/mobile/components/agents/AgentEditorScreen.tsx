@@ -19,7 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { hapticSelect } from '../../lib/haptics'
 import type { ChatModel } from '@overlay/app-core'
@@ -39,6 +39,8 @@ import { FeatureGate } from '../ui/FeatureGate'
 import { ListRow, Section } from '../ui/primitives'
 import { AppIcon } from '../ui/AppIcon'
 import { AgentCreature } from './AgentCreature'
+import { AgentEditorView } from './AgentEditorView'
+import { getRequestWorkspaceId } from '../../services/appApi'
 import { ConnectMachineSheet } from './ConnectMachineSheet'
 import {
   archiveAgent,
@@ -79,7 +81,6 @@ type AgentType = 'overlay' | 'byo'
 
 export function AgentEditorScreen({ agentId }: { agentId: string }): React.ReactElement {
   const { theme, isDark } = useTheme()
-  const insets = useSafeAreaInsets()
   const router = useRouter()
   const { capabilities, chatModels, uiSettings, isFeatureEnabled } = useAppSession()
   const { activeWorkspaceId } = useWorkspace()
@@ -87,6 +88,8 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   const isNew = agentId === 'new'
 
   const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(null)
+  const [advanced, setAdvanced] = useState(false)
+  const [editable, setEditable] = useState(isNew)
   const [loading, setLoading] = useState(!isNew)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -134,7 +137,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     )),
     [adapterId, environments],
   )
-  const bindingValid = Boolean(environmentId && adapterId && workingDirectory.trim())
+  const bindingValid = Boolean(environmentId && ['codex', 'claude-code'].includes(adapterId) && workingDirectory.trim())
 
   const toolGroups = useMemo(
     () => (computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')),
@@ -170,6 +173,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     ]).then(([loaded, byo, computers]) => {
       if (cancelled) return
       setAgent(loaded)
+      setEditable(loaded.canEdit)
       setName(loaded.name)
       setDescription(loaded.description ?? '')
       setInstructions(loaded.instructions)
@@ -294,7 +298,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     } else {
       return
     }
-    router.back()
+    if (getRequestWorkspaceId() === workspaceId) router.back()
   }, [
     adapterId, agent, agentComputer, agentType, avatarColor, avatarShape, computersAvailable,
     description, enabledToolGroups, environmentId, harnessOptions, instructions, isNew, modelId,
@@ -391,6 +395,21 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   }
 
   const selectedModel = sortedModels.find((model) => model.id === modelId)
+
+  if (!isNew && !editable) return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }} edges={['top', 'bottom']}>
+      <View style={styles.navRow}>
+        <TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />
+      </View>
+      <EmptyState theme={theme} icon="lock" title="This agent is read-only" description="Only people with edit access can change this agent." />
+    </SafeAreaView>
+  )
+
+  if (!advanced && agentType === 'overlay') return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }} edges={['top', 'bottom']}>
+      <AgentEditorView theme={theme} dark={isDark} agent={{ id: agent?.id ?? 'new', name, isDefault: agent?.isDefault, avatarColor, avatarShape }} name={name} description={description} modelId={modelId} models={sortedModels} groups={toolGroups.filter(group => ['web_search', 'knowledge', 'computer'].includes(group.id))} enabled={enabledToolGroups} onName={setName} onDescription={setDescription} onModel={setModelId} onToggle={toggleToolGroup} onAdvanced={() => setAdvanced(true)} onSave={save} onBack={() => router.back()} busy={busy || !editable} valid={isValid && editable} error={error} isNew={isNew} />
+    </SafeAreaView>
+  )
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
@@ -651,7 +670,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
                 accessibilityLabel="Working directory"
               />
               <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
-                Must be inside the environment's approved roots. The environment may host other agents too.
+                Must be inside the environment&apos;s approved roots. The environment may host other agents too.
               </Text>
             </FieldCard>
           </>

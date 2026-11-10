@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -12,13 +13,13 @@ function load(file, dependencies = {}) {
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   })
-  const module = { exports: {} }
+  const loaded = { exports: {} }
   const requireMock = (id) => {
     assert.ok(Object.hasOwn(dependencies, id), 'Unexpected dependency: ' + id)
     return dependencies[id]
   }
-  vm.runInNewContext('(function(require, module, exports) {' + outputText + '\n})')(requireMock, module, module.exports)
-  return module.exports
+  vm.runInNewContext('(function(require, module, exports) {' + outputText + '\n})')(requireMock, loaded, loaded.exports)
+  return loaded.exports
 }
 
 test('navigation has current scope, order and optional Extensions', () => {
@@ -75,7 +76,7 @@ test('Hermes is not offered by built-in or environment-advertised adapters', () 
   assert.equal(api.BUILT_IN_BYO_HARNESSES.map((item) => item.id).join(','), 'codex,claude-code')
   assert.equal(api.acpAdaptersForEnvironment({ capabilities: { adapters: [] } }).length, 0)
   const environment = { capabilities: { adapters: [{ protocol: 'acp', id: 'hermes' }, { protocol: 'acp', id: 'custom-acp' }] } }
-  assert.equal(api.acpAdaptersForEnvironment(environment).map((item) => item.id).join(','), 'custom-acp')
+  assert.equal(api.acpAdaptersForEnvironment(environment).length, 0)
 })
 
 test('retired routes and endpoint calls are absent', () => {

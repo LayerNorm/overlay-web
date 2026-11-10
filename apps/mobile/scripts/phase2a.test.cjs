@@ -199,6 +199,7 @@ test('default agent identity uses the record flag, never the agent name', () => 
       themeCreatureFills: (color) => ({ light: color, dark: color }),
     },
     './Brand': { OverlayMark: mark },
+    '../../hooks/useAgentEyes': { useAgentEyes: () => ({ x: 0, y: 0 }) },
   })
   assert.equal(
     AgentAvatar({

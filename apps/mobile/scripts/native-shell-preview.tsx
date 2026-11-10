@@ -7,6 +7,7 @@ import * as NavigationBar from 'expo-navigation-bar'
 import { View } from 'react-native'
 import { ShellFixture } from './ShellFixture'
 import { WorkFixture } from './WorkFixture'
+import { AgentFixture } from './AgentFixture'
 
 void NavigationBar.setVisibilityAsync('hidden')
 
@@ -22,6 +23,8 @@ function NativeShellPreview() {
   const preview = Constants.expoConfig?.extra?.shellPreview
   const Fixture = ['work-list', 'task-detail', 'new-task'].includes(preview?.screen)
     ? WorkFixture
+    : ['agent-stream', 'agent-approval', 'agent-details', 'agent-editor'].includes(preview?.screen)
+      ? AgentFixture
     : ShellFixture
   return (
     <View style={{ flex: 1 }}>

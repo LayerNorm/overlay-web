@@ -6,19 +6,25 @@ import {
   themeCreatureFills,
 } from '../../../src/shared/agents/agent-creature'
 import { OverlayMark } from './Brand'
+import { useAgentEyes } from '../../hooks/useAgentEyes'
 
 export function AgentAvatar({
   agent,
   dark,
   foreground,
   size = 25,
+  working = false,
+  reducedMotion,
 }: {
   agent: { name: string; isDefault?: boolean; avatarShape?: string; avatarColor?: string }
   dark: boolean
   foreground: string
   size?: number
+  working?: boolean
+  reducedMotion?: boolean
 }) {
-  if (agent.isDefault) return <OverlayMark size={size} color={foreground} />
+  const eyes = useAgentEyes(working, reducedMotion)
+  if (agent.isDefault) return <OverlayMark size={size} color={foreground} eyeX={eyes.x} eyeY={eyes.y} />
   const fills = themeCreatureFills(agent.avatarColor ?? '#71717a')
   const fill = dark ? fills.dark : fills.light
   const shape = normalizeCreatureShape(agent.avatarShape)
@@ -48,7 +54,7 @@ export function AgentAvatar({
           <Circle cx="50" cy="53" r="40" />
         )}
       </G>
-      <G fill={creatureEyeColor(fill)}>
+      <G fill={creatureEyeColor(fill)} transform={`translate(${eyes.x} ${eyes.y})`}>
         <Rect x="36" y="45" width="9.5" height="17" rx="4.75" />
         <Rect x="54.5" y="45" width="9.5" height="17" rx="4.75" />
       </G>
