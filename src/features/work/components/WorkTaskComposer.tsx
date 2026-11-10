@@ -82,13 +82,13 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
 
   // The same composer box as chat and agent threads: one outlined card, centered at the transcript width.
   return <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4" data-testid="work-task-composer">
-    <div className="mx-auto w-full min-w-0 max-w-4xl">
+    <div className="@container/work-composer mx-auto w-full min-w-0 max-w-4xl">
       <PromptInput><PromptInputBody>
         <Textarea ref={input} rows={1} aria-label="Describe a task" placeholder="Describe a task" value={draft.text} disabled={locked} onChange={event => patch({ text: event.target.value })}
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }}
           className={unstyledTextarea('block min-h-11 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-0.5 py-1 text-sm leading-6 text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
         {draft.context.length ? <div className="flex flex-wrap gap-1 pt-1">{draft.context.map((context, index) => <Button key={`${context.type}:${context.id}`} type="button" variant="secondary" size="sm" className="h-7 max-w-full text-xs" disabled={locked} aria-label={`Remove ${context.label}`} onClick={() => patch({ context: draft.context.filter((_, i) => i !== index) })}><span className="truncate">{context.label}</span><X size={12} /></Button>)}</div> : null}
-        <PromptInputFooter className="flex-wrap">
+        <PromptInputFooter className="flex-nowrap">
           <WorkComposerContext search={search} disabled={locked || draft.context.length >= WORK_LIMITS.contextItems} onAdd={context => patch({ context: [...draft.context.filter(item => item.type !== context.type || item.id !== context.id), context] })} />
           <ComposerAssignee people={people} scope={scope} principalId={principalId} value={draft.assigneePrincipalId} onChange={assigneePrincipalId => patch({ assigneePrincipalId })} disabled={locked} />
           <ComposerSchedule draft={draft} onChange={patch} disabled={locked} />
@@ -100,7 +100,7 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
             </PopoverContent>
           </Popover>
           <span className="min-w-0 flex-1" />
-          {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light)">Starts when dependencies finish</span> : null}
+          {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
           <DesktopComposerControls disabled={locked} onAppendText={text => setDraft(current => ({ ...current, text: [current.text, text].filter(Boolean).join('\n') }))} />
           <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
         </PromptInputFooter>

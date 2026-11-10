@@ -2,18 +2,68 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import type { WorkItem } from '@overlay/app-core'
+import type { WorkItem, WorkPerson } from '@overlay/app-core'
 import { WorkTaskComposerForm, WorkTaskSettings } from './WorkTaskComposer'
 import { PopoverContent } from '@overlay/ui/primitives'
 import { emptyComposerDraft } from '../lib/composer-draft'
 import { ComposerAssignee, ComposerDependencies, ComposerSchedule } from './WorkComposerPickers'
 import { WorkComposerContext } from './WorkComposerContext'
+import { Avatar } from './work-ui'
 
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true })
 
+function mockTooltipGlobals() {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document')
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  Object.defineProperty(globalThis, 'window', { value: globalThis, configurable: true })
+  Object.defineProperty(globalThis, 'document', { value: { addEventListener() {}, removeEventListener() {} }, configurable: true })
+  return () => {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument)
+    else Reflect.deleteProperty(globalThis, 'document')
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+}
+
+test('compact pickers preserve accessible labels, avatars and counts, including empty and disabled states', async () => {
+  const restoreGlobals = mockTooltipGlobals()
+  const people: WorkPerson[] = [{ principalId: 'agent', type: 'agent', userId: null, displayName: 'Research agent', isDefault: true }]
+  const props = { scope: 'personal' as const, principalId: 'me', people, tasks: [], createTask: async () => null, search: async () => [] }
+  let renderer: ReactTestRenderer | undefined
+  const button = (label: string) => renderer!.root.findAllByType('button').find(node => node.props['aria-label'] === label)!
+  const badges = (label: string) => button(label).findAll(node => node.type === 'span' && node.props['aria-hidden'] === 'true')
+  try {
+    await act(async () => { renderer = create(<WorkTaskComposerForm {...props} />) })
+    const footer = renderer!.root.findAll(node => node.type === 'div' && node.props['data-slot'] === 'prompt-input-footer')[0]
+    assert.match(footer.props.className, /flex-nowrap/)
+    assert.doesNotMatch(footer.props.className, /\bflex-wrap\b/)
+    assert.equal(renderer!.root.findAllByType('div').some(node => node.props.className?.includes('@container/work-composer')), true)
+    for (const label of ['Assignee', 'Schedule', 'Depends on']) {
+      assert.match(button(label).props.className, /@max-\[520px\]\/work-composer:w-8/)
+      assert.match(button(label).props.className, /@max-\[520px\]\/work-composer:px-0/)
+      assert.equal(button(label).findAllByType('span').some(node => node.props.className?.includes('@max-[520px]/work-composer:sr-only') && node.props.children === label), true)
+      assert.equal(badges(label).length, 0)
+    }
+    await act(async () => {
+      renderer!.root.findByType(ComposerAssignee).props.onChange('agent')
+      renderer!.root.findByType(ComposerSchedule).props.onChange({ startDate: '2026-11-01', dueDate: '2026-11-03' })
+      renderer!.root.findByType(ComposerDependencies).props.onChange(['a', 'b', 'c'])
+    })
+    assert.equal(button('Research agent').findByType(Avatar).props.size, 16)
+    assert.equal(badges('Schedule (2)')[0].props.children, 2)
+    assert.equal(badges('Depends on (3)')[0].props.children, 3)
+    const hint = renderer!.root.findAllByType('span').find(node => node.props.children === 'Starts when dependencies finish')!
+    assert.match(hint.props.className, /@max-\[520px\]\/work-composer:hidden/)
+    await act(async () => { renderer!.update(<WorkTaskComposerForm {...props} disabled />) })
+    for (const label of ['Research agent', 'Schedule (2)', 'Depends on (3)']) assert.equal(button(label).props.disabled, true)
+  } finally {
+    await act(async () => { renderer?.unmount() })
+    restoreGlobals()
+  }
+})
+
 test('Enter submits, duplicate submits are held, success resets and refocuses; failures retain the draft', async () => {
-  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document')
-  Object.defineProperty(globalThis, 'document', { value: {}, configurable: true })
+  const restoreGlobals = mockTooltipGlobals()
   let renderer: ReactTestRenderer
   let focuses = 0
   let resolve: (value: WorkItem | null) => void = () => undefined
@@ -63,8 +113,7 @@ test('Enter submits, duplicate submits are held, success resets and refocuses; f
     assert.ok(renderer!.root.findByProps({ role: 'alert' }))
     await act(async () => { renderer!.unmount() })
   } finally {
-    if (previous) Object.defineProperty(globalThis, 'document', previous)
-    else Reflect.deleteProperty(globalThis, 'document')
+    restoreGlobals()
   }
 })
 
