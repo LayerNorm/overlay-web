@@ -13,7 +13,7 @@ import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { workspaceBudgetLow, workspaceBudgetShortfallCents } from '@/shared/billing/execution-access'
+import { workspaceBudgetLow, workspaceBudgetStopLineCents } from '@/shared/billing/execution-access'
 import {
   billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
@@ -326,7 +326,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
         userId: auth.userId,
         entitlements: runtimeEntitlements,
-        minimumRequiredCents: workspaceBudgetShortfallCents(budget),
+        minimumRequiredCents: workspaceBudgetStopLineCents(budget),
         programmaticSubjectId: billingProgrammaticSubjectId,
         workspaceId: billingWorkspaceId,
       })

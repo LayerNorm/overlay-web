@@ -751,22 +751,23 @@ browser APIs.
 
 ### Long-running Harness lifecycle
 
-New Harness admissions without an explicit legacy spend override use execution policy
-version 2. Its payer mode remains independent: workspace-funded paid runs reserve each
-Overlay dispatch atomically, while BYOK and non-Overlay-funded runs do not route through
-Overlay billing. Existing explicit spend limits and durations remain task limits;
-otherwise the persisted deadline is a renewable execution lease. Lease renewal is
+Every new Harness admission uses execution policy version 2 with `maxCostMicros: 0`; there
+is no per-task or per-child spending limit. Workspace-funded paid runs never estimate,
+reserve or hold a model call's cost: before each dispatch the provider step reads the real
+workspace balance and refuses only when less than 2% of the budget is left after an auto
+top-up attempt (the run fails with `WORKSPACE_FUNDS`). After the call the actual cost is
+charged directly. `reserve_model` remains only as a zero-cost marker so a bound dispatch is
+never resent. BYOK and non-Overlay-funded runs do not route through Overlay billing. An
+explicit duration remains a task deadline; otherwise the persisted deadline is a renewable
+execution lease. Lease renewal is
 authority-only and must revalidate the current source, membership, model/tool scope,
 delivery ownership, workflow owner, generation, and ancestors. It cannot expand access.
 
-Workspace funding denials are persisted as `waiting_for_resources` with bounded reasons,
-required and available amounts, and the reserved amount only when authoritative. Otherwise
-the projection explicitly reports that the reserved amount is unavailable. These amounts
-retain fractional cents from the billing ledger; they are not Stripe payment amounts.
-Workspace-funded budget rejections never fall back to another model, including when
-persisting the funding pause fails. Legacy routing behavior remains unchanged. The workflow
-polls on a durable 60-second sleep and rechecks authority and current funding before
-resuming the same task. Auto top-up remains opt-in:
+Runs no longer pause for funding. The `waiting_for_resources` funding pause, its
+`pause_for_funding`/`resume_funding` operations and `TASK_SPEND_LIMIT` remain in Convex
+validators only so stored rows still validate; nothing produces them. The version 1
+resource-request system (`model_spend`/`time` grants) is likewise never admitted and is
+scheduled for deletion. Auto top-up remains opt-in:
 enabled setting, explicit consent, valid payment method, active paid subscription, and
 monthly ceiling are required. Pending claims reserve the ceiling account-wide; uncertain
 Stripe outcomes remain unresolved rather than receiving a new idempotency identity.

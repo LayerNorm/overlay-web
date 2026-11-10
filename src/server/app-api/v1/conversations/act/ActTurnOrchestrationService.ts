@@ -552,7 +552,6 @@ export async function executeActTurn(
         agentRun: personalAgentRun,
         auth,
         budget: {
-          maxProviderCostUsd: harnessBudget?.maxProviderCostUsd,
           durationMs: harnessBudget?.durationMs
             ?? (actAbortTimeoutMs !== undefined
               ? resolveActAbortTimeoutMs({ requestedTimeoutMs: actAbortTimeoutMs })

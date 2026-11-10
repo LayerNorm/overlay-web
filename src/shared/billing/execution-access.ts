@@ -31,10 +31,9 @@ export function workspaceBudgetLow(input: { remainingCents: number; totalCents?:
   return input.remainingCents < total * WORKSPACE_BUDGET_STOP_FRACTION
 }
 
-/** Cents a top-up must add so the workspace is back above the stop line. */
-export function workspaceBudgetShortfallCents(input: { remainingCents: number; totalCents?: number }): number {
-  const floor = Math.max(1, Math.ceil((input.totalCents ?? 0) * WORKSPACE_BUDGET_STOP_FRACTION))
-  return Math.max(1, floor - Math.max(0, Math.floor(input.remainingCents)))
+/** The balance a workspace needs to keep working: 2% of its budget (at least one cent). Top-ups refill to this line. */
+export function workspaceBudgetStopLineCents(input: { totalCents?: number }): number {
+  return Math.max(1, Math.ceil((input.totalCents ?? 0) * WORKSPACE_BUDGET_STOP_FRACTION))
 }
 
 /** Eligibility is independent of reservations; only admission of new work checks available funds. */

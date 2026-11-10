@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { workspaceBudgetLow, workspaceBudgetShortfallCents, workspaceExecutionAccess } from './execution-access.ts'
+import { workspaceBudgetLow, workspaceBudgetStopLineCents, workspaceExecutionAccess } from './execution-access.ts'
 
 const funded = {
   billingEnabled: true, accountStatus: 'active', remainingCents: 800, now: 100,
@@ -42,6 +42,7 @@ test('work stops once less than 2% of the workspace budget is left, using the re
   assert.equal(workspaceExecutionAccess({ ...funded, remainingCents: 19, totalCents: 1_000 }).state, 'budget_exhausted')
   assert.equal(workspaceExecutionAccess({ ...funded, remainingCents: 20, totalCents: 1_000 }).state, 'ready')
   assert.equal(workspaceExecutionAccess({ ...funded, remainingCents: 19, totalCents: 1_000, checkBudget: false }).state, 'ready')
-  assert.equal(workspaceBudgetShortfallCents({ remainingCents: 500, totalCents: 100_000 }), 1_500)
-  assert.equal(workspaceBudgetShortfallCents({ remainingCents: 0, totalCents: 0 }), 1)
+  assert.equal(workspaceBudgetStopLineCents({ totalCents: 100_000 }), 2_000)
+  assert.equal(workspaceBudgetStopLineCents({ totalCents: 0 }), 1)
+  assert.equal(workspaceBudgetLow({ remainingCents: workspaceBudgetStopLineCents({ totalCents: 12_345 }), totalCents: 12_345 }), false)
 })

@@ -28,7 +28,6 @@ import {
   recordHarnessChildReceipt,
   recordHarnessReceipt,
   reserveHarnessModel,
-  reservedHarnessCostMicros,
   pauseHarnessForResources,
   pauseHarnessForFunding,
   pauseHarnessForAuthorization,
@@ -1386,7 +1385,7 @@ function childAdmission(
       executionPolicyVersion: 2 as const,
       spendingMode: parent.policy.spendingMode!,
     } : {}),
-    maxCostMicros: parent.policy.executionPolicyVersion === 2 ? 0 : operation.child.maxCostMicros,
+    maxCostMicros: 0,
     maxParallelChildren: parent.policy.maxParallelChildren,
     maxDepth: parent.policy.maxDepth,
   }
@@ -2901,7 +2900,8 @@ export const pauseForResources = mutation({
     }
     const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
     if (snapshot.revision !== args.expectedRevision) throw new Error('HARNESS_STATE_CONFLICT')
-    const reserved = reservedHarnessCostMicros(snapshot)
+    // Model calls hold no money; only settled usage counts.
+    const reserved = 0
     assertSafeResourceMicros(snapshot.usage.costMicros, 'Used cost')
     assertSafeResourceMicros(reserved, 'Reserved cost')
     assertSafeResourceMicros(
@@ -2990,7 +2990,7 @@ export const grantResources = mutation({
       throw new Error('HARNESS_RESOURCE_STALE')
     }
     const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
-    const currentReservedCostMicros = reservedHarnessCostMicros(snapshot)
+    const currentReservedCostMicros = 0
     assertSafeResourceMicros(snapshot.usage.costMicros, 'Current used cost')
     assertSafeResourceMicros(currentReservedCostMicros, 'Current reserved cost')
     assertSafeResourceMicros(record.request.requiredCostMicros, 'Required forecast')

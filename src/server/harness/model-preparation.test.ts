@@ -52,12 +52,11 @@ test.each([undefined, 4])('preserves personal execution generation %s through pr
   expect(serialized.personal?.access.executionGeneration).toBe(executionGeneration ?? 0)
 })
 
-test('quotes the complete prompt and constructs a credential-free dispatch reference with explicit limits', async () => {
+test('constructs a credential-free dispatch reference with explicit limits and no cost estimate', async () => {
   const prepared = await preparePersonalHarnessModel({ ...input, access: { ...access, accessToken: 'must-not-persist' } as typeof access })
   expect(prepared.model).toMatchObject({ modelId: 'fixture/model', credentialOwnerId: 'user',
     personal: { receiptId: 'model:0', contextWindow: 32_000, maxOutputTokens: 100, memoryEnabled: true } })
-  expect(prepared.model.personal!.inputTokenBudget).toBeGreaterThan(1_024)
-  expect(prepared.estimatedCostMicros).toBeGreaterThan(1_224)
+  expect(prepared).not.toHaveProperty('estimatedCostMicros')
   expect(JSON.stringify(prepared)).not.toContain('must-not-persist')
   expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.catalog.mock.invocationCallOrder[0])
 })
@@ -98,25 +97,21 @@ test('forces ZDR for each supported active candidate even when account policy do
   expect(prepared.options.providerOptions).toEqual({ gateway: { zeroDataRetention: true } })
 })
 
-test('rejects unauthenticated, unsupported, unpriced and oversized dispatches before admission', async () => {
+test('rejects unauthenticated, unsupported and oversized dispatches before admission', async () => {
   mocks.refresh.mockRejectedValueOnce(new Error('Access revoked'))
   await expect(preparePersonalHarnessModel(input)).rejects.toThrow(/revoked/)
   expect(mocks.catalog).not.toHaveBeenCalled()
   await expect(preparePersonalHarnessModel({ ...input, options: { ...input.options, maxOutputTokens: 1_001 } })).rejects.toThrow(/capacity/)
   await expect(preparePersonalHarnessModel({ ...input, options: { ...input.options, providerOptions: { gateway: { models: ['unapproved'] } } } })).rejects.toThrow(/fallback/)
-  mocks.catalog.mockResolvedValue(null)
-  await expect(preparePersonalHarnessModel(input)).rejects.toThrow(/pricing/)
 })
 
-test('unknown BYOK context stays unknown, and unpriced media uses the byte estimate', async () => {
+test('unknown BYOK context stays unknown, including for media', async () => {
   mocks.catalog.mockResolvedValue(null)
   const external = { ...input, context: { ...context, effectiveModelId: 'byok/connection/model' } }
   const prepared = await preparePersonalHarnessModel(external)
   expect(prepared.contextWindow).toBeNull()
-  expect(prepared.estimatedCostMicros).toBe(0)
   const media = await preparePersonalHarnessModel({ ...external, options: { ...input.options, prompt: [{ role: 'user', content: [
     { type: 'file', data: new URL('https://example.test/image.png'), mediaType: 'image/png' },
   ] }] } })
   expect(media.contextWindow).toBeNull()
-  expect(media.estimatedCostMicros).toBe(0)
 })

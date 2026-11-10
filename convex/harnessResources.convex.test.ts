@@ -237,12 +237,12 @@ test('pending consume projects reservation settlement without subscription churn
     type: 'claim_execution', workflowRunId: 'resource-workflow',
   })).snapshot
   state = (await resourceApply(convex, input, 'resource-workflow', state.revision, {
-    type: 'reserve_model', id: 'model:pending', maxCostMicros: 500,
+    type: 'reserve_model', id: 'model:pending', maxCostMicros: 0,
   })).snapshot
   const reference = { actorUserId: 'alice', runId: input.runId, workflowRunId: 'resource-workflow', serverSecret: secret }
   const token = 'resource-awaiting-receipt'
   await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:pauseForResources'), {
-    ...reference, expectedRevision: state.revision, token, reason: 'model_spend', requiredCostMicros: 600,
+    ...reference, expectedRevision: state.revision, token, reason: 'model_spend', requiredCostMicros: 1_100,
   })
   let delivery = await convex.run(ctx => ctx.db.get(deliveryId))
   expect(delivery).toMatchObject({ resourceRequest: { request: { token }, awaitingReceipt: true } })
@@ -286,11 +286,11 @@ test('an eligible personal root pauses, grants once, and consumes after an unres
       verdict: 'observed', createdAt: Date.now() },
   })).snapshot
   state = (await resourceApply(convex, input, 'resource-workflow', state.revision, {
-    type: 'reserve_model', id: 'model:pending', maxCostMicros: 500,
+    type: 'reserve_model', id: 'model:pending', maxCostMicros: 0,
   })).snapshot
   const pauseArgs = {
     actorUserId: 'alice', runId: input.runId, workflowRunId: 'resource-workflow', expectedRevision: state.revision,
-    token: 'resource-token', reason: 'model_spend' as const, requiredCostMicros: 600, serverSecret: secret,
+    token: 'resource-token', reason: 'model_spend' as const, requiredCostMicros: 1_100, serverSecret: secret,
   }
   const pause = makeFunctionReference<'mutation'>('harness/runs:pauseForResources')
   const request = await convex.mutation(pause, pauseArgs)
@@ -311,7 +311,7 @@ test('an eligible personal root pauses, grants once, and consumes after an unres
     runId: deliveryId, userId: 'alice', content: '', parts: [], tokens: { input: 0, output: 0 }, serverSecret: secret,
   })).rejects.toThrow('Invalid AgentRun transition: waiting_for_resources -> completed')
   expect(await convex.mutation(pause, pauseArgs)).toEqual(request)
-  await expect(convex.mutation(pause, { ...pauseArgs, requiredCostMicros: 601 }))
+  await expect(convex.mutation(pause, { ...pauseArgs, requiredCostMicros: 1_101 }))
     .rejects.toThrow('HARNESS_RESOURCE_TOKEN_CONFLICT')
   expect((await convex.query(makeFunctionReference<'query'>('harness/runs:get'), {
     actorUserId: 'alice', runId: input.runId, serverSecret: secret,

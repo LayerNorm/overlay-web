@@ -6,7 +6,7 @@ import {
   replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
   claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness, recordHarnessDiagnostic,
-  reserveHarnessModel, reservedHarnessCostMicros,
+  reserveHarnessModel,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
   recordHarnessVerification,
@@ -52,7 +52,7 @@ test('compaction transitions are replay-safe and never replace an unrelated rese
 test('a successful summary receipt keeps its attempt active until validated completion', () => {
   const attempt = { cycleId: 'summary:success', attemptId: 'summary:success', status: 'started' as const, retryCount: 0, updatedAt: now }
   let state = setHarnessCompaction(make(), attempt, now)
-  state = reserveHarnessModel(state, attempt.attemptId, 1, now)
+  state = reserveHarnessModel(state, attempt.attemptId, 0, now)
   state = recordHarnessReceipt(state, {
     id: attempt.attemptId, modelId: 'model', provider: 'provider', inputTokens: 1, outputTokens: 1,
     reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 1,
@@ -234,13 +234,13 @@ test('workspace-funded roots and children settle usage beyond legacy allocations
   assert.equal(parent.children[0]?.costMicros, 300_000)
 })
 
-test('model dispatch binds one billing reservation without releasing the budget hold', () => {
-  const reserved = reserveHarnessModel(make(), 'receipt', 80, now)
+test('model dispatch binds once to its zero-cost marker', () => {
+  const reserved = reserveHarnessModel(make(), 'receipt', 0, now)
   const dispatch = { modelId: 'provider/model', billingReservationId: 'billing-reservation' }
   const bound = bindHarnessModelDispatch(reserved, 'receipt', dispatch, now)
   assert.equal(reserved.modelReservation?.dispatch, undefined)
   assert.deepEqual(bound.modelReservation?.dispatch, dispatch)
-  assert.equal(reservedHarnessCostMicros(bound), 80)
+  assert.deepEqual(bound.modelReservation, { id: 'receipt', maxCostMicros: 0, dispatch })
   assert.equal(bindHarnessModelDispatch(bound, 'receipt', dispatch, now), bound)
   assert.throws(() => bindHarnessModelDispatch(bound, 'receipt', { ...dispatch, billingReservationId: null }, now), /cannot change/)
   assert.throws(() => bindHarnessModelDispatch(bound, 'other', dispatch, now), /matching reservation/)
@@ -272,24 +272,20 @@ test('external provider costs remain distinct from Overlay budget usage through 
   assert.throws(() => recordHarnessReceipt(make(), { ...receipt, cacheReadTokens: 11 }, now), /Cached tokens/)
 })
 
-test('pending model spend cannot also be reserved by a delegated child', () => {
+test('a dispatch marker holds no money and never limits delegation or later calls', () => {
   let state = replaceHarnessPlan(make(), steps, now)
-  state = reserveHarnessModel(state, 'model:0', 60, now)
-  assert.equal(reserveHarnessModel(state, 'model:0', 60, now), state)
-  assert.throws(() => reserveHarnessModel(state, 'model:0', 61, now), /Reconcile/)
+  state = reserveHarnessModel(state, 'model:0', 0, now)
+  assert.equal(reserveHarnessModel(state, 'model:0', 0, now), state)
+  assert.throws(() => reserveHarnessModel(state, 'model:0', 60, now), /Invalid model reservation/)
   assert.throws(() => reserveHarnessModel(state, 'model:1', 0, now), /Reconcile/)
-  assert.throws(() => admitHarnessChild(state, child('first', 'read', 41), now), /spending/)
-  state = admitHarnessChild(state, child('first', 'read', 40), now)
-  assert.equal(reservedHarnessCostMicros(state), 100)
-  const pending = state
+  state = admitHarnessChild(state, child('first', 'read', 1_000), now)
+  assert.equal(state.children[0]?.maxCostMicros, 0)
   state = recordHarnessReceipt(state, { id: 'model:0', modelId: 'model', provider: 'provider', inputTokens: 1,
-    outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 50,
+    outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 5_000,
   }, now)
-  assert.deepEqual(pending.modelReservation, { id: 'model:0', maxCostMicros: 60 })
   assert.equal(state.modelReservation, undefined)
-  assert.equal(reservedHarnessCostMicros(state), 40)
-  assertHarnessRunnable(state, now, 10)
-  assert.throws(() => assertHarnessRunnable(state, now, 11), /spending/)
+  assert.equal(state.usage.costMicros, 5_000)
+  assertHarnessRunnable(state, now)
 })
 
 test('a cancelled child retains its unresolved model liability until the matching receipt arrives', () => {
@@ -297,7 +293,7 @@ test('a cancelled child retains its unresolved model liability until the matchin
   let worker = createHarnessSnapshot({ runId: 'first', rootRunId: 'root', parentRunId: 'root', depth: 1,
     goal: 'Read source', constraints: [], policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 60 },
   }, now)
-  worker = reserveHarnessModel(worker, 'model:0', 60, now)
+  worker = reserveHarnessModel(worker, 'model:0', 0, now)
   assert.throws(() => finishHarness(worker, now), /reconciliation/)
   worker = terminateHarness(worker, 'cancelled', 'User stopped', now)
   assert.throws(() => settleHarnessChild(parent, worker, now), /Reconcile/)
@@ -311,7 +307,7 @@ test('a cancelled child retains its unresolved model liability until the matchin
   assert.equal(worker.modelReservation, undefined)
   const settled = settleHarnessChild(parent, worker, now)
   assert.equal(settled.usage.costMicros, 40)
-  assertHarnessRunnable(settled, now, 60)
+  assertHarnessRunnable(settled, now)
 })
 
 test('one workflow owns a run and child-only waiting preserves resumable state', () => {
@@ -340,17 +336,19 @@ test('a step is done when marked done, once its dependencies are complete', () =
   assert.equal(state.status, 'running')
 })
 
-test('settled completion does not require new time or spending authorization', () => {
+test('settled completion does not require new time authorization, and spending never blocks', () => {
   const initial = make()
   const running = { ...initial, policy: { ...initial.policy, requiresPlan: false } }
-  const reserved = reserveHarnessModel(running, 'final-call', running.policy.maxCostMicros, now)
+  const reserved = reserveHarnessModel(running, 'final-call', 0, now)
   const settled = recordHarnessReceipt(reserved, {
     id: 'final-call', modelId: 'model', provider: 'provider', inputTokens: 10, outputTokens: 1,
     reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
     costMicros: running.policy.maxCostMicros + 1,
   }, now)
   for (const at of [now, settled.policy.deadlineAt, settled.policy.deadlineAt + 1]) {
-    assert.throws(() => assertHarnessRunnable(settled, at), /exhausted/)
+    // Spending above the old per-task allowance never blocks; only the deadline does.
+    if (at >= settled.policy.deadlineAt) assert.throws(() => assertHarnessRunnable(settled, at), /exhausted/)
+    else assertHarnessRunnable(settled, at)
     const finished = finishHarness(settled, at, 'The result is complete.')
     assert.equal(finished.status, 'completed')
     assert.equal(finished.resultSummary, 'The result is complete.')
@@ -364,7 +362,7 @@ test('expired authorization cannot bypass completion blockers or unresolved hold
   const initial = make()
   const running = { ...initial, policy: { ...initial.policy, requiresPlan: false } }
   const at = running.policy.deadlineAt + 1
-  const reserved = reserveHarnessModel(running, 'unresolved', 1, now)
+  const reserved = reserveHarnessModel(running, 'unresolved', 0, now)
   assert.throws(() => finishHarness(reserved, at), /reconciliation/)
   assert.equal(finishHarness(make(), at).status, 'completed')
   const blocked = blockHarness(running, { kind: 'input', question: 'Which result?' }, now)
@@ -518,14 +516,12 @@ test('telemetry is not progress and compaction does not count as continuation st
   assert.equal(state.progressRevision, 0)
 })
 
-test('child reservations enforce capabilities, root spending, concurrency and depth', () => {
+test('child admission enforces capabilities, concurrency and depth, but no spending split', () => {
   let state = replaceHarnessPlan(make(), [...steps.map(step => ({ ...step, dependsOn: [] })), { ...steps[0]!, id: 'extra' }], now)
   assert.throws(() => admitHarnessChild(state, { ...child('bad', 'read', 1), allowedToolIds: ['admin'] }, now), /capabilities/)
   state = admitHarnessChild(state, child('first', 'read', 60), now)
-  assert.throws(() => admitHarnessChild(state, child('second', 'report', 41), now), /spending/)
-  state = admitHarnessChild(state, child('second', 'report', 40), now)
+  state = admitHarnessChild(state, child('second', 'report', 1_000), now)
   assert.throws(() => admitHarnessChild(state, child('third', 'extra', 0), now), /concurrency/)
-  assert.throws(() => assertHarnessRunnable(state, now, 1), /spending/)
   assert.throws(() => admitHarnessChild({ ...state, depth: 1, children: [] }, child('deep', 'extra', 0), now), /depth/)
   assert.throws(() => assertHarnessRunnable(state, 10_000), /deadline/)
 })
@@ -675,9 +671,9 @@ test('delegation preserves verification evidence for another milestone', () => {
   assert.equal(state.plan.find(step => step.id === 'verified')?.status, 'done')
 })
 
-test('named child admission enforces spending, depth, concurrency and plan size', () => {
+test('named child admission enforces depth, concurrency and plan size, but no spending split', () => {
   const step = { title: 'Ask agent', acceptanceCriteria: ['Receive the reply.'] }
-  assert.throws(() => admitHarnessNamedChild(make(), child('expensive', 'ask:expensive', 101), step, now), /spending/)
+  assert.equal(admitHarnessNamedChild(make(), child('large', 'ask:large', 1_000), step, now).children[0]?.maxCostMicros, 0)
   assert.throws(() => admitHarnessNamedChild({ ...make(), depth: 1 }, child('deep', 'ask:deep', 0), step, now), /depth/)
   assert.throws(() => admitHarnessNamedChild({
     ...make(),
@@ -694,7 +690,7 @@ test('named child admission enforces spending, depth, concurrency and plan size'
   assert.throws(() => admitHarnessNamedChild(full, child('full', 'ask:full', 0), step, now), /128/)
 })
 
-test('joining a child charges usage once, releases unused budget and preserves authority', () => {
+test('joining a child charges usage once and preserves authority', () => {
   let state = replaceHarnessPlan(make(), steps, now)
   state = admitHarnessChild(state, { ...child('first', 'read', 60), allowedToolIds: ['read', 'write'] }, now)
   let worker = createHarnessSnapshot({ runId: 'first', rootRunId: 'root', parentRunId: 'root', depth: 1,
@@ -711,18 +707,14 @@ test('joining a child charges usage once, releases unused budget and preserves a
   assert.throws(() => settleHarnessChild(state, {
     ...worker, policy: { ...worker.policy, allowedToolIds: ['read', 'write', 'admin'] },
   }, now), /authority/)
-  assert.throws(() => settleHarnessChild(state, {
-    ...worker, policy: { ...worker.policy, maxCostMicros: 61 },
-  }, now), /authority/)
   state = settleHarnessChild(state, worker, now)
   assert.equal(state.usage.costMicros, 40)
   assert.equal(state.children[0]?.summary, 'Checked the source records.')
   assert.equal(settleHarnessChild(state, worker, now), state)
-  assertHarnessRunnable(state, now, 60)
-  assert.throws(() => assertHarnessRunnable(state, now, 61), /spending/)
+  assertHarnessRunnable(state, now)
 })
 
-test('child receipts reserve only unspent budget, join without double counting, and reconcile after cancellation', () => {
+test('child receipts join without double counting and reconcile after cancellation', () => {
   let parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 60), now)
   const receipt: HarnessReceipt = {
     id: 'child-call', modelId: 'model', provider: 'provider', inputTokens: 100, outputTokens: 10,
@@ -737,8 +729,7 @@ test('child receipts reserve only unspent budget, join without double counting, 
   assert.equal(parent.usage.inputTokens, 300)
   assert.equal(parent.latestReceipt!.id, 'parent-call')
   assert.equal(parent.progressRevision, previous.progressRevision)
-  assertHarnessRunnable(parent, now, 30)
-  assert.throws(() => assertHarnessRunnable(parent, now, 31), /spending/)
+  assertHarnessRunnable(parent, now)
 
   let worker = createHarnessSnapshot({ runId: 'first', parentRunId: 'root', rootRunId: 'root', depth: 1,
     goal: 'Read source', constraints: [], policy: { ...parent.policy, requiresPlan: false, maxCostMicros: 60 },
@@ -750,7 +741,7 @@ test('child receipts reserve only unspent budget, join without double counting, 
   assert.equal(parent.usage.inputTokens, 300)
   assert.equal(parent.usage.cacheReadTokens, 160)
   assert.equal(parent.usage.reasoningTokens, 4)
-  assertHarnessRunnable(parent, now, 50)
+  assertHarnessRunnable(parent, now)
 
   parent = terminateHarness(parent, 'cancelled', 'Stopped by user', now)
   const settled = parent
@@ -762,16 +753,6 @@ test('child receipts reserve only unspent budget, join without double counting, 
   assert.equal(settled.children[0]!.costMicros, 40)
   assert.equal(settled.children[0]!.accountedUsage!.costMicros, 40)
   assert.equal(parent.latestReceipt!.id, 'parent-call')
-})
-
-test('reconciliation does not let child overspend create a negative reservation', () => {
-  let parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 60), now)
-  parent = recordHarnessChildReceipt(parent, 'first', {
-    id: 'overrun', modelId: 'model', provider: 'provider', inputTokens: 1, outputTokens: 1,
-    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 70,
-  }, now)
-  assertHarnessRunnable(parent, now, 30)
-  assert.throws(() => assertHarnessRunnable(parent, now, 31), /spending/)
 })
 
 test('plan-optional action milestones may share a tool result', () => {

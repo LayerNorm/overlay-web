@@ -2459,11 +2459,6 @@
                   "harnessBudget": {
                     "type": "object",
                     "properties": {
-                      "maxProviderCostUsd": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 100
-                      },
                       "durationMs": {
                         "type": "integer",
                         "minimum": 30000,

@@ -197,7 +197,6 @@ function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boo
       messages: request.messages,
       instructions: request.instructions,
       activeToolNames: request.toolNames.filter(name => current.policy.allowedToolIds.includes(name)),
-      estimatedCostMicros: 0,
     }),
     recordModelStep: async (step, id) => {
       calls.push({ kind: 'model' })

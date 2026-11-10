@@ -1,5 +1,5 @@
 import { HARNESS_PUBLIC_PROGRESS_INSTRUCTION } from './public-progress'
-import { harnessCompletionIssues, reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { harnessCompletionIssues, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 import { buildHarnessCheckpoint } from './continuity'
 
@@ -84,7 +84,6 @@ export function buildHarnessStuckQuestion(state: HarnessSnapshot): string {
 }
 
 export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
-  const reservedCostMicros = reservedHarnessCostMicros(state)
   const authoritativeCheckpoint = buildHarnessCheckpoint(state)
   const evidenceById = new Map(state.evidence.map(evidence => [evidence.id, evidence]))
   return JSON.stringify({
@@ -115,9 +114,7 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
     budget: {
       deadlineAt: state.policy.deadlineAt,
       ...(state.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: state.policy.taskDeadlineAt } : {}),
-      ...(state.policy.executionPolicyVersion === 2
-        ? { spendingMode: state.policy.spendingMode, remainingCostMicros: state.policy.spendingMode === 'workspace' ? null : 0 }
-        : { remainingCostMicros: Math.max(0, state.policy.maxCostMicros - state.usage.costMicros - reservedCostMicros) }),
+      ...(state.policy.spendingMode ? { spendingMode: state.policy.spendingMode } : {}),
       remainingDepth: state.policy.maxDepth - state.depth,
     },
   })

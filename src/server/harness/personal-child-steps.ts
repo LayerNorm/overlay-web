@@ -21,7 +21,7 @@ export async function admitPersonalHarnessChild(
   const id = `child:${createHash('sha256').update(JSON.stringify([input.access.runId, toolCallId])).digest('hex')}`
   const child: HarnessChild = {
     id, stepId: delegation.stepId, allowedToolIds: [...new Set(delegation.allowedToolIds)].sort(),
-    maxCostMicros: delegation.maxCostMicros, costMicros: 0, status: 'running', evidenceRefs: [],
+    maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [],
   }
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get(input.access)

@@ -1,6 +1,6 @@
 # Workspace budget only
 
-Status: Phase 1 done on branch; phase 2 in progress (nothing merged).
+Status: Phases 1–2 done on branch (nothing merged).
 
 ## Rule
 
@@ -37,7 +37,7 @@ quotes, reserves or holds the cost of a model call or tool call before making it
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1 | `workspaceBudgetLow` helper; pre-call gates use it; `recordBatch` returns `budgetLow`; `WORKSPACE_FUNDS` copy says under 2% left | Done on branch (unit tested) |
-| 2 | Harness: delete forecast/quote estimates, model and billing reservations, funding pause, per-task limit, child budget split; stop after a step that leaves the budget low | Not started |
+| 2 | Harness: delete forecast/quote estimates, model and billing reservations, funding pause, per-task limit, child budget split; stop after a step that leaves the budget low | Done on branch (unit tested). The next dispatch stops the run; gateway cost correction is not yet wired to direct charges. |
 | 3 | Chat, connected agents, automations, tools and media routes: delete holds, charge directly, stop on low | Not started |
 | 4 | Computers and machine metering: delete holds, floor and per-run cap | Not started |
 | 5 | Delete reservation tables, sweeps, reconciliation and docs; production check of a real paid run | Not started |

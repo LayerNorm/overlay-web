@@ -149,10 +149,9 @@ replaces every image or file part (user attachments, assistant files and tool
 results such as a fetched screenshot) with a short note telling the model it
 could not see that file (`text-only-prompt.ts`). Otherwise one tool image in the
 history would make every later request in the run fail validation.
-Harness model preparation reserves a priced model's full context window for a
-request with media and refuses media when that window is unknown. BYOK and
-subscription models are unpriced and usually have no catalog window, so their
-media requests use the byte estimate instead (`model-quote.ts`).
+Harness model preparation never estimates a request's size or cost, so media
+requests proceed whether or not the catalog knows the model's context window
+(`model-call-options.ts`).
 
 Only the enumerated reconnect, rate-limit, model-unavailable, and temporary
 failure codes are surfaced with actionable messages. Provider response text,

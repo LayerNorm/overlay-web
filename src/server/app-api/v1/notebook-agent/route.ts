@@ -31,7 +31,7 @@ import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'
 import { NOTEBOOK_AGENT_PROMPT } from '@/server/agent/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
-import { workspaceBudgetLow, workspaceBudgetShortfallCents } from '@/shared/billing/execution-access'
+import { workspaceBudgetLow, workspaceBudgetStopLineCents } from '@/shared/billing/execution-access'
 
 export const maxDuration = 120
 
@@ -228,7 +228,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
       userId,
       entitlements,
-      minimumRequiredCents: workspaceBudgetShortfallCents(budget),
+      minimumRequiredCents: workspaceBudgetStopLineCents(budget),
       programmaticSubjectId,
       workspaceId,
     })

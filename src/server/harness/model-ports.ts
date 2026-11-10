@@ -250,7 +250,6 @@ export function createHarnessModelPorts(input: {
         messages,
         instructions,
         activeToolNames: request.toolNames,
-        estimatedCostMicros: prepared.estimatedCostMicros,
         model: prepared.model,
         settings: {
           ...request.settings,
