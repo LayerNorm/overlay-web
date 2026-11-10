@@ -82,6 +82,7 @@ beforeEach(() => {
 
 test('fresh source admission validates the active binding, team, workspace, and creator', async () => {
   await expect(assertSurfaceAdmissionSource({
+    allowEnrollment: true,
     actorUserId: 'user',
     workspaceId: 'workspace',
     turnId: execution.turnId,
@@ -100,6 +101,7 @@ test('fresh source admission validates the active binding, team, workspace, and 
     },
   })).resolves.toEqual(source)
   expect(mocks.bindings).toHaveBeenCalledWith({ platform: 'slack', externalTeamId: 'team', channelId: 'channel' })
+  expect(mocks.requester).toHaveBeenCalledWith(expect.objectContaining({ allowEnrollment: true, userId: 'user', linkId: 'link' }))
   mocks.bindings.mockResolvedValueOnce([{ ...source, connection: { ...source.connection, externalTeamId: 'other-team' } }])
   await expect(assertSurfaceAdmissionSource({
     actorUserId: 'user', workspaceId: 'workspace', turnId: execution.turnId,
@@ -155,7 +157,7 @@ test('persisted Chief turns retain their legacy identity while new turns use the
 test('resume revalidates the frozen linked identity and never switches to a new principal', async () => {
   mocks.requester.mockResolvedValueOnce(null)
   await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('Slack sender authorization')
-  expect(mocks.requester).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', linkId: 'link', slackUserId: 'U1' }))
+  expect(mocks.requester).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', linkId: 'link', slackUserId: 'U1', allowEnrollment: undefined }))
   mocks.requester.mockResolvedValueOnce({ userId: 'replacement', principalId: 'replacement', linkId: 'replacement' })
   await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('Slack sender authorization')
   await expect(assertPersistedSurfaceSource({ ...execution, identityLinkId: undefined }, 'workflow')).rejects.toThrow('identity is required')

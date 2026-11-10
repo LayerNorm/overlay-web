@@ -64,7 +64,7 @@ export const unlink = mutation({
 
 export async function slackRequester(ctx: Context, args: {
   workspaceId: string; connectionId: string; teamId: string; slackUserId: string; channelId: string; threadId: string
-  linkId?: string; userId?: string
+  linkId?: string; userId?: string; allowEnrollment?: boolean
 }) {
   if (!await activeConnection(ctx, args)) return null
   const links = (await ctx.db.query('slackIdentityLinks').withIndex('by_slack_identity', q => q.eq('teamId', args.teamId).eq('slackUserId', args.slackUserId)).collect())
@@ -75,6 +75,15 @@ export async function slackRequester(ctx: Context, args: {
     || (args.linkId !== undefined && args.linkId !== link.id) || (args.userId !== undefined && args.userId !== link.userId)) return null
   const member = await identityMember(ctx, link.userId, args.workspaceId)
   if (!member) return null
+  if (args.allowEnrollment) {
+    const bindings = await ctx.db.query('surfaceBindings').withIndex('by_connectionId', q => q.eq('connectionId', args.connectionId)).collect()
+    let chiefBound = false
+    for (const binding of bindings.filter(row => row.channelId === args.channelId && row.status === 'active')) {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', binding.agentId)).unique()
+      if (agent?.workspaceId === args.workspaceId && agent.agentRole === 'workspace_chief' && agent.harness === 'overlay' && !agent.archivedAt) chiefBound = true
+    }
+    if (!chiefBound) return null
+  }
   const thread = await ctx.db.query('surfaceThreadLinks').withIndex('by_external_thread', q => q.eq('platform', 'slack')
     .eq('connectionId', args.connectionId).eq('externalTeamId', args.teamId).eq('channelId', args.channelId).eq('threadId', args.threadId)).unique()
   let conversation = thread ? await ctx.db.get(thread.conversationId) : null
@@ -97,13 +106,14 @@ export async function slackRequester(ctx: Context, args: {
     const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation!._id).eq('principalId', member.principal.principalId)).unique()
     if (conversation.deletedAt !== undefined || conversation.workspaceId !== args.workspaceId || conversation.externalPlatform !== 'slack'
       || conversation.externalChannelId !== args.channelId || conversation.externalThreadId !== args.threadId
-      || participant?.status !== 'active' || participant.workspaceId !== args.workspaceId) return null
+      || (!args.allowEnrollment && participant?.status !== 'active')
+      || (participant && participant.workspaceId !== args.workspaceId)) return null
   }
   return { userId: link.userId, principalId: member.principal.principalId, linkId: link.id }
 }
 
 export const requester = query({
   args: { workspaceId: v.string(), connectionId: v.string(), teamId: v.string(), slackUserId: v.string(), channelId: v.string(), threadId: v.string(),
-    linkId: v.optional(v.string()), userId: v.optional(v.string()), serverSecret: v.string() },
+    linkId: v.optional(v.string()), userId: v.optional(v.string()), allowEnrollment: v.optional(v.boolean()), serverSecret: v.string() },
   handler: async (ctx, args) => { requireServerSecret(args.serverSecret); return await slackRequester(ctx, args) },
 })

@@ -43,11 +43,14 @@ Slack user revokes the account's previous team link. Unlink with a same-origin
 `POST /api/v1/surfaces/slack/identity/unlink` containing `workspaceId` and `linkId`;
 only that user or a workspace admin/owner may do so.
 
-Only linked members with active participation in an existing mirrored
-conversation may send follow-ups. Linking does not grant access to an existing
-conversation. New threads enroll their verified initiating member. Revocation,
-lost membership/participation or changing the linked identity stops admission
-and resumed execution; a running turn never adopts a replacement identity.
+Linked current workspace members may reply in an existing thread in a
+Chief-bound public Slack channel. Admission enrolls the sender as a member of
+that mirrored conversation only; it grants no other conversation, file, memory
+or workspace permissions. New threads enroll their verified initiating member.
+Shared-room restrictions remain in force. Revoked links, lost workspace membership
+or changing the linked identity stop admission and resumed execution. Resume
+also requires current conversation participation and never enrolls or adopts
+a replacement identity; historical runs without sender identity fail closed.
 Unlinked/unauthorized inbound senders receive only an ephemeral linking prompt
 and must resend after linking. Historical unlinked runs fail closed.
 

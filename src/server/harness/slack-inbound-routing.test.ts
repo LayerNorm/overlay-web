@@ -91,7 +91,7 @@ test('channel metadata failure is fail-closed', async () => {
   expect(mocks.post).not.toHaveBeenCalled()
 })
 
-test.each(['unlinked', 'revoked', 'not-a-member', 'not-a-participant'])('%s sender receives only a private linking prompt', async () => {
+test.each(['unlinked', 'revoked', 'not-a-member'])('%s sender receives only a private linking prompt', async () => {
   mocks.requester.mockResolvedValue(null)
   await mention(thread, message)
   await subscribed(thread, message)
@@ -109,5 +109,6 @@ test('different linked senders in the same thread keep their own execution ident
   mocks.requester.mockResolvedValueOnce({ userId: 'other-user', principalId: 'other-principal', linkId: 'other-link' })
   await subscribed(thread, { ...message, id: '123.2', author: { ...message.author, userId: 'OTHER_SLACK_USER' } })
   expect(mocks.start.mock.calls.map(call => call[1][0].userId)).toEqual(['sender-user', 'other-user'])
+  expect(mocks.requester).toHaveBeenLastCalledWith(expect.objectContaining({ slackUserId: 'OTHER_SLACK_USER', threadId: '123.0', allowEnrollment: true }))
   expect(mocks.start.mock.calls[1][1][0].surface).toMatchObject({ threadId: '123.0', creatorPrincipalId: 'other-principal', authorExternalId: 'OTHER_SLACK_USER', identityLinkId: 'other-link' })
 })

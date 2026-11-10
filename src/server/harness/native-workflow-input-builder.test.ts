@@ -178,10 +178,11 @@ test('surface root uses canonical source billing and preserves Slack context wit
     ...run, turnId: execution.turnId,
   })
 
-  await buildNativeHarnessWorkflowInput({
+  const input = await buildNativeHarnessWorkflowInput({
     actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run',
     memoryEnabled: true, expectedSurfaceWorkflowRunId: 'workflow',
   })
+  expect(input.context.sharedRoom).toBe(true)
   expect(mocks.assertSurface).toHaveBeenCalledWith(execution, 'workflow')
   expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
     turnIdOverride: execution.turnId,

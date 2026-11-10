@@ -34,6 +34,7 @@ export async function assertSurfaceAdmissionSource(input: {
   workspaceId: string
   turnId: string
   surface: SurfaceHarnessIdentity
+  allowEnrollment?: boolean
 }): Promise<SurfaceSource> {
   const surface = input.surface
   if (surface.platform !== 'slack' || !surface.bindingId || !surface.connectionId || !surface.teamId
@@ -52,6 +53,7 @@ export async function assertSurfaceAdmissionSource(input: {
     workspaceId: input.workspaceId, connectionId: surface.connectionId, teamId: surface.teamId,
     slackUserId: surface.slackUserId, channelId: surface.channelId, threadId: surface.threadId,
     linkId: surface.identityLinkId, userId: input.actorUserId,
+    allowEnrollment: input.allowEnrollment,
   })
   if (!requester || requester.userId !== input.actorUserId || requester.linkId !== surface.identityLinkId
     || requester.principalId !== surface.creatorPrincipalId) throw new FatalError('Slack sender authorization changed.')

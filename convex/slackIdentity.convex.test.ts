@@ -2,6 +2,7 @@ import { beforeAll, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import type { Id } from './_generated/dataModel'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'slack-identity-fixture'
@@ -108,22 +109,42 @@ test('unlinked, removed members, revoked participants and inactive installs fail
   expect(await query()).toBeNull()
 })
 
-test('two linked participants in one Slack thread admit turns as themselves, never the installer or binding creator', async () => {
+test('A starts a Slack thread; B replies without prior participation, runs as B and gains no access to A private resources', async () => {
   const { t, scope, link, query } = await fixture()
   await link('alice', 'U1', 'alice-link')
   await link('bob', 'U2', 'bob-link')
-  const conversationId = await t.run(async ctx => {
+  const privateResources = await t.run(async ctx => {
     await ctx.db.insert('workspacePrincipals', { principalId: 'chief-principal', workspaceId: 'ws', type: 'agent', agentId: 'chief', displayName: 'Chief', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('workspaceAgentDefinitions', { agentId: 'chief', principalId: 'chief-principal', workspaceId: 'ws', agentRole: 'workspace_chief', harness: 'overlay', name: 'Chief', instructions: '', modelId: 'openrouter/free', allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'admin', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('surfaceBindings', { id: 'binding', connectionId: 'connection', agentId: 'chief', channelId: 'C1', status: 'active', createdByUserId: 'admin', createdAt: 1, updatedAt: 1 })
-    const id = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'ws', conversationType: 'channel', createdByPrincipalId: 'alice', externalPlatform: 'slack', externalChannelId: 'C1', externalThreadId: 'thread', surfaceBindingId: 'binding', title: 'Slack', createdAt: 1, lastModified: 1, lastMode: 'act', actModelId: 'openrouter/free', askModelIds: [] })
-    await ctx.db.insert('surfaceThreadLinks', { workspaceId: 'ws', platform: 'slack', connectionId: 'connection', externalTeamId: 'T1', channelId: 'C1', threadId: 'thread', conversationId: id, originalBindingId: 'binding', createdAt: 1, updatedAt: 1 })
-    for (const principalId of ['alice', 'bob', 'chief-principal']) await ctx.db.insert('conversationParticipants', { conversationId: id, workspaceId: 'ws', principalId,
-      principalType: principalId === 'chief-principal' ? 'agent' : 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1 })
-    return id
+    const conversation = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'ws', conversationType: 'personal', title: 'Private chat', createdAt: 1, lastModified: 1, lastMode: 'act', actModelId: 'openrouter/free', askModelIds: [] })
+    const file = await ctx.db.insert('files', { userId: 'alice', workspaceId: 'ws', scope: 'personal', name: 'Private note', type: 'file', kind: 'note', content: 'Alice private source', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('memories', { userId: 'alice', workspaceId: 'ws', visibility: 'owner', content: 'Alice private memory', source: 'chat', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('memories', { userId: 'alice', workspaceId: 'ws', visibility: 'workspace', content: 'Shared team fact', source: 'chat', createdAt: 1, updatedAt: 1 })
+    return { conversation, file }
   })
+  const ensure = makeFunctionReference<'mutation'>('surfaces/surfaces:ensureSurfaceConversation')
+  const ensureArgs = { serverSecret: secret, workspaceId: 'ws', title: 'Slack', askModelIds: [], actModelId: 'openrouter/free', conversationType: 'channel',
+    agentPrincipalId: 'chief-principal', externalPlatform: 'slack', externalChannelId: 'C1', externalThreadId: 'thread', surfaceBindingId: 'binding' }
+  let conversationId: Id<'conversations'> | undefined
   const begin = makeFunctionReference<'mutation'>('surfaces/surfaceExecutions:beginSurfaceTurn')
   for (const [userId, slackUserId] of [['alice', 'U1'], ['bob', 'U2']]) {
+    if (userId === 'bob') {
+      expect(await query('U2')).toBeNull()
+      expect(await query('U2', { allowEnrollment: true })).toMatchObject({ userId: 'bob' })
+      expect(await query('UNLINKED', { allowEnrollment: true })).toBeNull()
+      const membership = await t.run(async ctx => await ctx.db.query('workspaceMemberships').withIndex('by_membershipId', q => q.eq('membershipId', 'bob')).unique())
+      await t.run(async ctx => { await ctx.db.patch(membership!._id, { status: 'suspended' }) })
+      expect(await query('U2', { allowEnrollment: true })).toBeNull()
+      await expect(t.mutation(ensure, { ...ensureArgs, userId, createdByPrincipalId: userId, identityLinkId: 'bob-link', slackUserId })).rejects.toThrow('SLACK_SENDER_ACCESS_DENIED')
+      await t.run(async ctx => { await ctx.db.patch(membership!._id, { status: 'active' }) })
+      await t.run(async ctx => {
+        expect(await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversationId!).eq('principalId', 'bob')).unique()).toBeNull()
+      })
+    }
+    const ensured = await t.mutation(ensure, { ...ensureArgs, userId, createdByPrincipalId: userId, identityLinkId: `${userId}-link`, slackUserId })
+    if (conversationId) expect(ensured).toBe(conversationId)
+    conversationId = ensured
     expect(await query(slackUserId)).toMatchObject({ userId, principalId: userId })
     const result = await t.mutation(begin, { ...scope, platform: 'slack', turnId: `surface:slack:T1:C1:${userId}`, workflowRunId: userId,
       actorUserId: userId, creatorPrincipalId: userId, identityLinkId: `${userId}-link`, slackUserId, agentId: 'chief', agentPrincipalId: 'chief-principal',
@@ -131,16 +152,32 @@ test('two linked participants in one Slack thread admit turns as themselves, nev
     expect(result.execution).toMatchObject({ actorUserId: userId, creatorPrincipalId: userId, conversationId })
     await t.run(async ctx => { expect(await ctx.db.get(result.execution.agentRunId)).toMatchObject({ userId, initiatorPrincipalId: userId }) })
   }
+  const getFile = makeFunctionReference<'query'>('files/files:get')
+  const getConversation = makeFunctionReference<'query'>('chat/conversations:get')
+  const memories = makeFunctionReference<'query'>('knowledge/memories:listWorkspace')
+  expect(await t.query(getFile, { serverSecret: secret, workspaceId: 'ws', userId: 'alice', fileId: privateResources.file })).not.toBeNull()
+  expect(await t.query(getFile, { serverSecret: secret, workspaceId: 'ws', userId: 'bob', fileId: privateResources.file })).toBeNull()
+  expect(await t.query(getConversation, { serverSecret: secret, workspaceId: 'ws', userId: 'alice', conversationId: privateResources.conversation })).not.toBeNull()
+  expect(await t.query(getConversation, { serverSecret: secret, workspaceId: 'ws', userId: 'bob', conversationId: privateResources.conversation })).toBeNull()
+  expect(await t.query(getConversation, { serverSecret: secret, workspaceId: 'ws', userId: 'bob', conversationId })).not.toBeNull()
+  for (const viewer of [{ viewerUserId: 'bob' }, {}]) {
+    const rows = await t.query(memories, { serverSecret: secret, workspaceId: 'ws', ...viewer })
+    expect(rows.map((row: { content: string }) => row.content)).toEqual(['Shared team fact'])
+  }
   await t.run(async ctx => {
-    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversationId).eq('principalId', 'bob')).unique()
+    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversationId!).eq('principalId', 'bob')).unique()
+    expect(participant).toMatchObject({ status: 'active', role: 'member', workspaceId: 'ws' })
+    expect(await ctx.db.query('workspaceResourceScopes').collect()).toMatchObject([{ resourceType: 'conversation', resourceId: conversationId }])
     await ctx.db.patch(participant!._id, { status: 'removed' })
-    expect((await ctx.db.get(conversationId))?.userId).toBe('alice')
+    expect(await ctx.db.get(conversationId!)).toMatchObject({ userId: 'alice', createdByPrincipalId: 'alice', conversationType: 'channel' })
   })
   expect(await query('U2')).toBeNull()
   await t.run(async ctx => {
-    const mapping = await ctx.db.query('surfaceThreadLinks').withIndex('by_conversationId', q => q.eq('conversationId', conversationId)).unique()
+    const mapping = await ctx.db.query('surfaceThreadLinks').withIndex('by_conversationId', q => q.eq('conversationId', conversationId!)).unique()
     await ctx.db.delete(mapping!._id)
   })
   expect(await query('U2')).toBeNull()
   expect(await query('U1')).toMatchObject({ userId: 'alice' })
+  expect(await t.mutation(ensure, { ...ensureArgs, userId: 'bob', createdByPrincipalId: 'bob', identityLinkId: 'bob-link', slackUserId: 'U2' })).toBe(conversationId)
+  expect(await query('U2', { linkId: 'bob-link', userId: 'bob' })).toMatchObject({ userId: 'bob' })
 })

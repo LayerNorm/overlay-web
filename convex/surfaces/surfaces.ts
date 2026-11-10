@@ -290,6 +290,7 @@ export const ensureSurfaceConversation = mutation({
         workspaceId: connection.workspaceId, connectionId: connection.id, teamId: connection.externalTeamId,
         slackUserId: args.slackUserId, channelId: args.externalChannelId, threadId: args.externalThreadId,
         linkId: args.identityLinkId, userId: args.userId,
+        allowEnrollment: true,
       }) : null
       if (!requester || requester.principalId !== args.createdByPrincipalId) throw new Error('SLACK_SENDER_ACCESS_DENIED')
     }
@@ -313,11 +314,6 @@ export const ensureSurfaceConversation = mutation({
       }
       if (candidates.length > 1) throw new Error('SURFACE_THREAD_LEGACY_AMBIGUOUS')
       live = candidates[0] ?? null
-    }
-    if (live && args.identityLinkId) {
-      const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q =>
-        q.eq('conversationId', live!._id).eq('principalId', args.createdByPrincipalId!)).unique()
-      if (participant?.status !== 'active') throw new Error('SLACK_SENDER_ACCESS_DENIED')
     }
     const now = Date.now()
     let conversationId = live?._id
@@ -356,11 +352,8 @@ export const ensureSurfaceConversation = mutation({
       await ctx.db.patch(link._id, { conversationId, updatedAt: now })
     }
     if (args.workspaceId) {
-      // Participant rows make the room visible to the binding creator and the
-      // bound agent; idempotent so conversations created before this contract
-      // get backfilled on the next inbound message.
       const candidates = [
-        { principalId: args.createdByPrincipalId, role: 'moderator' as const },
+        { principalId: args.createdByPrincipalId, role: live ? 'member' as const : 'moderator' as const },
         { principalId: args.agentPrincipalId, role: 'member' as const },
       ]
       for (const candidate of candidates) {
@@ -370,7 +363,12 @@ export const ensureSurfaceConversation = mutation({
             .eq('conversationId', conversationId)
             .eq('principalId', candidate.principalId as string))
           .unique()
-        if (enrolled) continue
+        if (enrolled) {
+          if (args.identityLinkId && candidate.principalId === args.createdByPrincipalId && enrolled.status !== 'active') {
+            await ctx.db.patch(enrolled._id, { status: 'active', role: 'member', removedAt: undefined, updatedAt: now })
+          }
+          continue
+        }
         const principal = await ctx.db.query('workspacePrincipals')
           .withIndex('by_principalId', (q) => q.eq('principalId', candidate.principalId as string))
           .unique()

@@ -95,6 +95,7 @@ async function handleInboundSlackMessage(args: {
   const requester = await resolveSurfaceRequester({
     workspaceId: connection.workspaceId, connectionId: connection.id, teamId,
     slackUserId: message.author.userId, channelId, threadId: threadTs || message.id,
+    allowEnrollment: true,
   })
   if (!requester) {
     const url = new URL('/api/v1/surfaces/slack/identity/start', getBaseUrl())

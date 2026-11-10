@@ -1197,6 +1197,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Chief of Staff (pending)
 
+- Enroll linked current members replying in Chief-bound public Slack threads into that mirrored conversation only, preserving shared-room privacy and frozen run identity.
+
 - Link Slack senders through verified, one-use Sign in with Slack requests. Execute Chief turns as the linked current member, enforce conversation participation and immutable run identity on admission/resume, and privately prompt unauthorized senders to link. Users can unlink themselves; workspace administrators can revoke workspace links.
 
 - Make Slack management admin/owner-only and channel bindings workspace-Chief-only. Ignore legacy specialist bindings and agent-name routing, reject private/direct/shared channels, and deduplicate inbound turns independently of channel rebinding. Slack setup and settings UI migration follow separately.

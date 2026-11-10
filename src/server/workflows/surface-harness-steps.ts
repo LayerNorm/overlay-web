@@ -85,6 +85,7 @@ export async function admitSurfaceSourceStep(
     workspaceId: input.workspaceId,
     turnId: input.turnId,
     surface: { ...input.surface, slackUserId: input.surface.authorExternalId },
+    allowEnrollment: true,
   })
   return sourceSurfaceContext(input, source, workflowRunId)
 }
