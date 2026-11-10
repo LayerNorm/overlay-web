@@ -3,6 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentAssignments } from './AgentAssignments'
+import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -43,4 +44,11 @@ test('origin-only threads show provenance and excluded failures stay failed', ()
   assert.match(html, /Excluded: Source unavailable/)
   assert.match(html, /Product · Working/)
   assert.match(html, /0\/2 completed/)
+})
+
+test('Assigned from renders channel parent destinations without an agent filter', () => {
+  const href = assignmentThreadHref({ agentId: 'chief', conversationId: 'channel', conversationType: 'channel', scope: 'workspace' })
+  const html = renderToStaticMarkup(<AgentAssignments parent={{ assignmentId: 'one', title: 'Launch channel', href }} assignments={[]} />)
+  assert.match(html, /href="\/app\/chat\?view=channels&amp;id=channel&amp;scope=workspace"/)
+  assert.doesNotMatch(html, /agent=chief|\/app\/agents/)
 })

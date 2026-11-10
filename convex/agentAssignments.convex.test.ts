@@ -827,6 +827,31 @@ test('requester, parent and target authority are checked before creation', async
   })).rejects.toThrow()
 })
 
+test.each(['channel', 'dm', 'personal'] as const)('authorized parent navigation includes its real conversation kind: %s', async conversationType => {
+  const data = await fixture()
+  const assignment = await data.convex.mutation(createAssignment, args(data))
+  await data.convex.run(ctx => ctx.db.patch(data.parentConversationId, { conversationType }))
+  const alice = data.convex.withIdentity({ subject: 'alice' })
+  expect((await alice.query(forConversation, { workspaceId: 'workspace', conversationId: assignment.conversationId })).parent).toMatchObject({
+    conversationType, scope: conversationType === 'personal' ? 'personal' : 'workspace',
+  })
+})
+
+test('agent DM parent navigation retains its bound agent and personal scope without treating channels as agent threads', async () => {
+  const data = await fixture()
+  const assignment = await data.convex.mutation(createAssignment, args(data))
+  await data.convex.run(async ctx => {
+    await ctx.db.patch(data.parentConversationId, { agentId: 'caller' })
+    const caller = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'caller')).unique()
+    await ctx.db.patch(caller!._id, { visibility: 'creator', createdByPrincipalId: 'alice' })
+  })
+  const alice = data.convex.withIdentity({ subject: 'alice' })
+  const read = () => alice.query(forConversation, { workspaceId: 'workspace', conversationId: assignment.conversationId })
+  expect((await read()).parent).toMatchObject({ agentId: 'caller', conversationType: 'dm', scope: 'personal' })
+  await data.convex.run(ctx => ctx.db.patch(data.parentConversationId, { conversationType: 'channel' }))
+  expect((await read()).parent).toMatchObject({ conversationType: 'channel', scope: 'workspace' })
+})
+
 test('read model returns only authorized child and parent navigation', async () => {
   const data = await fixture()
   const assignment = await data.convex.mutation(createAssignment, args(data))

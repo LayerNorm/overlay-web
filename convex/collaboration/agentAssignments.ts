@@ -8,6 +8,7 @@ import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { parseByoModelId } from '../../src/shared/agents/agent-model'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import type { AssignmentExecution } from '../../src/shared/work/assignment-execution'
+import { scopeForConversationDetail } from '../../src/shared/chat/chat-view-navigation'
 
 type DbContext = MutationCtx | QueryCtx
 type AssignmentArgs = {
@@ -247,7 +248,8 @@ const parentView = v.object({
   assignmentId: v.string(),
   conversationId: v.id('conversations'),
   title: v.string(),
-  agentId: v.string(),
+  agentId: v.optional(v.string()),
+  conversationType: v.union(v.literal('personal'), v.literal('dm'), v.literal('channel')),
   scope: navigationScope,
 })
 const assignmentView = v.object({
@@ -262,6 +264,12 @@ const assignmentView = v.object({
   disposition: v.optional(v.union(v.literal('accepted'), v.literal('revision_requested'), v.literal('excluded'))),
   dispositionReason: v.optional(v.string()),
 })
+
+function parentThreadNavigation(conversation: Doc<'conversations'>, caller: Doc<'workspaceAgentDefinitions'>) {
+  const conversationType = conversation.conversationType ?? 'personal'
+  return { conversationId: conversation._id, agentId: conversation.agentId, title: conversation.title, conversationType,
+    scope: conversationType === 'dm' && conversation.agentId ? agentScope(caller) : scopeForConversationDetail(conversation) }
+}
 
 export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>, assignment: Doc<'agentAssignments'>): Promise<AssignmentExecution | null> {
   const workspaceId = assignment.workspaceId
@@ -294,7 +302,7 @@ export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaite
     disposition: attempt?.disposition, dispositionReason: attempt?.dispositionReason,
     result: result ? { summary: result.summary, failureReason: result.failureReason }
       : attempt?.cancellationReason ? { summary: '', failureReason: attempt.cancellationReason } : undefined,
-    parent: { conversationId: parent._id, agentId: caller.agentId, title: parent.title, scope: agentScope(caller) },
+    parent: parentThreadNavigation(parent, caller),
     origin: await authorizedOrigin(ctx, viewer, workspaceId, child._id),
     createdAt: assignment.createdAt,
   }
@@ -481,7 +489,8 @@ export const forConversation = query({
       assignmentId: string
       conversationId: Doc<'conversations'>['_id']
       title: string
-      agentId: string
+      agentId?: string
+      conversationType: 'personal' | 'dm' | 'channel'
       scope: 'workspace' | 'personal'
     } | null = null
     const childAssignment = await ctx.db.query('agentAssignments')
@@ -495,10 +504,7 @@ export const forConversation = query({
       if (parentConversation && caller) {
         parent = {
           assignmentId: childAssignment.assignmentId,
-          conversationId: parentConversation._id,
-          title: parentConversation.title,
-          agentId: childAssignment.callerAgentId,
-          scope: agentScope(caller),
+          ...parentThreadNavigation(parentConversation, caller),
         }
       }
     }

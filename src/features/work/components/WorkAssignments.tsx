@@ -6,7 +6,7 @@ import { useState, type ReactNode } from 'react'
 import { ArrowUpRight, Bot, ChevronDown, CircleAlert, CircleDot, CornerDownRight, Hash, RotateCcw } from 'lucide-react'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { Button } from '@overlay/ui/primitives'
-import { agentThreadHref } from '@/components/layout/sidebar-nav'
+import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import type { AssignmentExecution } from '@/shared/work/assignment-execution'
 import { assignmentWorkState, type AssignmentGlyph } from '@/shared/work/assignment-state'
@@ -26,8 +26,8 @@ function agentPerson(item: AssignmentExecution) {
 /** Links to the agent thread behind an assignment or its parent. */
 export function useAssignmentThreadHref() {
   const workspaceHref = useWorkspaceHref()
-  return (target: { agentId: string; conversationId: string; scope: 'personal' | 'workspace' }) =>
-    workspaceHref(null, agentThreadHref('/app/agents', target.agentId, target.conversationId, target.scope), target.scope)
+  return (target: Parameters<typeof assignmentThreadHref>[0]) =>
+    workspaceHref(null, assignmentThreadHref(target), target.scope)
 }
 
 /** One agent assignment in the list, drawn like a task row: glyph, title, tag, where it came from, and the agent. */

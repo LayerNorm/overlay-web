@@ -28,7 +28,7 @@ export type AssignmentExecution = {
   disposition?: 'accepted' | 'revision_requested' | 'excluded'
   dispositionReason?: string
   result?: { summary: string; failureReason?: string }
-  parent: { conversationId: string; agentId: string; title: string; scope: 'personal' | 'workspace' }
+  parent: { conversationId: string; agentId?: string; conversationType?: 'personal' | 'dm' | 'channel'; title: string; scope: 'personal' | 'workspace' }
   origin?: AssignmentOrigin
   createdAt: number
 }

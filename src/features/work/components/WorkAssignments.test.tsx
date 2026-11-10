@@ -38,3 +38,18 @@ test('empty groups and unavailable or loading assignments retain their fallback 
   assert.match(renderToStaticMarkup(<WorkAssignmentPeek assignmentId="missing" items={[]} loading={false} onClose={() => {}} />), /This assignment is not available/)
   assert.match(renderToStaticMarkup(<WorkAssignmentPeek assignmentId="missing" items={[]} loading onClose={() => {}} />), /Loading assignment/)
 })
+
+test('both parent links open channel parents in Channels rather than the caller agent', () => {
+  const html = renderToStaticMarkup(<WorkAssignmentPeek assignmentId="assignment" items={[{
+    ...item, parent: { ...item.parent, scope: 'workspace', conversationType: 'channel' },
+  }]} loading={false} onClose={() => {}} />)
+  const parentHrefs = [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]).filter(href => href.includes('id=parent'))
+  assert.equal(parentHrefs.length, 2)
+  for (const href of parentHrefs) {
+    const url = new URL(href.replaceAll('&amp;', '&'), 'https://example.test')
+    assert.equal(url.pathname, '/app/chat')
+    assert.equal(url.searchParams.get('view'), 'channels')
+    assert.equal(url.searchParams.get('scope'), 'workspace')
+    assert.equal(url.searchParams.get('agent'), null)
+  }
+})

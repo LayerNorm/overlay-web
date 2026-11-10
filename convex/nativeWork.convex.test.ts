@@ -122,6 +122,15 @@ test('Work projects a cancelled never-launched attempt with its terminal reason'
   } }])
 })
 
+test.each(['channel', 'dm', 'personal'] as const)('Work projects the authorized parent conversation kind: %s', async conversationType => {
+  const data = await assignmentFixture()
+  await data.t.run(ctx => ctx.db.patch(data.parent, { conversationType }))
+  expect((await data.read()).page).toMatchObject([{ parent: {
+    conversationId: data.parent, conversationType, scope: conversationType === 'personal' ? 'personal' : 'workspace',
+  } }])
+  expect((await data.read('bob')).page).toEqual([])
+})
+
 test('Work assignment archive is live and origin disappears after connection revocation', async () => {
   const data = await assignmentFixture()
   const connection = await data.t.run(async ctx => {

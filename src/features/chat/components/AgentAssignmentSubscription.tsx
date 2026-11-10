@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useConvexAuth, useQueries, type RequestForQueries } from '@/components/providers/convex-hooks'
 import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { agentThreadHref } from '@/components/layout/sidebar-nav'
+import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
 import { api } from '../../../../convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
 import { AgentAssignments } from './AgentAssignments'
@@ -27,8 +27,8 @@ function AssignmentSubscription({ workspaceId, conversationId }: Props) {
   }, [workspaceId, conversationId, isAuthenticated])
   const result = useQueries(queries).assignments as AssignmentView | Error | undefined
   if (!result || result instanceof Error) return null
-  const href = (item: { agentId: string; conversationId: string; scope: 'workspace' | 'personal' }) =>
-    workspaceHref(workspaceId, agentThreadHref('/app/agents', item.agentId, item.conversationId, item.scope), item.scope)
+  const href = (item: Parameters<typeof assignmentThreadHref>[0]) =>
+    workspaceHref(workspaceId, assignmentThreadHref(item), item.scope)
   return <AgentAssignments
     origin={result.origin}
     parent={result.parent ? { ...result.parent, href: href(result.parent) } : null}
