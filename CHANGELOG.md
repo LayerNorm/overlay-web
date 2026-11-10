@@ -7,7 +7,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
 - Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
-||||||| f8ea73ed7
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
 
 - Fix a cancelled ChatGPT/Codex sign-in staying in the provider list. Removing a subscription connection failed with "Subscription cleanup is pending" when a sign-in check was still running, so the connection was never deleted. That check now hands its lock back as soon as it sees the removal, and removal waits for it (at most a minute) before deleting the stored sign-in data and the connection. This changes Convex subscription mutations.
