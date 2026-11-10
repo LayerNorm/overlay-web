@@ -1,6 +1,6 @@
 export type HarnessDiagnosticCode =
   | 'TASK_DEADLINE' | 'TASK_SPEND_LIMIT' | 'WORKSPACE_FUNDS'
-  | 'PROVIDER_REJECTED' | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
+  | 'PROVIDER_REJECTED' | 'PROVIDER_REQUEST_INVALID' | 'PROVIDER_ACCOUNT' | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
   | 'TOOL_FAILED' | 'TOOL_OUTCOME_UNKNOWN' | 'MODEL_OUTCOME_UNKNOWN'
   | 'AUTHORIZATION_REVOKED' | 'PERSISTENCE_FAILED' | 'STAGNATION' | 'UNKNOWN'
 
@@ -35,6 +35,8 @@ const descriptions: Record<HarnessDiagnosticCode, Pick<HarnessDiagnostic, 'safeM
   PROVIDER_RATE_LIMIT: { safeMessage: 'The model provider temporarily limited requests.', nextAction: 'Wait before retrying, or select another available model.', retryability: 'user_action' },
   PROVIDER_REJECTED: { safeMessage: 'The model provider blocked this response with its content filter. Any partial response is incomplete.', nextAction: 'Review the request before trying again.', retryability: 'user_action' },
   PROVIDER_UNAVAILABLE: { safeMessage: 'The model provider could not complete the request.', nextAction: 'Review the saved work and retry when the provider is available.', retryability: 'user_action' },
+  PROVIDER_REQUEST_INVALID: { safeMessage: 'The model provider refused this request because it could not accept part of it.', nextAction: 'Choose a model that supports this content, or remove the unsupported attachment, before retrying.', retryability: 'user_action' },
+  PROVIDER_ACCOUNT: { safeMessage: 'The model provider rejected the connected account or key, its access, or its billing.', nextAction: 'Reconnect the account or check the provider key, access and billing in Settings, then retry.', retryability: 'user_action' },
   TOOL_FAILED: { safeMessage: 'A tool could not complete its operation.', nextAction: 'Review the failed tool and saved work before continuing.', retryability: 'user_action' },
   TOOL_OUTCOME_UNKNOWN: { safeMessage: 'A tool operation ended without a confirmed outcome.', nextAction: 'Check whether the action took effect before retrying it.', retryability: 'reconcile' },
   MODEL_OUTCOME_UNKNOWN: { safeMessage: 'A model request ended without confirmed usage.', nextAction: 'Reconcile the outstanding request before retrying it.', retryability: 'reconcile' },

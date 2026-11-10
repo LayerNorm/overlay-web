@@ -29,6 +29,18 @@ export class HarnessAuthorizationError extends Error {
   }
 }
 
+// Prefixes of describeAISDKFailure's 4xx descriptions, matched when transport strips SDK prototypes.
+const providerAccountFailures = [
+  'The model provider rejected authentication.',
+  'The model provider requires payment or credits.',
+  'The model provider denied access to the requested resource.',
+]
+const providerRequestFailures = [
+  'The model provider rejected the request as invalid.',
+  'The requested model or provider endpoint was not found.',
+  'The model provider rejected the request because it was too large.',
+]
+
 export function harnessDiagnosticForFailure(
   runId: string,
   snapshot: HarnessSnapshot,
@@ -88,6 +100,8 @@ export function harnessDiagnosticForFailure(
     if (value.statusCode === 408) code = 'PROVIDER_TIMEOUT'
     else if (value.statusCode === 429) code = 'PROVIDER_RATE_LIMIT'
     else if (value.statusCode >= 500) code = 'PROVIDER_UNAVAILABLE'
+    else if ([401, 402, 403].includes(value.statusCode)) code = 'PROVIDER_ACCOUNT'
+    else if (value.statusCode >= 400) code = 'PROVIDER_REQUEST_INVALID'
   } else if (stage === 'model' && snapshot.latestReceipt?.costMicros === 0
     && ['route_capacity', 'route_unavailable', 'route_interrupted'].includes(snapshot.latestReceipt.rejectionReason ?? '')) {
     if (snapshot.latestReceipt.rejectionReason === 'route_capacity') code = 'PROVIDER_RATE_LIMIT'
@@ -118,6 +132,8 @@ export function harnessDiagnosticForFailure(
         else if (description.startsWith('The model provider rate limit or quota was exceeded.')) code = 'PROVIDER_RATE_LIMIT'
         else if (description.startsWith('The model provider encountered a server error.')) code = 'PROVIDER_UNAVAILABLE'
         else if (description.startsWith('The model provider request timed out.')) code = 'PROVIDER_TIMEOUT'
+        else if (providerAccountFailures.some(prefix => description.startsWith(prefix))) code = 'PROVIDER_ACCOUNT'
+        else if (providerRequestFailures.some(prefix => description.startsWith(prefix))) code = 'PROVIDER_REQUEST_INVALID'
       }
       if (code !== 'UNKNOWN') break
       current = readErrorField(current, 'cause')
