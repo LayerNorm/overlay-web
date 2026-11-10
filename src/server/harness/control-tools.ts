@@ -27,6 +27,11 @@ function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): stri
 }
 
 function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: string) {
+  if (error === HARNESS_STEP_VALIDATION.unknownStep) {
+    return { success: false, error, currentStepIds: state.plan.map(step => step.id), hint: state.plan.length
+      ? 'Use an existing step ID, or revise the plan with harness_set_plan before updating it.'
+      : 'There is no plan to update. Continue the requested work or answer directly if it is complete. Create a plan only if the remaining work needs one.' }
+  }
   if (error !== HARNESS_STEP_VALIDATION.dependencies) return { success: false, error }
   const step = state.plan.find(candidate => candidate.id === stepId)
   const pendingDependencyIds = step?.dependsOn.filter(dependencyId => {
@@ -71,7 +76,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_update_step: tool({
-      description: 'Set a plan step to running when you start it and done when you finish it. Marking a step done means the work is finished.',
+      description: 'Update an existing plan step by its ID: running when you start it, done when finished. Marking a step done means the work is finished. Simple replies and resuming after user input do not require creating or updating a plan.',
       inputSchema: z.object({
         id,
         status: z.enum(['pending', 'running', 'blocked', 'done', 'skipped']),

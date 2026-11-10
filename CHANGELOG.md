@@ -1196,6 +1196,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Chief of Staff (pending)
 
+- Return corrective tool feedback when an agent tries to update a nonexistent plan step, including an empty plan after answering a question, rather than surfacing a fatal workflow error. Ordinary replies still do not require a plan.
+
 - Keep Harness assignment, recovery and native turn-queue repository operations in a server-only base class without changing their authorization or persistence behavior.
 
 - Allow generated personal-Chief identities in agent discovery, ask and post requests. The caller-ID limit now matches the target agent-ID limit instead of rejecting valid Chief IDs before authorization and directory lookup.

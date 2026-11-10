@@ -161,6 +161,23 @@ test('a backend that still requires evidence returns its rejection to the model'
   expect(result).toEqual({ success: false, error: 'Completion requires evidence.' })
 })
 
+test.each([false, true])('unknown step IDs return corrective guidance without changing the plan (empty: %s)', async empty => {
+  const f = fixture()
+  if (empty) f.setParent(noPlanState())
+  const before = await f.ports.read()
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'invented-step', status: 'done' }, { toolCallId: 'unknown-step', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false, error: 'Unknown milestone.', currentStepIds: empty ? [] : ['work'],
+    hint: empty
+      ? 'There is no plan to update. Continue the requested work or answer directly if it is complete. Create a plan only if the remaining work needs one.'
+      : 'Use an existing step ID, or revise the plan with harness_set_plan before updating it.',
+  })
+  expect(await f.ports.read()).toBe(before)
+})
+
 test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {
   const f = fixture()
   const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: false,
