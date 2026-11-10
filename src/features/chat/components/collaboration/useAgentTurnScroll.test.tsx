@@ -27,10 +27,11 @@ test('new agent exchanges anchor at the top without discarding history or draggi
   let scroll!: ReturnType<typeof useAgentTurnScroll>
   function Harness({ messages, conversationId = 'room' }: { messages: RoomMessageRecord[]; conversationId?: string }) {
     const currentScroll = useAgentTurnScroll({ enabled: true, conversationId, messages, listRef: { current: list } as unknown as RefObject<HTMLDivElement> })
+    const { spacerRef } = currentScroll
     useEffect(() => {
       scroll = currentScroll
     }, [currentScroll])
-    return <div ref={currentScroll.spacerRef} />
+    return <div ref={spacerRef} />
   }
   const history: RoomMessageRecord[] = [
     { id: 'old-user', turnId: 'old', authorKind: 'human', content: 'Previous question', createdAt: 1 },
