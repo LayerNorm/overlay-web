@@ -7,6 +7,10 @@ import { toast } from '@overlay/ui/primitives'
 import { nativeChatTitleForDisplay } from '@/features/chat/lib/persist-native-chat-title'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
+export function chatViewerUserId(initialUserId: string | null, authUserId: string | null, authLoading: boolean) {
+  return authUserId ?? (authLoading ? initialUserId : null)
+}
+
 export function useNativePersonalRouteState({
   authLoading,
   isTemporaryChatRef,

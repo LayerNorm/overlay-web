@@ -605,6 +605,7 @@
     "convex/chat/conversations.ts",
     "convex/chat/personal.ts",
     "convex/collaboration/directMessages.ts",
+    "convex/dev/performanceQa.ts",
     "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",
