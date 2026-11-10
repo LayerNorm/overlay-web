@@ -34,6 +34,24 @@ function narrow(value: unknown, keys: Set<string>, depth = 0): unknown {
     .map(([key, item]) => [key, narrow(item, key === 'arguments' ? INPUT_KEYS : keys, depth + 1)]))
 }
 
+function hasPullRequestUrl(value: unknown, depth = 0): boolean {
+  if (depth > 10) return false
+  if (typeof value === 'string') {
+    const parsed = jsonObject(value)
+    if (parsed !== value) return hasPullRequestUrl(parsed, depth + 1)
+    try {
+      const url = new URL(value)
+      return url.protocol === 'https:' && url.hostname === 'github.com'
+        && !url.username && !url.password && !url.port && !url.search && !url.hash
+        && /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9]\d*$/.test(url.pathname)
+    } catch {
+      return false
+    }
+  }
+  if (Array.isArray(value)) return value.some(item => hasPullRequestUrl(item, depth + 1))
+  return isRecord(value) && Object.values(value).some(item => hasPullRequestUrl(item, depth + 1))
+}
+
 export function compactPullRequestToolValues(invocation: Record<string, unknown>) {
   const name = typeof invocation.toolName === 'string' ? invocation.toolName.toUpperCase() : ''
   if (!/^(?:GITHUB_[A-Z_]+|(?:WORKSPACE_)?COMPOSIO_MULTI_EXECUTE_TOOL|CALL_MCP_TOOL)$/.test(name)) return null
@@ -43,6 +61,6 @@ export function compactPullRequestToolValues(invocation: Record<string, unknown>
   if (serialized.length <= 4_000 && input.length <= 4_000) return null
   const toolOutput = narrow(invocation.toolOutput, RESPONSE_KEYS)
   const output = JSON.stringify(toolOutput)
-  if (output.length > 4_000 || !output.includes('https://github.com/')) return null
+  if (output.length > 4_000 || !hasPullRequestUrl(toolOutput)) return null
   return { toolInput: narrow(invocation.toolInput, INPUT_KEYS), toolOutput }
 }

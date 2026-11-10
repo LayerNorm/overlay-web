@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reduceThreadPullRequests } from './thread-pull-requests'
 import { compactAssistantPersistenceForConvex } from '../chat/persist-assistant-turn'
+import { compactPullRequestToolValues } from '../chat/persist-pull-request-tool'
 
 function pullRequest(
   number: number,
@@ -147,6 +148,20 @@ test('PR compaction keeps failure signals and does not turn unrelated or malform
     toolPart('unrelated', 'read_file', {}, { contents: 'a'.repeat(8_000) }),
   ] })
   assert.equal((unrelated.parts[0]?.toolInvocation as { toolOutput: { truncated: boolean } }).toolOutput.truncated, true)
+})
+
+test('PR compaction rejects URL substrings and noncanonical hosts', () => {
+  for (const html_url of [
+    'https://evil.example/https://github.com/acme/widgets/pull/4',
+    'https://github.com.evil.example/acme/widgets/pull/4',
+    'https://github.com@evil.example/acme/widgets/pull/4',
+    'prefix https://github.com/acme/widgets/pull/4',
+  ]) {
+    assert.equal(compactPullRequestToolValues({
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST', toolInput: {},
+      toolOutput: pullRequest(4, 'acme', 'widgets', 'open', { html_url, body: 'a'.repeat(5_000) }),
+    }), null)
+  }
 })
 
 test('read-only tools never create an association but can refresh an existing pull request', () => {
