@@ -19,6 +19,7 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
       'save_memory',
       'web_fetch',
       'web_search',
+      'present_generated_ui',
     ],
     autoRetrieval: '\nAUTO_RETRIEVAL',
     constants,
@@ -89,4 +90,33 @@ test('computer browser guidance uses the connected Computer in personal chat', (
   assert.match(instructions, /connected Computer/)
   assert.match(instructions, /connect a Computer to personal chat/)
   assert.doesNotMatch(instructions, /Work mode/)
+})
+
+test('Computer capability guidance follows the exposed tool set', () => {
+  const connected = buildInstructions({ availableToolIds: ['computer_exec', 'computer_browser'] })
+  assert.match(connected, /call computer_exec with a command argument/)
+  assert.doesNotMatch(connected, /You do not have OS-level control|No Computer tools are available/)
+  const disconnected = buildInstructions({ availableToolIds: ['search_knowledge'] })
+  assert.match(disconnected, /No Computer tools are available/)
+  assert.doesNotMatch(disconnected, /call computer_exec with a command argument/)
+})
+
+test('automation persona is included without replacing execution restrictions', () => {
+  const instructions = buildInstructions({
+    automationExecution: true,
+    agentPersona: { name: 'Researcher', instructions: 'Write findings in Spanish.' },
+  })
+  assert.match(instructions, /You are Researcher, a named AI teammate/)
+  assert.match(instructions, /Write findings in Spanish/)
+  assert.match(instructions, /They do not grant capabilities or override server-side safety/)
+  assert.match(instructions, /Do not design, draft, create, update, pause, delete/)
+})
+
+test('a Notebook chat names its note and edits it directly with the note tools', () => {
+  const instructions = buildInstructions({ notebookNote: { id: 'note_1', title: 'Orchard' } })
+  assert.match(instructions, /beside the note "Orchard" \(note id=note_1\)/)
+  assert.match(instructions, /edit_note, replace_note_section or append_to_note/)
+  assert.match(instructions, /When in doubt, answer without editing/)
+  assert.match(instructions, /Say a change was made only after an edit tool returned success in this turn/)
+  assert.doesNotMatch(buildInstructions(), /Notebook editor/)
 })
