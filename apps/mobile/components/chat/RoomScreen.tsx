@@ -22,6 +22,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
+import { useAndroidKeyboardVisible } from '../../hooks/useAndroidKeyboardVisible'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import * as ImagePicker from 'expo-image-picker'
@@ -46,6 +47,7 @@ import {
   type RoomMessageRecord,
   type RoomMessageView,
 } from '../../lib/roomMessages'
+import { getComposerBottomInset } from '../../lib/keyboardLayout'
 import {
   addRoomParticipant,
   deleteRoomMessage,
@@ -153,6 +155,7 @@ export function RoomScreen({
 }): React.ReactElement {
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
+  const keyboardVisible = useAndroidKeyboardVisible()
   const router = useRouter()
   const { openDrawer } = useDrawer()
   const { capabilities, isFeatureEnabled } = useAppSession()
@@ -894,7 +897,7 @@ export function RoomScreen({
 
       <KeyboardAvoidingView
         style={styles.body}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
         <View style={styles.transcriptRegion}>
@@ -973,7 +976,19 @@ export function RoomScreen({
           )}
         </View>
 
-        <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        <View
+          style={[
+            styles.composerWrap,
+            {
+              paddingBottom: getComposerBottomInset(
+                keyboardVisible,
+                insets.bottom,
+                spacing.sm,
+                spacing.sm,
+              ),
+            },
+          ]}
+        >
           {editingMessageId ? (
             <View style={[styles.editingBar, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
               <Feather name="edit-2" size={13} color={theme.textSecondary} />

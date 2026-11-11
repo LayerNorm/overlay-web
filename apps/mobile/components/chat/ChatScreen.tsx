@@ -49,7 +49,9 @@ import { mentionToRequestBody } from '../../lib/chatMentions'
 import { submitPersonalTurn, watchPersonalExecution, type PersonalRun, type PersonalTurn } from '../../services/personalChatService'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { useFavoriteModels } from '../../hooks/useFavoriteModels'
+import { useAndroidKeyboardVisible } from '../../hooks/useAndroidKeyboardVisible'
 import { resolveAutoModel, sortChatModels } from '../../lib/chatModels'
+import { getComposerBottomInset } from '../../lib/keyboardLayout'
 import { ModelPicker } from './ModelPicker'
 import { ChatHeader, ChatSheet, EmptyPersonalChat } from './ChatViews'
 import { appendPersonalBlock } from '../../lib/personalStream'
@@ -263,6 +265,7 @@ export function ChatScreen({
   const nativeReady = useNativeDataReady()
   const { activeWorkspaceId } = useWorkspace()
   const insets = useSafeAreaInsets()
+  const keyboardVisible = useAndroidKeyboardVisible()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState('New Chat')
@@ -317,7 +320,13 @@ export function ChatScreen({
     })
   }, [messages, searchQuery])
 
-  const composerFooterInset = Math.max(insets.bottom, spacing.md)
+  const composerFooterInset = getComposerBottomInset(
+    keyboardVisible,
+    insets.bottom,
+    spacing.md,
+    spacing.sm,
+    Platform.OS === 'android' ? spacing.sm : 0,
+  )
 
   const handleOpenDrawer = useCallback(() => {
     textInputRef.current?.blur()
@@ -1354,7 +1363,10 @@ export function ChatScreen({
       }
     >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <KeyboardAvoidingView style={styles.screenPadding} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={styles.screenPadding}
+          behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
+        >
           <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 
           <View style={styles.threadSurface}>
