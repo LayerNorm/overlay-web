@@ -164,6 +164,7 @@ test('automation list/detail/runs and ordered workflow events are native; execut
   const b = backend(),
     http = [],
     service = load('services/automationsService.ts', {
+      '@overlay/api-client': { createIdempotencyKey: () => 'automation-request' },
       './convexClient': b.convex,
       './appApi': {
         appJson: async (...args) => {

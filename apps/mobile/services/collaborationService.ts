@@ -117,7 +117,7 @@ export async function sendRoomMessage(input: {
     ...(input.replyToTurnId
       ? { replyToTurnId: input.replyToTurnId, replySnippet: input.replySnippet ?? '' }
       : {}),
-  })
+  }, { idempotencyKey: `room:${input.clientNonce}` })
 }
 
 

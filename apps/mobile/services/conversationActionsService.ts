@@ -136,8 +136,10 @@ export async function generateImage(input: {
   turnId: string
   imageUrl?: string
 }): Promise<GeneratedMediaResult> {
+  if (!input.turnId.trim()) throw new Error('A turn ID is required for image generation.')
   const res = await appRequest('/api/v1/generate-image', {
     method: 'POST',
+    headers: { 'Idempotency-Key': `image:${input.turnId}` },
     json: {
       prompt: input.prompt,
       modelId: input.modelId,
@@ -171,10 +173,12 @@ export async function generateVideo(input: {
   turnId: string
   imageUrl?: string
 }): Promise<GeneratedMediaResult> {
+  if (!input.turnId.trim()) throw new Error('A turn ID is required for video generation.')
   let final: GeneratedMediaResult | null = null
   let failure: string | null = null
   for await (const evt of appXhrStreamSse<VideoStreamEvent>('/api/v1/generate-video', {
     method: 'POST',
+    headers: { 'Idempotency-Key': `video:${input.turnId}` },
     json: {
       prompt: input.prompt,
       modelId: input.modelId,

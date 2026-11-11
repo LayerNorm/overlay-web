@@ -237,7 +237,7 @@ export async function sendAgentMessage(
       mentionedPrincipalIds: [],
       memoryEnabled: true,
     },
-    currentWorkspace(workspaceId),
+    { ...currentWorkspace(workspaceId), idempotencyKey: `agent:${nonce}` },
   )
   if (!result.success) throw new Error('Could not send message.')
 }

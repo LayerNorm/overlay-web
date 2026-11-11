@@ -87,7 +87,7 @@ test('archive/remove use Convex mutations and preserve backend errors', async ()
 test('send and stop preserve web HTTP commands, stable nonce, empty and failure behavior', async () => {
   const s = service()
   await s.adapter.sendAgentMessage('ws', 'c', ' hello ', 'nonce'); await s.adapter.stopAgentReply('ws', 'c', 'reply')
-  assert.deepEqual(s.calls[0], ['addMessage', { conversationId: 'c', content: 'hello', turnId: 'nonce', clientNonce: 'nonce', role: 'user', mode: 'act', contentType: 'text', mentionedPrincipalIds: [], memoryEnabled: true }, { headers: { 'x-overlay-workspace-id': 'ws' } }])
+  assert.deepEqual(s.calls[0], ['addMessage', { conversationId: 'c', content: 'hello', turnId: 'nonce', clientNonce: 'nonce', role: 'user', mode: 'act', contentType: 'text', mentionedPrincipalIds: [], memoryEnabled: true }, { headers: { 'x-overlay-workspace-id': 'ws' }, idempotencyKey: 'agent:nonce' }])
   assert.deepEqual(s.calls[1][1], { conversationId: 'c', messageId: 'reply' })
   await assert.rejects(s.adapter.sendAgentMessage('ws', 'c', ' ', 'nonce'), /Write a message/)
   s.result({ success: false, ok: false }); await assert.rejects(s.adapter.sendAgentMessage('ws', 'c', 'hello', 'nonce'), /Could not send/); await assert.rejects(s.adapter.stopAgentReply('ws', 'c', 'reply'), /may still be running/)

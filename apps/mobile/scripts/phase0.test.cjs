@@ -15,6 +15,7 @@ function load(file, dependencies = {}) {
   })
   const loaded = { exports: {} }
   const requireMock = (id) => {
+    if (id === '@overlay/api-client') return { createIdempotencyKey: () => 'search-request' }
     if (id === './filesService') return {}
     if (id === './settingsNativeService') return {}
     assert.ok(Object.hasOwn(dependencies, id), 'Unexpected dependency: ' + id)
@@ -48,8 +49,8 @@ test('knowledge search uses the current POST contract for files and memories', a
   assert.equal(await api.searchKnowledge(' roadmap ', 'file'), response)
   assert.equal(await api.searchKnowledge(' launch ', 'memory'), response)
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
-    ['/api/v1/knowledge/search', { method: 'POST', json: { query: 'roadmap', sourceKind: 'file' } }],
-    ['/api/v1/knowledge/search', { method: 'POST', json: { query: 'launch', sourceKind: 'memory' } }],
+    ['/api/v1/knowledge/search', { method: 'POST', headers: { 'Idempotency-Key': 'search-request' }, json: { query: 'roadmap', sourceKind: 'file' } }],
+    ['/api/v1/knowledge/search', { method: 'POST', headers: { 'Idempotency-Key': 'search-request' }, json: { query: 'launch', sourceKind: 'memory' } }],
   ])
 })
 

@@ -6,6 +6,7 @@ import { getAppBootstrap } from './bootstrapService'
 import { sortChatModels } from '../lib/chatModels'
 import { submitPersonalTurn, type PersonalTurn } from './personalChatService'
 import { convexWorkspaceId } from './convexClient'
+import { buildActStreamIdempotencyKey } from '../../src/shared/api/act-idempotency'
 
 const LAST_SELECTED_MODEL_KEY = 'overlay-last-selected-model-id'
 
@@ -145,6 +146,7 @@ export async function* chatStream(
       messages.length,
     )
     let inThinkTag = false
+    const idempotencyKey = buildActStreamIdempotencyKey(options.turnId ?? '', options.variantIndex)
 
     const requestMode = options.requestMode ?? 'chat'
     const body: Record<string, unknown> = {
@@ -207,7 +209,7 @@ export async function* chatStream(
 
     for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/v1/conversations/act', {
       method: 'POST',
-      headers: { 'x-overlay-workspace-id': workspaceId },
+      headers: { 'x-overlay-workspace-id': workspaceId, 'Idempotency-Key': idempotencyKey },
       json: body,
     })) {
       switch (chunk.type) {

@@ -2,6 +2,7 @@ import { appJson, appRequest, getRequestWorkspaceId } from './appApi'
 import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 import { getFile, listFiles, moveFile, renameFile } from './filesService'
 import { readMemories } from './settingsNativeService'
+import { createIdempotencyKey } from '@overlay/api-client'
 
 export interface KnowledgeSearchChunk {
   sourceId: string
@@ -15,11 +16,13 @@ export interface KnowledgeSearchChunk {
 export async function searchKnowledge(
   query: string,
   sourceKind: 'file' | 'memory',
+  idempotencyKey = createIdempotencyKey(),
 ): Promise<{ chunks: KnowledgeSearchChunk[] }> {
   const trimmed = query.trim()
   if (!trimmed) return { chunks: [] }
   return appJson('/api/v1/knowledge/search', {
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
     json: { query: trimmed, sourceKind },
   })
 }

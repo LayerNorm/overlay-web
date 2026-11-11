@@ -1,4 +1,5 @@
 import { appJson, getRequestWorkspaceId } from './appApi'
+import { createIdempotencyKey } from '@overlay/api-client'
 import { api, convexWorkspaceId, queryConvex, subscribeConvex, type Id } from './convexClient'
 import type {
   AutomationRunDetail,
@@ -111,9 +112,10 @@ export interface AutomationRunTrigger {
   message?: string
 }
 
-export async function runAutomationNow(automationId: string): Promise<AutomationRunTrigger> {
+export async function runAutomationNow(automationId: string, idempotencyKey = createIdempotencyKey()): Promise<AutomationRunTrigger> {
   return appJson<AutomationRunTrigger>(`/api/v1/automations/${encodeURIComponent(automationId)}/run`, { workspaceId: getRequestWorkspaceId(),
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
   })
 }
 

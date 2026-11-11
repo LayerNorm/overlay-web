@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
+import { createIdempotencyKey } from '@overlay/api-client'
 import { Alert } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import type { AutomationRunSummary, AutomationSummary } from '@overlay/app-core'
@@ -67,6 +68,7 @@ export function AutomationBrowserScreen() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null)
   const [tokens, setTokens] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
+  const runRequest = useRef<{ workspaceId: string; id: string; key: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const selected = runs.data?.find((run) => run._id === selectedRun) ?? null
   async function action(operation: () => Promise<unknown>) {
@@ -113,9 +115,13 @@ export function AutomationBrowserScreen() {
                 busy={busy}
                 onRun={() => {
                   void action(async () => {
-                    const result = await runAutomationNow(id)
+                    if (runRequest.current?.workspaceId !== workspaceId || runRequest.current.id !== id)
+                      runRequest.current = { workspaceId: workspaceId!, id, key: createIdempotencyKey() }
+                    const key = runRequest.current.key
+                    const result = await runAutomationNow(id, key)
                     if (result.ok === false || result.error)
                       throw new Error(result.error || result.message || 'Could not start run.')
+                    if (runRequest.current?.key === key) runRequest.current = null
                     if (
                       getRequestWorkspaceId() === workspaceId &&
                       result.runId &&
