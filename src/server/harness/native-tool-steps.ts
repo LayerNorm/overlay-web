@@ -5,7 +5,11 @@ import { ConvexError } from 'convex/values'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
-import { isAvailableToSharedSurface, sharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
+import {
+  isAvailableToSharedSurface,
+  sharedSurfaceAgentContext,
+  type SharedSurfaceAgentContext,
+} from '@/server/agents/shared-surface-agent-policy'
 import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
@@ -223,6 +227,45 @@ function assertNativeAgentRequest(toolCallId: string, toolName: string) {
   }
 }
 
+async function assertNativeAskTargetAccess(
+  server: ReturnType<typeof getOverlayServerContext>,
+  actorUserId: string,
+  workspaceId: string,
+  target: string,
+  sharedSurfaceContext: SharedSurfaceAgentContext | undefined,
+): Promise<void> {
+  const directory = await server.workspaceAgentService.list({ actorUserId, workspaceId })
+  const normalizedTarget = target.trim().toLocaleLowerCase()
+  const targetAgent = directory.agents.find(agent => agent.id === target.trim()
+    || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
+  if (!targetAgent || (sharedSurfaceContext && !isAvailableToSharedSurface(targetAgent))) return
+
+  const [remoteTarget, bindings] = await Promise.all([
+    server.appData.repositories.connectedAgents.findInvocationTarget({
+      workspaceId,
+      agentId: targetAgent.id,
+      now: Date.now(),
+      onlineWithinMs: 45_000,
+    }),
+    server.appData.repositories.connectedAgents.listBindings({ workspaceId, agentId: targetAgent.id }),
+  ])
+  if (targetAgent.harness !== 'overlay' || parseByoModelId(targetAgent.modelId) !== null
+    || remoteTarget || bindings.length > 0) {
+    throw new FatalError("External agents can't be asked from this run yet.")
+  }
+}
+
+function nativeSurfaceTriggerForRoot(
+  surfaceExecution: Awaited<ReturnType<typeof refreshNativeHarnessAccess>>['surfaceExecution'],
+  access: NativeHarnessAccess,
+  parent: HarnessSnapshot,
+) {
+  return surfaceExecution && parent.runId === parent.rootRunId
+    && access.runId === surfaceExecution.harnessRunId && parent.workflowRunId === surfaceExecution.workflowRunId
+    ? surfaceExecution
+    : undefined
+}
+
 export async function dispatchNativeHarnessAgentRequest(
   access: NativeHarnessToolsInput['access'],
   context: NativeHarnessToolsInput['context'],
@@ -370,37 +413,9 @@ export async function dispatchNativeHarnessAgentRequest(
       || (values.expectedAttemptId !== undefined && typeof values.expectedAttemptId !== 'string')) throw new FatalError('Invalid assignment revision input.')
     const target = values.agent
     const message = values.message
-    const directory = await server.workspaceAgentService.list({
-      actorUserId: access.actorUserId,
-      workspaceId: access.workspaceId,
-    })
-    const normalizedTarget = target.trim().toLocaleLowerCase()
-    const targetAgent = directory.agents.find(agent => agent.id === target.trim()
-      || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
-    if (targetAgent && (!sharedSurfaceContext || isAvailableToSharedSurface(targetAgent))) {
-      const [remoteTarget, bindings] = await Promise.all([
-        server.appData.repositories.connectedAgents.findInvocationTarget({
-          workspaceId: access.workspaceId,
-          agentId: targetAgent.id,
-          now: Date.now(),
-          onlineWithinMs: 45_000,
-        }),
-        server.appData.repositories.connectedAgents.listBindings({
-          workspaceId: access.workspaceId,
-          agentId: targetAgent.id,
-        }),
-      ])
-      if (targetAgent.harness !== 'overlay' || parseByoModelId(targetAgent.modelId) !== null
-        || remoteTarget || bindings.length > 0) {
-        throw new FatalError("External agents can't be asked from this run yet.")
-      }
-    }
+    await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target, sharedSurfaceContext)
     const parent = await loadNativeParentRun(repository, access)
-    const surfaceExecution = authority.surfaceExecution
-    const nativeSurfaceTrigger = surfaceExecution && parent.runId === parent.rootRunId
-      && access.runId === surfaceExecution.harnessRunId && parent.workflowRunId === surfaceExecution.workflowRunId
-      ? surfaceExecution
-      : undefined
+    const nativeSurfaceTrigger = nativeSurfaceTriggerForRoot(authority.surfaceExecution, access, parent)
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
       ...await server.agentAsks.ask({
         ...actor,

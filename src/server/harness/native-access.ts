@@ -36,6 +36,31 @@ export type NativeHarnessContext = {
   requestFingerprint: string
 }
 
+type NativeSurfaceExecution = NonNullable<Awaited<ReturnType<ConvexHarnessRepository['getSurfaceExecutionByHarnessRunId']>>>
+
+function assertCurrentSharedSurfaceAgentEligibility(
+  surfaceExecution: NativeSurfaceExecution | null | undefined,
+  sharedRoom: boolean,
+  agent: Parameters<typeof isAvailableToSharedSurface>[0],
+): void {
+  if (surfaceExecution && sharedRoom && !isAvailableToSharedSurface(agent)) {
+    throw new FatalError('Shared surface execution requires a workspace-visible agent.')
+  }
+}
+
+async function assertNativeModelAllowed(
+  modelId: string,
+  actorUserId: string,
+  workspaceId: string,
+  entitlements: Parameters<typeof resolveAuthorizedModelIds>[0]['entitlements'],
+): Promise<void> {
+  if (isByokModelId(modelId)) {
+    await assertUserCanUseByokModel(modelId, actorUserId, workspaceId)
+  } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
+    throw new FatalError('The native model is no longer allowed by server policy.')
+  }
+}
+
 function nativeOwnerMatches(access: NativeHarnessAccess, state: HarnessSnapshot): boolean {
   const ownerTransferInProgress = state.runId !== access.runId
     && state.policy.executionPolicyVersion === 2 && !state.workflowRunId && Boolean(state.handoffWorkflowRunId)
@@ -305,20 +330,14 @@ export async function refreshNativeHarnessAccess(
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
   const { agent, sharedRoom } = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
-  if (surfaceExecution && sharedRoom && !isAvailableToSharedSurface(agent)) {
-    throw new FatalError('Shared surface execution requires a workspace-visible agent.')
-  }
+  assertCurrentSharedSurfaceAgentEligibility(surfaceExecution, sharedRoom, agent)
   await assertNativeCapabilities(access, context, toolName)
   const billingProgrammaticSubjectId = surfaceExecution
     ? `surface:slack:${surfaceExecution.bindingId}`
     : `agent:${access.agentId}`
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
-  if (isByokModelId(context.modelId)) {
-    await assertUserCanUseByokModel(context.modelId, access.actorUserId, access.workspaceId)
-  } else if (!(await resolveAuthorizedModelIds({ entitlements: gate.runtimeEntitlements })).chat.has(context.modelId)) {
-    throw new FatalError('The native model is no longer allowed by server policy.')
-  }
+  await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements)
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
     const repository = new ConvexHarnessRepository()
     const current = await repository.get({ actorUserId: access.actorUserId, runId: access.runId })
