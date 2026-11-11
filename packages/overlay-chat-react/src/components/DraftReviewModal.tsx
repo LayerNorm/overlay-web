@@ -6,6 +6,7 @@ import { Button } from '@overlay/ui/primitives'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
 import { Dialog, DialogContent } from '@overlay/ui'
+import { usePlatformActions } from '@overlay/ui/platform-actions'
 import type { AutomationDraftSummary, DraftModalState, SkillDraftSummary } from '@overlay/chat-core'
 
 export function FlashCopyIconButton({
@@ -19,6 +20,7 @@ export function FlashCopyIconButton({
 }) {
   const [showCheck, setShowCheck] = useState(false)
   const timerRef = useRef<number | null>(null)
+  const { copyText: copyPlatformText } = usePlatformActions()
 
   useEffect(() => () => {
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
@@ -27,7 +29,7 @@ export function FlashCopyIconButton({
   const handleClick = async () => {
     if (disabled || !copyText) return
     try {
-      await navigator.clipboard.writeText(copyText)
+      await copyPlatformText(copyText)
     } catch {
       return
     }

@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let shared code, draft-review and generated-UI controls receive native-capable copy and download actions through `@overlay/ui/platform-actions`, while keeping lazy browser defaults and adding inline retry feedback for failed downloads.
 - Redesign Settings → Desktop in the Mac app: clear Dictation, Local models, Floating panels, Agent host and About sections; shortcuts shown as key caps you click to re-record; one Open button per panel with docking in a menu; an Agent host row with its status and start controls together instead of a divided form; and a laptop icon for Desktop in the settings sidebar instead of the generic gear.
 - Refuse paid requests from a workspace without billing with `402 workspace_billing_required` (or `403 workspace_wallet_forbidden` for a member who may not spend the wallet) instead of a generic 500. Cloud dictation in a workspace that had not set up billing failed with "Failed to transcribe audio"; it now says billing is required, and the shared API wrapper applies the same answer to any paid route that lets this error escape.
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.

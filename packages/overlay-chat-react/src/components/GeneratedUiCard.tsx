@@ -2,6 +2,7 @@
 
 import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Button, Input, Textarea } from '@overlay/ui/primitives'
+import { usePlatformActions } from '@overlay/ui/platform-actions'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
@@ -74,25 +75,6 @@ function contentFilename(data: GeneratedUiData): string {
   if (data.kind === 'draft.email') return 'email-draft.txt'
   if (data.kind === 'connector.connect') return `${data.serviceName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'connector'}.txt`
   return `${(data.title || 'draft').toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'draft'}.txt`
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function downloadText(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
 }
 
 function ToolbarButton({
@@ -262,15 +244,26 @@ export function GeneratedUiCard({
   connectorActions,
   onDataChange,
 }: GeneratedUiCardProps) {
+  const { copyText, downloadText } = usePlatformActions()
   const [data, setData] = useState<GeneratedUiData>(part.data)
   const [editing, setEditing] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [downloadStatus, setDownloadStatus] = useState({ partId: part.id, pending: false, error: '' })
+  const downloadRequestIdRef = useRef(0)
+  const activeDownloadRef = useRef<{ id: number; partId: string } | null>(null)
+  const activePartIdRef = useRef(part.id)
   const timerRef = useRef<number | null>(null)
   const latestDataRef = useRef(data)
   const [prevPart, setPrevPart] = useState({ id: part.id, data: part.data, readOnly })
   const activeScope = useRef<{ id: string; readOnly: boolean } | null>({ id: part.id, readOnly })
   const streaming = part.transient === true
+
+  if (activePartIdRef.current !== part.id) {
+    activePartIdRef.current = part.id
+    activeDownloadRef.current = null
+  }
+  if (downloadStatus.partId !== part.id) setDownloadStatus({ partId: part.id, pending: false, error: '' })
 
   useEffect(() => {
     latestDataRef.current = data
@@ -324,13 +317,37 @@ export function GeneratedUiCard({
 
   const plainText = useMemo(() => generatedUiDataToPlainText(data), [data])
   const canEdit = !readOnly && !streaming && !!onDataChange && (data.kind === 'draft.text' || data.kind === 'draft.email')
+  const downloadPending = downloadStatus.partId === part.id && downloadStatus.pending
 
   async function handleCopy() {
     if (!plainText) return
-    const ok = await copyText(plainText)
-    if (!ok) return
+    try {
+      await copyText(plainText)
+    } catch {
+      return
+    }
     setCopied(true)
     window.setTimeout(() => setCopied(false), 900)
+  }
+
+  async function handleDownload() {
+    if (activeDownloadRef.current?.partId === part.id) return
+    const request = { id: ++downloadRequestIdRef.current, partId: part.id }
+    activeDownloadRef.current = request
+    setDownloadStatus({ partId: part.id, pending: true, error: '' })
+    const isCurrent = () => (
+      activePartIdRef.current === request.partId
+      && activeDownloadRef.current?.id === request.id
+      && activeDownloadRef.current.partId === request.partId
+    )
+    try {
+      await downloadText(contentFilename(data), plainText)
+      if (isCurrent()) setDownloadStatus({ partId: part.id, pending: false, error: '' })
+    } catch {
+      if (isCurrent()) setDownloadStatus({ partId: part.id, pending: false, error: 'Download failed. Try again.' })
+    } finally {
+      if (activeDownloadRef.current?.id === request.id) activeDownloadRef.current = null
+    }
   }
 
   if (data.kind === 'questionnaire') return <ConversationQuestionnaire requestId={part.id} data={data} readOnly={readOnly || streaming} />
@@ -360,7 +377,7 @@ export function GeneratedUiCard({
               {copied ? <Check size={15} strokeWidth={1.75} /> : <Copy size={15} strokeWidth={1.75} />}
             </ToolbarButton>
             {data.kind !== 'connector.connect' ? (
-              <ToolbarButton label="Download" onClick={() => downloadText(contentFilename(data), plainText)}>
+              <ToolbarButton label="Download" onClick={() => void handleDownload()} disabled={downloadPending}>
                 <Download size={15} strokeWidth={1.75} />
               </ToolbarButton>
             ) : null}
@@ -369,6 +386,7 @@ export function GeneratedUiCard({
             </ToolbarButton>
           </div>
         </div>
+        {downloadStatus.partId === part.id && downloadStatus.error ? <p role="alert" className="px-3 pb-2 text-xs text-(--danger)">{downloadStatus.error}</p> : null}
         <div className="bg-(--surface-elevated)">
           {data.kind === 'draft.text' ? (
             <TextDraftCardBody
@@ -763,7 +781,7 @@ function ConnectorCardBody({
           Connect
         </ActionButton>
       ) : (
-        <ActionButton onClick={() => void copyText(data.serviceName)} disabled>
+        <ActionButton onClick={() => undefined} disabled>
           <X size={14} strokeWidth={1.75} />
           Unavailable
         </ActionButton>

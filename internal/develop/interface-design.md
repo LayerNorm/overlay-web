@@ -603,6 +603,17 @@ Visual rules for these and every new component:
    Personal Chat has no separate Chat/Work selector; the backend selects its durable execution engine from reported capability.
 4. **One Prompt Input.** Every chat composer is built from `PromptInput` parts in `@overlay/chat-react` (`PromptInputBody`, `PromptInputFooter`, `PromptInputTools`, `PromptInputButton`, `PromptInputSubmit`). Footer order: +, @, optional /, tool chips, model controls, submit (ArrowUp, spinner while submitted, stop while streaming). In web chat the model button lives in the composer, not the header.
 
+Shared components that copy or download text use `usePlatformActions` from
+`@overlay/ui/platform-actions`. Browser defaults are lazy capabilities: clipboard
+copy uses `navigator.clipboard.writeText`; text download uses a plain-text Blob,
+an object URL and an anchor, revoking the URL even if clicking fails. Importing or
+server-rendering the module does not access browser globals. A
+`PlatformActionsProvider` may override either method; nested providers inherit
+the other method from their parent. Native hosts can adapt these actions at the
+package boundary without patching browser globals or forking shared controls.
+Copy success feedback follows a resolved action only. Download failures remain
+visible beside the existing Download control and retry by activating that control.
+
 ## Streamed agent replies
 
 Agent reply placeholders hand their local row identity to the first matching new
