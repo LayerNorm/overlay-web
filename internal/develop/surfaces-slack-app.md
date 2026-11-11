@@ -43,6 +43,12 @@ Slack user revokes the account's previous team link. Unlink with a same-origin
 `POST /api/v1/surfaces/slack/identity/unlink` containing `workspaceId` and `linkId`;
 only that user or a workspace admin/owner may do so.
 
+The install and identity callbacks refresh the Overlay session before comparing
+its user ID with the signed OAuth state. A long consent step can outlast a
+WorkOS access token; a valid refresh returns the updated session cookie on the
+callback response. Missing or revoked refresh credentials, or a changed user,
+still fail closed. Install role and identity membership checks remain in place.
+
 Linked current workspace members may reply in an existing thread in a
 Chief-bound public Slack channel. Admission enrolls the sender as a member of
 that mirrored conversation only; it grants no other conversation, file, memory

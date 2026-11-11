@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep Slack install and identity callbacks working when a WorkOS access token expires during Slack consent. Callbacks use the existing session refresh path and return the rotated session cookie; same-user, workspace and role checks remain strict, and failed refreshes still deny the callback.
 - Move Slack to Workspace settings: admins connect the Overlay bot, manage public Chief channels and disconnect; members see the connection read-only, and everyone can link or unlink their own Slack identity. Remove agent-level “Reachable on” controls. DMs, private channels and Slack Connect remain unsupported.
 
 - Fix a cancelled ChatGPT/Codex sign-in staying in the provider list. Removing a subscription connection failed with "Subscription cleanup is pending" when a sign-in check was still running, so the connection was never deleted. That check now hands its lock back as soon as it sees the removal, and removal waits for it (at most a minute) before deleting the stored sign-in data and the connection. This changes Convex subscription mutations.

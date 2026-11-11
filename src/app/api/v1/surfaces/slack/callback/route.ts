@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
   // The completing browser must hold the same user's session — otherwise a
   // leaked authorization URL could bind someone else's Slack workspace.
-  const session = await getOverlaySession(request)
+  const session = await getOverlaySession(request, { refresh: true }).catch((_error) => null)
   if (!session?.user?.id || session.user.id !== state.userId) {
     logger.warn('[surfaces] Slack callback rejected: session binding mismatch')
     return fail('account_mismatch')

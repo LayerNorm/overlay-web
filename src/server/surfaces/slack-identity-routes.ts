@@ -48,8 +48,9 @@ export async function startSlackIdentity(request: NextRequest) {
 export async function callbackSlackIdentity(request: NextRequest) {
   try {
     const state = openSlackIdentityState(request.nextUrl.searchParams.get('state'))
-    const session = await getOverlaySession(request)
-    if (!state || !session?.user.id || session.user.id !== state.userId) return page('Invalid linking request. Sign in as the same Overlay user and start again.', 403)
+    if (!state) return page('Invalid linking request. Sign in as the same Overlay user and start again.', 403)
+    const session = await getOverlaySession(request, { refresh: true }).catch((_error) => null)
+    if (!session?.user.id || session.user.id !== state.userId) return page('Invalid linking request. Sign in as the same Overlay user and start again.', 403)
     const limited = await rateLimit(request, session.user.id)
     if (limited) return limited
     const code = request.nextUrl.searchParams.get('code')
