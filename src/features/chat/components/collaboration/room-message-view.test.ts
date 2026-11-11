@@ -284,11 +284,14 @@ function jumpHarness(offsets: number[]) {
     clearTimeout: () => { timeout = null },
     getComputedStyle: (node: { overflowY?: string }) => ({ overflowY: node.overflowY ?? 'visible' }),
   }
-  const scroller = { overflowY: 'auto', parentElement: null, addEventListener: on, removeEventListener: off,
+  const scroller = { overflowY: 'auto', scrollHeight: 5000, clientHeight: 800, parentElement: null, addEventListener: on, removeEventListener: off,
     getBoundingClientRect: () => ({ top: 0, bottom: 800 }) }
+  // overflow-x: hidden computes overflow-y to auto; a wrapper that does not scroll is not the scroller.
+  const clippedWrapper = { overflowY: 'auto', scrollHeight: 400, clientHeight: 400, parentElement: scroller, addEventListener: on, removeEventListener: off,
+    getBoundingClientRect: () => ({ top: 1700, bottom: 2100 }) }
   const element = {
     ownerDocument: { defaultView: view },
-    parentElement: { overflowY: 'visible', parentElement: scroller },
+    parentElement: { overflowY: 'visible', parentElement: clippedWrapper },
     scrollIntoView: (options: ScrollIntoViewOptions) => { calls.push(String(options.behavior)) },
     getBoundingClientRect: () => { const offset = offsets[Math.min(calls.length - 1, offsets.length - 1)]; return { top: 380 + offset, bottom: 420 + offset } },
   } as unknown as HTMLElement

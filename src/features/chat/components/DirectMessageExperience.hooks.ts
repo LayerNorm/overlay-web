@@ -1683,13 +1683,14 @@ export function useMessageNavigation({
       setRoomPanel(null)
     }
     setHighlightedMessageId(messageId)
+    setStickToBottom(false)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         const element = document.getElementById(roomMessageDomId(messageId))
         if (element) scrollRoomMessageIntoView(element)
       })
     })
-  }, [messagesRef, setRoomPanel, setThreadRootId])
+  }, [messagesRef, setRoomPanel, setStickToBottom, setThreadRootId])
 
   const jumpToLatest = useCallback(() => {
     const node = listRef.current

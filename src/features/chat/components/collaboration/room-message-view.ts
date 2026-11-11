@@ -399,7 +399,7 @@ export function scrollRoomMessageIntoView(element: HTMLElement, corrections = 3)
 function scrollParent(element: HTMLElement, view: Window): HTMLElement | null {
   for (let node = element.parentElement; node; node = node.parentElement) {
     const { overflowY } = view.getComputedStyle(node)
-    if (overflowY === 'auto' || overflowY === 'scroll') return node
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) return node
   }
   return null
 }
