@@ -11,6 +11,8 @@ GET /api/v1/bootstrap
 
 Bootstrap returns the canonical frontend registry for the current user and deployment. It includes user info, entitlements, navigation, settings sections, feature flags, model metadata, defaults, and UI settings.
 
+For a verified native access-token caller, bootstrap also idempotently initializes the same ordinary member role as the web shell, without replacing explicit custom role assignments. Mobile clients must complete a fresh bootstrap at sign-in and workspace activation before opening native data subscriptions; cached bootstrap metadata does not initialize authorization.
+
 Use bootstrap before adding client-specific endpoints. If a new surface needs app shell metadata, extend the shared bootstrap contract rather than duplicating route calls.
 
 Related endpoint:

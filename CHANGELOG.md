@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Initialize the ordinary member authorization role during authenticated mobile bootstrap, just as the web shell does. Mobile-only accounts can use Work and personal chat without first opening web; explicit custom role assignments remain unchanged.
+
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.
 - Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.
 
