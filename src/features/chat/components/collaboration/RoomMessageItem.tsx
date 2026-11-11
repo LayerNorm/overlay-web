@@ -36,6 +36,7 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
@@ -308,6 +309,7 @@ export function RoomMessageItem({
   remoteStatus,
   hideToolbar = false,
 }: RoomMessageItemProps) {
+  recordRender('RoomMessageItem')
   const { mine } = message
   const isAgent =
     message.authorKind === 'agent' || message.authorKind === 'model'
