@@ -1140,6 +1140,9 @@ export const webApiExcludedRouteDefinitions = [
   // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
+  { routePath: '/api/v1/surfaces/slack/identity/start', reason: 'Session-bound Slack sign-in redirect for workspace members; a browser flow, not a public API call.' },
+  { routePath: '/api/v1/surfaces/slack/identity/callback', reason: 'Slack OIDC browser callback, protected by the same session and a single-use nonce.' },
+  { routePath: '/api/v1/surfaces/slack/identity/unlink', reason: 'Same-origin browser account management with self or workspace-admin authorization; returns an HTML result, not a public API response.' },
   { routePath: '/api/v1/webhooks/slack', reason: 'Inbound Slack Events API webhook, authenticated by the Slack request signature.' },
   { routePath: '/api/v1/surfaces/connections', reason: 'Surface connection listing; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/surfaces/connections/[connectionId]/channels', reason: 'Surface channel listing; boundary definition pending. Protected by workspace authorization.' },
