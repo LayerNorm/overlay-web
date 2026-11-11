@@ -1,0 +1,437 @@
+import {
+  deriveChatExchangeStatus,
+  generationResultViewsFromOutputGroup,
+  getUserMessageDocNames,
+  groupTranscriptMessages,
+  normalizeTranscriptAssistantParts,
+  selectTranscriptResponse,
+  splitUserDisplayText,
+  transcriptResponseId,
+  type ActiveRunState,
+  type AssistantVisualBlock,
+  type ChatExchangeStatus,
+  type ChatTranscriptExchangeView,
+  type ChatTranscriptImageView,
+  type ChatTranscriptResponseView,
+  type ChatTranscriptSourceView,
+  type ChatTranscriptUserView,
+  type ChatTranscriptView,
+  type GenerationMode,
+  type GenerationResult,
+  type RestoredOutputGroup,
+} from '@overlay/chat-core'
+import { completePersonalBlocks } from './personalStream'
+import type { Message, NativeMessageStatus, ProviderResponse } from '../services/chatTypes'
+
+export interface NativeChatTranscriptRuntime {
+  activeTurnId?: string
+  status?: ActiveRunState['status'] | 'submitted' | 'error'
+  interrupted?: boolean
+  error?: string | null
+}
+
+interface ResponseCandidate {
+  message: Message
+  response: ProviderResponse | null
+  modelId: string
+  variantIndex?: number
+  ownsTopLevelFields: boolean
+}
+
+function responseCandidates(messages: readonly Message[]): ResponseCandidate[] {
+  return messages.flatMap((message) => {
+    const providerResponses = message.responses?.length ? message.responses : [null]
+    const topLevelModelId = message.selectedModelId &&
+      providerResponses.some((response) => response?.modelId === message.selectedModelId)
+      ? message.selectedModelId
+      : message.modelId
+    const topLevelIndex = providerResponses.length === 1
+      ? 0
+      : topLevelModelId
+        ? providerResponses.findLastIndex((response) => response?.modelId === topLevelModelId)
+        : -1
+    return providerResponses.map((response, responseIndex) => {
+      const modelId = response?.modelId || message.modelId || message.selectedModelId || message.routedModelId || 'overlay'
+      return {
+        message,
+        response,
+        modelId,
+        variantIndex: response?.variantIndex ??
+          (providerResponses.length === 1 ? message.variantIndex : undefined),
+        ownsTopLevelFields: responseIndex === topLevelIndex,
+      }
+    })
+  })
+}
+
+function responseVariantIndices(candidates: readonly ResponseCandidate[]): number[] {
+  const reserved = new Map<string, Set<number>>()
+  for (const candidate of candidates) {
+    const index = candidate.variantIndex
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) continue
+    const indices = reserved.get(candidate.modelId) ?? new Set<number>()
+    indices.add(index)
+    reserved.set(candidate.modelId, indices)
+  }
+  const used = new Map<string, Set<number>>()
+  return candidates.map((candidate) => {
+    const indices = used.get(candidate.modelId) ?? new Set<number>()
+    used.set(candidate.modelId, indices)
+    const explicit = candidate.variantIndex
+    if (typeof explicit === 'number' && Number.isInteger(explicit) && explicit >= 0 && !indices.has(explicit)) {
+      indices.add(explicit)
+      return explicit
+    }
+    let next = 0
+    while (indices.has(next) || reserved.get(candidate.modelId)?.has(next)) next += 1
+    indices.add(next)
+    return next
+  })
+}
+
+function terminalState(status: NativeMessageStatus | undefined): 'completed' | 'error' | 'interrupted' | undefined {
+  if (status === 'completed') return 'completed'
+  if (status === 'error' || status === 'failed') return 'error'
+  if (status === 'interrupted') return 'interrupted'
+  return undefined
+}
+
+function sourceViewsFromBlocks(blocks: readonly AssistantVisualBlock[]): ChatTranscriptSourceView[] {
+  return blocks.flatMap((block, originIndex) => block.kind === 'source'
+    ? [{
+        id: block.id,
+        sourceKind: block.sourceKind,
+        sourceId: block.sourceId,
+        ...(block.url ? { url: block.url } : {}),
+        ...(block.title ? { title: block.title } : {}),
+        ...(block.mediaType ? { mediaType: block.mediaType } : {}),
+        ...(block.filename ? { filename: block.filename } : {}),
+        originIndex,
+      }]
+    : [])
+}
+
+function fallbackParts(
+  content: string,
+  reasoning?: string,
+  tools?: Message['toolInvocations'],
+  files?: Message['generatedFiles'],
+): unknown[] {
+  const parts: unknown[] = []
+  if (content) parts.push({ type: 'text', text: content })
+  if (reasoning) parts.push({ type: 'reasoning', text: reasoning })
+  for (const tool of tools ?? []) {
+    parts.push({
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: tool.toolCallId,
+        toolName: tool.toolName,
+        state: tool.state,
+        toolInput: tool.toolInput,
+        toolOutput: tool.toolOutput,
+      },
+    })
+  }
+  for (const file of files ?? []) {
+    parts.push({ type: 'file', url: file.url, mediaType: file.mediaType })
+  }
+  return parts
+}
+
+function responseStatus(
+  candidate: ResponseCandidate,
+  isActive: boolean,
+  isSelected: boolean,
+  runtime: NativeChatTranscriptRuntime | undefined,
+  blocks: readonly AssistantVisualBlock[],
+  content: string,
+  errorMessage: string | undefined,
+): ChatExchangeStatus {
+  const response = candidate.response
+  const status = response?.status ?? (candidate.ownsTopLevelFields ? candidate.message.status : undefined)
+  const localStreaming = Boolean(
+    response?.isLoading ||
+    (candidate.ownsTopLevelFields && candidate.message.isStreaming) ||
+    status === 'generating',
+  )
+  const activeResponse = isActive && isSelected
+  const runtimeStatus = activeResponse && runtime?.status
+    ? runtime.status
+    : localStreaming
+      ? 'streaming'
+      : status === 'submitted'
+        ? 'submitted'
+        : undefined
+  const persistedStatus = activeResponse && runtime?.status
+    ? undefined
+    : status === 'generating' || status === 'submitted' || status === 'interrupted'
+      ? undefined
+      : status
+  return deriveChatExchangeStatus({
+    runtimeStatus,
+    persistedStatus,
+    hasResponse: true,
+    hasVisibleContent: Boolean(content.trim()) || blocks.length > 0,
+    interrupted: (activeResponse && Boolean(runtime?.interrupted)) || status === 'interrupted',
+    error: (activeResponse ? runtime?.error : undefined) || errorMessage,
+  })
+}
+
+function responseView(
+  candidate: ResponseCandidate,
+  variantIndex: number,
+  turnId: string,
+  isActive: boolean,
+  isSelected: boolean,
+  runtime: NativeChatTranscriptRuntime | undefined,
+): ChatTranscriptResponseView {
+  const { message, response } = candidate
+  const ownsTopLevel = candidate.ownsTopLevelFields
+  const content = response?.content ?? (ownsTopLevel ? message.content : '')
+  const reasoning = response?.reasoning ?? (ownsTopLevel ? message.reasoning : undefined)
+  const tools = response?.toolInvocations ?? (ownsTopLevel ? message.toolInvocations : undefined)
+  const files = response?.generatedFiles ?? (ownsTopLevel ? message.generatedFiles : undefined)
+  const status = response?.status ?? (ownsTopLevel ? message.status : undefined)
+  const errorMessage = response?.error ?? (ownsTopLevel ? message.errorMessage : undefined)
+  let blocks = response?.blocks ?? (ownsTopLevel ? message.blocks : undefined)
+  let sources = response?.sources ?? (ownsTopLevel ? message.transcriptSources : undefined)
+  const sourceCitations = response?.sourceCitations ?? (ownsTopLevel ? message.sourceCitations : undefined)
+
+  if (!blocks) {
+    const normalized = normalizeTranscriptAssistantParts(
+      fallbackParts(content, reasoning, tools, files),
+      { ...(terminalState(status) ? { terminalState: terminalState(status) } : {}) },
+    )
+    blocks = normalized.blocks
+    sources ??= normalized.sources
+  }
+  sources ??= sourceViewsFromBlocks(blocks)
+
+  const responseStreaming = Boolean(
+    response?.isLoading ||
+    (ownsTopLevel && message.isStreaming) ||
+    status === 'generating',
+  )
+  const blocksAreComplete = response?.blocksAreComplete ??
+    (ownsTopLevel ? message.blocksAreComplete : undefined) ??
+    !responseStreaming
+  if (responseStreaming && !blocksAreComplete) {
+    const textBlocks = completePersonalBlocks(blocks.filter((block) => block.kind === 'text'), true)
+    let textIndex = 0
+    blocks = blocks.map((block) => block.kind === 'text' ? textBlocks[textIndex++]! : block)
+  }
+
+  const activeError = isActive && isSelected ? runtime?.error ?? undefined : undefined
+  return {
+    id: `${transcriptResponseId(turnId, candidate.modelId, variantIndex)}:${variantIndex}`,
+    modelId: candidate.modelId,
+    blocks,
+    sources,
+    ...(sourceCitations ? { sourceCitations: { ...sourceCitations } } : {}),
+    ...(response?.routedModelId || (ownsTopLevel ? message.routedModelId : undefined)
+      ? { routedModelId: response?.routedModelId ?? message.routedModelId }
+      : {}),
+    status: responseStatus(
+      candidate,
+      isActive,
+      isSelected,
+      runtime,
+      blocks,
+      content,
+      activeError ?? errorMessage,
+    ),
+    errorMessage: activeError ?? errorMessage ?? null,
+  }
+}
+
+function userView(message: Message | null, turnId: string): ChatTranscriptUserView {
+  if (!message) {
+    return {
+      id: `${turnId}:user`,
+      text: '',
+      documentNames: [],
+      indexedAttachments: [],
+      images: [],
+      mentions: [],
+      replyThread: null,
+    }
+  }
+  const { bodyText, docNames } = splitUserDisplayText(message.content)
+  const indexedAttachments = (message.indexedAttachments ?? []).map((attachment) => ({
+    name: attachment.name,
+    fileIds: [...attachment.fileIds],
+  }))
+  const documentNames = [...new Set([
+    ...getUserMessageDocNames({
+      content: message.content,
+      metadata: {
+        indexedDocuments: message.indexedDocuments,
+        indexedAttachments,
+      },
+    }),
+    ...docNames,
+    ...indexedAttachments.map((attachment) => attachment.name),
+  ])]
+  const images = new Map<string, ChatTranscriptImageView>()
+  for (const image of message.imageAttachments ?? []) images.set(image.url, { ...image })
+  for (const screenshot of message.screenshots ?? []) {
+    images.set(screenshot.uri, { url: screenshot.uri, name: screenshot.name })
+  }
+  if (message.imageData && !images.has(message.imageData)) {
+    const mediaType = message.imageData.match(/^data:([^;,]+)/)?.[1]
+    images.set(message.imageData, {
+      url: message.imageData,
+      name: 'image',
+      ...(mediaType ? { mediaType } : {}),
+    })
+  }
+  return {
+    id: message.id,
+    text: bodyText,
+    documentNames,
+    indexedAttachments,
+    images: [...images.values()],
+    mentions: (message.mentions ?? []).map((mention) => ({
+      type: mention.type,
+      id: mention.id,
+      name: mention.name,
+      ...(mention.fileIds ? { fileIds: [...mention.fileIds] } : {}),
+    })),
+    replyThread: message.replyToTurnId
+      ? { replyToTurnId: message.replyToTurnId, replySnippet: message.replySnippet ?? '' }
+      : null,
+    createdAt: message.timestamp,
+  }
+}
+
+function mediaView(
+  messages: readonly (Message | null)[],
+  generationMode: GenerationMode,
+  turnId: string,
+): ChatTranscriptExchangeView['media'] {
+  const outputsById = new Map<string, NonNullable<Message['outputs']>[number]>()
+  for (const message of messages) {
+    for (const output of message?.outputs ?? []) outputsById.set(output._id, output)
+  }
+  const grouped = new Map<'image' | 'video', NonNullable<Message['outputs']>>()
+  for (const output of outputsById.values()) {
+    if (output.type !== 'image' && output.type !== 'video') continue
+    const type = output.type
+    const outputs = grouped.get(type) ?? []
+    outputs.push(output)
+    grouped.set(type, outputs)
+  }
+  if (grouped.size === 0) return null
+
+  const groups: RestoredOutputGroup[] = [...grouped].map(([type, outputs]) => ({
+    type,
+    prompt: outputs[0]?.prompt ?? '',
+    modelIds: [...new Set(outputs.map((output) => output.modelId))],
+    results: outputs.map((output): GenerationResult => ({
+      type,
+      status: output.status === 'pending' ? 'generating' : output.status,
+      ...(output.url ? { url: output.url } : {}),
+      modelUsed: output.modelId,
+      outputId: output._id,
+    })),
+    createdAt: Math.min(...outputs.map((output) => output.createdAt)),
+    turnId,
+  }))
+  const preferredKind = generationMode === 'image' || generationMode === 'video'
+    ? generationMode
+    : groups[0]!.type
+  return {
+    kind: preferredKind,
+    results: groups.flatMap((group) => generationResultViewsFromOutputGroup(group)),
+  }
+}
+
+function exchangeStatus(
+  candidates: readonly ResponseCandidate[],
+  responses: readonly ChatTranscriptResponseView[],
+  isActive: boolean,
+  runtime: NativeChatTranscriptRuntime | undefined,
+): ChatExchangeStatus {
+  const statuses = candidates.map((candidate) =>
+    candidate.response?.status ?? (candidate.ownsTopLevelFields ? candidate.message.status : undefined),
+  )
+  const hasStreaming = candidates.some((candidate) =>
+    candidate.response?.isLoading ||
+    (candidate.ownsTopLevelFields && candidate.message.isStreaming) ||
+    candidate.response?.status === 'generating' ||
+    (candidate.ownsTopLevelFields && candidate.message.status === 'generating'),
+  )
+  const hasError = responses.some((response) => response.errorMessage !== null) ||
+    statuses.some((status) => status === 'error' || status === 'failed')
+  const hasCompleted = statuses.some((status) => status === 'completed')
+  const activeStatus = isActive ? runtime?.status : undefined
+  const runtimeStatus = activeStatus ?? (hasStreaming ? 'streaming' : undefined)
+  const persistedStatus = activeStatus || hasStreaming
+    ? undefined
+    : hasError
+      ? 'error'
+      : hasCompleted
+        ? 'completed'
+        : undefined
+  return deriveChatExchangeStatus({
+    runtimeStatus,
+    persistedStatus,
+    hasResponse: candidates.length > 0,
+    hasVisibleContent: responses.some((response) => response.blocks.length > 0),
+    interrupted: (isActive && Boolean(runtime?.interrupted)) || statuses.includes('interrupted'),
+    error: (isActive ? runtime?.error : undefined) || responses.find((response) => response.errorMessage)?.errorMessage,
+  })
+}
+
+export function toNativeChatTranscriptView(
+  messages: readonly Message[],
+  runtime?: NativeChatTranscriptRuntime,
+): ChatTranscriptView {
+  const groups = groupTranscriptMessages(messages)
+  const runtimeHasState = Boolean(runtime?.status || runtime?.interrupted || runtime?.error)
+  const activeTurnId = runtime?.activeTurnId ?? (runtimeHasState ? groups.at(-1)?.turnId : undefined)
+  const exchanges = groups.map((group, index): ChatTranscriptExchangeView => {
+    const candidates = responseCandidates(group.assistants)
+    const explicitSelectedModelId = group.user?.selectedModelId ??
+      group.assistants.find((message) => message.selectedModelId)?.selectedModelId
+    const initialSelection = selectTranscriptResponse(candidates, {
+      ...(explicitSelectedModelId ? { selectedModelId: explicitSelectedModelId } : {}),
+    })
+    const selectedModel = initialSelection.response?.modelId
+    const latestSelectedIndex = selectedModel
+      ? candidates.findLastIndex((candidate) => candidate.modelId === selectedModel)
+      : initialSelection.index
+    const selection = latestSelectedIndex >= 0
+      ? selectTranscriptResponse(candidates, { selectedIndex: latestSelectedIndex })
+      : initialSelection
+    const variantIndices = responseVariantIndices(candidates)
+    const isActive = group.turnId === activeTurnId
+    const responses = candidates.map((candidate, responseIndex) =>
+      responseView(
+        candidate,
+        variantIndices[responseIndex]!,
+        group.turnId,
+        isActive,
+        responseIndex === selection.index,
+        runtime,
+      ),
+    )
+    const generationMode = group.user?.contentType ??
+      group.assistants.find((message) => message.contentType)?.contentType ??
+      'text'
+    return {
+      id: group.turnId,
+      turnId: group.turnId,
+      index,
+      mode: group.user?.mode ?? group.assistants.find((message) => message.mode)?.mode ?? 'act',
+      generationMode,
+      user: userView(group.user, group.turnId),
+      responses,
+      selectedResponseIndex: selection.index,
+      selectedModelId: explicitSelectedModelId ?? selection.response?.modelId ?? null,
+      status: exchangeStatus(candidates, responses, isActive, runtime),
+      media: mediaView([group.user, ...group.assistants], generationMode, group.turnId),
+    }
+  })
+  return { version: 1, exchanges }
+}

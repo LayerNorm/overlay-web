@@ -1,14 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import type {
-  ConversationMessage,
-} from '@overlay/app-core'
-import { normalizeTranscriptAssistantParts } from '@overlay/chat-core'
 import { api, convexWorkspaceId, mutateConvex, queryConvex, subscribeConvex, type Id } from './convexClient'
 import { appRequest } from './appApi'
 import type { FunctionReturnType } from 'convex/server'
 import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
 import { queryAllPages, subscribeAllPages } from './convexPagination'
-import { completeMarkdown } from '../lib/agentThread'
+import { mapNativePersonalMessageRows } from '../lib/toNativeChatMessage'
 import {
   generateChatId,
   type Chat,
@@ -78,76 +74,6 @@ async function removeChatSnapshot(id: string): Promise<void> {
   }
 }
 
-function toMessageContent(parts: ConversationMessage['parts']): string {
-  return parts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text || '')
-    .join('')
-}
-
-function mapConversationMessageToMessage(message: ConversationMessage & { createdAt?: number; content?: string; status?: string }): Message {
-  const rawParts = message.parts ?? []
-  const lastDisplay = rawParts.findLastIndex(part => ['text', 'reasoning', 'tool-invocation'].includes(part.type))
-  const parts = rawParts.map((part, index) => index === lastDisplay && part.type === 'text' ? { ...part, text: completeMarkdown(part.text ?? '', message.status === 'generating') } : part)
-  const text = toMessageContent(rawParts) || message.content || ''
-  const generatedFiles = parts
-    .filter(
-      (part): part is Extract<ConversationMessage['parts'][number], { type: 'file' }> =>
-        part.type === 'file' && !!part.url,
-    )
-    .map((part) => ({
-      url: part.url!,
-      mediaType: part.mediaType || 'application/octet-stream',
-    }))
-
-  const toolInvocations = parts
-    .filter((part) => part.type === 'tool-invocation')
-    .map((part) => ({
-      toolCallId: part.toolInvocation.toolCallId,
-      toolName: part.toolInvocation.toolName,
-      state: part.toolInvocation.state,
-      toolInput: part.toolInvocation.toolInput,
-      toolOutput: part.toolInvocation.toolOutput,
-    }))
-
-  // Normalized render model — same normalizer the web transcript uses, so
-  // reasoning, grouped tools, sources, and generated-ui survive the round trip.
-  const { blocks, sources } = message.role === 'assistant'
-    ? normalizeTranscriptAssistantParts(parts)
-    : { blocks: undefined, sources: undefined }
-
-  return {
-    id: message.id,
-    blocks,
-    blocksAreComplete: true,
-    transcriptSources: sources,
-    turnId: message.turnId,
-    role: message.role,
-    isStreaming: message.status === 'generating',
-    content: text,
-    timestamp: message.createdAt ?? Date.now(),
-    selectedModelId: message.model,
-    responses:
-      message.role === 'assistant'
-        ? [
-            {
-              modelId: message.model || message.routedModelId || 'overlay',
-              modelName: message.routedModelId || message.model || 'Overlay',
-              provider: 'overlay',
-              content: text,
-              isLoading: message.status === 'generating',
-            },
-          ]
-        : undefined,
-    generatedFiles: generatedFiles.length > 0 ? generatedFiles : undefined,
-    toolInvocations: toolInvocations.length > 0 ? toolInvocations : undefined,
-    mode: message.mode,
-    replyToTurnId: message.replyToTurnId,
-    replySnippet: message.replySnippet,
-    routedModelId: message.routedModelId,
-  }
-}
-
 type NativeSummary = NonNullable<FunctionReturnType<typeof api.chat.personal.getSummary>>
 function personalArgs(id: string) { return { workspaceId: convexWorkspaceId(), conversationId: id as Id<'conversations'> } }
 function mapNativeSummary(summary: NativeSummary): ChatMeta {
@@ -202,8 +128,7 @@ export async function saveChat(chat: Chat): Promise<void> {
   ])
 }
 function nativeChat(summary: NativeSummary, rows: FunctionReturnType<typeof api.chat.personal.getMessages>['page']): Chat {
-  const records = rows.map(row => ({ ...row.message, id: row.message._id }) as ConversationMessage).reverse()
-  const messages = records.map(mapConversationMessageToMessage)
+  const messages = mapNativePersonalMessageRows(rows)
   return { ...mapNativeSummary(summary), modelId: summary.actModelId || summary.askModelIds[0], messages,
     lastMessage: messages.at(-1)?.content.slice(0, 100) }
 }
