@@ -64,6 +64,7 @@ import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import { prefetchTitle } from '@/features/chat/lib/generate-title'
 import {
   compareRoomMessageRecords,
+  createRoomScrollIntent,
   mergeRoomMessages,
   remoteAgentCommands,
   roomMessageDomId, scrollRoomMessageIntoView,
@@ -301,7 +302,12 @@ export function useRoomTranscript({
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
   const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
-  const [stickToBottom, setStickToBottom] = useState(true)
+  const [stickToBottom, updateStickToBottom] = useState(true)
+  const [scrollIntent] = useState(createRoomScrollIntent)
+  const setStickToBottom = useCallback((latest: boolean) => {
+    scrollIntent.navigate(latest)
+    updateStickToBottom(latest)
+  }, [scrollIntent])
   const listRef = useRef<HTMLDivElement>(null)
   /** Latest messages for callbacks that must not close over a stale render. */
   const messagesRef = useRef<OptimisticMessage[]>(messages)
@@ -394,25 +400,39 @@ export function useRoomTranscript({
     const node = listRef.current
     if (!node) return
     const pin = () => {
-      node.scrollTop = node.scrollHeight
+      if (scrollIntent.followsLatest()) node.scrollTop = node.scrollHeight
     }
     pin()
+    let secondFrame: number | undefined
     const frame = window.requestAnimationFrame(() => {
       pin()
-      window.requestAnimationFrame(pin)
+      secondFrame = window.requestAnimationFrame(pin)
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, stickToBottom])
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (secondFrame !== undefined) window.cancelAnimationFrame(secondFrame)
+    }
+  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, scrollIntent, stickToBottom])
+
+  useEffect(() => {
+    const node = listRef.current
+    if (!node) return
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+    for (const event of events) node.addEventListener(event, scrollIntent.onUserInput, { capture: true, passive: true })
+    return () => {
+      for (const event of events) node.removeEventListener(event, scrollIntent.onUserInput, { capture: true })
+    }
+  }, [scrollIntent])
 
   const handleTranscriptScroll = useCallback(() => {
     const node = listRef.current
     if (node) {
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-      setStickToBottom(distanceFromBottom <= 96)
+      updateStickToBottom(scrollIntent.onScroll(distanceFromBottom <= 96))
       if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
     }
     void markVisibleRead(roomScrollReadKey(conversationId, messagesRef.current))
-  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead])
+  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent])
 
   return {
     messages,
@@ -1657,7 +1677,7 @@ export function useMessageNavigation({
 }: {
   listRef: RefObject<HTMLDivElement | null>
   messagesRef: RefObject<OptimisticMessage[]>
-  setStickToBottom: Dispatch<SetStateAction<boolean>>
+  setStickToBottom: (latest: boolean) => void
   markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
   setThreadRootId: Dispatch<SetStateAction<string | null>>

@@ -366,34 +366,56 @@ const JUMP_CENTER_TOLERANCE_PX = 24
 const JUMP_SETTLE_TIMEOUT_MS = 1_200
 const JUMP_CANCEL_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
 
+export function createRoomScrollIntent() {
+  let following = true
+  let targetingMessage = false
+  return {
+    followsLatest: () => following,
+    navigate: (latest: boolean) => {
+      following = latest
+      targetingMessage = !latest
+    },
+    onUserInput: () => { targetingMessage = false },
+    onScroll: (nearBottom: boolean) => {
+      if (!targetingMessage) following = nearBottom
+      return following
+    },
+  }
+}
+
 /**
  * Centres a room message in its scroller. Off-screen rows keep estimated heights
- * until they render, so the first scroll can land short of the target; re-centre
- * once scrolling settles unless the user takes over.
+ * until they render, so keep the target centred through bounded layout settling
+ * unless the user takes over.
  */
-export function scrollRoomMessageIntoView(element: HTMLElement, corrections = 3): void {
+export function scrollRoomMessageIntoView(element: HTMLElement): void {
   element.scrollIntoView({ behavior: 'smooth', block: 'center' })
   const view = element.ownerDocument.defaultView
   const scroller = view ? scrollParent(element, view) : null
   if (!view || !scroller) return
-  let cancelled = false
-  const cancel = () => { cancelled = true }
-  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, cancel, { capture: true, passive: true })
-  const settle = (remaining: number) => {
-    if (cancelled || remaining === 0 || Math.abs(centerOffset(element, scroller)) <= JUMP_CENTER_TOLERANCE_PX) {
-      for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, cancel, { capture: true })
-      return
+  let frame: number | undefined
+  const cleanup = () => {
+    view.clearTimeout(timer)
+    if (frame !== undefined) view.cancelAnimationFrame(frame)
+    scroller.removeEventListener('scrollend', start)
+    for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, cleanup, { capture: true })
+  }
+  const correct = () => {
+    if (element.isConnected && Math.abs(centerOffset(element, scroller)) > JUMP_CENTER_TOLERANCE_PX) {
+      element.scrollIntoView({ behavior: 'instant', block: 'center' })
     }
-    element.scrollIntoView({ behavior: 'auto', block: 'center' })
-    view.requestAnimationFrame(() => view.requestAnimationFrame(() => settle(remaining - 1)))
+  }
+  const settle = () => {
+    correct()
+    frame = view.requestAnimationFrame(settle)
   }
   const start = () => {
-    view.clearTimeout(timer)
     scroller.removeEventListener('scrollend', start)
-    settle(corrections)
+    settle()
   }
+  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, cleanup, { capture: true, passive: true })
   scroller.addEventListener('scrollend', start)
-  const timer = view.setTimeout(start, JUMP_SETTLE_TIMEOUT_MS)
+  const timer = view.setTimeout(() => { correct(); cleanup() }, JUMP_SETTLE_TIMEOUT_MS)
 }
 
 function scrollParent(element: HTMLElement, view: Window): HTMLElement | null {

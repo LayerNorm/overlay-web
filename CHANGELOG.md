@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Skip layout and paint for off-screen messages in long DMs and channels, so scrolling stays smooth with many messages loaded. Messages stay in the page, so Find and text selection keep working, and jumping to a pinned or linked message still lands on it. Messages with an open picker or author card render normally so nothing is clipped.
+- Skip layout and paint for off-screen messages in long DMs and channels, so scrolling stays smooth with many messages loaded. Messages stay in the page, so Find and text selection keep working, and jumping to a pinned or linked message stays centred as off-screen rows finish layout instead of being pulled back to the latest message. Messages with an open picker or author card render normally so nothing is clipped.
 - Scrolling a DM or channel marks it read once per transcript state instead of sending a read mutation on every scroll event, which re-rendered every loaded message. New messages, a different room, returning to the tab and jumping to latest still mark read.
 - Reuse the room-message time formatter instead of rebuilding locale formatting state for every row render in long DMs and channels. Keep the existing time labels and invalid-date fallback.
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
