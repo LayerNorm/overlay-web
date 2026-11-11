@@ -1,0 +1,426 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { reduceThreadPullRequests } from './thread-pull-requests'
+import { compactAssistantPersistenceForConvex } from '../chat/persist-assistant-turn'
+import { compactPullRequestToolValues } from '../chat/persist-pull-request-tool'
+
+function pullRequest(
+  number: number,
+  owner = 'acme',
+  repo = 'widgets',
+  state: 'open' | 'closed' = 'open',
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    number,
+    html_url: `https://github.com/${owner}/${repo}/pull/${number}`,
+    title: `Pull request ${number}`,
+    state,
+    draft: false,
+    updated_at: '2026-10-20T12:00:00Z',
+    ...extra,
+  }
+}
+
+function toolPart(
+  toolCallId: string,
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  toolOutput: unknown,
+  state = 'output-available',
+) {
+  return {
+    type: 'tool-invocation',
+    toolInvocation: { toolCallId, toolName, state, toolInput, toolOutput },
+  }
+}
+
+test('extracts lifecycle states and deduplicates repository names case-insensitively', () => {
+  const parts = [
+    toolPart('create-open', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(1, 'LayerNorm', 'overlay-web')),
+    toolPart('create-draft', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(2, 'acme', 'draft', 'open', { draft: true })),
+    toolPart('close', 'GITHUB_CLOSE_A_PULL_REQUEST', { owner: 'acme', repo: 'closed', pull_number: 3 },
+      pullRequest(3, 'acme', 'closed', 'closed')),
+    toolPart('merge', 'GITHUB_MERGE_A_PULL_REQUEST', { owner: 'acme', repo: 'merged', pull_number: 4 },
+      pullRequest(4, 'acme', 'merged', 'closed', { merged: true })),
+    toolPart('update-open', 'GITHUB_UPDATE_A_PULL_REQUEST', { owner: 'layernorm', repo: 'OVERLAY-WEB' },
+      pullRequest(1, 'layernorm', 'OVERLAY-WEB', 'open', {
+        title: 'Updated title',
+        updated_at: '2026-10-20T13:00:00Z',
+      })),
+  ]
+
+  const associations = reduceThreadPullRequests(undefined, [], parts, 100)
+  assert.equal(associations?.length, 4)
+  assert.deepEqual(
+    Object.fromEntries(associations!.map(item => [item.number, item.state])),
+    { 1: 'open', 2: 'draft', 3: 'closed', 4: 'merged' },
+  )
+  assert.equal(associations!.find(item => item.number === 1)?.title, 'Updated title')
+})
+
+test('recognizes Composio PR slugs with object and JSON data envelopes', () => {
+  for (const serialize of [false, true]) {
+    const envelope = (data: Record<string, unknown>, successful = true) => ({
+      data: serialize ? JSON.stringify(data) : data,
+      successful,
+      error: successful ? null : 'Tool not found',
+    })
+    const input = { owner: 'acme', repo: 'widgets', pull_number: 11 }
+    const create = toolPart('create', 'GITHUB_CREATE_A_PULL_REQUEST', { ...input, draft: true },
+      envelope(pullRequest(11, 'acme', 'widgets', 'open', { draft: true })))
+    const draft = reduceThreadPullRequests(undefined, [], [create], 100)!
+    assert.equal(draft[0]?.state, 'draft')
+    const update = toolPart('update', 'call_mcp_tool', {
+      toolName: 'GITHUB_UPDATE_A_PULL_REQUEST', arguments: input,
+    }, { structuredContent: envelope(pullRequest(11, 'acme', 'widgets', 'closed')) })
+    const closed = reduceThreadPullRequests(draft, [create], [create, update], 200)!
+    assert.equal(closed[0]?.state, 'closed')
+    const merge = toolPart('merge', 'COMPOSIO_MULTI_EXECUTE_TOOL', {
+      tools: [{ tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST', arguments: input }],
+    }, { data: { results: [{
+      tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST', response: envelope({ merged: true }),
+    }] } })
+    assert.equal(reduceThreadPullRequests(closed, [], [merge], 300)?.[0]?.state, 'merged')
+    const read = toolPart('read', 'GITHUB_GET_A_PULL_REQUEST', input, envelope(pullRequest(11)))
+    assert.equal(reduceThreadPullRequests(undefined, [], [read], 100), undefined)
+    assert.equal(reduceThreadPullRequests(undefined, [], [toolPart('failed',
+      'GITHUB_CREATE_A_PULL_REQUEST', input, envelope(pullRequest(11), false))], 100), undefined)
+    for (const data of ['', 'not JSON', JSON.stringify('https://github.com/acme/widgets/pull/11')]) {
+      assert.equal(reduceThreadPullRequests(undefined, [], [toolPart('empty',
+        'GITHUB_CREATE_A_PULL_REQUEST', input, { data, successful: true, error: null })], 100), undefined)
+    }
+  }
+})
+
+test('realistic router PR evidence survives transcript compaction and replay', () => {
+  for (const toolName of ['COMPOSIO_MULTI_EXECUTE_TOOL', 'composio_multi_execute_tool', 'workspace_COMPOSIO_MULTI_EXECUTE_TOOL']) {
+    for (const jsonData of [false, true]) {
+      const pr = pullRequest(4, 'DevelopedByDev', 'autoquill_ai', 'open', {
+        draft: true, body: 'Large PR description. '.repeat(400),
+        head: { repo: { description: 'Repository metadata. '.repeat(400) } },
+      })
+      const part = toolPart('router', toolName, {
+        tools: [
+          { tool_slug: 'GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS', arguments: {
+            owner: 'DevelopedByDev', repo: 'autoquill_ai', content: 'File content. '.repeat(400),
+          } },
+          { tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', arguments: {
+            owner: 'DevelopedByDev', repo: 'autoquill_ai', draft: true,
+          } },
+        ],
+      }, { successful: true, error: null, data: { results: [
+        { tool_slug: 'GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS', index: 0,
+          response: { successful: true, error: null, data: { commit: { sha: 'abc' } } } },
+        { tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', index: 1,
+          arguments: { owner: 'DevelopedByDev', repo: 'autoquill_ai', draft: true },
+          response: { successful: true, error: null, data: jsonData ? JSON.stringify(pr) : pr } },
+      ] } })
+      const saved = compactAssistantPersistenceForConvex({ content: '', parts: [part] })
+      const invocation = saved.parts[0]!.toolInvocation as Record<string, unknown>
+      assert.ok(JSON.stringify(invocation.toolOutput).length <= 4_000)
+      assert.ok(JSON.stringify(invocation.toolInput).length <= 4_000)
+      const associations = reduceThreadPullRequests(undefined, [], saved.parts, 100)!
+      assert.equal(associations[0]?.url, 'https://github.com/DevelopedByDev/autoquill_ai/pull/4')
+      assert.equal(associations[0]?.state, 'draft')
+      const replay = compactAssistantPersistenceForConvex(saved)
+      assert.deepEqual(replay, saved)
+      assert.equal(reduceThreadPullRequests(associations, saved.parts, replay.parts, 200), associations)
+    }
+  }
+})
+
+test('PR compaction keeps failure signals and does not turn unrelated or malformed output into evidence', () => {
+  const pr = pullRequest(4, 'acme', 'widgets', 'open', { body: 'Long description. '.repeat(500) })
+  for (const output of [
+    { successful: false, error: 'Denied', data: pr },
+    { successful: true, error: 'Failed', data: pr },
+    { successful: true, data: '' },
+    { successful: true, data: 'https://github.com/acme/widgets/pull/4' },
+    { successful: true, data: '{invalid JSON' },
+    { successful: true, data: { arbitrary: pr } },
+  ]) {
+    const parts = [toolPart('bad', 'GITHUB_CREATE_A_PULL_REQUEST', {}, output)]
+    const saved = compactAssistantPersistenceForConvex({ content: '', parts })
+    assert.equal(reduceThreadPullRequests(undefined, [], saved.parts, 100), undefined)
+  }
+  const unrelated = compactAssistantPersistenceForConvex({ content: '', parts: [
+    toolPart('unrelated', 'read_file', {}, { contents: 'a'.repeat(8_000) }),
+  ] })
+  assert.equal((unrelated.parts[0]?.toolInvocation as { toolOutput: { truncated: boolean } }).toolOutput.truncated, true)
+})
+
+test('PR compaction rejects URL substrings and noncanonical hosts', () => {
+  for (const html_url of [
+    'https://evil.example/https://github.com/acme/widgets/pull/4',
+    'https://github.com.evil.example/acme/widgets/pull/4',
+    'https://github.com@evil.example/acme/widgets/pull/4',
+    'prefix https://github.com/acme/widgets/pull/4',
+  ]) {
+    assert.equal(compactPullRequestToolValues({
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST', toolInput: {},
+      toolOutput: pullRequest(4, 'acme', 'widgets', 'open', { html_url, body: 'a'.repeat(5_000) }),
+    }), null)
+  }
+})
+
+test('read-only tools never create an association but can refresh an existing pull request', () => {
+  const create = toolPart('create', 'GITHUB_CREATE_A_PULL_REQUEST', { owner: 'acme', repo: 'widgets' },
+    pullRequest(11))
+  const read = toolPart('read', 'call_mcp_tool', {
+    toolName: 'GITHUB_GET_A_PULL_REQUEST',
+    arguments: { owner: 'acme', repo: 'widgets', pull_number: 11 },
+  }, {
+    isError: false,
+    structuredContent: {
+      data: pullRequest(11, 'acme', 'widgets', 'closed', {
+        title: 'Closed by collaborator',
+        updated_at: '2026-10-20T14:00:00Z',
+      }),
+    },
+  })
+
+  assert.equal(reduceThreadPullRequests(undefined, [], [read], 100), undefined)
+  const existing = reduceThreadPullRequests(undefined, [], [create], 100)!
+  const refreshed = reduceThreadPullRequests(existing, [create], [create, read], 200)!
+  assert.equal(refreshed[0]?.state, 'closed')
+  assert.equal(refreshed[0]?.title, 'Closed by collaborator')
+  assert.equal(refreshed[0]?.observedAt, 200)
+})
+
+test('parses JSON text MCP blocks but does not scrape ordinary text', () => {
+  const mcpResult = toolPart('mcp-json', 'call_mcp_tool', {
+    toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+    arguments: {},
+  }, {
+    isError: false,
+    content: [{ type: 'text', text: JSON.stringify(pullRequest(13, 'acme', 'mcp')) }],
+  })
+  const association = reduceThreadPullRequests(undefined, [], [mcpResult], 100)?.[0]
+  assert.equal(association?.url, 'https://github.com/acme/mcp/pull/13')
+})
+
+test('ignores failed calls, prose, noncanonical URLs, and lookalike tool names', () => {
+  const parts = [
+    toolPart('failed', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(1), 'output-error'),
+    toolPart('mcp-error', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      isError: true,
+      structuredContent: pullRequest(2),
+    }),
+    ...[
+      'https://github.com.evil/acme/widgets/pull/3',
+      'https://evil.github.com/acme/widgets/pull/3',
+      'https://user@github.com/acme/widgets/pull/3',
+      'https://github.com/acme/widgets/pull/3/files',
+      'https://github.com/acme/widgets/pull/3?tab=files',
+    ].map((url, index) => toolPart(`spoof-${index}`, 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      number: 3,
+      html_url: url,
+      title: 'Spoofed result',
+      state: 'open',
+    })),
+    toolPart('mismatched-number', 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      ...pullRequest(8),
+      number: 9,
+    }),
+    toolPart('ordinary-url', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      content: [{ type: 'text', text: 'Created https://github.com/acme/widgets/pull/4' }],
+    }),
+    toolPart('list', 'GITHUB_LIST_PULL_REQUESTS', {}, pullRequest(5)),
+    toolPart('lookalike', 'NOT_GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(6)),
+    toolPart('unknown-state', 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      ...pullRequest(7),
+      state: 'maybe',
+    }),
+  ]
+
+  assert.equal(reduceThreadPullRequests(undefined, [], parts, 100), undefined)
+})
+
+test('uses authoritative merge input when the successful response only says merged', () => {
+  const merge = toolPart('merge-minimal', 'GITHUB_MERGE_A_PULL_REQUEST', {
+    owner: 'LayerNorm',
+    repo: 'overlay-web',
+    pull_number: 51,
+  }, { merged: true })
+  const association = reduceThreadPullRequests(undefined, [], [merge], 100)?.[0]
+  assert.deepEqual(association, {
+    owner: 'LayerNorm',
+    repo: 'overlay-web',
+    number: 51,
+    title: 'Pull request #51',
+    url: 'https://github.com/LayerNorm/overlay-web/pull/51',
+    state: 'merged',
+    observedAt: 100,
+  })
+
+  const create = toolPart('create-before-merge', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(51, 'LayerNorm', 'overlay-web'))
+  const existing = reduceThreadPullRequests(undefined, [], [create], 50)!
+  const withExistingTitle = reduceThreadPullRequests(existing, [create], [create, merge], 100)
+  assert.equal(withExistingTitle?.[0]?.title, 'Pull request 51')
+})
+
+test('merged associations remain terminal after a minimal merge and stale reads', () => {
+  const initial = toolPart('create-before-minimal-merge', 'GITHUB_CREATE_A_PULL_REQUEST', {
+    owner: 'acme',
+    repo: 'terminal',
+  }, pullRequest(52, 'acme', 'terminal', 'open', {
+    updated_at: '2026-10-20T12:00:00Z',
+  }))
+  const merge = toolPart('minimal-merge-terminal', 'GITHUB_MERGE_A_PULL_REQUEST', {
+    owner: 'acme',
+    repo: 'terminal',
+    pull_number: 52,
+  }, { merged: true })
+  const beforeMerge = reduceThreadPullRequests(undefined, [], [initial], 100)!
+  const merged = reduceThreadPullRequests(beforeMerge, [initial], [initial, merge], 200)!
+  assert.equal(merged[0]?.state, 'merged')
+
+  const staleObservations = [
+    pullRequest(52, 'acme', 'terminal', 'open', { updated_at: '2026-10-20T12:00:00Z' }),
+    pullRequest(52, 'acme', 'terminal', 'open', { draft: true, updated_at: '2026-10-20T12:00:00Z' }),
+    pullRequest(52, 'acme', 'terminal', 'closed', { updated_at: '2026-10-20T12:00:00Z' }),
+  ]
+  for (const [index, response] of staleObservations.entries()) {
+    const staleRead = toolPart(`stale-after-merge-${index}`, 'call_mcp_tool', {
+      toolName: 'GITHUB_GET_A_PULL_REQUEST',
+      arguments: { owner: 'acme', repo: 'terminal', pull_number: 52 },
+    }, { structuredContent: response })
+    const afterRead = reduceThreadPullRequests(
+      merged,
+      [initial, merge],
+      [initial, merge, staleRead],
+      300 + index,
+    )!
+    assert.equal(afterRead[0]?.state, 'merged')
+    assert.equal(afterRead[0]?.observedAt, 200)
+  }
+})
+
+test('matches each Composio batch result to its tool and ignores only failed entries', () => {
+  const batch = toolPart('batch', 'COMPOSIO_MULTI_EXECUTE_TOOL', {
+    tools: [
+      { tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', arguments: { owner: 'acme', repo: 'good' } },
+      { tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST', arguments: { owner: 'acme', repo: 'denied', pull_number: 8 } },
+      { tool_slug: 'GITHUB_LIST_PULL_REQUESTS', arguments: { owner: 'acme', repo: 'listed' } },
+    ],
+  }, {
+    results: [
+      {
+        tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST',
+        successful: true,
+        response_data: pullRequest(7, 'acme', 'good'),
+      },
+      {
+        tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST',
+        successful: false,
+        error: 'Approval denied',
+        response_data: { merged: true },
+      },
+      {
+        tool_slug: 'GITHUB_LIST_PULL_REQUESTS',
+        successful: true,
+        response_data: pullRequest(9, 'acme', 'listed'),
+      },
+    ],
+  })
+
+  const associations = reduceThreadPullRequests(undefined, [], [batch], 100)
+  assert.deepEqual(associations?.map(item => item.number), [7])
+
+  const partialBatch = toolPart('partial-batch', 'COMPOSIO_MULTI_EXECUTE_TOOL', {
+    tools: [
+      { tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST', arguments: { owner: 'acme', repo: 'denied', pull_number: 11 } },
+      { tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', arguments: { owner: 'acme', repo: 'good-after-failure' } },
+    ],
+  }, {
+    success: false,
+    results: [{
+      tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST',
+      successful: true,
+      response_data: pullRequest(12, 'acme', 'good-after-failure'),
+    }],
+  })
+  assert.deepEqual(reduceThreadPullRequests(undefined, [], [partialBatch], 100)?.map(item => item.number), [12])
+
+  const workspaceBatch = toolPart('workspace-batch', 'workspace_COMPOSIO_MULTI_EXECUTE_TOOL', {
+    tools: [{
+      tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST',
+      arguments: { owner: 'acme', repo: 'workspace', pull_number: 10 },
+    }],
+  }, {
+    results: [{
+      tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST',
+      successful: true,
+      response_data: { merged: true },
+    }],
+  })
+  assert.equal(reduceThreadPullRequests(undefined, [], [workspaceBatch], 100)?.[0]?.state, 'merged')
+})
+
+test('outer failures reject nested direct and MCP results without rejecting successful batch entries', () => {
+  const parts = [
+    toolPart('direct-success-false', 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      success: false,
+      structuredContent: pullRequest(31),
+    }),
+    toolPart('direct-successful-false', 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      successful: false,
+      content: [{ type: 'text', text: JSON.stringify(pullRequest(32)) }],
+    }),
+    toolPart('mcp-successful-false', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      successful: false,
+      content: [{ type: 'text', text: JSON.stringify(pullRequest(33)) }],
+    }),
+    toolPart('mcp-denied', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      denied: true,
+      structuredContent: pullRequest(34),
+    }),
+    toolPart('mcp-error', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      error: { message: 'Not authorized' },
+      content: [{ type: 'text', text: JSON.stringify(pullRequest(35)) }],
+    }),
+  ]
+  assert.equal(reduceThreadPullRequests(undefined, [], parts, 100), undefined)
+})
+
+test('replays do not refresh timestamps and older GitHub snapshots do not regress state', () => {
+  const initial = toolPart('same-call', 'GITHUB_CREATE_A_PULL_REQUEST', { owner: 'acme', repo: 'widgets' },
+    pullRequest(12, 'acme', 'widgets', 'open', { updated_at: '2026-10-20T12:00:00Z' }))
+  const first = reduceThreadPullRequests(undefined, [], [initial], 100)!
+  const replayed = reduceThreadPullRequests(first, [initial], [initial], 200)!
+  assert.equal(replayed[0]?.observedAt, 100)
+
+  const changed = toolPart('same-call', 'GITHUB_CREATE_A_PULL_REQUEST', { owner: 'acme', repo: 'widgets' },
+    pullRequest(12, 'acme', 'widgets', 'closed', { updated_at: '2026-10-20T13:00:00Z' }))
+  const updated = reduceThreadPullRequests(first, [initial], [changed], 300)!
+  assert.equal(updated[0]?.state, 'closed')
+  assert.equal(updated[0]?.observedAt, 300)
+
+  const staleRead = toolPart('stale-read', 'call_mcp_tool', {
+    toolName: 'GITHUB_GET_A_PULL_REQUEST',
+    arguments: { owner: 'acme', repo: 'widgets', pull_number: 12 },
+  }, {
+    structuredContent: pullRequest(12, 'acme', 'widgets', 'open', {
+      updated_at: '2026-10-20T11:00:00Z',
+    }),
+  })
+  const afterStale = reduceThreadPullRequests(updated, [changed], [changed, staleRead], 400)!
+  assert.equal(afterStale[0]?.state, 'closed')
+  assert.equal(afterStale[0]?.observedAt, 300)
+})

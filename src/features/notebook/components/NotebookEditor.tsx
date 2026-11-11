@@ -1,7 +1,6 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { OverlayMark } from '@/components/brand/OverlayMark'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   readStoredPanelPresentation,
@@ -9,37 +8,43 @@ import {
   toRightPanelMode,
   type PanelPresentation,
 } from '@/shared/ui/panel-presentation'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react'
 import {
   createLocalNotebookNote,
+  DEFAULT_OVERLAY_CAPABILITIES,
   type CreateNoteResponse,
+  type NotebookAgentRequest,
   type UpdateNoteResponse,
 } from '@overlay/app-core'
 import {
   CanonicalNotebookEditor,
+  type NotebookAgentComposerRenderProps,
   type NotebookEditorRepository,
 } from '@overlay/modules-react/notes'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
-import { MentionInput } from '@/features/chat/components/chat-interface/MentionInput'
+import { ChatComposer } from '@/features/chat/components/ChatComposer'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-prefs'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { noteDocFromFile, useLiveNote } from '@/hooks/use-file-tree'
-import { useConvex } from 'convex/react'
+import { useConvex, useMutation } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
 import { api } from '../../../../convex/_generated/api'
+import { notebookChatClientId, runNotebookChatTurn } from '../lib/notebook-chat-turn'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
 )
+
+// Separate from chat's last-used model, so a note starts on the chat default until a model is picked here.
+const NOTEBOOK_MODEL_KEY = 'overlay_notebook_model'
 
 export default function NotebookEditor({
   userId: _userId,
@@ -64,9 +69,10 @@ export default function NotebookEditor({
     [],
   )
   const initialModelId = useMemo(() => {
-    const storedModelId = readStoredActModelId()
-    return isByokModelId(storedModelId) ? DEFAULT_MODEL_ID : storedModelId
-  }, [])
+    let storedModelId: string | null = null
+    try { storedModelId = localStorage.getItem(NOTEBOOK_MODEL_KEY) } catch { /* storage may be unavailable */ }
+    return models.find(({ id }) => id === storedModelId)?.id ?? DEFAULT_MODEL_ID
+  }, [models])
 
   // Shared with the chat sources panel so both surfaces present the same way.
   const [panelPresentation, setPanelPresentationState] = useState(readStoredPanelPresentation)
@@ -74,6 +80,25 @@ export default function NotebookEditor({
     setPanelPresentationState(presentation)
     storePanelPresentation(presentation)
   }, [])
+
+  const createPersonalChat = useMutation(api.chat.personal.create)
+  const noteChatIdsRef = useRef(new Map<string, string>())
+  const ensureNoteChat = useCallback(async (request: NotebookAgentRequest) => {
+    const known = noteChatIdsRef.current.get(request.noteId)
+    if (known) return known
+    if (!activeWorkspaceId) throw new Error('Choose a workspace to use the note assistant.')
+    const modelId = request.modelId ?? initialModelId
+    const conversationId = await createPersonalChat({
+      workspaceId: activeWorkspaceId,
+      clientId: notebookChatClientId(request.noteId),
+      title: request.noteTitle || 'Untitled',
+      askModelIds: [modelId],
+      actModelId: modelId,
+      lastMode: 'act',
+    })
+    noteChatIdsRef.current.set(request.noteId, conversationId)
+    return conversationId
+  }, [activeWorkspaceId, createPersonalChat, initialModelId])
 
   const noteId = searchParams?.get('id') ?? null
   const liveNote = useLiveNote(noteId)
@@ -133,16 +158,13 @@ export default function NotebookEditor({
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}
-      runAgent={(request, signal) => overlayAppClient.notes.notebookAgentResponse(request, {
-        credentials: 'same-origin',
-        signal,
-      })}
+      runAgent={(request, signal) => runNotebookChatTurn({ request, signal, ensureConversation: ensureNoteChat })}
       agentPanelMode={toRightPanelMode(panelPresentation)}
       onAgentPanelModeChange={(mode) => setPanelPresentation(mode === 'docked' ? 'sidebar' : 'floating')}
       models={models}
       initialModelId={initialModelId}
       onModelChange={(modelId) => {
-        try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
+        try { localStorage.setItem(NOTEBOOK_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
       }}
       onNavigateNote={(noteId) => router.replace(buildWorkspaceHref(null, `/app/notes?id=${encodeURIComponent(noteId)}`, scope))}
       onBackToFiles={() => router.push(buildWorkspaceHref(null, '/app/files', scope))}
@@ -166,23 +188,93 @@ export default function NotebookEditor({
         />
         </>
       )}
-      renderAgentInput={(input) => (
-        <MentionInput
-          value={input.value}
-          onChange={input.onChange}
-          onMentionsChange={input.onMentionsChange}
-          onUploadFile={() => undefined}
-          onKeyDown={input.onKeyDown}
-          placeholder={input.placeholder}
-          disabled={input.disabled}
-        />
-      )}
+      renderAgentComposer={(composer) => <NotebookChatComposer {...composer} />}
       renderMarkdown={(text, streaming) => <MarkdownMessage text={text} isStreaming={streaming} />}
-      logo={(
-        <span className="mt-0.5 shrink-0 select-none">
-          <OverlayMark motion="look" size={14} label="" />
-        </span>
-      )}
+    />
+  )
+}
+
+type ComposerProps = ComponentProps<typeof ChatComposer>
+type AttachedImages = ComposerProps['attachments']['attachedImages']
+
+const NO_IMAGES: AttachedImages = []
+const ignore = () => {}
+
+/** The chat composer, text-only: Notebook turns send the message and @ mentions, not attachments. */
+function NotebookChatComposer(props: NotebookAgentComposerRenderProps) {
+  const textareaRef = useRef<ComposerProps['inputState']['textareaRef']['current']>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const docInputRef = useRef<HTMLInputElement | null>(null)
+  const attachMenuRef = useRef<HTMLDivElement | null>(null)
+  const modeMenuRef = useRef<HTMLDivElement | null>(null)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [showModeMenu, setShowModeMenu] = useState(false)
+
+  return (
+    <ChatComposer
+      mode="chat"
+      surface={{
+        textOnly: true,
+        embedded: true,
+        hideModeMenu: true,
+        hideGenerationModes: true,
+        placeholder: props.placeholder,
+      }}
+      emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+      attachments={{
+        attachedImages: NO_IMAGES,
+        setAttachedImages: ignore,
+        pendingChatDocuments: [],
+        removePendingDocument: ignore,
+        attachmentError: null,
+        fileInputRef,
+        docInputRef,
+        onAddImages: ignore,
+        onAddDocumentsFromPicker: ignore,
+        onOpenAttachmentPreview: ignore,
+        onOpenFilePreview: ignore,
+      }}
+      runtime={{
+        composerNotice: null,
+        isSendBlocked: props.running,
+        isActiveLoading: props.running,
+        isTemporaryChat: false,
+        blockedComposerContent: null,
+      }}
+      inputState={{
+        draftIdentity: 'notebook',
+        onAppendText: (text) => props.onChange(props.value ? `${props.value} ${text}` : text),
+        replyContext: null,
+        setReplyContext: ignore,
+        textareaRef,
+        input: props.value,
+        inputRevision: 0,
+        onInputChange: props.onChange,
+        onMentionsChange: props.onMentionsChange,
+        onPaste: ignore,
+        hasComposerText: props.canSend,
+      }}
+      toolState={{
+        showAttachMenu,
+        setShowAttachMenu,
+        attachMenuRef,
+        selectedToolIds: [],
+        memoryEnabled: true,
+        capabilities: DEFAULT_OVERLAY_CAPABILITIES,
+        onToggleTool: ignore,
+        onToggleMemory: ignore,
+        onRemoveTool: ignore,
+      }}
+      modeState={{
+        onModeChange: ignore,
+        generationChip: null,
+        setGenerationChip: ignore,
+        showModeMenu,
+        setShowModeMenu,
+        modeMenuRef,
+        onNavigateMode: ignore,
+      }}
+      actions={{ onSend: props.onSend, onStop: props.onStop }}
     />
   )
 }

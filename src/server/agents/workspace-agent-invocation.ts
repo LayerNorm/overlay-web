@@ -20,6 +20,8 @@ import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/age
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
+import { agentFormattingNote, computerCapabilityNote, generatedUiNote, knowledgeNote } from '@/server/agent/shared-agent-instructions'
+import { SHARED_AGENT_BEHAVIOR_CONSTANTS } from '@/server/agent/shared-agent-instruction-constants'
 
 export function shouldPrepareConnectedAgentDrive(input: {
   enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
@@ -708,6 +710,7 @@ export function buildAgentSystemPrompt(args: {
   hasTools: boolean
   instructions: string
   isDefaultMaster: boolean
+  memoryEnabled?: boolean
 }): string {
   // Only promise recall when recall is actually on the table. Telling an agent
   // to search a memory it cannot reach is how it ends up narrating tool calls
@@ -723,10 +726,7 @@ export function buildAgentSystemPrompt(args: {
       ? [
           'Use your available tools when they genuinely help, and prefer checking over guessing.',
           `The exact tool names available in this turn are: ${JSON.stringify(args.exposedToolIds)}. Use only these names and their declared input schemas, never invented aliases.`,
-          args.exposedToolIds.includes('computer_exec')
-            ? 'To run a shell command on your Computer, call computer_exec with a command argument. Report execution only after its result confirms success; never substitute a calculated or guessed result for actual output.'
-            : '',
-          canRecall
+          canRecall && args.memoryEnabled !== false
             ? 'Before answering a question about the user, the workspace, or past work, call search_memory rather than assuming you know nothing.' +
               (args.exposedToolIds.includes('search_messages')
                 ? ' When you need exact wording, a date, or who said something, call search_messages for the verbatim record.'
@@ -737,6 +737,10 @@ export function buildAgentSystemPrompt(args: {
       : 'You have no tools or resource access in this turn. Never claim that you used or changed a resource, created or saved a note, sent a message, edited a document, or completed any other external action. Say the capability is unavailable and provide a draft when useful.',
     'Be concise, useful, and explicit when context is insufficient.',
     args.hasTools ? AGENT_CLOSING_SUMMARY_INSTRUCTION : '',
+    computerCapabilityNote(new Set(args.exposedToolIds)),
+    generatedUiNote(new Set(args.exposedToolIds)),
+    knowledgeNote({ constants: SHARED_AGENT_BEHAVIOR_CONSTANTS, memoryEnabled: args.memoryEnabled }, new Set(args.exposedToolIds)),
     args.contextBlock,
+    agentFormattingNote(SHARED_AGENT_BEHAVIOR_CONSTANTS),
   ].filter((section) => section && section.trim()).join('\n')
 }
