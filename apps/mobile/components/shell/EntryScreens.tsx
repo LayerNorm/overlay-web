@@ -165,9 +165,9 @@ export function OfflineBanner({ theme }: { theme: Theme }) {
         gap: 8,
       }}
     >
-      <WifiOff size={13} color={theme.muted} />
-      <T style={{ color: theme.muted, fontSize: 12, lineHeight: 16 }}>
-        You’re offline. Changes will sync when connected.
+      <WifiOff size={13} color={theme.muted} style={{ flexShrink: 0 }} />
+      <T style={{ color: theme.muted, fontSize: 12, lineHeight: 16, flex: 1, flexShrink: 1 }}>
+        Offline. Changes sync when you reconnect.
       </T>
     </View>
   )
