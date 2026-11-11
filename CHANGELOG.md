@@ -7,6 +7,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Chats, agent threads and automation conversations can show interactive comparisons, dashboards and forms. Form edits are saved, and submitting posts a readable response and locks the card.
   - The validated `render_ui` catalog uses lazy-loaded shared components, bounded serialized state, admission-gated prompts and summary fallbacks for non-React delivery. Generated-UI tools remain withheld from MCP clients; existing draft permissions are unchanged.
   - Generated forms tolerate unused component props and unambiguous misplaced child references. Failed generated views leave visible error activity; models receive explicit retry guidance and a complete bound-form example before claiming a view is displayed.
+  - Failed bound forms keep their error rows after a successful retry. Tool snapshots encode reserved JSON keys for Convex storage while full journal files retain the original input.
   - Chat Markdown exports include native assistant replies and generated-view titles and summaries, never serialized UI specs or bound form values.
   - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation saves are unchanged.
 

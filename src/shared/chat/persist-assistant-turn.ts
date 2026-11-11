@@ -49,6 +49,12 @@ function stringifyForPersistence(value: unknown): string {
   }
 }
 
+function hasUnsupportedConvexFields(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  return Object.entries(value).some(([key, child]) => key.startsWith('$') || key.length > 1024
+    || /[^\x20-\x7e]/.test(key) || hasUnsupportedConvexFields(child))
+}
+
 function compactToolValueForPersistence(value: unknown): unknown {
   if (value == null) return value
   if (typeof value === 'string') return truncateForPersistence(value, MAX_PERSISTED_TOOL_VALUE_CHARS)
@@ -56,7 +62,8 @@ function compactToolValueForPersistence(value: unknown): unknown {
 
   const serialized = stringifyForPersistence(value)
   if (serialized.length <= MAX_PERSISTED_TOOL_VALUE_CHARS) {
-    return clampNestingDepth(value)
+    const compacted = clampNestingDepth(value)
+    return hasUnsupportedConvexFields(compacted) ? serialized : compacted
   }
   return {
     truncated: true,

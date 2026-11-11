@@ -1,9 +1,36 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { StepResult, ToolSet } from 'ai'
+import { jsonToConvex } from 'convex/values'
 import { buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConvex } from './persist-assistant-turn'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
 import { MAX_PERSISTED_TOOL_ERROR_CHARS } from './tool-outcomes'
+
+test('tool snapshots serialize reserved, non-ASCII and oversized field names without dropping values', () => {
+  for (const key of ['$bindState', '$state', 'é', '\u0001', 'x'.repeat(1025)]) {
+    const value = { nested: [{ [key]: '/form/note' }] }
+    const saved = compactAssistantPersistenceForConvex({ content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'failed', toolName: 'render_ui', state: 'output-error', toolInput: value, toolOutput: value,
+    } }] })
+    const invocation = saved.parts[0].toolInvocation as Record<string, unknown>
+    assert.equal(invocation.state, 'output-error')
+    assert.deepEqual(JSON.parse(invocation.toolInput as string), value)
+    assert.deepEqual(JSON.parse(invocation.toolOutput as string), value)
+    assert.doesNotThrow(() => jsonToConvex(JSON.parse(JSON.stringify(saved))))
+    assert.deepEqual(compactAssistantPersistenceForConvex(saved), saved)
+  }
+})
+
+test('Convex-safe tool values, including empty values, keep their existing shape', () => {
+  for (const value of [{}, [], null, { noteId: 'missing' }, { nested: [{ label: 'Note' }] }]) {
+    const saved = compactAssistantPersistenceForConvex({ content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'failed', toolName: 'read_file', state: 'output-error', toolInput: value, toolOutput: value,
+    } }] })
+    const invocation = saved.parts[0].toolInvocation as Record<string, unknown>
+    assert.deepEqual(invocation.toolInput, value)
+    assert.deepEqual(invocation.toolOutput, value)
+  }
+})
 
 test('long transcript compaction preserves the latest answer and is repeatable', () => {
   const tools = Array.from({ length: 100 }, (_, index) => ({
