@@ -69,25 +69,24 @@ export function AuthProvider({
       return
     }
 
-    console.log('[AuthContext] restoreStoredSession: hydrating stored session for user', storedSession.user?.id)
-    await hydrateSession(storedSession)
-
-    void refreshAuthSession(storedSession)
-      .then(async (nextSession) => {
-        await saveRefreshedAuthSession(nextSession, storedSession)
-        await hydrateSession(nextSession)
-        console.log('[AuthContext] restoreStoredSession: background refresh saved')
-      })
-      .catch(async (error) => {
-        const message = getErrorMessage(error)
-        console.warn('[AuthContext] restoreStoredSession: background refresh failed -', message)
-        if (message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')) {
-          console.log('[AuthContext] restoreStoredSession: clearing invalid/expired session')
-          await clearAuthSession()
-          applySignedOutState()
-          setAuthError(message)
-        }
-      })
+    try {
+      const nextSession = await refreshAuthSession(storedSession)
+      await saveRefreshedAuthSession(nextSession, storedSession)
+      await hydrateSession(nextSession)
+    } catch (error) {
+      const current = await loadAuthSession()
+      if (!current || current.user.id !== storedSession.user.id) return
+      const message = getErrorMessage(error)
+      if (current.accessToken !== storedSession.accessToken || current.refreshToken !== storedSession.refreshToken) {
+        await hydrateSession(current)
+      } else if (message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')) {
+        await clearAuthSession()
+        applySignedOutState()
+        setAuthError(message)
+      } else {
+        await hydrateSession(current)
+      }
+    }
 
   }, [applySignedOutState, hydrateSession])
 

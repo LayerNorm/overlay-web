@@ -48,20 +48,30 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 const pending = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function session() {
   const hook = hooks(), calls = [], requests = []
-  let user = { id: 'native-user' }
+  let user = { id: 'native-user' }, authLoading = false
   const cached = { user, uiSettings: {}, destinations: [] }
   const api = load('contexts/AppSessionContext.tsx', {
     react: hook.react,
     '@overlay/app-core': { CANONICAL_APP_DESTINATIONS: [], deriveOverlayCapabilities: () => ({}) },
-    './AuthContext': { useAuth: () => ({ user, isAuthenticated: !!user, isLoading: false }) },
+    './AuthContext': { useAuth: () => ({ user, isAuthenticated: !!user, isLoading: authLoading }) },
     '../services/bootstrapService': {
       getCachedBootstrap: () => cached, setCachedBootstrap: async () => {}, clearBootstrapCache: async () => {},
       getAppBootstrap: options => { calls.push(options); const request = pending(); requests.push(request); return request.promise },
     },
     '../services/settingsService': { DEFAULT_UI_SETTINGS: {}, subscribeUiSettings: () => () => {}, loadCachedUiSettings: async () => null, persistUiSettings: async () => {} },
   })
-  return { calls, requests, user: next => { user = next }, render: () => hook.render(() => api.AppSessionProvider({ children: 'shell' })).props.value }
+  return { calls, requests, user: next => { user = next }, loading: value => { authLoading = value }, render: () => hook.render(() => api.AppSessionProvider({ children: 'shell' })).props.value }
 }
+
+test('initial bootstrap waits while stored authentication is hydrating and refreshing', () => {
+  const state = session()
+  state.loading(true)
+  assert.equal(state.render().isInitialized, false)
+  assert.equal(state.calls.length, 0)
+  state.loading(false)
+  assert.equal(state.render().isInitialized, false)
+  assert.equal(state.calls.length, 1)
+})
 
 test('cached bootstrap cannot open native shell; sign-in and workspace refresh each await fresh bootstrap', async () => {
   const state = session()

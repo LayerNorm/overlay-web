@@ -161,33 +161,30 @@ function resolveWorkspaceId(options: AppRequestOptions): string | null {
   return workspaceId && workspaceId.trim().length > 0 ? workspaceId.trim() : null
 }
 
+async function fetchWithSessionRetry(send: (session: AuthSession | null) => Promise<Response>): Promise<Response> {
+  const session = await getValidSession()
+  const response = await send(session)
+  if (response.status !== 401 || !session) return response
+  let current = await loadAuthSession()
+  if (!current || current.user.id !== session.user.id) return response
+  if (current.accessToken === session.accessToken) {
+    try {
+      const refreshed = await refreshAuthSession(current)
+      await saveRefreshedAuthSession(refreshed, current)
+    } catch {
+      return response
+    }
+  }
+  current = await loadAuthSession()
+  if (!current || current.user.id !== session.user.id) return response
+  return send(current)
+}
+
 export async function appRequest(
   path: string,
   options: AppRequestOptions = {},
 ): Promise<Response> {
-  const session = await getValidSession()
-  const headers = new Headers(options.headers)
-  if (session?.accessToken) {
-    headers.set('Authorization', `Bearer ${session.accessToken}`)
-  }
   const workspaceId = resolveWorkspaceId(options)
-  if (workspaceId) {
-    headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
-  }
-
-  let body: BodyInit | undefined
-  if (options.formData) {
-    body = options.formData
-  } else if (options.json) {
-    headers.set('Content-Type', 'application/json')
-    body = JSON.stringify({
-      ...options.json,
-      accessToken: session?.accessToken,
-      userId: session?.user.id,
-    })
-  }
-
-  const requestUrl = createUrl(path, session, options.query)
   const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const controller = timeoutMs > 0 ? new AbortController() : null
   const timer = controller
@@ -195,7 +192,7 @@ export async function appRequest(
         console.warn(
           '[appApi] request timed out after %d ms: %s',
           timeoutMs,
-          requestUrl,
+          path,
         )
         controller.abort()
       }, timeoutMs)
@@ -203,11 +200,18 @@ export async function appRequest(
 
   let response: Response
   try {
-    response = await fetch(requestUrl, {
-      method: options.method ?? 'GET',
-      headers,
-      body,
-      signal: controller?.signal,
+    response = await fetchWithSessionRetry(session => {
+      const headers = new Headers(options.headers)
+      if (session?.accessToken) headers.set('Authorization', `Bearer ${session.accessToken}`)
+      if (workspaceId) headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
+      let body: BodyInit | undefined = options.formData
+      if (!body && options.json) {
+        headers.set('Content-Type', 'application/json')
+        body = JSON.stringify({ ...options.json, accessToken: session?.accessToken, userId: session?.user.id })
+      }
+      return fetch(createUrl(path, session, options.query), {
+        method: options.method ?? 'GET', headers, body, signal: controller?.signal,
+      })
     })
   } finally {
     if (timer) {
@@ -222,11 +226,7 @@ export async function appFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const session = await getValidSession()
   const headers = new Headers(init.headers)
-  if (session?.accessToken) {
-    headers.set('Authorization', `Bearer ${session.accessToken}`)
-  }
   // RequestInit has no workspaceId option — callers scoping to a different
   // workspace set the header themselves; otherwise the module default applies.
   if (requestWorkspaceId && !headers.has(ACTIVE_WORKSPACE_HEADER)) {
@@ -239,10 +239,10 @@ export async function appFetch(
       : input instanceof URL
         ? input.toString()
         : input.url
-  const requestUrl = createUrl(path, session)
-  return fetch(requestUrl, {
-    ...init,
-    headers,
+  return fetchWithSessionRetry(session => {
+    const attemptHeaders = new Headers(headers)
+    if (session?.accessToken) attemptHeaders.set('Authorization', `Bearer ${session.accessToken}`)
+    return fetch(createUrl(path, session), { ...init, headers: attemptHeaders })
   })
 }
 
