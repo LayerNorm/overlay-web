@@ -11,6 +11,7 @@ import {
 } from '@overlay/app-core'
 import overlayAppConfig from '@/overlay.config'
 import { getOverlaySession } from '@/server/auth/session'
+import { ensureDefaultUserRole } from '@/server/authorization/ensure-default-user-role'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import {
@@ -53,6 +54,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
   try {
     const { auth } = context
+
+    if (auth.authType === 'access-token') await ensureDefaultUserRole(auth.userId)
 
     const serverSecret = getInternalApiSecret()
     const browserSession = await getOverlaySession(request)

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Initialize the ordinary member authorization role during authenticated mobile bootstrap, just as the web shell does. Mobile-only accounts can use Work and personal chat without first opening web; explicit custom role assignments remain unchanged.
+
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
