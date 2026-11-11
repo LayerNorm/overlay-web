@@ -117,5 +117,6 @@ test('a Notebook chat names its note and edits it directly with the note tools',
   assert.match(instructions, /beside the note "Orchard" \(note id=note_1\)/)
   assert.match(instructions, /edit_note, replace_note_section or append_to_note/)
   assert.match(instructions, /When in doubt, answer without editing/)
+  assert.match(instructions, /Say a change was made only after an edit tool returned success in this turn/)
   assert.doesNotMatch(buildInstructions(), /Notebook editor/)
 })
