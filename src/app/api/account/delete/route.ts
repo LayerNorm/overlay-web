@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { AccountDeletionService } from '@/server/account/AccountDeletionService'
+import { isFreshAccountDeletionBearer } from '@/server/account/account-deletion-auth'
 import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { clearOverlaySession, getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -22,14 +23,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
   }
   if (auth.authType !== 'session') {
-    return NextResponse.json(
-      { error: 'Account deletion requires an interactive signed-in browser session.' },
-      { status: 403 },
+    const allowed = await isFreshAccountDeletionBearer(request, auth, (token) =>
+      getOverlayServerContext().auth.verifyAccessToken(token),
     )
-  }
-  const origin = request.headers.get('origin')
-  if (origin !== request.nextUrl.origin || request.headers.get('sec-fetch-site') === 'cross-site') {
-    return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+    if (!allowed) {
+      return NextResponse.json({ error: 'Sign in again to delete your account.' }, { status: 403 })
+    }
+  } else {
+    const origin = request.headers.get('origin')
+    if (
+      origin !== request.nextUrl.origin ||
+      request.headers.get('sec-fetch-site') === 'cross-site'
+    ) {
+      return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+    }
   }
   if (
     !body ||

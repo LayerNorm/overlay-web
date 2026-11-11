@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let native apps delete the signed-in account after signing in again within five minutes. Deletion accepts only a freshly verified, matching Bearer token without cookies; browser deletion retains its same-origin session protections and both paths use the existing account cleanup service.
+
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
