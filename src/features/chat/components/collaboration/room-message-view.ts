@@ -361,3 +361,51 @@ export function toRoomMessageView({
 export function roomMessageDomId(messageId: string): string {
   return `room-message-${messageId}`
 }
+
+const JUMP_CENTER_TOLERANCE_PX = 24
+const JUMP_SETTLE_TIMEOUT_MS = 1_200
+const JUMP_CANCEL_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+
+/**
+ * Centres a room message in its scroller. Off-screen rows keep estimated heights
+ * until they render, so the first scroll can land short of the target; re-centre
+ * once scrolling settles unless the user takes over.
+ */
+export function scrollRoomMessageIntoView(element: HTMLElement, corrections = 3): void {
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const view = element.ownerDocument.defaultView
+  const scroller = view ? scrollParent(element, view) : null
+  if (!view || !scroller) return
+  let cancelled = false
+  const cancel = () => { cancelled = true }
+  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, cancel, { capture: true, passive: true })
+  const settle = (remaining: number) => {
+    if (cancelled || remaining === 0 || Math.abs(centerOffset(element, scroller)) <= JUMP_CENTER_TOLERANCE_PX) {
+      for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, cancel, { capture: true })
+      return
+    }
+    element.scrollIntoView({ behavior: 'auto', block: 'center' })
+    view.requestAnimationFrame(() => view.requestAnimationFrame(() => settle(remaining - 1)))
+  }
+  const start = () => {
+    view.clearTimeout(timer)
+    scroller.removeEventListener('scrollend', start)
+    settle(corrections)
+  }
+  scroller.addEventListener('scrollend', start)
+  const timer = view.setTimeout(start, JUMP_SETTLE_TIMEOUT_MS)
+}
+
+function scrollParent(element: HTMLElement, view: Window): HTMLElement | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const { overflowY } = view.getComputedStyle(node)
+    if (overflowY === 'auto' || overflowY === 'scroll') return node
+  }
+  return null
+}
+
+function centerOffset(element: HTMLElement, scroller: HTMLElement): number {
+  const target = element.getBoundingClientRect()
+  const frame = scroller.getBoundingClientRect()
+  return (target.top + target.bottom) / 2 - (frame.top + frame.bottom) / 2
+}

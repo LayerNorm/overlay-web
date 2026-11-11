@@ -66,7 +66,7 @@ import {
   compareRoomMessageRecords,
   mergeRoomMessages,
   remoteAgentCommands,
-  roomMessageDomId,
+  roomMessageDomId, scrollRoomMessageIntoView,
   type RemoteAgentCommand,
   type RoomMessageRecord,
 } from './collaboration/room-message-view'
@@ -1685,10 +1685,8 @@ export function useMessageNavigation({
     setHighlightedMessageId(messageId)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        document.getElementById(roomMessageDomId(messageId))?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        })
+        const element = document.getElementById(roomMessageDomId(messageId))
+        if (element) scrollRoomMessageIntoView(element)
       })
     })
   }, [messagesRef, setRoomPanel, setThreadRootId])

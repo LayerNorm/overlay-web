@@ -538,14 +538,16 @@ html:has([data-desktop-panel]), html:has([data-desktop-panel]) body, html:has([d
 /* Skip layout and paint for off-screen room messages in long transcripts.
    The clip margin keeps the floating toolbar (-top-3) visible on hover, so
    moving the pointer across rows while scrolling does not toggle containment.
-   Focused or popover-owning rows stay uncontained so pickers are not clipped. */
+   Rows with an open picker or author card stay uncontained so it is not
+   clipped. Do not toggle on :focus-within: Chromium hangs when a click moves
+   focus out of such a row. */
 [data-room-message] {
   content-visibility: auto;
   contain-intrinsic-size: auto 6rem;
   overflow-clip-margin: 1rem;
 }
 
-[data-room-message]:is(:focus-within, :has([role='dialog'])) {
+[data-room-message]:has([role='dialog']) {
   content-visibility: visible;
 }
 

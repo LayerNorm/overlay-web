@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -268,4 +268,58 @@ test('default-agent identity reaches room authors and mention chips without name
   assert.equal(view.authorIsDefault, true)
   assert.equal(view.mentions?.[0]?.isDefault, true)
   assert.equal(toRoomMessageView({ message: record(), currentPrincipalId: 'me', authorName: 'Overlay' }).authorIsDefault, undefined)
+})
+
+function jumpHarness(offsets: number[]) {
+  const listeners = new Map<string, Set<() => void>>()
+  const on = (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn) }
+  const off = (type: string, fn: () => void) => { listeners.get(type)?.delete(fn) }
+  const fire = (type: string) => { for (const fn of [...(listeners.get(type) ?? [])]) fn() }
+  const calls: string[] = []
+  let timeout: (() => void) | null = null
+  const view = {
+    addEventListener: on, removeEventListener: off,
+    requestAnimationFrame: (fn: () => void) => { fn(); return 0 },
+    setTimeout: (fn: () => void) => { timeout = fn; return 1 },
+    clearTimeout: () => { timeout = null },
+    getComputedStyle: (node: { overflowY?: string }) => ({ overflowY: node.overflowY ?? 'visible' }),
+  }
+  const scroller = { overflowY: 'auto', parentElement: null, addEventListener: on, removeEventListener: off,
+    getBoundingClientRect: () => ({ top: 0, bottom: 800 }) }
+  const element = {
+    ownerDocument: { defaultView: view },
+    parentElement: { overflowY: 'visible', parentElement: scroller },
+    scrollIntoView: (options: ScrollIntoViewOptions) => { calls.push(String(options.behavior)) },
+    getBoundingClientRect: () => { const offset = offsets[Math.min(calls.length - 1, offsets.length - 1)]; return { top: 380 + offset, bottom: 420 + offset } },
+  } as unknown as HTMLElement
+  return { element, calls, fire, runTimeout: () => timeout?.() }
+}
+
+test('scrollRoomMessageIntoView re-centres a target that lands short once scrolling settles', () => {
+  const harness = jumpHarness([1500, 0])
+  scrollRoomMessageIntoView(harness.element)
+  assert.deepEqual(harness.calls, ['smooth'])
+  harness.fire('scrollend')
+  assert.deepEqual(harness.calls, ['smooth', 'auto'])
+  harness.runTimeout()
+  assert.deepEqual(harness.calls, ['smooth', 'auto'])
+})
+
+test('scrollRoomMessageIntoView leaves a centred target and a user scroll alone', () => {
+  const centred = jumpHarness([0])
+  scrollRoomMessageIntoView(centred.element)
+  centred.runTimeout()
+  assert.deepEqual(centred.calls, ['smooth'])
+  const user = jumpHarness([1500])
+  scrollRoomMessageIntoView(user.element)
+  user.fire('wheel')
+  user.fire('scrollend')
+  assert.deepEqual(user.calls, ['smooth'])
+})
+
+test('scrollRoomMessageIntoView stops after a bounded number of corrections', () => {
+  const harness = jumpHarness([1500])
+  scrollRoomMessageIntoView(harness.element, 2)
+  harness.fire('scrollend')
+  assert.deepEqual(harness.calls, ['smooth', 'auto', 'auto'])
 })
