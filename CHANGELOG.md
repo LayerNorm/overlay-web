@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Redesign Settings → Desktop in the Mac app: clear Dictation, Local models, Floating panels, Agent host and About sections; shortcuts shown as key caps you click to re-record; one Open button per panel with docking in a menu; an Agent host row with its status and start controls together instead of a divided form; and a laptop icon for Desktop in the settings sidebar instead of the generic gear.
 - Add bounded timeline, comparison, diagram and typed-vector components to generated UI, strict JSONL `specStream` final compilation, and transient read-only previews through durable personal and native chat streams.
 - Enable live generated-UI streams for new roots only when they admit `render_ui`, while retaining the workspace allowlist for other roots. Replace successful previews with validated final data at the same transcript anchor and append only missing streamed text.
 
