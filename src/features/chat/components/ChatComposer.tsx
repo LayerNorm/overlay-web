@@ -112,7 +112,7 @@ export function ChatComposer(props: ChatComposerProps) {
       <div
         className={`flex min-h-0 flex-col ${
           viewProps.showCenteredEmptyChat ? 'min-h-0 flex-1' : 'shrink-0'
-        } px-3 pb-3 sm:px-4 sm:pb-4 ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
+        } ${viewProps.embedded ? '' : 'px-3 pb-3 sm:px-4 sm:pb-4'} ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
       >
         {/* A new chat or automation keeps the composer where it stays once the conversation starts: the greeting (and
             any automation intro) is centred in the free space, suggestions sit just above the composer. */}
