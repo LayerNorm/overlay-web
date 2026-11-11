@@ -73,7 +73,7 @@ export function useWorkspaceSlack(workspaceId: string) {
 
   function connect() {
     const returnTo = new URL(window.location.href)
-    returnTo.searchParams.set('workspaceTab', 'slack')
+    returnTo.searchParams.set('workspace_tab', 'slack')
     const params = new URLSearchParams({ workspaceId, returnTo: `${returnTo.pathname}${returnTo.search}` })
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(`/api/v1/surfaces/slack/connect?${params}`)

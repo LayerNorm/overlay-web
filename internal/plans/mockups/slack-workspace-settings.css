@@ -1,0 +1,17 @@
+@import './agent-thread-activity.css';
+@source './slack-workspace-settings.tsx';
+@source '../../../packages/overlay-modules-react/src/settings/page-shell.tsx';
+@source '../../../packages/overlay-modules-react/src/shell.tsx';
+@source '../../../packages/overlay-modules-react/src/components/AppBreadcrumbs.tsx';
+@source '../../../packages/overlay-ui/src/components/ui/{input,textarea,select,alert-dialog,breadcrumb,tabs,switch,avatar}.tsx';
+@source '../../../src/components/identity/WorkspaceAvatar.tsx';
+@source '../../../packages/overlay-ui/src/components/primitives/{ListboxSelect,Tabs,SegmentedControl}.tsx';
+@source '../../../packages/overlay-ui/src/components/overlays/ConfirmDialog.tsx';
+
+.preview-bar > div { min-width: 0; }
+.preview-bar [data-slot=select-trigger] { width: 210px; }
+.main > [data-slot=app-screen-shell] { height: 100%; }
+@media(max-width: 767px) {
+  .preview-caption { font-size: 10px; }
+  .preview-bar [data-slot=select-trigger] { width: 195px; }
+}

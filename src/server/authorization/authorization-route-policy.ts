@@ -450,11 +450,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
   { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
-  // Surfaces: SurfaceService enforces bind permission (visible agent, no
-  // guests, personal agents only by their creator). connect/callback are browser
-  // navigations that check the Overlay session themselves; the Slack webhook
+  // SurfaceService enforces workspace admin/owner management. Identity linking
+  // requires membership and one-use, session-bound state. Browser navigations
+  // check the Overlay session themselves; the Slack webhook
   // is session-free and verifies Slack's request signature.
-  { path: '/api/v1/surfaces/connections', methods: { GET: authenticated() } },
+  { path: '/api/v1/surfaces/connections', methods: { GET: authenticated(), DELETE: authenticated() } },
   { path: '/api/v1/surfaces/connections/:connectionId/channels', methods: { GET: authenticated() } },
   {
     path: '/api/v1/surfaces/bindings',
@@ -463,6 +463,9 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/surfaces/bindings/:bindingId', methods: { DELETE: authenticated() } },
   { path: '/api/v1/surfaces/slack/connect', methods: { GET: authenticated() } },
   { path: '/api/v1/surfaces/slack/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/surfaces/slack/identity/start', methods: { GET: authenticated() } },
+  { path: '/api/v1/surfaces/slack/identity/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/surfaces/slack/identity/unlink', methods: { POST: authenticated() } },
   { path: '/api/v1/webhooks/slack', methods: { POST: publicPolicy() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },

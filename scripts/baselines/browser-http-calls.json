@@ -309,6 +309,21 @@
   "skills.deleteResponse": [
     "src/features/settings/lib/archived-actions.ts"
   ],
+  "surfaces.createBinding": [
+    "src/features/workspaces/components/use-workspace-slack.ts"
+  ],
+  "surfaces.disconnect": [
+    "src/features/workspaces/components/use-workspace-slack.ts"
+  ],
+  "surfaces.listChannels": [
+    "src/features/workspaces/components/use-workspace-slack.ts"
+  ],
+  "surfaces.removeBinding": [
+    "src/features/workspaces/components/use-workspace-slack.ts"
+  ],
+  "surfaces.unlinkIdentity": [
+    "src/features/workspaces/components/use-workspace-slack.ts"
+  ],
   "webhooks.createResponse": [
     "src/features/settings/components/WebhookSettings.tsx"
   ],
