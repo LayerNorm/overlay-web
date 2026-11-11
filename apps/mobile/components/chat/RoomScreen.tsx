@@ -894,82 +894,84 @@ export function RoomScreen({
 
       <KeyboardAvoidingView
         style={styles.body}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        {state.loading && state.messages.length === 0 ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={theme.textSecondary} />
-          </View>
-        ) : displayRecords.length === 0 ? (
-          <EmptyState
-            theme={theme}
-            icon={conversationType === 'channel' ? 'hash' : 'message-circle'}
-            title={isThread ? 'No replies yet' : 'No messages yet'}
-            description={
-              isThread
-                ? 'Start the thread below.'
-                : 'Send the first message to get things going.'
-            }
-          />
-        ) : (
-          <FlatList
-            ref={listRef}
-            data={displayRecords}
-            keyExtractor={(item) => item.clientNonce ?? item.id}
-            renderItem={renderItem}
-            contentContainerStyle={styles.listContent}
-            onScroll={(event) => {
-              const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
-              nearBottomRef.current =
-                contentSize.height - contentOffset.y - layoutMeasurement.height < 120
-            }}
-            scrollEventThrottle={120}
-            onContentSizeChange={() => {
-              if (nearBottomRef.current) {
-                listRef.current?.scrollToEnd({ animated: false })
+        <View style={styles.transcriptRegion}>
+          {state.loading && state.messages.length === 0 ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color={theme.textSecondary} />
+            </View>
+          ) : displayRecords.length === 0 ? (
+            <EmptyState
+              theme={theme}
+              icon={conversationType === 'channel' ? 'hash' : 'message-circle'}
+              title={isThread ? 'No replies yet' : 'No messages yet'}
+              description={
+                isThread
+                  ? 'Start the thread below.'
+                  : 'Send the first message to get things going.'
               }
-            }}
-            ListHeaderComponent={
-              <View>
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 18, paddingVertical: 16 }}><Feather name={isThread ? 'message-square' : conversationType === 'channel' ? 'hash' : 'users'} size={15} color={theme.textSecondary} /><Text style={{ color: theme.text, fontSize: 13, fontFamily: 'GeistSemibold' }}>{isThread ? 'Thread' : state.title.replace(/^#/, '') || 'Conversation'}</Text></View>
-                {isThread && rootMessage ? (
-                  <View style={[styles.rootMessageWrap, { borderBottomColor: theme.border }]}>
-                    <RoomMessageItem
-                      view={rootMessage}
-                      theme={theme}
-                      reactions={state.reactions[rootMessage.id]}
-                      pinned={state.pinnedIds.has(rootMessage.id)}
-                      saved={state.savedIds.has(rootMessage.id)}
-                      onToggleReaction={(emoji) => handleToggleReaction(rootMessage.id, emoji)}
-                      onLongPress={(target) => setActionsMessage(target)}
-                    />
-                    <View style={styles.threadHeaderRow}>
-                      <Text style={[styles.threadHeaderText, { color: theme.textSecondary }]}>
-                        Thread
-                      </Text>
+            />
+          ) : (
+            <FlatList
+              ref={listRef}
+              data={displayRecords}
+              keyExtractor={(item) => item.clientNonce ?? item.id}
+              renderItem={renderItem}
+              contentContainerStyle={styles.listContent}
+              onScroll={(event) => {
+                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+                nearBottomRef.current =
+                  contentSize.height - contentOffset.y - layoutMeasurement.height < 120
+              }}
+              scrollEventThrottle={120}
+              onContentSizeChange={() => {
+                if (nearBottomRef.current) {
+                  listRef.current?.scrollToEnd({ animated: false })
+                }
+              }}
+              ListHeaderComponent={
+                <View>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 18, paddingVertical: 16 }}><Feather name={isThread ? 'message-square' : conversationType === 'channel' ? 'hash' : 'users'} size={15} color={theme.textSecondary} /><Text style={{ color: theme.text, fontSize: 13, fontFamily: 'GeistSemibold' }}>{isThread ? 'Thread' : state.title.replace(/^#/, '') || 'Conversation'}</Text></View>
+                  {isThread && rootMessage ? (
+                    <View style={[styles.rootMessageWrap, { borderBottomColor: theme.border }]}>
+                      <RoomMessageItem
+                        view={rootMessage}
+                        theme={theme}
+                        reactions={state.reactions[rootMessage.id]}
+                        pinned={state.pinnedIds.has(rootMessage.id)}
+                        saved={state.savedIds.has(rootMessage.id)}
+                        onToggleReaction={(emoji) => handleToggleReaction(rootMessage.id, emoji)}
+                        onLongPress={(target) => setActionsMessage(target)}
+                      />
+                      <View style={styles.threadHeaderRow}>
+                        <Text style={[styles.threadHeaderText, { color: theme.textSecondary }]}>
+                          Thread
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                ) : null}
-                {!isThread && state.hasMore ? (
-                  <TouchableOpacity
-                    activeOpacity={0.75}
-                    onPress={() => void loadOlderRef.current()}
-                    style={styles.loadOlderButton}
-                  >
-                    {loadingOlder ? (
-                      <ActivityIndicator size="small" color={theme.textSecondary} />
-                    ) : (
-                      <Text style={[styles.loadOlderText, { color: theme.textSecondary }]}>
-                        Load earlier messages
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            }
-          />
-        )}
+                  ) : null}
+                  {!isThread && state.hasMore ? (
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      onPress={() => void loadOlderRef.current()}
+                      style={styles.loadOlderButton}
+                    >
+                      {loadingOlder ? (
+                        <ActivityIndicator size="small" color={theme.textSecondary} />
+                      ) : (
+                        <Text style={[styles.loadOlderText, { color: theme.textSecondary }]}>
+                          Load earlier messages
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              }
+            />
+          )}
+        </View>
 
         <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
           {editingMessageId ? (
@@ -1274,7 +1276,8 @@ export function RoomScreen({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  body: { flex: 1 },
+  body: { flex: 1, minHeight: 0 },
+  transcriptRegion: { flex: 1, minHeight: 0 },
   headerCenter: {
     alignItems: 'center',
     gap: 1,
@@ -1303,7 +1306,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listContent: {
-    paddingTop: 76,
     paddingBottom: spacing.sm,
   },
   daySeparator: {

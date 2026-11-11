@@ -103,7 +103,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="chat/[id]"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '',
             presentation: 'card',
             animation: 'slide_from_right',

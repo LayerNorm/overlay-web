@@ -11,7 +11,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { useShellAgents, useShellChats } from '../../hooks/useShellData'
 import { openAgentThread } from '../../services/shellService'
 import { mobileEntryState } from '../../lib/mobileEntryState'
-import { showShellExtensions } from '../../lib/shellNavigation'
+import { shellPanelForPathname, showShellExtensions, transitionShellPanelSelection } from '../../lib/shellNavigation'
 import { AccountSheet } from './AccountSheet'
 import { SidebarView, type SidebarChat } from './SidebarView'
 import { BootScreen, OfflineBanner, WorkspaceGate } from './EntryScreens'
@@ -27,9 +27,13 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
   const { closeDrawer } = useDrawer()
   const router = useRouter()
   const pathname = usePathname()
-  const [panel, setPanel] = useState<'agents' | 'chat'>(
-    pathname.startsWith('/chat') ? 'chat' : 'agents',
-  )
+  const [panelSelection, setPanelSelection] = useState(() => ({
+    pathname,
+    panel: shellPanelForPathname(pathname) ?? 'agents',
+  }))
+  const nextPanelSelection = transitionShellPanelSelection(panelSelection, pathname)
+  if (nextPanelSelection !== panelSelection) setPanelSelection(nextPanelSelection)
+  const panel = nextPanelSelection.panel
   const [scope, setScope] = useState<'personal' | 'workspace'>('workspace')
   const agents = useShellAgents(activeWorkspaceId, scope)
   const chats = useShellChats(activeWorkspaceId, scope)
@@ -61,7 +65,7 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
       error={actionError ?? (panel === 'agents' ? agents.error : chats.error)}
       onPanel={(id) => {
         if (id === 'agents' || id === 'chat') {
-          setPanel(id)
+          setPanelSelection({ pathname, panel: id })
           setActionError(null)
         } else navigate(`/(tabs)/${id === 'extensions' ? 'tools' : id}`)
       }}

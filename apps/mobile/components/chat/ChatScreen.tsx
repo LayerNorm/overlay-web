@@ -5,7 +5,6 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
-  PanResponder,
   Platform,
   StyleSheet,
   Text,
@@ -317,24 +316,6 @@ export function ChatScreen({
       return text.includes(q)
     })
   }, [messages, searchQuery])
-
-  // PanResponder to dismiss keyboard on downward swipe — attached to the whole screen
-  // Uses onMoveShouldSetPanResponder so it never blocks taps or typing
-  const swipeDownPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 20 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5,
-      onPanResponderGrant: () => {},
-      onPanResponderMove: () => {},
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 40) {
-          textInputRef.current?.blur()
-        }
-      },
-    }),
-    [],
-  )
 
   const composerFooterInset = Math.max(insets.bottom, spacing.md)
 
@@ -1373,7 +1354,7 @@ export function ChatScreen({
       }
     >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <KeyboardAvoidingView style={styles.screenPadding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} {...swipeDownPanResponder.panHandlers}>
+        <KeyboardAvoidingView style={styles.screenPadding} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 
           <View style={styles.threadSurface}>
@@ -1384,7 +1365,6 @@ export function ChatScreen({
                   {
                     backgroundColor: theme.surfaceElevated,
                     borderColor: theme.border,
-                    marginTop: insets.top + 64,
                   },
                 ]}
                 accessibilityRole="text"
@@ -1416,7 +1396,7 @@ export function ChatScreen({
                     }}
                   />
                 )}
-                contentContainerStyle={[styles.messageList, { paddingTop: insets.top + 70, paddingBottom: spacing.md }]}
+                contentContainerStyle={[styles.messageList, { paddingBottom: spacing.md }]}
                 showsVerticalScrollIndicator={false}
                 keyboardDismissMode="on-drag"
                 onContentSizeChange={() => {
@@ -1627,6 +1607,7 @@ const styles = StyleSheet.create({
   },
   threadSurface: {
     flex: 1,
+    minHeight: 0,
     overflow: 'hidden',
   },
   emptySurface: {

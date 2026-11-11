@@ -11,7 +11,7 @@ export function ChatSheet({ modelPicker = false, ...props }: Omit<React.Componen
 }
 
 export function ChatHeader({ theme, title, subtitle, busy = false, topInset = 0, onDrawer, onNew, onOptions, onBack }: { theme: Theme; title: string; subtitle?: string; busy?: boolean; topInset?: number; onDrawer: () => void; onNew?: () => void; onOptions?: () => void; onBack?: () => void }) {
-  return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingTop: topInset, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border }}><View style={{ height: 58, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12 }}>
+  return <View style={{ flexShrink: 0, paddingTop: topInset, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border }}><View style={{ height: 58, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12 }}>
     <IconButton icon={onBack ? ChevronLeft : PanelLeft} label={onBack ? 'Back' : 'Open navigation menu'} theme={theme} onPress={onBack ?? onDrawer} />
     <View style={{ flex: 1, gap: 3 }}><View style={{ flexDirection: 'row', gap: 5 }}><T style={{ color: theme.muted, fontSize: 11 }}>Workspace › Chats ›</T><T numberOfLines={1} style={{ color: theme.foreground, fontSize: 11, flex: 1 }}>{title}</T></View>{subtitle ? <T numberOfLines={1} style={{ color: theme.muted, fontSize: 10 }}>{subtitle}</T> : null}</View>
     {busy ? <ActivityIndicator size="small" color={theme.muted} /> : null}
