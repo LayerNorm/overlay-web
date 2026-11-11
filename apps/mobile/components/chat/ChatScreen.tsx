@@ -1367,6 +1367,7 @@ export function ChatScreen({
         <KeyboardAvoidingView
           style={styles.screenPadding}
           behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
+          enabled={Platform.OS !== 'android' || keyboardVisible}
         >
           <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 

@@ -898,6 +898,7 @@ export function RoomScreen({
       <KeyboardAvoidingView
         style={styles.body}
         behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
+        enabled={Platform.OS !== 'android' || keyboardVisible}
         keyboardVerticalOffset={0}
       >
         <View style={styles.transcriptRegion}>
