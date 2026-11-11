@@ -8,6 +8,7 @@ export type LifecycleEmailEvent = {
     | 'automation.failed'
     | 'api_key.changed'
     | 'workspace.invitation_sent'
+    | 'workspace.billing_requested'
     | 'workspace.mention'
     | 'workspace.dm_received'
     | 'billing.auto_topup_limit_reached'
@@ -62,6 +63,7 @@ function contentForEvent(event: LifecycleEmailEvent, appUrl: string): EmailConte
     case 'automation.failed': return automationFailedContent(event, appUrl)
     case 'api_key.changed': return apiKeyContent(event, appUrl)
     case 'workspace.invitation_sent': return invitationContent(event, appUrl)
+    case 'workspace.billing_requested': return billingRequestedContent(event, appUrl)
     case 'workspace.mention': return mentionContent(event, appUrl)
     case 'workspace.dm_received': return dmContent(event, appUrl)
     case 'billing.auto_topup_limit_reached': return topUpLimitContent(event, appUrl)
@@ -232,6 +234,20 @@ function apiKeyContent(event: LifecycleEmailEvent, appUrl: string): EmailContent
     heading: `API key ${action}`,
     reason: 'You received this security notice because an API key on your account changed.',
     subject: `An API key was ${action} on your Overlay account`,
+  }
+}
+
+function billingRequestedContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const requester = stringAttribute(event.attributes.requesterName) ?? 'A teammate'
+  const workspace = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
+  const workspaceId = stringAttribute(event.attributes.workspaceId) ?? stringAttribute(event.resource.id) ?? ''
+  return {
+    subject: `${requester} asked you to subscribe ${workspace} on Overlay`,
+    heading: `${requester} wants to run tasks in ${workspace}`,
+    body: `Your teammate ${requester} has a task ready in ${workspace}. An owner or admin needs to activate a workspace plan before tasks can run. Their draft is saved and will only start when they choose.`,
+    ctaLabel: 'Open billing',
+    ctaUrl: new URL(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`, appUrl).toString(),
+    reason: 'You received this because you are an owner or admin of this workspace.',
   }
 }
 

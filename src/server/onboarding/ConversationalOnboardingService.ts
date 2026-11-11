@@ -12,6 +12,7 @@ import {
   onboardingSteps,
   type OnboardingAction,
   type OnboardingProfile,
+  OnboardingWorkspaceContextSchema,
   type OnboardingReply,
   type OnboardingSession,
   type OnboardingStep,
@@ -40,9 +41,10 @@ export type OnboardingEffects = {
   collaboration: Pick<ConversationCollaborationRepository, 'addMessage' | 'addAgentMessage'>
   memories: Pick<MemoryService, 'get'>
   work: Pick<WorkService, 'get'>
-  workspaces: Pick<WorkspaceService, 'listInvitations'>
+  workspaces: Pick<WorkspaceService, 'listInvitations' | 'getOnboardingContext'>
 }
 export type OnboardingServiceDependencies = {
+  taskReply?: (userId: string, workspaceId: string, workspaceName: string) => Promise<string>
   requireExecution?: typeof requireWorkspaceExecution
   repository: OnboardingStateRepository
   effects: OnboardingEffects
@@ -109,6 +111,10 @@ export class ConversationalOnboardingService {
     const overlay = list.agents.find((agent) => agent.isDefault || agent.name.trim().toLowerCase() === 'overlay')
     if (!overlay) throw new OnboardingServiceError('Overlay agent is unavailable', 409, 'overlay_agent_unavailable')
     const thread = await this.deps.effects.agents.resolveMainThread({ actorUserId: userId, workspaceId, agentId: overlay.id })
+    const workspaceContext = await this.deps.effects.workspaces.getOnboardingContext({ actorUserId: userId, workspaceId })
+    const intro = workspaceContext.invited
+      ? `Welcome to ${workspaceContext.workspaceName}. ${workspaceContext.inviterName ? `${workspaceContext.inviterName} invited you to work here with Overlay.` : "I'll help you get set up here with Overlay."}`
+      : ONBOARDING_INTRO
     const profile = { name: '', about: '', daily: '' }
     const reply = await this.makeReply('name', profile, false, {})
     const runId = this.deps.createRunId?.() ?? randomUUID()
@@ -116,11 +122,11 @@ export class ConversationalOnboardingService {
     const session: OnboardingSession = {
       version: 1, flowVersion: 3, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
       agentId: overlay.id, agentPrincipalId: overlay.principalId, step: 'name', profile,
-      aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [],
+      aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [], workspaceContext,
     }
     return await this.commit(userId, workspaceId, 0, {
       version: 1, userId, session,
-      outbox: [{ clientNonce: this.nonce(userId, runId, 1, 'assistant'), content: `${ONBOARDING_INTRO}\n\n${reply.message}`, kind: 'assistant' }],
+      outbox: [{ clientNonce: this.nonce(userId, runId, 1, 'assistant'), content: `${intro}\n\n${reply.message}`, kind: 'assistant' }],
     }, false)
   }
 
@@ -165,7 +171,9 @@ export class ConversationalOnboardingService {
       const current = state.session
       if (current.step !== 'task') throw new OnboardingServiceError('Drafts are only accepted at the task step', 409, 'invalid_step')
       const revision = current.revision + 1
-      const reply = { ...current.reply, message: "I've saved your first task. We'll check your workspace budget before we start." }
+      const message = await this.deps.taskReply?.(userId, current.workspaceId, current.workspaceContext?.workspaceName ?? 'Your workspace')
+        ?? "I've saved your first task. We'll check your workspace budget before we start."
+      const reply = { ...current.reply, message }
       return { completed: false, state: { ...state, session: { ...current, revision, taskDraft: action.value, reply }, outbox: [
         { clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: action.value, kind: 'user' as const },
         { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const },
@@ -308,12 +316,16 @@ export class ConversationalOnboardingService {
     if (task.workspaceId !== current.workspaceId || task.createdBy !== userId) throw new OnboardingServiceError('Task is not available in this workspace', 403, 'task_forbidden')
     const startedDraft = Boolean(current.taskDraft && current.taskId === task.id
       && task.assigneePrincipalId === current.agentPrincipalId && task.assignmentExecution?.status === 'started')
+    const keepDraft = action.start === false
+    if (keepDraft && (!current.taskDraft || current.taskId !== task.id)) throw new OnboardingServiceError('Save this draft before opening Work.', 409, 'task_not_saved')
     // Completing an already-started task is recovery, not admission of more work.
-    if (!startedDraft) await (this.deps.requireExecution ?? requireWorkspaceExecution)({ userId, workspaceId: current.workspaceId, checkBudget: false })
-    if (current.taskDraft && !startedDraft) {
+    if (!keepDraft && !startedDraft) await (this.deps.requireExecution ?? requireWorkspaceExecution)({ userId, workspaceId: current.workspaceId, checkBudget: false })
+    if (!keepDraft && current.taskDraft && !startedDraft) {
       throw new OnboardingServiceError('Start your saved task before completing setup.', 409, 'task_not_started')
     }
-    const reply = await this.makeReply('complete', current.profile, current.aiEnabled, {})
+    const reply = keepDraft
+      ? { ...current.reply, message: 'Your draft is saved. You can start it from Work when your workspace is ready.' }
+      : await this.makeReply('complete', current.profile, current.aiEnabled, {})
     const revision = current.revision + 1
     return {
       completed: true,
@@ -410,10 +422,11 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   if (!isObjectRecord(value)) return false
   const session = value as Record<string, unknown>
   const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds']
-  const optionalKeys = ['flowVersion', 'member', 'taskId', 'taskDraft'].filter((key) => Object.hasOwn(session, key))
+  const optionalKeys = ['flowVersion', 'member', 'taskId', 'taskDraft', 'workspaceContext'].filter((key) => Object.hasOwn(session, key))
   if (!isExactKeys(value, [...sessionKeys, ...optionalKeys])) return false
   if (session.flowVersion !== undefined && ![2, 3].includes(session.flowVersion as number)) return false
   if (session.member !== undefined && typeof session.member !== 'boolean') return false
+  if (session.workspaceContext !== undefined && !OnboardingWorkspaceContextSchema.safeParse(session.workspaceContext).success) return false
   if (session.version !== 1
     || !OnboardingRunIdSchema.safeParse(session.runId).success
     || !Number.isInteger(session.revision)

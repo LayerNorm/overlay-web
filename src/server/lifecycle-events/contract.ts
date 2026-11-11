@@ -13,6 +13,7 @@ export type LifecycleEventName =
   | 'automation.failed'
   | 'api_key.changed'
   | 'workspace.invitation_sent'
+  | 'workspace.billing_requested'
   | 'workspace.mention'
   | 'workspace.dm_received'
   | 'billing.auto_topup_limit_reached'
@@ -119,6 +120,12 @@ type AutoTopUpLimitReachedLifecycleEvent = LifecycleEventBase<'billing.auto_topu
     periodEnd?: number
   }>
 
+type WorkspaceBillingRequestedLifecycleEvent = LifecycleEventBase<'workspace.billing_requested', { id: string; type: 'workspace' }, {
+  workspaceId: string
+  workspaceName: string
+  requesterName: string
+}>
+
 export type LifecycleEvent =
   | UserCreatedLifecycleEvent
   | SubscriptionChangedLifecycleEvent
@@ -127,6 +134,7 @@ export type LifecycleEvent =
   | AutomationLifecycleEvent<'automation.failed'>
   | ApiKeyChangedLifecycleEvent
   | WorkspaceInvitationSentLifecycleEvent
+  | WorkspaceBillingRequestedLifecycleEvent
   | WorkspaceMentionLifecycleEvent
   | WorkspaceDmReceivedLifecycleEvent
   | AutoTopUpLimitReachedLifecycleEvent
@@ -139,6 +147,7 @@ export type LifecycleEventInput =
   | Omit<AutomationLifecycleEvent<'automation.failed'>, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<ApiKeyChangedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<WorkspaceInvitationSentLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
+  | Omit<WorkspaceBillingRequestedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<WorkspaceMentionLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<WorkspaceDmReceivedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
   | Omit<AutoTopUpLimitReachedLifecycleEvent, 'classification' | 'destinations' | 'eventId' | 'occurredAt' | 'schemaVersion'>
@@ -151,6 +160,7 @@ const lifecycleEventDestinations: Record<LifecycleEventName, readonly LifecycleE
   'automation.failed': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'api_key.changed': ['audit', 'email', 'metrics', 'notification'],
   'workspace.invitation_sent': ['analytics', 'audit', 'email', 'metrics', 'notification'],
+  'workspace.billing_requested': ['audit', 'email'],
   'workspace.mention': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'workspace.dm_received': ['analytics', 'audit', 'email', 'metrics', 'notification'],
   'billing.auto_topup_limit_reached': ['audit', 'email', 'notification'],

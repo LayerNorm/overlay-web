@@ -143,3 +143,18 @@ test('top-up limit email names the workspace and limit and links to workspace bi
   assert.match(email.text, /section=workspace&workspace_tab=billing/)
   assert.match(email.html, /monthly top-up limit reached/)
 })
+
+test('billing request email identifies requester and workspace and links to workspace billing', () => {
+  const email = renderLifecycleEmail({
+    name: 'workspace.billing_requested', userId: 'owner-1', idempotencyKey: 'billing-request',
+    attributes: { requesterName: 'Ada <L>', workspaceName: 'Acme', workspaceId: 'team-a' },
+    resource: { id: 'team-a' },
+  }, 'https://getoverlay.io')
+  assert.equal(email.subject, 'Ada <L> asked you to subscribe Acme on Overlay')
+  assert.match(email.text, /task ready in Acme/)
+  assert.match(email.text, /only start when they choose/)
+  assert.match(email.html, /Ada &lt;L&gt;/)
+  assert.match(email.html, /Open billing/)
+  assert.match(email.text, /\/app\/w\/team-a\/settings\?section=workspace&workspace_tab=billing/)
+  assert.doesNotMatch(email.text, /[—–]/)
+})

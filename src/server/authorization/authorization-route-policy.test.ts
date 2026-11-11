@@ -76,3 +76,7 @@ function routePathForFile(file: string): string {
     .replace(/\[\.\.\.([^\]]+)\]/g, '*')
     .replace(/\[([^\]]+)\]/g, ':$1')
 }
+
+test('member billing request route requires authentication', () => {
+  assert.deepEqual(getAuthorizationRoutePolicy('POST', '/api/v1/workspaces/team-a/billing/request'), { access: 'authenticated' })
+})

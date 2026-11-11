@@ -1187,6 +1187,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/portal', reason: 'Workspace billing portal; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/top-ups', reason: 'Workspace billing top-ups; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/verify', reason: 'Workspace billing verification; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/billing/request', reason: 'Signed-browser-session billing request; service verifies active workspace membership and non-manager execution eligibility. Rate-limited and email-deduplicated per UTC day.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/governance', reason: 'Workspace governance management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/invitations', reason: 'Workspace invitation management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/invitations/[invitationId]', reason: 'Workspace invitation detail; boundary definition pending. Protected by workspace authorization.' },

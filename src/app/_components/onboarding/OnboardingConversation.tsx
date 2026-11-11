@@ -15,6 +15,7 @@ import { readOnboardingDraft, writeOnboardingDraft } from './onboarding-drafts'
 import { MultiChoices, SingleChoices } from './OnboardingChoices'
 import { OnboardingContext, OnboardingInvites } from './OnboardingContext'
 import { OnboardingPayment } from './OnboardingPayment'
+import type { WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
 import { OnboardingEmployees } from './OnboardingEmployees'
 import { OnboardingTools } from './OnboardingTools'
 import styles from './onboarding.module.css'
@@ -32,9 +33,9 @@ const PLACEHOLDERS: Partial<Record<OnboardingSession['step'], string>> = {
   task: 'Or describe a task',
 }
 
-type Props = { session: OnboardingSession; onChange(result: OnboardingSessionResponse): void; onShowWork(): void; onSkip(): void }
+type Props = { session: OnboardingSession; billingSummary: WorkspaceBillingSummaryResponse; workspaceName: string; personal: boolean; onChange(result: OnboardingSessionResponse): void; onShowWork(): void; onSkip(): void }
 
-export function OnboardingConversation({ session, onChange, onShowWork, onSkip }: Props) {
+export function OnboardingConversation({ session, billingSummary, workspaceName, personal, onChange, onShowWork, onSkip }: Props) {
   const { user } = useAuth()
   const [input, setInput] = useState(() => readOnboardingDraft(session))
   const [inputRevision, setInputRevision] = useState(0)
@@ -154,12 +155,22 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
     await act({ action: 'finish', runId: prepared.runId, revision: prepared.revision, taskId: prepared.taskId! })
   })
 
+  const openDraft = () => perform(async () => {
+    const prepared = await prepareTask()
+    await act({ action: 'finish', runId: prepared.runId, revision: prepared.revision, taskId: prepared.taskId!, start: false })
+  })
+  const activePaidPlan = billingSummary.subscription.planKind === 'paid' && billingSummary.subscription.status === 'active'
+  const nameHint = billingSummary.executionAccess?.canExecute || activePaidPlan
+    ? `${workspaceName} is on a paid plan. Running tasks uses the workspace budget.`
+    : !billingSummary.canManage ? `${workspaceName} isn't subscribed yet. You can finish setup now.`
+      : session.workspaceContext?.invited ? `${workspaceName} isn't subscribed yet. You can subscribe when you start your first task.`
+        : 'Set up your workspace first. Running tasks starts at $8/month.'
   const typing = [...onboardingProfileSteps(session), 'task'].includes(session.step) && !taskDraft
   const labels = onboardingChoices(session).map((choice) => choice.label)
   const firstName = user?.firstName?.trim()
   const controls = (): ReactNode => {
     switch (session.step) {
-      case 'name': return <>{firstName ? <SingleChoices choices={[firstName]} disabled={busy} onPick={answer} /> : null}<p className="mt-3 text-xs text-muted-foreground">Set up your workspace first. Running tasks starts at $8/month.</p></>
+      case 'name': return <>{firstName ? <SingleChoices choices={[firstName]} disabled={busy} onPick={answer} /> : null}<p className="mt-3 text-xs text-muted-foreground">{nameHint}</p></>
       case 'about': case 'team': case 'website': return <SingleChoices choices={labels} disabled={busy} onPick={answer} />
       case 'daily': return <MultiChoices choices={labels} selected={picked} disabled={busy} onContinue={answerPicked}
         onToggle={(label) => setPicked((current) => { const next = new Set(current); if (!next.delete(label)) next.add(label); return next })} />
@@ -169,7 +180,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
       case 'memories': return <OnboardingContext disabled={busy} onSave={saveMemories} onSkip={skip} />
       case 'teammates': return <OnboardingInvites disabled={busy} onInvite={invite} onSkip={skip} />
       case 'task': return taskDraft
-        ? <OnboardingPayment key={`${session.workspaceId}:${session.runId}`} workspaceId={session.workspaceId} title={taskDraft} disabled={busy} onPrepare={prepareTask} onStart={startTask} onEdit={() => { replaceInput(taskDraft); setTaskDraft(null) }} />
+        ? <OnboardingPayment key={`${session.workspaceId}:${session.runId}`} workspaceId={session.workspaceId} workspaceName={workspaceName} personal={personal} billingContactName={session.workspaceContext?.billingContactName} summary={billingSummary} showReply={false} onOpenWork={openDraft} title={taskDraft} disabled={busy} onPrepare={prepareTask} onStart={startTask} onEdit={() => { replaceInput(taskDraft); setTaskDraft(null) }} />
         : <SingleChoices choices={labels} disabled={busy} onPick={answer} />
       case 'complete': return <Button variant="primary" size="sm" onClick={onShowWork}>Open Work<ArrowRight className="size-3.5" /></Button>
       default: return null

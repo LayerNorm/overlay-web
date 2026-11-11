@@ -225,6 +225,14 @@ type DynamicEndpointRateLimit = {
 
 const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
   {
+    method: 'POST',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/billing\/request$/,
+    limits: [
+      { bucket: 'workspace-billing:request:ip', limit: 30, windowMs: TEN_MINUTES },
+      { bucket: 'workspace-billing:request:user', limit: 5, windowMs: TEN_MINUTES },
+    ],
+  },
+  {
     method: 'GET',
     pattern: /^\/api\/v1\/agents\/[^/]+(\/(bundle|threads|automations))?$/,
     limits: [
