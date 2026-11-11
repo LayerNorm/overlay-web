@@ -4,11 +4,13 @@ import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
 import { useAuth } from '../../contexts/AuthContext'
+import { Button } from '../../components/shell/primitives'
 
 export default function AuthTransferScreen(): React.ReactElement {
   const router = useRouter()
   const { theme } = useTheme()
   const { isAuthenticated, isLoading, authError } = useAuth()
+  const failed = !isLoading && (!isAuthenticated || !!authError)
 
   const statusCopy = useMemo(() => {
     if (authError) {
@@ -53,11 +55,12 @@ export default function AuthTransferScreen(): React.ReactElement {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.card, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-        <ActivityIndicator color={theme.textSecondary} />
+        {!failed && <ActivityIndicator color={theme.textSecondary} />}
         <Text style={[styles.title, { color: theme.text }]}>Finishing sign-in</Text>
         <Text style={[styles.description, { color: authError ? '#EF4444' : theme.textSecondary }]}>
           {statusCopy}
         </Text>
+        {failed && <Button theme={theme} onPress={() => router.replace('/auth-flow')}>Try again</Button>}
       </View>
     </SafeAreaView>
   )

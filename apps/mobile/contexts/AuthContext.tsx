@@ -17,6 +17,7 @@ import {
   loadAuthSession,
   refreshAuthSession,
   saveAuthSession,
+  saveNativeAuthSession,
   saveRefreshedAuthSession,
 } from '../services/authService'
 import { clearBootstrapCache } from '../services/bootstrapService'
@@ -123,8 +124,7 @@ export function AuthProvider({
           return false
         }
 
-        await saveAuthSession(nativeSession)
-        await hydrateSession(nativeSession)
+        await hydrateSession(await saveNativeAuthSession(nativeSession))
         console.log('[AuthContext] consumeIncomingUrl: native session established for user', nativeSession.user?.id)
         return true
       }
@@ -171,8 +171,7 @@ export function AuthProvider({
   const completeNativeSignIn = useCallback(
     async (nextSession: AuthSession) => {
       if (getAccountDeletionState().busy) throw new Error('Finish the account action before signing in.')
-      await saveAuthSession(nextSession)
-      await hydrateSession(nextSession)
+      await hydrateSession(await saveNativeAuthSession(nextSession))
       setAuthError(null)
     },
     [hydrateSession],

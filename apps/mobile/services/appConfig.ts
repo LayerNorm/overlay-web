@@ -9,11 +9,6 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined
 }
 
-function readEnv(name: string): string | undefined {
-  const processEnv = globalThis.process?.env as Record<string, string | undefined> | undefined
-  return readString(processEnv?.[name])
-}
-
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>
 
 function normalizeBaseUrl(value: string): string {
@@ -28,7 +23,7 @@ function normalizeBaseUrl(value: string): string {
 
 export const AUTH_BASE_URL =
   normalizeBaseUrl(
-    readEnv('EXPO_PUBLIC_AUTH_BASE_URL') ??
+    readString(process.env.EXPO_PUBLIC_AUTH_BASE_URL) ??
       readString(extra.authBaseUrl) ??
       'https://www.getoverlay.io',
   )

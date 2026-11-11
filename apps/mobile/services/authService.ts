@@ -10,6 +10,8 @@ const PKCE_VERIFIER_CHARSET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
 
 const FETCH_TIMEOUT_MS = 10_000
+const nativeCallbackFlights = new Map<string, Promise<AuthSession | null>>()
+const nativeSessionWrites = new Map<string, Promise<void>>()
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController()
@@ -127,6 +129,19 @@ export function saveAuthSession(session: AuthSession): Promise<void> {
   return serializeSessionWrite(() => SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(session)))
 }
 
+export async function saveNativeAuthSession(session: AuthSession): Promise<AuthSession> {
+  let write = nativeSessionWrites.get(session.accessToken)
+  if (!write) {
+    write = saveAuthSession(session)
+    nativeSessionWrites.set(session.accessToken, write)
+    void write.catch(() => nativeSessionWrites.delete(session.accessToken))
+  }
+  await write
+  const current = await loadAuthSession()
+  if (!current || current.user.id !== session.user.id) throw new Error('Sign-in changed. Start sign-in from Overlay again.')
+  return current
+}
+
 export function saveRefreshedAuthSession(session: AuthSession, previous: AuthSession): Promise<void> {
   return serializeSessionWrite(async () => {
     const current = await loadAuthSession()
@@ -139,6 +154,8 @@ export function saveRefreshedAuthSession(session: AuthSession, previous: AuthSes
 }
 
 export async function clearAuthSession(): Promise<void> {
+  nativeCallbackFlights.clear()
+  nativeSessionWrites.clear()
   await serializeSessionWrite(() => SecureStore.deleteItemAsync(AUTH_STORAGE_KEY))
   try {
     await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
@@ -153,6 +170,8 @@ export async function clearAuthSession(): Promise<void> {
  * store code_verifier locally, and send the verifier when redeeming overlay:// transfer tokens.
  */
 export async function clearPkceVerifier(): Promise<void> {
+  nativeCallbackFlights.clear()
+  nativeSessionWrites.clear()
   try {
     await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
     await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
@@ -226,13 +245,15 @@ export async function buildNativeAuthRequest(args: {
 
   const data = (await response.json().catch(() => ({}))) as NativeAuthorizeResponse
   if (!response.ok || !data.authorizationUrl) {
-    throw new Error(data.error || `Native authorization failed with status ${response.status}`)
+    throw new Error(typeof data.error === 'string' ? data.error : 'Unable to start sign-in. Check access to this server and try again.')
   }
 
   await SecureStore.setItemAsync(
     NATIVE_AUTH_PENDING_STORAGE_KEY,
     JSON.stringify({ codeVerifier, state, purpose: args.purpose } satisfies PendingNativeAuthRequest),
   )
+  nativeCallbackFlights.clear()
+  nativeSessionWrites.clear()
 
   return { authorizationUrl: data.authorizationUrl, codeVerifier, state }
 }
@@ -252,28 +273,38 @@ export async function exchangeNativeAuthCode(args: {
 
   const data = (await response.json().catch(() => ({}))) as NativeExchangeResponse
   if (!response.ok || !data.session) {
-    throw new Error(data.error || `Native session exchange failed with status ${response.status}`)
+    throw new Error(typeof data.error === 'string' ? data.error : 'Unable to finish sign-in. Check access to this server and try again.')
   }
 
   return data.session
 }
 
-export async function completeNativeAuthCallback(callbackUrl: string): Promise<AuthSession | null> {
-  let parsedUrl: URL
+export function isNativeAuthCallbackUrl(callbackUrl: string): boolean {
   try {
-    parsedUrl = new URL(callbackUrl)
+    const url = new URL(callbackUrl)
+    if (url.username || url.password) return false
+    return (
+      (url.protocol === 'overlay:' && url.hostname === 'auth' && !url.port && url.pathname === '/callback') ||
+      (url.origin === new URL(AUTH_BASE_URL).origin && url.pathname === '/auth/native/callback')
+    )
   } catch {
-    return null
+    return false
   }
+}
 
-  if (
-    parsedUrl.protocol !== 'https:' ||
-    parsedUrl.hostname !== 'www.getoverlay.io' ||
-    parsedUrl.pathname !== '/auth/native/callback'
-  ) {
-    return null
-  }
+export function completeNativeAuthCallback(callbackUrl: string): Promise<AuthSession | null> {
+  if (!isNativeAuthCallbackUrl(callbackUrl)) return Promise.resolve(null)
+  const parsedUrl = new URL(callbackUrl)
+  const key = JSON.stringify([parsedUrl.searchParams.get('state'), parsedUrl.searchParams.get('code'), parsedUrl.searchParams.get('error')])
+  const pending = nativeCallbackFlights.get(key)
+  if (pending) return pending
+  const request = consumeNativeAuthCallback(parsedUrl)
+  nativeCallbackFlights.set(key, request)
+  void request.catch(() => { if (nativeCallbackFlights.get(key) === request) nativeCallbackFlights.delete(key) })
+  return request
+}
 
+async function consumeNativeAuthCallback(parsedUrl: URL): Promise<AuthSession | null> {
   const error = parsedUrl.searchParams.get('error')
   const pendingPurpose = await SecureStore.getItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
   let interruptedDeletion = false
@@ -316,6 +347,8 @@ export async function completeNativeAuthCallback(callbackUrl: string): Promise<A
     codeVerifier: pending.codeVerifier,
   })
 
+  if (await SecureStore.getItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY) !== pendingJson)
+    throw new Error('Sign-in changed. Start sign-in from Overlay again.')
   await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
   return session
 }
@@ -369,13 +402,16 @@ export async function consumeTransferToken(token: string): Promise<AuthSession> 
     throw new Error(`Session transfer failed: ${response.status} ${errorText}`)
   }
 
+  const data = await response.json().catch(() => null) as TransferResponse | null
+  if (!data || !data.accessToken || !data.refreshToken || !data.userId)
+    throw new Error('The sign-in server did not return a session. Start sign-in from Overlay again.')
+
   try {
     await SecureStore.deleteItemAsync(PKCE_VERIFIER_STORAGE_KEY)
   } catch {
     // ignore
   }
 
-  const data = (await response.json()) as TransferResponse
   console.log('[Auth] consumeTransferToken: success, userId=%s expiresAt=%s', data.userId, data.expiresAt ?? 'none')
 
   return {

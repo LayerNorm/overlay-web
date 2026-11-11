@@ -204,7 +204,7 @@ test('deletion callback routing and process-restart protection do not establish 
   })
   assert.equal(
     await native.completeNativeAuthCallback(
-      'https://www.getoverlay.io/auth/native/callback?state=state&code=code',
+      'https://isolated.invalid/auth/native/callback?state=state&code=code',
     ),
     null,
   )
