@@ -170,6 +170,7 @@ import type * as lib_resourceScope from "../lib/resourceScope.js";
 import type * as lib_sandboxSpendLimits from "../lib/sandboxSpendLimits.js";
 import type * as lib_scopeMutations from "../lib/scopeMutations.js";
 import type * as lib_staging from "../lib/staging.js";
+import type * as lib_threadPullRequests from "../lib/threadPullRequests.js";
 import type * as lib_usageMarkup from "../lib/usageMarkup.js";
 import type * as lib_userMessageMetadata from "../lib/userMessageMetadata.js";
 import type * as lib_workDependencies from "../lib/workDependencies.js";
@@ -383,6 +384,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sandboxSpendLimits": typeof lib_sandboxSpendLimits;
   "lib/scopeMutations": typeof lib_scopeMutations;
   "lib/staging": typeof lib_staging;
+  "lib/threadPullRequests": typeof lib_threadPullRequests;
   "lib/usageMarkup": typeof lib_usageMarkup;
   "lib/userMessageMetadata": typeof lib_userMessageMetadata;
   "lib/workDependencies": typeof lib_workDependencies;
