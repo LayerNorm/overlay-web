@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.
+
 - Show Jump to latest whenever messages remain below the visible conversation, even with no unread messages or while an agent turn is anchored. Jumping releases the turn anchor and scrolls to the bottom.
 
 - Record last-observed GitHub pull-request associations from successful, server-authorized agent tool results and include them in authenticated workspace-thread projections.

@@ -23,7 +23,6 @@ function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { act
       onOpenThread={noop}
       onOpenAutomation={noop}
       onArchiveThread={noop}
-      onDeleteThread={noop}
     />,
   )
 }
@@ -66,12 +65,12 @@ test('agent threads expose a scoped tree hook without redundant labels or creati
   assert.match(html, /Paused/)
 })
 
-test('only the open thread is marked current, and each thread has archive and delete actions', () => {
+test('only the open thread is marked current, and threads offer archive but not delete', () => {
   const html = render(bundle, { activeConversationId: 'c_plan' })
   assert.equal(html.match(/aria-current="page"/g)?.length, 1)
   assert.equal(html.match(/data-active="true"/g)?.length, 1)
   assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 2)
-  assert.equal(html.match(/aria-label="Delete thread"/g)?.length, 2)
+  assert.doesNotMatch(html, /aria-label="Delete thread"/)
   // Revealed by hovering or focusing the thread's own row, never the whole agent.
   assert.doesNotMatch(html, /group-hover\/menu-item:opacity-100/)
   assert.match(html, /group-hover\/menu-sub-item:opacity-100/)
@@ -127,11 +126,11 @@ test('thread pull requests expose lifecycle icons without stealing the thread ac
   assert.match(html, /lucide-git-pull-request-draft/)
   assert.match(html, /lucide-git-merge/)
   assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 1)
-  assert.match(html, /<div class="mr-14 shrink-0"><button[^>]*aria-label="Pull requests:/)
+  assert.match(html, /<div class="mr-8 shrink-0"><button[^>]*aria-label="Pull requests:/)
   assert.doesNotMatch(html, /(?:md:mr-|group-(?:hover|focus-within)\/menu-sub-item:mr-)/)
   assert.match(html, /flex-1 truncate/)
   assert.match(html, /group-focus-within\/menu-sub-item:opacity-100/)
-  assert.equal(html.match(/aria-label="Delete thread"/g)?.length, 1)
+  assert.doesNotMatch(html, /aria-label="Delete thread"/)
 })
 
 test('agent subtitles retain working and ready counts and preserve the chief fallback', () => {
