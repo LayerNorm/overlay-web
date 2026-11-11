@@ -256,6 +256,7 @@ test('search and notifications resolve personal chats, rooms and threads without
     const alerts = []
     const router = { push: route => routes.push(route) }
     const routing = load('lib/notificationRouting.ts', {
+      './pushRoutes': { parsePushUrl: () => null },
       'react-native': { Alert: { alert: (...args) => alerts.push(args) } },
       '../services/convexClient': convex,
     })

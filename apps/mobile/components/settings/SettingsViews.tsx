@@ -463,7 +463,7 @@ export function SettingsView({
                 data.permission ?? 'Not requested',
               )}
               {copy(
-                'Background push delivery is not available yet. Banner choices above are device-only. Conversation notification levels below sync with your workspace.',
+                'Background notifications require device permission. Banner choices above apply on this device while using the app. Conversation notification levels below sync with your workspace.',
               )}
               <ResourceLabel theme={theme}>Conversation notifications</ResourceLabel>
               {data.rooms?.length

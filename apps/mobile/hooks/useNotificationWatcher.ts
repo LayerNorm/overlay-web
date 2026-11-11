@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
+import { AppState } from 'react-native'
 import { useNativeDataReady } from '../contexts/ConvexAuthProvider'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { subscribeNotifications } from '../services/collaborationService'
 import { presentLocalBanner } from '../services/notificationsService'
 import { useAuth } from '../contexts/AuthContext'
 import { allowsBanner, loadBannerPreferences } from '../services/bannerPreferencesService'
+import { hasRegisteredPushToken } from '../services/pushRegistrationService'
 
 export function useNotificationWatcher(enabled: boolean): void {
   const ready = useNativeDataReady()
@@ -14,17 +16,38 @@ export function useNotificationWatcher(enabled: boolean): void {
     if (!enabled || !ready || !activeWorkspaceId || !user?.id) return
     let active = true
     let seen: Set<string> | null = null
-    const stop = subscribeNotifications(items => {
+    const stop = subscribeNotifications((items) => {
       const previous = seen
-      seen = new Set(items.map(item => item.id))
+      seen = new Set(items.map((item) => item.id))
       if (!previous) return
       for (const item of items) {
-        if (item.readAt || previous.has(item.id)) continue
-        void loadBannerPreferences(user.id).then(preferences => active && allowsBanner(preferences, item.type, item.conversationType) ? presentLocalBanner({ title: item.title, body: item.body, data: {
-          kind: 'workspace-notification', conversationId: item.conversationId, threadRootMessageId: item.threadRootMessageId,
-        } }) : undefined).catch(() => undefined)
+        if (
+          item.readAt ||
+          previous.has(item.id) ||
+          AppState.currentState !== 'active' ||
+          hasRegisteredPushToken(user.id)
+        )
+          continue
+        void loadBannerPreferences(user.id)
+          .then((preferences) =>
+            active && allowsBanner(preferences, item.type, item.conversationType)
+              ? presentLocalBanner({
+                  title: item.title,
+                  body: item.body,
+                  data: {
+                    kind: 'workspace-notification',
+                    conversationId: item.conversationId,
+                    threadRootMessageId: item.threadRootMessageId,
+                  },
+                })
+              : undefined,
+          )
+          .catch(() => undefined)
       }
     })
-    return () => { active = false; stop() }
+    return () => {
+      active = false
+      stop()
+    }
   }, [enabled, ready, activeWorkspaceId, user?.id])
 }

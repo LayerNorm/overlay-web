@@ -16,9 +16,9 @@ After typing `DELETE`, the app requests a new hosted WorkOS PKCE authorization w
 
 The request sends the fresh Bearer token and `confirmation: "DELETE"` to `POST /api/account/delete` with `credentials: 'omit'`. Only a successful deletion response triggers local sign-out. Cancellation, wrong account, stale/rejected token, network/server errors and malformed responses leave the local account intact. PKCE state/listeners/timeouts are cleaned up. Account settings remain reachable from the no-workspace gate; deletion does not require joining a workspace first.
 
-## Explicit backend gaps and supported notification behavior
+## Notification behavior (Phase 2f history; push follow-up implemented)
 
-**No Expo/APNs/FCM token-registration endpoint or persistence path was found** in the current web API, API client or Convex tree. As authorized, nothing fabricates registration or promises background delivery. Device notification settings provide the meaningful pre-prompt trigger; root startup no longer requests push registration. Continuing requests Expo notification permission and retains the Expo token (or device fallback) locally under the signed-in user's key. A backend registration/delivery slice remains required.
+At Phase 2f there was no Expo/APNs/FCM token backend. The push follow-up now uses native Convex registration and Expo delivery; see `PUSH_QA.md` for the backend dependency and current contract. Startup only registers when permission is already granted; Settings remains the permission-request trigger. Raw device-token fallback is never uploaded to the Expo-only backend.
 
 There is also no public native read/write API for global five-category workspace notification preferences. The UI clearly separates device-local foreground-banner categories from persisted conversation notification levels. Conversation list/state and all/mentions/muted changes use `collaboration.roomList.list` and `collaboration.rooms.state/updateMyState`, matching web. Banner toggles do not remove activity history or claim server-wide persistence.
 
@@ -49,5 +49,5 @@ Fixtures and mocked transport tests establish presentation and adapter behavior,
 - Create/edit/delete a disposable memory; invite/resend/cancel a disposable member invitation with the appropriate workspace role. Switch workspace during pending operations and confirm the old dialog closes.
 - Connect an existing provider subscription through hosted OAuth; cancel an abandoned flow; verify active state arrives through Convex. Never purchase through mobile.
 - Change a conversation's notification level and confirm it on web; independently disable a device banner category and ensure the activity feed still retains that event.
-- Open device notification settings, inspect the pre-prompt, then Continue; verify OS permission/local token storage. Do not claim background delivery until the backend exists.
+- Open device notification settings, inspect the pre-prompt, then Continue; verify permission, local token capture and native backend registration. Verify real background delivery separately on the isolated backend and a credentialed physical device.
 - On iOS with the voice extension, grant/deny microphone permission, change retention and clear local history. Verify Android's calm unsupported state.

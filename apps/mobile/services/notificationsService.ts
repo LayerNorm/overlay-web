@@ -7,13 +7,8 @@ import { Platform } from 'react-native'
  * Push + foreground notification plumbing.
  *
  * Two layers:
- * 1. Registration groundwork — permission + native/Expo push token captured
- *    and persisted locally (`overlay-push-token:<uid>`) so the deferred
- *    server token-store endpoint (plan §9.3) only needs the upload call.
- * 2. Foreground in-app banners — while the server has no push fan-out, the
- *    unread-notification watcher fires local notifications; the handler
- *    below lets them present as real in-app banners instead of being
- *    swallowed by the foreground default.
+ * Token capture is separate from authenticated backend registration. Local
+ * banners remain a fallback when a device cannot register an Expo token.
  */
 
 const PUSH_TOKEN_KEY_PREFIX = 'overlay-push-token'
@@ -27,22 +22,34 @@ export interface StoredPushToken {
 }
 
 let handlerInstalled = false
+let remoteFilter: ((url: string) => Promise<boolean>) | null = null
+export function setRemoteNotificationFilter(filter: typeof remoteFilter) {
+  remoteFilter = filter
+}
 
 export function initNotificationHandler(): void {
   if (handlerInstalled) return
   handlerInstalled = true
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+    handleNotification: async (notification) => {
+      const url = notification?.request?.content?.data?.url
+      const show = typeof url !== 'string' || Boolean(await remoteFilter?.(url).catch(() => false))
+      return {
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: show,
+        shouldShowList: show,
+      }
+    },
   })
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('default', { name: 'Default', importance: Notifications.AndroidImportance.DEFAULT })
+  if (Platform.OS === 'android')
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    })
   const current = await Notifications.getPermissionsAsync()
   if (current.granted) return true
   if (!current.canAskAgain) return false
@@ -54,11 +61,17 @@ export async function requestNotificationPermission(): Promise<boolean> {
  * Captures the best available push token and persists it under the user id.
  * Expo push tokens need an EAS projectId; when the project config lacks one
  * (local dev builds) we fall back to the raw APNs/FCM device token. Either
- * way the token is stored so the §9 endpoint only needs an upload call.
+ * way the token is stored locally; only Expo tokens can be registered remotely.
  */
-export async function preparePushRegistration(userId: string): Promise<StoredPushToken | null> {
+export async function preparePushRegistration(
+  userId: string,
+  allowPrompt = true,
+  shouldPersist: () => boolean = () => true,
+): Promise<StoredPushToken | null> {
   if (!Device.isDevice) return null
-  const granted = await requestNotificationPermission()
+  const granted = allowPrompt
+    ? await requestNotificationPermission()
+    : (await Notifications.getPermissionsAsync()).granted
   if (!granted) return null
   let stored: StoredPushToken | null = null
   try {
@@ -84,6 +97,7 @@ export async function preparePushRegistration(userId: string): Promise<StoredPus
       stored = null
     }
   }
+  if (!shouldPersist()) return null
   if (stored) {
     await AsyncStorage.setItem(`${PUSH_TOKEN_KEY_PREFIX}:${userId}`, JSON.stringify(stored))
   }

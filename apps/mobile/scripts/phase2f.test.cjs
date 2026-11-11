@@ -273,6 +273,9 @@ test('push permission is not requested at launch; explicit permission captures o
   assert.equal(calls[0], 'channel')
   assert.equal(calls.filter((value) => value === 'permission').length, 1)
   assert.equal(JSON.parse(store.values.get('overlay-push-token:viewer')).token, 'local-expo-token')
+  store.values.delete('overlay-push-token:viewer')
+  assert.equal(await service.preparePushRegistration('viewer', false, () => false), null)
+  assert.equal(store.values.has('overlay-push-token:viewer'), false)
   assert.doesNotMatch(
     fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8'),
     /preparePushRegistration/,

@@ -20,6 +20,7 @@ import {
   saveRefreshedAuthSession,
 } from '../services/authService'
 import { clearBootstrapCache } from '../services/bootstrapService'
+import { unregisterPushRegistration } from '../services/pushRegistrationService'
 import { getAccountDeletionState, isAccountDeletionCallback } from '../services/accountDeletionService'
 import { clearUiSettingsCache } from '../services/settingsService'
 import { clearVoiceAuthSessionFromAppGroup, disableBackgroundVoice } from '../services/voiceService'
@@ -155,6 +156,8 @@ export function AuthProvider({
   }, [applySignedOutState, validateStoredSession])
 
   const signOut = useCallback(async () => {
+    const current = await loadAuthSession()
+    if (current) await unregisterPushRegistration(current.user.id)
     await clearAuthSession()
     await Promise.allSettled([
       clearBootstrapCache(),

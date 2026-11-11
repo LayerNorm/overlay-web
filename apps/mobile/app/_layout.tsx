@@ -12,12 +12,9 @@ import { AppSessionProvider } from '../contexts/AppSessionContext'
 import { WorkspaceProvider } from '../contexts/WorkspaceContext'
 import { ConvexAuthProvider } from '../contexts/ConvexAuthProvider'
 import { SettingsLiveBridge } from '../components/settings/SettingsLiveBridge'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useNotificationWatcher } from '../hooks/useNotificationWatcher'
-import { openNotificationDestination } from '../lib/notificationRouting'
-import {
-  addNotificationResponseListener,
-  initNotificationHandler,
-} from '../services/notificationsService'
+import { initNotificationHandler } from '../services/notificationsService'
 
 initNotificationHandler()
 
@@ -78,28 +75,8 @@ function RootLayoutNav(): React.ReactElement {
   const { isAuthenticated } = useAuth()
   useDictateDeepLink()
   useVoiceAuthSync()
-  // Foreground banners for newly arrived unread notifications while server
-  // push remains deferred (§9.3).
   useNotificationWatcher(isAuthenticated)
-
-
-  // Banner taps route to the same destination as the Activity feed row.
-  useEffect(() => {
-    const sub = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as {
-        kind?: string
-        conversationId?: string
-        threadRootMessageId?: string
-      }
-      if (data?.kind !== 'workspace-notification' || !data.conversationId) return
-      void openNotificationDestination(router, {
-        conversationId: data.conversationId,
-        threadRootMessageId: data.threadRootMessageId,
-      })
-    })
-    return () => sub.remove()
-  }, [])
-
+  usePushNotifications()
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />

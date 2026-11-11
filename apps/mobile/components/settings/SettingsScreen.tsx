@@ -37,10 +37,7 @@ import {
   saveBannerPreferences,
   type BannerPreferences,
 } from '../../services/bannerPreferencesService'
-import {
-  preparePushRegistration,
-  requestNotificationPermission,
-} from '../../services/notificationsService'
+import { requestNotificationPermission } from '../../services/notificationsService'
 import {
   clearTranscriptionHistory,
   disableBackgroundVoice,
@@ -58,6 +55,7 @@ import { SETTINGS_PAGES, SettingsView, type SettingsPage } from './SettingsViews
 import { accountPhotoSource } from '../../lib/settingsPhoto'
 import { RoomNotifications } from './RoomNotifications'
 import { AccountDeletionConfirmation, PushPrePrompt } from './SettingsPrompts'
+import { syncPushRegistration } from '../../services/pushRegistrationService'
 
 type Dialog =
   | { kind: 'room'; conversationId: string }
@@ -299,12 +297,8 @@ function SettingsScope() {
         return
       }
       const granted = await requestNotificationPermission()
-      setPermission(
-        granted
-          ? 'Allowed · background delivery not available yet'
-          : 'Denied · enable in device settings',
-      )
-      if (granted && user) await preparePushRegistration(user.id)
+      setPermission(granted ? 'Allowed' : 'Denied · enable in device settings')
+      if (granted && user) await syncPushRegistration(user.id)
     })
   return (
     <ResourcePage
@@ -449,6 +443,7 @@ function SettingsScope() {
           }}
         >
           <PushPrePrompt
+            error={error}
             theme={theme}
             permission={permission}
             busy={busy}

@@ -62,12 +62,14 @@ export function AccountDeletionConfirmation({
 }
 
 export function PushPrePrompt({
+  error,
   theme,
   permission,
   busy = false,
   onContinue,
   onLater,
 }: {
+  error?: string | null
   theme: Theme
   permission?: string
   busy?: boolean
@@ -76,9 +78,10 @@ export function PushPrePrompt({
 }) {
   return (
     <View style={{ gap: 16 }}>
+      {error ? <ResourceState theme={theme} error={error} /> : null}
       <Bell size={26} color={theme.foreground} />
       <T style={{ color: theme.muted, fontSize: 13, lineHeight: 21 }}>
-        Allow important updates while using the app. Background notifications are not available yet.
+        Know when your agents need you or important updates arrive, even when the app is closed.
       </T>
       <Button theme={theme} secondary disabled={busy} onPress={onContinue}>
         {permission?.startsWith('Denied') ? 'Open device settings' : 'Enable notifications'}
