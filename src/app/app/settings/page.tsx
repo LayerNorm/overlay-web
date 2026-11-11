@@ -358,7 +358,7 @@ function SettingsPage() {
     [capabilities],
   )
   const desktop = useDesktopBridge()
-  const sections = useMemo(() => desktop ? [...appShell.settingsSections, { id: 'desktop', label: 'Desktop', icon: 'Monitor' }] : appShell.settingsSections, [appShell.settingsSections, desktop])
+  const sections = useMemo(() => desktop ? [...appShell.settingsSections, { id: 'desktop', label: 'Desktop', icon: 'laptop' }] : appShell.settingsSections, [appShell.settingsSections, desktop])
   const settingsPanels = appShell.settingsPanels
   const defaultSectionId = sections[0]?.id ?? 'general'
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
