@@ -37,6 +37,9 @@ jobs:
       - name: Install mobile
         working-directory: overlay-web/overlay-mobile
         run: npm ci --no-audit --no-fund
+      - name: Build shared Markdown CSS
+        working-directory: overlay-web/overlay-mobile
+        run: npm run build:shared-markdown-css
       - name: Check, test and lint
         working-directory: overlay-web/overlay-mobile
         run: |
@@ -45,9 +48,13 @@ jobs:
           node scripts/lint-mobile.cjs
       - name: Export and inspect native bundles
         working-directory: overlay-web/overlay-mobile
+        env:
+          EXPO_NO_BUNDLE_SPLITTING: '1'
         run: |
           npx expo export --platform android --source-maps --no-bytecode --output-dir dist/android
+          node scripts/verify-shared-markdown-assets.cjs --export-dir dist/android --platform android
           npx expo export --platform ios --source-maps --no-bytecode --output-dir dist/ios
+          node scripts/verify-shared-markdown-assets.cjs --export-dir dist/ios --platform ios
           node scripts/inspect-bundles.cjs dist/android dist/ios
       - uses: actions/upload-artifact@v4
         if: failure()

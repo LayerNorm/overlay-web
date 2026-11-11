@@ -77,6 +77,21 @@ test('universal and custom links use existing native destinations', () => {
   assert.equal(incomingRoute('overlay://auth/transfer?token=test'), '/auth/transfer?token=test')
   assert.equal(incomingRoute('/app/invitations/id'), '/invitations/id')
 })
+test('shared Markdown fixture link is exact and development-only', () => {
+  assert.equal(incomingRoute('overlay://dev/shared-markdown', true), '/dev/shared-markdown')
+  assert.equal(incomingRoute('overlay://dev/shared-markdown', false), '/')
+  assert.equal(incomingRoute('overlay://dev/shared-markdown'), '/')
+  for (const value of [
+    'overlay://dev/other',
+    'overlay://dev/shared-markdown/extra',
+    'overlay://dev/shared-markdown?workspaceId=test',
+    'overlay:///dev/shared-markdown',
+    'https://www.getoverlay.io/dev/shared-markdown',
+    'javascript:alert(1)',
+  ]) {
+    assert.equal(incomingRoute(value, true), '/')
+  }
+})
 test('invalid, empty, unknown or untrusted incoming links return home', () => {
   for (const value of [
     '',
