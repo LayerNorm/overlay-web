@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Make invited onboarding workspace-aware and wait for live billing before showing the conversation. Paid workspaces skip subscription offers; free-workspace members can ask owners and admins to subscribe or open Work with their first task safely saved as a draft.
 
-- Preview workspace invitations before signing in, see the inviter and workspace billing context, create an account with the invited email, or switch mismatched accounts. Email verification now signs new accounts in automatically when possible, and invitation emails name the inviter.
+- Preview workspace invitations before signing in, see the inviter and workspace billing context, create an account with the invited email, or switch mismatched accounts. Email verification now signs new accounts in automatically when possible, and invitation emails name the inviter. Email/password sign-in loads the sanitized redirect as a fresh page so invitations immediately reflect the signed-in account.
 
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.

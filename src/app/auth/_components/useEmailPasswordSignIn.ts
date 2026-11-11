@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { postVerifyEmail, readAuthErrorMessage } from './EmailVerification'
 
@@ -17,7 +16,6 @@ export function useEmailPasswordSignIn({
   setError: (error: string | null) => void;
 }) {
   const { refreshSession } = useAuth();
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [verificationTicket, setVerificationTicket] = useState<string | null>(null);
   const [verificationCode, setVerificationCode] = useState("");
@@ -50,12 +48,11 @@ export function useEmailPasswordSignIn({
     }
 
     await refreshSession();
-    router.refresh();
 
     if (redirectUrl.startsWith("overlay://")) {
       window.location.href = redirectUrl;
     } else {
-      router.replace(redirectUrl);
+      window.location.replace(redirectUrl);
     }
     return true;
   };
