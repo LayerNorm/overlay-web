@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ArrowRight, Play } from 'lucide-react'
 import { Button, Checkbox } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
@@ -82,6 +82,31 @@ export function OnboardingPayment(props: PaymentProps) {
   return 'summary' in props ? <OnboardingPaymentState {...props} /> : <LiveOnboardingPayment {...props} />
 }
 
+function MemberBillingControls({ summary, ready, workspaceName, billingContactName, locked, requested, onRequest, onOpenWork, children }: {
+  summary: WorkspaceBillingSummaryResponse
+  ready: boolean
+  workspaceName: string
+  billingContactName?: string | null
+  locked: boolean
+  requested: boolean
+  onRequest(): void
+  onOpenWork?: () => void
+  children: ReactNode
+}) {
+  const memberRequest = !summary.canManage && summary.executionAccess?.state === 'subscription_required'
+  const contact = billingContactName || 'An admin'
+  return <>
+    <div className="flex flex-wrap items-center gap-2">
+      {memberRequest ? <Button variant="primary" size="sm" disabled={locked || requested} onClick={onRequest}>{requested ? 'Request sent' : billingContactName ? `Ask ${billingContactName} to subscribe` : 'Ask an admin to subscribe'}</Button> : null}
+      {children}
+      {!ready && !summary.canManage && onOpenWork ? <Button variant="secondary" size="sm" disabled={locked} onClick={onOpenWork}>Open Work</Button> : null}
+    </div>
+    {requested ? <p role="status" className="text-xs text-muted-foreground">{ready
+      ? `${workspaceName} is now subscribed. Your task is ready when you are.`
+      : `${contact} has been asked. Your draft starts when you choose, once ${workspaceName} is subscribed.`}</p> : null}
+  </>
+}
+
 function LiveOnboardingPayment(props: PaymentProps) {
   const summary = useLiveWorkspaceBilling(props.workspaceId)
   return <OnboardingPaymentState {...props} summary={summary} />
@@ -159,8 +184,6 @@ export function OnboardingPaymentState({ workspaceId, workspaceName = 'Your work
 
   if (summary === undefined) return <p role="status" className="text-sm text-muted-foreground">Loading workspace billing...</p>
   if (summary === null) return <p role="alert" className="text-sm text-muted-foreground">Workspace billing is unavailable. Please reload and try again.</p>
-  const memberRequest = !summary.canManage && access?.state === 'subscription_required'
-  const contact = billingContactName || 'An admin'
 
   return <div className="space-y-4">
     {showReply ? <p className="text-sm leading-relaxed">{onboardingTaskMessage(summary, workspaceName)}</p> : null}
@@ -173,17 +196,14 @@ export function OnboardingPaymentState({ workspaceId, workspaceName = 'Your work
     {checkoutReturn === 'canceled' ? <p role="status" className="text-xs text-muted-foreground">Checkout wasn’t completed. Your draft is saved.</p> : null}
     <BillingStatus ready={ready} pending={pending} needsRecovery={needsRecovery} access={access} />
     {!summary.canManage && needsRecovery ? <p className="text-sm">Ask a workspace owner or admin to activate billing. Your draft is saved.</p> : null}
-    <div className="flex flex-wrap items-center gap-2">
-      {memberRequest ? <Button variant="primary" size="sm" disabled={locked || requested} onClick={() => void requestBilling()}>{requested ? 'Request sent' : billingContactName ? `Ask ${billingContactName} to subscribe` : 'Ask an admin to subscribe'}</Button> : null}
+    <MemberBillingControls summary={summary} ready={ready} workspaceName={workspaceName}
+      billingContactName={billingContactName} locked={locked} requested={requested}
+      onRequest={() => void requestBilling()} onOpenWork={onOpenWork && (() => void run(onOpenWork))}>
       <BillingActions workspaceId={workspaceId} ready={ready} pending={pending} needsRecovery={needsRecovery}
         canManage={summary.canManage} locked={locked} accepted={accepted}
         onStart={() => void run(onStart)} onSubscribe={() => void subscribe()}
         onRefresh={() => void run(() => verifyCheckout())} onEdit={onEdit} />
-      {!ready && !summary.canManage && onOpenWork ? <Button variant="secondary" size="sm" disabled={locked} onClick={() => void run(onOpenWork)}>Open Work</Button> : null}
-    </div>
-    {requested ? <p role="status" className="text-xs text-muted-foreground">{ready
-      ? `${workspaceName} is now subscribed. Your task is ready when you are.`
-      : `${contact} has been asked. Your draft starts when you choose, once ${workspaceName} is subscribed.`}</p> : null}
+    </MemberBillingControls>
     {ready || summary.canManage ? <p className="text-xs text-muted-foreground">{ready ? `Usage is charged to ${workspaceName}'s workspace budget.` : 'No trial. Payment won’t start your task automatically.'}</p> : null}
     {shownError ? <p role="alert" className="text-xs text-destructive">{shownError}</p> : null}
   </div>
