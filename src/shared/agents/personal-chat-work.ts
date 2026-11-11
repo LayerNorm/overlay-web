@@ -56,4 +56,6 @@ export type PersonalChatWorkToolingContext = {
   automationId?: string
   automationRunId?: string
   approvalMode?: 'ask' | 'auto'
+  /** The Notebook note this chat turn is about; its editing tools stay available on tool reconstruction. */
+  notebookNoteId?: string
 }

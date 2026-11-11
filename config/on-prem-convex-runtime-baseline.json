@@ -153,7 +153,6 @@
     "src/app/api/v1/mcps/test/route.ts",
     "src/app/api/v1/memory/route.ts",
     "src/app/api/v1/model-catalog/route.ts",
-    "src/app/api/v1/notebook-agent/route.ts",
     "src/app/api/v1/notes/route.ts",
     "src/app/api/v1/onboarding/complete/route.ts",
     "src/app/api/v1/onboarding/reset/route.ts",

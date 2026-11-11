@@ -106,6 +106,7 @@ export {
   type WorkspaceAgentDirectoryItem,
   type WorkspaceAgentListResponse,
   type WorkspaceAgentThread,
+  type WorkspaceThreadPullRequest,
   type WorkspaceArchivedAgentThread,
   type WorkspaceAgentAutomation,
   type WorkspaceAgentBundle,

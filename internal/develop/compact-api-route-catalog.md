@@ -205,7 +205,6 @@ For a description of what each route does and its associated implementation file
 ## Notes, skills, and knowledge search
 
 - `GET /api/v1/link-preview`
-- `POST /api/v1/notebook-agent`
 - `DELETE, GET, PATCH, POST /api/v1/notes`
 - `DELETE, GET, PATCH, POST /api/v1/skills`
 - `POST /api/v1/scope`
