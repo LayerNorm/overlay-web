@@ -8,6 +8,7 @@ export type LifecycleEmailEvent = {
     | 'automation.failed'
     | 'api_key.changed'
     | 'workspace.invitation_sent'
+    | 'workspace.billing_requested'
     | 'workspace.mention'
     | 'workspace.dm_received'
     | 'billing.auto_topup_limit_reached'
@@ -62,6 +63,7 @@ function contentForEvent(event: LifecycleEmailEvent, appUrl: string): EmailConte
     case 'automation.failed': return automationFailedContent(event, appUrl)
     case 'api_key.changed': return apiKeyContent(event, appUrl)
     case 'workspace.invitation_sent': return invitationContent(event, appUrl)
+    case 'workspace.billing_requested': return billingRequestedContent(event, appUrl)
     case 'workspace.mention': return mentionContent(event, appUrl)
     case 'workspace.dm_received': return dmContent(event, appUrl)
     case 'billing.auto_topup_limit_reached': return topUpLimitContent(event, appUrl)
@@ -235,16 +237,32 @@ function apiKeyContent(event: LifecycleEmailEvent, appUrl: string): EmailContent
   }
 }
 
+function billingRequestedContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
+  const requester = stringAttribute(event.attributes.requesterName) ?? 'A teammate'
+  const workspace = stringAttribute(event.attributes.workspaceName) ?? 'your workspace'
+  const workspaceId = stringAttribute(event.attributes.workspaceId) ?? stringAttribute(event.resource.id) ?? ''
+  return {
+    subject: `${requester} asked you to subscribe ${workspace} on Overlay`,
+    heading: `${requester} wants to run tasks in ${workspace}`,
+    body: `Your teammate ${requester} has a task ready in ${workspace}. An owner or admin needs to activate a workspace plan before tasks can run. Their draft is saved and will only start when they choose.`,
+    ctaLabel: 'Open billing',
+    ctaUrl: new URL(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`, appUrl).toString(),
+    reason: 'You received this because you are an owner or admin of this workspace.',
+  }
+}
+
 function invitationContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
   const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'a workspace'
   const role = stringAttribute(event.attributes.role) ?? 'member'
+  const inviterName = stringAttribute(event.attributes.inviterName)
   const invitationId = stringAttribute(event.resource.id)
   const invitationUrl = invitationId
     ? new URL(`/app/invitations/${encodeURIComponent(invitationId)}`, appUrl).toString()
     : appUrl
   return {
-    body: `You've been invited to collaborate in ${workspaceName}. Sign in with the email address that received this invitation to accept.`,
-    bodyHtml: `You've been invited to collaborate in this workspace. Sign in with the email address that received this invitation to accept.`,
+    body: inviterName
+      ? `${inviterName} invited you to ${workspaceName} on Overlay. Sign in with the email address that received this invitation to accept.`
+      : `You've been invited to collaborate in ${workspaceName}. Sign in with the email address that received this invitation to accept.`,
     ctaLabel: 'Accept invitation',
     ctaUrl: invitationUrl,
     feature: card(
@@ -255,7 +273,7 @@ function invitationContent(event: LifecycleEmailEvent, appUrl: string): EmailCon
       `<div style="font-family:${SANS};font-size:11.5px;color:#71717a;padding-top:2px;">Invited you as ${escapeHtml(role)}</div></td>` +
       `</tr></table>`,
     ),
-    heading: `Join ${workspaceName}`,
+    heading: inviterName ? `${inviterName} invited you to ${workspaceName}` : `Join ${workspaceName}`,
     reason: 'You received this because someone invited this email address to an Overlay workspace.',
     subject: `You've been invited to ${workspaceName} on Overlay`,
   }
