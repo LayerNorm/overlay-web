@@ -9,21 +9,23 @@ import {
   toRightPanelMode,
   type PanelPresentation,
 } from '@/shared/ui/panel-presentation'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react'
 import {
   createLocalNotebookNote,
+  DEFAULT_OVERLAY_CAPABILITIES,
   type CreateNoteResponse,
   type NotebookAgentRequest,
   type UpdateNoteResponse,
 } from '@overlay/app-core'
 import {
   CanonicalNotebookEditor,
+  type NotebookAgentComposerRenderProps,
   type NotebookEditorRepository,
 } from '@overlay/modules-react/notes'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
-import { MentionInput } from '@/features/chat/components/chat-interface/MentionInput'
+import { ChatComposer } from '@/features/chat/components/ChatComposer'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-prefs'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
@@ -184,23 +186,98 @@ export default function NotebookEditor({
         />
         </>
       )}
-      renderAgentInput={(input) => (
-        <MentionInput
-          value={input.value}
-          onChange={input.onChange}
-          onMentionsChange={input.onMentionsChange}
-          onUploadFile={() => undefined}
-          onKeyDown={input.onKeyDown}
-          placeholder={input.placeholder}
-          disabled={input.disabled}
-        />
-      )}
+      renderAgentComposer={(composer) => <NotebookChatComposer {...composer} />}
       renderMarkdown={(text, streaming) => <MarkdownMessage text={text} isStreaming={streaming} />}
       logo={(
         <span className="mt-0.5 shrink-0 select-none">
           <OverlayMark motion="look" size={14} label="" />
         </span>
       )}
+    />
+  )
+}
+
+type ComposerProps = ComponentProps<typeof ChatComposer>
+type AttachedImages = ComposerProps['attachments']['attachedImages']
+
+const NO_IMAGES: AttachedImages = []
+const ignore = () => {}
+
+/** The chat composer, text-only: Notebook turns send the message and @ mentions, not attachments. */
+function NotebookChatComposer(props: NotebookAgentComposerRenderProps) {
+  const textareaRef = useRef<ComposerProps['inputState']['textareaRef']['current']>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const docInputRef = useRef<HTMLInputElement | null>(null)
+  const attachMenuRef = useRef<HTMLDivElement | null>(null)
+  const modeMenuRef = useRef<HTMLDivElement | null>(null)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [showModeMenu, setShowModeMenu] = useState(false)
+
+  return (
+    <ChatComposer
+      mode="chat"
+      surface={{
+        textOnly: true,
+        embedded: true,
+        hideModeMenu: true,
+        hideGenerationModes: true,
+        placeholder: props.placeholder,
+      }}
+      emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+      attachments={{
+        attachedImages: NO_IMAGES,
+        setAttachedImages: ignore,
+        pendingChatDocuments: [],
+        removePendingDocument: ignore,
+        attachmentError: null,
+        fileInputRef,
+        docInputRef,
+        onAddImages: ignore,
+        onAddDocumentsFromPicker: ignore,
+        onOpenAttachmentPreview: ignore,
+        onOpenFilePreview: ignore,
+      }}
+      runtime={{
+        composerNotice: null,
+        isSendBlocked: props.running,
+        isActiveLoading: props.running,
+        isTemporaryChat: false,
+        blockedComposerContent: null,
+      }}
+      inputState={{
+        draftIdentity: 'notebook',
+        onAppendText: (text) => props.onChange(props.value ? `${props.value} ${text}` : text),
+        replyContext: null,
+        setReplyContext: ignore,
+        textareaRef,
+        input: props.value,
+        inputRevision: 0,
+        onInputChange: props.onChange,
+        onMentionsChange: props.onMentionsChange,
+        onPaste: ignore,
+        hasComposerText: props.canSend,
+      }}
+      toolState={{
+        showAttachMenu,
+        setShowAttachMenu,
+        attachMenuRef,
+        selectedToolIds: [],
+        memoryEnabled: true,
+        capabilities: DEFAULT_OVERLAY_CAPABILITIES,
+        onToggleTool: ignore,
+        onToggleMemory: ignore,
+        onRemoveTool: ignore,
+      }}
+      modeState={{
+        onModeChange: ignore,
+        generationChip: null,
+        setGenerationChip: ignore,
+        showModeMenu,
+        setShowModeMenu,
+        modeMenuRef,
+        onNavigateMode: ignore,
+      }}
+      actions={{ onSend: props.onSend, onStop: props.onStop }}
     />
   )
 }
