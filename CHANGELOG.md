@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Open agent destinations before resolving their main thread, with late-result guards that preserve newer navigation. Separate chat directory subscriptions from active transcript/execution updates so streaming does not notify sidebar and archived-list consumers unnecessarily.
 
+- Scrolling a DM or channel marks it read once per transcript state instead of sending a read mutation on every scroll event, which re-rendered every loaded message. New messages, a different room, returning to the tab and jumping to latest still mark read.
+- Reuse the room-message time formatter instead of rebuilding locale formatting state for every row render in long DMs and channels. Keep the existing time labels and invalid-date fallback.
 - Redesign Settings → Desktop in the Mac app: clear Dictation, Local models, Floating panels, Agent host and About sections; shortcuts shown as key caps you click to re-record; one Open button per panel with docking in a menu; an Agent host row with its status and start controls together instead of a divided form; and a laptop icon for Desktop in the settings sidebar instead of the generic gear.
 
 - Make invited onboarding workspace-aware and wait for live billing before showing the conversation. Paid workspaces skip subscription offers; free-workspace members can ask owners and admins to subscribe or open Work with their first task safely saved as a draft.
