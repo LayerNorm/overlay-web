@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Associate mobile work, agent/DM/chat/room/thread, file/note, automation and Settings links with iOS, and correct Android's app-link association to the shipped underscore package ID. Android URL paths are restricted in the mobile intent filters; signing certificate fingerprints remain deployment configuration.
+
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.
 - Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.
 

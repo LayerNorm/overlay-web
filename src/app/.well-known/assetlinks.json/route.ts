@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-const ANDROID_PACKAGE_NAME = 'com.layernorm.overlay-mobile'
+const ANDROID_PACKAGE_NAME = 'com.layernorm.overlay_mobile'
 
 function getAndroidCertificateFingerprints() {
   return (process.env.ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS || '')
