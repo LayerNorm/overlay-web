@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Explain cloud dictation refusals: a workspace without billing, a member who may not use its billing, or exhausted workspace credit now show what to do (set up Billing or pick a local model) instead of "Cloud dictation failed (402)".
 - Keep a new recording active when a cancelled take finishes its pending worklet flush.
 - Normalize provider whitespace and preserve spacing between successive dictation insertions.
 - Register initial window visibility before navigation to avoid missing a fast first render.

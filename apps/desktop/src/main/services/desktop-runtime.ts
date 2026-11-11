@@ -49,6 +49,7 @@ import { configureDiagnostics } from './sentry'
 import { settingsService } from './settings-service'
 import { hotkeyManager, hasAccessibilityPermission } from './hotkey-manager'
 import { isAllowedStableUpgrade } from './auto-updater-policy'
+import { cloudDictationErrorMessage } from './cloud-dictation-errors'
 
 const defaults = {
   dictation: 'Control+Space',
@@ -266,15 +267,7 @@ async function transcribeAudio(
       })
     if (!response.ok) {
       const failure = await response.json().catch(() => null)
-      if (failure?.error === 'hosted_transcription_requires_paid_plan')
-        throw new Error(
-          'Cloud dictation requires a paid plan. Choose a local model in Desktop settings to dictate on this Mac.'
-        )
-      if (failure?.error === 'transcription_limit_exceeded')
-        throw new Error(
-          'Your cloud dictation allowance is used up. Choose a local model in Desktop settings.'
-        )
-      throw new Error(`Cloud dictation failed (${response.status}).`)
+      throw new Error(cloudDictationErrorMessage(response.status, failure))
     }
     const result = await response.json()
     if (typeof result.text !== 'string') throw new Error('Invalid transcription response.')
