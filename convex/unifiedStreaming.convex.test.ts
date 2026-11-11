@@ -572,6 +572,87 @@ test('a workspace-scope chat settles its steps into a checkpoint, so live and se
   expect(await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))).toEqual([])
 })
 
+test('cancelled runs preserve committed generated UI and refuse a new transcript step', async () => {
+  vi.useFakeTimers()
+  const cancelled = convexTest(schema, modules)
+  const stream = await seedWritableStream(cancelled, 'personal:cancelled-step')
+  const apply = async (operationId: string, expectedRevision: number, operation: Record<string, unknown>) =>
+    await cancelled.mutation(mutation('apply'), {
+      actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+      executionGeneration: 0, operationId, expectedRevision, operation, serverSecret: secret,
+    }) as { snapshot: { revision: number } }
+  const receipt = (id: string) => ({
+    type: 'record_receipt', receipt: {
+      id, modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+      costMicros: 1, costSource: 'provider',
+    },
+  })
+  const generatedUiPart = (id: string, summary: string) => ({
+    type: 'data', id, dataType: 'overlay.generated_ui',
+    data: { version: 1, kind: 'json_render', catalogVersion: 1, summary, specJson: '{}' },
+  })
+  const writeStep = (receiptId: string, part: ReturnType<typeof generatedUiPart>) =>
+    cancelled.mutation(mutation('writeTranscriptStep'), {
+      actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+      receiptId, stepNumber: 0, persistence: { content: '', parts: [part] }, serverSecret: secret,
+    })
+
+  await cancelled.mutation(mutation('appendPublicStream'), { ...appendArgs(stream, 0, ''), preview: previewUpdate(0) })
+  const firstReceipt = await apply('receipt:0', stream.revision, receipt('model:0'))
+  const precommittedPart = generatedUiPart('view-before-stop', 'Completed before Stop')
+  expect(await writeStep('model:0', precommittedPart)).toEqual({ persisted: true })
+  const beforeStop = await cancelled.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(beforeStop?.parts?.some(part => part.type === 'data' && part.dataType === 'overlay.generated_ui')).toBe(true)
+
+  const reserved = await apply('reserve:1', firstReceipt.snapshot.revision, {
+    type: 'reserve_model', id: 'model:1', maxCostMicros: 0,
+  })
+  const dispatched = await apply('dispatch:1', reserved.snapshot.revision, {
+    type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing-1',
+  })
+  await cancelled.mutation(mutation('appendPublicStream'), {
+    ...appendArgs(stream, 0, 'Final tool output pending.'), receiptId: 'model:1',
+  })
+  await apply('receipt:1', dispatched.snapshot.revision, receipt('model:1'))
+  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), {
+    conversationId: stream.conversationId, messageId: stream.assistantMessageId, serverSecret: secret, userId: 'owner',
+  })
+
+  const replay = await writeStep('model:0', precommittedPart)
+  const lateWrite = await writeStep('model:1', generatedUiPart('view-after-stop', 'Completed after Stop'))
+  const lateStreamState = await cancelled.query(makeFunctionReference<'query'>('harness/runs:readPublicStreamState'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, afterSequence: -1, serverSecret: secret,
+  })
+  const afterLateWrite = await cancelled.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(replay).toEqual({ persisted: false })
+  expect(lateWrite).toEqual({ persisted: false })
+  expect(lateStreamState).toMatchObject({
+    status: 'cancelled',
+    transcriptSteps: expect.arrayContaining([expect.objectContaining({
+      receiptId: 'model:0',
+      persistence: expect.objectContaining({ parts: expect.arrayContaining([expect.objectContaining({
+        dataType: 'overlay.generated_ui', data: expect.objectContaining({ summary: 'Completed before Stop' }),
+      })]) }),
+    })]),
+  })
+  expect(lateStreamState?.transcriptSteps.some(step => step.receiptId === 'model:1')).toBe(false)
+  expect(afterLateWrite?.parts?.some(part => part.type === 'data' && part.dataType === 'overlay.generated_ui'
+    && part.data.summary === 'Completed after Stop')).toBe(false)
+  expect(afterLateWrite?.parts?.some(part => part.type === 'data' && part.dataType === 'overlay.generated_ui'
+    && part.data.summary === 'Completed before Stop')).toBe(true)
+
+  await cancelled.finishAllScheduledFunctions(vi.runAllTimers)
+  vi.useRealTimers()
+  const settled = await cancelled.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(settled?.parts?.some(part => part.type === 'data' && part.dataType === 'overlay.generated_ui'
+    && part.data.summary === 'Completed before Stop')).toBe(true)
+  expect(settled?.parts?.some(part => part.type === 'data' && part.dataType === 'overlay.generated_ui'
+    && part.data.summary === 'Completed after Stop')).toBe(false)
+  expect(settled?.content).toMatch(/interrupted/i)
+  expect(settled?.status).toBe('completed')
+})
+
 async function settleStep(
   convex: ReturnType<typeof convexTest>,
   stream: Awaited<ReturnType<typeof seedWritableStream>>,

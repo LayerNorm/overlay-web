@@ -2,6 +2,10 @@
 
 Status: The expressive mockup is approved and retained. Production work is local on this PR branch and not merged or production accepted. This change adds the four expressive catalog renderers, tool-argument `specStream` compilation, and bounded preview snapshots on the durable personal/native chat stream path. New roots enroll for public previews only when they admit `render_ui`; other roots retain the exact workspace allowlist, and existing root policy remains unchanged. Successful SSE finalization publishes validated data at the preview's keyed transcript anchor and appends only missing text; trailing-whitespace-only canonicalization keeps that preview mounted. The requested focused transport/admission tests, root TypeScript, web-complexity and targeted ESLint pass locally; exact-head Preview QA remains pending. Preserve the known personal false-recovery limitation from prior QA; Slack has not been tested. Do not report blanket flow acceptance. T12 remains open.
 
+**Cancellation follow-up:** The f3 Preview artifacts show the five-node preview clearing at 33.256s, a six-node final view appearing at 36.374s, and interrupted settlement at 37.938s, but contain no successful-step persistence or request-abort timestamp. The event therefore remains unclassified as pre-Stop committed output versus a post-cancel write. New transcript steps are now refused after cancellation of the run or an ancestor; exact idempotent replays and generated-UI parts committed before cancellation remain. Terminal SSE continues to drain committed steps, while a transcript read that resolves after the local request abort is discarded. The next Preview cancellation check should press Stop with one diagram node visible, well before the final output, and verify both no new post-cancel view and preservation of any committed view. Hosted cancellation QA remains pending.
+
+Vector accent text uses the theme foreground for both themes; accent shape paint remains unchanged. Its renderer check is local, not a hosted visual acceptance.
+
 ## Goal
 
 Every Overlay-owned AI chat surface (personal chats, workspace agents and threads, automations) can answer with real, interactive UI built from our own component catalog, using [json-render](https://json-render.dev/docs/ai-sdk). The model composes a UI from approved components; it never writes HTML, CSS or JavaScript.
@@ -178,6 +182,7 @@ Preview (`pr-<number>.preview.getoverlay.io`, `needs-preview` label):
 - Invalid spec path: force a bad component name; the tool error is visible in the trace and the model retries successfully.
 - Short factual question still answers in plain text with no UI.
 - Existing draft, email, connector and questionnaire cards unchanged.
+- Cancellation: Stop with one diagram node visible, well before final output; verify a post-cancel step is not persisted, a previously committed view remains, and record the relevant write/abort timing.
 
 ## Later
 

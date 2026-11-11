@@ -305,6 +305,7 @@ async function pollPersistedPublicStream(input: {
       runId: input.runId,
       afterSequence,
     })
+    if (input.isStopped() || input.signal?.aborted) return
     if (!state) {
       emitUnavailableStream(input.controller)
       return

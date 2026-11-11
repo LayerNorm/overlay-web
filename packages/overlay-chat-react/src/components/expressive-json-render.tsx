@@ -26,7 +26,7 @@ const paints: Record<Exclude<Paint, 'none'>, string> = {
   foreground: 'var(--foreground)', muted: 'var(--muted)', border: 'var(--border)', surface: 'var(--surface-elevated)',
   accent: 'var(--primary)', success: 'var(--success)', warning: 'var(--warning)', danger: 'var(--danger)',
 }
-const tonePaint: Record<Tone, string> = { neutral: paints.foreground, accent: paints.accent, context: paints.muted, success: paints.success, warning: paints.warning, danger: paints.danger }
+const tonePaint: Record<Tone, string> = { neutral: paints.foreground, accent: paints.foreground, context: paints.muted, success: paints.success, warning: paints.warning, danger: paints.danger }
 
 export function TimelineComponent({ props: p }: { props: TimelineProps }) {
   return <section className="gen-timeline" aria-label={p.title}>

@@ -1724,6 +1724,7 @@ export const writeTranscriptStep = mutation({
       }
       return { persisted: false }
     }
+    if (lineage.some(entry => entry.metadata.status === 'cancelled')) return { persisted: false }
     await ctx.db.insert('harnessTranscriptSteps', {
       runId: run.runId,
       receiptId: args.receiptId,

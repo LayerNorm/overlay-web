@@ -673,6 +673,93 @@ test('personal SSE delivers legacy standalone generated UI IDs without previews'
   expect((finalParts[0]?.data as Record<string, unknown>).streaming).not.toBe(true)
 })
 
+test('personal SSE emits a committed generated UI transcript step before a cancelled finish', async () => {
+  mocks.describeTools.mockResolvedValue([{ name: 'render_ui' }])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Show the result.' }])
+  mocks.startPersonalHarness.mockResolvedValue({ accepted: true, runId: 'personal:run-chat', executionGeneration: 2 })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => sdkCreateUIMessageStreamResponse({ stream }))
+
+  const committedPart = buildGeneratedUiPart('view-before-stop', {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Completed before Stop',
+    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Committed"}}}}',
+  })
+  expect(committedPart).not.toBeNull()
+  mocks.readPublicStreamState.mockResolvedValue({
+    status: 'cancelled', workflowRunId: 'workflow', executionGeneration: 2,
+    transcriptSteps: [{ sequence: 0, executionGeneration: 2, receiptId: 'model:0',
+      persistence: { content: '', parts: committedPart ? [committedPart] : [] } }],
+    nextSequence: null, snapshot: null,
+  })
+
+  const response = await startPersonalHarnessTurn(acceptedTurnInput())
+  const reader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (!next.value.success) throw next.value.error
+    chunks.push(next.value.value)
+  }
+
+  expect(chunks).toContainEqual(expect.objectContaining({
+    type: 'data-overlay.generated_ui', id: 'view-before-stop',
+    data: expect.objectContaining({ summary: 'Completed before Stop' }),
+  }))
+  expect(chunks.at(-1)).toMatchObject({
+    type: 'finish',
+    messageMetadata: { harnessAccepted: { status: 'cancelled' } },
+  })
+})
+
+test('personal SSE ignores a transcript read that resolves after request abort', async () => {
+  mocks.describeTools.mockResolvedValue([{ name: 'render_ui' }])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Show the result.' }])
+  mocks.startPersonalHarness.mockResolvedValue({ accepted: true, runId: 'personal:run-chat', executionGeneration: 2 })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => sdkCreateUIMessageStreamResponse({ stream }))
+
+  const latePart = buildGeneratedUiPart('view-after-abort', {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Read after Stop',
+    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Late"}}}}',
+  })
+  expect(latePart).not.toBeNull()
+  const cancelledState = {
+    status: 'cancelled', workflowRunId: 'workflow', executionGeneration: 2,
+    transcriptSteps: [{ sequence: 1, executionGeneration: 2, receiptId: 'model:1',
+      persistence: { content: '', parts: latePart ? [latePart] : [] } }],
+    nextSequence: null, snapshot: null,
+  }
+  let resolveRead!: (state: typeof cancelledState) => void
+  const pendingRead = new Promise<typeof cancelledState>(resolve => { resolveRead = resolve })
+  let markReadStarted!: () => void
+  const readStarted = new Promise<void>(resolve => { markReadStarted = resolve })
+  mocks.readPublicStreamState.mockImplementation(async () => {
+    markReadStarted()
+    return await pendingRead
+  })
+
+  const abort = new AbortController()
+  const response = await startPersonalHarnessTurn({ ...acceptedTurnInput(), signal: abort.signal })
+  const reader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  const collect = (async () => {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      if (!next.value.success) throw next.value.error
+      chunks.push(next.value.value)
+    }
+  })()
+
+  await readStarted
+  abort.abort()
+  resolveRead(cancelledState)
+  await collect
+
+  expect(chunks.some(chunk => chunk.type === 'data-overlay.generated_ui' && chunk.id === 'view-after-abort')).toBe(false)
+})
+
 test('personal SSE preserves a preview when canonical persistence trims trailing whitespace', async () => {
   mocks.describeTools.mockResolvedValue([{ name: 'render_ui' }])
   mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
