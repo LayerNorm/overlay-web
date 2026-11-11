@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let shared code, draft-review and generated-UI controls receive native-capable copy and download actions through `@overlay/ui/platform-actions`, while keeping lazy browser defaults and adding inline retry feedback for failed downloads.
 - Add native-authenticated Expo push registration with device/token rotation, cross-account ownership transfer and sign-out revocation. New activity, mentions, agent approvals and input waits schedule preference- and mute-aware push delivery; invalid Expo devices are revoked from send tickets and receipts. Account deletion also clears push registrations.
 - Keep the exported API schema's onboarding dependency relative so mobile runtime bundles remain free of web-only aliases.
 
