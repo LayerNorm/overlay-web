@@ -12,6 +12,7 @@ import {
 } from '@overlay/chat-core/generated-ui'
 import { collectWebSourcesFromSingleBlock } from '@overlay/chat-core/sources'
 import type { WebSourceItem } from '@overlay/chat-core/types'
+import { compactPullRequestToolValues } from './persist-pull-request-tool'
 
 /** Persisted when the model produced no text/tool transcript so reload never drops the assistant row. */
 export const ASSISTANT_EMPTY_CONTENT_PLACEHOLDER = '[Empty response]'
@@ -209,14 +210,15 @@ function compactAssistantPartForPersistence(
       ? part.toolInvocation as Record<string, unknown>
       : {}
     const toolName = typeof invocation.toolName === 'string' ? invocation.toolName : ''
+    const pullRequestValues = compactPullRequestToolValues(invocation)
     const webSources = compactWebSourcesForPersistence(toolName, invocation.toolOutput)
-    const compactedToolOutput = compactToolValueForPersistence(invocation.toolOutput)
+    const compactedToolOutput = compactToolValueForPersistence(pullRequestValues?.toolOutput ?? invocation.toolOutput)
     return {
       part: {
         ...part,
         toolInvocation: {
           ...invocation,
-          toolInput: compactToolValueForPersistence(invocation.toolInput),
+          toolInput: compactToolValueForPersistence(pullRequestValues?.toolInput ?? invocation.toolInput),
           toolOutput: attachWebSourcesToToolOutput(compactedToolOutput, webSources),
         },
       },
