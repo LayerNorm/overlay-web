@@ -370,9 +370,7 @@ export function ChatScreen({
 
       chatRef.current = nextChat
       setChatTitle(nextChat.title)
-      // Always persist — previously we skipped saveChat for drafts (not yet
-      // in history), which meant chats disappeared from the sidebar even
-      // after the first user message.
+      if (nextChat.id.startsWith('chat-') && !nextChat.clientId) return
       await saveChat(nextChat).catch(() => {})
       await refreshHistory()
     },

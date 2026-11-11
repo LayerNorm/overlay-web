@@ -193,6 +193,7 @@ export async function setPersonalChatArchived(id: string, archived: boolean): Pr
   await mutateConvex(api.chat.personal.setArchived, { ...personalArgs(id), archived })
 }
 export async function saveChat(chat: Chat): Promise<void> {
+  if (chat.id.startsWith('chat-') && !chat.clientId) return
   await Promise.all([
     updateChatTitle(chat.id, chat.title),
     mutateConvex(api.chat.personal.setPreferences, {

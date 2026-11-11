@@ -33,7 +33,11 @@ Source comparison found no unsupported mobile token type or missing client-suppl
 
 **Unverified:** the underlying persisted error/run state for `hd_ll3tn916tuyjk` and this preview user's actual role assignments were not retrieved. Missing default-role initialization is source-verified, but cannot be claimed as the confirmed cause of this particular diagnostic. An intentional custom role, revoked resource grant, or changed run/conversation identity can also yield this message. Re-run a new personal agent turn after the web prerequisite deploys and bootstrap succeeds; if it still fails, inspect that run's underlying authorization error and subject roles. Do not weaken checks, forge grants or relabel it as an environment-only failure without that evidence.
 
-## Checks
+## Unsaved-chat model preferences
+
+The model picker called `syncConversationMeta`, which unconditionally renamed the conversation and called native `chat.personal.setPreferences`. A fresh local chat still has a `chat-…` client ID, not a Convex conversation ID. Model selection now updates the local draft only until the conversation exists; `saveChat` also ignores drafts without issuing native writes. First creation receives the selected model, and subsequent preference writes use the adopted durable ID. Regression tests exercise the actual picker/metadata callbacks, creation payload and durable preference writes, plus absent-chat and backend-error cases.
+
+## Verification commands
 
 ```sh
 npm run check
