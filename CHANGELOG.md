@@ -4,6 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add native-authenticated Expo push registration with device/token rotation, cross-account ownership transfer and sign-out revocation. New activity, mentions, agent approvals and input waits schedule preference- and mute-aware push delivery; invalid Expo devices are revoked from send tickets and receipts. Account deletion also clears push registrations.
+- Keep the exported API schema's onboarding dependency relative so mobile runtime bundles remain free of web-only aliases.
+
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.
 - Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.
 

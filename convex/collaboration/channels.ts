@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { insertPushNotification } from '../lib/mobilePush'
 import type { ObjectType } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
@@ -264,7 +265,7 @@ export async function setReactionFor(ctx: MutationCtx, args: ObjectType<typeof s
         .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', message.authorPrincipalId!))
         .unique()
       if (preferences?.reactions !== 'off') {
-        await ctx.db.insert('workspaceNotifications', {
+        await insertPushNotification(ctx, {
           notificationId: crypto.randomUUID(),
           workspaceId: args.workspaceId,
           recipientPrincipalId: message.authorPrincipalId,

@@ -6,6 +6,11 @@ The web app owns HTTP backend route contracts. Desktop, mobile, Chrome, and exte
 
 Native browser scope derives the viewer from verified Convex identity and checks
 current workspace membership and resource ownership inside the Convex function.
+Mobile device push registration is native Convex, not an HTTP endpoint:
+`notifications/tokens.register/unregister` derive the owner from verified identity.
+Notification producers schedule internal Expo delivery; token storage, preference
+filtering and receipt revocation are server-owned. See [Mobile push](mobile-push.md).
+
 The personal-chat pilot uses `convex/lib/nativeViewer.ts`; see
 [Convex workflow](convex-workflow.md#native-browser-scope). Scope checks alone do
 not replace domain write policy, billing admission, audit or idempotency.

@@ -1,4 +1,5 @@
 import { paginationOptsValidator } from 'convex/server'
+import { schedulePush } from '../lib/mobilePush'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
@@ -2472,7 +2473,7 @@ export const publishWait = mutation({
     if (pending.length) throw new Error('HARNESS_WAIT_ALREADY_PENDING')
 
     const createdAt = Date.now()
-    await ctx.db.insert('harnessWaits', {
+    const waitId = await ctx.db.insert('harnessWaits', {
       runId: run.runId,
       rootRunId: run.rootRunId,
       workflowRunId: reference.workflowRunId,
@@ -2482,6 +2483,7 @@ export const publishWait = mutation({
       question,
       createdAt,
     })
+    await schedulePush(ctx, { kind: 'wait', id: waitId })
     return {
       ...request,
       runId: run.runId,

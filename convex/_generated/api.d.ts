@@ -141,6 +141,7 @@ import type * as lib_growthSchema from "../lib/growthSchema.js";
 import type * as lib_harnessDiagnosticValidator from "../lib/harnessDiagnosticValidator.js";
 import type * as lib_harnessFailureTranscript from "../lib/harnessFailureTranscript.js";
 import type * as lib_logging from "../lib/logging.js";
+import type * as lib_mobilePush from "../lib/mobilePush.js";
 import type * as lib_nativeAgentErrorPart from "../lib/nativeAgentErrorPart.js";
 import type * as lib_nativeAuthConfig from "../lib/nativeAuthConfig.js";
 import type * as lib_nativeCapabilities from "../lib/nativeCapabilities.js";
@@ -187,6 +188,8 @@ import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
+import type * as notifications_push from "../notifications/push.js";
+import type * as notifications_tokens from "../notifications/tokens.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
 import type * as platform_growth from "../platform/growth.js";
 import type * as platform_http from "../platform/http.js";
@@ -355,6 +358,7 @@ declare const fullApi: ApiFromModules<{
   "lib/harnessDiagnosticValidator": typeof lib_harnessDiagnosticValidator;
   "lib/harnessFailureTranscript": typeof lib_harnessFailureTranscript;
   "lib/logging": typeof lib_logging;
+  "lib/mobilePush": typeof lib_mobilePush;
   "lib/nativeAgentErrorPart": typeof lib_nativeAgentErrorPart;
   "lib/nativeAuthConfig": typeof lib_nativeAuthConfig;
   "lib/nativeCapabilities": typeof lib_nativeCapabilities;
@@ -401,6 +405,8 @@ declare const fullApi: ApiFromModules<{
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;
+  "notifications/push": typeof notifications_push;
+  "notifications/tokens": typeof notifications_tokens;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
   "platform/growth": typeof platform_growth;
   "platform/http": typeof platform_http;

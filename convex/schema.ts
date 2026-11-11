@@ -19,6 +19,14 @@ const runPlanStepValidator = v.object({
 })
 
 export default defineSchema({
+  pushTokens: defineTable({
+    userId: v.string(),
+    expoToken: v.string(),
+    platform: v.union(v.literal('ios'), v.literal('android')),
+    deviceId: v.string(),
+    updatedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  }).index('by_user', ['userId']).index('by_token', ['expoToken']),
   nativeDeploymentPolicies: defineTable({
     key: v.literal('web'),
     sequence: v.number(),
