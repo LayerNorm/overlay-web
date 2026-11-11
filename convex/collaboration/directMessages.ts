@@ -1,4 +1,5 @@
 import { hydrateRemoteMessages, hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
+import { insertPushNotification } from '../lib/mobilePush'
 import { v } from 'convex/values'
 import type { ObjectType } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
@@ -1409,7 +1410,7 @@ export const createDirectMessage = mutation({
         lastReadAt: principal.principalId === actor.principalId ? now : undefined,
       })] as Promise<unknown>[]
       if (principal.principalId !== actor.principalId) {
-        writes.push(ctx.db.insert('workspaceNotifications', {
+        writes.push(insertPushNotification(ctx, {
           notificationId: crypto.randomUUID(),
           workspaceId: args.workspaceId,
           recipientPrincipalId: principal.principalId,
@@ -1565,7 +1566,7 @@ export async function addParticipantFor(ctx: MutationCtx, args: ObjectType<typeo
     })
     participant = (await ctx.db.get(id))!
   }
-  await ctx.db.insert('workspaceNotifications', {
+  await insertPushNotification(ctx, {
     notificationId: crypto.randomUUID(),
     workspaceId: args.workspaceId,
     recipientPrincipalId: args.principalId,
@@ -1897,7 +1898,7 @@ export const recordMessageActivity = mutation({
  * looking elsewhere is one you never learn about.
  */
 async function fanOutMessageNotifications(
-  ctx: Pick<MutationCtx, 'db'>,
+  ctx: Pick<MutationCtx, 'db' | 'scheduler'>,
   args: {
     actorDisplayName: string
     actorPrincipalId: string
@@ -1966,7 +1967,7 @@ async function fanOutMessageNotifications(
       }
       const type = mentioned || broadcast ? 'mention' as const : followedThread ? 'thread' as const : 'message' as const
       const mentionScope = mentioned ? 'direct' as const : hasChannelMention ? 'channel' as const : hasHereMention ? 'here' as const : undefined
-      notifications.push(ctx.db.insert('workspaceNotifications', {
+      notifications.push(insertPushNotification(ctx, {
         notificationId: crypto.randomUUID(),
         workspaceId: args.workspaceId,
         recipientPrincipalId: participant.principalId,
@@ -1996,7 +1997,7 @@ async function fanOutMessageNotifications(
  * fail the turn that produced the reply.
  */
 async function notifyAgentMessage(
-  ctx: Pick<MutationCtx, 'db'>,
+  ctx: Pick<MutationCtx, 'db' | 'scheduler'>,
   args: { conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'>; workspaceId: string },
 ) {
   const message = await ctx.db.get(args.messageId)

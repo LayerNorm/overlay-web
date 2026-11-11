@@ -1,4 +1,5 @@
 import { recordRemoteRunLiveness } from '../../src/shared/agents/remote-run-liveness'
+import { insertPushApproval } from '../lib/mobilePush'
 import { agentMcpAttemptMatches, agentMcpSessionIsLive } from '../../src/shared/agents/agent-mcp-authority'
 import { applyRemoteText } from '../../src/shared/agents/remote-agent-text'
 import { hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
@@ -1156,7 +1157,7 @@ export const createApprovalRequestByServer = mutation({
     const { serverSecret, id, ...value } = args
     void serverSecret
     const row = { ...value, approvalId: id }
-    await ctx.db.insert('agentApprovalRequests', row)
+    await insertPushApproval(ctx, row)
     return { ...row, id }
   },
 })
@@ -1216,7 +1217,7 @@ export const requestMcpApprovalByServer = mutation({
     const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', args.environmentId)).unique()
     const requestContext = { expiresAt, machineCostContinues: environment?.kind === 'overlay_cloud' }
     const options = [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }]
-    await ctx.db.insert('agentApprovalRequests', {
+    await insertPushApproval(ctx, {
       approvalId: `approval_${crypto.randomUUID()}`, workspaceId: args.workspaceId, runId: args.runId,
       remoteSessionId: session.sessionId, requestKey: args.requestKey, kind: 'permission', prompt: args.prompt,
       options: options.map((option) => option.id),
@@ -3018,7 +3019,7 @@ export const applyRemoteEventsByServer = mutation({
                   .filter(Boolean)
             : ['accept', 'decline', 'cancel']
           if (options.length === 0) throw new Error('AGENT_REMOTE_REQUEST_INVALID')
-          await ctx.db.insert('agentApprovalRequests', { approvalId: `approval_${crypto.randomUUID()}`,
+          await insertPushApproval(ctx, { approvalId: `approval_${crypto.randomUUID()}`,
             workspaceId: args.workspaceId, runId: session.runId, remoteSessionId: session.sessionId,
             requestKey, kind: event.type === 'approval_requested' ? 'permission' : 'elicitation',
             prompt: typeof event.payload.prompt === 'string' ? event.payload.prompt : 'Agent request',
