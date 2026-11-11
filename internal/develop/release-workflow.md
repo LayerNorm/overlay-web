@@ -198,3 +198,5 @@ and confirms endpoint deletion before backend removal. Ownership or provider
 failures remain visible and cannot report successful cleanup. Endpoint setup is
 configuration evidence; actual checkout, signature, event and cancellation
 acceptance remains required. See Convex Workflow for recovery semantics.
+
+Builds persist `OVERLAY_PREVIEW_STRIPE_CREATE_ATTEMPT` in their isolated backend after a create returns 4xx with no owned endpoint. The next build uses that attempt's stable key; network/5xx failures retain the previous key. Existing owned endpoints are reused only with their matching persisted signing secret; missing secrets fail closed for operator recovery rather than creating duplicates. Provider errors include sanitized type, code and message without credentials or request values. Builds on a PR branch use that branch's scripts, so the fix must reach the requesting branch before rebuilding.

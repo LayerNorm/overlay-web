@@ -32,7 +32,8 @@ function fixture({ initial = [], owner = backend, loseDeleteResponse = false, ke
     return row
   }
   const payments = new PreviewPayments({ api, backends: { find: async () => owner } })
-  const config = { readState: async () => state, saveState: async value => { state = value } }
+  const config = { readState: async () => state, saveState: async value => { state = { ...state, ...value } },
+    saveAttempt: async attempt => { state = { ...state, attempt } } }
   return { payments, calls, config, state: () => state, creations: () => creations }
 }
 
@@ -71,11 +72,10 @@ test('a persisted enabled endpoint missing payment events is repaired and read b
   assert.ok(readbackIndex > postIndex)
 })
 
-test('a lost persistence response recovers the original creation secret without duplicating endpoints', async () => {
+test('an owned endpoint without a recoverable secret fails closed without creating a duplicate', async () => {
   const f = fixture({ initial: [endpoint()] })
-  await f.payments.provision(123, f.config)
-  assert.equal(f.state().secret, 'whsec_fixture')
-  assert.equal(f.creations(), 1)
+  await assert.rejects(f.payments.provision(123, f.config), /refusing duplicate creation/)
+  assert.equal(f.creations(), 0)
 })
 
 test('cleanup verifies ownership, preserves foreign endpoints, and confirms deletion after a lost response', async () => {
@@ -84,6 +84,56 @@ test('cleanup verifies ownership, preserves foreign endpoints, and confirms dele
   await f.payments.remove(123)
   assert.deepEqual(f.calls.filter(call => call.method === 'DELETE').map(call => call.path), ['/webhook_endpoints/we_fixture'])
   await f.payments.remove(123)
+})
+
+test('a cached 400 advances the persisted key only for a later build', async () => {
+  const f = fixture()
+  const delegate = f.payments.api
+  const keys = []
+  f.payments.api = async (path, options = {}) => {
+    if (options.method === 'POST') {
+      keys.push(options.idempotencyKey)
+      if (keys.length === 1) throw Object.assign(new Error('Stripe Preview API 400'), { status: 400 })
+    }
+    return delegate(path, options)
+  }
+  await assert.rejects(f.payments.provision(123, f.config), /400/)
+  assert.equal(f.state().attempt, 1)
+  await f.payments.provision(123, f.config)
+  assert.deepEqual(keys, ['overlay-preview-123-test-backend-123', 'overlay-preview-123-test-backend-123-attempt-1'])
+  await f.payments.provision(123, f.config)
+  assert.equal(keys.length, 2)
+})
+
+test('ambiguous failures retain the stable key and do not advance attempts', async () => {
+  for (const status of [undefined, 500]) {
+    const f = fixture()
+    const keys = []
+    f.payments.api = async (_path, options = {}) => {
+      if (options.method !== 'POST') return { data: [], has_more: false }
+      keys.push(options.idempotencyKey)
+      throw Object.assign(new Error('ambiguous'), { status })
+    }
+    for (let i = 0; i < 2; i++) await assert.rejects(f.payments.provision(123, f.config), /ambiguous/)
+    assert.equal(f.state().attempt, undefined)
+    assert.equal(keys[0], keys[1])
+  }
+})
+
+test('an endpoint discovered after a 4xx prevents attempt advancement and is adopted on rebuild', async () => {
+  const f = fixture({ initial: [endpoint()] })
+  let reads = 0
+  const delegate = f.payments.api
+  f.payments.api = async (path, options = {}) => {
+    if (options.method === 'POST') throw Object.assign(new Error('400'), { status: 400 })
+    if (path === '/webhook_endpoints' && reads++ === 0) return { data: [], has_more: false }
+    return delegate(path, options)
+  }
+  await assert.rejects(f.payments.provision(123, f.config), /400/)
+  assert.equal(f.state().attempt, undefined)
+  await f.config.saveState({ id: 'we_fixture', secret: 'whsec_existing' })
+  assert.deepEqual(await f.payments.provision(123, f.config), { id: 'we_fixture', reused: true })
+  assert.equal(f.creations(), 0)
 })
 
 test('cleanup rejects live, dev, production, cross-PR, and mismatched backend ownership before deletion', async () => {
@@ -105,15 +155,10 @@ test('cleanup rejects live, dev, production, cross-PR, and mismatched backend ow
   await assert.rejects(f.payments.remove(123), /deletion readback/)
 })
 
-test('provisioning refuses ambiguous endpoints and expired idempotency recovery removes only the new duplicate', async () => {
+test('provisioning refuses ambiguous endpoints before creation', async () => {
   const ambiguous = fixture({ initial: [endpoint(), endpoint({ id: 'we_other' })] })
   await assert.rejects(ambiguous.payments.provision(123, ambiguous.config), /Ambiguous/)
-  const f = fixture({ initial: [endpoint()] })
-  const delegate = f.payments.api
-  f.payments.api = async (path, options = {}) => path === '/webhook_endpoints' && options.method === 'POST'
-    ? endpoint({ id: 'we_duplicate', secret: 'whsec_duplicate' }) : delegate(path, options)
-  await assert.rejects(f.payments.provision(123, f.config), /recovery expired/)
-  assert.deepEqual(f.calls.filter(call => call.method === 'DELETE').map(call => call.path), ['/webhook_endpoints/we_duplicate'])
+  assert.equal(ambiguous.creations(), 0)
 })
 
 test('complete inventory follows cursor pages and rejects repeated or incomplete responses', async () => {
@@ -129,19 +174,24 @@ test('complete inventory follows cursor pages and rejects repeated or incomplete
   await assert.rejects(f.payments.list(), /incomplete/)
 })
 
-test('Stripe client refuses live credentials before any request and masks provider errors', async () => {
+test('Stripe client surfaces error details but redacts credentials and request values', async () => {
   let calls = 0
   const fetcher = async (url, options) => {
     calls++
     assert.equal(url.origin, 'https://api.stripe.com')
     assert.equal(options.redirect, 'error')
     assert.equal(options.headers.authorization, 'Bearer rk_test_fixture')
-    return { ok: false, status: 403, json: async () => ({ error: { message: 'must not appear: secret' } }) }
+    return { ok: false, status: 403, json: async () => ({ error: { type: 'invalid_request_error', code: 'permission_denied',
+      message: 'Denied rk_test_fixture whsec_fixture https://private.example/webhook' } }) }
   }
   for (const key of ['sk_live_fixture', 'rk_live_fixture', '', undefined]) assert.throws(() => stripeTestClient(key, fetcher))
   assert.equal(calls, 0)
   const api = stripeTestClient('rk_test_fixture', fetcher)
-  await assert.rejects(api('/webhook_endpoints'), error => error.message === 'Stripe Preview API 403')
+  await assert.rejects(api('/webhook_endpoints', { method: 'POST', body: [['url', 'https://private.example/webhook']] }), error => {
+    assert.match(error.message, /Stripe Preview API 403: type=invalid_request_error; code=permission_denied; message=Denied/)
+    assert.doesNotMatch(error.message, /rk_test_fixture|whsec_fixture|private.example/)
+    return error.status === 403
+  })
   await assert.rejects(api('//attacker.test/'), /Invalid/)
   assert.equal(calls, 1)
 })

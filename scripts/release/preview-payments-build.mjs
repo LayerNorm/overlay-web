@@ -28,8 +28,10 @@ try {
       return {
         id: names.has('OVERLAY_PREVIEW_STRIPE_WEBHOOK_ID') ? convex(['env', 'get', 'OVERLAY_PREVIEW_STRIPE_WEBHOOK_ID']) : undefined,
         secret: names.has('STRIPE_WEBHOOK_SECRET') ? convex(['env', 'get', 'STRIPE_WEBHOOK_SECRET']) : undefined,
+        attempt: names.has('OVERLAY_PREVIEW_STRIPE_CREATE_ATTEMPT') ? Number(convex(['env', 'get', 'OVERLAY_PREVIEW_STRIPE_CREATE_ATTEMPT'])) : 0,
       }
     },
+    saveAttempt: async attempt => { convex(['env', 'set', 'OVERLAY_PREVIEW_STRIPE_CREATE_ATTEMPT', String(attempt)]) },
     saveState: async ({ id, secret }) => {
       const directory = mkdtempSync(join(tmpdir(), 'overlay-preview-payment-'))
       try {
