@@ -4,6 +4,7 @@
   "license": "AGPL-3.0-or-later",
   "main": "expo-router/entry",
   "scripts": {
+    "eas-build-pre-install": "node scripts/prepare-eas-workspace.cjs",
     "start": "expo start",
     "start:device": "expo start --dev-client --host tunnel --clear",
     "android": "expo run:android",

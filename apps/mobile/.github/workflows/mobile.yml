@@ -1,0 +1,57 @@
+name: Mobile checks
+on:
+  pull_request:
+  push:
+    branches: [main, 'devin/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: LayerNorm/overlay-web
+          ref: 309c6902eb98b6201568511fe3805a5b7525c2b1
+          token: ${{ secrets.OVERLAY_WEB_READ_TOKEN || github.token }}
+          path: overlay-web
+          submodules: false
+      - uses: actions/checkout@v4
+        with:
+          path: overlay-web/overlay-mobile
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            overlay-web/package-lock.json
+            overlay-web/overlay-mobile/package-lock.json
+      - name: Install web workspace and build package entrypoints
+        working-directory: overlay-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build --workspace @layernorm/overlay-agent-bridge-protocol
+          npm run build --workspace @layernorm/overlay-agent-host
+      - name: Install mobile
+        working-directory: overlay-web/overlay-mobile
+        run: npm ci --no-audit --no-fund
+      - name: Check, test and lint
+        working-directory: overlay-web/overlay-mobile
+        run: |
+          npm run check
+          node --test scripts/*.test.cjs
+          node scripts/lint-mobile.cjs
+      - name: Export and inspect native bundles
+        working-directory: overlay-web/overlay-mobile
+        run: |
+          npx expo export --platform android --source-maps --no-bytecode --output-dir dist/android
+          npx expo export --platform ios --source-maps --no-bytecode --output-dir dist/ios
+          node scripts/inspect-bundles.cjs dist/android dist/ios
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mobile-export-diagnostics
+          path: overlay-web/overlay-mobile/dist
+          if-no-files-found: ignore

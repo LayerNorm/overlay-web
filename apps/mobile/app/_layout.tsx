@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
-import { View, ActivityIndicator, Linking } from 'react-native'
-import { Stack, router } from 'expo-router'
+import { View, ActivityIndicator, Alert } from 'react-native'
+import { Stack, useGlobalSearchParams } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
@@ -9,43 +9,15 @@ import { AppShell } from '../components/shell/AppShell'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import { AppSessionProvider } from '../contexts/AppSessionContext'
-import { WorkspaceProvider } from '../contexts/WorkspaceContext'
-import { ConvexAuthProvider } from '../contexts/ConvexAuthProvider'
+import { WorkspaceProvider, useWorkspace } from '../contexts/WorkspaceContext'
+import { activateLinkWorkspace } from '../lib/incomingLinks'
+import { ConvexAuthProvider, useNativeDataReady } from '../contexts/ConvexAuthProvider'
 import { SettingsLiveBridge } from '../components/settings/SettingsLiveBridge'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useNotificationWatcher } from '../hooks/useNotificationWatcher'
 import { initNotificationHandler } from '../services/notificationsService'
 
 initNotificationHandler()
-
-function handleDeepLink(url: string | null | undefined): void {
-  if (!url) return
-  // Dictate URLs from the keyboard land users on the Voice page so they can
-  // toggle background recording on. We pass autoEnable=1 so the page flips
-  // the switch automatically.
-  if (url.startsWith('overlay://dictate')) {
-    router.push('/(tabs)/voice?autoEnable=1')
-  }
-  // Workspace invitation links: overlay://invitations/<id> or a pasted web
-  // invite path (.../app/invitations/<id> or .../invite/<id>).
-  const inviteMatch = url.match(/invitations?\/([A-Za-z0-9_-]+)/i)
-  if (inviteMatch) {
-    router.push(`/invitations/${inviteMatch[1]}`)
-  }
-  // MCP OAuth callback: the auth session normally intercepts this itself, but a
-  // cold-start deep link should still land the user back on Extensions → MCPs.
-  if (url.startsWith('overlay://auth/mcp-callback')) {
-    router.push('/(tabs)/tools')
-  }
-}
-
-function useDictateDeepLink(): void {
-  useEffect(() => {
-    void Linking.getInitialURL().then(handleDeepLink)
-    const sub = Linking.addEventListener('url', (event) => handleDeepLink(event.url))
-    return () => sub.remove()
-  }, [])
-}
 
 function useVoiceAuthSync(): void {
   // Mirror the WorkOS access token + userId into the App Group on launch and
@@ -73,7 +45,17 @@ function useVoiceAuthSync(): void {
 function RootLayoutNav(): React.ReactElement {
   const { isDark } = useTheme()
   const { isAuthenticated } = useAuth()
-  useDictateDeepLink()
+  const ready = useNativeDataReady()
+  const { workspaceId } = useGlobalSearchParams<{ workspaceId?: string }>()
+  const { activeWorkspaceId, isLoading, switchWorkspace } = useWorkspace()
+  useEffect(() => {
+    if (!ready || !isAuthenticated || isLoading) return
+    let current = true
+    void activateLinkWorkspace(workspaceId, activeWorkspaceId, switchWorkspace).catch(() => {
+      if (current) Alert.alert('Could not open workspace', 'Check your connection and workspace access.')
+    })
+    return () => { current = false }
+  }, [workspaceId, activeWorkspaceId, isLoading, isAuthenticated, switchWorkspace, ready])
   useVoiceAuthSync()
   useNotificationWatcher(isAuthenticated)
   usePushNotifications()

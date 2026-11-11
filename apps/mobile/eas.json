@@ -7,17 +7,21 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "ios": {
         "simulator": false
       }
     },
     "preview": {
+      "environment": "preview",
+      "autoIncrement": true,
       "distribution": "internal",
       "ios": {
         "enterpriseProvisioning": "adhoc"
       }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "node": "22.13.0",
       "ios": {
