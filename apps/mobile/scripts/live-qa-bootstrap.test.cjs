@@ -54,6 +54,7 @@ function session() {
     react: hook.react,
     '@overlay/app-core': { CANONICAL_APP_DESTINATIONS: [], deriveOverlayCapabilities: () => ({}) },
     './AuthContext': { useAuth: () => ({ user, isAuthenticated: !!user, isLoading: authLoading }) },
+    '../services/workspaceSetup': load('services/workspaceSetup.ts', {}),
     '../services/bootstrapService': {
       getCachedBootstrap: () => cached, setCachedBootstrap: async () => {}, clearBootstrapCache: async () => {},
       getAppBootstrap: options => { calls.push(options); const request = pending(); requests.push(request); return request.promise },
@@ -156,6 +157,7 @@ test('session gate hides query children while bootstrapping and retains Retry an
     '../../contexts/AppSessionContext': { useAppSession: () => ({ isInitialized: initialized, error, refresh: async options => calls.push(options.forceRefresh) }) },
     '../../hooks/useTheme': { useTheme: () => ({ theme: {} }) },
     './primitives': { Button: 'Button', T: 'Text' },
+    './EntryScreens': { WorkspaceGate: 'WorkspaceGate' },
   })
   const render = () => hook.render(() => api.SessionGate({ children: 'native-queries' }))
   assert.equal(JSON.stringify(render()).includes('native-queries'), false)
