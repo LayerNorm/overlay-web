@@ -2,6 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { renderLifecycleEmail } from './lifecycle-email'
 
+test('invitation email includes optional inviter name and escapes HTML', () => {
+  const email = renderLifecycleEmail({
+    name: 'workspace.invitation_sent', userId: 'user_1', idempotencyKey: 'invite-name',
+    attributes: { workspaceName: 'Acme', role: 'admin', inviterName: 'Priya <Shah>' },
+    resource: { id: 'invite_1' },
+  }, 'https://getoverlay.io')
+  assert.match(email.text, /Priya <Shah> invited you to Acme on Overlay/)
+  assert.match(email.html, /Priya &lt;Shah&gt; invited you to Acme/)
+  assert.doesNotMatch(email.html, /<Shah>/)
+  assert.equal(email.subject, "You've been invited to Acme on Overlay")
+})
+
 test('invitation email uses Overlay brand treatment', () => {
   const email = renderLifecycleEmail({
     name: 'workspace.invitation_sent',

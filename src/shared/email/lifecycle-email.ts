@@ -238,13 +238,15 @@ function apiKeyContent(event: LifecycleEmailEvent, appUrl: string): EmailContent
 function invitationContent(event: LifecycleEmailEvent, appUrl: string): EmailContent {
   const workspaceName = stringAttribute(event.attributes.workspaceName) ?? 'a workspace'
   const role = stringAttribute(event.attributes.role) ?? 'member'
+  const inviterName = stringAttribute(event.attributes.inviterName)
   const invitationId = stringAttribute(event.resource.id)
   const invitationUrl = invitationId
     ? new URL(`/app/invitations/${encodeURIComponent(invitationId)}`, appUrl).toString()
     : appUrl
   return {
-    body: `You've been invited to collaborate in ${workspaceName}. Sign in with the email address that received this invitation to accept.`,
-    bodyHtml: `You've been invited to collaborate in this workspace. Sign in with the email address that received this invitation to accept.`,
+    body: inviterName
+      ? `${inviterName} invited you to ${workspaceName} on Overlay. Sign in with the email address that received this invitation to accept.`
+      : `You've been invited to collaborate in ${workspaceName}. Sign in with the email address that received this invitation to accept.`,
     ctaLabel: 'Accept invitation',
     ctaUrl: invitationUrl,
     feature: card(
@@ -255,7 +257,7 @@ function invitationContent(event: LifecycleEmailEvent, appUrl: string): EmailCon
       `<div style="font-family:${SANS};font-size:11.5px;color:#71717a;padding-top:2px;">Invited you as ${escapeHtml(role)}</div></td>` +
       `</tr></table>`,
     ),
-    heading: `Join ${workspaceName}`,
+    heading: inviterName ? `${inviterName} invited you to ${workspaceName}` : `Join ${workspaceName}`,
     reason: 'You received this because someone invited this email address to an Overlay workspace.',
     subject: `You've been invited to ${workspaceName} on Overlay`,
   }

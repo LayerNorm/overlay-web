@@ -81,6 +81,7 @@ type WorkspaceInvitationSentLifecycleEvent = LifecycleEventBase<'workspace.invit
     workspaceName: string
     invitedEmail: string
     invitedByPrincipalId: string
+    inviterName?: string
     role: string
   }>
 

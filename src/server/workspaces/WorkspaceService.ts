@@ -682,8 +682,11 @@ export class WorkspaceService {
     invitation: WorkspaceInvitation
     workspaceName: string
   }): Promise<void> {
-    await this.lifecycleEvents?.publish({
+    if (!this.lifecycleEvents) return
+    const inviter = await this.repository.getPrincipal(args.invitation.invitedByPrincipalId)
+    await this.lifecycleEvents.publish({
       attributes: {
+        ...(inviter?.displayName.trim() ? { inviterName: inviter.displayName.trim() } : {}),
         workspaceId: args.invitation.workspaceId,
         workspaceName: args.workspaceName,
         invitedEmail: args.invitation.email,

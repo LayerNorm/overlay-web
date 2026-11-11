@@ -25,6 +25,8 @@ test('every API v1 route method has an explicit authorization policy', async () 
 })
 
 test('route policies are exact and expose typed resource requirements', () => {
+  assert.deepEqual(getAuthorizationRoutePolicy('GET', '/api/v1/workspace-invitations/invite_1'), { access: 'public' })
+  assert.deepEqual(getAuthorizationRoutePolicy('POST', '/api/v1/workspace-invitations/invite_1/accept'), { access: 'authenticated' })
   assert.deepEqual(getAuthorizationRoutePolicy('GET', '/api/v1/files'), {
     access: 'resource',
     capabilities: ['files.read'],

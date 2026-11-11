@@ -384,6 +384,9 @@ test('resending an invitation publishes a fresh delivery event for the replaceme
     async getInvitation() {
       return existing
     },
+    async getPrincipal() {
+      return { ...actor.principal, displayName: 'Priya Shah' }
+    },
     async createInvitationReplacingPending() {
       return replacement
     },
@@ -407,6 +410,7 @@ test('resending an invitation publishes a fresh delivery event for the replaceme
 
   assert.equal(result.id, 'invite_new')
   assert.equal(events.length, 1)
+  assert.equal((events[0] as { attributes: { inviterName?: string } }).attributes.inviterName, 'Priya Shah')
   assert.equal((events[0] as { idempotencyKey?: string }).idempotencyKey, 'workspace.invitation_sent:invite_new')
   assert.equal(
     (events[0] as { attributes?: { invitedEmail?: string } }).attributes?.invitedEmail,
