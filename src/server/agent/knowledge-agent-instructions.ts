@@ -61,11 +61,11 @@ export const ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB = [
 
 /** Instructs the model when to call save_memory (preferences, facts, standing instructions). */
 export const MEMORY_SAVE_PROTOCOL = [
-  'MEMORY SAVING — required behavior (call save_memory or save_memory_batch in the SAME turn as your reply):',
+  'MEMORY SAVING — required behavior when a memory-writing tool is available (call save_memory or save_memory_batch in the SAME turn as your reply):',
   '',
   'DEFAULT RULE: if the user message contains ANY detail about themselves — save it.',
   '',
-  'When the user message contains 2+ distinct personal facts, preferences, identity details, goals, constraints, or standing instructions, you MUST call save_memory_batch and pass an array with each extracted memory.',
+  'When the user message contains 2+ distinct personal facts, preferences, identity details, goals, constraints, or standing instructions, use save_memory_batch if available and pass an array with each extracted memory. Otherwise use save_memory for each distinct fact. Never call a memory tool that is not available in this turn.',
   '',
   'EXAMPLE — user says: "I am the founder of getoverlay.io and live in SF and I\'m basically pre-revenue right now and need help distributing getoverlay.io. What advice do you have for me to become ramen profitable asap?"',
   '  → Call save_memory_batch with:',
