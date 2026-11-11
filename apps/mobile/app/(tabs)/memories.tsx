@@ -1,6 +1,3 @@
 import React from 'react'
-import { FilesScreen } from '../../components/knowledge/FilesScreen'
-
-export default function MemoriesRoute(): React.ReactElement {
-  return <FilesScreen memoriesOnly />
-}
+import { Redirect } from 'expo-router'
+export default function MemoriesRoute() { return <Redirect href="/settings?section=memories" /> }

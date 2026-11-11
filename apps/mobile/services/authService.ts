@@ -92,6 +92,7 @@ interface NativeExchangeResponse {
 }
 
 interface PendingNativeAuthRequest {
+  purpose?: 'account-deletion'
   codeVerifier: string
   state: string
 }
@@ -199,6 +200,7 @@ export async function buildNativeAuthRequest(args: {
   provider: NativeAuthProvider
   redirectUri: string
   forceSignIn?: boolean
+  purpose?: 'account-deletion'
 }): Promise<{ authorizationUrl: string; codeVerifier: string; state: string }> {
   const codeVerifier = await generateCodeVerifier()
   const codeChallenge = await sha256Base64Url(codeVerifier)
@@ -229,7 +231,7 @@ export async function buildNativeAuthRequest(args: {
 
   await SecureStore.setItemAsync(
     NATIVE_AUTH_PENDING_STORAGE_KEY,
-    JSON.stringify({ codeVerifier, state } satisfies PendingNativeAuthRequest),
+    JSON.stringify({ codeVerifier, state, purpose: args.purpose } satisfies PendingNativeAuthRequest),
   )
 
   return { authorizationUrl: data.authorizationUrl, codeVerifier, state }
@@ -273,6 +275,15 @@ export async function completeNativeAuthCallback(callbackUrl: string): Promise<A
   }
 
   const error = parsedUrl.searchParams.get('error')
+  const pendingPurpose = await SecureStore.getItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
+  let interruptedDeletion = false
+  try {
+    interruptedDeletion = Boolean(pendingPurpose && (JSON.parse(pendingPurpose) as PendingNativeAuthRequest).purpose === 'account-deletion')
+  } catch {}
+  if (interruptedDeletion) {
+    await SecureStore.deleteItemAsync(NATIVE_AUTH_PENDING_STORAGE_KEY)
+    return null
+  }
   if (error) {
     throw new Error(parsedUrl.searchParams.get('error_description') || error)
   }

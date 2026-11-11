@@ -692,8 +692,8 @@ export function WorkspaceScreen(): React.ReactElement {
         <EmptyState
           theme={theme}
           icon="credit-card"
-          title="Personal billing stays personal"
-          description="Your subscription and top-up credits remain in Account. Workspace wallets are for organization workspaces."
+          title="Workspace billing"
+          description="Billing information is available in Settings → Billing."
         />
       )
     }
@@ -713,7 +713,7 @@ export function WorkspaceScreen(): React.ReactElement {
               <Text style={[styles.policyLabel, { color: theme.text }]}>Workspace wallet not set up</Text>
               <Text style={[styles.policyDescription, { color: theme.textSecondary }]}>
                 Shared agents, files, automations, and hosted work draw on this wallet. Wallets are
-                initialized from the web app.
+                not initialized.
               </Text>
             </View>
           </View>
@@ -746,7 +746,7 @@ export function WorkspaceScreen(): React.ReactElement {
                   }`}
                 </Text>
                 <Text style={[styles.policyState, { color: theme.textDisabled }]}>
-                  Plans, top-ups, and the billing portal are managed on the web app.
+                  Billing is read-only in this app.
                 </Text>
               </View>
             </View>

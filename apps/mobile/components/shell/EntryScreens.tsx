@@ -118,7 +118,7 @@ export function SignInScreen({
   )
 }
 
-export function WorkspaceGate({ theme, onSignOut }: { theme: Theme; onSignOut: () => void }) {
+export function WorkspaceGate({ theme, onSignOut, onAccount }: { theme: Theme; onSignOut: () => void; onAccount?: () => void }) {
   return (
     <View
       style={{
@@ -147,6 +147,7 @@ export function WorkspaceGate({ theme, onSignOut }: { theme: Theme; onSignOut: (
       <Button theme={theme} onPress={onSignOut}>
         Use another account
       </Button>
+      {onAccount ? <Button theme={theme} onPress={onAccount}>Account settings</Button> : null}
     </View>
   )
 }

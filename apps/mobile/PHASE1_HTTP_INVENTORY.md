@@ -1,9 +1,16 @@
-# Mobile HTTP inventory — through Phase 2e
+# Mobile HTTP inventory — through Phase 2f
 
 ## Moved to Convex
 
 | Mobile surface / adapter | Convex reference | Boundary |
 | --- | --- | --- |
+| Settings and live cache | `platform.uiSettings.mine` | Native account subscription; web's settings-write endpoint remains HTTP. |
+| Memories and listMemories | `knowledge.memoryBrowse.list` | Native list/attribution; web's memory indexing/CRUD remains HTTP. |
+| Members and native management views | `collaboration.management.view` | People, teams, guests, roles and chats-agents are native; sharing/import lack native equivalents. |
+| Billing and loadWorkspaceBilling | `billing.browse.workspaceSummary` | Native read-only summary, no purchase/top-up/checkout/portal controls or purchase links. |
+| Models/provider connections | `providers.browse.connections` | Native read; credential writes/tests and hosted subscription OAuth remain server-owned HTTP. |
+| Account identity | `auth.accountBrowse.identity` | Native profile subscription; profile/photo writes remain HTTP. |
+| Conversation notification preferences | `collaboration.roomList.list`, `collaboration.rooms.state/updateMyState` | Native conversation levels; foreground-banner categories remain explicitly device-local. |
 | Files browser, listKnowledgeFiles, loadNotesIndex | `files.browse.list` | Live browser subscription; compatibility helpers use native snapshots. |
 | File preview, note editor, getKnowledgeFile, loadNote | `files.browse.get` | Live metadata/inline text; storage-backed text stays authenticated HTTP. |
 | Folder browsing, fileChildren | `files.browse.children` | Personal/workspace child subscriptions; generated `{ files, complete }` result. |
@@ -18,7 +25,7 @@
 
 Uploads, storage content/download, sharing, note writes and automation scheduling/execution/approvals retain web's HTTP ownership. Download in `components/knowledge/ResourceScreens.tsx` validates web origin/path and uses authenticated `appRequest`. `Submit a bug` opens hosted web after a public-GitHub warning: the web POST requires a browser session and same-origin checks, so this is not a native reporting API. Memories remain under Settings; the semantic knowledge-search service is retained separately from the new metadata Search screen.
 
-Phase 2e rows below have refreshed callsites and reasons. Other rows retain the Phase 1 snapshot and deferred classification.
+Phase 2e/2f rows below have refreshed boundaries. Other rows retain the Phase 1 snapshot and deferred classification. No Expo/APNs/FCM token-registration endpoint or Convex persistence path exists: push permission and token capture are local only, as authorized. Global five-category notification preferences have no public native API; the Settings page separates device-local foreground banners from native, persisted conversation notification levels.
 
 ## Remaining HTTP callsites
 
@@ -28,6 +35,10 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 
 | Callsite | HTTP call / destination | Why it remains |
 | --- | --- | --- |
+| `services/accountDeletionService.ts` | `POST /api/account/delete`, fresh Bearer, `credentials: omit` | Server-owned shared account purge after forced hosted WorkOS PKCE reauthentication. |
+| `services/settingsNativeService.ts` (saveAccountName) | `PATCH /api/v1/account/profile` | Server-owned account profile write. |
+| `services/settingsNativeService.ts` (subscriptionRequest), `SubscriptionSheet` cleanup | `GET/POST/PATCH /api/v1/providers/subscriptions`; `DELETE /api/v1/providers/connections` | Availability, authorization, polling, callback and abandoned-flow cleanup are server-owned OAuth operations. |
+| `components/settings/SettingsScreen.tsx` | `POST /api/v1/account/profile/photo` | Authenticated multipart image validation/storage. |
 | `services/accountExtrasService.ts:13` (getTopUpHistory) | `mobileOverlayAppClient.topUps.history` | Billing and payment history remain server-owned. |
 | `services/agentsService.ts:34` (listAgents) | `mobileOverlayAppClient.agents.list` | Phase 2: agent screen data and editing; enrollment, agent greetings and computer provisioning remain server-owned orchestration. |
 | `services/agentsService.ts:41` (getAgent) | `mobileOverlayAppClient.agents.get` | Phase 2: agent screen data and editing; enrollment, agent greetings and computer provisioning remain server-owned orchestration. |
@@ -104,10 +115,7 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 | `services/integrationsService.ts:145` (startMcpOAuth) | `appJson` → <code>'/api/v1/mcps/oauth'</code> | Phase 2: Extensions screen data and editing; provider catalog, connector operations, OAuth and tests are server-owned integration orchestration. |
 | `services/integrationsService.ts:152` (disconnectMcpOAuth) | `appJson` → <code>'/api/v1/mcps/oauth'</code> | Phase 2: Extensions screen data and editing; provider catalog, connector operations, OAuth and tests are server-owned integration orchestration. |
 | `services/knowledgeService.ts:20` (searchKnowledge) | `appJson` → <code>'/api/v1/knowledge/search'</code> | Server-owned semantic chunk/vector retrieval, separate from Convex title/mention search. |
-| `services/knowledgeService.ts:28` (listMemories) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
-| `services/knowledgeService.ts:34` (createMemory) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
-| `services/knowledgeService.ts:44` (updateMemory) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
-| `services/knowledgeService.ts:51` (deleteMemory) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts` (createMemory/updateMemory/deleteMemory) | `appJson` → `/api/v1/memory` | Web uses HTTP for memory writes and indexing; no public native replacement. |
 | `services/knowledgeService.ts:75` (getKnowledgeFileContent) | `appRequest` → <code>/api/v1/files/${fileId}/content</code> | Authenticated object-storage text retrieval after native metadata reads. |
 | `services/knowledgeService.ts:85` (createKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Web file creation/content-ingestion orchestration; no native create mutation. |
 | `services/knowledgeService.ts:99` (createKnowledgeFolder) | `appJson` → <code>'/api/v1/files'</code> | Web folder creation endpoint; native browse exposes rename/move, not create. |
@@ -128,13 +136,11 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 | `services/onboardingService.ts:25` (getOnboardingStatus) | `mobileOverlayAppClient.onboarding.status` | Phase 2: onboarding state; completion/reset invoke server-owned initialization orchestration. |
 | `services/onboardingService.ts:29` (completeOnboarding) | `mobileOverlayAppClient.onboarding.complete` | Phase 2: onboarding state; completion/reset invoke server-owned initialization orchestration. |
 | `services/onboardingService.ts:33` (resetOnboarding) | `mobileOverlayAppClient.onboarding.resetResponse` | Phase 2: onboarding state; completion/reset invoke server-owned initialization orchestration. |
-| `services/providersService.ts:176` (listProviderConnections) | `appJson` → <code>'/api/v1/providers/connections'</code> | Provider connection management and credential validation are server-owned orchestration. |
 | `services/providersService.ts:187` (createProviderConnection) | `appJson` → <code>'/api/v1/providers/connections'</code> | Provider connection management and credential validation are server-owned orchestration. |
 | `services/providersService.ts:214` (updateProviderConnection) | `appJson` → <code>'/api/v1/providers/connections'</code> | Provider connection management and credential validation are server-owned orchestration. |
 | `services/providersService.ts:234` (deleteProviderConnection) | `appJson` → <code>'/api/v1/providers/connections'</code> | Provider connection management and credential validation are server-owned orchestration. |
 | `services/providersService.ts:252` (testProviderConnection) | `appJson` → <code>'/api/v1/providers/connections/test'</code> | Provider connection management and credential validation are server-owned orchestration. |
-| `services/settingsService.ts:28` (getUiSettings) | `appJson` → <code>'/api/v1/settings'</code> | Phase 2: account/workspace settings screen data and editing. |
-| `services/settingsService.ts:37` (updateUiSettings) | `appJson` → <code>'/api/v1/settings'</code> | Phase 2: account/workspace settings screen data and editing. |
+| `services/settingsService.ts` (updateUiSettings) | `appJson` → `/api/v1/settings` | Web uses HTTP for settings writes; native reads update the live cache. |
 | `services/webhooksService.ts:55` (listWebhookSubscriptions) | `mobileOverlayAppClient.webhooks.list` | Phase 2: webhook screen data and editing; secret rotation and delivery retries are server-owned orchestration. |
 | `services/webhooksService.ts:62` (listWebhookDeliveries) | `mobileOverlayAppClient.webhooks.listDeliveries` | Phase 2: webhook screen data and editing; secret rotation and delivery retries are server-owned orchestration. |
 | `services/webhooksService.ts:71` (createWebhookSubscription) | `appJson` → <code>'/api/v1/webhooks'</code> | Phase 2: webhook screen data and editing; secret rotation and delivery retries are server-owned orchestration. |
@@ -142,7 +148,7 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 | `services/webhooksService.ts:102` (rotateWebhookSecret) | `appJson` → <code>'/api/v1/webhooks'</code> | Phase 2: webhook screen data and editing; secret rotation and delivery retries are server-owned orchestration. |
 | `services/webhooksService.ts:110` (redriveWebhookDelivery) | `appJson` → <code>'/api/v1/webhooks'</code> | Phase 2: webhook screen data and editing; secret rotation and delivery retries are server-owned orchestration. |
 | `services/webhooksService.ts:118` (deleteWebhookSubscription) | `appJson` → <code>'/api/v1/webhooks'</code> | Phase 2: webhook screen data and editing; secret rotation and delivery retries are server-owned orchestration. |
-| `services/workspaceManagementService.ts:56` (loadManagementView) | `mobileOverlayAppClient.workspaces.management` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
+| `services/workspaceManagementService.ts` (loadManagementView sharing/import only) | `mobileOverlayAppClient.workspaces.management` | Sharing/import have no corresponding native management view; other views are native. |
 | `services/workspaceManagementService.ts:68` (inviteToWorkspace) | `mobileOverlayAppClient.workspaces.invite` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:75` (resendWorkspaceInvitation) | `mobileOverlayAppClient.workspaces.resendInvitation` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:82` (cancelWorkspaceInvitation) | `mobileOverlayAppClient.workspaces.cancelInvitation` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
@@ -159,7 +165,6 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 | `services/workspaceManagementService.ts:166` (updateSharingPolicy) | `appJson` → <code>/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies</code> | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:176` (loadOperationalMetrics) | `appJson` → <code>/api/v1/workspaces/${encodeURIComponent(workspaceId)}/governance</code> | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:192` (exportWorkspaceAudit) | `appRequest` → <code>/api/v1/workspaces/${encodeURIComponent(workspaceId)}/audit-export</code> | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
-| `services/workspaceManagementService.ts:216` (loadWorkspaceBilling) | `mobileOverlayAppClient.workspaces.billing` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:224` (loadSharedWithMe) | `mobileOverlayAppClient.sharing.sharedWithMe` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:237` (loadResourceShares) | `mobileOverlayAppClient.sharing.get` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |
 | `services/workspaceManagementService.ts:249` (grantResourceShare) | `mobileOverlayAppClient.sharing.grant` | Phase 2: workspace/membership/team/policy/sharing screen data and edits; invitations, import/export and billing are server-owned orchestration. |

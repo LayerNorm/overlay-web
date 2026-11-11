@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { BackHandler, Modal, View } from 'react-native'
 import { useNetInfo } from '@react-native-community/netinfo'
-import { usePathname, useRouter } from 'expo-router'
+import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -85,6 +85,8 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const { section } = useGlobalSearchParams<{ section?: string }>()
   const { theme } = useTheme()
   const { user, isAuthenticated, isLoading: authLoading, signOut } = useAuth()
   const workspace = useWorkspace()
@@ -132,10 +134,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     membershipCount: workspace.workspaces.length,
   })
   const ready = isAuthenticated && entry === 'ready'
+  const accountAccess = isAuthenticated && pathname === '/settings' && section === 'account'
   const overlay =
     entry === 'boot' ? (
       <BootScreen theme={theme} animate={boot} />
-    ) : entry === 'error' ? (
+    ) : entry === 'error' && !accountAccess ? (
       <View
         style={{
           flex: 1,
@@ -154,8 +157,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Use another account
         </Button>
       </View>
-    ) : entry === 'workspace-required' ? (
-      <WorkspaceGate theme={theme} onSignOut={doSignOut} />
+    ) : entry === 'workspace-required' && !accountAccess ? (
+      <WorkspaceGate theme={theme} onSignOut={doSignOut} onAccount={() => router.push('/settings?section=account')} />
     ) : null
   const sidebar = (
     <View

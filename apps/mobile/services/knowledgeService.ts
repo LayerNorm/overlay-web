@@ -1,6 +1,7 @@
 import { appJson, appRequest, getRequestWorkspaceId } from './appApi'
 import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 import { getFile, listFiles, moveFile, renameFile } from './filesService'
+import { readMemories } from './settingsNativeService'
 
 export interface KnowledgeSearchChunk {
   sourceId: string
@@ -25,13 +26,15 @@ export async function searchKnowledge(
 
 // ── Memories ──
 export async function listMemories(): Promise<MemoryRow[]> {
-  return appJson<MemoryRow[]>('/api/v1/memory')
+  const rows = await readMemories()
+  if (!rows) throw new Error('Memories are unavailable in this workspace.')
+  return rows
 }
 
 export async function createMemory(
   content: string,
 ): Promise<void> {
-  await appJson('/api/v1/memory', {
+  await appJson('/api/v1/memory', { workspaceId: getRequestWorkspaceId(),
     method: 'POST',
     json: {
       content,
@@ -41,14 +44,14 @@ export async function createMemory(
 }
 
 export async function updateMemory(memoryId: string, content: string): Promise<void> {
-  await appJson('/api/v1/memory', {
+  await appJson('/api/v1/memory', { workspaceId: getRequestWorkspaceId(),
     method: 'PATCH',
     json: { memoryId, content },
   })
 }
 
 export async function deleteMemory(memoryId: string): Promise<void> {
-  await appJson('/api/v1/memory', {
+  await appJson('/api/v1/memory', { workspaceId: getRequestWorkspaceId(),
     method: 'DELETE',
     json: { memoryId },
   })

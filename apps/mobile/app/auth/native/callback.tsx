@@ -1,20 +1,22 @@
 import React, { useEffect } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useAuth } from '../../../contexts/AuthContext'
+import { getAccountDeletionState, isAccountDeletionCallback } from '../../../services/accountDeletionService'
 import { useTheme } from '../../../hooks/useTheme'
 
 export default function NativeAuthCallbackScreen(): React.ReactElement {
   const router = useRouter()
+  const { state } = useLocalSearchParams<{ state?: string }>()
   const { theme } = useTheme()
   const { isAuthenticated, isLoading, authError } = useAuth()
 
   useEffect(() => {
     if (!isLoading && isAuthenticated && !authError) {
-      router.replace('/(tabs)/chat')
+      router.replace(getAccountDeletionState().busy || isAccountDeletionCallback(`overlay://auth/callback?state=${encodeURIComponent(state ?? '')}`) ? '/settings?section=account' : '/(tabs)/chat')
     }
-  }, [authError, isAuthenticated, isLoading, router])
+  }, [authError, isAuthenticated, isLoading, router, state])
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>

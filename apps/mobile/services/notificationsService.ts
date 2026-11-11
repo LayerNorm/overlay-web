@@ -42,7 +42,7 @@ export function initNotificationHandler(): void {
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (!Device.isDevice) return false
+  if (Platform.OS === 'android') await Notifications.setNotificationChannelAsync('default', { name: 'Default', importance: Notifications.AndroidImportance.DEFAULT })
   const current = await Notifications.getPermissionsAsync()
   if (current.granted) return true
   if (!current.canAskAgain) return false

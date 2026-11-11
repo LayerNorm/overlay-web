@@ -20,6 +20,7 @@ import {
   saveRefreshedAuthSession,
 } from '../services/authService'
 import { clearBootstrapCache } from '../services/bootstrapService'
+import { getAccountDeletionState, isAccountDeletionCallback } from '../services/accountDeletionService'
 import { clearUiSettingsCache } from '../services/settingsService'
 import { clearVoiceAuthSessionFromAppGroup, disableBackgroundVoice } from '../services/voiceService'
 
@@ -112,7 +113,8 @@ export function AuthProvider({
 
   const consumeIncomingUrl = useCallback(
     async (url: string): Promise<boolean> => {
-      console.log('[AuthContext] consumeIncomingUrl: received URL =', url)
+      if (getAccountDeletionState().busy || isAccountDeletionCallback(url)) return false
+      console.log('[AuthContext] consumeIncomingUrl: received callback')
       const token = extractTransferToken(url)
       if (!token) {
         const nativeSession = await completeNativeAuthCallback(url)
@@ -166,6 +168,7 @@ export function AuthProvider({
 
   const completeNativeSignIn = useCallback(
     async (nextSession: AuthSession) => {
+      if (getAccountDeletionState().busy) throw new Error('Finish the account action before signing in.')
       await saveAuthSession(nextSession)
       await hydrateSession(nextSession)
       setAuthError(null)
@@ -183,7 +186,7 @@ export function AuthProvider({
 
       try {
         const initialUrl = await Linking.getInitialURL()
-        console.log('[AuthContext] bootstrap: initialUrl =', initialUrl)
+        console.log('[AuthContext] bootstrap: initial callback present =', Boolean(initialUrl))
         const didConsumeTransfer = initialUrl ? await consumeIncomingUrl(initialUrl) : false
         console.log('[AuthContext] bootstrap: didConsumeTransfer =', didConsumeTransfer)
 
@@ -207,7 +210,8 @@ export function AuthProvider({
     void bootstrap()
 
     const subscription = Linking.addEventListener('url', (event) => {
-      console.log('[AuthContext] Linking event: url =', event.url)
+      if (getAccountDeletionState().busy || isAccountDeletionCallback(event.url)) return
+      console.log('[AuthContext] Linking event: received callback')
       setIsLoading(true)
       setAuthError(null)
 

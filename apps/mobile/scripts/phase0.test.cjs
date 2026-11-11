@@ -16,6 +16,7 @@ function load(file, dependencies = {}) {
   const loaded = { exports: {} }
   const requireMock = (id) => {
     if (id === './filesService') return {}
+    if (id === './settingsNativeService') return {}
     assert.ok(Object.hasOwn(dependencies, id), 'Unexpected dependency: ' + id)
     return dependencies[id]
   }

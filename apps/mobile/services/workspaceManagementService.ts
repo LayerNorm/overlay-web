@@ -29,6 +29,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import { appJson, appRequest } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
+import { api, queryConvex } from './convexClient'
 
 /** Mirrors `WorkspaceSharedResource` in @overlay/api-client (not re-exported
  *  by the package index). */
@@ -53,7 +54,10 @@ export async function loadManagementView(
   workspaceId: string,
   view: WorkspaceManagementView,
 ): Promise<WorkspaceManagementResponse> {
-  return mobileOverlayAppClient.workspaces.management(workspaceId, view)
+  if (view === 'sharing' || view === 'import') return mobileOverlayAppClient.workspaces.management(workspaceId, view)
+  const result = await queryConvex(api.collaboration.management.view, { workspaceId, view })
+  if (!result) throw new Error('Workspace management is unavailable.')
+  return result
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +217,9 @@ export async function exportWorkspaceAudit(
 export async function loadWorkspaceBilling(
   workspaceId: string,
 ): Promise<WorkspaceBillingSummaryResponse> {
-  return mobileOverlayAppClient.workspaces.billing(workspaceId)
+  const result = await queryConvex(api.billing.browse.workspaceSummary, { workspaceId })
+  if (!result) throw new Error('Billing information is unavailable.')
+  return result
 }
 
 // ---------------------------------------------------------------------------

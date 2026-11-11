@@ -34,6 +34,7 @@ import {
   loadCachedUiSettings,
   persistUiSettings,
   updateUiSettings,
+  subscribeUiSettings,
 } from '../services/settingsService'
 
 type AppSessionContextValue = {
@@ -92,6 +93,7 @@ export function AppSessionProvider({
     getCachedBootstrap()?.uiSettings ?? DEFAULT_UI_SETTINGS,
   )
   const [hasLoadedCachedSettings, setHasLoadedCachedSettings] = useState(false)
+  useEffect(() => subscribeUiSettings(setUiSettings), [])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

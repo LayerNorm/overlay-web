@@ -10,6 +10,7 @@ import { WorkFixture } from './WorkFixture'
 import { AgentFixture } from './AgentFixture'
 import { ChatFixture } from './ChatFixture'
 import { ResourceFixture } from './ResourceFixture'
+import { SettingsFixture, SETTINGS_FIXTURE_SCREENS } from './SettingsFixture'
 
 void NavigationBar.setVisibilityAsync('hidden')
 
@@ -31,7 +32,7 @@ function NativeShellPreview() {
       ? ChatFixture
     : ['activity-feed', 'files-list', 'note', 'file-preview', 'automations-list', 'automation-detail', 'search-mentions'].includes(preview?.screen)
       ? ResourceFixture
-    : ShellFixture
+    : SETTINGS_FIXTURE_SCREENS.includes(preview?.screen) ? SettingsFixture : ShellFixture
   return (
     <View style={{ flex: 1 }}>
       <StatusBar hidden />
