@@ -1,6 +1,6 @@
 import { z } from 'zod/v3'
 import { AuthFields, EmptyQuery, EmptyRequest, FormDataBoundary, PaginationQuery, UnknownResponse } from './common'
-import { OnboardingActionSchema } from '@/shared/onboarding/session'
+import { OnboardingActionSchema } from '../onboarding/session'
 
 export const BootstrapQuery = EmptyQuery
 export const SubscriptionQuery = EmptyQuery

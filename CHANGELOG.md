@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record the 36 approved mobile app mockups and launch plan. Mobile will sign in to existing workspaces, use live shared data, and leave purchases and desktop-only setup on the web at launch. Fix a web-only import in shared packages that blocked mobile bundling, and check that mobile's shared dependencies stay portable.
+
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.
 - Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.
 
