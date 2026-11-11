@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, expect, test, vi } from 'vitest'
 import { createUIMessageStreamResponse as sdkCreateUIMessageStreamResponse, parseJsonEventStream, readUIMessageStream, uiMessageChunkSchema } from 'ai'
+import { Chat } from '@ai-sdk/react'
+import { buildAssistantVisualSequence } from '@overlay/chat-core'
 import type { AgentRun } from '@/shared/agents/agent-run'
+import { buildAssistantPersistenceFromSteps } from '@/shared/chat/persist-assistant-turn'
 import type { UIMessage, UIMessageChunk } from '@/server/ai/sdk'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
+import { removeTransientGeneratedUiPreviews } from '@/features/chat/components/chat/generated-ui-mutation'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
   isPersonalHarnessRouteEligible,
@@ -84,6 +88,46 @@ function modelStream() {
       controller.close()
     },
   })
+}
+
+function acceptedTurnInput(): Parameters<typeof startPersonalHarnessTurn>[0] {
+  return {
+    agentRun: makeAgentRun(),
+    auth: { userId: 'user', authType: 'session', accessToken: 'private-token' } as AuthenticatedAppUser,
+    conversationId: 'conversation',
+    emitWebhook: true,
+    effectiveModelId: 'candidate-0',
+    goal: 'Show the result.',
+    hasDynamicApproval: false,
+    instructions: 'Answer the request.',
+    messagesForModel: [{ id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Show the result.' }] }] as UIMessage[],
+    paid: true,
+    principalId: 'principal',
+    rawReasoning: 'low',
+    requestId: 'request-live-preview',
+    releaseConcurrency: vi.fn(),
+    recordProgress: vi.fn(async () => {}),
+    sourceCitations: {},
+    tools: { render_ui: {} } as never,
+    toolingContext: {
+      accountAllowedConnectorIds: [],
+      accountAllowedToolIds: ['render_ui'],
+      baseUrl: 'https://internal.example',
+      billingProgrammaticSubjectId: 'billing-subject',
+      conversationId: 'conversation',
+      effectiveModelId: 'candidate-0',
+      latestUserText: 'Show the result.',
+      mediaToolIntent: 'none',
+      memoryEnabled: false,
+      mode: 'chat',
+      requestFingerprint: 'request-fingerprint',
+      requestedToolIds: ['render_ui'],
+      turnId: 'turn-chat',
+      userId: 'user',
+      workspaceId: 'workspace',
+    },
+    workspaceId: 'workspace',
+  }
 }
 
 test('the route selector admits only authenticated personal requests, including Automate configuration chats', () => {
@@ -267,7 +311,7 @@ test('streams admitted multimodal history through the durable adapter', async ()
   expect(mocks.after).toHaveBeenCalledOnce()
 })
 
-test('versioned accepted responses stream persisted text, source metadata, and terminal state', async () => {
+test('versioned accepted responses clear abandoned previews when cancelled', async () => {
   const run = makeAgentRun()
   const sourceCitations = { source: { kind: 'file', sourceId: 'file-1' } } as const
   const auth = { userId: 'user', authType: 'session', accessToken: 'private-token' } as AuthenticatedAppUser
@@ -304,7 +348,7 @@ test('versioned accepted responses stream persisted text, source metadata, and t
     }
     const page = transcriptSteps.filter(step => step.sequence > afterSequence).slice(0, 10)
     return {
-      status: page.at(-1)?.sequence === 11 ? 'completed' : 'running',
+      status: page.at(-1)?.sequence === 11 ? 'cancelled' : 'running',
       workflowRunId: 'workflow', executionGeneration: 2, transcriptSteps: page,
       nextSequence: page.length === 10 ? page.at(-1)!.sequence : null,
       snapshot: null,
@@ -406,7 +450,7 @@ test('versioned accepted responses stream persisted text, source metadata, and t
     type: 'finish',
     messageMetadata: {
       harnessAccepted: {
-        runId: 'personal:run-chat', executionGeneration: 2, status: 'completed',
+        runId: 'personal:run-chat', executionGeneration: 2, status: 'cancelled',
       },
       sourceCitations,
     },
@@ -418,4 +462,227 @@ test('versioned accepted responses stream persisted text, source metadata, and t
   expect(chunks.filter(chunk => chunk.type === 'data-harness-transcript-step')).toHaveLength(12)
   expect(chunks.findIndex(chunk => chunk.type === 'tool-input-available'))
     .toBeLessThan(chunks.findIndex(chunk => chunk.type === 'tool-output-available'))
+})
+
+test('personal SSE keeps a preview visible through SDK success replacement and clears failed previews', async () => {
+  mocks.describeTools.mockResolvedValue([{ name: 'render_ui' }])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Show the result.' }])
+  mocks.startPersonalHarness.mockResolvedValue({ accepted: true, runId: 'personal:run-chat', executionGeneration: 2 })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => sdkCreateUIMessageStreamResponse({ stream }))
+
+  const preview = {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Building view', streaming: true,
+    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Preview"}}}}',
+  }
+  const final = {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Finished view',
+    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Finished"}}}}',
+  }
+  const finalStep = {
+    sequence: 0,
+    executionGeneration: 2,
+    receiptId: 'model:0',
+    persistence: {
+      content: 'Before after',
+      parts: [
+        { type: 'tool-invocation', toolInvocation: {
+          toolCallId: 'render-1', toolName: 'render_ui', state: 'output-available',
+          toolInput: { summary: 'Finished view', specStream: '' },
+          toolOutput: { success: true, id: 'render-1', generatedUi: final },
+        } },
+        { type: 'tool-invocation', toolInvocation: {
+          toolCallId: 'render-failed', toolName: 'render_ui', state: 'output-error',
+          toolInput: { summary: 'Invalid view', specStream: '' },
+          toolOutput: { success: false },
+        } },
+      ],
+    },
+  }
+  let readCount = 0
+  mocks.readPublicStreamState.mockImplementation(async () => {
+    readCount++
+    if (readCount === 1) return {
+      status: 'running', workflowRunId: 'workflow', executionGeneration: 2, transcriptSteps: [],
+      nextSequence: null,
+      snapshot: { runId: 'personal:run-chat', executionGeneration: 2, receiptId: 'model:0', invocation: 0,
+        sequence: 0, text: 'Before af', assistantMessageId: 'assistant', previews: [
+          { toolCallId: 'render-1', order: 0, sequence: 0, textOffset: 7, data: preview },
+          { toolCallId: 'render-failed', order: 1, sequence: 0, textOffset: 7, data: { ...preview, summary: 'Invalid view' } },
+        ] },
+    }
+    return {
+      status: 'completed', workflowRunId: 'workflow', executionGeneration: 2,
+      transcriptSteps: [finalStep], nextSequence: null, snapshot: null,
+    }
+  })
+
+  const response = await startPersonalHarnessTurn(acceptedTurnInput())
+  const parsedReader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  while (true) {
+    const next = await parsedReader.read()
+    if (next.done) break
+    if (!next.value.success) throw next.value.error
+    chunks.push(next.value.value)
+  }
+
+  const snapshots: UIMessage[][] = []
+  const chatRef: { current?: Chat<UIMessage> } = {}
+  const chat = new Chat({
+    id: 'personal-preview-replacement',
+    transport: {
+      sendMessages: async () => new ReadableStream<UIMessageChunk>({
+        start(controller) {
+          chunks.forEach(chunk => controller.enqueue(chunk))
+          controller.close()
+        },
+      }),
+      reconnectToStream: async () => null,
+    } as never,
+    onFinish: ({ messages }) => {
+      const settled = removeTransientGeneratedUiPreviews(messages as UIMessage[])
+      if (settled !== messages && chatRef.current) chatRef.current.messages = settled as never
+    },
+  })
+  chatRef.current = chat
+  const unsubscribe = chat['~registerMessagesCallback'](() => {
+    snapshots.push(JSON.parse(JSON.stringify(chat.messages)) as UIMessage[])
+  })
+  await chat.sendMessage({ text: 'Show the result.' })
+  unsubscribe()
+
+  const assistantParts = (messages: UIMessage[]) => [...messages].reverse().find(message => message.role === 'assistant')?.parts ?? []
+  const visuals = snapshots.map(messages => buildAssistantVisualSequence(assistantParts(messages)))
+  const previewSnapshot = snapshots.findIndex(messages => assistantParts(messages).some(part =>
+    part.type === 'data-overlay.generated_ui' && part.id === 'render-1'
+      && (part.data as Record<string, unknown>).streaming === true))
+  const successSnapshot = snapshots.findIndex(messages => assistantParts(messages).some(part => {
+    const tool = part as { toolCallId?: string; state?: string; output?: { success?: boolean } }
+    return tool.toolCallId === 'render-1' && tool.state === 'output-available' && tool.output?.success === true
+  }))
+  expect(previewSnapshot).toBeGreaterThanOrEqual(0)
+  expect(successSnapshot).toBeGreaterThan(previewSnapshot)
+  for (let index = previewSnapshot; index <= successSnapshot; index++) {
+    const partSummary = assistantParts(snapshots[index] ?? []).map(part => {
+      const value = part as { type?: string; id?: string; toolCallId?: string; state?: string;
+        data?: { kind?: string; streaming?: boolean }; output?: { success?: boolean } }
+      return [value.type, value.id, value.toolCallId, value.state, value.data?.kind, value.data?.streaming, value.output?.success].join(':')
+    }).join(',')
+    expect(visuals[index]?.some(block => block.kind === 'generated-ui' && block.part.id === 'render-1'),
+      `snapshot ${index}: ${visuals[index]?.map(block => block.kind === 'generated-ui' ? block.part.id : block.kind).join(',')} [${partSummary}]`)
+      .toBe(true)
+  }
+  expect(visuals[successSnapshot]?.find(block => block.kind === 'generated-ui' && block.part.id === 'render-1')?.part.data.summary)
+    .toBe('Finished view')
+
+  const finalDataIndex = chunks.findIndex(chunk => chunk.type === 'data-overlay.generated_ui'
+    && chunk.id === 'render-1' && (chunk.data as Record<string, unknown>).summary === 'Finished view')
+  const successOutputIndex = chunks.findIndex(chunk => chunk.type === 'tool-output-available' && chunk.toolCallId === 'render-1')
+  expect(finalDataIndex).toBeGreaterThanOrEqual(0)
+  expect(finalDataIndex).toBeLessThan(successOutputIndex)
+
+  const failedClear = chunks.findIndex(chunk => chunk.type === 'data-overlay.generated_ui'
+    && chunk.id === 'render-failed' && (chunk.data as Record<string, unknown>).kind === 'preview-cleared')
+  const failedOutput = chunks.findIndex(chunk => chunk.type === 'tool-output-error' && chunk.toolCallId === 'render-failed')
+  expect(failedClear).toBeGreaterThanOrEqual(0)
+  expect(failedClear).toBeLessThan(failedOutput)
+  expect(chunks.some(chunk => chunk.type === 'data-overlay.generated_ui'
+    && chunk.id === 'render-1' && (chunk.data as Record<string, unknown>).kind === 'preview-cleared')).toBe(false)
+  const finalParts = assistantParts(chat.messages as UIMessage[])
+  expect(finalParts.filter(part => part.type === 'text').map(part => part.text).join('')).toBe('Before after')
+  expect(finalParts.some(part => part.type === 'data-overlay.generated_ui' && (part.data as Record<string, unknown>).streaming === true)).toBe(false)
+  const orderedSdkContent = finalParts.flatMap(part => {
+    if (part.type === 'text' && part.text) return [{ kind: 'text', text: part.text }]
+    if (part.type === 'data-overlay.generated_ui' && part.id === 'render-1'
+      && (part.data as Record<string, unknown>).summary === 'Finished view') return [{ kind: 'generated-ui' }]
+    return []
+  })
+  expect(orderedSdkContent).toEqual([
+    { kind: 'text', text: 'Before ' },
+    { kind: 'generated-ui' },
+    { kind: 'text', text: 'after' },
+  ])
+  const orderedFinalContent = buildAssistantVisualSequence(finalParts).flatMap(block => {
+    if (block.kind === 'text') return [block.text]
+    if (block.kind === 'generated-ui' && block.part.id === 'render-1') return ['<generated-ui>']
+    return []
+  })
+  expect(orderedFinalContent).toEqual(['Before', '<generated-ui>', 'after'])
+})
+
+test('personal SSE preserves a preview when canonical persistence trims trailing whitespace', async () => {
+  mocks.describeTools.mockResolvedValue([{ name: 'render_ui' }])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Show the result.' }])
+  mocks.startPersonalHarness.mockResolvedValue({ accepted: true, runId: 'personal:run-chat', executionGeneration: 2 })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => sdkCreateUIMessageStreamResponse({ stream }))
+
+  const canonical = buildAssistantPersistenceFromSteps([{
+    text: 'Before after  ',
+    finishReason: 'stop',
+    content: [{ type: 'text', text: 'Before after  ' }],
+    toolCalls: [],
+    toolResults: [],
+  } as never], '')
+  expect(canonical.content).toBe('Before after')
+
+  const generatedUi = {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Finished view',
+    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Finished"}}}}',
+  }
+  const finalStep = {
+    sequence: 0,
+    executionGeneration: 2,
+    receiptId: 'model:0',
+    persistence: {
+      ...canonical,
+      parts: [...canonical.parts, { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'render-1', toolName: 'render_ui', state: 'output-available',
+        toolInput: { summary: 'Finished view', specStream: '' },
+        toolOutput: { success: true, id: 'render-1', generatedUi },
+      } }],
+    },
+  }
+  let readCount = 0
+  mocks.readPublicStreamState.mockImplementation(async () => {
+    readCount++
+    if (readCount === 1) return {
+      status: 'running', workflowRunId: 'workflow', executionGeneration: 2, transcriptSteps: [],
+      nextSequence: null,
+      snapshot: { runId: 'personal:run-chat', executionGeneration: 2, receiptId: 'model:0', invocation: 0,
+        sequence: 0, text: 'Before after  ', assistantMessageId: 'assistant', previews: [
+          { toolCallId: 'render-1', order: 0, sequence: 0, textOffset: 7, data: {
+            version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Building view', streaming: true,
+            specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Preview"}}}}',
+          } },
+        ] },
+    }
+    return {
+      status: 'completed', workflowRunId: 'workflow', executionGeneration: 2,
+      transcriptSteps: [finalStep], nextSequence: null, snapshot: null,
+    }
+  })
+
+  const response = await startPersonalHarnessTurn(acceptedTurnInput())
+  const reader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (!next.value.success) throw next.value.error
+    chunks.push(next.value.value)
+  }
+
+  expect(chunks.some(chunk => chunk.type === 'reset-step')).toBe(false)
+  expect(chunks.some(chunk => chunk.type === 'data-overlay.generated_ui'
+    && chunk.id === 'render-1' && (chunk.data as Record<string, unknown>).kind === 'preview-cleared')).toBe(false)
+  const streamedText = chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.delta).join('')
+  expect(streamedText).toBe('Before after  ')
+  expect(streamedText.trimEnd()).toBe(canonical.content)
+  const finalDataIndex = chunks.findIndex(chunk => chunk.type === 'data-overlay.generated_ui'
+    && chunk.id === 'render-1' && (chunk.data as Record<string, unknown>).summary === 'Finished view')
+  const successOutputIndex = chunks.findIndex(chunk => chunk.type === 'tool-output-available' && chunk.toolCallId === 'render-1')
+  expect(finalDataIndex).toBeGreaterThanOrEqual(0)
+  expect(finalDataIndex).toBeLessThan(successOutputIndex)
 })

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { createModelCallToUIChunkTransform } from '@ai-sdk/workflow'
+import { GENERATED_UI_TOOL_IDS, buildGeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import type { ToolSet } from 'ai'
 import { after, NextResponse } from 'next/server'
 import type { AgentRun } from '@/shared/agents/agent-run'
@@ -51,7 +52,15 @@ type PublicStreamReadState = NonNullable<
 type PublicStreamTranscriptStep = PublicStreamReadState['transcriptSteps'][number]
 type PublicStreamSnapshot = NonNullable<PublicStreamReadState['snapshot']>
 type PublicStreamController = ReadableStreamDefaultController<UIMessageChunk>
-type PublicStreamCursor = { partId: string; basePartId: string; offset: number; segment: number; previews: Map<string, number>; settledPreviews: Set<string> }
+type PublicStreamCursor = {
+  partId: string
+  basePartId: string
+  offset: number
+  segment: number
+  activeText: string
+  previews: Map<string, number>
+  settledPreviews: Set<string>
+}
 
 function clearStreamPreview(controller: PublicStreamController, toolCallId: string) {
   controller.enqueue({ type: 'data-overlay.generated_ui', id: toolCallId, data: { kind: 'preview-cleared' } } as unknown as UIMessageChunk)
@@ -80,7 +89,7 @@ function emitTranscriptPart(
   const tool = part.toolInvocation as Record<string, unknown>
   if (typeof tool.toolCallId !== 'string' || typeof tool.toolName !== 'string') return
   const toolCallId = tool.toolCallId
-  if (tool.state === 'output-available' || tool.state === 'output-error' || tool.state === 'output-denied') clearStreamPreview(controller, toolCallId)
+  if (tool.state === 'output-error' || tool.state === 'output-denied') clearStreamPreview(controller, toolCallId)
   controller.enqueue({
     type: 'tool-input-available',
     toolCallId,
@@ -89,6 +98,14 @@ function emitTranscriptPart(
     dynamic: true,
   })
   if (tool.state === 'output-available') {
+    const output = tool.toolOutput && typeof tool.toolOutput === 'object'
+      ? tool.toolOutput as Record<string, unknown> : null
+    if (GENERATED_UI_TOOL_IDS.has(tool.toolName) && output?.success === true) {
+      const finalPart = buildGeneratedUiPart(toolCallId, output.generatedUi)
+      if (finalPart && !(finalPart.data.kind === 'json_render' && finalPart.data.streaming === true)) {
+        controller.enqueue({ type: 'data-overlay.generated_ui', id: toolCallId, data: finalPart.data } as unknown as UIMessageChunk)
+      }
+    }
     controller.enqueue({ type: 'tool-output-available', toolCallId, output: tool.toolOutput, dynamic: true })
   } else if (tool.state === 'output-error') {
     controller.enqueue({ type: 'tool-output-error', toolCallId, errorText: 'The tool failed.', dynamic: true })
@@ -103,16 +120,36 @@ function emitTranscriptStep(
   step: PublicStreamTranscriptStep,
   cursor: PublicStreamCursor,
 ): PublicStreamCursor {
+  const matchingPreviewSuccess = Boolean(cursor.partId
+    && cursor.basePartId === transcriptPartIdentity(runId, step.receiptId, 0, step.executionGeneration)
+    && step.persistence.parts.some(part => {
+      if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return false
+      const tool = part.toolInvocation as Record<string, unknown>
+      return tool.state === 'output-available' && typeof tool.toolCallId === 'string'
+        && cursor.previews.has(tool.toolCallId)
+    }))
+  const hasTextPart = step.persistence.parts.some(part => part.type === 'text')
+  const persistedText = hasTextPart
+    ? step.persistence.parts.filter(part => part.type === 'text').map(part => part.text).join('')
+    : step.persistence.content
+  const extendsActiveText = persistedText.startsWith(cursor.activeText)
+  const matchesAfterTrailingWhitespaceTrim = persistedText.trimEnd() === cursor.activeText.trimEnd()
+  const canAppendText = cursor.offset === cursor.activeText.length
+    && (extendsActiveText || matchesAfterTrailingWhitespaceTrim)
+  const preservePreviewStep = matchingPreviewSuccess && canAppendText
+  const appendedText = preservePreviewStep && extendsActiveText ? persistedText.slice(cursor.activeText.length) : ''
   const partId = cursor.partId
   if (partId) {
+    if (appendedText) controller.enqueue({ type: 'text-delta', id: partId, delta: appendedText })
     controller.enqueue({ type: 'text-end', id: partId })
-    controller.enqueue({ type: 'reset-step' })
+    if (!preservePreviewStep) controller.enqueue({ type: 'reset-step' })
   }
-  controller.enqueue({ type: 'start-step' })
+  if (!preservePreviewStep) controller.enqueue({ type: 'start-step' })
   const parts = step.persistence.parts.some(part => part.type === 'text')
     ? step.persistence.parts
     : [...step.persistence.parts, { type: 'text', text: step.persistence.content }]
   for (const [index, part] of parts.entries()) {
+    if (preservePreviewStep && part.type === 'text') continue
     emitTranscriptPart(controller, runId, step, part, index)
     if (part.type === 'tool-invocation' && part.toolInvocation && typeof part.toolInvocation === 'object') {
       const tool = part.toolInvocation as Record<string, unknown>
@@ -134,7 +171,7 @@ function emitTranscriptStep(
     },
   } as unknown as UIMessageChunk)
   controller.enqueue({ type: 'finish-step' })
-  return { ...cursor, partId: '', basePartId: '', offset: 0, segment: 0 }
+  return { ...cursor, partId: '', basePartId: '', offset: 0, segment: 0, activeText: '' }
 }
 
 function emitActiveSnapshot(
@@ -188,7 +225,8 @@ function emitActiveSnapshot(
     controller.enqueue({ type: 'text-delta', id: partId, delta: text.slice(offset) })
     offset = text.length
   }
-  return { partId, basePartId, offset, segment, previews: cursor.previews, settledPreviews: cursor.settledPreviews }
+  return { partId, basePartId, offset, segment, activeText: text,
+    previews: cursor.previews, settledPreviews: cursor.settledPreviews }
 }
 
 function emitTerminalStream(
@@ -235,7 +273,8 @@ async function pollPersistedPublicStream(input: {
   isStopped: () => boolean
 }): Promise<void> {
   let afterSequence = -1
-  let cursor: PublicStreamCursor = { partId: '', basePartId: '', offset: 0, segment: 0, previews: new Map(), settledPreviews: new Set() }
+  let cursor: PublicStreamCursor = { partId: '', basePartId: '', offset: 0, segment: 0,
+    activeText: '', previews: new Map(), settledPreviews: new Set() }
   while (!input.isStopped() && !input.signal?.aborted) {
     const state = await input.repository.readPublicStreamState({
       actorUserId: input.actorUserId,

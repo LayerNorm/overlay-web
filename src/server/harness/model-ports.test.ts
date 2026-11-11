@@ -141,11 +141,11 @@ test('historical free-router rejection receipts do not recover or dispatch anoth
 test('model preparation reuses the boundary state and reads catalog limits once per model', async () => {
   const state = { ...createHarnessSnapshot({
     runId: 'run', goal: 'Use the selected paid model.', constraints: [], policy: {
-      actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+      actorUserId: 'user', allowedToolIds: ['render_ui'], publicStreamVersion: 1, requiresPlan: false,
       deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 0, maxDepth: 0,
     },
   }, Date.now()), status: 'running' as const }
-  const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
+  const prepare = vi.fn(async ({ modelId }: { modelId: string; publicStreamVersion?: 1 }) => ({
     model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
     options: {} as never, contextWindow: 128_000,
   }))
@@ -161,6 +161,7 @@ test('model preparation reuses the boundary state and reads catalog limits once 
   expect(mocks.limits).toHaveBeenCalledExactlyOnceWith('fixture/model')
   expect(mocks.read).not.toHaveBeenCalled()
   expect(prepare).toHaveBeenCalledTimes(2)
+  expect(prepare.mock.calls.map(([request]) => request.publicStreamVersion)).toEqual([1, 1])
   expect(mocks.compact.mock.calls[0][0].previousSummary).toBe(state.workingSummary)
 })
 

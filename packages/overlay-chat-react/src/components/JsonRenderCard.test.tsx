@@ -5,10 +5,12 @@ import test from 'node:test'
 import { runInNewContext } from 'node:vm'
 import React, { act, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { buildAssistantVisualSequence } from '@overlay/chat-core'
 import type { GeneratedJsonRenderData } from '@overlay/chat-core/generated-ui'
 import { JsonRenderBoundary, JsonRenderCard, formatJsonRenderSubmission, seedMissingGeneratedUiState } from './JsonRenderCard'
 import { QuestionnaireComposerProvider } from './Questionnaire'
 import { jsonRenderRegistry, protectJsonRenderComponent } from './json-render-registry'
+import { AssistantVisualBlocks } from './transcript/AssistantVisualBlocks'
 
 type TestNode = { type: unknown; props: Record<string, unknown>; findAll(predicate: (node: TestNode) => boolean): TestNode[] }
 type TestRenderer = { root: TestNode; update(element: ReactElement): void; unmount(): void; toJSON(): unknown }
@@ -52,6 +54,44 @@ test('card boundary identity survives repeated streaming updates and final data'
     assert.equal(boundary().instance, initial)
     await act(async () => renderer.update(<JsonRenderCard partId="stable" data={view('Final', false)} />))
     assert.equal(boundary().instance, initial)
+  } finally {
+    await act(async () => renderer?.unmount())
+  }
+})
+
+test('transcript keeps the same generated UI card when final data shifts its parent position', async t => {
+  t.mock.method(console, 'error', () => {})
+  const previewData = data(single('Input', { label: 'Title', value: { $bindState: '/title' } }), { streaming: true })
+  const finalData = data(single('Input', { label: 'Title', value: { $bindState: '/title' } }), { stateJson: '{"title":"Seeded"}' })
+  const previewParts = [
+    { type: 'text', text: 'Before' },
+    { type: 'data-overlay.generated_ui', id: 'render-1', data: previewData },
+  ]
+  const finalParts = [
+    { type: 'text', text: 'Before' },
+    { type: 'text', text: 'After' },
+    { type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'render-1', toolName: 'render_ui', state: 'output-available',
+      toolOutput: { success: true, generatedUi: finalData },
+    } },
+  ]
+  const callbacks = {
+    onOpenDraft: () => {},
+    onCreateAutomationDraft: () => {},
+  }
+  const props = (parts: unknown[]) => ({
+    blocks: buildAssistantVisualSequence(parts), blockKeyPrefix: 'turn', markdownKeyPrefix: 'turn',
+    isStreaming: true, isTextStreaming: true, ...callbacks,
+  })
+  let renderer!: TestRenderer
+  try {
+    await act(async () => { renderer = create(<AssistantVisualBlocks {...props(previewParts)} />) })
+    const boundary = () => renderer.root.findAll(node => node.type === JsonRenderBoundary)[0] as TestNode & { instance: unknown }
+    const initial = boundary().instance
+    assert.equal(renderer.root.findAll(node => node.type === 'input')[0]?.props.readOnly, true)
+    await act(async () => { renderer.update(<AssistantVisualBlocks {...props(finalParts)} />) })
+    assert.equal(boundary().instance, initial)
+    assert.equal(renderer.root.findAll(node => node.type === 'input')[0]?.props.value, 'Seeded')
   } finally {
     await act(async () => renderer?.unmount())
   }

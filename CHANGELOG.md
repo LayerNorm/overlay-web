@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Add bounded timeline, comparison, diagram and typed-vector components to generated UI, strict JSONL `specStream` final compilation, and transient read-only previews through durable personal and native chat streams.
+- Enable live generated-UI streams for new roots only when they admit `render_ui`, while retaining the workspace allowlist for other roots. Replace successful previews with validated final data at the same transcript anchor and append only missing streamed text.
 
 - Chats, agent threads and automation conversations can show interactive comparisons, dashboards and forms. Form edits are saved, and submitting posts a readable response and locks the card.
   - The validated `render_ui` catalog uses lazy-loaded shared components, bounded serialized state, admission-gated prompts and summary fallbacks for non-React delivery. Generated-UI tools remain withheld from MCP clients; existing draft permissions are unchanged.

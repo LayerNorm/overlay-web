@@ -190,13 +190,21 @@ policy suppresses file metadata without suppressing text history.
 
 ### Unified durable public streaming
 
-New root Harness runs may carry immutable `publicStreamVersion: 1` when their
-workspace ID is an exact entry in the server-only
-`OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` comma-separated allowlist. Empty is
+New root Harness runs may carry immutable `publicStreamVersion: 1` when
+`render_ui` is among their admitted tools, or when their workspace ID is an
+exact entry in the server-only `OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS`
+comma-separated allowlist. The `render_ui` rule is limited to roots that admit
+that tool; other roots still require an exact allowlist entry. Empty is
 disabled; `*` is not a wildcard. Personal, workspace-agent and automation
-admissions use the same policy helper. Existing roots keep the publishing path
-recorded in their admission policy when the environment changes; removing an ID
-stops future enrollment but does not switch an in-flight run.
+admissions use the same policy helper. Existing roots retain the publishing
+path recorded in their admission policy, regardless of later tool or
+environment changes.
+
+To roll back automatic `render_ui` enrollment, remove its predicate from
+`selectPublicStreamVersion` while retaining any desired exact-workspace
+allowlist enrollment. This affects new roots only: do not rewrite existing
+policies or switch an in-flight run; let enrolled streams drain on their
+recorded protocol.
 
 The versioned path publishes filtered response text from the executor's secure
 model boundary. It does not publish reasoning, child/summary/verification output

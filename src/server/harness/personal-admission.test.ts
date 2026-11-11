@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -81,12 +81,14 @@ const snapshot = (overrides: Partial<HarnessSnapshot> = {}) => ({
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', '')
   mocks.admit.mockResolvedValue(snapshot())
   mocks.get.mockResolvedValue(snapshot({ workflowRunId: 'winning-workflow' }))
   mocks.getRun.mockImplementation(async id => ({ runId: id }))
   mocks.start.mockImplementation(async () => ({ runId: 'losing-workflow' }))
   mocks.delay.mockResolvedValue(undefined)
 })
+afterEach(() => vi.unstubAllEnvs())
 
 test('admits immutable identity and policy before starting the personal workflow', async () => {
   const onAdmitted = vi.fn()
@@ -114,9 +116,26 @@ test('admits immutable identity and policy before starting the personal workflow
       maxCostMicros: 0,
     }),
   }))
+  expect((mocks.admit.mock.calls[0]![0] as { policy: { publicStreamVersion?: number } }).policy.publicStreamVersion).toBeUndefined()
   expect(onAdmitted).toHaveBeenCalledOnce()
   expect(mocks.start).toHaveBeenCalledOnce()
   expect(mocks.getRun).toHaveBeenCalledWith('winning-workflow')
+})
+
+test('default personal policy starts the durable public-stream admission path', async () => {
+  mocks.admit.mockResolvedValue(snapshot({ policy: { publicStreamVersion: 1 }, executionGeneration: 2 }))
+
+  const renderUiWorkflow = {
+    ...workflow,
+    definitions: [...workflow.definitions, { name: 'render_ui', inputSchema: { type: 'object' }, needsApproval: false }],
+  }
+  await expect(startPersonalHarness({ workflow: renderUiWorkflow, agentRun: agentRun(), paid: true, goal: 'Read.' }))
+    .resolves.toEqual({ accepted: true, runId: 'personal:run_1', executionGeneration: 2 })
+  expect(mocks.admit).toHaveBeenCalledWith(expect.objectContaining({
+    policy: expect.objectContaining({ publicStreamVersion: 1, allowedToolIds: expect.arrayContaining(['render_ui']) }),
+  }))
+  expect(mocks.start).toHaveBeenCalledOnce()
+  expect(mocks.getRun).not.toHaveBeenCalled()
 })
 
 test('chat runs persisted with ask labels admit both generated UI tools for form requests', async () => {
