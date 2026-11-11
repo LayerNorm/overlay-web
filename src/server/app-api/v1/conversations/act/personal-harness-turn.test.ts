@@ -3,8 +3,11 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { createUIMessageStreamResponse as sdkCreateUIMessageStreamResponse, parseJsonEventStream, readUIMessageStream, uiMessageChunkSchema } from 'ai'
 import { Chat } from '@ai-sdk/react'
 import { buildAssistantVisualSequence } from '@overlay/chat-core'
+import { buildGeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import { buildAssistantPersistenceFromSteps } from '@/shared/chat/persist-assistant-turn'
+import { publicHarnessStepPersistence } from '@/server/harness/harness-transcript'
+import { executeRenderUi } from '@/server/tools/tools/overlay-executes'
 import type { UIMessage, UIMessageChunk } from '@/server/ai/sdk'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { removeTransientGeneratedUiPreviews } from '@/features/chat/components/chat/generated-ui-mutation'
@@ -475,29 +478,43 @@ test('personal SSE keeps a preview visible through SDK success replacement and c
     version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Building view', streaming: true,
     specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Preview"}}}}',
   }
-  const final = {
-    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Finished view',
-    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Finished"}}}}',
-  }
+  const successInput = { summary: 'Finished view', spec: { root: 'root', elements: {
+    root: { type: 'Text', props: { text: 'Finished' } },
+  } } }
+  const successOutput = await executeRenderUi({ userId: 'user', serverSecret: 'secret', baseUrl: 'http://localhost:3000' }, successInput)
+  expect(successOutput.success).toBe(true)
+  if (!successOutput.success) throw new Error('Expected render_ui success')
+  const failedInput = { summary: 'Invalid view', spec: { root: 'root', elements: {} } }
+  const failureResult = await executeRenderUi({ userId: 'user', serverSecret: 'secret', baseUrl: 'http://localhost:3000' }, failedInput)
+  expect(failureResult.success).toBe(false)
+  if (failureResult.success) throw new Error('Expected render_ui validation failure')
+  const successCall = { type: 'tool-call', toolCallId: 'render-1', toolName: 'render_ui', input: successInput }
+  const failedCall = { type: 'tool-call', toolCallId: 'render-failed', toolName: 'render_ui', input: failedInput }
+  const persisted = publicHarnessStepPersistence({
+    text: 'Before after',
+    finishReason: 'stop',
+    content: [
+      { type: 'text', text: 'Before ' },
+      successCall,
+      { type: 'tool-result', ...successCall, output: successOutput },
+      { type: 'text', text: 'after' },
+      failedCall,
+      { type: 'tool-result', ...failedCall, output: failureResult },
+    ],
+    toolCalls: [successCall, failedCall],
+    toolResults: [
+      { ...successCall, output: successOutput },
+      { ...failedCall, output: failureResult },
+    ],
+  } as never, new Set(['render_ui']))
+  const savedFinalPart = persisted.parts.find(part => part.type === 'data' && part.dataType === 'overlay.generated_ui')
+  expect(successOutput.id).not.toBe('render-1')
+  expect(savedFinalPart?.id).toBe('render-1')
   const finalStep = {
     sequence: 0,
     executionGeneration: 2,
     receiptId: 'model:0',
-    persistence: {
-      content: 'Before after',
-      parts: [
-        { type: 'tool-invocation', toolInvocation: {
-          toolCallId: 'render-1', toolName: 'render_ui', state: 'output-available',
-          toolInput: { summary: 'Finished view', specStream: '' },
-          toolOutput: { success: true, id: 'render-1', generatedUi: final },
-        } },
-        { type: 'tool-invocation', toolInvocation: {
-          toolCallId: 'render-failed', toolName: 'render_ui', state: 'output-error',
-          toolInput: { summary: 'Invalid view', specStream: '' },
-          toolOutput: { success: false },
-        } },
-      ],
-    },
+    persistence: persisted,
   }
   let readCount = 0
   mocks.readPublicStreamState.mockImplementation(async () => {
@@ -558,8 +575,9 @@ test('personal SSE keeps a preview visible through SDK success replacement and c
     part.type === 'data-overlay.generated_ui' && part.id === 'render-1'
       && (part.data as Record<string, unknown>).streaming === true))
   const successSnapshot = snapshots.findIndex(messages => assistantParts(messages).some(part => {
-    const tool = part as { toolCallId?: string; state?: string; output?: { success?: boolean } }
-    return tool.toolCallId === 'render-1' && tool.state === 'output-available' && tool.output?.success === true
+    const generated = part as { type?: string; id?: string; data?: { summary?: string; streaming?: boolean } }
+    return generated.type === 'data-overlay.generated_ui' && generated.id === 'render-1'
+      && generated.data?.summary === 'Finished view' && generated.data.streaming !== true
   }))
   expect(previewSnapshot).toBeGreaterThanOrEqual(0)
   expect(successSnapshot).toBeGreaterThan(previewSnapshot)
@@ -578,9 +596,10 @@ test('personal SSE keeps a preview visible through SDK success replacement and c
 
   const finalDataIndex = chunks.findIndex(chunk => chunk.type === 'data-overlay.generated_ui'
     && chunk.id === 'render-1' && (chunk.data as Record<string, unknown>).summary === 'Finished view')
-  const successOutputIndex = chunks.findIndex(chunk => chunk.type === 'tool-output-available' && chunk.toolCallId === 'render-1')
+  const transcriptStepIndex = chunks.findIndex(chunk => chunk.type === 'data-harness-transcript-step')
   expect(finalDataIndex).toBeGreaterThanOrEqual(0)
-  expect(finalDataIndex).toBeLessThan(successOutputIndex)
+  expect(finalDataIndex).toBeLessThan(transcriptStepIndex)
+  expect(chunks.some(chunk => chunk.type === 'tool-output-available' && chunk.toolCallId === 'render-1')).toBe(false)
 
   const failedClear = chunks.findIndex(chunk => chunk.type === 'data-overlay.generated_ui'
     && chunk.id === 'render-failed' && (chunk.data as Record<string, unknown>).kind === 'preview-cleared')
@@ -590,6 +609,12 @@ test('personal SSE keeps a preview visible through SDK success replacement and c
   expect(chunks.some(chunk => chunk.type === 'data-overlay.generated_ui'
     && chunk.id === 'render-1' && (chunk.data as Record<string, unknown>).kind === 'preview-cleared')).toBe(false)
   const finalParts = assistantParts(chat.messages as UIMessage[])
+  const streamedFinalPart = finalParts.find(part => part.type === 'data-overlay.generated_ui' && part.id === 'render-1')
+  expect(streamedFinalPart && (streamedFinalPart.data as Record<string, unknown>).summary).toBe('Finished view')
+  expect(streamedFinalPart?.id).toBe(savedFinalPart?.id)
+  const reconciledVisuals = buildAssistantVisualSequence([...finalParts, savedFinalPart!])
+  expect(reconciledVisuals.filter(block => block.kind === 'generated-ui').map(block => block.kind === 'generated-ui' ? block.part.id : ''))
+    .toEqual(['render-1'])
   expect(finalParts.filter(part => part.type === 'text').map(part => part.text).join('')).toBe('Before after')
   expect(finalParts.some(part => part.type === 'data-overlay.generated_ui' && (part.data as Record<string, unknown>).streaming === true)).toBe(false)
   const orderedSdkContent = finalParts.flatMap(part => {
@@ -609,6 +634,43 @@ test('personal SSE keeps a preview visible through SDK success replacement and c
     return []
   })
   expect(orderedFinalContent).toEqual(['Before', '<generated-ui>', 'after'])
+})
+
+test('personal SSE delivers legacy standalone generated UI IDs without previews', async () => {
+  mocks.describeTools.mockResolvedValue([{ name: 'render_ui' }])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Show the result.' }])
+  mocks.startPersonalHarness.mockResolvedValue({ accepted: true, runId: 'personal:run-chat', executionGeneration: 2 })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => sdkCreateUIMessageStreamResponse({ stream }))
+
+  const legacyPart = buildGeneratedUiPart('legacy-content-hash', {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Legacy view',
+    specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Saved"}}}}',
+  })
+  expect(legacyPart).not.toBeNull()
+  const transcriptStep = {
+    sequence: 0, executionGeneration: 2, receiptId: 'model:0',
+    persistence: { content: '', parts: legacyPart ? [legacyPart] : [] },
+  }
+  mocks.readPublicStreamState.mockResolvedValue({
+    status: 'completed', workflowRunId: 'workflow', executionGeneration: 2,
+    transcriptSteps: [transcriptStep], nextSequence: null, snapshot: null,
+  })
+
+  const response = await startPersonalHarnessTurn(acceptedTurnInput())
+  const reader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (!next.value.success) throw next.value.error
+    chunks.push(next.value.value)
+  }
+
+  const finalParts = chunks.filter(chunk => chunk.type === 'data-overlay.generated_ui' && chunk.id === 'legacy-content-hash')
+  expect(finalParts).toHaveLength(1)
+  expect((finalParts[0]?.data as Record<string, unknown>).summary).toBe('Legacy view')
+  expect((finalParts[0]?.data as Record<string, unknown>).streaming).not.toBe(true)
 })
 
 test('personal SSE preserves a preview when canonical persistence trims trailing whitespace', async () => {

@@ -314,8 +314,9 @@ export function generatedUiPartFromToolBlock(block: ToolVisualBlock) {
     ? (block.toolOutput as Record<string, unknown>)
     : null
   if (!output || output.success !== true) return null
-  const id =
-    typeof output.id === 'string' && output.id.trim()
+  const id = block.name === 'render_ui'
+    ? block.key
+    : typeof output.id === 'string' && output.id.trim()
       ? output.id.trim()
       : block.key
   return buildGeneratedUiPart(id, output.generatedUi)

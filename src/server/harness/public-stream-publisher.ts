@@ -4,7 +4,7 @@ import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { logger } from '@/server/observability/logger'
 import { TEXTUAL_TOOL_CALL_MARKERS, stripTextualToolCalls } from '@/shared/ai/textual-tool-calls'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
-import { createPublicStreamPreviewPublisher } from './public-stream-preview-publisher'
+import { createPublicStreamPreviewPublisher, type RenderUiInputTerminalStatus } from './public-stream-preview-publisher'
 import type { HarnessModelReference } from './secure-model'
 
 const MAX_CLASSIFIER_CHARS = 16 * 1024
@@ -271,13 +271,25 @@ export function publishUnifiedHarnessStream(
     }),
     onError: () => { disabled = true; pending = ''; pendingBytes = 0; clearTimer(); metric('publisher_error') },
     onWriteFailure: () => metric('preview_write_failed'),
+    onCallSummary: summary => metric('render_ui_input_summary', {
+      toolCallId: summary.toolCallId,
+      status: summary.status,
+      providerDeltaCount: summary.providerDeltaCount,
+      firstToLastDeltaMs: summary.firstToLastDeltaMs,
+      parseCount: summary.parseCount,
+      distinctPreviewCount: summary.distinctPreviewCount,
+      writtenPreviewCount: summary.writtenPreviewCount,
+      pendingPreviewWriteCount: summary.pendingPreviewWriteCount,
+      firstPreviewLatencyMs: summary.firstPreviewLatencyMs,
+      visibleDiagramNodeCountStages: summary.visibleDiagramNodeCountStages,
+    }),
   })
-  const stop = () => {
+  const stop = (status: RenderUiInputTerminalStatus = 'interrupted') => {
     disabled = true
     pending = ''
     pendingBytes = 0
     clearTimer()
-    previewPublisher.stop()
+    return previewPublisher.stop(status)
   }
 
   const requestPump = (force = false): Promise<void> => {
@@ -367,7 +379,7 @@ export function publishUnifiedHarnessStream(
           await flush()
         }
       } catch (_error) {
-        stop()
+        void stop('interrupted')
         metric('publisher_error')
       }
       controller.enqueue(part)
@@ -380,7 +392,7 @@ export function publishUnifiedHarnessStream(
         for (const safeText of projector.flush()) await append(safeText)
         await flush()
       } catch (_error) {
-        stop()
+        void stop('interrupted')
         metric('publisher_error')
       }
       metric('stream_finish', {
@@ -395,8 +407,7 @@ export function publishUnifiedHarnessStream(
       try {
         const result = await reader.read()
         if (result.done) {
-          clearTimer()
-          previewPublisher.stop()
+          await stop('completed')
           controller.close()
         } else controller.enqueue(result.value)
       } catch (error) {
@@ -405,15 +416,16 @@ export function publishUnifiedHarnessStream(
           for (const safeText of projector.flush()) await append(safeText)
           await flush()
         } catch (_persistError) {
-          stop()
+          await stop('interrupted')
         }
+        await stop('interrupted')
         metric('stream_error')
         controller.error(error)
       }
     },
     async cancel(reason) {
       closed = true
-      stop()
+      await stop('cancelled')
       await reader.cancel(reason)
     },
   })

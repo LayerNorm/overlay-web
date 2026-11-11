@@ -435,3 +435,102 @@ test('invalid and oversized render_ui arguments clear an already published previ
     await reader.cancel()
   }
 })
+
+test('completed render_ui summaries contain only bounded metadata and reachable Diagram stages', async () => {
+  vi.useFakeTimers()
+  mocks.append.mockResolvedValue({ accepted: true, duplicate: false, truncated: false })
+  const reference = {
+    modelId: 'fixture/model', credentialOwnerId: 'user', purpose: 'response', publicStreamVersion: 1,
+    personal: { receiptId: 'model:0', access: {
+      actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', executionGeneration: 2,
+      conversationId: 'conversation', agentRunId: 'delivery', workspaceId: 'workspace',
+    } },
+  } as unknown as HarnessModelReference
+  const diagramNode = (id: string, label: string, x: number, mobileOrder: number) => ({
+    id, label, x, y: 100, width: 120, height: 60, mobileOrder,
+  })
+  const patches = [
+    { op: 'add', path: '/root', value: 'root' },
+    { op: 'add', path: '/elements/root', value: { type: 'Stack', props: {}, children: [] } },
+    { op: 'add', path: '/elements/diagram', value: { type: 'Diagram', props: {
+      title: 'PRIVATE_TITLE_SENTINEL', description: 'PRIVATE_DESCRIPTION_SENTINEL', width: 600, height: 300,
+      nodes: [diagramNode('PRIVATE_NODE_ID_A', 'PRIVATE_NODE_LABEL_A', 0, 0)], edges: [],
+    } } },
+    { op: 'replace', path: '/elements/root/children', value: ['diagram'] },
+    { op: 'add', path: '/elements/diagram/props/nodes/-', value: diagramNode('PRIVATE_NODE_ID_B', 'PRIVATE_NODE_LABEL_B', 400, 1) },
+  ]
+  const patchLines = (items: unknown[]) => items.map(item => JSON.stringify(item)).join('\n') + '\n'
+  const firstDelta = JSON.stringify({
+    summary: 'PRIVATE_SUMMARY_SENTINEL', specStream: patchLines(patches.slice(0, 3)),
+  }).slice(0, -2)
+  const appendPatches = (items: unknown[], close = false) => `${JSON.stringify(patchLines(items)).slice(1, -1)}${close ? '"}' : ''}`
+  let sourceController!: ReadableStreamDefaultController<LanguageModelV4StreamPart>
+  const source = new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { sourceController = controller } })
+  const reader = publishUnifiedHarnessStream(reference, source, new Set(['render_ui'])).getReader()
+  const receive = async () => {
+    const result = await reader.read()
+    expect(result.done).toBe(false)
+    return result.value!
+  }
+  sourceController.enqueue({ type: 'tool-input-start', id: 'render-call', toolName: 'render_ui' } as LanguageModelV4StreamPart)
+  await receive()
+  sourceController.enqueue({ type: 'tool-input-delta', id: 'render-call', delta: firstDelta } as LanguageModelV4StreamPart)
+  await receive()
+  await vi.advanceTimersByTimeAsync(300)
+  sourceController.enqueue({ type: 'tool-input-delta', id: 'render-call', delta: appendPatches(patches.slice(3, 4)) } as LanguageModelV4StreamPart)
+  await receive()
+  await vi.advanceTimersByTimeAsync(300)
+  sourceController.enqueue({ type: 'tool-input-delta', id: 'render-call', delta: appendPatches(patches.slice(4), true) } as LanguageModelV4StreamPart)
+  await receive()
+  sourceController.enqueue({ type: 'tool-input-end', id: 'render-call' } as LanguageModelV4StreamPart)
+  await receive()
+  sourceController.enqueue({ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: {} } as LanguageModelV4StreamPart)
+  await receive()
+  sourceController.close()
+  expect((await reader.read()).done).toBe(true)
+
+  const summaries = mocks.info.mock.calls.map(call => call[1] as Record<string, unknown>)
+    .filter(event => event.event === 'render_ui_input_summary')
+  expect(summaries).toHaveLength(1)
+  const summary = summaries[0]!
+  expect(summary).toMatchObject({
+    toolCallId: 'render-call', status: 'completed', providerDeltaCount: 3,
+    parseCount: 3, pendingPreviewWriteCount: 0, visibleDiagramNodeCountStages: [1, 2],
+  })
+  expect(summary.firstToLastDeltaMs).toEqual(expect.any(Number))
+  expect(summary.firstPreviewLatencyMs).toEqual(expect.any(Number))
+  expect(summary.distinctPreviewCount).toBeGreaterThanOrEqual(2)
+  expect(summary.writtenPreviewCount).toBeGreaterThanOrEqual(2)
+  const serialized = JSON.stringify(summary)
+  for (const sentinel of [
+    'PRIVATE_SUMMARY_SENTINEL', 'PRIVATE_TITLE_SENTINEL', 'PRIVATE_DESCRIPTION_SENTINEL',
+    'PRIVATE_NODE_ID_A', 'PRIVATE_NODE_LABEL_A', 'PRIVATE_NODE_ID_B', 'PRIVATE_NODE_LABEL_B',
+  ]) expect(serialized).not.toContain(sentinel)
+})
+
+test('cancelled render_ui calls emit one metadata-only summary', async () => {
+  mocks.append.mockResolvedValue({ accepted: true, duplicate: false, truncated: false })
+  const reference = {
+    modelId: 'fixture/model', credentialOwnerId: 'user', purpose: 'response', publicStreamVersion: 1,
+    personal: { receiptId: 'model:0', access: {
+      actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', executionGeneration: 2,
+      conversationId: 'conversation', agentRunId: 'delivery', workspaceId: 'workspace',
+    } },
+  } as unknown as HarnessModelReference
+  let sourceController!: ReadableStreamDefaultController<LanguageModelV4StreamPart>
+  const source = new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { sourceController = controller } })
+  const reader = publishUnifiedHarnessStream(reference, source, new Set(['render_ui'])).getReader()
+  sourceController.enqueue({ type: 'tool-input-start', id: 'cancel-call', toolName: 'render_ui' } as LanguageModelV4StreamPart)
+  await reader.read()
+  sourceController.enqueue({ type: 'tool-input-delta', id: 'cancel-call', delta: 'PRIVATE_CANCEL_ARGUMENT_SENTINEL' } as LanguageModelV4StreamPart)
+  await reader.read()
+  await reader.cancel('cancelled')
+
+  const summaries = mocks.info.mock.calls.map(call => call[1] as Record<string, unknown>)
+    .filter(event => event.event === 'render_ui_input_summary')
+  expect(summaries).toHaveLength(1)
+  expect(summaries[0]).toMatchObject({
+    toolCallId: 'cancel-call', status: 'cancelled', providerDeltaCount: 1, pendingPreviewWriteCount: 0,
+  })
+  expect(JSON.stringify(summaries[0])).not.toContain('PRIVATE_CANCEL_ARGUMENT_SENTINEL')
+})

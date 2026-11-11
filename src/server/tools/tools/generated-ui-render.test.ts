@@ -46,9 +46,11 @@ test('realistic bug forms execute, persist and render with nested bindings, extr
     const output = await executeRenderUi(renderOptions, { title: '  Bug report  ', summary: '  Complete the bug report.  ', spec })
     assert.equal(output.success, true, name)
     if (!output.success) continue
+    assert.notEqual(output.id, 'form', name)
     const persistence = buildAssistantPersistenceFromSteps([uiStep('form', 'render_ui', output)] as never, '')
     const part = persistence.parts.find(isGeneratedUiPart)
     assert.ok(part, name)
+    assert.equal(part.id, 'form', name)
     assert.equal(part.data.kind, 'json_render')
     if (part.data.kind !== 'json_render') continue
     const normalized = JSON.parse(part.data.specJson) as Spec
@@ -83,11 +85,32 @@ test('failed render_ui specs leave an error trace and actionable retry instructi
 test('typed questionnaires survive persistence and render their choices', () => {
   const generatedUi = { version: 1, kind: 'questionnaire', prompt: 'Which QA environment?',
     choices: [{ id: 'preview', label: 'Preview' }, { id: 'production', label: 'Production' }], multiple: false }
-  const output = { success: true, id: 'question', generatedUi }
+  const output = { success: true, id: 'question-hash', generatedUi }
   const persistence = buildAssistantPersistenceFromSteps([uiStep('question', 'present_generated_ui', output)] as never, '')
   const part = persistence.parts.find(isGeneratedUiPart)
   assert.ok(part)
+  assert.equal(part.id, 'question-hash')
   const html = renderToStaticMarkup(createElement(GeneratedUiCard, { part }))
   assert.ok(html.includes('Which QA environment?'))
   assert.ok(html.includes('Preview') && html.includes('Production'))
+})
+
+test('all typed generated UI kinds keep their output IDs during persistence', () => {
+  const values = [
+    { version: 1, kind: 'draft.text', title: 'Update', body: 'Ready to ship.' },
+    { version: 1, kind: 'draft.email', subject: 'Update', body: 'Ready to ship.' },
+    { version: 1, kind: 'connector.connect', serviceName: 'Calendar', slug: 'calendar' },
+    { version: 1, kind: 'questionnaire', prompt: 'Which environment?',
+      choices: [{ id: 'preview', label: 'Preview' }, { id: 'production', label: 'Production' }], multiple: false },
+  ] as const
+  for (const generatedUi of values) {
+    const output = { success: true, id: `content-hash-${generatedUi.kind}`, generatedUi }
+    const persistence = buildAssistantPersistenceFromSteps([
+      uiStep(`call-${generatedUi.kind}`, 'present_generated_ui', output),
+    ] as never, '')
+    const part = persistence.parts.find(isGeneratedUiPart)
+    assert.ok(part, generatedUi.kind)
+    assert.equal(part.id, output.id, generatedUi.kind)
+    assert.equal(part.data.kind, generatedUi.kind)
+  }
 })

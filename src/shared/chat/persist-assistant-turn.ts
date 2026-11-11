@@ -435,7 +435,9 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
           : null
         const part = outcome?.state === 'output-available' && output?.success === true
           ? buildGeneratedUiPart(
-              (typeof output.id === 'string' && output.id.trim()) || call.toolCallId,
+              call.toolName === 'render_ui'
+                ? call.toolCallId
+                : (typeof output.id === 'string' && output.id.trim()) || call.toolCallId,
               output.generatedUi,
             )
           : null

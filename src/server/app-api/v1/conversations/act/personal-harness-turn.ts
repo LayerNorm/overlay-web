@@ -66,6 +66,13 @@ function clearStreamPreview(controller: PublicStreamController, toolCallId: stri
   controller.enqueue({ type: 'data-overlay.generated_ui', id: toolCallId, data: { kind: 'preview-cleared' } } as unknown as UIMessageChunk)
 }
 
+function finalGeneratedUiPart(part: Record<string, unknown>) {
+  if (part.type !== 'data' || part.dataType !== 'overlay.generated_ui' || typeof part.id !== 'string') return null
+  const generatedUiPart = buildGeneratedUiPart(part.id, part.data)
+  if (!generatedUiPart || generatedUiPart.data.kind === 'json_render' && generatedUiPart.data.streaming === true) return null
+  return generatedUiPart
+}
+
 function emitUnavailableStream(controller: PublicStreamController): void {
   controller.enqueue({ type: 'error', errorText: 'The durable stream is unavailable.' })
   controller.close()
@@ -83,6 +90,15 @@ function emitTranscriptPart(
     controller.enqueue({ type: 'text-start', id })
     controller.enqueue({ type: 'text-delta', id, delta: part.text })
     controller.enqueue({ type: 'text-end', id })
+    return
+  }
+  const generatedUiPart = finalGeneratedUiPart(part)
+  if (generatedUiPart) {
+    controller.enqueue({
+      type: 'data-overlay.generated_ui',
+      id: generatedUiPart.id,
+      data: generatedUiPart.data,
+    } as unknown as UIMessageChunk)
     return
   }
   if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return
@@ -123,14 +139,17 @@ function emitTranscriptStep(
   const matchingPreviewSuccess = Boolean(cursor.partId
     && cursor.basePartId === transcriptPartIdentity(runId, step.receiptId, 0, step.executionGeneration)
     && step.persistence.parts.some(part => {
+      const generatedUiPart = finalGeneratedUiPart(part)
+      if (generatedUiPart) return cursor.previews.has(generatedUiPart.id)
       if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return false
       const tool = part.toolInvocation as Record<string, unknown>
       return tool.state === 'output-available' && typeof tool.toolCallId === 'string'
         && cursor.previews.has(tool.toolCallId)
     }))
   const hasTextPart = step.persistence.parts.some(part => part.type === 'text')
-  const persistedText = hasTextPart
-    ? step.persistence.parts.filter(part => part.type === 'text').map(part => part.text).join('')
+  const persistedPartsText = step.persistence.parts.filter(part => part.type === 'text').map(part => part.text).join('')
+  const persistedText = hasTextPart && persistedPartsText === step.persistence.content
+    ? persistedPartsText
     : step.persistence.content
   const extendsActiveText = persistedText.startsWith(cursor.activeText)
   const matchesAfterTrailingWhitespaceTrim = persistedText.trimEnd() === cursor.activeText.trimEnd()
@@ -157,6 +176,11 @@ function emitTranscriptStep(
         cursor.settledPreviews.add(tool.toolCallId)
         cursor.previews.delete(tool.toolCallId)
       }
+    }
+    const generatedUiPart = finalGeneratedUiPart(part)
+    if (generatedUiPart) {
+      cursor.settledPreviews.add(generatedUiPart.id)
+      cursor.previews.delete(generatedUiPart.id)
     }
   }
   controller.enqueue({

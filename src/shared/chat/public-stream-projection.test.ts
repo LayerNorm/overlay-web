@@ -166,6 +166,30 @@ test('public stream preview is ordered by text offset, stable across updates, an
   expect(withoutPreview.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(false)
 })
 
+test('a settled generated UI with the preview call ID suppresses the native preview', () => {
+  const finalPart = {
+    type: 'data',
+    id: 'render-1',
+    dataType: 'overlay.generated_ui',
+    data: { version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Finished',
+      specJson: '{"root":"root","elements":{"root":{"type":"Text","props":{"text":"Finished"}}}}' },
+  }
+  const message = { _id: 'assistant', status: 'generating', content: 'Before after', parts: [finalPart] }
+  const preview = {
+    toolCallId: 'render-1', order: 0, sequence: 0, textOffset: 6,
+    data: { version: 1 as const, kind: 'json_render' as const, catalogVersion: 1, summary: 'Building',
+      specJson: '{"root":"root"}', streaming: true as const },
+  }
+  const projected = projectActivePublicStreams([message], [{
+    assistantMessageId: 'assistant', runId: 'run', executionGeneration: 1, receiptId: 'model:1',
+    invocation: 1, sequence: 0, text: 'Before after', previews: [preview],
+  }])[0]!
+
+  expect(projected.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(false)
+  expect(projected.parts?.some(part => (part as { type?: string; id?: string }).type === 'data'
+    && (part as { id?: string }).id === 'render-1')).toBe(true)
+})
+
 test('preview at offset zero restores canonical content on update, retirement, and empty streams', () => {
   const message = { _id: 'assistant', status: 'generating', content: 'Settled', parts: [{ type: 'text', id: 'base', text: 'Settled' }] }
   const preview = {
