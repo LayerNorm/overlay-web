@@ -132,9 +132,17 @@ test('streaming agent controls stay hidden until their own response is hovered o
 test('a streaming agent reply shows one avatar, whose eyes move, and no second indicator', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Searching memory first.' }), 'Agent', false, true)
   assert.doesNotMatch(html, /animate-pulse rounded-full/)
+  assert.doesNotMatch(html, /agent-response-pending/)
   assert.match(html, /aria-label="Agent is responding"/)
   const settled = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Agent')
   assert.doesNotMatch(settled, /is responding/)
+})
+
+test('an empty generating reply shows dots immediately below its author', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: '' }), 'Agent', false, true)
+  assert.match(html, /aria-label="Agent is preparing a response"/)
+  assert.match(html, /class="agent-response-pending"[^>]*><span><\/span><span><\/span><span><\/span>/)
+  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('agent-response-pending'))
 })
 
 test('provider Markdown paths use saved Files ids while source text and external links stay intact', () => {

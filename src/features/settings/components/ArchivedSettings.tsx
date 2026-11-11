@@ -23,7 +23,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
-import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { ScopeTag } from '@/components/layout/ScopeTag'
@@ -60,24 +59,6 @@ function archivedOn(timestamp?: number): string {
   return timestamp ? new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 }
 
-/** What deleting forever means for this selection, said in plain words in the confirmation. */
-function deleteDescription(items: readonly ArchivedItem[]): string {
-  const parts = ['This cannot be undone.']
-  if (items.some((item) => item.kind === 'agent')) {
-    parts.push('Deleting an agent also deletes its threads.')
-  }
-  if (items.some((item) => item.kind === 'agent-thread')) {
-    parts.push('Deleting a thread does not affect its agent.')
-  }
-  if (items.some((item) => item.kind === 'chat' && item.conversationType !== undefined && item.conversationType !== 'personal')) {
-    parts.push('Channels and direct messages are removed for you only; other members keep them.')
-  }
-  if (items.some((item) => item.kind === 'folder')) {
-    parts.push('Deleting a folder deletes everything inside it.')
-  }
-  return parts.join(' ')
-}
-
 /**
  * Settings → Archived: everything archived, in one place. Pick a kind from the dropdown or search; restore or delete
  * forever one at a time or many at once. Restore puts an item back where it came from; the server decides who may.
@@ -97,7 +78,6 @@ export function ArchivedSettings() {
   const [category, setCategory] = useState<ArchivedCategoryFilter>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [pendingDelete, setPendingDelete] = useState<ArchivedItem[] | null>(null)
   const [busy, setBusy] = useState(false)
   const lastToggled = useRef<string | null>(null)
   const nativeItems = useMemo<ArchivedItem[]>(() => {
@@ -210,9 +190,8 @@ export function ArchivedSettings() {
     await setNativeArchived(summary, false)
   }, [nativeArchivedRows, nativeSelectedSummary, setNativeArchived])
 
-  async function confirmDelete() {
-    if (!pendingDelete) return
-    const targets = pendingDelete
+  async function deleteItems(targets: readonly ArchivedItem[]) {
+    if (busy || targets.length === 0) return
     setBusy(true)
     try {
       if (targets.length === 1) {
@@ -228,7 +207,6 @@ export function ArchivedSettings() {
       toast.error('Could not delete that. You may not have access to it.')
     } finally {
       setBusy(false)
-      setPendingDelete(null)
     }
   }
 
@@ -299,7 +277,7 @@ export function ArchivedSettings() {
                   <Button size="sm" variant="secondary" disabled={busy} onClick={() => void restore(selectedItems)}>
                     <RotateCcw size={13} aria-hidden /> Restore
                   </Button>
-                  <Button size="sm" variant="danger" disabled={busy} onClick={() => setPendingDelete(selectedItems)}>
+                  <Button size="sm" variant="danger" disabled={busy} onClick={() => void deleteItems(selectedItems)}>
                     <Trash2 size={13} aria-hidden /> Delete forever
                   </Button>
                   <Button size="sm" variant="ghost" disabled={busy} onClick={() => setSelected(new Set())}>
@@ -360,7 +338,7 @@ export function ArchivedSettings() {
                     title="Delete forever"
                     aria-label={`Delete ${item.name} forever`}
                     disabled={busy}
-                    onClick={() => setPendingDelete([item])}
+                    onClick={() => void deleteItems([item])}
                     className={unstyledButton(`shrink-0 rounded-md p-1.5 text-(--muted) transition-colors hover:bg-(--border) hover:text-red-400 disabled:opacity-50`)}
                   >
                     <Trash2 size={14} />
@@ -382,20 +360,6 @@ export function ArchivedSettings() {
         </Button>
       ) : null}
 
-      <ConfirmDialog
-        isOpen={pendingDelete !== null}
-        title={
-          pendingDelete && pendingDelete.length > 1
-            ? `Delete ${pendingDelete.length} items forever?`
-            : pendingDelete?.[0] ? `Delete “${pendingDelete[0].name}” forever?` : 'Delete forever?'
-        }
-        description={pendingDelete ? deleteDescription(pendingDelete) : ''}
-        confirmLabel="Delete forever"
-        destructive
-        busy={busy}
-        onConfirm={() => void confirmDelete()}
-        onCancel={() => setPendingDelete(null)}
-      />
     </div>
   )
 }
