@@ -69,7 +69,7 @@ notification objects until interaction, closes them on sign-out/quit and restore
 a minimized main window before click routing.
 
 Local transcription runs without a network connection. Cloud transcription uses
-the web transcription API and the same plan/budget checks. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
+the web transcription API and the same plan/budget checks. Native code maps the API's refusal codes (paid plan, allowance, `workspace_billing_required`, `workspace_wallet_forbidden`, `insufficient_budget`) to actionable messages in `cloud-dictation-errors.ts` and keeps the bare status only for unknown failures. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
 and recovers after sleep/unlock. The local HUD captures audio; main validates bounded audio bytes, invokes a pinned native model helper or
 the cookie-authenticated cloud endpoint, then pastes into the prior app. Screen and
 microphone permissions remain OS-controlled. Downloaded updates install only after
