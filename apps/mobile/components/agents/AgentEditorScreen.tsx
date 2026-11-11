@@ -70,6 +70,7 @@ import {
 import {
   availableByoHarnesses,
   buildWorkspaceAgentInput,
+  buildWorkspaceAgentUpdateInput,
   defaultWorkingDirectory,
   environmentSupportsHarness,
   isAgentEditorValid,
@@ -280,7 +281,9 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
         }
       }
     } else if (agent) {
-      saved = await updateAgent(workspaceId, agent.id, input)
+      saved = await updateAgent(workspaceId, agent.id, buildWorkspaceAgentUpdateInput(
+        input, agent.avatarColor ?? DEFAULT_AGENT_AVATAR_COLOR,
+      ))
       if (agentType === 'byo') {
         await upsertAgentBinding(workspaceId, {
           agentId: saved.id, environmentId, adapterId, workingDirectory: workingDirectory.trim(),

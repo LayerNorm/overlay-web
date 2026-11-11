@@ -12,6 +12,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentHarness,
   WorkspaceAgentVisibility,
+  WorkspaceAgentUpdateInput,
 } from '@overlay/workspace-contracts'
 import { toolIdsForEnabledGroups } from './agentToolGroups'
 
@@ -135,6 +136,15 @@ export function buildWorkspaceAgentInput(args: {
     allowedToolIds: byo ? [] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
   }
+}
+
+export function buildWorkspaceAgentUpdateInput(
+  input: WorkspaceAgentCreateInput,
+  initialAvatarColor: string,
+): WorkspaceAgentUpdateInput {
+  const patch: WorkspaceAgentUpdateInput = { ...input }
+  if (patch.avatarColor === initialAvatarColor) delete patch.avatarColor
+  return patch
 }
 
 /** Mirrors the editor's save gating: identity plus either overlay behavior or a valid BYO binding. */
