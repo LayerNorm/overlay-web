@@ -264,6 +264,7 @@ function buildExecutionContext(
     accountAllowedToolIds: allowedTools,
     accountAllowedConnectorIds: allowedConnectors,
     integrationToolIds: context.integrationToolIds,
+    ...(context.notebookNoteId ? { notebookNoteId: context.notebookNoteId } : {}),
     ...(access.authentication.type === 'automation'
       ? { automationExecution: true, automationId: access.authentication.automationId,
         automationRunId: access.authentication.automationRunId,

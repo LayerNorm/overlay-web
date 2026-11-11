@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { resolveAgentGrant } from './agent-tooling'
 import { agentModelAttempts, buildAgentSystemPrompt } from './workspace-agent-invocation'
+import { MEMORY_SAVE_PROTOCOL } from '@/server/agent/knowledge-agent-instructions'
+import { MATH_FORMAT_INSTRUCTION } from '@/shared/markdown/math-format-instructions'
+import { TABLE_FORMAT_INSTRUCTION } from '@/shared/markdown/markdown-table-instructions'
 import {
   AGENT_TOOL_GROUPS,
   allAgentToolGrantIds,
@@ -95,4 +98,24 @@ test('an agent with no tools is told so rather than encouraged to use them', () 
     isDefaultMaster: false,
   })
   assert.match(prompt, /no tools or resource access/)
+})
+
+test('native agents share memory, generated UI, citations and formatting guidance', () => {
+  const base = {
+    agentName: 'Researcher', contextBlock: '', hasTools: true,
+    instructions: 'Be helpful.', isDefaultMaster: false,
+    exposedToolIds: ['save_memory', 'web_search', 'present_generated_ui', 'computer_exec'],
+  }
+  const prompt = buildAgentSystemPrompt(base)
+  assert.ok(prompt.includes(MEMORY_SAVE_PROTOCOL))
+  assert.ok(prompt.includes(MATH_FORMAT_INSTRUCTION))
+  assert.ok(prompt.includes(TABLE_FORMAT_INSTRUCTION))
+  assert.match(prompt, /Generated UI cards/)
+  assert.match(prompt, /markers inline next to the sentences/)
+  assert.match(prompt, /call computer_exec with a command argument/)
+  const memoryOff = buildAgentSystemPrompt({ ...base, memoryEnabled: false })
+  assert.match(memoryOff, /Memory is off for this turn/)
+  assert.ok(!memoryOff.includes(MEMORY_SAVE_PROTOCOL))
+  const noCards = buildAgentSystemPrompt({ ...base, exposedToolIds: ['web_search'] })
+  assert.doesNotMatch(noCards, /use the present_generated_ui tool/)
 })
