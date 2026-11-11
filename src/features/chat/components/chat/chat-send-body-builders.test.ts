@@ -6,8 +6,33 @@ import {
   buildSubmittedComposerSnapshot,
   buildTextTurnPayload,
   getSendValidationError,
+  resolveComposerSubmission,
   PENDING_FIRST_CHAT_ID,
 } from './chat-send-body-builders'
+
+function composerSubmissionFixture(): Parameters<typeof resolveComposerSubmission>[0] {
+  return { text: 'Unsent draft', effectiveGenType: 'image', replyContext: { snippet: 'Reply', bodyForModel: 'Earlier message' },
+    attachedImages: [{ dataUrl: 'data:image/png;base64,a', mimeType: 'image/png', name: 'a.png' }],
+    pendingChatDocuments: [{ clientId: 'doc', name: 'a.pdf', fileIds: [], status: 'failed' }], mentions: [] }
+}
+
+test('composer submissions preserve draft text, context, attachments and media mode', () => {
+  const composer = composerSubmissionFixture()
+  assert.equal(resolveComposerSubmission(composer), composer)
+})
+
+test('generated follow-ups send only their text without consuming an unsent composer draft', () => {
+  const composer = composerSubmissionFixture()
+  const before = structuredClone(composer)
+  assert.deepEqual(resolveComposerSubmission(composer, 'Bug submitted'), {
+    text: 'Bug submitted', attachedImages: [], pendingChatDocuments: [], mentions: [], replyContext: null, effectiveGenType: null,
+  })
+  assert.deepEqual(composer, before)
+})
+
+test('empty generated follow-ups stay empty instead of falling back to the unsent draft', () => {
+  assert.equal(resolveComposerSubmission(composerSubmissionFixture(), '').text, '')
+})
 
 test('builds a stable submitted composer snapshot', () => {
   const snapshot = buildSubmittedComposerSnapshot({

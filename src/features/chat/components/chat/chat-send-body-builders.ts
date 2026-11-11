@@ -20,6 +20,18 @@ export type ReplyContext = {
   replyToTurnId?: string
 } | null
 
+export function resolveComposerSubmission(composer: {
+  text: string
+  attachedImages: AttachedImage[]
+  pendingChatDocuments: PendingChatDocument[]
+  mentions: MentionItem[]
+  replyContext: ReplyContext
+  effectiveGenType: 'image' | 'video' | null
+}, textOverride?: string) {
+  if (textOverride === undefined) return composer
+  return { text: textOverride, attachedImages: [], pendingChatDocuments: [], mentions: [], replyContext: null, effectiveGenType: null }
+}
+
 export type UiPart = {
   type: string
   text?: string

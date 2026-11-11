@@ -182,25 +182,15 @@ const envelope = z.object({
   state: z.record(z.string(), z.unknown()).optional(),
 }).strict()
 
-export function validateJsonRenderSpec(value: unknown): JsonRenderSpecValidation {
-  const issues: JsonRenderSpecIssue[] = []
-  const add = (path: string, message: string) => {
-    if (issues.length < GENERATIVE_UI_MAX_ISSUES) issues.push({ path, message })
-  }
-  let serialized: string
-  try {
-    serialized = JSON.stringify(value)
-    if (typeof serialized !== 'string') throw new Error('Not JSON')
-  } catch {
-    return { ok: false, issues: [{ path: '', message: 'Spec must be serializable JSON' }] }
-  }
-  if (new TextEncoder().encode(serialized).byteLength > GENERATIVE_UI_MAX_SPEC_BYTES) {
-    return { ok: false, issues: [{ path: '', message: `Spec exceeds ${GENERATIVE_UI_MAX_SPEC_BYTES} serialized bytes` }] }
-  }
+type CatalogSpec = z.infer<typeof envelope>
+type CatalogElement = CatalogSpec['elements'][string]
+type AddSpecIssue = (path: string, message: string) => void
+
+function validateJsonValues(value: unknown, add: AddSpecIssue): JsonRenderSpecIssue | null {
   const pending = [{ value, path: '', depth: 0 }]
   while (pending.length) {
     const item = pending.pop()!
-    if (item.depth > 64) return { ok: false, issues: [{ path: item.path, message: 'Spec nesting is too deep' }] }
+    if (item.depth > 64) return { path: item.path, message: 'Spec nesting is too deep' }
     if (typeof item.value === 'string' && item.value.length > GENERATIVE_UI_MAX_STRING_LENGTH) add(item.path, 'String exceeds 4000 characters')
     if (typeof item.value === 'number' && !Number.isFinite(item.value)) add(item.path, 'Numbers must be finite')
     if (item.value === undefined || typeof item.value === 'function' || typeof item.value === 'symbol') add(item.path, 'Value must be JSON')
@@ -213,43 +203,48 @@ export function validateJsonRenderSpec(value: unknown): JsonRenderSpecValidation
       }
     }
   }
-  if (issues.length) return { ok: false, issues }
-  const parsed = envelope.safeParse(value)
-  if (!parsed.success) return { ok: false, issues: parsed.error.issues.slice(0, GENERATIVE_UI_MAX_ISSUES).map((issue) => ({ path: issue.path.join('/'), message: issue.message })) }
-  const spec = parsed.data
-  const entries = Object.entries(spec.elements)
-  if (entries.length > GENERATIVE_UI_MAX_ELEMENTS) add('elements', 'Spec exceeds 200 elements')
-  if (!Object.hasOwn(spec.elements, spec.root)) add('root', 'Root does not resolve to an element')
-  for (const [id, element] of entries) {
-    const definition = Object.hasOwn(components, element.type) ? components[element.type as keyof typeof components] : undefined
-    if (!definition) {
-      add(`elements/${id}/type`, `Unknown component: ${element.type}`)
-      continue
-    }
-    if (definition.slots.length && Object.hasOwn(element.props, 'children')) {
-      const children = z.array(z.string()).safeParse(element.props.children)
-      if (!children.success) add(`elements/${id}/props/children`, 'Children must be an array of element IDs')
-      else if (element.children && JSON.stringify(element.children) !== JSON.stringify(children.data)) {
-        add(`elements/${id}/children`, 'Conflicting children; specify children beside props only')
-      } else element.children = children.data
-    }
-    const props = definition.props.safeParse(element.props)
-    if (!props.success) for (const issue of props.error.issues) add(`elements/${id}/props/${issue.path.join('/')}`, issue.message)
-    else element.props = props.data
-    if (element.on && element.type !== 'Button') add(`elements/${id}/on`, 'Only Button supports actions')
-    if (element.children?.length && !definition.slots.length) add(`elements/${id}/children`, 'Component does not accept children')
-    for (const child of element.children ?? []) if (!Object.hasOwn(spec.elements, child)) add(`elements/${id}/children`, `Child does not resolve: ${child}`)
-    if (element.type === 'Table' && props.success) {
-      const p = element.props as z.infer<typeof components.Table.props>
-      if (p.rows.some((row) => row.length !== p.columns.length)) add(`elements/${id}/props/rows`, 'Rows must match column count')
-    }
-    if (element.type === 'Chart' && props.success) {
-      const p = element.props as z.infer<typeof components.Chart.props>
-      if (p.values.length !== p.labels.length || p.series?.some((series) => series.values.length !== p.labels.length)) add(`elements/${id}/props/values`, 'Chart values must match labels')
-    }
-    if (element.type === 'Tabs' && props.success && (element.props.labels as string[]).length !== (element.children?.length ?? 0)) add(`elements/${id}/children`, 'Tabs require one child per label')
+  return null
+}
+
+function normalizeElementChildren(id: string, element: CatalogElement, definition: typeof components[keyof typeof components], add: AddSpecIssue) {
+  if (definition.slots.length && Object.hasOwn(element.props, 'children')) {
+    const children = z.array(z.string()).safeParse(element.props.children)
+    if (!children.success) add(`elements/${id}/props/children`, 'Children must be an array of element IDs')
+    else if (element.children && JSON.stringify(element.children) !== JSON.stringify(children.data)) {
+      add(`elements/${id}/children`, 'Conflicting children; specify children beside props only')
+    } else element.children = children.data
   }
-  if (issues.length) return { ok: false, issues }
+}
+
+function validateElementCollections(id: string, element: CatalogElement, add: AddSpecIssue) {
+  if (element.type === 'Table') {
+    const p = element.props as z.infer<typeof components.Table.props>
+    if (p.rows.some((row) => row.length !== p.columns.length)) add(`elements/${id}/props/rows`, 'Rows must match column count')
+  }
+  if (element.type === 'Chart') {
+    const p = element.props as z.infer<typeof components.Chart.props>
+    if (p.values.length !== p.labels.length || p.series?.some((series) => series.values.length !== p.labels.length)) add(`elements/${id}/props/values`, 'Chart values must match labels')
+  }
+  if (element.type === 'Tabs' && (element.props.labels as string[]).length !== (element.children?.length ?? 0)) add(`elements/${id}/children`, 'Tabs require one child per label')
+}
+
+function validateElement(id: string, element: CatalogElement, spec: CatalogSpec, add: AddSpecIssue) {
+  const definition = Object.hasOwn(components, element.type) ? components[element.type as keyof typeof components] : undefined
+  if (!definition) {
+    add(`elements/${id}/type`, `Unknown component: ${element.type}`)
+    return
+  }
+  normalizeElementChildren(id, element, definition, add)
+  const props = definition.props.safeParse(element.props)
+  if (!props.success) for (const issue of props.error.issues) add(`elements/${id}/props/${issue.path.join('/')}`, issue.message)
+  else element.props = props.data
+  if (element.on && element.type !== 'Button') add(`elements/${id}/on`, 'Only Button supports actions')
+  if (element.children?.length && !definition.slots.length) add(`elements/${id}/children`, 'Component does not accept children')
+  for (const child of element.children ?? []) if (!Object.hasOwn(spec.elements, child)) add(`elements/${id}/children`, `Child does not resolve: ${child}`)
+  if (props.success) validateElementCollections(id, element, add)
+}
+
+function validateElementTree(spec: CatalogSpec, add: AddSpecIssue) {
   const heights = new Map<string, number>()
   const visiting = new Set<string>()
   function height(id: string): number {
@@ -263,7 +258,36 @@ export function validateJsonRenderSpec(value: unknown): JsonRenderSpecValidation
     heights.set(id, depth)
     return depth
   }
-  for (const [id] of entries) if (height(id) > GENERATIVE_UI_MAX_DEPTH) add(`elements/${id}`, 'Spec exceeds depth 12')
+  for (const id of Object.keys(spec.elements)) if (height(id) > GENERATIVE_UI_MAX_DEPTH) add(`elements/${id}`, 'Spec exceeds depth 12')
+}
+
+export function validateJsonRenderSpec(value: unknown): JsonRenderSpecValidation {
+  const issues: JsonRenderSpecIssue[] = []
+  const add: AddSpecIssue = (path, message) => {
+    if (issues.length < GENERATIVE_UI_MAX_ISSUES) issues.push({ path, message })
+  }
+  let serialized: string
+  try {
+    serialized = JSON.stringify(value)
+    if (typeof serialized !== 'string') throw new Error('Not JSON')
+  } catch {
+    return { ok: false, issues: [{ path: '', message: 'Spec must be serializable JSON' }] }
+  }
+  if (new TextEncoder().encode(serialized).byteLength > GENERATIVE_UI_MAX_SPEC_BYTES) {
+    return { ok: false, issues: [{ path: '', message: `Spec exceeds ${GENERATIVE_UI_MAX_SPEC_BYTES} serialized bytes` }] }
+  }
+  const nestingIssue = validateJsonValues(value, add)
+  if (nestingIssue) return { ok: false, issues: [nestingIssue] }
+  if (issues.length) return { ok: false, issues }
+  const parsed = envelope.safeParse(value)
+  if (!parsed.success) return { ok: false, issues: parsed.error.issues.slice(0, GENERATIVE_UI_MAX_ISSUES).map((issue) => ({ path: issue.path.join('/'), message: issue.message })) }
+  const spec = parsed.data
+  const entries = Object.entries(spec.elements)
+  if (entries.length > GENERATIVE_UI_MAX_ELEMENTS) add('elements', 'Spec exceeds 200 elements')
+  if (!Object.hasOwn(spec.elements, spec.root)) add('root', 'Root does not resolve to an element')
+  for (const [id, element] of entries) validateElement(id, element, spec, add)
+  if (issues.length) return { ok: false, issues }
+  validateElementTree(spec, add)
   const catalogResult = generativeUiCatalog.validate(spec)
   if (!catalogResult.success) for (const issue of catalogResult.error?.issues ?? []) add(issue.path.join('/'), issue.message)
   return issues.length ? { ok: false, issues } : { ok: true, spec: spec as Spec }

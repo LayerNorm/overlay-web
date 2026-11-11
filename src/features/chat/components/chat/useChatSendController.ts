@@ -30,6 +30,7 @@ import type {
 import {
   buildSubmittedComposerSnapshot,
   getSendValidationError,
+  resolveComposerSubmission,
   PENDING_FIRST_CHAT_ID,
   type CompleteSession,
   type ReplyContext,
@@ -372,9 +373,11 @@ export function useChatSendController({
       requireAuth('send')
       return
     }
-    const replyCtxSnapshot = textOverride === undefined ? replyContext : null
     const composerInput = inputRef.current
-    const submittedInput = textOverride ?? composerInput
+    const submission = resolveComposerSubmission({ text: composerInput, attachedImages, pendingChatDocuments, mentions, replyContext, effectiveGenType }, textOverride)
+    const replyCtxSnapshot = submission.replyContext
+    const submittedInput = submission.text
+    const submittedGenType = submission.effectiveGenType
     const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
@@ -382,9 +385,9 @@ export function useChatSendController({
       activeChatTitle,
       selectedImageModels,
       selectedVideoModels,
-      attachedImages: textOverride === undefined ? attachedImages : [],
-      pendingChatDocuments: textOverride === undefined ? pendingChatDocuments : [],
-      mentions: textOverride === undefined ? mentions : [],
+      attachedImages: submission.attachedImages,
+      pendingChatDocuments: submission.pendingChatDocuments,
+      mentions: submission.mentions,
       isTemporaryChat,
       mode,
       selectedToolIds,
@@ -404,7 +407,7 @@ export function useChatSendController({
     }
     if (isActiveLoading) return
 
-    const sendValidationError = getSendValidationError(snapshot, textOverride === undefined ? effectiveGenType : null)
+    const sendValidationError = getSendValidationError(snapshot, submittedGenType)
     if (sendValidationError === 'uploading-documents') {
       setAttachmentError('Wait for documents to finish indexing.')
       return
@@ -481,7 +484,7 @@ export function useChatSendController({
       }
     }
 
-    if (textOverride === undefined && (effectiveGenType === 'image' || effectiveGenType === 'video')) {
+    if (submittedGenType === 'image' || submittedGenType === 'video') {
       clearSubmittedComposer()
       try {
         await sendMediaTurn({
@@ -490,7 +493,7 @@ export function useChatSendController({
           applyUiStateToView,
           completeSession,
           createNewChat,
-          effectiveGenType,
+          effectiveGenType: submittedGenType,
           emptyRuntime: emptyRuntimeRef.current,
           ensureConversationRuntime,
           isSendBlocked,
