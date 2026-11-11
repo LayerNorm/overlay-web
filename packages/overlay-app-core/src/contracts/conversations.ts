@@ -93,6 +93,7 @@ export interface ConversationMessage {
   role: 'user' | 'assistant'
   parts: ConversationMessagePart[]
   model?: string
+  completedAt?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string

@@ -432,7 +432,18 @@ export const setGeneratedUi = mutation({
     if (!changed) throw new Error('GENERATED_UI_NOT_FOUND')
     await admitWrite(ctx, access.userId)
     const now = Date.now()
-    await ctx.db.patch(args.messageId, { parts, updatedAt: now })
+    const completionRun = message.completedAt === undefined
+      ? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id))
+        .first()
+      : null
+    const completedAt = message.completedAt ?? completionRun?.completedAt
+      ?? (message.status === 'completed' ? message.updatedAt : undefined)
+    await ctx.db.patch(args.messageId, {
+      parts,
+      updatedAt: now,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    })
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     return null
   },

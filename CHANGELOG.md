@@ -15,7 +15,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
   - Generated forms tolerate unused component props and unambiguous misplaced child references. Failed generated views leave visible error activity; models receive explicit retry guidance and a complete bound-form example before claiming a view is displayed.
   - Failed bound forms keep their error rows after a successful retry. Tool snapshots encode reserved JSON keys for Convex storage while full journal files retain the original input.
   - Chat Markdown exports include native assistant replies and generated-view titles and summaries, never serialized UI specs or bound form values.
-  - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation saves are unchanged.
+  - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation save paths keep their existing authorization and immutable-content protections.
   - Keep completed response work durations stable when generated-form state is edited or submitted by persisting completion time separately from modification time; older messages fall back to their original run completion when available.
 
 - Make invited onboarding workspace-aware and wait for live billing before showing the conversation. Paid workspaces skip subscription offers; free-workspace members can ask owners and admins to subscribe or open Work with their first task safely saved as a draft.
