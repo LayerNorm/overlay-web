@@ -37,7 +37,8 @@ export const forWorkspace = query({
         createdByUserId: binding.createdByUserId, createdAt: binding.createdAt, updatedAt: binding.updatedAt,
       })),
       canManage: canManageWorkspace(viewer.membership.role),
-      identityLinks: ownLinks.map(link => ({ id: link.id, connectionId: link.connectionId, slackUserId: link.slackUserId })),
+      identityLinks: ownLinks.map(link => ({ id: link.id, connectionId: link.connectionId, slackUserId: link.slackUserId,
+        ...(link.displayName ? { displayName: link.displayName } : {}) })),
     }
   },
 })

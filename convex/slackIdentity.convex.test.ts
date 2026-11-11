@@ -22,9 +22,9 @@ async function fixture() {
     }
   })
   const scope = { workspaceId: 'ws', connectionId: 'connection', teamId: 'T1', serverSecret: secret }
-  async function link(userId: string, slackUserId: string, nonce: string) {
+  async function link(userId: string, slackUserId: string, nonce: string, displayName?: string) {
     await t.mutation(mutation('begin'), { ...scope, userId, nonce })
-    return await t.mutation(mutation('complete'), { ...scope, userId, nonce, slackUserId, id: nonce })
+    return await t.mutation(mutation('complete'), { ...scope, userId, nonce, slackUserId, ...(displayName ? { displayName } : {}), id: nonce })
   }
   const query = (slackUserId = 'U1', extra: Record<string, unknown> = {}) => t.query(requester, { ...scope, slackUserId, channelId: 'C1', threadId: 'thread', ...extra })
   return { t, scope, link, query }
@@ -32,7 +32,7 @@ async function fixture() {
 
 test('nonce is scoped, expiring and consumed atomically with a durable link; replay fails', async () => {
   const { t, scope, link } = await fixture()
-  expect(await link('alice', 'U1', 'nonce')).toEqual({ status: 'linked' })
+  expect(await link('alice', 'U1', 'nonce', 'alice')).toEqual({ status: 'linked' })
   await expect(t.mutation(mutation('complete'), { ...scope, userId: 'alice', slackUserId: 'U1', nonce: 'nonce', id: 'replay' })).rejects.toThrow('NONCE_INVALID')
   await t.mutation(mutation('begin'), { ...scope, userId: 'alice', nonce: 'scoped' })
   await expect(t.mutation(mutation('complete'), { ...scope, userId: 'bob', slackUserId: 'U2', nonce: 'scoped', id: 'wrong-user' })).rejects.toThrow('NONCE_INVALID')
@@ -44,7 +44,7 @@ test('nonce is scoped, expiring and consumed atomically with a durable link; rep
   await t.run(async ctx => {
     const links = await ctx.db.query('slackIdentityLinks').collect()
     expect(links).toHaveLength(1)
-    expect(links[0]).toMatchObject({ teamId: 'T1', slackUserId: 'U1', userId: 'alice', workspaceId: 'ws', connectionId: 'connection', status: 'active' })
+    expect(links[0]).toMatchObject({ teamId: 'T1', slackUserId: 'U1', displayName: 'alice', userId: 'alice', workspaceId: 'ws', connectionId: 'connection', status: 'active' })
     expect(links[0].createdAt).toBeGreaterThan(0)
   })
 })

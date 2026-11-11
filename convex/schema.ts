@@ -879,6 +879,7 @@ export default defineSchema({
 
   slackIdentityLinks: defineTable({
     id: v.string(), teamId: v.string(), slackUserId: v.string(), userId: v.string(),
+    displayName: v.optional(v.string()),
     workspaceId: v.string(), connectionId: v.string(), status: v.union(v.literal('active'), v.literal('revoked')),
     createdAt: v.number(), updatedAt: v.number(), revokedAt: v.optional(v.number()),
   }).index('by_entityId', ['id']).index('by_slack_identity', ['teamId', 'slackUserId'])

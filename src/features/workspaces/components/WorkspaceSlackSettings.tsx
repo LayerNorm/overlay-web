@@ -68,7 +68,7 @@ function SlackConnection({ connection, controller, onConfirm }: {
       {!channels.length && <p className="px-5 py-3 text-sm text-(--muted)">{admin ? 'No channels enabled. Add a public channel to receive messages.' : 'No public channels are enabled yet.'}</p>}
     </div>
     <div className={'flex min-h-16 items-center justify-between gap-3 border-t border-(--border) px-5 py-3 ' + (!identity ? 'max-sm:items-start max-sm:flex-col' : '')}>
-      <div className="min-w-0"><h3 className="text-sm font-medium leading-5">Your Slack account</h3><p className="mt-0.5 break-words text-xs leading-4 text-(--muted)">{identity ? `Linked as ${identity.slackUserId}` : 'Link your account to message Overlay in Slack.'}</p></div>
+      <div className="min-w-0"><h3 className="text-sm font-medium leading-5">Your Slack account</h3><p className="mt-0.5 break-words text-xs leading-4 text-(--muted)">{identity ? `Linked as ${identity.displayName ? `@${identity.displayName}` : identity.slackUserId}` : 'Link your account to message Overlay in Slack.'}</p></div>
       <Button variant={identity ? 'ghost' : 'secondary'} size="sm" disabled={busy !== null || (!identity && !active)} onClick={() => identity ? onConfirm({ kind: 'unlink', id: identity.id, teamName }) : controller.link(connection.id)}>{identity ? 'Unlink' : 'Link your Slack account'}</Button>
     </div>
     {admin && active && <div className="flex items-center justify-between gap-3 border-t border-(--border) px-5 py-3"><span className="text-sm text-(--muted)">Slack connection</span><Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => onConfirm({ kind: 'disconnect', id: connection.id, teamName })}>Disconnect</Button></div>}

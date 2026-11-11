@@ -73,7 +73,7 @@ export type WorkspaceSurfaces = {
   connections: SurfaceConnection[]
   bindings: SurfaceBinding[]
   canManage: boolean
-  identityLinks: { id: string; connectionId: string; slackUserId: string }[]
+  identityLinks: { id: string; connectionId: string; slackUserId: string; displayName?: string }[]
 }
 
 /** Workspace Slack connection, Chief channels and only the viewer's identity links, live. */

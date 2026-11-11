@@ -172,7 +172,7 @@ test('workspace Slack lists only Chief channels and the viewer identity, with li
     await ctx.db.insert('surfaceBindings', { id: 'legacy-specialist', connectionId: 'conn', agentId: 'mine', channelId: 'C3', status: 'active', createdByUserId: 'alice', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('surfaceBindings', { id: 'removed', connectionId: 'conn', agentId: 'team', channelId: 'C4', status: 'removed', createdByUserId: 'alice', createdAt: 1, updatedAt: 1 })
     for (const link of [
-      { id: 'bob-link', userId: 'bob', slackUserId: 'U_BOB', workspaceId: 'ws', connectionId: 'conn', status: 'active' as const },
+      { id: 'bob-link', userId: 'bob', slackUserId: 'U_BOB', displayName: 'bob', workspaceId: 'ws', connectionId: 'conn', status: 'active' as const },
       { id: 'alice-link', userId: 'alice', slackUserId: 'U_ALICE', workspaceId: 'ws', connectionId: 'conn', status: 'active' as const },
       { id: 'revoked-link', userId: 'bob', slackUserId: 'U_OLD', workspaceId: 'ws', connectionId: 'conn', status: 'revoked' as const },
       { id: 'elsewhere-link', userId: 'bob', slackUserId: 'U_OTHER', workspaceId: 'elsewhere', connectionId: 'other', status: 'active' as const },
@@ -182,7 +182,7 @@ test('workspace Slack lists only Chief channels and the viewer identity, with li
   expect(bob.connections.map(c => c.id)).toEqual(['conn'])
   expect(bob.bindings.map(b => b.id)).toEqual(['b1'])
   expect(bob.canManage).toBe(false)
-  expect(bob.identityLinks).toEqual([{ id: 'bob-link', connectionId: 'conn', slackUserId: 'U_BOB' }])
+  expect(bob.identityLinks).toEqual([{ id: 'bob-link', connectionId: 'conn', slackUserId: 'U_BOB', displayName: 'bob' }])
   expect((await as('carol').query(forWorkspace, { workspaceId: 'ws' }) as { canManage: boolean }).canManage).toBe(false)
   expect(await as('stranger').query(forWorkspace, { workspaceId: 'ws' })).toBeNull()
   await t.run(async ctx => {

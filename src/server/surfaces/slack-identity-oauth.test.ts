@@ -36,3 +36,10 @@ test('expired state cannot be used, and unsigned or malformed requests are rejec
   assert.equal(openSlackIdentityState(state), null)
   for (const value of ['', 'unsigned', 'payload.signature', 'a'.repeat(4097)]) assert.equal(openSlackIdentityState(value), null)
 })
+
+test('only a nonempty verified OIDC name is projected as display metadata', () => {
+  const state = { workspaceId: 'workspace', connectionId: 'connection', userId: 'user', teamId: 'T1', nonce: 'nonce' }
+  const claims = { sub: 'U1', nonce: 'nonce', 'https://slack.com/team_id': 'T1', 'https://slack.com/user_id': 'U1' }
+  assert.equal(verifiedSlackIdentityClaims({ ...claims, name: ' Dana ' }, state).displayName, 'Dana')
+  for (const name of [undefined, '', ' ', 123]) assert.equal(verifiedSlackIdentityClaims({ ...claims, name }, state).displayName, undefined)
+})

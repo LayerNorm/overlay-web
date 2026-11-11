@@ -75,7 +75,8 @@ export function verifiedSlackIdentityClaims(payload: JWTPayload, state: SlackIde
     || typeof externalUserId !== 'string' || !externalUserId || payload.sub !== externalUserId) {
     throw new Error('Slack identity did not match the requested workspace.')
   }
-  return { externalUserId, externalTeamId: state.teamId }
+  const displayName = typeof payload.name === 'string' ? payload.name.trim().slice(0, 256) : undefined
+  return { externalUserId, externalTeamId: state.teamId, ...(displayName ? { displayName } : {}) }
 }
 
 export async function exchangeSlackIdentity(input: {

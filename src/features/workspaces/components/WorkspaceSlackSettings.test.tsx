@@ -54,6 +54,15 @@ test('only admins can connect, while unlinked members can link their personal ac
   assert.doesNotMatch(member, />Unlink<|Linked as/)
 })
 
+test('linked accounts show the stored handle and legacy links fall back to their Slack ID', () => {
+  const value = controller(false)
+  value.data!.identityLinks[0].displayName = 'dana'
+  assert.match(render(value), /Linked as @dana/)
+  assert.doesNotMatch(render(value), /U_ME/)
+  delete value.data!.identityLinks[0].displayName
+  assert.match(render(value), /Linked as U_ME/)
+})
+
 test('empty channels, loading and unavailable access are distinct from successful connection data', () => {
   const empty = controller()
   empty.data!.bindings = []

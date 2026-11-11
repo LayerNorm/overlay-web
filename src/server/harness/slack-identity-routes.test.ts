@@ -14,6 +14,7 @@ vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
   surfaceService: { listConnections: async () => mocks.active ? [{ id: 'connection', workspaceId: 'ws', platform: 'slack', status: 'active', externalTeamId: 'T1' }] : [] },
 }) }))
 vi.mock('@/server/surfaces/slack-identity-store', () => ({ beginSlackIdentity: mocks.begin, completeSlackIdentity: mocks.complete, unlinkSlackIdentity: mocks.unlink }))
+vi.mock('@/server/surfaces/slack-identity-profile', () => ({ slackIdentityDisplayName: async () => 'dana' }))
 vi.mock('@/server/surfaces/slack-identity-oauth', async importOriginal => ({
   ...await importOriginal<typeof import('@/server/surfaces/slack-identity-oauth')>(), exchangeSlackIdentity: mocks.exchange,
 }))
@@ -55,7 +56,7 @@ test('tampered state and a different or absent session cannot exchange or consum
 test('verified callback links, renders clear conflicts and rejects replay or token verification failure', async () => {
   const signed = state()
   expect((await callbackSlackIdentity(request(signed))).status).toBe(200)
-  expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ userId: 'alice', teamId: 'T1' }), 'U1')
+  expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ userId: 'alice', teamId: 'T1' }), 'U1', 'dana')
   mocks.complete.mockResolvedValueOnce({ status: 'conflict' })
   const conflict = await callbackSlackIdentity(request(signed))
   expect(conflict.status).toBe(409)

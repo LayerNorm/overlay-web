@@ -31,7 +31,7 @@ export const begin = mutation({
 })
 
 export const complete = mutation({
-  args: { ...scope, nonce: v.string(), slackUserId: v.string(), id: v.string(), serverSecret: v.string() },
+  args: { ...scope, nonce: v.string(), slackUserId: v.string(), displayName: v.optional(v.string()), id: v.string(), serverSecret: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const nonce = await ctx.db.query('slackIdentityNonces').withIndex('by_nonce', q => q.eq('nonce', args.nonce)).unique()
@@ -45,6 +45,7 @@ export const complete = mutation({
     const previous = await ctx.db.query('slackIdentityLinks').withIndex('by_overlay_identity', q => q.eq('teamId', args.teamId).eq('userId', args.userId)).collect()
     for (const row of previous.filter(row => row.status === 'active')) await ctx.db.patch(row._id, { status: 'revoked', revokedAt: now, updatedAt: now })
     await ctx.db.insert('slackIdentityLinks', { id: args.id, teamId: args.teamId, slackUserId: args.slackUserId,
+      ...(args.displayName ? { displayName: args.displayName } : {}),
       userId: args.userId, workspaceId: args.workspaceId, connectionId: args.connectionId, status: 'active', createdAt: now, updatedAt: now })
     return { status: 'linked' as const }
   },

@@ -10,11 +10,11 @@ export async function beginSlackIdentity(state: SlackIdentityState) {
   await lazyConvex.mutation('surfaces/slackIdentity:begin', { ...scope, serverSecret: getInternalApiSecret() }, { throwOnError: true })
 }
 
-export async function completeSlackIdentity(state: SlackIdentityState, slackUserId: string) {
+export async function completeSlackIdentity(state: SlackIdentityState, slackUserId: string, displayName?: string) {
   const { returnTo: _returnTo, ...scope } = state
   void _returnTo
   return await lazyConvex.mutation<{ status: 'linked' | 'conflict' }>('surfaces/slackIdentity:complete', {
-    ...scope, slackUserId, id: randomUUID(), serverSecret: getInternalApiSecret(),
+    ...scope, slackUserId, ...(displayName ? { displayName } : {}), id: randomUUID(), serverSecret: getInternalApiSecret(),
   }, { throwOnError: true })
 }
 

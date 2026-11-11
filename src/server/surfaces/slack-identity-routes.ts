@@ -6,6 +6,7 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import { beginSlackIdentity, completeSlackIdentity, unlinkSlackIdentity } from './slack-identity-store'
 import { exchangeSlackIdentity, openSlackIdentityState, sealSlackIdentityState, slackIdentityAuthorizeUrl } from './slack-identity-oauth'
+import { slackIdentityDisplayName } from './slack-identity-profile'
 
 const headers = { 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer' }
 const callbackUrl = () => new URL('/api/v1/surfaces/slack/identity/callback', getBaseUrl()).toString()
@@ -54,7 +55,7 @@ export async function callbackSlackIdentity(request: NextRequest) {
     const code = request.nextUrl.searchParams.get('code')
     if (!code) return page('Slack sign-in was cancelled or did not provide a code.')
     const identity = await exchangeSlackIdentity({ code, redirectUri: callbackUrl(), state })
-    const result = await completeSlackIdentity(state, identity.externalUserId)
+    const result = await completeSlackIdentity(state, identity.externalUserId, await slackIdentityDisplayName(identity))
     if (result?.status === 'conflict') return page('This Slack user is already linked to a different Overlay account. Unlink it from that account or ask a workspace administrator.', 409)
     if (result?.status !== 'linked') return page('Slack linking could not be completed.')
     return page('Slack identity linked. You can return to Slack and send your message again.', 200)
