@@ -54,6 +54,7 @@ jobs:
 
       - name: Test and compile
         run: |
+          npm run lint
           npm test
           npm run build
 

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/explicit-function-return-type -- JavaScript CI entrypoint. */
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'

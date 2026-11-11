@@ -21,7 +21,6 @@ const violations = retiredPaths
   .map((file) => `${file} must stay deleted`)
 
 // JavaScript guard script; the recursive result is always an array of absolute paths.
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function sourceFiles(directory) {
   if (!fs.existsSync(directory)) return []
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

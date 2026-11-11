@@ -133,7 +133,6 @@ async function testStreamingForNotebook(): Promise<boolean> {
 
     let chunkCount = 0
     process.stdout.write('   Streaming: ')
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     for await (const _chunk of result.textStream) {
       chunkCount++
       if (chunkCount <= 5) process.stdout.write('.')

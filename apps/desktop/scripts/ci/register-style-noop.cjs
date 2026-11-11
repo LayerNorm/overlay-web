@@ -29,7 +29,6 @@ const path = require('node:path')
 const originalResolve = Module._resolveFilename
 
 /** @returns {string | null} */
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function esmOnlyEntry(request, parent) {
   const match = /^((?:@[^/]+\/)?[^/.][^/]*)$/.exec(request)
   if (!match) return null

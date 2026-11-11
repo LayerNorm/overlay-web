@@ -553,14 +553,12 @@ async function main(): Promise<void> {
   results.push({ test: 'Get Tool Schema', passed: !!schema })
 
   // Get the user_id from connected account (stored in entity_id)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getUserIdFromAccount = (account: any): string => {
     return account.entity_id || account.user_id || 'default'
   }
 
   // Test 5-8: Execute Tools (only if accounts are connected)
   if (gmailAccount) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const gmailUserId = getUserIdFromAccount(gmailAccount as any)
     log('Main', `Gmail user/entity ID: ${gmailUserId}`)
     await testGmailListEmails(gmailAccount.id, gmailUserId)
@@ -572,7 +570,6 @@ async function main(): Promise<void> {
   }
 
   if (calendarAccount) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const calendarUserId = getUserIdFromAccount(calendarAccount as any)
     log('Main', `Calendar user/entity ID: ${calendarUserId}`)
     await testCalendarListEvents(calendarAccount.id, calendarUserId)

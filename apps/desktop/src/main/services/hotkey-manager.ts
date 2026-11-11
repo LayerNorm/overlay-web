@@ -3,7 +3,6 @@ import { settingsService } from './settings-service'
 import { panelLatencyMarkHotkey } from '../utils/panel-latency'
 
 // Lazily loaded uiohook module to prevent accessibility prompt at startup
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let uIOhookInstance: any = null
 
 /**
@@ -17,7 +16,6 @@ function hasAccessibilityPermission(): boolean {
   return true
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getUIOhook(): Promise<any | null> {
   // CRITICAL: Check accessibility permission BEFORE importing uiohook-napi
   // The native module will crash if it tries to initialize without permissions
