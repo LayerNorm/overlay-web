@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { WorkItem } from '@overlay/app-core'
+import { useNativeDataReady } from '../contexts/ConvexAuthProvider'
 import {
   subscribeWorkList,
   subscribeWorkTask,
@@ -11,7 +12,8 @@ import {
 } from '../services/workService'
 
 export function useWork(workspaceId: string | null, view: WorkView, id?: string) {
-  const key = JSON.stringify([workspaceId, view, id])
+  const ready = useNativeDataReady()
+  const key = JSON.stringify([workspaceId, view, id, ready])
   const [attempt, retry] = useState(0)
   const [state, set] = useState<{
     key: string
@@ -24,7 +26,7 @@ export function useWork(workspaceId: string | null, view: WorkView, id?: string)
     error?: string
   }>({ key: '' })
   useEffect(() => {
-    if (!workspaceId) return
+    if (!workspaceId || !ready) return
     let active = true
     const write = (patch: Partial<typeof state>) => {
       if (active) set((old) => ({ ...(old.key === key ? old : { key }), ...patch }))
@@ -61,7 +63,7 @@ export function useWork(workspaceId: string | null, view: WorkView, id?: string)
       active = false
       stops.forEach((stop) => stop())
     }
-  }, [workspaceId, view, id, key, attempt])
+  }, [workspaceId, view, id, key, attempt, ready])
   return {
     ...(state.key === key ? state : { key }),
     retry: () => {

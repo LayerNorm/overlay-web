@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import {
@@ -57,6 +58,7 @@ type AppSessionContextValue = {
   isFeatureEnabled: (flagId: OverlayFeatureFlagId) => boolean
   defaults?: AppBootstrapDefaults
   isLoading: boolean
+  isInitialized: boolean
   isRefreshing: boolean
   error: string | null
   refresh: (options?: { forceRefresh?: boolean }) => Promise<void>
@@ -95,6 +97,8 @@ export function AppSessionProvider({
   const [hasLoadedCachedSettings, setHasLoadedCachedSettings] = useState(false)
   useEffect(() => subscribeUiSettings(setUiSettings), [])
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [initializedUserId, setInitializedUserId] = useState<string | null>(null)
+  const refreshGeneration = useRef(0)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -133,20 +137,25 @@ export function AppSessionProvider({
       }
 
       setIsRefreshing(true)
+      setInitializedUserId(null)
       setError(null)
+      const generation = ++refreshGeneration.current
 
       try {
         const next = await getAppBootstrap({
-          forceRefresh: options.forceRefresh,
+          forceRefresh: options.forceRefresh ?? true,
         })
+        if (generation !== refreshGeneration.current) return
         await applyBootstrap(next)
+        if (generation === refreshGeneration.current) setInitializedUserId(authUser?.id ?? null)
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : 'Failed to load app session')
+        if (generation === refreshGeneration.current)
+          setError(nextError instanceof Error ? nextError.message : 'Failed to load app session')
       } finally {
-        setIsRefreshing(false)
+        if (generation === refreshGeneration.current) setIsRefreshing(false)
       }
     },
-    [applyBootstrap, isAuthenticated],
+    [applyBootstrap, authUser?.id, isAuthenticated],
   )
 
   useEffect(() => {
@@ -155,13 +164,15 @@ export function AppSessionProvider({
     }
 
     if (!isAuthenticated) {
+      setInitializedUserId(null)
       setError(null)
       void clearBootstrapCache()
       void applyBootstrap(null)
       return
     }
 
-    void refresh({ forceRefresh: false })
+    void refresh({ forceRefresh: true })
+    return () => { refreshGeneration.current++ }
   }, [applyBootstrap, authLoading, isAuthenticated, refresh])
 
   const handleUpdateSettings = useCallback(
@@ -227,6 +238,7 @@ export function AppSessionProvider({
       isLoading:
         authLoading || !hasLoadedCachedSettings || (isAuthenticated && !bootstrap && isRefreshing),
       isRefreshing,
+      isInitialized: isAuthenticated && initializedUserId === authUser?.id,
       error,
       refresh,
       updateSettings: handleUpdateSettings,
@@ -242,6 +254,7 @@ export function AppSessionProvider({
       isAuthenticated,
       isFeatureEnabled,
       isRefreshing,
+      initializedUserId,
       refresh,
       uiSettings,
     ],

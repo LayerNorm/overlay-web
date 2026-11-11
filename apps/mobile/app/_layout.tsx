@@ -6,9 +6,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
 import { DrawerProvider } from '../contexts/DrawerContext'
 import { AppShell } from '../components/shell/AppShell'
+import { SessionGate } from '../components/shell/SessionGate'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
-import { AppSessionProvider } from '../contexts/AppSessionContext'
+import { AppSessionProvider, useAppSession } from '../contexts/AppSessionContext'
 import { WorkspaceProvider, useWorkspace } from '../contexts/WorkspaceContext'
 import { activateLinkWorkspace } from '../lib/incomingLinks'
 import { ConvexAuthProvider, useNativeDataReady } from '../contexts/ConvexAuthProvider'
@@ -42,27 +43,33 @@ function useVoiceAuthSync(): void {
   }, [])
 }
 
+function SessionScreenLayout({ children }: { children: React.ReactNode }) {
+  return <SessionGate>{children}</SessionGate>
+}
+
 function RootLayoutNav(): React.ReactElement {
   const { isDark } = useTheme()
   const { isAuthenticated } = useAuth()
+  const { isInitialized } = useAppSession()
   const ready = useNativeDataReady()
   const { workspaceId } = useGlobalSearchParams<{ workspaceId?: string }>()
   const { activeWorkspaceId, isLoading, switchWorkspace } = useWorkspace()
   useEffect(() => {
-    if (!ready || !isAuthenticated || isLoading) return
+    if (!ready || !isAuthenticated || !isInitialized || isLoading) return
     let current = true
     void activateLinkWorkspace(workspaceId, activeWorkspaceId, switchWorkspace).catch(() => {
       if (current) Alert.alert('Could not open workspace', 'Check your connection and workspace access.')
     })
     return () => { current = false }
-  }, [workspaceId, activeWorkspaceId, isLoading, isAuthenticated, switchWorkspace, ready])
+  }, [workspaceId, activeWorkspaceId, isLoading, isAuthenticated, isInitialized, switchWorkspace, ready])
   useVoiceAuthSync()
-  useNotificationWatcher(isAuthenticated)
-  usePushNotifications()
+  useNotificationWatcher(isAuthenticated && isInitialized)
+  usePushNotifications(isInitialized)
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
+        screenLayout={SessionScreenLayout}
         screenOptions={{
           headerShown: false,
           headerTransparent: true,

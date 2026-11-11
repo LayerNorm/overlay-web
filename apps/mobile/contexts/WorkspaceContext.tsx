@@ -57,7 +57,7 @@ export function WorkspaceProvider({
 }): React.ReactElement {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const nativeReady = useNativeDataReady()
-  const { isLoading: sessionLoading, refresh: refreshSession } = useAppSession()
+  const { isLoading: sessionLoading, isInitialized, error: bootstrapError, refresh: refreshSession } = useAppSession()
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -75,6 +75,10 @@ export function WorkspaceProvider({
     if (!isAuthenticated || !workspacesEnabled || !nativeReady) {
       return
     }
+    if (!isInitialized) {
+      await refreshSession({ forceRefresh: true })
+      return
+    }
     setIsLoading(true)
     setError(null)
     try {
@@ -88,17 +92,17 @@ export function WorkspaceProvider({
     } finally {
       setIsLoading(false)
     }
-  }, [applyActiveWorkspace, isAuthenticated, workspacesEnabled, nativeReady])
+  }, [applyActiveWorkspace, isAuthenticated, workspacesEnabled, nativeReady, isInitialized, refreshSession])
 
   useEffect(() => {
-    if (!nativeReady || !workspacesEnabled) return
+    if (!nativeReady || !workspacesEnabled || !isInitialized) return
     return subscribeWorkspaces(({ workspaces: list, activeWorkspaceId: serverActiveId }) => {
       setWorkspaces(list)
       setIsLoading(false)
       setError(null)
       applyActiveWorkspace(resolveActiveWorkspaceId(list, serverActiveId))
     })
-  }, [nativeReady, workspacesEnabled, applyActiveWorkspace])
+  }, [nativeReady, workspacesEnabled, applyActiveWorkspace, isInitialized])
 
   // Warm-start: apply the persisted selection so requests issued before the
   // workspaces fetch completes still carry the right scope. Skipped once the
@@ -137,7 +141,7 @@ export function WorkspaceProvider({
       applyWorkspaceLocally(null)
       return
     }
-    if (sessionLoading) {
+    if (sessionLoading || !isInitialized) {
       return
     }
     if (!workspacesEnabled) {
@@ -152,6 +156,7 @@ export function WorkspaceProvider({
     isAuthenticated,
     refresh,
     sessionLoading,
+    isInitialized,
     workspacesEnabled,
   ])
 
@@ -163,12 +168,12 @@ export function WorkspaceProvider({
       setIsSwitching(true)
       setError(null)
       const previous = activeWorkspaceId
-      applyActiveWorkspace(workspaceId)
       try {
         await activateWorkspace(workspaceId)
         // Entitlements/bootstrap are workspace-scoped (billing payer) — pull
         // fresh session data so plan gates reflect the new workspace.
         await refreshSession({ forceRefresh: true })
+        applyActiveWorkspace(workspaceId)
       } catch (nextError) {
         applyActiveWorkspace(previous)
         setError(nextError instanceof Error ? nextError.message : 'Failed to switch workspace')
@@ -204,9 +209,9 @@ export function WorkspaceProvider({
       activeWorkspaceId,
       activeWorkspace: workspaces.find((w) => w.id === activeWorkspaceId) ?? null,
       workspacesEnabled,
-      isLoading,
+      isLoading: isLoading && !bootstrapError,
       isSwitching,
-      error,
+      error: error ?? bootstrapError,
       switchWorkspace,
       createWorkspace,
       refresh,
@@ -218,6 +223,7 @@ export function WorkspaceProvider({
       isLoading,
       isSwitching,
       error,
+      bootstrapError,
       switchWorkspace,
       createWorkspace,
       refresh,

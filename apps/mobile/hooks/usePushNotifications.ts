@@ -11,9 +11,10 @@ import {
   openPushNotificationDestination,
 } from '../lib/notificationRouting'
 
-export function usePushNotifications() {
+export function usePushNotifications(enabled = true) {
   const { user } = useAuth()
-  const ready = useNativeDataReady()
+  const nativeReady = useNativeDataReady()
+  const ready = nativeReady && enabled
   const { switchWorkspace } = useWorkspace()
   const mounted = useRef(true)
   const currentUser = useRef(user?.id)
