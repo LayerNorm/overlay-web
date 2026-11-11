@@ -21,7 +21,16 @@ export function stripeTestClient(key, fetchImpl = fetch) {
     let value
     try { value = await response.json() } catch { throw new Error('Stripe Preview API returned invalid JSON') }
     if (!response.ok) {
-      const error = new Error(`Stripe Preview API ${response.status}`)
+      const sensitive = [key, ...new URLSearchParams(body).values()]
+      const redact = input => typeof input === 'string' ? sensitive.filter(Boolean)
+        .reduce((message, value) => message.replaceAll(value, '[redacted]'), input)
+        .replace(/(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9_]+|whsec_[A-Za-z0-9_]+/g, '[redacted]')
+        .replace(/[\r\n]/g, ' ').slice(0, 1000) : undefined
+      const details = ['type', 'code', 'message'].map(name => {
+        const field = redact(value.error?.[name])
+        return field ? `${name}=${field}` : undefined
+      }).filter(Boolean)
+      const error = new Error(`Stripe Preview API ${response.status}${details.length ? ': ' + details.join('; ') : ''}`)
       error.status = response.status
       throw error
     }
@@ -79,7 +88,7 @@ export class PreviewPayments {
     }
     return [...numbers]
   }
-  async provision(number, { readState, saveState }) {
+  async provision(number, { readState, saveState, saveAttempt }) {
     previewAddress(number)
     const backend = await this.backends.find(number)
     if (!backend) throw new Error('Preview payments require an owned backend')
@@ -100,21 +109,27 @@ export class PreviewPayments {
       }
       return { id: existing.id, reused: true }
     }
+    if (existing) throw new Error('Owned Stripe Preview endpoint exists without its persisted signing secret; refusing duplicate creation')
+    const attempt = state?.attempt ?? 0
+    if (!Number.isSafeInteger(attempt) || attempt < 0) throw new Error('Invalid Stripe Preview creation attempt')
     const body = [['url', `https://${backend.name}.convex.site/stripe/webhook`],
       ['description', `Overlay isolated PR ${number} Preview`],
       ...PREVIEW_STRIPE_EVENTS.map(event => ['enabled_events[]', event]),
       ['metadata[overlayPreviewPr]', String(number)], ['metadata[overlayPreviewProject]', String(CONFIG.convexProjectId)],
       ['metadata[overlayPreviewBackend]', backend.name]]
-    // Replaying this exact creation recovers the original secret after a lost
-    // response/persist failure, within Stripe's idempotency retention window.
-    const created = this.validate(await this.api('/webhook_endpoints', { method: 'POST', body,
-      idempotencyKey: `overlay-preview-${number}-${backend.name}` }), number, backend)
-    if (existing && created.id !== existing.id) {
-      // The original idempotency response expired. Remove only the new duplicate;
-      // never silently rotate a still-owned endpoint with an unknown secret.
-      await this.deleteConfirmed(created.id)
-      throw new Error('Stripe signing secret recovery expired; inspect the existing owned endpoint')
+    // Ambiguous failures retain their key. Only definitive 4xx failures with no
+    // owned endpoint advance the persisted attempt for the next build.
+    let result
+    try {
+      result = await this.api('/webhook_endpoints', { method: 'POST', body,
+        idempotencyKey: `overlay-preview-${number}-${backend.name}${attempt ? '-attempt-' + attempt : ''}` })
+    } catch (error) {
+      if (error.status >= 400 && error.status < 500 && saveAttempt) {
+        if (!(await this.list()).some(endpoint => this.owned(endpoint, number))) await saveAttempt(attempt + 1)
+      }
+      throw error
     }
+    const created = this.validate(result, number, backend)
     if (!created.secret?.startsWith('whsec_')) throw new Error('Stripe Preview signing secret is unavailable')
     await saveState({ id: created.id, secret: created.secret })
     const checked = this.validate(await optional(this.api, created.id), number, backend)
