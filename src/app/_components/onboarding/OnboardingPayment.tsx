@@ -70,6 +70,8 @@ type PaymentProps = {
   billingContactName?: string | null
   showReply?: boolean
   summary?: WorkspaceBillingSummaryResponse | null
+  requested?: boolean
+  onRequestedChange?(requested: boolean): void
   title: string
   disabled: boolean
   onPrepare(): Promise<unknown>
@@ -112,9 +114,26 @@ function LiveOnboardingPayment(props: PaymentProps) {
   return <OnboardingPaymentState {...props} summary={summary} />
 }
 
-export function OnboardingPaymentState({ workspaceId, workspaceName = 'Your workspace', personal = true, billingContactName, showReply = true, summary, title, disabled, onPrepare, onStart, onEdit, onOpenWork }: PaymentProps) {
+export function OnboardingPaymentState({
+  workspaceId,
+  workspaceName = 'Your workspace',
+  personal = true,
+  billingContactName,
+  showReply = true,
+  summary,
+  requested: controlledRequested,
+  onRequestedChange,
+  title,
+  disabled,
+  onPrepare,
+  onStart,
+  onEdit,
+  onOpenWork,
+}: PaymentProps) {
   const [busy, setBusy] = useState(false)
-  const [requested, setRequested] = useState(false)
+  const [localRequested, setLocalRequested] = useState(false)
+  const requested = controlledRequested ?? localRequested
+  const setRequested = onRequestedChange ?? setLocalRequested
   const [accepted, setAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutReturn, setCheckoutReturn] = useState<string | null>(null)

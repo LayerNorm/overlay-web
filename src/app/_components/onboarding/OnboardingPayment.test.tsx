@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test, { type TestContext } from 'node:test'
-import React, { act } from 'react'
+import React, { act, useState } from 'react'
 import { ConvexProviderWithAuth, ConvexReactClient } from 'convex/react'
 import { getFunctionName } from 'convex/server'
 import { Button, Checkbox } from '@overlay/ui/primitives'
@@ -166,6 +166,66 @@ test('free member requests billing once, retains the draft, and transitions live
   assert.ok(f.button('Start task'))
   assert.match(f.text(), /Acme is now subscribed/)
   assert.equal(f.started, 0)
+})
+
+test('request confirmation survives draft editing and is scoped to its workspace and run', async t => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  const originalAct = Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { search: '' } } })
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ requested: true }, { status: 202 }))
+
+  function RequestHarness() {
+    const [requestedFor, setRequestedFor] = useState<string | null>(null)
+    const [mounted, setMounted] = useState(true)
+    const [workspaceId, setWorkspaceId] = useState('team-a')
+    const [runId, setRunId] = useState('run-1')
+    const requestKey = `${workspaceId}:${runId}`
+    return <>
+      <Button variant="ghost" onClick={() => setMounted(false)}>Edit draft</Button>
+      <Button variant="ghost" onClick={() => setMounted(true)}>Return to task</Button>
+      <Button variant="ghost" onClick={() => setRunId('run-2')}>New run</Button>
+      <Button variant="ghost" onClick={() => setWorkspaceId('team-b')}>Other workspace</Button>
+      {mounted ? <OnboardingPayment
+        workspaceId={workspaceId}
+        workspaceName="Acme"
+        personal={false}
+        billingContactName="Priya"
+        summary={{ ...billing('subscription_required'), workspaceId }}
+        title="Draft"
+        disabled={false}
+        requested={requestedFor === requestKey}
+        onRequestedChange={(requested) => setRequestedFor(requested ? requestKey : null)}
+        onPrepare={async () => {}}
+        onStart={async () => {}}
+        onEdit={() => {}}
+      /> : null}
+    </>
+  }
+
+  let renderer!: ReturnType<typeof create>
+  await act(async () => { renderer = create(<RequestHarness />) })
+  t.after(async () => {
+    await act(() => renderer.unmount())
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+    if (originalAct) Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', originalAct)
+    else Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  })
+  const button = (label: string) => renderer.root.findAllByType(Button).find((item) =>
+    React.Children.toArray(item.props.children).includes(label))!
+  await act(async () => { await button('Ask Priya to subscribe').props.onClick() })
+  assert.equal(button('Request sent').props.disabled, true)
+  await act(async () => { await button('Edit draft').props.onClick() })
+  await act(async () => { await button('Return to task').props.onClick() })
+  assert.equal(button('Request sent').props.disabled, true)
+  assert.match(JSON.stringify(renderer.toJSON()), /Priya has been asked/)
+  await act(async () => { await button('New run').props.onClick() })
+  assert.ok(button('Ask Priya to subscribe'))
+  assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /Request sent|Priya has been asked/)
+  await act(async () => { await button('Other workspace').props.onClick() })
+  assert.ok(button('Ask Priya to subscribe'))
+  assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /Request sent|Priya has been asked/)
 })
 
 test('request failure keeps the request retryable and Open Work never starts the draft', async t => {

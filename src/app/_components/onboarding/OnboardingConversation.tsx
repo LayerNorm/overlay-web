@@ -42,6 +42,9 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [previousStep, setPreviousStep] = useState(session.step)
   const [taskDraft, setTaskDraft] = useState<string | null>(session.taskDraft ?? null)
+  const requestKey = `${session.workspaceId}:${session.runId}`
+  const [billingRequestFor, setBillingRequestFor] = useState<string | null>(null)
+  const billingRequestSent = billingRequestFor === requestKey
   const [busy, setBusy] = useState(false)
   const working = useRef(false)
   const [error, setError] = useState<string | null>(null)
@@ -180,7 +183,23 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
       case 'memories': return <OnboardingContext disabled={busy} onSave={saveMemories} onSkip={skip} />
       case 'teammates': return <OnboardingInvites disabled={busy} onInvite={invite} onSkip={skip} />
       case 'task': return taskDraft
-        ? <OnboardingPayment key={`${session.workspaceId}:${session.runId}`} workspaceId={session.workspaceId} workspaceName={workspaceName} personal={personal} billingContactName={session.workspaceContext?.billingContactName} summary={billingSummary} showReply={false} onOpenWork={openDraft} title={taskDraft} disabled={busy} onPrepare={prepareTask} onStart={startTask} onEdit={() => { replaceInput(taskDraft); setTaskDraft(null) }} />
+        ? <OnboardingPayment
+          key={requestKey}
+          workspaceId={session.workspaceId}
+          workspaceName={workspaceName}
+          personal={personal}
+          billingContactName={session.workspaceContext?.billingContactName}
+          summary={billingSummary}
+          showReply={false}
+          requested={billingRequestSent}
+          onRequestedChange={(requested) => setBillingRequestFor(requested ? requestKey : null)}
+          onOpenWork={openDraft}
+          title={taskDraft}
+          disabled={busy}
+          onPrepare={prepareTask}
+          onStart={startTask}
+          onEdit={() => { replaceInput(taskDraft); setTaskDraft(null) }}
+        />
         : <SingleChoices choices={labels} disabled={busy} onPick={answer} />
       case 'complete': return <Button variant="primary" size="sm" onClick={onShowWork}>Open Work<ArrowRight className="size-3.5" /></Button>
       default: return null
