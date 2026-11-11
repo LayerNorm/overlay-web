@@ -4,13 +4,17 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { useTheme } from '../../hooks/useTheme'
 import { Button, T } from './primitives'
+import { WorkspaceGate } from './EntryScreens'
 
 export function SessionGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, signOut } = useAuth()
-  const { isInitialized, error, refresh } = useAppSession()
+  const { isInitialized, workspaceSetupRequired, error, refresh } = useAppSession()
   const { theme } = useTheme()
   const [signOutError, setSignOutError] = useState<string | null>(null)
   if (!isAuthenticated || isInitialized) return <>{children}</>
+  if (workspaceSetupRequired) return <WorkspaceGate theme={theme} onSignOut={() => {
+    void signOut().catch(() => setSignOutError('Unable to sign out. Please try again.'))
+  }} />
   return (
     <View style={{ flex: 1, justifyContent: 'center', padding: 28, gap: 20, backgroundColor: theme.background }}>
       {error ? <>

@@ -24,6 +24,7 @@ import {
   type VideoModel,
 } from '@overlay/app-core'
 import { useAuth } from './AuthContext'
+import { isWorkspaceSetupRequired } from '../services/workspaceSetup'
 import {
   clearBootstrapCache,
   getAppBootstrap,
@@ -59,6 +60,7 @@ type AppSessionContextValue = {
   defaults?: AppBootstrapDefaults
   isLoading: boolean
   isInitialized: boolean
+  workspaceSetupRequired: boolean
   isRefreshing: boolean
   error: string | null
   refresh: (options?: { forceRefresh?: boolean }) => Promise<void>
@@ -100,6 +102,7 @@ export function AppSessionProvider({
   const [initializedUserId, setInitializedUserId] = useState<string | null>(null)
   const refreshGeneration = useRef(0)
   const [error, setError] = useState<string | null>(null)
+  const [workspaceSetupRequired, setWorkspaceSetupRequired] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -139,6 +142,7 @@ export function AppSessionProvider({
       setIsRefreshing(true)
       setInitializedUserId(null)
       setError(null)
+      setWorkspaceSetupRequired(false)
       const generation = ++refreshGeneration.current
 
       try {
@@ -149,6 +153,7 @@ export function AppSessionProvider({
         await applyBootstrap(next)
         if (generation === refreshGeneration.current) setInitializedUserId(authUser?.id ?? null)
       } catch (nextError) {
+        if (generation === refreshGeneration.current) setWorkspaceSetupRequired(isWorkspaceSetupRequired(nextError))
         if (generation === refreshGeneration.current)
           setError(nextError instanceof Error ? nextError.message : 'Failed to load app session')
       } finally {
@@ -164,6 +169,7 @@ export function AppSessionProvider({
     }
 
     if (!isAuthenticated) {
+      setWorkspaceSetupRequired(false)
       setInitializedUserId(null)
       setError(null)
       void clearBootstrapCache()
@@ -239,11 +245,13 @@ export function AppSessionProvider({
         authLoading || !hasLoadedCachedSettings || (isAuthenticated && !bootstrap && isRefreshing),
       isRefreshing,
       isInitialized: isAuthenticated && initializedUserId === authUser?.id,
+      workspaceSetupRequired,
       error,
       refresh,
       updateSettings: handleUpdateSettings,
     }),
     [
+      workspaceSetupRequired,
       authLoading,
       authUser,
       bootstrap,
