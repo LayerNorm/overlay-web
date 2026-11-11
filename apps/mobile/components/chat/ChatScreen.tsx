@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  KeyboardAvoidingView,
   PanResponder,
   Platform,
   StyleSheet,
@@ -276,7 +277,6 @@ export function ChatScreen({
   const [history, setHistory] = useState<ChatMeta[]>([])
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
   const [upgradeVisible, setUpgradeVisible] = useState(false)
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
 
@@ -336,26 +336,7 @@ export function ChatScreen({
     [],
   )
 
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const show = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardHeight(e.endCoordinates.height)
-    })
-    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0))
-    return () => {
-      show.remove()
-      hide.remove()
-    }
-  }, [])
-
-  /** Lift composer above keyboard (KAV fails with edge‑to‑edge / some Android IME stacks). */
   const composerFooterInset = Math.max(insets.bottom, spacing.md)
-  const composerBottomPadding =
-    keyboardHeight > 0 ? keyboardHeight + spacing.sm : composerFooterInset
-  /** Keeps latest messages reachable above the lifted composer area. */
-  const messageBottomPadding =
-    keyboardHeight > 0 ? keyboardHeight + 160 + spacing.md : spacing.md
 
   const handleOpenDrawer = useCallback(() => {
     textInputRef.current?.blur()
@@ -1394,7 +1375,7 @@ export function ChatScreen({
       }
     >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
+        <KeyboardAvoidingView style={styles.screenPadding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} {...swipeDownPanResponder.panHandlers}>
           <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 
           <View style={styles.threadSurface}>
@@ -1437,7 +1418,7 @@ export function ChatScreen({
                     }}
                   />
                 )}
-                contentContainerStyle={[styles.messageList, { paddingTop: insets.top + 70, paddingBottom: messageBottomPadding }]}
+                contentContainerStyle={[styles.messageList, { paddingTop: insets.top + 70, paddingBottom: spacing.md }]}
                 showsVerticalScrollIndicator={false}
                 keyboardDismissMode="on-drag"
                 onContentSizeChange={() => {
@@ -1450,7 +1431,7 @@ export function ChatScreen({
             )}
           </View>
 
-          <View style={[styles.composerSurface, { paddingBottom: composerBottomPadding }]}>
+          <View style={[styles.composerSurface, { paddingBottom: composerFooterInset }]}>
             {currentRun?.status === 'waiting_for_approval' && currentRun.approval ? (
               <View style={[styles.approvalCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
                 <View style={styles.approvalHeader}>
@@ -1545,7 +1526,7 @@ export function ChatScreen({
               inputRef={textInputRef}
             />
           </View>
-        </View>
+        </KeyboardAvoidingView>
 
       <ChatSheet theme={theme} visible={modelPickerVisible} onClose={() => setModelPickerVisible(false)} modelPicker title="Choose a model">
         <ModelPicker theme={theme} models={sortedModels} imageModels={imageModels} videoModels={videoModels} selectedId={generationKind === 'image' ? selectedImageModelId ?? undefined : generationKind === 'video' ? selectedVideoModelId ?? undefined : selectedModel?.id} favoriteIds={favoriteIds} onFavorite={toggleFavorite} autoSelected={autoSelected} mode={generationKind ?? 'text'} isLocked={model => entitlements?.tier === 'free' && (model.cost ?? 0) > 0} onAuto={() => {

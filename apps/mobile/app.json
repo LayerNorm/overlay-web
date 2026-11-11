@@ -66,6 +66,7 @@
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.layernorm.overlay_mobile",
       "versionCode": 1,
       "adaptiveIcon": {
