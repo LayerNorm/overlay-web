@@ -2,7 +2,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
-const WEB_REVISION = '309c6902eb98b6201568511fe3805a5b7525c2b1'
+const WEB_REVISION = '1db4b5e346c89676d205862d6974792dfebf056f'
 
 function prepareWorkspace(root = path.resolve(__dirname, '..')) {
   const parent = path.dirname(root)
