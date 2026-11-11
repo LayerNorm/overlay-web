@@ -108,6 +108,9 @@
     "src/features/agents/components/use-agent-computer.ts",
     "src/features/settings/components/ComputerSettings.tsx"
   ],
+  "conversations.actResponse": [
+    "src/features/notebook/lib/notebook-chat-turn.ts"
+  ],
   "conversations.addMessage": [
     "src/features/chat/components/DirectMessageExperience.hooks.ts"
   ],
@@ -147,7 +150,8 @@
   ],
   "conversations.stopResponse": [
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
-    "src/features/chat/components/chat/useChatStopController.ts"
+    "src/features/chat/components/chat/useChatStopController.ts",
+    "src/features/notebook/lib/notebook-chat-turn.ts"
   ],
   "conversations.submitRunApproval": [
     "src/features/chat/components/chat/native-work-command-actions.ts",
@@ -256,9 +260,6 @@
   "notes.deleteResponse": [
     "src/features/notebook/components/NotebookEditor.tsx",
     "src/features/settings/lib/archived-actions.ts"
-  ],
-  "notes.notebookAgentResponse": [
-    "src/features/notebook/components/NotebookEditor.tsx"
   ],
   "notes.updateResponse": [
     "src/features/notebook/components/NotebookEditor.tsx"

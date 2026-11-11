@@ -94,7 +94,7 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
     <SidebarMenuItem onPointerEnter={openMenu} onPointerLeave={scheduleClose}>
       <Popover open={menuOpen} onOpenChange={changeMenu}>
         <PopoverTrigger asChild>
-          <SidebarMenuButton aria-label="Help" aria-expanded={menuOpen} title={collapsed ? 'Help' : undefined}>
+          <SidebarMenuButton size="lg" className={collapsed ? 'justify-center px-0' : '[&>svg]:mx-1'} aria-label="Help" aria-expanded={menuOpen} title={collapsed ? 'Help' : undefined}>
             <CircleHelp size={18} aria-hidden />{collapsed ? null : <span>Help</span>}
           </SidebarMenuButton>
         </PopoverTrigger>

@@ -489,11 +489,12 @@ export function RoomTranscript({
   const {
     listRef,
     handleTranscriptScroll: onScroll,
-    stickToBottom,
+    hasContentBelow,
     hasMoreMessages,
     loadingOlderMessages,
     loadOlderMessages,
     loading,
+    turnSpacerRef,
   } = transcript
   const { newMessageCount } = readMarkers
   const { jumpToLatest: onJumpToLatest } = navigation
@@ -501,7 +502,7 @@ export function RoomTranscript({
   const onLoadOlder = () => void loadOlderMessages()
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
-      {newMessageCount > 0 && !stickToBottom ? (
+      {hasContentBelow ? (
         <Button
           variant="ghost"
           type="button"
@@ -509,7 +510,7 @@ export function RoomTranscript({
           data-testid="jump-to-latest"
           className="absolute bottom-4 left-1/2 z-10 h-auto -translate-x-1/2 rounded-full bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
         >
-          {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
+          {newMessageCount > 0 ? `${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'} ↓` : 'Jump to latest ↓'}
         </Button>
       ) : null}
       <div
@@ -580,6 +581,7 @@ export function RoomTranscript({
             })
           )}
           {footer}
+          <div ref={turnSpacerRef} aria-hidden className="shrink-0" />
         </div>
       </div>
     </div>

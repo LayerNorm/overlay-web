@@ -1,6 +1,7 @@
 'use client'
 
 import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
+import { useTranscriptHasContentBelow } from './collaboration/useTranscriptHasContentBelow'
 import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -76,6 +77,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatAttachments } from './useChatAttachments'
+import { useAgentTurnScroll } from './collaboration/useAgentTurnScroll'
 import { useComposerTextState } from './chat/useComposerTextState'
 import { useNativeThreadSafety } from './chat/useNativeThreadSafety'
 import {
@@ -273,6 +275,7 @@ export function useRoomCollaboration({ room }: { room: RoomStateApi }) {
 export function useRoomTranscript({
   conversationId,
   rosterReady,
+  anchorAgentTurns = false,
 
 
   agentResponding,
@@ -281,6 +284,7 @@ export function useRoomTranscript({
 }: {
   conversationId: string
   rosterReady: boolean
+  anchorAgentTurns?: boolean
 
 
   agentResponding: string | null
@@ -309,6 +313,9 @@ export function useRoomTranscript({
     updateStickToBottom(latest)
   }, [scrollIntent])
   const listRef = useRef<HTMLDivElement>(null)
+  const turnScroll = useAgentTurnScroll({ enabled: anchorAgentTurns, conversationId, messages, listRef })
+  const { spacerRef: turnSpacerRef } = turnScroll
+  const hasContentBelow = useTranscriptHasContentBelow(listRef, turnSpacerRef)
   /** Latest messages for callbacks that must not close over a stale render. */
   const messagesRef = useRef<OptimisticMessage[]>(messages)
   useEffect(() => {
@@ -400,7 +407,7 @@ export function useRoomTranscript({
     const node = listRef.current
     if (!node) return
     const pin = () => {
-      if (scrollIntent.followsLatest()) node.scrollTop = node.scrollHeight
+      if (scrollIntent.followsLatest() && !turnScroll.anchored.current) node.scrollTop = node.scrollHeight
     }
     pin()
     let secondFrame: number | undefined
@@ -412,7 +419,7 @@ export function useRoomTranscript({
       window.cancelAnimationFrame(frame)
       if (secondFrame !== undefined) window.cancelAnimationFrame(secondFrame)
     }
-  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, scrollIntent, stickToBottom])
+  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, scrollIntent, stickToBottom, turnScroll.anchored])
 
   useEffect(() => {
     const node = listRef.current
@@ -428,11 +435,11 @@ export function useRoomTranscript({
     const node = listRef.current
     if (node) {
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-      updateStickToBottom(scrollIntent.onScroll(distanceFromBottom <= 96))
+      updateStickToBottom(scrollIntent.onScroll(!turnScroll.anchored.current && distanceFromBottom <= 96))
       if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
     }
     void markVisibleRead(roomScrollReadKey(conversationId, messagesRef.current))
-  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent])
+  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent, turnScroll.anchored])
 
   return {
     messages,
@@ -444,6 +451,9 @@ export function useRoomTranscript({
     setConversationTitle,
     surfacePlatform,
     listRef,
+    turnSpacerRef,
+    hasContentBelow,
+    releaseTurnAnchor: turnScroll.release,
     messagesRef,
     stickToBottom,
     setStickToBottom,
@@ -1668,6 +1678,7 @@ export function useMessageActions({
 export function useMessageNavigation({
   listRef,
   messagesRef,
+  releaseTurnAnchor,
   setStickToBottom,
   markVisibleRead,
   setNewMessageCount,
@@ -1678,6 +1689,7 @@ export function useMessageNavigation({
   listRef: RefObject<HTMLDivElement | null>
   messagesRef: RefObject<OptimisticMessage[]>
   setStickToBottom: (latest: boolean) => void
+  releaseTurnAnchor?: () => void
   markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
   setThreadRootId: Dispatch<SetStateAction<string | null>>
@@ -1715,11 +1727,12 @@ export function useMessageNavigation({
   const jumpToLatest = useCallback(() => {
     const node = listRef.current
     if (!node) return
+    releaseTurnAnchor?.()
     setStickToBottom(true)
     node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
     setNewMessageCount(0)
     void markVisibleRead()
-  }, [listRef, markVisibleRead, setNewMessageCount, setStickToBottom])
+  }, [listRef, markVisibleRead, setNewMessageCount, setStickToBottom, releaseTurnAnchor])
 
   useEffect(() => {
     const target = typeof window === 'undefined'
@@ -2147,6 +2160,7 @@ export function useDirectMessageRoom({
   const transcript = useRoomTranscript({
     conversationId,
     rosterReady: roster.ready,
+    anchorAgentTurns: conversationType === 'dm' && roster.participants.some(participant => participant.principalType === 'agent'),
 
 
     agentResponding,
@@ -2238,6 +2252,7 @@ export function useDirectMessageRoom({
   const navigation = useMessageNavigation({
     listRef: transcript.listRef,
     messagesRef: transcript.messagesRef,
+    releaseTurnAnchor: transcript.releaseTurnAnchor,
     setStickToBottom: transcript.setStickToBottom,
     markVisibleRead: readMarkers.markVisibleRead,
     setNewMessageCount: readMarkers.setNewMessageCount,
