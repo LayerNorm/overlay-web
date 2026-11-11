@@ -186,7 +186,7 @@ Preview (`pr-<number>.preview.getoverlay.io`, `needs-preview` label):
 
 ## Approved follow-up: expressive visuals and progressive diagrams
 
-The approved workspace mockup in `mockups/generative-ui-expressive.html` is retained. This PR implements general bounded Timeline, Comparison, Diagram and Vector catalog components, the `render_ui` JSONL `specStream` argument and provider-driven preview transport. Focused transport/unit regression coverage passes locally; full merged-branch validation and exact-head Preview QA remain pending.
+The approved workspace mockup in `mockups/generative-ui-expressive.html` is retained. This PR implements general bounded Timeline, Comparison, Diagram and Vector catalog components, the `render_ui` JSONL `specStream` argument and provider-driven preview transport. Focused transport/unit regression coverage and full merged-branch local validation pass. Exact-head Preview QA remains pending.
 
 **Simulation disclaimer:** the standalone mockup's replay controls and local node/label/edge data remain simulated. Production previews use provider tool-input deltas and validated, persisted snapshots; they do not use mockup timers. The mockup's failure preview is illustrative only.
 

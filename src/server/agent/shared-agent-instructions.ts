@@ -30,7 +30,7 @@ export function generatedUiNote(availableTools: ReadonlySet<string>): string {
   const guidance: string[] = []
 
   if (hasDraftCards) {
-    guidance.push('Generated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable prose (essay, memo, statement, proposal) or an email. Use kind "draft.text" for general prose drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Generated UI is prose-only: never place source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or any other machine-readable code in present_generated_ui.')
+    guidance.push('Generated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable prose (essay, memo, statement, proposal), an email or a conversational questionnaire. Use kind "draft.text" for general prose drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Generated UI is prose-only: never place source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or any other machine-readable code in present_generated_ui.')
   }
   if (hasStructuredViews) {
     guidance.push('For structured comparisons, results, dashboards and multi-value forms, use render_ui, not prose drafts or short answers. Pass its spec as a tool argument, never inline JSON or model-authored HTML in assistant text.')
