@@ -9,6 +9,7 @@ import {
   FileText,
   House,
   Keyboard,
+  Laptop,
   Plug,
   LayoutDashboard,
   Mail,
@@ -69,6 +70,7 @@ export const SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   contact: Mail,
   workspace: UsersRound,
   archived: Archive,
+  desktop: Laptop,
 }
 
 /** Sidebar navigation chords stay inert while typing and ignore key repeat. */

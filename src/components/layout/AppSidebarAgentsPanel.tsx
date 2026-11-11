@@ -154,7 +154,6 @@ function useAgentActions({
   const router = useRouter()
   const createAgentThread = useMutation(api.agents.threads.create)
   const setAgentThreadArchived = useMutation(api.agents.threads.setArchived)
-  const removeAgentThread = useMutation(api.agents.threads.remove)
   const [openError, setOpenError] = useState<string | null>(null)
   const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
 
@@ -255,37 +254,6 @@ function useAgentActions({
     }
   }, [activeConversationId, bundles, openAgent, setAgentThreadArchived, workspaceId])
 
-  const deleteThread = useCallback(async (
-    agent: WorkspaceAgentDirectoryItem,
-    conversationId: string,
-  ) => {
-    if (!workspaceId) return
-    try {
-      await removeAgentThread({ workspaceId, agentId: agent.id, conversationId: conversationId as Id<'conversations'> })
-      // Deleting the thread being viewed must bounce to the surviving main
-      // thread — otherwise the surface keeps rendering a deleted
-      // conversation. Bare `?agent=` is avoided because the surface's live
-      // directory cannot resolve archived agents.
-      if (activeConversationId === conversationId) {
-        const survivors = bundles[agent.id]
-        const next = survivors && survivors !== 'loading' && survivors !== 'error'
-          ? survivors.threads
-            .filter((thread) => thread.conversationId !== conversationId && !thread.archivedAt)
-            .sort((a, b) => a.createdAt - b.createdAt)[0]
-          : undefined
-        router.push(
-          next
-            ? agentThreadHref(baseHref, agent.id, next.conversationId, view)
-            : agentHref(baseHref, agent.id, view),
-        )
-      }
-    } catch (error) {
-      toast.error(error instanceof Error && error.message.includes('AGENT_LAST_THREAD')
-        ? 'An agent must keep at least one thread.'
-        : 'Could not delete this thread.')
-    }
-  }, [activeConversationId, baseHref, bundles, removeAgentThread, router, view, workspaceId])
-
   const openAgentById = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
@@ -316,7 +284,6 @@ function useAgentActions({
     openAutomation,
     createThread,
     archiveThread,
-    deleteThread,
     retryOpen,
   }
 }
@@ -339,7 +306,6 @@ function AgentListRow({
   onOpenAutomation,
   onCreateThread,
   onArchiveThread,
-  onDeleteThread,
 }: {
   agent: WorkspaceAgentDirectoryItem
   pinned: boolean
@@ -358,7 +324,6 @@ function AgentListRow({
   onOpenAutomation: (automationId: string) => void
   onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
-  onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
 }) {
   const activity = useAgentThreadActivity(agent.id)
   return (
@@ -419,7 +384,6 @@ function AgentListRow({
           onOpenThread={onOpenThread}
           onOpenAutomation={onOpenAutomation}
           onArchiveThread={onArchiveThread}
-          onDeleteThread={onDeleteThread}
         />
       ) : null}
     </SidebarMenuItem>
@@ -520,7 +484,6 @@ export function AgentsInlinePanel({
     openAutomation,
     createThread,
     archiveThread,
-    deleteThread,
     retryOpen,
   } = useAgentActions({
     workspaceId,
@@ -601,9 +564,6 @@ export function AgentsInlinePanel({
               onCreateThread={(target) => void createThread(target)}
               onArchiveThread={(target, conversationId, archived) => {
                 void archiveThread(target, conversationId, archived)
-              }}
-              onDeleteThread={(target, conversationId) => {
-                void deleteThread(target, conversationId)
               }}
             />
             </ActivityAgentRow>

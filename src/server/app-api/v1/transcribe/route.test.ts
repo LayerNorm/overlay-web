@@ -3,15 +3,16 @@ import { NextRequest } from 'next/server'
 import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core/capabilities'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 
-const mocks = vi.hoisted(() => ({ ensureBudgetNotLow: vi.fn(), charge: vi.fn(), reserve: vi.fn(), fetch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getEntitlements: vi.fn(), ensureBudgetNotLow: vi.fn(), charge: vi.fn(), reserve: vi.fn(), fetch: vi.fn() }))
+const paidEntitlements = { tier: 'pro', planKind: 'paid', creditsUsed: 0, creditsTotal: 100,
+  budgetUsedCents: 0, budgetTotalCents: 10_000, budgetRemainingCents: 10_000, localTranscriptionEnabled: true }
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/observability/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 vi.mock('@/server/ai/gateway/server-provider-keys', () => ({ getServerProviderKey: async () => 'groq-key' }))
 vi.mock('@/server/bootstrap', () => ({
   getOverlayServerContext: () => ({
     generationUsagePolicy: {
-      getEntitlements: async () => ({ tier: 'pro', planKind: 'paid', creditsUsed: 0, creditsTotal: 100,
-        budgetUsedCents: 0, budgetTotalCents: 10_000, budgetRemainingCents: 10_000, localTranscriptionEnabled: true }),
+      getEntitlements: mocks.getEntitlements,
       ensureBudgetNotLow: mocks.ensureBudgetNotLow,
       charge: mocks.charge,
       reserve: mocks.reserve,
@@ -20,6 +21,7 @@ vi.mock('@/server/bootstrap', () => ({
 }))
 
 import { POST } from './route'
+import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
 
 const context: AppApiRouteContext = {
   params: Promise.resolve({}), auth: { userId: 'owner', accessToken: 'test', authType: 'session' },
@@ -40,9 +42,34 @@ function request() {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.getEntitlements.mockResolvedValue(paidEntitlements)
   vi.stubGlobal('fetch', mocks.fetch)
 })
 afterEach(() => vi.unstubAllGlobals())
+
+test('a workspace without billing is refused as billing-required, not a server error', async () => {
+  mocks.getEntitlements.mockRejectedValue(new BillingPayerResolutionError('workspace_wallet_not_configured'))
+  const response = await POST(request(), context)
+  expect(response.status).toBe(402)
+  expect(await response.json()).toMatchObject({ error: 'workspace_billing_required', reason: 'workspace_wallet_not_configured' })
+  expect(mocks.fetch).not.toHaveBeenCalled()
+  expect(mocks.charge).not.toHaveBeenCalled()
+})
+
+test('a member who may not spend the workspace wallet is refused with 403', async () => {
+  mocks.getEntitlements.mockRejectedValue(new BillingPayerResolutionError('workspace_wallet_forbidden'))
+  const response = await POST(request(), context)
+  expect(response.status).toBe(403)
+  expect(await response.json()).toMatchObject({ error: 'workspace_wallet_forbidden' })
+  expect(mocks.fetch).not.toHaveBeenCalled()
+})
+
+test('other failures still return the generic 500', async () => {
+  mocks.getEntitlements.mockRejectedValue(new Error('boom'))
+  const response = await POST(request(), context)
+  expect(response.status).toBe(500)
+  expect(await response.json()).toEqual({ error: 'Failed to transcribe audio' })
+})
 
 test('a workspace under 2% after a failed top-up is refused before the provider is called', async () => {
   mocks.ensureBudgetNotLow.mockResolvedValue({ ok: false, status: 402, code: 'insufficient_budget', payload: { message: 'low' } })

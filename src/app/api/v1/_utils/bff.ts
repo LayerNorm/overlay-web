@@ -35,6 +35,7 @@ import {
   ownerFundedOperationRequiresIdempotencyKey,
 } from '@/server/billing/owner-funded-operations'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import { billingPayerErrorResponse } from '@/server/billing/billing-payer-error-response'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
 import { flushPostHog } from '@/server/observability/posthog-server'
@@ -342,10 +343,17 @@ async function handleScopedBffRoute(
         tenantId: auth.organizationId,
       }),
       async () => {
-        if (invocation.scope === 'workspace') {
+        try {
+          if (invocation.scope === 'workspace') {
+            return await invocation.service(request, invocation.context)
+          }
           return await invocation.service(request, invocation.context)
+        } catch (error) {
+          // A workspace that cannot pay is a billing refusal, not a server failure.
+          const billingRefusal = billingPayerErrorResponse(error)
+          if (billingRefusal) return billingRefusal
+          throw error
         }
-        return await invocation.service(request, invocation.context)
       },
     )
   const response = configuration.options.sensitiveResponse

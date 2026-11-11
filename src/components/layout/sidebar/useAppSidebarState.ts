@@ -93,7 +93,7 @@ function useSidebarNavConfig({ appShell, capabilities, allows,  user }: SidebarN
   )
   const desktop = useDesktopBridge()
   const settingsSections = useMemo(
-    () => [...appShell.settingsSections, ...(desktop ? [{ id: 'desktop', label: 'Desktop', icon: 'monitor' as const, order: 100 }] : [])].filter((section) => (
+    () => [...appShell.settingsSections, ...(desktop ? [{ id: 'desktop', label: 'Desktop', icon: 'laptop' as const, order: 100 }] : [])].filter((section) => (
       !user || allows(getSettingsSectionAuthorizationRequirement(section.id))
     )),
     [allows, appShell.settingsSections, desktop, user],

@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage, Button } from '@overlay/ui/primiti
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   BookOpen,
   ChevronRight,
@@ -485,7 +486,7 @@ export function MentionPopup({
 
   const isEmptyResults = rows.length === 0 || (rows.length === 1 && rows[0]!.kind === 'upload')
 
-  return (
+  const popup = (
     <div
       ref={popupRef}
       className="overlay-pop-in fixed z-50 w-72 max-h-80 overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) shadow-xl flex flex-col"
@@ -532,4 +533,6 @@ export function MentionPopup({
       </div>
     </div>
   )
+  // Portaled so a transformed or scrolling ancestor cannot offset or clip the fixed popup.
+  return typeof document === 'undefined' ? popup : createPortal(popup, document.body)
 }
