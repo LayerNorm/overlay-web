@@ -26,7 +26,12 @@ harnesses describe and reconstruct them through the same pipeline. Run policy an
 `authorized-tools` still enforce execution; MCP adapters withhold both tools via
 `GENERATED_UI_TOOL_IDS` from `@overlay/chat-core/generated-ui`.
 
-`render_ui` takes `{ title?, summary, spec }`. Summary is trimmed and required
+`render_ui` takes `{ title?, summary, spec }` or `{ title?, summary, specStream }`.
+Exactly one representation is allowed. `specStream` is bounded newline-delimited
+JSON patches inside the tool argument, never assistant prose; only add/replace
+operations within `/root`, `/elements` and `/state` are accepted. Final compilation
+reuses the shared catalog validator and persists the same `specJson` shape as legacy
+calls. Summary is trimmed and required
 (1000 characters maximum); title is optional (120 characters). The executor validates
 the catalog spec and returns a durable `json_render` part, never model-authored HTML.
 Unknown component props are stripped; type, binding, action, URL and size checks stay

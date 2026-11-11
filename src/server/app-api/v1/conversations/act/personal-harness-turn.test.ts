@@ -296,7 +296,11 @@ test('versioned accepted responses stream persisted text, source metadata, and t
       status: 'running', workflowRunId: 'workflow', executionGeneration: 2, transcriptSteps: [],
       nextSequence: null,
       snapshot: { runId: 'personal:run-chat', executionGeneration: 2, receiptId: 'model:0', invocation: 0,
-        sequence: 0, text: 'Provisional text', assistantMessageId: 'assistant' },
+        sequence: 0, text: 'Before after', assistantMessageId: 'assistant', previews: [{
+          toolCallId: 'render-1', order: 0, sequence: 0, textOffset: 7,
+          data: { version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Building view', streaming: true,
+            specJson: '{"root":"view","elements":{"view":{"type":"Stack","props":{},"children":[]}}}' },
+        }] },
     }
     const page = transcriptSteps.filter(step => step.sequence > afterSequence).slice(0, 10)
     return {
@@ -370,6 +374,19 @@ test('versioned accepted responses stream persisted text, source metadata, and t
   expect(mocks.readPublicStreamState).toHaveBeenCalledTimes(3)
   expect(chunks).toContainEqual(expect.objectContaining({
     type: 'text-delta', delta: 'Persisted answer.',
+  }))
+  expect(chunks).toContainEqual(expect.objectContaining({
+    type: 'data-overlay.generated_ui', id: 'render-1',
+    data: expect.objectContaining({ kind: 'json_render', summary: 'Building view', streaming: true }),
+  }))
+  const beforeIndex = chunks.findIndex(chunk => chunk.type === 'text-delta' && chunk.delta === 'Before ')
+  const previewIndex = chunks.findIndex(chunk => chunk.type === 'data-overlay.generated_ui' && chunk.id === 'render-1')
+  const afterIndex = chunks.findIndex(chunk => chunk.type === 'text-delta' && chunk.delta === 'after')
+  expect(beforeIndex).toBeGreaterThanOrEqual(0)
+  expect(beforeIndex).toBeLessThan(previewIndex)
+  expect(previewIndex).toBeLessThan(afterIndex)
+  expect(chunks).toContainEqual(expect.objectContaining({
+    type: 'data-overlay.generated_ui', id: 'render-1', data: { kind: 'preview-cleared' },
   }))
   expect(chunks).toContainEqual(expect.objectContaining({
     type: 'data-harness-transcript-step',

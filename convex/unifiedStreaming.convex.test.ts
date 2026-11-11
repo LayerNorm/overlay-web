@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import { readActivePublicStreams } from './lib/publicStreamRead'
+import { projectActivePublicStreams } from '../src/shared/chat/public-stream-projection'
 
 const modules = import.meta.glob('./**/*.ts')
 const query = (name: string) => makeFunctionReference<'query'>(name)
@@ -14,14 +15,15 @@ afterEach(() => vi.unstubAllEnvs())
 async function seedWritableStream(
   convex: ReturnType<typeof convexTest>,
   runId = 'personal:stream-run',
-  conversationScope?: 'personal' | 'workspace',
+  mode: 'personal' | 'workspace' | 'room' = 'personal',
 ) {
   const now = Date.now()
   const workspaceId = `personal:${runId}:workspace`
+  const agentPrincipalId = `${workspaceId}:agent`
   await convex.run(async ctx => {
     await ctx.db.insert('workspaces', {
-      workspaceId, kind: 'personal', name: 'Personal', slug: workspaceId, status: 'active',
-      personalOwnerUserId: 'owner', createdAt: now, updatedAt: now,
+      workspaceId, kind: mode === 'room' ? 'organization' : 'personal', name: 'Personal', slug: workspaceId, status: 'active',
+      ...(mode === 'personal' ? { personalOwnerUserId: 'owner' } : {}), createdAt: now, updatedAt: now,
     })
     await ctx.db.insert('workspacePrincipals', {
       workspaceId, principalId: `${workspaceId}:principal`, userId: 'owner', type: 'human',
@@ -31,11 +33,19 @@ async function seedWritableStream(
       workspaceId, membershipId: `${workspaceId}:membership`, principalId: `${workspaceId}:principal`,
       role: 'owner', status: 'active', joinedAt: now, updatedAt: now,
     })
+    if (mode === 'room') await ctx.db.insert('workspacePrincipals', {
+      workspaceId, principalId: agentPrincipalId, type: 'agent', displayName: 'Agent', createdAt: now, updatedAt: now,
+    })
   })
   const conversationId = await convex.run(ctx => ctx.db.insert('conversations', {
     userId: 'owner', title: 'Stream test', lastModified: now, createdAt: now, updatedAt: now,
     lastMode: 'act', askModelIds: ['fixture/model'], actModelId: 'fixture/model',
-    workspaceId, conversationType: 'personal', ...(conversationScope ? { scope: conversationScope } : {}),
+    workspaceId, conversationType: mode === 'room' ? 'channel' : 'personal',
+    ...(mode === 'room' || mode === 'workspace' ? { scope: 'workspace' as const } : {}),
+  }))
+  if (mode === 'room') await convex.run(ctx => ctx.db.insert('conversationParticipants', {
+    conversationId, workspaceId, principalId: `${workspaceId}:principal`, principalType: 'human',
+    role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,
   }))
   const messageIds = await convex.run(async ctx => {
     const base = {
@@ -47,10 +57,12 @@ async function seedWritableStream(
     })
     const assistantMessageId = await ctx.db.insert('conversationMessages', {
       ...base, role: 'assistant', content: '', status: 'generating',
+      ...(mode === 'room' ? { authorKind: 'agent' as const, authorPrincipalId: agentPrincipalId } : {}),
     })
     const deliveryId = await ctx.db.insert('conversationAgentRuns', {
       conversationId, turnId: 'turn', userId: 'owner', userMessageId, assistantMessageId,
-      mode: 'chat', runner: 'workflow', executionEngine: 'overlay_harness', status: 'queued',
+      mode: mode === 'room' ? 'room' : 'chat', ...(mode === 'room' ? { agentPrincipalId } : {}),
+      runner: 'workflow', executionEngine: 'overlay_harness', status: 'queued',
       createdAt: now, updatedAt: now,
     })
     return { assistantMessageId, deliveryId }
@@ -92,8 +104,60 @@ async function seedWritableStream(
     deliveryId: messageIds.deliveryId,
     runId,
     workflowRunId,
+    mode,
     serverSecret: secret,
     revision: result.snapshot.revision,
+  }
+}
+
+async function seedWritableRoomStream(convex: ReturnType<typeof convexTest>) {
+  const now = Date.now()
+  const workspaceId = 'room-preview-workspace'
+  const conversationId = await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Room', slug: workspaceId, status: 'active', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspacePrincipals', { workspaceId, principalId: 'room-owner', userId: 'owner', type: 'human', displayName: 'Owner', createdAt: now, updatedAt: now })
+    await ctx.db.insert('workspaceMemberships', {
+      workspaceId, membershipId: 'room-owner-membership', principalId: 'room-owner', role: 'member', status: 'active', joinedAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspacePrincipals', { workspaceId, principalId: 'room-agent', type: 'agent', displayName: 'Agent', createdAt: now, updatedAt: now })
+    const conversation = await ctx.db.insert('conversations', {
+      userId: 'owner', workspaceId, conversationType: 'channel', scope: 'workspace', title: 'Room',
+      lastMode: 'act', askModelIds: ['fixture/model'], actModelId: 'fixture/model',
+      lastModified: now, createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('conversationParticipants', {
+      conversationId: conversation, workspaceId, principalId: 'room-owner', principalType: 'human',
+      role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,
+    })
+    return conversation
+  })
+  const ids = await convex.run(async ctx => {
+    const base = { conversationId, userId: 'owner', turnId: 'turn', mode: 'act' as const, contentType: 'text' as const, createdAt: now, updatedAt: now }
+    const userMessageId = await ctx.db.insert('conversationMessages', { ...base, role: 'user', content: 'Request', status: 'completed' })
+    const assistantMessageId = await ctx.db.insert('conversationMessages', {
+      ...base, role: 'assistant', content: '', status: 'generating', authorKind: 'agent', authorPrincipalId: 'room-agent',
+    })
+    const deliveryId = await ctx.db.insert('conversationAgentRuns', {
+      conversationId, turnId: 'turn', userId: 'owner', userMessageId, assistantMessageId, mode: 'room',
+      agentId: 'room-agent-id', agentPrincipalId: 'room-agent', runner: 'workflow', executionEngine: 'overlay_harness',
+      status: 'running', createdAt: now, updatedAt: now,
+    })
+    const runId = `workspace:${deliveryId}`
+    const workflowRunId = `workflow:${runId}`
+    await ctx.db.patch(deliveryId, { harnessRunId: runId, workflowRunId })
+    await ctx.db.insert('harnessRuns', {
+      runId, actorUserId: 'owner', rootRunId: runId, deliveryAgentRunId: deliveryId,
+      activeDescendantCount: 0, sourceJson: JSON.stringify({ conversationId }), admissionJson: '{}',
+      metadataJson: JSON.stringify({ runId, rootRunId: runId, depth: 0, status: 'running', workflowRunId, executionGeneration: 0,
+        policy: { actorUserId: 'owner', workspaceId, publicStreamVersion: 1 },
+        modelReservation: { id: 'model:0', dispatch: { modelId: 'fixture/model' } } }),
+      createdAt: now, updatedAt: now,
+    })
+    return { assistantMessageId, deliveryId, runId, workflowRunId }
+  })
+  return {
+    actorUserId: 'owner', assistantMessageId: ids.assistantMessageId, conversationId, deliveryId: ids.deliveryId,
+    runId: ids.runId, workflowRunId: ids.workflowRunId, serverSecret: secret, revision: 0, mode: 'room' as const,
   }
 }
 
@@ -104,6 +168,96 @@ function appendArgs(stream: Awaited<ReturnType<typeof seedWritableStream>>, sequ
     serverSecret: stream.serverSecret,
   }
 }
+
+const previewData = {
+  version: 1 as const, kind: 'json_render' as const, catalogVersion: 1,
+  summary: 'Building view', streaming: true as const,
+  specJson: JSON.stringify({ root: 'view', elements: { view: { type: 'Stack', props: {}, children: [] } } }),
+}
+const previewUpdate = (sequence: number, data: typeof previewData | null = previewData) => ({
+  toolCallId: 'render-1', order: 0, sequence, textOffset: 0, ...(data ? { data } : {}),
+})
+
+test('preview-only personal and room writes project from real empty snapshots and clear without text', async () => {
+  for (const mode of ['personal', 'room'] as const) {
+    const convex = convexTest(schema, modules)
+    const stream = mode === 'room'
+      ? await seedWritableRoomStream(convex)
+      : await seedWritableStream(convex, `preview-only:${mode}`)
+    const append = mutation('appendPublicStream')
+    const firstPreview = previewUpdate(0)
+    const args = { ...appendArgs(stream, 0, ''), preview: firstPreview }
+    await expect(convex.mutation(append, args)).resolves.toMatchObject({ accepted: true, duplicate: false })
+    const snapshots = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+    expect(snapshots).toMatchObject([{ sequence: -1, revision: 1, text: '', previews: [firstPreview] }])
+    const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+    const projected = projectActivePublicStreams([message!], snapshots)[0]!
+    expect(projected.content).toBe('')
+    expect(projected.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(true)
+    expect(snapshots[0]?.text).not.toContain('specJson')
+    expect(await convex.run(ctx => ctx.db.query('harnessPublicStreamSegments')
+      .withIndex('by_runId', q => q.eq('runId', stream.runId)).collect())).toHaveLength(0)
+
+    await expect(convex.mutation(append, args)).resolves.toMatchObject({ accepted: true, duplicate: true })
+    expect((await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId])))[0]?.revision).toBe(1)
+    const updated = previewUpdate(1, { ...previewData, summary: 'Updated' })
+    await convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: updated })
+    await expect(convex.mutation(append, args)).rejects.toThrow('HARNESS_PUBLIC_STREAM_PREVIEW_STALE')
+    await expect(convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: { ...previewUpdate(2), order: 1 } }))
+      .rejects.toThrow('HARNESS_PUBLIC_STREAM_PREVIEW_CONFLICT')
+    await expect(convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: { ...previewUpdate(2), textOffset: 1 } }))
+      .rejects.toThrow('HARNESS_PUBLIC_STREAM_PREVIEW_CONFLICT')
+
+    await convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: previewUpdate(2, null) })
+    const clearedSnapshot = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+    expect(clearedSnapshot[0]).toMatchObject({ sequence: -1, revision: 3, text: '' })
+    expect(clearedSnapshot[0]?.previews).toBeUndefined()
+    const cleared = projectActivePublicStreams([projected], clearedSnapshot)[0]!
+    expect(cleared.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(false)
+    await expect(convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: updated }))
+      .rejects.toThrow('HARNESS_PUBLIC_STREAM_PREVIEW_STALE')
+  }
+})
+
+test('preview appends reject mismatched actor, run, workflow, generation, receipt, model, and delivery', async () => {
+  const append = mutation('appendPublicStream')
+  const mismatches = [
+    { actorUserId: 'other' }, { runId: 'other:run' }, { workflowRunId: 'other:workflow' },
+    { executionGeneration: 1 }, { receiptId: 'model:1' }, { modelId: 'other/model' },
+  ]
+  for (const [index, mismatch] of mismatches.entries()) {
+    const convex = convexTest(schema, modules)
+    const stream = await seedWritableStream(convex, `preview-identity:${index}`)
+    await expect(convex.mutation(append, {
+      ...appendArgs(stream, 0, ''), preview: previewUpdate(0), ...mismatch,
+    })).rejects.toThrow()
+  }
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'preview-identity:delivery')
+  await convex.run(ctx => ctx.db.patch(stream.deliveryId, { workflowRunId: 'stale-workflow' }))
+  await expect(convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: previewUpdate(0) }))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+})
+
+test('a new model receipt starts with no previews from its predecessor', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'preview-receipt:replacement')
+  const append = mutation('appendPublicStream')
+  await convex.mutation(append, { ...appendArgs(stream, 0, ''), preview: previewUpdate(0) })
+  const settled = await settleStep(convex, stream, 0, stream.revision, { content: 'First call', parts: [] })
+  const revision = (await settled.apply('reserve:1', settled.revision, {
+    type: 'reserve_model', id: 'model:1', maxCostMicros: 0,
+  })).snapshot.revision
+  await settled.apply('dispatch:1', revision, {
+    type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing',
+  })
+  await convex.mutation(append, {
+    ...appendArgs(stream, 0, ''), receiptId: 'model:1', preview: { ...previewUpdate(0), toolCallId: 'render-2' },
+  })
+  const snapshots = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+  expect(snapshots).toMatchObject([{ receiptId: 'model:1', previews: [{ toolCallId: 'render-2' }] }])
+  expect(JSON.stringify(snapshots)).not.toContain('render-1')
+})
 
 test('authorized personal, automation, and room readers see sequenced snapshots; revocation fails closed', async () => {
   const convex = convexTest(schema, modules)
@@ -342,6 +496,7 @@ test('personal failure and cancellation retain active text and retire stream row
   const append = mutation('appendPublicStream')
   const failed = convexTest(schema, modules)
   const failureStream = await seedWritableStream(failed, 'personal:failure')
+  await failed.mutation(append, { ...appendArgs(failureStream, 0, ''), preview: previewUpdate(0) })
   await failed.mutation(append, appendArgs(failureStream, 0, 'Failure partial'))
   await failed.mutation(makeFunctionReference<'mutation'>('chat/conversations:failAgentRun'), {
     error: { code: 'test_failure', message: 'The run failed.', retryable: false },
@@ -353,10 +508,12 @@ test('personal failure and cancellation retain active text and retire stream row
   expect(failedMessage?.parts?.some(part => part.type === 'text' && part.text === 'Failure partial')).toBe(true)
   expect(await failed.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', failureStream.runId)).unique())).toBeNull()
+  expect(await failed.run(ctx => readActivePublicStreams(ctx, failureStream.conversationId, [failureStream.assistantMessageId]))).toEqual([])
 
   vi.useFakeTimers()
   const cancelled = convexTest(schema, modules)
   const cancelStream = await seedWritableStream(cancelled, 'personal:cancelled')
+  await cancelled.mutation(append, { ...appendArgs(cancelStream, 0, ''), preview: previewUpdate(0) })
   await cancelled.mutation(append, appendArgs(cancelStream, 0, 'Stop partial'))
   await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), {
     conversationId: cancelStream.conversationId, messageId: cancelStream.assistantMessageId,
@@ -377,12 +534,14 @@ test('personal failure and cancellation retain active text and retire stream row
   expect(cancelledMessage?.status).toBe('completed')
   expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', cancelStream.runId)).unique())).toBeNull()
+  expect(await cancelled.run(ctx => readActivePublicStreams(ctx, cancelStream.conversationId, [cancelStream.assistantMessageId]))).toEqual([])
 
 })
 
 test('a workspace-scope chat settles its steps into a checkpoint, so live and settled text never show together', async () => {
   const convex = convexTest(schema, modules)
   const stream = await seedWritableStream(convex, 'personal:workspace-scope', 'workspace')
+  await convex.mutation(mutation('appendPublicStream'), { ...appendArgs(stream, 0, ''), preview: previewUpdate(0) })
   await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Before the tool.'))
   await convex.mutation(mutation('apply'), {
     actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
@@ -410,6 +569,7 @@ test('a workspace-scope chat settles its steps into a checkpoint, so live and se
   })
   expect(settled.message?.nativeProgressSequence).toBe(0)
   expect(settled.active).toBeNull()
+  expect(await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))).toEqual([])
 })
 
 async function settleStep(

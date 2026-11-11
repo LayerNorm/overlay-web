@@ -1,4 +1,5 @@
 import { safeHttpUrl } from './sources'
+import { createJsonRenderSpecStreamCompiler, GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from './generative-ui'
 
 export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
@@ -45,6 +46,7 @@ export type GeneratedJsonRenderData = {
   summary: string
   title?: string
   specJson: string
+  streaming?: boolean
   stateJson?: string
   submittedAt?: number
 }
@@ -234,6 +236,7 @@ function normalizeJsonRender(record: Record<string, unknown>): GeneratedJsonRend
   return {
     version: GENERATED_UI_VERSION, kind: 'json_render', catalogVersion: record.catalogVersion,
     summary: record.summary, specJson: record.specJson,
+    ...(record.streaming === true ? { streaming: true } : {}),
     ...(record.title !== undefined ? { title: record.title as string } : {}),
     ...(record.stateJson !== undefined ? { stateJson: record.stateJson as string } : {}),
     ...(record.submittedAt !== undefined ? { submittedAt: record.submittedAt as number } : {}),
@@ -365,6 +368,21 @@ export function isGeneratedUiPart(value: unknown): value is GeneratedUiPart {
   return isGeneratedUiData(record.data)
 }
 
+export function normalizeGeneratedUiPart(value: unknown): GeneratedUiPart | null {
+  const record = asRecord(value)
+  if (!record) return null
+  const persisted = record.type === 'data' && record.dataType === GENERATED_UI_DATA_TYPE
+  const sdkKeyed = record.type === `data-${GENERATED_UI_DATA_TYPE}`
+    && (record.dataType === undefined || record.dataType === GENERATED_UI_DATA_TYPE)
+  const id = nonEmptyString(record.id)
+  const data = normalizeGeneratedUiData(record.data)
+  if ((!persisted && !sdkKeyed) || !id || !data) return null
+  return {
+    type: 'data', id, dataType: GENERATED_UI_DATA_TYPE, data,
+    ...(record.transient === true || (data.kind === 'json_render' && data.streaming === true) ? { transient: true } : {}),
+  }
+}
+
 export function generatedUiDataToPlainText(data: GeneratedUiData): string {
   if (data.kind === 'json_render') return data.summary
   if (data.kind === 'questionnaire') return [data.prompt, ...data.choices.map((choice) => choice.label)].join('\n')
@@ -432,7 +450,42 @@ export function buildStreamingGeneratedUiPart(id: string, value: unknown): Gener
     }
   }
 
+  if (Object.hasOwn(record, 'spec') === Object.hasOwn(record, 'specStream')) return null
+  if (typeof record.specStream === 'string') return buildStreamingJsonRenderPart(partId, record)
   return null
+}
+
+function sanitizeJsonRenderPreview(partial: Record<string, unknown>) {
+  if (typeof partial.root !== 'string' || !partial.elements || typeof partial.elements !== 'object' || Array.isArray(partial.elements)) return null
+  const state = partial.state === undefined ? {} : { state: partial.state }
+  const elements = { ...(partial.elements as Record<string, Record<string, unknown>>) }
+  for (const [key, rawElement] of Object.entries(elements)) {
+    const element = JSON.parse(JSON.stringify(rawElement)) as Record<string, unknown>
+    elements[key] = element
+    if (!element || typeof element.type !== 'string' || !element.props || typeof element.props !== 'object') { delete elements[key]; continue }
+    const candidate = validateJsonRenderSpec({ root: key, elements: { [key]: { ...element, children: [] } }, ...state })
+    if (!candidate.ok) delete elements[key]
+  }
+  for (const element of Object.values(elements)) {
+    if (Array.isArray(element.children)) element.children = element.children.filter(child => typeof child === 'string' && Object.hasOwn(elements, child))
+  }
+  const validated = validateJsonRenderSpec({ root: partial.root, elements, ...state })
+  return validated.ok ? validated : null
+}
+
+function buildStreamingJsonRenderPart(partId: string, record: Record<string, unknown>): GeneratedUiPart | null {
+  try {
+    const compiler = createJsonRenderSpecStreamCompiler()
+    compiler.push(record.specStream as string)
+    const validated = sanitizeJsonRenderPreview(compiler.getResult())
+    if (!validated) return null
+    const summary = typeof record.summary === 'string' && record.summary.trim() ? record.summary.trim().slice(0, 1000) : 'Building view'
+    const title = typeof record.title === 'string' && record.title.trim() ? record.title.trim().slice(0, 120) : undefined
+    return { type: 'data', id: partId, dataType: GENERATED_UI_DATA_TYPE, transient: true, data: {
+      version: GENERATED_UI_VERSION, kind: 'json_render', catalogVersion: GENERATIVE_UI_CATALOG_VERSION, summary,
+      ...(title ? { title } : {}), specJson: JSON.stringify(validated.spec), streaming: true,
+    } }
+  } catch { return null }
 }
 
 export function buildGeneratedUiPart(id: string, data: unknown): GeneratedUiPart | null {

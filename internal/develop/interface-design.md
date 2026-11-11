@@ -16,6 +16,11 @@ through `ChatExchange` or `AssistantVisualBlocks` for follow-up, submit and stat
 hooks. Hooks receive the source part ID so multiple cards remain distinguishable;
 persistence is not implemented by the renderer.
 
+The catalog also provides open-layout `Timeline` and locally selectable
+`Comparison` views, positioned `Diagram` nodes with a narrow vertical layout, and
+`Vector` drawings from bounded typed SVG primitives. Vector rendering whitelists
+shapes and semantic paints and never accepts SVG/XML or arbitrary attributes.
+
 ## Extension cards and dialogs
 
 MCP and Skills use shared Card surfaces with explicit Manage actions and confirmation before deletion. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact content-width Configuration/Tools tabs and spacing instead of internal dividers. Preserve OAuth connection status, tool policy, scope and existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.

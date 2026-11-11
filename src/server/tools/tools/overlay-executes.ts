@@ -45,17 +45,23 @@ import {
   generatedUiDraftContainsCode,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
-import { GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from '@overlay/chat-core/generative-ui'
+import { compileJsonRenderSpecStream, GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from '@overlay/chat-core/generative-ui'
 
 export async function executeRenderUi(_options: OverlayToolsOptions, input: unknown) {
   const raw = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
   const summary = typeof raw.summary === 'string' ? raw.summary.trim() : ''
   const title = typeof raw.title === 'string' ? raw.title.trim() : undefined
   const issues: Array<{ path: string; code: string; message: string }> = []
+  const hasSpec = Object.hasOwn(raw, 'spec')
+  const hasSpecStream = Object.hasOwn(raw, 'specStream')
+  if (hasSpec === hasSpecStream) issues.push({ path: 'spec', code: 'ambiguous_spec', message: 'Provide exactly one of spec or specStream.' })
   if (!summary || summary.length > 1000) issues.push({ path: 'summary', code: 'invalid_summary', message: 'Provide a non-empty summary of at most 1000 characters.' })
   if ((raw.title !== undefined && typeof raw.title !== 'string') || (title && title.length > 120)) issues.push({ path: 'title', code: 'invalid_title', message: 'Title must be a string of at most 120 characters.' })
-  const validated = validateJsonRenderSpec(raw.spec)
-  if (!validated.ok) issues.push(...validated.issues.map(issue => ({ path: `spec.${issue.path}`, code: 'invalid_spec', message: issue.message })))
+  const validated = hasSpecStream && typeof raw.specStream === 'string'
+    ? compileJsonRenderSpecStream(raw.specStream)
+    : validateJsonRenderSpec(raw.spec)
+  if (hasSpecStream && typeof raw.specStream !== 'string') issues.push({ path: 'specStream', code: 'invalid_spec_stream', message: 'SpecStream must be a JSONL string.' })
+  if (!validated.ok) issues.push(...validated.issues.map(issue => ({ path: `${hasSpecStream ? 'specStream' : 'spec'}.${issue.path}`, code: 'invalid_spec', message: issue.message })))
   if (issues.length || !validated.ok) return {
     success: false as const, code: 'tool_validation_failure', error: 'Could not display this view. No UI was created.',
     issues: issues.slice(0, 12), hint: 'Fix the listed issues and call render_ui again with a valid catalog spec. Only claim a view was displayed after success:true. If you cannot fix it, tell the user plainly that you could not display it; never describe an unrendered form as available. Use ordinary text for short answers and fenced Markdown for code artifacts.',

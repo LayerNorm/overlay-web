@@ -1,6 +1,6 @@
 # Generative UI with json-render
 
-Status: approved direction, written 2026-11-10. Delivered as **one PR to `main`** with one Preview QA pass, then merged. The tasks below are the order of work inside that PR, not separate PRs. Check each one off as it lands on the branch.
+Status: The expressive mockup is approved and retained. Production work is local on this PR branch and not merged or production accepted. This change adds the four expressive catalog renderers, tool-argument `specStream` compilation, and bounded preview snapshots on the durable personal/native chat stream path. Focused transport and generated-UI regression suites pass locally; full merged-branch validation and exact-head Preview QA remain pending. Preserve the known personal false-recovery limitation from prior QA; Slack has not been tested. Do not report blanket flow acceptance. T12 remains open.
 
 ## Goal
 
@@ -8,10 +8,10 @@ Every Overlay-owned AI chat surface (personal chats, workspace agents and thread
 
 ## Decisions
 
-1. **Tool-based, not inline JSONL.** The model calls a harness tool, `render_ui`, whose input is a json-render spec. We do not use json-render's inline mode (JSONL patches inside the text reply, split by `pipeJsonRender`), because:
+1. **Tool-based, never assistant-prose JSONL.** The model calls a harness tool, `render_ui`, whose input is a json-render spec or bounded JSONL `specStream` string. We do not put inline JSONL patches in assistant text, because:
    - `runOverlayHarness` (`src/server/harness/runner.ts`) streams through `WorkflowAgent.stream`, not `toUIMessageStream`, so `pipeJsonRender` has nothing to attach to.
    - `src/server/harness/public-stream-publisher.ts` deliberately strips machine-looking text from public streams. Patches in text would fight that.
-   - A malformed patch in text leaks raw JSONL into the transcript, Slack and email. A tool input is validated before anything is persisted, and an invalid spec returns a tool error the model can correct.
+   - A malformed patch in text leaks raw JSONL into the transcript, Slack and email. Tool-argument `specStream` is strictly validated at final execution and persists only as the existing spec shape.
    - Tools already have per-surface admission, durable persistence and ordered rendering, all shared by every surface.
 2. **The four existing card kinds stay as they are in v1.** `draft.text`, `draft.email`, `connector.connect` and `questionnaire` keep `present_generated_ui`, their contracts and their renderers. No migration of persisted messages.
    - Later (not in this PR): wrap `TextDraft`, `EmailDraft` and `Questionnaire` as catalog components so specs can compose them.
@@ -181,6 +181,13 @@ Preview (`pr-<number>.preview.getoverlay.io`, `needs-preview` label):
 
 ## Later
 
-- Live rendering while the tool input streams (json-render spec stream compiler on tool input deltas).
 - `TextDraft`, `EmailDraft`, `Questionnaire` as catalog components.
 - Mobile renderer with `@json-render/react-native`.
+
+## Approved follow-up: expressive visuals and progressive diagrams
+
+The approved workspace mockup in `mockups/generative-ui-expressive.html` is retained. This PR implements general bounded Timeline, Comparison, Diagram and Vector catalog components, the `render_ui` JSONL `specStream` argument and provider-driven preview transport. Focused transport/unit regression coverage passes locally; full merged-branch validation and exact-head Preview QA remain pending.
+
+**Simulation disclaimer:** the standalone mockup's replay controls and local node/label/edge data remain simulated. Production previews use provider tool-input deltas and validated, persisted snapshots; they do not use mockup timers. The mockup's failure preview is illustrative only.
+
+The final `render_ui` call remains authoritative for persistence and interaction. Preview cards are read-only, and non-React surfaces continue to use title and summary text. T12 and browser QA remain open; prior personal false-recovery limitations are still known, and Slack has not been tested.

@@ -3,6 +3,7 @@ import 'server-only'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod/v3'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
+import { GENERATIVE_UI_MAX_SPEC_STREAM_BYTES } from '@overlay/chat-core/generative-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
   executeAppendToNote,
@@ -364,10 +365,15 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
   tools.render_ui = tool({
     description: 'Render an Overlay UI view when structured comparisons, results, dashboards, or forms collecting several values are clearer than text. ' +
-      'Provide a short plain-text summary and a spec from the admitted component catalog. Never write HTML, CSS, JavaScript or JSON specs in assistant text. ' +
+      'Provide a short plain-text summary and exactly one of spec or specStream from the admitted component catalog. specStream is newline-delimited JSON patches inside this tool argument, never assistant text. ' +
       'Do not use for short answers or code artifacts; return code in fenced Markdown. Prose drafts, emails, connection cards and conversational questionnaires use present_generated_ui instead. ' +
       'Use one spec per reply unless asked for more, and do not duplicate the view in prose. A view exists only after this tool returns success:true. On failure, fix the issues and call again, or plainly say you could not display it. Never claim a form or view was shown without a successful tool call.',
-    inputSchema: z.object({ title: z.string().trim().max(120).optional(), summary: z.string().trim().min(1).max(1000), spec: z.object({}).passthrough() }),
+    inputSchema: z.object({
+      title: z.string().trim().max(120).optional(),
+      summary: z.string().trim().min(1).max(1000),
+      spec: z.object({}).passthrough().optional(),
+      specStream: z.string().max(GENERATIVE_UI_MAX_SPEC_STREAM_BYTES).optional(),
+    }).refine(input => (input.spec === undefined) !== (input.specStream === undefined), 'Provide exactly one of spec or specStream'),
     execute: (input) => executeRenderUi(options, input),
   })
 

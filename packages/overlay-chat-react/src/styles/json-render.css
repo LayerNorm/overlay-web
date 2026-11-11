@@ -49,6 +49,51 @@
 .json-render-part [data-slot=accordion-trigger]{font-size:13px;font-weight:400}
 .json-render-part [data-slot=accordion-content]{font-size:12px;color:var(--muted)}
 .json-render-part .gen-image{max-width:100%;height:auto;border-radius:8px}
+.json-render-part .gen-expressive-title{font-size:15px;font-weight:500;line-height:1.4}
+.json-render-part .gen-building-view{font-size:12px;color:var(--muted);margin-bottom:8px}
+.json-render-part .gen-timeline ol{list-style:none;margin:16px 0 0;padding:0}
+.json-render-part .gen-timeline li{display:grid;grid-template-columns:minmax(78px,auto) minmax(0,1fr);gap:14px;position:relative;padding:0 0 20px 16px;border-left:1px solid var(--border);font-size:12.5px;line-height:1.5}
+.json-render-part .gen-timeline li:last-child{border-color:transparent;padding-bottom:0}
+.json-render-part .gen-timeline li:before{content:"";position:absolute;left:-5px;top:5px;width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.json-render-part .gen-timeline li[data-tone=success]:before{background:var(--success)}
+.json-render-part .gen-timeline li[data-tone=warning]:before{background:var(--warning)}
+.json-render-part .gen-timeline li[data-tone=danger]:before{background:var(--danger)}
+.json-render-part .gen-timeline time,.json-render-part .gen-timeline li p{color:var(--muted)}
+.json-render-part .gen-timeline h4,.json-render-part .gen-comparison h4{font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.json-render-part .gen-timeline-impact{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.json-render-part .gen-timeline-conclusion{margin-top:8px;font-size:13px}
+.json-render-part .gen-comparison{display:grid;gap:14px}
+.json-render-part .gen-comparison-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.json-render-part .gen-priority{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.json-render-part .gen-priority [data-slot=select-trigger]{min-height:36px;font-size:12px}
+.json-render-part .gen-comparison-options{display:grid;grid-template-columns:repeat(var(--option-count,2),minmax(0,1fr));gap:12px}
+.json-render-part .gen-comparison-option{min-width:0;padding:8px 0 12px;border-bottom:1px solid var(--border)}
+.json-render-part .gen-comparison-option[data-recommended=true]{border-color:var(--success)}
+.json-render-part .gen-comparison-option p,.json-render-part .gen-comparison-row dd,.json-render-part .gen-comparison-row dt{font-size:12.5px;overflow-wrap:anywhere}
+.json-render-part .gen-comparison-option p,.json-render-part .gen-comparison-row dt{color:var(--muted)}
+.json-render-part .gen-comparison dl{margin:0}
+.json-render-part .gen-comparison-row{display:grid;grid-template-columns:minmax(80px,1fr) repeat(var(--option-count,2),minmax(0,1fr));gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.json-render-part .gen-comparison-row dd{margin:0}
+.json-render-part .gen-comparison-recommendation{display:grid;gap:5px;border-left:2px solid var(--success);padding-left:12px;font-size:12.5px}
+.json-render-part .gen-comparison-recommendation span{color:var(--muted)}
+.json-render-part .gen-diagram figcaption,.json-render-part .gen-vector figcaption{margin-bottom:12px}
+.json-render-part .gen-diagram figcaption p,.json-render-part .gen-vector figcaption p{margin-top:5px;font-size:12.5px;color:var(--muted)}
+.json-render-part .gen-diagram-wide-scroll,.json-render-part .gen-vector-scroll{max-width:100%;overflow-x:auto}
+.json-render-part .gen-diagram-wide{position:relative;min-width:760px;min-height:300px;border:1px solid var(--border);border-radius:9px;background:var(--surface-subtle);overflow:visible}
+.json-render-part .gen-diagram-edges{position:absolute;inset:0;width:100%;height:100%}
+.json-render-part .gen-diagram-edges path{fill:none;stroke:var(--border);stroke-width:2}
+.json-render-part .gen-diagram-node{position:absolute;z-index:1;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-elevated);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}
+.json-render-part .gen-diagram-node[data-tone=accent]{border-color:var(--primary)}
+.json-render-part .gen-diagram-node[data-tone=success]{border-color:var(--success)}
+.json-render-part .gen-diagram-node[data-tone=warning]{border-color:var(--warning)}
+.json-render-part .gen-diagram-node span{font-size:12px;color:var(--muted)}
+.json-render-part .gen-diagram-mobile{display:none}
+.json-render-part .gen-diagram-relations{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:12.5px}
+.json-render-part .gen-diagram-relations li{display:flex;align-items:center;gap:6px;flex-wrap:wrap;overflow-wrap:anywhere}
+.json-render-part .gen-vector svg{display:block;width:100%;height:auto;font-size:14px;overflow:hidden}
+.json-render-part .gen-vector-scroll svg{min-width:520px}
+.json-render-part .gen-vector-scroll{max-width:100%;overflow:auto}
+.json-render-part .gen-vector-narrow{display:none}
 @media(max-width:767px){
   .json-render-part .gen-grid{grid-template-columns:1fr}
   .json-render-part .gen-metric{padding:14px 0}
@@ -56,4 +101,14 @@
   .json-render-part .gen-card [data-slot=card-header],.json-render-part .gen-card [data-slot=card-content]{padding-left:16px;padding-right:16px}
   .json-render-part table{min-width:470px}
   .json-render-part .gen-facts>div{align-items:flex-start}
+  .json-render-part .gen-diagram-wide-scroll,.json-render-part .gen-vector-wide{display:none}
+  .json-render-part .gen-diagram-mobile{display:grid;list-style:none;margin:0;padding:0}
+  .json-render-part .gen-diagram-mobile li{position:relative;display:flex;flex-direction:column;justify-content:center;gap:4px;min-height:68px;margin:0 0 18px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface-elevated);font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+  .json-render-part .gen-diagram-mobile li[data-reserved=true]{border-color:transparent;background:transparent}
+  .json-render-part .gen-diagram-mobile li span{font-size:12px;color:var(--muted)}
+  .json-render-part .gen-vector-narrow{display:block}
+  .json-render-part .gen-comparison-options{grid-template-columns:1fr}
+  .json-render-part .gen-comparison-row{grid-template-columns:minmax(0,1fr)}
+  .json-render-part .gen-comparison-row dd{display:flex;gap:10px;align-items:flex-start}
+  .json-render-part .gen-comparison-row dd span{min-width:80px;color:var(--muted)}
 }

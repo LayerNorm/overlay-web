@@ -5,10 +5,21 @@ import {
   buildGenerativeUiCatalogPrompt, generativeUiCatalog, validateJsonRenderSpec,
   GENERATIVE_UI_CATALOG_VERSION, GENERATIVE_UI_MAX_DEPTH, GENERATIVE_UI_MAX_ELEMENTS,
   GENERATIVE_UI_MAX_ISSUES, GENERATIVE_UI_MAX_SPEC_BYTES, GENERATIVE_UI_MAX_STRING_LENGTH,
+  GENERATIVE_UI_MAX_SPEC_STREAM_BYTES, GENERATIVE_UI_MAX_SPEC_STREAM_PATCHES, compileJsonRenderSpecStream,
+  createJsonRenderSpecStreamCompiler,
 } from './generative-ui'
 
 type Element = { type: string; props: Record<string, unknown>; children?: string[]; on?: unknown }
 type TestSpec = { root: string; elements: Record<string, Element>; state?: Record<string, unknown> }
+
+describe('generative UI prompt examples', () => {
+  it('validates each expressive example against the shared catalog', () => {
+    const examples = [...buildGenerativeUiCatalogPrompt().matchAll(/^(?:Timeline|Comparison|Diagram|Vector) example: (.+)$/gm)]
+    expect(examples).toHaveLength(4)
+    for (const [, serialized] of examples) expect(validateJsonRenderSpec(JSON.parse(serialized!)).ok).toBe(true)
+  })
+})
+
 function single(type = 'Text', props: Record<string, unknown> = { text: 'Hello' }): TestSpec {
   return { root: 'root', elements: { root: { type, props } } }
 }
@@ -43,7 +54,7 @@ describe('json-render v1 catalog', () => {
     expect([GENERATIVE_UI_MAX_SPEC_BYTES, GENERATIVE_UI_MAX_ELEMENTS, GENERATIVE_UI_MAX_DEPTH, GENERATIVE_UI_MAX_STRING_LENGTH]).toEqual([65536, 200, 12, 4000])
     expect(generativeUiCatalog.componentNames).toEqual([
       'Stack', 'Grid', 'Card', 'Separator', 'Heading', 'Text', 'Badge', 'Alert', 'KeyValue', 'Metric',
-      'Progress', 'Avatar', 'Link', 'CodeBlock', 'Image', 'Table', 'Chart', 'Tabs', 'Accordion',
+      'Progress', 'Avatar', 'Link', 'CodeBlock', 'Image', 'Table', 'Chart', 'Timeline', 'Comparison', 'Diagram', 'Vector', 'Tabs', 'Accordion',
       'Input', 'Textarea', 'Select', 'Checkbox', 'Switch', 'RadioGroup', 'Button',
     ])
     expect(generativeUiCatalog.actionNames).toEqual(['copy_text', 'open_link', 'send_message', 'submit'])
@@ -87,6 +98,79 @@ describe('json-render v1 catalog', () => {
     expect(prompt).toContain('Only say a view was displayed after render_ui returns success:true')
     expect(prompt).toContain('Never claim success after a failed or omitted call')
     expect(prompt).toContain('its only optional param is label')
+  })
+  it('validates bounded expressive components and rejects unsafe vector paths', () => {
+    const timeline = single('Timeline', { title: 'Events', events: [{ id: 'one', at: '09:00', title: 'Started' }] })
+    const comparison = single('Comparison', {
+      title: 'Choice', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      criteria: [{ id: 'cost', label: 'Cost', values: [{ optionId: 'a', value: 'Low' }, { optionId: 'b', value: 'High' }] }],
+      priorities: [{ id: 'p', label: 'Cost', recommendedOptionId: 'a', rationale: 'Lower cost.' }],
+    })
+    const diagram = single('Diagram', {
+      title: 'Flow', description: 'A to B.', width: 600, height: 300,
+      nodes: [{ id: 'a', label: 'A', x: 0, y: 100, width: 120, height: 60, mobileOrder: 0 }, { id: 'b', label: 'B', x: 400, y: 100, width: 120, height: 60, mobileOrder: 1 }],
+      edges: [{ id: 'ab', from: 'a', to: 'b', label: 'next' }],
+    })
+    const vector = single('Vector', { title: 'Path', description: 'A line.', width: 120, height: 80, shapes: [{ id: 'line', kind: 'path', d: 'M 1 1 L 100 70', stroke: 'accent' }] })
+    const unsafeVector = single('Vector', { title: 'Unsafe', description: 'Bad path.', width: 120, height: 80, shapes: [{ id: 'line', kind: 'path', d: 'M0 0 <script>', stroke: 'accent' }] })
+    for (const spec of [timeline, comparison, diagram, vector]) expect(validateJsonRenderSpec(spec).ok).toBe(true)
+    invalid(unsafeVector)
+    invalid(single('Vector', { title: 'Unsafe', description: 'Bad attributes.', width: 120, height: 80, shapes: [{ id: 'rect', kind: 'rect', x: 0, y: 0, width: 20, height: 20, onload: 'alert(1)' }] }))
+    invalid(single('Vector', { title: 'Unsafe', description: 'Bad paint.', width: 120, height: 80, shapes: [{ id: 'rect', kind: 'rect', x: 0, y: 0, width: 20, height: 20, fill: 'url(https://example.com)' }] }))
+    invalid(single('Vector', { title: 'Unsafe', description: 'External resource.', width: 120, height: 80, shapes: [{ id: 'image', kind: 'image', src: 'https://example.com/image.svg' }] }))
+    invalid(single('Timeline', { title: 'Events', events: [{ id: 'same', at: '09:00', title: 'One' }, { id: 'same', at: '10:00', title: 'Two' }] }))
+    invalid(single('Comparison', {
+      title: 'Choice', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      criteria: [{ id: 'same', label: 'Cost', values: [{ optionId: 'a', value: 'Low' }, { optionId: 'b', value: 'High' }] }, { id: 'same', label: 'Speed', values: [{ optionId: 'a', value: 'Fast' }, { optionId: 'b', value: 'Slow' }] }],
+      priorities: [{ id: 'same', label: 'Cost', recommendedOptionId: 'a', rationale: 'Low.' }, { id: 'same', label: 'Speed', recommendedOptionId: 'a', rationale: 'Fast.' }],
+    }))
+    invalid(single('Vector', { title: 'Duplicate IDs', description: 'Two shapes.', width: 120, height: 80, shapes: [
+      { id: 'same', kind: 'rect', x: 1, y: 1, width: 20, height: 20 }, { id: 'same', kind: 'circle', cx: 60, cy: 40, radius: 10 },
+    ] }))
+    invalid(single('Vector', { title: 'Bad path', description: 'Missing operands.', width: 120, height: 80, shapes: [{ id: 'path', kind: 'path', d: 'M 1 1 L 2', stroke: 'accent' }] }))
+    invalid(single('Vector', { title: 'Bad path', description: 'Must start with move.', width: 120, height: 80, shapes: [{ id: 'path', kind: 'path', d: 'L 1 2', stroke: 'accent' }] }))
+    invalid(single('Vector', { title: 'Bad path', description: 'Relative path is bounded.', width: 120, height: 80, shapes: [{ id: 'path', kind: 'path', d: 'M 1 1 l 100 0 l 100 0', stroke: 'accent' }] }))
+    invalid(single('Vector', { title: 'Bad circle', description: 'Circle is bounded.', width: 120, height: 80, shapes: [{ id: 'circle', kind: 'circle', cx: 5, cy: 5, radius: 10 }] }))
+    invalid(single('Vector', { title: 'Bad line', description: 'Y uses height bounds.', width: 120, height: 80, shapes: [{ id: 'line', kind: 'line', x1: 1, y1: 100, x2: 2, y2: 2 }] }))
+  })
+  it('compiles strict JSONL seeds, bounded appends, and rejects malformed paths and protocol attacks', () => {
+    expect([GENERATIVE_UI_MAX_SPEC_STREAM_BYTES, GENERATIVE_UI_MAX_SPEC_STREAM_PATCHES]).toEqual([131072, 512])
+    const lines = [
+      { op: 'add', path: '/root', value: 'view' },
+      { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+      { op: 'add', path: '/elements/timeline', value: { type: 'Timeline', props: { title: 'Events', events: [{ id: 'one', at: '09:00', title: 'Started' }] } } },
+      { op: 'replace', path: '/elements/view/children', value: ['timeline'] },
+    ]
+    const stream = lines.map(line => JSON.stringify(line)).join('\n')
+    expect(compileJsonRenderSpecStream(stream).ok).toBe(true)
+    expect(compileJsonRenderSpecStream(`${stream}\n{` ).ok).toBe(false)
+    expect(compileJsonRenderSpecStream([lines[0], { op: 'add', path: '/__proto__/polluted', value: true }].map(line => JSON.stringify(line)).join('\n')).ok).toBe(false)
+    expect(compileJsonRenderSpecStream([lines[0], lines[1], { op: 'remove', path: '/elements/view/children' }].map(line => JSON.stringify(line)).join('\n')).ok).toBe(false)
+    expect(compileJsonRenderSpecStream(' '.repeat(GENERATIVE_UI_MAX_SPEC_STREAM_BYTES + 1)).ok).toBe(false)
+  })
+  it('accepts arbitrary string chunk boundaries and a final line without a newline', () => {
+    const lines = [
+      { op: 'add', path: '/root', value: 'view' },
+      { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+      { op: 'add', path: '/elements/note', value: { type: 'Text', props: { text: 'Queue 🧭: "open"\nnext' } } },
+      { op: 'replace', path: '/elements/view/children', value: ['note'] },
+    ]
+    const stream = lines.map(line => JSON.stringify(line)).join('\n')
+    for (let split = 0; split <= stream.length; split++) {
+      const compiler = createJsonRenderSpecStreamCompiler()
+      compiler.push(stream.slice(0, split))
+      compiler.push(stream.slice(split))
+      expect(compiler.finish().root).toBe('view')
+    }
+  })
+  it('enforces the patch count at exactly 512 and rejects the next patch', () => {
+    const seed = [
+      { op: 'add', path: '/root', value: 'view' },
+      { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+    ]
+    const updates = Array.from({ length: GENERATIVE_UI_MAX_SPEC_STREAM_PATCHES - seed.length }, () => ({ op: 'replace', path: '/elements/view/props', value: {} }))
+    expect(compileJsonRenderSpecStream([...seed, ...updates].map(line => JSON.stringify(line)).join('\n')).ok).toBe(true)
+    expect(compileJsonRenderSpecStream([...seed, ...updates, updates[0]].map(line => JSON.stringify(line)).join('\n')).ok).toBe(false)
   })
   it('moves unambiguous container children out of props and checks the resulting graph', () => {
     const root = { type: 'Card', props: { title: 'Form', children: ['field'] } }

@@ -1,4 +1,5 @@
 import { paginationOptsValidator } from 'convex/server'
+import { GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from '@overlay/chat-core/generative-ui'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
@@ -1762,6 +1763,18 @@ function publicStreamByteLength(text: string) {
   return new TextEncoder().encode(text).byteLength
 }
 
+function validatePublicStreamPreviewSpec(data: { catalogVersion: number; specJson: string }) {
+  if (data.catalogVersion !== GENERATIVE_UI_CATALOG_VERSION || publicStreamByteLength(data.specJson) > 65_536) {
+    throw new Error('Invalid public stream preview spec.')
+  }
+  try {
+    const validation = validateJsonRenderSpec(JSON.parse(data.specJson))
+    if (!validation.ok || JSON.stringify(validation.spec) !== data.specJson) throw new Error('Invalid public stream preview spec.')
+  } catch {
+    throw new Error('Invalid public stream preview spec.')
+  }
+}
+
 function takePublicStreamPrefix(text: string, maxBytes: number): { prefix: string; rest: string } {
   let prefix = ''
   let bytes = 0
@@ -1792,6 +1805,13 @@ export const appendPublicStream = mutation({
     modelId: v.string(),
     sequence: v.number(),
     text: v.string(),
+    preview: v.optional(v.object({
+      toolCallId: v.string(), order: v.number(), sequence: v.number(), textOffset: v.number(),
+      data: v.optional(v.object({
+        version: v.literal(1), kind: v.literal('json_render'), catalogVersion: v.number(),
+        summary: v.string(), title: v.optional(v.string()), specJson: v.string(), streaming: v.literal(true),
+      })),
+    })),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1803,9 +1823,16 @@ export const appendPublicStream = mutation({
       || !args.modelId.trim() || args.modelId.length > MAX_ID_LENGTH || args.receiptId.length > MAX_ID_LENGTH
       || !invocationMatch || !Number.isSafeInteger(Number(invocationMatch[1])) || !Number.isSafeInteger(args.executionGeneration)
       || args.executionGeneration < 0 || !Number.isSafeInteger(args.sequence) || args.sequence < 0
-      || !args.text || publicStreamByteLength(args.text) > MAX_PUBLIC_STREAM_SEGMENT_BYTES) {
+      || (!args.text && !args.preview) || publicStreamByteLength(args.text) > MAX_PUBLIC_STREAM_SEGMENT_BYTES) {
       throw new Error('Invalid public stream batch.')
     }
+    if (args.preview && (!args.preview.toolCallId.trim() || args.preview.toolCallId.length > MAX_ID_LENGTH
+      || !Number.isSafeInteger(args.preview.order) || args.preview.order < 0 || args.preview.order > 1000
+      || !Number.isSafeInteger(args.preview.sequence) || args.preview.sequence < 0
+      || !Number.isSafeInteger(args.preview.textOffset) || args.preview.textOffset < 0 || args.preview.textOffset > MAX_PUBLIC_STREAM_VISIBLE_CHARS
+      || (args.preview.data && (args.preview.data.summary.length > 1000 || (args.preview.data.title?.length ?? 0) > 120
+        || publicStreamByteLength(args.preview.data.specJson) > 65_536)))) throw new Error('Invalid public stream preview.')
+    if (args.preview?.data) validatePublicStreamPreviewSpec(args.preview.data)
     const run = await findRun(ctx, args.runId)
     if (!run || run.actorUserId !== args.actorUserId || run.rootRunId !== run.runId || run.parentRunId) {
       throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
@@ -1871,7 +1898,7 @@ export const appendPublicStream = mutation({
         runId: run.runId, workflowRunId: args.workflowRunId,
         executionGeneration: args.executionGeneration, receiptId: args.receiptId, invocation,
         conversationId, assistantMessageId, nextSequence: 0, lastSequence: -1, lastText: '',
-        nextSegmentIndex: 0, visibleCharacters: 0, truncated: false, active: true, updatedAt: Date.now(),
+        revision: 0, nextSegmentIndex: 0, visibleCharacters: 0, truncated: false, active: true, updatedAt: Date.now(),
       })
       active = await ctx.db.get(streamId)
       if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
@@ -1885,6 +1912,37 @@ export const appendPublicStream = mutation({
 
     if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
     const current = active
+    let revision = current.revision ?? current.nextSequence
+    let previewDuplicate = false
+    if (args.preview) {
+      if (!args.text && args.sequence > current.nextSequence) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+      let previews: Array<{ toolCallId: string; order: number; sequence: number; textOffset: number; data?: unknown }> = []
+      try { previews = current.previewJson ? JSON.parse(current.previewJson) as typeof previews : [] } catch { throw new Error('HARNESS_PUBLIC_STREAM_PREVIEW_INVALID') }
+      const previous = previews.find(item => item.toolCallId === args.preview!.toolCallId)
+      if (previous && args.preview.sequence < previous.sequence) throw new Error('HARNESS_PUBLIC_STREAM_PREVIEW_STALE')
+      if (previous && args.preview.sequence === previous.sequence) {
+        if (args.preview.order !== previous.order || args.preview.textOffset !== previous.textOffset
+          || JSON.stringify(args.preview.data) !== JSON.stringify(previous.data)) {
+          throw new Error('HARNESS_PUBLIC_STREAM_PREVIEW_CONFLICT')
+        }
+        previewDuplicate = true
+      } else {
+        if (previous && (previous.order !== args.preview.order || previous.textOffset !== args.preview.textOffset)) {
+          throw new Error('HARNESS_PUBLIC_STREAM_PREVIEW_CONFLICT')
+        }
+        if (!previous && previews.length >= 4) throw new Error('HARNESS_PUBLIC_STREAM_PREVIEW_LIMIT')
+        previews = previous
+          ? previews.map(item => item.toolCallId === args.preview!.toolCallId ? args.preview! : item)
+          : [...previews, args.preview]
+      }
+      const previewJson = previews.length ? JSON.stringify(previews) : undefined
+      if (previewJson && publicStreamByteLength(previewJson) > 128 * 1024) throw new Error('HARNESS_PUBLIC_STREAM_PREVIEW_LIMIT')
+      if (!previewDuplicate) {
+        revision++
+        await ctx.db.patch(current._id, { previewJson, revision, updatedAt: Date.now() })
+      }
+    }
+    if (!args.text) return { accepted: true, duplicate: previewDuplicate, truncated: current.truncated }
     if (args.sequence === current.lastSequence) {
       if (current.lastText !== args.text) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
       return { accepted: true, duplicate: true, truncated: current.truncated }
@@ -1962,6 +2020,7 @@ export const appendPublicStream = mutation({
     }
     await ctx.db.patch(current._id, {
       lastSequence: args.sequence, lastText: args.text, nextSequence: args.sequence + 1,
+      revision: revision + 1,
       nextSegmentIndex: segmentIndex,
       visibleCharacters: current.visibleCharacters + visible.length,
       truncated: current.truncated || truncated,

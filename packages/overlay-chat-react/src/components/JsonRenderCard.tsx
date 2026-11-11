@@ -38,8 +38,32 @@ export function formatJsonRenderSubmission(state: Record<string, unknown>, label
   return [label?.trim() || 'Form submitted', ...lines].join('\n')
 }
 
+export function seedMissingGeneratedUiState(
+  seed: Record<string, unknown>,
+  get: (path: string) => unknown,
+  set: (path: string, value: unknown) => void,
+): void {
+  const visit = (value: unknown, path: string) => {
+    if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0) {
+      for (const [key, child] of Object.entries(value)) visit(child, `${path}/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`)
+    } else if (get(path) === undefined) set(path, value)
+  }
+  for (const [key, value] of Object.entries(seed)) visit(value, `/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`)
+}
+
 function Fallback({ summary }: { summary: string }) {
   return <div className="json-render-part"><p>{summary}</p><p className="gen-fallback">Could not display this view</p></div>
+}
+
+function FinalStateSeed({ seed, streaming }: { seed?: Record<string, unknown>; streaming: boolean }) {
+  const { get, set } = useStateStore()
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (streaming || seeded.current || !seed) return
+    seeded.current = true
+    seedMissingGeneratedUiState(seed, get, set)
+  }, [get, seed, set, streaming])
+  return null
 }
 
 export class JsonRenderBoundary extends Component<{ summary: string; children: ReactNode }, { failed: boolean }> {
@@ -55,10 +79,10 @@ function CardActions({ partId, actions, readOnly, children }: { partId: string; 
   useLayoutEffect(() => { latest.current = { partId, actions, readOnly } }, [partId, actions, readOnly])
   const handlers = useMemo(() => ({
     copy_text: async (params: Record<string, unknown>) => {
-      if (typeof params.text === 'string') await navigator.clipboard?.writeText(params.text)
+      if (!latest.current.readOnly && typeof params.text === 'string') await navigator.clipboard?.writeText(params.text)
     },
     open_link: (params: Record<string, unknown>) => {
-      if (typeof params.url !== 'string' || !params.url.startsWith('https://')) return
+      if (latest.current.readOnly || typeof params.url !== 'string' || !params.url.startsWith('https://')) return
       const url = new URL(params.url)
       if (url.protocol === 'https:' && !url.username && !url.password) window.open(url.href, '_blank', 'noopener,noreferrer')
     },
@@ -134,11 +158,13 @@ function JsonRenderCardView({ partId, data, readOnly = false, actions, onDataCha
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Different transcript parts need independent state seeds.
   }, [partId, data.stateJson])
   if (data.catalogVersion !== GENERATIVE_UI_CATALOG_VERSION || !parsed?.ok || state === null) return <Fallback summary={data.summary} />
-  const locked = readOnly || submitted || data.submittedAt !== undefined
-  return <JsonRenderBoundary key={`${partId}:${data.specJson}`} summary={data.summary}>
+  const locked = readOnly || data.streaming === true || submitted || data.submittedAt !== undefined
+  return <JsonRenderBoundary key={partId} summary={data.summary}>
     <div className="json-render-part">
       <JsonRenderReadOnly.Provider value={locked}>
-        <StateProvider key={`${partId}:${data.specJson}`} initialState={state ?? parsed.spec.state ?? {}} onStateChange={(changes) => boundActions.onStateChange?.(changes, partId)}>
+        {data.streaming ? <p className="gen-building-view" role="status">Building view</p> : null}
+        <StateProvider key={partId} initialState={state ?? parsed.spec.state ?? {}} onStateChange={(changes) => boundActions.onStateChange?.(changes, partId)}>
+          <FinalStateSeed seed={!data.stateJson ? parsed.spec.state : undefined} streaming={data.streaming === true} />
           <StatePersistence onChange={(snapshot) => {
             if (locked || !onDataChange) return
             pending.current = { ...data, stateJson: JSON.stringify(snapshot) }
@@ -161,7 +187,8 @@ export const JsonRenderCard = memo(JsonRenderCardView, (previous, next) =>
   previous.partId === next.partId && previous.readOnly === next.readOnly && previous.actions === next.actions && previous.onDataChange === next.onDataChange
   && previous.data.catalogVersion === next.data.catalogVersion && previous.data.specJson === next.data.specJson
   && previous.data.stateJson === next.data.stateJson && previous.data.submittedAt === next.data.submittedAt
-  && previous.data.summary === next.data.summary && previous.data.title === next.data.title)
+  && previous.data.summary === next.data.summary && previous.data.title === next.data.title
+  && previous.data.streaming === next.data.streaming)
 
 export default JsonRenderCard
 

@@ -14,8 +14,11 @@ import {
 import { CodeBlock, CodeBlockHeader, CodeBlockTitle, CodeBlockContent, CodeBlockCopyButton } from '@overlay/ui/ai'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, XAxis, YAxis } from 'recharts'
 import { ExternalLink, TriangleAlert } from 'lucide-react'
+import { ComparisonComponent, DiagramComponent, TimelineComponent, VectorComponent } from './expressive-json-render'
+import { JsonRenderReadOnly } from './json-render-registry-context'
 
-export const JsonRenderReadOnly = createContext(false)
+export { JsonRenderReadOnly } from './json-render-registry-context'
+
 export const JsonRenderFailure = createContext<(() => void) | null>(null)
 
 class RegistryBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -98,12 +101,16 @@ const components: Components<typeof generativeUiCatalog> = {
   Metric: ({ props: p }) => <Card className="gen-metric"><CardContent><p className="gen-muted">{p.label}</p><div className="metric-value">{plain(p.value)}{p.delta && <span className="metric-delta">{p.delta}</span>}</div></CardContent></Card>,
   Progress: ({ props: p }) => <div className="gen-stack"><div className="gen-split"><span>{p.label}</span><span className="gen-muted">{p.value}%</span></div><Progress value={p.value} aria-label={p.label ?? 'Progress'} /></div>,
   Avatar: ({ props: p }) => <div className="gen-owner"><Avatar><AvatarFallback>{p.initials}</AvatarFallback></Avatar><div>{p.name}{p.caption && <p className="gen-muted">{p.caption}</p>}</div></div>,
-  Link: ({ props: p }) => <a className="gen-link" href={p.url} target="_blank" rel="noopener noreferrer">{p.label}<ExternalLink size={13} /></a>,
-  CodeBlock: ({ props: p }) => <CodeBlock size="sm"><CodeBlockHeader><CodeBlockTitle>{p.language}</CodeBlockTitle><CodeBlockCopyButton value={p.code} /></CodeBlockHeader><CodeBlockContent>{p.code}</CodeBlockContent></CodeBlock>,
+  Link: ({ props: p }) => { const readOnly = useContext(JsonRenderReadOnly); return <a className="gen-link" href={readOnly ? undefined : p.url} aria-disabled={readOnly} tabIndex={readOnly ? -1 : undefined} onClick={event => { if (readOnly) event.preventDefault() }} target="_blank" rel="noopener noreferrer">{p.label}<ExternalLink size={13} /></a> },
+  CodeBlock: ({ props: p }) => { const readOnly = useContext(JsonRenderReadOnly); return <CodeBlock size="sm"><CodeBlockHeader><CodeBlockTitle>{p.language}</CodeBlockTitle>{!readOnly ? <CodeBlockCopyButton value={p.code} /> : null}</CodeBlockHeader><CodeBlockContent>{p.code}</CodeBlockContent></CodeBlock> },
   // eslint-disable-next-line @next/next/no-img-element
   Image: ({ props: p }) => <figure><img src={p.src} alt={p.alt} className="gen-image" loading="lazy" />{p.caption && <figcaption className="gen-muted">{p.caption}</figcaption>}</figure>,
   Table: ({ props: p }) => <Table>{p.caption && <TableCaption>{p.caption}</TableCaption>}<TableHeader><TableRow>{p.columns.map((column, index) => <TableHead key={index}>{column}</TableHead>)}</TableRow></TableHeader><TableBody>{p.rows.map((row, index) => <TableRow key={index}>{row.map((cell, i) => <TableCell key={i}>{plain(cell)}{i === 0 && cell === p.current && <Badge className="current-badge">Current</Badge>}</TableCell>)}</TableRow>)}</TableBody></Table>,
   Chart: SpecChart,
+  Timeline: TimelineComponent,
+  Comparison: ComparisonComponent,
+  Diagram: DiagramComponent,
+  Vector: VectorComponent,
   Tabs: ({ props: p, children }) => <Tabs defaultValue={p.labels[0]}><TabsTriggerList>{p.labels.map((label, index) => <TabsTrigger key={index} value={label}>{label}</TabsTrigger>)}</TabsTriggerList>{Children.toArray(children).map((child, index) => <TabsContent key={index} value={p.labels[index]} className="gen-tab-content">{child}</TabsContent>)}</Tabs>,
   Accordion: ({ props: p }) => <Accordion type="single" collapsible><AccordionItem value="details"><AccordionTrigger>{p.title}</AccordionTrigger><AccordionContent>{p.text}</AccordionContent></AccordionItem></Accordion>,
   Input: (context) => <BoundField type="Input" {...context} />,

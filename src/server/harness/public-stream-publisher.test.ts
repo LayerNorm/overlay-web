@@ -267,3 +267,171 @@ test('a source error drains safe partial text and clears pending timers', async 
   expect(writes.join('')).toContain('safe tail')
   expect(vi.getTimerCount()).toBe(0)
 })
+
+test('publisher persists sanitized render_ui previews from streamed tool-argument deltas', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  mocks.append.mockImplementation(async (input: Record<string, unknown>) => {
+    calls.push(input)
+    return { accepted: true, duplicate: false, truncated: false }
+  })
+  const reference = {
+    modelId: 'fixture/model', credentialOwnerId: 'user', purpose: 'response', publicStreamVersion: 1,
+    personal: { receiptId: 'model:0', access: {
+      actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', executionGeneration: 2,
+      conversationId: 'conversation', agentRunId: 'delivery', workspaceId: 'workspace',
+    } },
+  } as unknown as HarnessModelReference
+  const specStream = [
+    { op: 'add', path: '/root', value: 'view' },
+    { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+    { op: 'add', path: '/elements/timeline', value: { type: 'Timeline', props: { title: 'Events', events: [{ id: 'start', at: '09:00', title: 'Started' }] } } },
+    { op: 'replace', path: '/elements/view/children', value: ['timeline'] },
+  ].map(line => JSON.stringify(line)).join('\n') + '\n'
+  const args = JSON.stringify({ summary: 'Building view', specStream })
+  const source = new ReadableStream<LanguageModelV4StreamPart>({
+    start(controller) {
+      controller.enqueue({ type: 'text-delta', id: 'text', delta: 'Before' } as LanguageModelV4StreamPart)
+      controller.enqueue({ type: 'tool-input-start', id: 'call-1', toolName: 'render_ui' } as LanguageModelV4StreamPart)
+      controller.enqueue({ type: 'tool-input-delta', id: 'call-1', delta: args } as LanguageModelV4StreamPart)
+      controller.enqueue({ type: 'tool-input-end', id: 'call-1' } as LanguageModelV4StreamPart)
+      controller.enqueue({ type: 'text-delta', id: 'text', delta: ' after' } as LanguageModelV4StreamPart)
+      controller.enqueue({ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: {} } as LanguageModelV4StreamPart)
+      controller.close()
+    },
+  })
+  const reader = publishUnifiedHarnessStream(reference, source, new Set(['render_ui'])).getReader()
+  while (!(await reader.read()).done) {}
+  const preview = calls.find(call => call.preview) as { preview?: { toolCallId: string; order: number; data?: { kind: string; streaming: boolean; specJson: string } } } | undefined
+  expect(preview?.preview).toMatchObject({ toolCallId: 'call-1', order: 0, data: { kind: 'json_render', streaming: true } })
+  expect(preview?.preview?.data?.specJson).toContain('Timeline')
+  expect(calls.filter(call => call.text).map(call => call.text).join('')).toContain('Before')
+  expect(calls.some(call => typeof call.text === 'string' && call.text.includes('specStream'))).toBe(false)
+})
+
+test('typed previews publish on an open provider stream for personal and native references', async () => {
+  vi.useFakeTimers()
+  for (const authority of ['personal', 'native'] as const) {
+    const calls: Array<Record<string, unknown>> = []
+    mocks.append.mockImplementation(async (input: Record<string, unknown>) => {
+      calls.push(input)
+      return { accepted: true, duplicate: false, truncated: false }
+    })
+    const access = {
+      actorUserId: 'user', runId: `run:${authority}`, workflowRunId: 'workflow', executionGeneration: 2,
+      conversationId: 'conversation', agentRunId: 'delivery', workspaceId: 'workspace',
+    }
+    const reference = (authority === 'personal'
+      ? { personal: { access, receiptId: 'model:0' } }
+      : { native: { access: { ...access, principalId: 'principal', agentId: 'agent', agentPrincipalId: 'agent-principal',
+        userMessageId: 'user-message', assistantMessageId: 'assistant-message', turnId: 'turn' }, receiptId: 'model:0',
+        memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request', streamToDelivery: true } })
+    const modelReference = {
+      modelId: 'fixture/model', credentialOwnerId: 'user', purpose: 'response', publicStreamVersion: 1,
+      ...reference,
+    } as unknown as HarnessModelReference
+    let sourceController!: ReadableStreamDefaultController<LanguageModelV4StreamPart>
+    const source = new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { sourceController = controller } })
+    const reader = publishUnifiedHarnessStream(modelReference, source, new Set(['render_ui'])).getReader()
+    const receive = async () => {
+      const result = await reader.read()
+      expect(result.done).toBe(false)
+      return result.value!
+    }
+    sourceController.enqueue({ type: 'text-delta', id: 'text', delta: 'Before. ' } as LanguageModelV4StreamPart)
+    await receive()
+    sourceController.enqueue({ type: 'tool-input-start', id: 'call-1', toolName: 'render_ui' } as LanguageModelV4StreamPart)
+    await receive()
+
+    const firstPatches = [
+      { op: 'add', path: '/root', value: 'view' },
+      { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+      { op: 'add', path: '/elements/timeline', value: { type: 'Timeline', props: {
+        title: 'Events', events: [{ id: 'start', at: '09:00', title: 'Started' }],
+      } } },
+      { op: 'replace', path: '/elements/view/children', value: ['timeline'] },
+    ].map(line => JSON.stringify(line)).join('\n') + '\n'
+    const firstPrefix = JSON.stringify({ summary: 'Building view', specStream: firstPatches }).slice(0, -2)
+    expect(new TextEncoder().encode(firstPrefix).byteLength).toBeLessThan(4_096)
+    sourceController.enqueue({ type: 'tool-input-delta', id: 'call-1', delta: firstPrefix } as LanguageModelV4StreamPart)
+    await receive()
+    await vi.advanceTimersByTimeAsync(300)
+    const firstPreview = calls.map(call => call.preview as { toolCallId: string; order: number; sequence: number; textOffset: number; data?: { specJson?: string } } | undefined)
+      .find(Boolean)
+    expect(firstPreview).toMatchObject({ toolCallId: 'call-1', order: 0, sequence: 0, textOffset: 8 })
+    expect(firstPreview?.data?.specJson).toContain('timeline')
+
+    const nextPatch = JSON.stringify({ op: 'add', path: '/elements/timeline-next', value: { type: 'Timeline', props: {
+      title: 'Next', events: [{ id: 'next', at: '10:00', title: 'Next event' }],
+    } } })
+    const childrenPatch = JSON.stringify({ op: 'replace', path: '/elements/view/children', value: ['timeline', 'timeline-next'] })
+    const secondDelta = `${JSON.stringify(`${nextPatch}\n${childrenPatch}\n`).slice(1, -1)}"}`
+    sourceController.enqueue({ type: 'tool-input-delta', id: 'call-1', delta: secondDelta } as LanguageModelV4StreamPart)
+    await receive()
+    await vi.advanceTimersByTimeAsync(300)
+    const previews = calls.map(call => call.preview as { toolCallId: string; order: number; sequence: number; textOffset: number; data?: { specJson?: string } } | undefined)
+      .filter((preview): preview is NonNullable<typeof preview> => Boolean(preview))
+    expect(previews.length).toBeGreaterThanOrEqual(2)
+    expect(previews.map(({ toolCallId, order, sequence, textOffset }) => ({ toolCallId, order, sequence, textOffset })))
+      .toEqual([{ toolCallId: 'call-1', order: 0, sequence: 0, textOffset: 8 }, { toolCallId: 'call-1', order: 0, sequence: 1, textOffset: 8 }])
+    expect(previews.at(-1)?.data?.specJson).toContain('timeline-next')
+
+    sourceController.enqueue({ type: 'tool-input-end', id: 'call-1' } as LanguageModelV4StreamPart)
+    await receive()
+    sourceController.enqueue({ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: {} } as LanguageModelV4StreamPart)
+    await receive()
+    sourceController.close()
+    expect((await reader.read()).done).toBe(true)
+    expect(calls.filter(call => typeof call.text === 'string').map(call => call.text).join('')).toBe('Before. ')
+  }
+})
+
+test('invalid and oversized render_ui arguments clear an already published preview', async () => {
+  vi.useFakeTimers()
+  for (const invalidInput of ['invalid', 'overflow'] as const) {
+    const calls: Array<Record<string, unknown>> = []
+    mocks.append.mockImplementation(async (input: Record<string, unknown>) => {
+      calls.push(input)
+      return { accepted: true, duplicate: false, truncated: false }
+    })
+    const reference = {
+      modelId: 'fixture/model', credentialOwnerId: 'user', purpose: 'response', publicStreamVersion: 1,
+      personal: { receiptId: 'model:0', access: {
+        actorUserId: 'user', runId: `run:${invalidInput}`, workflowRunId: 'workflow', executionGeneration: 1,
+        conversationId: 'conversation', agentRunId: 'delivery', workspaceId: 'workspace',
+      } },
+    } as unknown as HarnessModelReference
+    let sourceController!: ReadableStreamDefaultController<LanguageModelV4StreamPart>
+    const source = new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { sourceController = controller } })
+    const reader = publishUnifiedHarnessStream(reference, source, new Set(['render_ui'])).getReader()
+    const receive = async () => {
+      const result = await reader.read()
+      expect(result.done).toBe(false)
+    }
+    sourceController.enqueue({ type: 'tool-input-start', id: 'call-1', toolName: 'render_ui' } as LanguageModelV4StreamPart)
+    await receive()
+    const patches = [
+      { op: 'add', path: '/root', value: 'view' },
+      { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+      { op: 'add', path: '/elements/timeline', value: { type: 'Timeline', props: {
+        title: 'Events', events: [{ id: 'start', at: '09:00', title: 'Started' }],
+      } } },
+      { op: 'replace', path: '/elements/view/children', value: ['timeline'] },
+    ].map(line => JSON.stringify(line)).join('\n') + '\n'
+    const prefix = JSON.stringify({ summary: 'Building view', specStream: patches }).slice(0, -2)
+    sourceController.enqueue({ type: 'tool-input-delta', id: 'call-1', delta: prefix } as LanguageModelV4StreamPart)
+    await receive()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(calls.some(call => Boolean(call.preview && (call.preview as { data?: unknown }).data))).toBe(true)
+
+    const suffix = invalidInput === 'invalid'
+      ? `${JSON.stringify(`${JSON.stringify({ op: 'remove', path: '/root' })}\n`).slice(1, -1)}"}`
+      : 'x'.repeat(300 * 1024)
+    sourceController.enqueue({ type: 'tool-input-delta', id: 'call-1', delta: suffix } as LanguageModelV4StreamPart)
+    await receive()
+    await vi.advanceTimersByTimeAsync(300)
+    const updates = calls.map(call => call.preview as { sequence: number; data?: unknown } | undefined).filter(Boolean)
+    expect(updates.at(-1)).toMatchObject({ sequence: 1 })
+    expect(updates.at(-1)).not.toHaveProperty('data')
+    await reader.cancel()
+  }
+})

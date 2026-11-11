@@ -1,5 +1,10 @@
 import { defineCatalog, defineSchema, type Spec } from '@json-render/core'
 import { z } from 'zod'
+import { expressiveComponents, validateExpressiveComponent } from './generative-ui-expressive'
+
+export { compileJsonRenderSpecStream, createJsonRenderSpecStreamCompiler } from './generative-ui-stream'
+export type { JsonRenderSpecStreamCompiler } from './generative-ui-stream'
+export { GENERATIVE_UI_MAX_SPEC_STREAM_BYTES, GENERATIVE_UI_MAX_SPEC_STREAM_PATCHES } from './generative-ui-stream'
 
 export const GENERATIVE_UI_CATALOG_VERSION = 1 as const
 export const GENERATIVE_UI_MAX_SPEC_BYTES = 64 * 1024
@@ -28,7 +33,6 @@ function isHttpsUrl(value: string): boolean {
     return false
   }
 }
-
 const httpsUrl = text.refine(isHttpsUrl, 'URL must use HTTPS')
 function isWorkspaceFileUrl(value: string): boolean {
   const match = /^\/api\/v1\/files\/((?:[A-Za-z0-9._~!()*'-]|%[\da-fA-F]{2})+)\/content$/.exec(value)
@@ -56,8 +60,8 @@ const action = z.discriminatedUnion('action', [
   z.object({ action: z.literal('submit'), params: optional(actionParams.submit) }).strict(),
 ])
 
-function component<T extends z.ZodRawShape>(props: T, description: string, children = false) {
-  return { props: z.object(props), description, slots: children ? ['default'] : [] }
+function component<T extends z.ZodRawShape>(props: T, description: string, children = false, strict = false) {
+  return { props: strict ? z.object(props).strict() : z.object(props), description, slots: children ? ['default'] : [] }
 }
 
 const field = { label: text, value: optional(boundText), placeholder: optional(text) }
@@ -84,6 +88,7 @@ const components = {
     labels: z.array(text).min(1), values: z.array(z.number().finite()).min(1),
     series: optional(z.array(z.object({ label: text, values: z.array(z.number().finite()) }).strict())),
   }, 'Chart from provided labels and values only; defaults to bar. No fetching.'),
+  ...expressiveComponents,
   Tabs: component({ labels: z.array(text).min(1) }, 'One child per tab label.', true),
   Accordion: component({ title: text, text }, 'Expandable text section.'),
   Input: component(field, 'Text input bound with $bindState.'),
@@ -145,12 +150,26 @@ export function buildGenerativeUiCatalogPrompt(): string {
       'Use one spec per reply unless asked otherwise.',
       'To show a view, call render_ui. Prose describing a form does not create fields or a submit button. Only say a view was displayed after render_ui returns success:true. If it fails, fix the listed issues and call render_ui again, or plainly say you could not display it. Never claim success after a failed or omitted call.',
       'No emojis. No em or en dashes in generated copy.',
+      'Choose the visual form that fits the answer. Do not default to Card, Metric, or Chart for every response. Use Timeline for ordered events, Comparison for shared criteria and trade-offs, Diagram for positioned nodes and relationships, and Vector for bounded custom illustrations. Prefer open layouts and separators over nested cards.',
       'Prefer Table over markdown tables for more than four columns.',
       'Never put secrets or tokens in a spec.',
       `Limits: ${GENERATIVE_UI_MAX_SPEC_BYTES} serialized UTF-8 bytes, ${GENERATIVE_UI_MAX_ELEMENTS} elements, depth ${GENERATIVE_UI_MAX_DEPTH}, strings ${GENERATIVE_UI_MAX_STRING_LENGTH} characters.`,
       'Use only copy_text, open_link, send_message, submit. No fetching, internal navigation, connector, billing, or approval actions.',
       'Use {$state:"/path"} to read state and {$bindState:"/path"} for form bindings. URLs must be literal HTTPS; only Image also accepts /api/v1/files/{id}/content.',
       'Put initial values in spec.state. Bind value for Input, Textarea, Select and RadioGroup; bind checked for Checkbox and Switch. Select and RadioGroup options are strings. Button actions belong in on.press, not props. submit automatically reads the bound state; its only optional param is label. Leaf children arrays may be omitted. Use the documented props; unsupported component props are ignored.',
+      'Timeline events have stable ids, at, title, optional detail and tone; add a conclusion or impact only when useful. Comparison options have stable ids; every criterion supplies one text value per option; priorities select a recommendation. Diagram requires title, description, explicit x/y/width/height for each node, unique mobileOrder values, and edges that reference node ids. Vector requires title, description and a text equivalent; its shapes are typed rect, circle, ellipse, line, polyline, path or text primitives with numeric viewBox coordinates and semantic paint values only. Never provide SVG/XML, CSS, URLs, attributes, or event handlers.',
+      `Timeline example: ${JSON.stringify({ root: 'timeline', elements: { timeline: { type: 'Timeline', props: { title: 'Delivery incident', events: [{ id: 'started', at: '09:41', title: 'Queue delay began', tone: 'warning' }, { id: 'recovered', at: '09:47', title: 'Delivery recovered', tone: 'success' }], impact: 'Six minutes of delayed delivery', conclusion: 'Queue depth returned to normal.' } } } })}`,
+      `Comparison example: ${JSON.stringify({
+        root: 'comparison',
+        elements: { comparison: { type: 'Comparison', props: {
+          title: 'Delivery choice', options: [{ id: 'queue', label: 'Reliable delivery' }, { id: 'direct', label: 'Lowest latency' }],
+          criteria: [{ id: 'speed', label: 'Speed', values: [{ optionId: 'queue', value: 'Moderate' }, { optionId: 'direct', value: 'Fast' }] }],
+          priorities: [{ id: 'reliability', label: 'Reliability', recommendedOptionId: 'queue', rationale: 'Retries protect delivery.' }, { id: 'latency', label: 'Lowest latency', recommendedOptionId: 'direct', rationale: 'Direct delivery removes queue delay.' }],
+        } } },
+      })}`,
+      `Diagram example: ${JSON.stringify({ root: 'diagram', elements: { diagram: { type: 'Diagram', props: { title: 'Request to answer', description: 'A request passes access checks, an agent uses tools, and an answer returns.', width: 900, height: 420, nodes: [{ id: 'source', label: 'Source', x: 24, y: 150, width: 150, height: 84, mobileOrder: 0 }, { id: 'agent', label: 'Agent', x: 340, y: 150, width: 180, height: 84, tone: 'accent', mobileOrder: 1 }, { id: 'answer', label: 'Answer', x: 700, y: 150, width: 170, height: 84, tone: 'success', mobileOrder: 2 }], edges: [{ id: 'request', from: 'source', to: 'agent', label: 'request' }, { id: 'response', from: 'agent', to: 'answer', label: 'response' }] } } } })}`,
+      `Vector example: ${JSON.stringify({ root: 'illustration', elements: { illustration: { type: 'Vector', props: { title: 'Bounded retry path', description: 'A request retries twice before a final dead-letter exit.', width: 360, height: 180, shapes: [{ id: 'path', kind: 'path', d: 'M 24 90 H 300', stroke: 'border', strokeWidth: 3 }, { id: 'attempt', kind: 'circle', cx: 180, cy: 90, radius: 28, fill: 'surface', stroke: 'accent', strokeWidth: 2 }, { id: 'label', kind: 'text', x: 180, y: 95, text: 'Retry', align: 'middle', tone: 'neutral' }] } } } })}`,
+      `For progressive output prefer render_ui({summary, specStream}) for larger views. specStream is a JSONL string inside the tool argument, never assistant prose. Seed first with {"op":"add","path":"/root","value":"view"} and {"op":"add","path":"/elements/view","value":{"type":"Stack","props":{"gap":16},"children":[]}}, then add stable named elements under /elements/<id> and replace the root children array as needed. Use only add and replace on /root, /elements, or /state paths. A final newline is optional.`,
       `Form example: ${JSON.stringify({
         root: 'card',
         state: { form: { title: '', details: '', severity: 'Medium', reproducible: true, frequency: 'Sometimes' } },
@@ -217,15 +236,22 @@ function normalizeElementChildren(id: string, element: CatalogElement, definitio
 }
 
 function validateElementCollections(id: string, element: CatalogElement, add: AddSpecIssue) {
-  if (element.type === 'Table') {
-    const p = element.props as z.infer<typeof components.Table.props>
-    if (p.rows.some((row) => row.length !== p.columns.length)) add(`elements/${id}/props/rows`, 'Rows must match column count')
+  if (validateExpressiveComponent(id, element.type, element.props, add)) return
+  switch (element.type) {
+    case "Table": {
+      const p = element.props as z.infer<typeof components.Table.props>
+      if (p.rows.some(row => row.length !== p.columns.length)) add(`elements/${id}/props/rows`, "Rows must match column count")
+      break
+    }
+    case "Chart": {
+      const p = element.props as z.infer<typeof components.Chart.props>
+      if (p.values.length !== p.labels.length || p.series?.some(series => series.values.length !== p.labels.length)) add(`elements/${id}/props/values`, "Chart values must match labels")
+      break
+    }
+    case "Tabs":
+      if ((element.props.labels as string[]).length !== (element.children?.length ?? 0)) add(`elements/${id}/children`, "Tabs require one child per label")
+      break
   }
-  if (element.type === 'Chart') {
-    const p = element.props as z.infer<typeof components.Chart.props>
-    if (p.values.length !== p.labels.length || p.series?.some((series) => series.values.length !== p.labels.length)) add(`elements/${id}/props/values`, 'Chart values must match labels')
-  }
-  if (element.type === 'Tabs' && (element.props.labels as string[]).length !== (element.children?.length ?? 0)) add(`elements/${id}/children`, 'Tabs require one child per label')
 }
 
 function validateElement(id: string, element: CatalogElement, spec: CatalogSpec, add: AddSpecIssue) {

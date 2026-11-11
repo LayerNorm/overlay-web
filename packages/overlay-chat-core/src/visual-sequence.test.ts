@@ -18,6 +18,43 @@ test('failed and denied generated UI calls remain visible in persisted and SDK f
   }
 })
 
+test('normalizes keyed SDK previews, deduplicates tool inputs, and lets terminal results win', () => {
+  const stream = [
+    { op: 'add', path: '/root', value: 'root' },
+    { op: 'add', path: '/elements/root', value: { type: 'Stack', props: {}, children: [] } },
+  ].map(line => JSON.stringify(line)).join('\n') + '\n'
+  const input = { type: 'tool-invocation', toolInvocation: {
+    toolCallId: 'render-1', toolName: 'render_ui', state: 'input-available',
+    toolInput: { summary: 'Building', specStream: stream },
+  } }
+  const sdkPreview = { type: 'data-overlay.generated_ui', id: 'render-1', data: {
+    version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Building', streaming: true,
+    specJson: JSON.stringify({ root: 'root', elements: { root: { type: 'Text', props: { text: 'Preview' } } } }),
+  } }
+  const duplicate = buildAssistantVisualSequence([input, sdkPreview])
+  assert.deepEqual(duplicate.map(block => block.kind), ['generated-ui'])
+  assert.deepEqual(buildAssistantVisualSequence([{ type: 'data-overlay.generated_ui', id: 'render-1', data: { kind: 'preview-cleared' } }]), [])
+  if (duplicate[0]?.kind === 'generated-ui') {
+    assert.equal(duplicate[0].part.type, 'data')
+    assert.equal(duplicate[0].part.transient, true)
+  }
+
+  const finalOutput = { type: 'tool-invocation', toolInvocation: {
+    toolCallId: 'render-1', toolName: 'render_ui', state: 'output-available',
+    toolOutput: { success: true, generatedUi: { version: 1, kind: 'json_render', catalogVersion: 1,
+      summary: 'Final', specJson: sdkPreview.data.specJson } },
+  } }
+  const success = buildAssistantVisualSequence([input, sdkPreview, finalOutput])
+  assert.deepEqual(success.map(block => block.kind), ['generated-ui'])
+  if (success[0]?.kind === 'generated-ui') assert.equal(success[0].part.data.kind === 'json_render' && success[0].part.data.summary, 'Final')
+
+  const failed = buildAssistantVisualSequence([input, sdkPreview, {
+    type: 'tool-invocation', toolInvocation: { toolCallId: 'render-1', toolName: 'render_ui', state: 'output-error' },
+  }])
+  assert.deepEqual(failed.map(block => block.kind), ['tool'])
+  assert.deepEqual(buildAssistantVisualSequence([input, sdkPreview], { terminalState: 'cancelled' }), [])
+})
+
 test('terminal remote run status resolves stale remote action and terminal visuals', () => {
   const blocks = buildAssistantVisualSequence([
     { type: 'tool-invocation', toolInvocation: {

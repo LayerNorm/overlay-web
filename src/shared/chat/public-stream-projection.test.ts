@@ -145,3 +145,50 @@ test('live text goes ahead of the tools its call has started, after the settled 
   const first = projectActivePublicStreams([{ ...message, content: '', parts: [tool('a')] }], [{ ...stream, sequence: 0, text: 'First, search memory.' }])
   expect(order(first[0]?.parts)).toEqual(['First, search memory.', 'a'])
 })
+
+test('public stream preview is ordered by text offset, stable across updates, and yields to a settled tool', () => {
+  const message = { _id: 'assistant', status: 'generating', content: '', parts: [] as unknown[] }
+  const preview = {
+    toolCallId: 'render-1', order: 0, sequence: 0, textOffset: 6,
+    data: { version: 1 as const, kind: 'json_render' as const, catalogVersion: 1, summary: 'Building view', specJson: '{"root":"v"}', streaming: true as const },
+  }
+  const stream = {
+    assistantMessageId: 'assistant', runId: 'run', executionGeneration: 1, receiptId: 'model:1', invocation: 1,
+    sequence: 0, text: 'Before after', previews: [preview],
+  }
+  const first = projectActivePublicStreams([message], [stream])[0]!
+  expect(first.parts?.map(part => (part as { type?: string; id?: string; text?: string }).type === 'data'
+    ? `preview:${(part as { id: string }).id}` : (part as { text?: string }).text)).toEqual(['Before', 'preview:render-1', ' after'])
+  const next = projectActivePublicStreams([first], [{ ...stream, previews: [{ ...preview, sequence: 1 }] }])[0]!
+  expect(next.parts?.filter(part => (part as { source?: string }).source === 'public-stream-preview')).toHaveLength(1)
+  const failed = { ...next, parts: [...(next.parts ?? []), { type: 'tool-invocation', toolInvocation: { toolCallId: 'render-1', toolName: 'render_ui', state: 'output-error' } }] }
+  const withoutPreview = projectActivePublicStreams([failed], [stream])[0]!
+  expect(withoutPreview.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(false)
+})
+
+test('preview at offset zero restores canonical content on update, retirement, and empty streams', () => {
+  const message = { _id: 'assistant', status: 'generating', content: 'Settled', parts: [{ type: 'text', id: 'base', text: 'Settled' }] }
+  const preview = {
+    toolCallId: 'render-1', order: 0, sequence: 0, textOffset: 0,
+    data: { version: 1 as const, kind: 'json_render' as const, catalogVersion: 1, summary: 'Building view', specJson: '{"root":"v"}', streaming: true as const },
+  }
+  const stream = {
+    assistantMessageId: 'assistant', runId: 'run', executionGeneration: 1, receiptId: 'model:1', invocation: 1,
+    sequence: 0, text: 'Answer', previews: [preview],
+  }
+  const first = projectActivePublicStreams([message], [stream])[0]!
+  expect(first.content).toBe('Settled\n\nAnswer')
+  expect(first.parts?.some(part => (part as { type?: string }).type === 'data')).toBe(true)
+  const updated = projectActivePublicStreams([first], [{ ...stream, sequence: 1, text: 'Answer updated', previews: [] }])[0]!
+  expect(updated.content).toBe('Settled\n\nAnswer updated')
+  expect(updated.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(false)
+  const retired = projectActivePublicStreams([first], [])[0]!
+  expect(retired.content).toBe('Settled')
+  expect(retired.parts).toEqual(message.parts)
+
+  const empty = projectActivePublicStreams([{ ...message, content: '', parts: [] }], [{ ...stream, text: '' }])[0]!
+  expect(empty.content).toBe('')
+  expect(empty.parts?.some(part => (part as { source?: string }).source === 'public-stream-preview')).toBe(true)
+  const cleared = projectActivePublicStreams([empty], [{ ...stream, text: '', sequence: 1, previews: [] }])[0]!
+  expect(cleared.parts).toEqual([])
+})

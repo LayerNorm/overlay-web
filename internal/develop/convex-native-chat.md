@@ -204,6 +204,21 @@ or raw tool payloads. Convex active output is provisional and distinct from
 settled transcript checkpoints. Active rows are limited to one stream per root;
 each segment is at most 8 KiB UTF-8 and visible text is capped at 160,000
 UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
+An active stream may also carry up to four bounded, typed `render_ui` preview
+snapshots in `previewJson` (128 KiB total), keyed by tool-call identity, preview
+sequence, ordering position and text offset. Snapshots contain only validated
+`specJson`, title, summary and the read-only building state; provider deltas and
+raw tool arguments are not stored. Appends and reads use the same receipt,
+execution-generation, model-reservation, delivery-owner and replay fencing as
+text. Personal SSE and native room projections render these snapshots
+transiently; terminal tool results, checkpoints and cancellation retire them.
+Final successful tool output remains the only persistent authority, and
+external workflow/Slack delivery stays summary-only.
+The separate monotonic `revision` orders visible snapshots without changing
+text's `sequence` protocol: a preview-only snapshot may have text sequence `-1`,
+while accepted preview changes/clears and text writes advance the revision.
+Identical retries do not advance it, and retained preview tombstones reject
+stale updates after a clear until the invocation is retired.
 Settling a transcript step atomically writes its checkpoint identity
 `(runId, generation, receiptId, invocation)` and retires that invocation's
 active segments. Every enrolled chat kind must settle through this projection

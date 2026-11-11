@@ -51,7 +51,11 @@ type PublicStreamReadState = NonNullable<
 type PublicStreamTranscriptStep = PublicStreamReadState['transcriptSteps'][number]
 type PublicStreamSnapshot = NonNullable<PublicStreamReadState['snapshot']>
 type PublicStreamController = ReadableStreamDefaultController<UIMessageChunk>
-type PublicStreamCursor = { partId: string; offset: number }
+type PublicStreamCursor = { partId: string; basePartId: string; offset: number; segment: number; previews: Map<string, number>; settledPreviews: Set<string> }
+
+function clearStreamPreview(controller: PublicStreamController, toolCallId: string) {
+  controller.enqueue({ type: 'data-overlay.generated_ui', id: toolCallId, data: { kind: 'preview-cleared' } } as unknown as UIMessageChunk)
+}
 
 function emitUnavailableStream(controller: PublicStreamController): void {
   controller.enqueue({ type: 'error', errorText: 'The durable stream is unavailable.' })
@@ -76,6 +80,7 @@ function emitTranscriptPart(
   const tool = part.toolInvocation as Record<string, unknown>
   if (typeof tool.toolCallId !== 'string' || typeof tool.toolName !== 'string') return
   const toolCallId = tool.toolCallId
+  if (tool.state === 'output-available' || tool.state === 'output-error' || tool.state === 'output-denied') clearStreamPreview(controller, toolCallId)
   controller.enqueue({
     type: 'tool-input-available',
     toolCallId,
@@ -96,8 +101,9 @@ function emitTranscriptStep(
   controller: PublicStreamController,
   runId: string,
   step: PublicStreamTranscriptStep,
-  partId: string,
+  cursor: PublicStreamCursor,
 ): PublicStreamCursor {
+  const partId = cursor.partId
   if (partId) {
     controller.enqueue({ type: 'text-end', id: partId })
     controller.enqueue({ type: 'reset-step' })
@@ -106,7 +112,16 @@ function emitTranscriptStep(
   const parts = step.persistence.parts.some(part => part.type === 'text')
     ? step.persistence.parts
     : [...step.persistence.parts, { type: 'text', text: step.persistence.content }]
-  for (const [index, part] of parts.entries()) emitTranscriptPart(controller, runId, step, part, index)
+  for (const [index, part] of parts.entries()) {
+    emitTranscriptPart(controller, runId, step, part, index)
+    if (part.type === 'tool-invocation' && part.toolInvocation && typeof part.toolInvocation === 'object') {
+      const tool = part.toolInvocation as Record<string, unknown>
+      if (typeof tool.toolCallId === 'string' && ['output-available', 'output-error', 'output-denied'].includes(String(tool.state))) {
+        cursor.settledPreviews.add(tool.toolCallId)
+        cursor.previews.delete(tool.toolCallId)
+      }
+    }
+  }
   controller.enqueue({
     type: 'data-harness-transcript-step',
     id: `${runId}:${step.sequence}`,
@@ -117,10 +132,9 @@ function emitTranscriptStep(
       sequence: step.sequence,
       parts: step.persistence.parts,
     },
-    transient: true,
   } as unknown as UIMessageChunk)
   controller.enqueue({ type: 'finish-step' })
-  return { partId: '', offset: 0 }
+  return { ...cursor, partId: '', basePartId: '', offset: 0, segment: 0 }
 }
 
 function emitActiveSnapshot(
@@ -131,23 +145,50 @@ function emitActiveSnapshot(
   const nextPartId = transcriptPartIdentity(
     snapshot.runId, snapshot.receiptId, 0, snapshot.executionGeneration,
   )
-  let { partId, offset } = cursor
-  if (nextPartId !== partId) {
+  let { partId, basePartId, offset, segment } = cursor
+  if (nextPartId !== basePartId) {
     if (partId) {
       controller.enqueue({ type: 'text-end', id: partId })
       controller.enqueue({ type: 'finish-step' })
     }
+    basePartId = nextPartId
     partId = nextPartId
     offset = 0
+    segment = 0
     controller.enqueue({ type: 'start-step' })
     controller.enqueue({ type: 'text-start', id: partId })
   }
   const text = [snapshot.text, snapshot.truncatedMarker].filter(Boolean).join('\n\n')
+  const visiblePreviews = (snapshot.previews ?? []).filter(preview => preview.data !== undefined)
+    .sort((a, b) => a.textOffset - b.textOffset || a.order - b.order)
+  const currentPreviews = new Set(visiblePreviews.filter(preview => !cursor.settledPreviews.has(preview.toolCallId)).map(preview => preview.toolCallId))
+  for (const toolCallId of cursor.previews.keys()) if (!currentPreviews.has(toolCallId)) {
+    clearStreamPreview(controller, toolCallId)
+    cursor.previews.delete(toolCallId)
+  }
+  for (const preview of visiblePreviews) {
+    if (cursor.settledPreviews.has(preview.toolCallId)) continue
+    const isNewPreview = !cursor.previews.has(preview.toolCallId)
+    if (cursor.previews.get(preview.toolCallId) === preview.sequence) continue
+    const previewOffset = Math.min(text.length, Math.max(offset, preview.textOffset))
+    if (previewOffset > offset) {
+      controller.enqueue({ type: 'text-delta', id: partId, delta: text.slice(offset, previewOffset) })
+      offset = previewOffset
+    }
+    if (isNewPreview && partId) controller.enqueue({ type: 'text-end', id: partId })
+    controller.enqueue({ type: 'data-overlay.generated_ui', id: preview.toolCallId, data: preview.data! } as unknown as UIMessageChunk)
+    cursor.previews.set(preview.toolCallId, preview.sequence)
+    if (isNewPreview) {
+      segment++
+      partId = `${basePartId}:text:${segment}`
+      controller.enqueue({ type: 'text-start', id: partId })
+    }
+  }
   if (text.length > offset) {
     controller.enqueue({ type: 'text-delta', id: partId, delta: text.slice(offset) })
     offset = text.length
   }
-  return { partId, offset }
+  return { partId, basePartId, offset, segment, previews: cursor.previews, settledPreviews: cursor.settledPreviews }
 }
 
 function emitTerminalStream(
@@ -155,8 +196,10 @@ function emitTerminalStream(
   runId: string,
   state: PublicStreamReadState,
   sourceCitations: SourceCitationMap,
-  partId: string,
+  cursor: PublicStreamCursor,
 ): void {
+  for (const toolCallId of cursor.previews.keys()) clearStreamPreview(controller, toolCallId)
+  const partId = cursor.partId
   if (partId) {
     controller.enqueue({ type: 'text-end', id: partId })
     controller.enqueue({ type: 'finish-step' })
@@ -192,7 +235,7 @@ async function pollPersistedPublicStream(input: {
   isStopped: () => boolean
 }): Promise<void> {
   let afterSequence = -1
-  let cursor: PublicStreamCursor = { partId: '', offset: 0 }
+  let cursor: PublicStreamCursor = { partId: '', basePartId: '', offset: 0, segment: 0, previews: new Map(), settledPreviews: new Set() }
   while (!input.isStopped() && !input.signal?.aborted) {
     const state = await input.repository.readPublicStreamState({
       actorUserId: input.actorUserId,
@@ -204,7 +247,7 @@ async function pollPersistedPublicStream(input: {
       return
     }
     for (const step of state.transcriptSteps) {
-      cursor = emitTranscriptStep(input.controller, input.runId, step, cursor.partId)
+      cursor = emitTranscriptStep(input.controller, input.runId, step, cursor)
       afterSequence = step.sequence
     }
     if (state.nextSequence !== null) {
@@ -213,7 +256,7 @@ async function pollPersistedPublicStream(input: {
     }
     if (state.snapshot) cursor = emitActiveSnapshot(input.controller, state.snapshot, cursor)
     if (isTerminalPublicStreamStatus(state.status)) {
-      emitTerminalStream(input.controller, input.runId, state, input.sourceCitations, cursor.partId)
+      emitTerminalStream(input.controller, input.runId, state, input.sourceCitations, cursor)
       input.controller.close()
       return
     }

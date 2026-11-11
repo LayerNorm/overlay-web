@@ -7,7 +7,7 @@ import {
   GENERATED_UI_TOOL_IDS,
   buildGeneratedUiPart,
   buildStreamingGeneratedUiPart,
-  isGeneratedUiPart,
+  normalizeGeneratedUiPart,
 } from './generated-ui'
 import { TOOL_UI_DONE_STATES } from './constants'
 import type { AssistantVisualBlock, ToolVisualBlock } from './types'
@@ -27,13 +27,57 @@ function generatedUiFailureState(output: unknown, state: string | undefined): 'o
     ? 'output-error' : null
 }
 
+function generatedUiTerminalCallIds(parts: readonly unknown[]): Set<string> {
+  const ids = new Set<string>()
+  for (const value of parts) {
+    let id: string | undefined
+    let toolName: string | undefined
+    let state: string | undefined
+    let output: unknown
+    const legacy = value as { type?: string; toolInvocation?: { toolCallId?: string; toolName?: string; state?: string; toolOutput?: unknown } }
+    if (legacy?.type === 'tool-invocation' && legacy.toolInvocation) {
+      id = legacy.toolInvocation.toolCallId
+      toolName = legacy.toolInvocation.toolName
+      state = legacy.toolInvocation.state
+      output = legacy.toolInvocation.toolOutput
+    } else if (isToolUIPart(value)) {
+      const part = value as { toolCallId?: string; state?: string; output?: unknown }
+      id = part.toolCallId
+      toolName = getToolName(value)
+      state = part.state
+      output = part.output
+    }
+    const terminal = state === 'output-available' || state === 'output-error' || state === 'output-denied'
+      || Boolean(output && typeof output === 'object' && 'success' in output)
+    if (id && toolName && GENERATED_UI_TOOL_IDS.has(toolName) && terminal) ids.add(id)
+  }
+  return ids
+}
+
+function isJsonRenderInput(value: unknown): boolean {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+    && ('spec' in value || 'specStream' in value || (value as { kind?: unknown }).kind === 'json_render'))
+}
+
 export function buildAssistantVisualSequence(
   parts: unknown[] | undefined,
   options: { terminalState?: TerminalAssistantState } = {},
 ): AssistantVisualBlock[] {
   if (!parts?.length) return []
   const remoteRunOutcome = getRemoteRunOutcome(parts)
+  const terminalCallIds = generatedUiTerminalCallIds(parts)
+  const finalDataIds = new Set(parts.flatMap(part => {
+    const generated = normalizeGeneratedUiPart(part)
+    return generated?.data.kind === 'json_render' && generated.data.streaming !== true ? [generated.id] : []
+  }))
+  const terminalPreviewBlocked = options.terminalState === 'error' || options.terminalState === 'cancelled' || options.terminalState === 'interrupted'
+  const seenGeneratedUiIds = new Set<string>()
   const out: AssistantVisualBlock[] = []
+  const appendGeneratedUi = (part: ReturnType<typeof buildGeneratedUiPart>) => {
+    if (!part || seenGeneratedUiIds.has(part.id)) return
+    seenGeneratedUiIds.add(part.id)
+    out.push({ kind: 'generated-ui', part })
+  }
   for (const p of parts) {
     const remote = p as { type?: string; data?: Record<string, unknown> }
     const remoteToolName = remote.type === 'data-remote-agent-plan' ? 'remote_plan'
@@ -69,18 +113,17 @@ export function buildAssistantVisualSequence(
             inv.toolCallId || (typeof output.id === 'string' && output.id.trim()) || `generated-ui-${out.length}`,
             output.generatedUi,
           )
-          if (part) {
-            out.push({ kind: 'generated-ui', part })
-            continue
-          }
+          if (part) { appendGeneratedUi(part); continue }
         }
-        if (!output && (inv.state === 'input-streaming' || inv.state === 'input-available')) {
+        const callId = inv.toolCallId || `generated-ui-${out.length}`
+        const settled = terminalCallIds.has(callId) || finalDataIds.has(callId) || seenGeneratedUiIds.has(callId)
+        if (!output && !settled && (inv.state === 'input-streaming' || inv.state === 'input-available')) {
           const part = buildStreamingGeneratedUiPart(
-            inv.toolCallId || `generated-ui-${out.length}`,
+            callId,
             inv.toolInput,
           )
-          if (part) {
-            out.push({ kind: 'generated-ui', part })
+          if (part && !(terminalPreviewBlocked && part.data.kind === 'json_render' && isJsonRenderInput(inv.toolInput))) {
+            appendGeneratedUi(part)
             continue
           }
         }
@@ -117,18 +160,17 @@ export function buildAssistantVisualSequence(
             part.toolCallId || (typeof output.id === 'string' && output.id.trim()) || `generated-ui-${out.length}`,
             output.generatedUi,
           )
-          if (generatedPart) {
-            out.push({ kind: 'generated-ui', part: generatedPart })
-            continue
-          }
+          if (generatedPart) { appendGeneratedUi(generatedPart); continue }
         }
-        if (!output && (part.state === 'input-streaming' || part.state === 'input-available')) {
+        const callId = part.toolCallId || `generated-ui-${out.length}`
+        const settled = terminalCallIds.has(callId) || finalDataIds.has(callId) || seenGeneratedUiIds.has(callId)
+        if (!output && !settled && (part.state === 'input-streaming' || part.state === 'input-available')) {
           const generatedPart = buildStreamingGeneratedUiPart(
-            part.toolCallId || `generated-ui-${out.length}`,
+            callId,
             part.input,
           )
-          if (generatedPart) {
-            out.push({ kind: 'generated-ui', part: generatedPart })
+          if (generatedPart && !(terminalPreviewBlocked && generatedPart.data.kind === 'json_render' && isJsonRenderInput(part.input))) {
+            appendGeneratedUi(generatedPart)
             continue
           }
         }
@@ -165,8 +207,11 @@ export function buildAssistantVisualSequence(
       continue
     }
     const pt = p as { type?: string; text?: string; url?: string; mediaType?: string }
-    if (isGeneratedUiPart(p)) {
-      out.push({ kind: 'generated-ui', part: p })
+    const generated = normalizeGeneratedUiPart(p)
+    if (generated) {
+      const preview = generated.data.kind === 'json_render' && generated.data.streaming === true
+      if (preview && (terminalPreviewBlocked || terminalCallIds.has(generated.id) || finalDataIds.has(generated.id))) continue
+      appendGeneratedUi(generated)
       continue
     }
     if (pt.type === 'file' && typeof pt.url === 'string' && pt.url) {

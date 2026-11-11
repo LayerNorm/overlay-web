@@ -440,6 +440,16 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
+The active public stream may include a bounded `previewJson` list for progressive
+`render_ui` views. It contains only sanitized typed `specJson` snapshots keyed by
+tool-call identity and sequence, and is fenced by the same receipt, generation,
+delivery owner and replay checks as streamed text. Snapshots are transient and
+read-only; final tool output is authoritative, and workflow external delivery
+continues to receive a text summary rather than a UI spec. A separate monotonic
+`revision` orders preview-only and text-bearing snapshots without consuming
+text sequence numbers; duplicate retries do not advance it, and retained clear
+tombstones reject stale preview updates until that invocation is retired.
+
 The initial recovery slice keeps compaction checkpoints additive and non-blocking. Continuation stagnation is owned by the runner: after two unchanged segments it adds a trusted recovery instruction to the next call. It never pauses or blocks a run for lack of progress; the workspace budget is the only automatic stop. The `STAGNATION` diagnostic code stays in validators only so older stored rows still load. A `stuck` blocker (for example, history that no longer fits the provider window) still waits for a reply through the authenticated input-wait path, and a reply resumes the same root run and resets its stagnation counter. Do not use checkpoint or model-receipt writes as progress, and do not deploy Convex from feature worktrees while validating this path.
 
 ### Personal workflow integration

@@ -19,6 +19,28 @@ test('render_ui normalizes raw execute inputs, validates and returns a determini
   assert.ok(untitled.success && !('title' in untitled.generatedUi))
 })
 
+test('render_ui compiles final tool-argument specStream and requires exactly one representation', async () => {
+  const lines = [
+    { op: 'add', path: '/root', value: 'view' },
+    { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+    { op: 'add', path: '/elements/title', value: { type: 'Text', props: { text: 'Weekly summary' } } },
+    { op: 'replace', path: '/elements/view/children', value: ['title'] },
+  ]
+  const specStream = lines.map(line => JSON.stringify(line)).join('\n')
+  const finalSpec = { root: 'view', elements: { view: { type: 'Stack', props: {}, children: ['title'] }, title: { type: 'Text', props: { text: 'Weekly summary' } } } }
+  const inputSchema = buildOverlayToolSet({ ...renderOptions, allowedToolIds: [] }).render_ui!.inputSchema as { safeParse(input: unknown): { success: boolean } }
+  assert.equal(inputSchema.safeParse({ summary: 'Summary', spec: renderSpec, specStream }).success, false)
+  assert.equal(inputSchema.safeParse({ summary: 'Summary' }).success, false)
+  assert.equal(inputSchema.safeParse({ summary: 'Summary', specStream }).success, true)
+  const output = await executeRenderUi(renderOptions, { summary: 'Summary', specStream })
+  assert.equal(output.success, true)
+  if (output.success) {
+    assert.deepEqual(JSON.parse(output.generatedUi.specJson), finalSpec)
+    assert.equal('specStream' in output.generatedUi, false)
+  }
+  assert.equal((await executeRenderUi(renderOptions, { summary: 'Summary', specStream: `${specStream}\n{` })).success, false)
+})
+
 test('render_ui rejects invalid raw payloads with bounded repair details', async () => {
   for (const input of [null, {}, { summary: ' ', spec: renderSpec }, { summary: 'x'.repeat(1001), spec: renderSpec },
     { summary: 'Summary', title: 123, spec: renderSpec }, { summary: 'Summary', title: 'x'.repeat(121), spec: renderSpec },

@@ -3112,6 +3112,8 @@ export default defineSchema({
     nextSequence: v.number(),
     lastSequence: v.number(),
     lastText: v.string(),
+    revision: v.optional(v.number()),
+    previewJson: v.optional(v.string()),
     nextSegmentIndex: v.number(),
     visibleCharacters: v.number(),
     truncated: v.boolean(),

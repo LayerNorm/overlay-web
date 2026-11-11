@@ -4,6 +4,7 @@ import {
   GENERATED_UI_DATA_TYPE,
   buildGeneratedUiPart,
   buildStreamingGeneratedUiPart,
+  normalizeGeneratedUiPart,
   generatedUiDraftContainsCode,
   generatedUiDataToPlainText,
   looksLikeCodeContent,
@@ -102,6 +103,27 @@ test('streaming generated UI accepts partial prose drafts and rejects code paylo
     body: 'Choose an option.',
     variants: [{ label: 'HTML', body: html }],
   }), null)
+})
+
+test('streaming typed drafts do not require render_ui spec fields', () => {
+  const text = buildStreamingGeneratedUiPart('draft-1', {
+    kind: 'draft.text', title: 'Notes', body: 'A plain draft.', spec: {}, specStream: 'not a render_ui stream',
+  })
+  const email = buildStreamingGeneratedUiPart('draft-2', {
+    kind: 'draft.email', subject: 'Update', body: 'A plain email.',
+  })
+  assert.equal(text?.data.kind, 'draft.text')
+  assert.equal(email?.data.kind, 'draft.email')
+})
+
+test('normalizes keyed SDK UI data and hides clear markers from generated UI', () => {
+  const preview = normalizeGeneratedUiPart({
+    type: 'data-overlay.generated_ui', id: 'render-1', data: { ...renderedView, streaming: true },
+  })
+  assert.equal(preview?.type, 'data')
+  assert.equal(preview?.dataType, GENERATED_UI_DATA_TYPE)
+  assert.equal(preview?.transient, true)
+  assert.equal(normalizeGeneratedUiPart({ type: 'data-overlay.generated_ui', id: 'render-1', data: { kind: 'preview-cleared' } }), null)
 })
 
 test('assistant visual sequence renders partial generated UI input with a stable tool-call id', () => {

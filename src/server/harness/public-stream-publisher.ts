@@ -4,6 +4,7 @@ import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { logger } from '@/server/observability/logger'
 import { TEXTUAL_TOOL_CALL_MARKERS, stripTextualToolCalls } from '@/shared/ai/textual-tool-calls'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
+import { createPublicStreamPreviewPublisher } from './public-stream-preview-publisher'
 import type { HarnessModelReference } from './secure-model'
 
 const MAX_CLASSIFIER_CHARS = 16 * 1024
@@ -261,7 +262,23 @@ export function publishUnifiedHarnessStream(
     try { logger.info('[harness] unified public stream', { event, ...key, ...fields }) } catch (_error) { void _error }
   }
   const clearTimer = () => { if (timer) clearTimeout(timer); timer = undefined }
-  const stop = () => { disabled = true; pending = ''; pendingBytes = 0; clearTimer() }
+  const previewPublisher = createPublicStreamPreviewPublisher({
+    isDisabled: () => disabled,
+    writePreview: preview => writer.appendPublicStream({
+      actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
+      executionGeneration: access.executionGeneration ?? 0, receiptId: authority.receiptId,
+      modelId: reference.modelId, sequence, text: '', preview,
+    }),
+    onError: () => { disabled = true; pending = ''; pendingBytes = 0; clearTimer(); metric('publisher_error') },
+    onWriteFailure: () => metric('preview_write_failed'),
+  })
+  const stop = () => {
+    disabled = true
+    pending = ''
+    pendingBytes = 0
+    clearTimer()
+    previewPublisher.stop()
+  }
 
   const requestPump = (force = false): Promise<void> => {
     if (force) forced = true
@@ -325,6 +342,7 @@ export function publishUnifiedHarnessStream(
       const current = pump
       if (current) await current
     }
+    await previewPublisher.flushPreviews()
   }
 
   const transformed = source.pipeThrough(new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
@@ -336,6 +354,15 @@ export function publishUnifiedHarnessStream(
             metric('first_provider_text', { sinceModelDispatchMs: Math.round(firstProviderTextAt - startedAt) })
           }
           for (const safeText of projector.push(part.delta)) await append(safeText)
+        } else if (part.type === 'tool-input-start') {
+          await previewPublisher.beforeToolStart()
+          await flush()
+          previewPublisher.start(part.id, part.toolName, outputCharacters)
+        } else if (part.type === 'tool-input-delta') {
+          previewPublisher.delta(part.id, part.delta)
+        } else if (part.type === 'tool-input-end') {
+          await previewPublisher.end(part.id)
+          await flush()
         } else {
           await flush()
         }
@@ -349,6 +376,7 @@ export function publishUnifiedHarnessStream(
       closed = true
       clearTimer()
       try {
+        await previewPublisher.flush()
         for (const safeText of projector.flush()) await append(safeText)
         await flush()
       } catch (_error) {
@@ -368,6 +396,7 @@ export function publishUnifiedHarnessStream(
         const result = await reader.read()
         if (result.done) {
           clearTimer()
+          previewPublisher.stop()
           controller.close()
         } else controller.enqueue(result.value)
       } catch (error) {

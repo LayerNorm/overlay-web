@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm'
 import React, { act, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { GeneratedJsonRenderData } from '@overlay/chat-core/generated-ui'
-import { JsonRenderCard, formatJsonRenderSubmission } from './JsonRenderCard'
+import { JsonRenderBoundary, JsonRenderCard, formatJsonRenderSubmission, seedMissingGeneratedUiState } from './JsonRenderCard'
 import { QuestionnaireComposerProvider } from './Questionnaire'
 import { jsonRenderRegistry, protectJsonRenderComponent } from './json-render-registry'
 
@@ -18,6 +18,43 @@ test('form follow-ups are readable label and value lines, including empty and ne
   assert.equal(formatJsonRenderSubmission({ title: 'Bug', includeLogs: true, severity: null, details: { steps: 'Open app' } }, 'Report'),
     'Report\nTitle: Bug\nInclude Logs: Yes\nSeverity: (empty)\nDetails / Steps: Open app')
   assert.equal(formatJsonRenderSubmission({}), 'Form submitted')
+})
+
+test('final spec state seeds missing form values without overwriting local values', () => {
+  const values = new Map([['/form/title', 'Edited']])
+  seedMissingGeneratedUiState({ form: { title: 'Default', notify: true }, 'a/b': 4 }, path => values.get(path), (path, value) => values.set(path, value))
+  assert.deepEqual(Object.fromEntries(values), { '/form/title': 'Edited', '/form/notify': true, '/a~1b': 4 })
+})
+
+test('final streamed spec state seeds controls without remounting the card', async t => {
+  t.mock.method(console, 'error', () => {})
+  const partial = data(single('Input', { label: 'Title', value: { $bindState: '/title' } }), { streaming: true })
+  const complete = data({ root: 'root', elements: { root: { type: 'Input', props: { label: 'Title', value: { $bindState: '/title' } } } }, state: { title: 'Seeded' } })
+  let renderer!: TestRenderer
+  await act(async () => { renderer = create(<JsonRenderCard partId="seed" data={partial} />) })
+  assert.equal(renderer.root.findAll(node => node.type === 'input')[0]?.props.readOnly, true)
+  await act(async () => { renderer.update(<JsonRenderCard partId="seed" data={complete} />) })
+  const after = renderer.root.findAll(node => node.type === 'input')[0]
+  assert.equal(after.props.value, 'Seeded')
+  assert.equal(after.props.readOnly, false)
+  await act(async () => renderer.unmount())
+})
+
+test('card boundary identity survives repeated streaming updates and final data', async t => {
+  t.mock.method(console, 'error', () => {})
+  let renderer!: TestRenderer
+  const view = (text: string, streaming: boolean) => data(single('Text', { text }), { streaming })
+  try {
+    await act(async () => { renderer = create(<JsonRenderCard partId="stable" data={view('First', true)} />) })
+    const boundary = () => renderer.root.findAll(node => node.type === JsonRenderBoundary)[0] as TestNode & { instance: unknown }
+    const initial = boundary().instance
+    await act(async () => renderer.update(<JsonRenderCard partId="stable" data={view('Second', true)} />))
+    assert.equal(boundary().instance, initial)
+    await act(async () => renderer.update(<JsonRenderCard partId="stable" data={view('Final', false)} />))
+    assert.equal(boundary().instance, initial)
+  } finally {
+    await act(async () => renderer?.unmount())
+  }
 })
 
 test('bound state saves after 700ms and flushes the last snapshot on unmount', async t => {
