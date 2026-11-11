@@ -67,7 +67,7 @@ export interface ChatExchangeProps {
   responseSources?: readonly ChatTranscriptSourceView[]
   isStreaming: boolean
   isTextStreaming: boolean
-  /** Persisted turn time (assistant row createdAt→updatedAt); falls back to the live measure. */
+  /** Persisted turn time; the live measure is used when no persisted duration is available. */
   workedDurationMs?: number | null
   /** The steps the agent is working through, shown at the bottom of the response. */
   plan?: readonly RunPlanStep[]
@@ -172,8 +172,7 @@ export function ChatExchange({
     })
     const { loadingPresentation, responseSettled } = resolveLoadingPresentation(status, responseInProgress, assistantVisualBlocks)
 
-    // Turn duration: the persisted createdAt→updatedAt span wins when present;
-    // live turns still measure on the streaming→settled edge.
+    // Persisted duration wins when present; live turns measure on the streaming→settled edge.
     const workedMs = useWorkedMs(isStreaming, workedDurationMs)
 
     const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming || !responseSettled, !interrupted && !errorMessage)

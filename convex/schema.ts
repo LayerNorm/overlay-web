@@ -1718,6 +1718,7 @@ export default defineSchema({
       v.literal('error'),
     )),
     updatedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
     clientNonce: v.optional(v.string()),
     editedAt: v.optional(v.number()),
     editHistory: v.optional(v.array(v.object({

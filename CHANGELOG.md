@@ -14,6 +14,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
   - Failed bound forms keep their error rows after a successful retry. Tool snapshots encode reserved JSON keys for Convex storage while full journal files retain the original input.
   - Chat Markdown exports include native assistant replies and generated-view titles and summaries, never serialized UI specs or bound form values.
   - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation saves are unchanged.
+  - Keep completed response work durations stable when generated-form state is edited or submitted by persisting completion time separately from modification time; older messages fall back to their original run completion when available.
 
 - Refuse paid requests from a workspace without billing with `402 workspace_billing_required` (or `403 workspace_wallet_forbidden` for a member who may not spend the wallet) instead of a generic 500. Cloud dictation in a workspace that had not set up billing failed with "Failed to transcribe audio"; it now says billing is required, and the shared API wrapper applies the same answer to any paid route that lets this error escape.
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.

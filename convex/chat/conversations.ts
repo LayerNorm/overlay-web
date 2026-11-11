@@ -914,6 +914,7 @@ export const addMessage = mutation({
       ...(args.importedAuthorEmail ? { importedAuthorEmail: args.importedAuthorEmail } : {}),
       ...(args.importedAuthorStatus ? { importedAuthorStatus: args.importedAuthorStatus } : {}),
       status: 'completed' as const,
+      ...(args.role === 'assistant' ? { completedAt: match?.completedAt ?? now } : {}),
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
       ...(match?.role === 'user' && match.nativeSubmittedAt !== undefined ? {
@@ -1172,6 +1173,7 @@ export const completeAgentRun = mutation({
         routedModelId: args.routedModelId,
         tokens: args.tokens,
         status: 'completed',
+        completedAt: now,
         updatedAt: now,
       })
       await cleanupTerminalPublicStreams(ctx, message._id)
@@ -1505,6 +1507,7 @@ export const cancelAgentRuns = mutation({
             { type: 'text', text: sentinel.trimStart() },
           ],
           status: 'completed',
+          completedAt: now,
           updatedAt: now,
         }))
       } else if (message?.parts?.some((part) =>
@@ -1605,6 +1608,7 @@ export const settleCancelledPublicStream = internalMutation({
           receiptId: retained.receiptId, invocation: retained.invocation,
         } } : {}),
         status: 'completed',
+        completedAt: args.cancelledAt,
         updatedAt: args.cancelledAt,
       })
     }
@@ -1666,9 +1670,17 @@ export const updateMessageUiPart = mutation({
     })
     if (!changed) throw new Error('Generated UI part not found')
     const now = Date.now()
+    const completionRun = message.completedAt === undefined
+      ? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id))
+        .first()
+      : null
+    const completedAt = message.completedAt ?? completionRun?.completedAt
+      ?? (message.status === 'completed' ? message.updatedAt : undefined)
     await ctx.db.patch(args.messageId, {
       parts: nextParts,
       updatedAt: now,
+      ...(completedAt !== undefined ? { completedAt } : {}),
     })
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     return { success: true }
@@ -1984,6 +1996,7 @@ export const addMessages = mutation({
         updatedAt: now,
         status: 'completed' as const,
         ...row,
+        ...(row.role === 'assistant' ? { completedAt: match?.completedAt ?? now } : {}),
       }
       const id = match
         ? (await ctx.db.patch(match._id, payload), match._id)

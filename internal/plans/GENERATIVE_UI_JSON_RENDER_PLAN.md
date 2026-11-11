@@ -186,8 +186,10 @@ Preview (`pr-<number>.preview.getoverlay.io`, `needs-preview` label):
 
 ## Approved follow-up: expressive visuals and progressive diagrams
 
-The approved workspace mockup in `mockups/generative-ui-expressive.html` is retained. This PR implements general bounded Timeline, Comparison, Diagram and Vector catalog components, the `render_ui` JSONL `specStream` argument and provider-driven preview transport. Focused transport/unit regression coverage and full merged-branch local validation pass. Exact-head Preview QA remains pending.
+The approved workspace mockup in `mockups/generative-ui-expressive.html` is retained. This PR implements general bounded Timeline, Comparison, Diagram and Vector catalog components, the `render_ui` JSONL `specStream` argument and provider-driven preview transport. Focused transport/unit regression coverage and full merged-branch local validation pass.
 
 **Simulation disclaimer:** the standalone mockup's replay controls and local node/label/edge data remain simulated. Production previews use provider tool-input deltas and validated, persisted snapshots; they do not use mockup timers. The mockup's failure preview is illustrative only.
 
-The final `render_ui` call remains authoritative for persistence and interaction. Preview cards are read-only, and non-React surfaces continue to use title and summary text. T12 and browser QA remain open; prior personal false-recovery limitations are still known, and Slack has not been tested.
+The final `render_ui` call remains authoritative for persistence and interaction. Preview cards are read-only, and non-React surfaces continue to use title and summary text.
+
+**Scoped Preview QA at exact head `042bc8c`:** CI had 22 green checks. Sonnet 5.5 personal and native runs passed real 1→2→3 progressive rendering, stable identity and reload; native recovered from a height-validation failure. Timeline, themes, mobile, export, and Comparison preview-disabled/final-enabled checks passed. A form edit changed the displayed duration from 57.208s to 113.242s without new inference. The contained fix now has focused local state-edit/submit regression coverage; hosted form QA on the corrected behavior remains pending. DeepSeek Flash 0731 previously delivered one argument delta at the remote Gateway/provider boundary, while a 12-delta installed app/SDK experiment passed; the remote Gateway versus provider source is unresolved. These results are scoped, not broad acceptance. Slack remains untested.

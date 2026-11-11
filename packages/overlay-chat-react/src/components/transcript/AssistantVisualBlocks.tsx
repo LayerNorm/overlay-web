@@ -104,8 +104,7 @@ export function AssistantVisualBlocks({
     return idx
   }, [blocks])
 
-  // Turn duration: the persisted createdAt→updatedAt span on the assistant row
-  // wins when present; live turns still measure on the streaming→settled edge.
+  // Persisted duration wins when present; live turns measure on the streaming→settled edge.
   const streamStartedAtRef = useRef<number | null>(null)
   const [measuredWorkMs, setMeasuredWorkMs] = useState<number | null>(null)
   useEffect(() => {

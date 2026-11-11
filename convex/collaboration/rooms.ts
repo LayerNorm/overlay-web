@@ -224,7 +224,18 @@ export const updateMessageUiPart = mutation({
     const data = mergeJsonRenderState(target.data, args.data)
     if (data === target.data) return { success: true }
     const now = Date.now()
-    await ctx.db.patch(message._id, { parts: parts.map(part => part === target ? { ...part, data } : part), updatedAt: now })
+    const completionRun = message.completedAt === undefined
+      ? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id))
+        .first()
+      : null
+    const completedAt = message.completedAt ?? completionRun?.completedAt
+      ?? (message.status === 'completed' ? message.updatedAt : undefined)
+    await ctx.db.patch(message._id, {
+      parts: parts.map(part => part === target ? { ...part, data } : part),
+      updatedAt: now,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    })
     await ctx.db.patch(conversation._id, { lastModified: now, updatedAt: now })
     return { success: true }
   },
