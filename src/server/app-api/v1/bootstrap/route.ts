@@ -35,6 +35,7 @@ import { getOverlayCapabilities, withWorkspaceExternalAgentCapabilities } from '
 import { externalAgentLaunchEnabled } from '@/server/agents/external-agent-policy'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { BillingEntitlementsRecord } from '@/server/billing/BillingRepository'
+import { workspaceSetupResponse } from './setup-required'
 
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   let runtimeConfig
@@ -190,6 +191,8 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     return NextResponse.json(response)
   } catch (error) {
+    const setupResponse = workspaceSetupResponse(error, context.auth.authType)
+    if (setupResponse) return setupResponse
     logger.error('[app/bootstrap] GET error:', error)
     return NextResponse.json({ error: 'Failed to load app bootstrap' }, { status: 500 })
   }
