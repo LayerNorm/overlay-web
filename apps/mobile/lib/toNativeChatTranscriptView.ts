@@ -194,6 +194,7 @@ function responseView(
   const status = response?.status ?? (ownsTopLevel ? message.status : undefined)
   const errorMessage = response?.error ?? (ownsTopLevel ? message.errorMessage : undefined)
   let blocks = response?.blocks ?? (ownsTopLevel ? message.blocks : undefined)
+  const hasCanonicalBlocks = blocks !== undefined
   let sources = response?.sources ?? (ownsTopLevel ? message.transcriptSources : undefined)
   const sourceCitations = response?.sourceCitations ?? (ownsTopLevel ? message.sourceCitations : undefined)
 
@@ -216,9 +217,13 @@ function responseView(
     (ownsTopLevel ? message.blocksAreComplete : undefined) ??
     !responseStreaming
   if (responseStreaming && !blocksAreComplete) {
-    const textBlocks = completePersonalBlocks(blocks.filter((block) => block.kind === 'text'), true)
-    let textIndex = 0
-    blocks = blocks.map((block) => block.kind === 'text' ? textBlocks[textIndex++]! : block)
+    if (hasCanonicalBlocks) {
+      blocks = completePersonalBlocks(blocks, true)
+    } else {
+      const textBlocks = completePersonalBlocks(blocks.filter((block) => block.kind === 'text'), true)
+      let textIndex = 0
+      blocks = blocks.map((block) => block.kind === 'text' ? textBlocks[textIndex++]! : block)
+    }
   }
 
   const activeError = isActive && isSelected ? runtime?.error ?? undefined : undefined
@@ -346,40 +351,28 @@ function mediaView(
   }
 }
 
+function mediaStatus(results: readonly GenerationResult[]): ChatExchangeStatus {
+  if (results.some((result) => result.status === 'failed')) return 'error'
+  if (results.some((result) => result.status === 'generating')) return 'streaming'
+  if (results.length > 0 && results.every((result) => result.status === 'completed')) return 'completed'
+  return 'idle'
+}
+
 function exchangeStatus(
-  candidates: readonly ResponseCandidate[],
-  responses: readonly ChatTranscriptResponseView[],
+  selectedResponse: ChatTranscriptResponseView | undefined,
+  hasResponse: boolean,
+  generationMode: GenerationMode,
+  media: ChatTranscriptExchangeView['media'],
   isActive: boolean,
   runtime: NativeChatTranscriptRuntime | undefined,
 ): ChatExchangeStatus {
-  const statuses = candidates.map((candidate) =>
-    candidate.response?.status ?? (candidate.ownsTopLevelFields ? candidate.message.status : undefined),
-  )
-  const hasStreaming = candidates.some((candidate) =>
-    candidate.response?.isLoading ||
-    (candidate.ownsTopLevelFields && candidate.message.isStreaming) ||
-    candidate.response?.status === 'generating' ||
-    (candidate.ownsTopLevelFields && candidate.message.status === 'generating'),
-  )
-  const hasError = responses.some((response) => response.errorMessage !== null) ||
-    statuses.some((status) => status === 'error' || status === 'failed')
-  const hasCompleted = statuses.some((status) => status === 'completed')
-  const activeStatus = isActive ? runtime?.status : undefined
-  const runtimeStatus = activeStatus ?? (hasStreaming ? 'streaming' : undefined)
-  const persistedStatus = activeStatus || hasStreaming
-    ? undefined
-    : hasError
-      ? 'error'
-      : hasCompleted
-        ? 'completed'
-        : undefined
+  if (generationMode !== 'text') return mediaStatus(media?.results ?? [])
+  if (selectedResponse) return selectedResponse.status
   return deriveChatExchangeStatus({
-    runtimeStatus,
-    persistedStatus,
-    hasResponse: candidates.length > 0,
-    hasVisibleContent: responses.some((response) => response.blocks.length > 0),
-    interrupted: (isActive && Boolean(runtime?.interrupted)) || statuses.includes('interrupted'),
-    error: (isActive ? runtime?.error : undefined) || responses.find((response) => response.errorMessage)?.errorMessage,
+    ...(isActive && runtime?.status ? { runtimeStatus: runtime.status } : {}),
+    hasResponse,
+    interrupted: isActive && Boolean(runtime?.interrupted),
+    error: isActive ? runtime?.error : undefined,
   })
 }
 
@@ -419,6 +412,7 @@ export function toNativeChatTranscriptView(
     const generationMode = group.user?.contentType ??
       group.assistants.find((message) => message.contentType)?.contentType ??
       'text'
+    const media = mediaView([group.user, ...group.assistants], generationMode, group.turnId)
     return {
       id: group.turnId,
       turnId: group.turnId,
@@ -429,8 +423,15 @@ export function toNativeChatTranscriptView(
       responses,
       selectedResponseIndex: selection.index,
       selectedModelId: explicitSelectedModelId ?? selection.response?.modelId ?? null,
-      status: exchangeStatus(candidates, responses, isActive, runtime),
-      media: mediaView([group.user, ...group.assistants], generationMode, group.turnId),
+      status: exchangeStatus(
+        responses[selection.index],
+        responses.length > 0,
+        generationMode,
+        media,
+        isActive,
+        runtime,
+      ),
+      media,
     }
   })
   return { version: 1, exchanges }

@@ -485,3 +485,155 @@ test('pagination context users and repeated output rows are deduplicated without
   assert.equal(messages.filter(message => message.role === 'user' && message.turnId === 'real-turn').length, 1)
   assert.equal(messages.find(message => message.turnId === 'real-turn' && message.role === 'user').id, 'actual-user')
 })
+
+test('ordered streaming blocks preserve text before tool, reasoning, and file blocks', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const { normalizeTranscriptAssistantParts } = load('../packages/overlay-chat-core/src/transcript-view.ts')
+  const committedText = 'Committed text before the tool with an unfinished-looking tail'
+  const normalized = normalizeTranscriptAssistantParts([
+    { type: 'text', text: committedText },
+    {
+      type: 'tool-invocation',
+      toolInvocation: { toolCallId: 'lookup', toolName: 'lookup', state: 'input-available' },
+    },
+    { type: 'reasoning', text: 'Thinking' },
+    { type: 'file', url: '/result.pdf', mediaType: 'application/pdf' },
+  ])
+  const exchange = toNativeChatTranscriptView([
+    user('ordered-user', 'ordered-turn', { selectedModelId: 'model' }),
+    assistant('ordered-assistant', 'ordered-turn', {
+      modelId: 'model',
+      isStreaming: true,
+      blocks: normalized.blocks,
+    }),
+  ]).exchanges[0]
+
+  assert.equal(exchange.responses[0].blocks[0].text, committedText)
+  assert.deepEqual(clean(exchange.responses[0].blocks.map(block => block.kind)), [
+    'text', 'tool', 'reasoning', 'file',
+  ])
+})
+
+test('canonical streaming completion only holds a true trailing text block', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const { normalizeTranscriptAssistantParts } = load('../packages/overlay-chat-core/src/transcript-view.ts')
+  const committedText = 'Committed text before tool output'
+  const tail = 'Heading\n\nComplete paragraph.\n\npartial tail'
+  const normalized = normalizeTranscriptAssistantParts([
+    { type: 'text', text: committedText },
+    {
+      type: 'tool-invocation',
+      toolInvocation: { toolCallId: 'lookup', toolName: 'lookup', state: 'output-available' },
+    },
+    { type: 'reasoning', text: 'Thinking' },
+    { type: 'file', url: '/result.pdf', mediaType: 'application/pdf' },
+    { type: 'text', text: tail },
+  ])
+  const exchange = toNativeChatTranscriptView([
+    user('tail-user', 'tail-turn', { selectedModelId: 'model' }),
+    assistant('tail-assistant', 'tail-turn', {
+      modelId: 'model',
+      isStreaming: true,
+      blocksAreComplete: false,
+      blocks: normalized.blocks,
+    }),
+  ]).exchanges[0]
+
+  assert.equal(exchange.responses[0].blocks[0].text, committedText)
+  assert.equal(exchange.responses[0].blocks.at(-1).text, 'Heading\n\nComplete paragraph.\n\n')
+})
+
+test('legacy content fallback still completes text before synthetic reasoning and tools', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const exchange = toNativeChatTranscriptView([
+    user('legacy-stream-user', 'legacy-stream-turn', { selectedModelId: 'model' }),
+    assistant('legacy-stream-assistant', 'legacy-stream-turn', {
+      modelId: 'model',
+      content: 'Intro.\n\nComplete paragraph.\n\npartial tail',
+      reasoning: 'Reasoning',
+      toolInvocations: [{ toolName: 'lookup', state: 'output-available' }],
+      generatedFiles: [{ url: '/result.pdf', mediaType: 'application/pdf' }],
+      isStreaming: true,
+    }),
+  ]).exchanges[0]
+
+  assert.equal(exchange.responses[0].blocks[0].text, 'Intro.\n\nComplete paragraph.\n\n')
+  assert.deepEqual(clean(exchange.responses[0].blocks.map(block => block.kind)), [
+    'text', 'reasoning', 'tool', 'file',
+  ])
+})
+
+test('exchange status follows the selected response rather than older failed variants', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const messagesFor = healthyStatus => [
+    user('variant-user', 'variant-turn', { selectedModelId: 'healthy' }),
+    assistant('variant-assistant', 'variant-turn', {
+      modelId: 'healthy',
+      selectedModelId: 'healthy',
+      responses: [
+        {
+          modelId: 'failed', modelName: 'Failed', provider: 'old', content: 'Old failure',
+          isLoading: false, status: 'failed', error: 'Old failure',
+        },
+        {
+          modelId: 'healthy', modelName: 'Healthy', provider: 'new', content: 'Current response',
+          isLoading: healthyStatus === 'generating', status: healthyStatus,
+        },
+      ],
+    }),
+  ]
+
+  const streaming = toNativeChatTranscriptView(messagesFor('generating')).exchanges[0]
+  assert.equal(streaming.selectedResponseIndex, 1)
+  assert.equal(streaming.responses[0].status, 'error')
+  assert.equal(streaming.responses[1].status, 'streaming')
+  assert.equal(streaming.status, 'streaming')
+
+  const completed = toNativeChatTranscriptView(messagesFor('completed')).exchanges[0]
+  assert.equal(completed.status, 'completed')
+})
+
+test('submitted user-only turns remain submitted before a response arrives', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const pending = toNativeChatTranscriptView(
+    [user('submitted-user', 'submitted-turn')],
+    { activeTurnId: 'submitted-turn', status: 'submitted' },
+  ).exchanges[0]
+
+  assert.equal(pending.responses.length, 0)
+  assert.equal(pending.status, 'submitted')
+
+  const submittedResponse = toNativeChatTranscriptView([
+    user('submitted-user-2', 'submitted-turn-2', { selectedModelId: 'model' }),
+    assistant('submitted-assistant', 'submitted-turn-2', { modelId: 'model', status: 'submitted' }),
+  ]).exchanges[0]
+  assert.equal(submittedResponse.responses[0].status, 'submitted')
+  assert.equal(submittedResponse.status, 'submitted')
+})
+
+test('image and video exchange status follows pending, failed, and completed outputs', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const exchangeFor = (statuses, type = 'image') => toNativeChatTranscriptView([
+    user('media-user', 'media-turn', {
+      contentType: type,
+      outputs: statuses.map((status, index) => ({
+        _id: `output-${index}`,
+        type,
+        status,
+        prompt: 'Image prompt',
+        modelId: 'image-model',
+        createdAt: index + 1,
+        turnId: 'media-turn',
+      })),
+    }),
+  ]).exchanges[0]
+
+  assert.equal(exchangeFor(['pending']).status, 'streaming')
+  assert.equal(exchangeFor(['failed']).status, 'error')
+  assert.equal(exchangeFor(['completed']).status, 'completed')
+  assert.equal(exchangeFor(['completed', 'pending']).status, 'streaming')
+  assert.equal(exchangeFor(['failed', 'pending']).status, 'error')
+  assert.equal(exchangeFor(['pending'], 'video').status, 'streaming')
+  assert.equal(exchangeFor(['failed'], 'video').status, 'error')
+  assert.equal(exchangeFor(['completed'], 'video').status, 'completed')
+})
