@@ -259,12 +259,6 @@ export function GeneratedUiCard({
   const activeScope = useRef<{ id: string; readOnly: boolean } | null>({ id: part.id, readOnly })
   const streaming = part.transient === true
 
-  if (activePartIdRef.current !== part.id) {
-    activePartIdRef.current = part.id
-    activeDownloadRef.current = null
-  }
-  if (downloadStatus.partId !== part.id) setDownloadStatus({ partId: part.id, pending: false, error: '' })
-
   useEffect(() => {
     latestDataRef.current = data
   }, [data])
@@ -280,6 +274,17 @@ export function GeneratedUiCard({
       setData(part.data)
     }
   }
+
+  useLayoutEffect(() => {
+    if (activePartIdRef.current === part.id) return
+    activePartIdRef.current = part.id
+    activeDownloadRef.current = null
+    setDownloadStatus({ partId: part.id, pending: false, error: '' })
+  }, [part.id])
+
+  useLayoutEffect(() => () => {
+    activeDownloadRef.current = null
+  }, [])
 
   useLayoutEffect(() => {
     activeScope.current = { id: part.id, readOnly }

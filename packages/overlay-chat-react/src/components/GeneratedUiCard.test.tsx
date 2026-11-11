@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test, { type TestContext } from 'node:test'
-import React, { act, type ReactElement } from 'react'
+import React, { act, Suspense, startTransition, useEffect, useState, type ReactElement } from 'react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import type { GeneratedUiData, GeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import { GeneratedUiCard } from './GeneratedUiCard'
@@ -25,7 +25,7 @@ type TestRenderer = {
 }
 
 const { create } = createRequire(import.meta.url)('react-test-renderer') as {
-  create(element: ReactElement): TestRenderer
+  create(element: ReactElement, options?: { unstable_isConcurrent?: boolean }): TestRenderer
 }
 
 const part: GeneratedUiPart = {
@@ -105,6 +105,13 @@ function browser(t: TestContext) {
 async function mount(t: TestContext, env: ReturnType<typeof browser>, element: ReactElement) {
   let renderer!: TestRenderer
   await act(async () => { renderer = create(element) })
+  env.registerCleanup(async () => { await act(() => renderer.unmount()) })
+  return renderer
+}
+
+async function mountConcurrent(t: TestContext, env: ReturnType<typeof browser>, element: ReactElement) {
+  let renderer!: TestRenderer
+  await act(async () => { renderer = create(element, { unstable_isConcurrent: true }) })
   env.registerCleanup(async () => { await act(() => renderer.unmount()) })
   return renderer
 }
@@ -320,6 +327,111 @@ test('GeneratedUiCard ignores a stale failed download after retrying the same pa
   assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
   await act(async () => { first.reject(new Error('stale failure')); await first.promise.catch(() => undefined) })
   assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
+})
+
+test('a suspended uncommitted part render does not invalidate the committed part download', async (t) => {
+  const env = browser(t)
+  const download = deferred()
+  const partChange = deferred()
+  const nextPart: GeneratedUiPart = {
+    ...part,
+    id: 'draft-b',
+    data: { version: 1, kind: 'draft.text', title: 'Second title', body: 'Second body' },
+  }
+  let allowPartChange = false
+  let attemptedSuspendedRender = false
+  let transitionToPartB: () => void = () => undefined
+  const downloadText = () => download.promise
+
+  function SuspendAfterCard({ partId }: { partId: string }) {
+    if (partId === nextPart.id && !allowPartChange) {
+      attemptedSuspendedRender = true
+      throw partChange.promise
+    }
+    return null
+  }
+
+  function Harness() {
+    const [currentPart, setCurrentPart] = useState(part)
+    useEffect(() => {
+      transitionToPartB = () => startTransition(() => setCurrentPart(nextPart))
+    }, [setCurrentPart])
+    return (
+      <Suspense fallback={<span>Waiting for part B</span>}>
+        <>
+          <GeneratedUiCard part={currentPart} readOnly />
+          <SuspendAfterCard partId={currentPart.id} />
+        </>
+      </Suspense>
+    )
+  }
+
+  const renderer = await mountConcurrent(
+    t,
+    env,
+    <PlatformActionsProvider downloadText={downloadText}><Harness /></PlatformActionsProvider>,
+  )
+  await act(async () => { click(findButton(renderer, 'Download')!); await Promise.resolve() })
+  assert.equal(findButton(renderer, 'Download')?.props.disabled, true)
+
+  await act(async () => {
+    transitionToPartB()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+  assert.equal(attemptedSuspendedRender, true)
+  assert.match(JSON.stringify(renderer.toJSON()), /Original body/)
+  assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /Second body/)
+  assert.equal(findButton(renderer, 'Download')?.props.disabled, true)
+
+  await act(async () => {
+    download.reject(new Error('part A failed'))
+    await download.promise.catch(() => undefined)
+  })
+  const retryButton = findButton(renderer, 'Download')
+  assert.ok(retryButton)
+  assert.equal(retryButton.props.disabled, false)
+  assert.equal(
+    renderer.root.findAll((node) => node.props.role === 'alert')[0]?.children[0],
+    'Download failed. Try again.',
+  )
+
+  await act(async () => {
+    allowPartChange = true
+    partChange.resolve()
+    await partChange.promise
+  })
+  assert.match(JSON.stringify(renderer.toJSON()), /Second body/)
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
+})
+
+test('GeneratedUiCard ignores a pending download completion after unmount', async (t) => {
+  browser(t)
+  const download = deferred()
+  const loggedErrors: unknown[][] = []
+  const originalConsoleError = console.error
+  let renderer!: TestRenderer
+
+  await act(async () => {
+    renderer = create(
+      <PlatformActionsProvider downloadText={() => download.promise}>
+        <GeneratedUiCard part={part} readOnly />
+      </PlatformActionsProvider>,
+    )
+  })
+  console.error = (...args: unknown[]) => { loggedErrors.push(args) }
+  try {
+    await act(async () => { click(findButton(renderer, 'Download')!); await Promise.resolve() })
+    assert.equal(findButton(renderer, 'Download')?.props.disabled, true)
+    await act(() => renderer.unmount())
+    await act(async () => {
+      download.reject(new Error('completed after unmount'))
+      await download.promise.catch(() => undefined)
+    })
+    assert.equal(renderer.toJSON(), null)
+    assert.deepEqual(loggedErrors, [])
+  } finally {
+    console.error = originalConsoleError
+  }
 })
 
 test('generated cards without a persistence callback do not offer local-only Edit', async (t) => {
