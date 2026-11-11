@@ -13,7 +13,6 @@ import {
   formatAutomationRunError,
   getAutomationConversationId,
   type AutomationRunSummary,
-  type AutomationSchedule,
   type AutomationSummary,
 } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
@@ -26,13 +25,7 @@ import {
   type AutomationRunTrigger,
 } from '../../services/automationsService'
 
-export function formatSchedule(schedule?: AutomationSchedule): string {
-  if (!schedule) return 'Unscheduled'
-  if (schedule.kind === 'interval') return `Every ${schedule.intervalMinutes ?? 60} min`
-  if (schedule.kind === 'daily') return `Daily at ${String(schedule.hourUTC ?? 9).padStart(2, '0')}:${String(schedule.minuteUTC ?? 0).padStart(2, '0')} UTC`
-  if (schedule.kind === 'weekly') return `Weekly, day ${schedule.dayOfWeekUTC ?? 1}`
-  return `Monthly, day ${schedule.dayOfMonthUTC ?? 1}`
-}
+import { formatSchedule } from '../../lib/automationSchedule'
 
 function runTone(status: string | undefined): 'default' | 'active' | 'danger' {
   if (!status) return 'default'

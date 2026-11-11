@@ -1,4 +1,26 @@
-# Phase 1 remaining HTTP inventory
+# Mobile HTTP inventory — through Phase 2e
+
+## Moved to Convex
+
+| Mobile surface / adapter | Convex reference | Boundary |
+| --- | --- | --- |
+| Files browser, listKnowledgeFiles, loadNotesIndex | `files.browse.list` | Live browser subscription; compatibility helpers use native snapshots. |
+| File preview, note editor, getKnowledgeFile, loadNote | `files.browse.get` | Live metadata/inline text; storage-backed text stays authenticated HTTP. |
+| Folder browsing, fileChildren | `files.browse.children` | Personal/workspace child subscriptions; generated `{ files, complete }` result. |
+| Rename, updateNoteTitle, updateKnowledgeFile(name) | `files.browse.rename` | Native metadata mutation; content/title CAS saves keep the web write endpoint. |
+| Move, moveNoteToFolder, updateKnowledgeFile(parentId) | `files.browse.move` | Native mutation and backend folder validation. |
+| conversationFiles | `files.browse.forConversation` | Native conversation-file adapter. |
+| Automations, listAutomations, getAutomation | `automations.browse.list/get` | Live list/detail; compatibility helpers use native snapshots. |
+| Run history, listAutomationRuns, former status polling | `automations.browse.runs` | Live rows replace mobile HTTP polling. |
+| Live steps, former mobile SSE | `automations.workflowEvents.watchWorkflowStepEvents` | Native subscription; legacy token-verification caveat in PHASE2E_QA.md. |
+| Activity and displayed-unread/mark all read | `collaboration.activity.notifications/markRead` | All, Unread, Mentions, Threads, Reactions; only displayed unread IDs auto-mark. |
+| Workspace search and mentions | `search.browse.mentions` | Native chat/file/automation title search. Work uses `work.browse.list` with local filtering; people/agent records use native management/directory. |
+
+Uploads, storage content/download, sharing, note writes and automation scheduling/execution/approvals retain web's HTTP ownership. Download in `components/knowledge/ResourceScreens.tsx` validates web origin/path and uses authenticated `appRequest`. `Submit a bug` opens hosted web after a public-GitHub warning: the web POST requires a browser session and same-origin checks, so this is not a native reporting API. Memories remain under Settings; the semantic knowledge-search service is retained separately from the new metadata Search screen.
+
+Phase 2e rows below have refreshed callsites and reasons. Other rows retain the Phase 1 snapshot and deferred classification.
+
+## Remaining HTTP callsites
 
 Convex is authoritative for the migrated collaboration, activity, personal chat, mention/search and workspace directory surfaces. HTTP below is either server-owned orchestration or explicitly deferred Phase 2 surface data/CRUD. Phase 2 rows are remaining migration work, not an alternate authoritative backend.
 
@@ -33,19 +55,15 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 | `services/authService.ts:242` (exchangeNativeAuthCode) | `fetchWithTimeout` → <code>${AUTH_BASE_URL}/api/auth/native/exchange</code> | Native sign-in, exchange, refresh and PKCE handoff are server-owned authentication orchestration. |
 | `services/authService.ts:348` (consumeTransferToken) | `fetchWithTimeout` → <code>endpoint</code> | Native sign-in, exchange, refresh and PKCE handoff are server-owned authentication orchestration. |
 | `services/authService.ts:398` (requestRefreshedAuthSession) | `fetchWithTimeout` → <code>${AUTH_BASE_URL}/api/auth/native/refresh</code> | Native sign-in, exchange, refresh and PKCE handoff are server-owned authentication orchestration. |
-| `services/automationsService.ts:11` (listAutomations) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:24` (createAutomation) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:43` (updateAutomation) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:50` (setAutomationEnabled) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:57` (deleteAutomation) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:66` (listAutomationRuns) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:98` (runAutomationNow) | `appJson` → <code>/api/v1/automations/${encodeURIComponent(automationId)}/run</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:112` (testAutomation) | `appJson` → <code>'/api/v1/automations/test'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:119` (cancelAutomationRun) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:126` (retryAutomationRun) | `appJson` → <code>'/api/v1/automations'</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:143` (getAutomationRunStatus) | `appJson` → <code>/api/v1/automations/${encodeURIComponent(workflowRunId)}/stream</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:158` (streamAutomationRunEvents) | `appXhrStreamSse` → <code>/api/v1/automations/${encodeURIComponent(workflowRunId)}/events</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
-| `services/automationsService.ts:168` (approveAutomationRun) | `appJson` → <code>/api/v1/automations/${encodeURIComponent(automationId)}/approve</code> | Phase 2: automation screen data and editing; test/approve/run/stream are server-owned execution orchestration. |
+| `services/automationsService.ts:43` (createAutomation) | `appJson` → <code>'/api/v1/automations'</code> | Web configuration and Workflow SDK scheduling/rescheduling orchestration. |
+| `services/automationsService.ts:62` (updateAutomation) | `appJson` → <code>'/api/v1/automations'</code> | Web configuration and Workflow SDK scheduling/rescheduling orchestration. |
+| `services/automationsService.ts:69` (setAutomationEnabled) | `appJson` → <code>'/api/v1/automations'</code> | Web configuration and Workflow SDK scheduling/rescheduling orchestration. |
+| `services/automationsService.ts:76` (deleteAutomation) | `appJson` → <code>'/api/v1/automations'</code> | Web configuration and Workflow SDK scheduling/rescheduling orchestration. |
+| `services/automationsService.ts:115` (runAutomationNow) | `appJson` → <code>/api/v1/automations/${encodeURIComponent(automationId)}/run</code> | Server-owned Workflow SDK run, test, cancellation, retry or approval, matching web HTTP. |
+| `services/automationsService.ts:129` (testAutomation) | `appJson` → <code>'/api/v1/automations/test'</code> | Server-owned Workflow SDK run, test, cancellation, retry or approval, matching web HTTP. |
+| `services/automationsService.ts:136` (cancelAutomationRun) | `appJson` → <code>'/api/v1/automations'</code> | Server-owned Workflow SDK run, test, cancellation, retry or approval, matching web HTTP. |
+| `services/automationsService.ts:143` (retryAutomationRun) | `appJson` → <code>'/api/v1/automations'</code> | Server-owned Workflow SDK run, test, cancellation, retry or approval, matching web HTTP. |
+| `services/automationsService.ts:162` (approveAutomationRun) | `appJson` → <code>/api/v1/automations/${encodeURIComponent(automationId)}/approve</code> | Server-owned Workflow SDK run, test, cancellation, retry or approval, matching web HTTP. |
 | `services/billingSettingsService.ts:15` (getBillingSettings) | `appJson` → <code>'/api/v1/subscription/settings'</code> | Billing and subscription settings remain server-owned. |
 | `services/billingSettingsService.ts:23` (updateBillingSettings) | `appJson` → <code>'/api/v1/subscription/settings'</code> | Billing and subscription settings remain server-owned. |
 | `services/bootstrapService.ts:28` (getAppBootstrap) | `mobileOverlayAppClient.bootstrap.get` | Phase 2: bootstrap configuration, model catalog and entitlement screen data have not migrated. |
@@ -85,33 +103,28 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 | `services/integrationsService.ts:129` (testMcpServer) | `appJson` → <code>'/api/v1/mcps/test'</code> | Phase 2: Extensions screen data and editing; provider catalog, connector operations, OAuth and tests are server-owned integration orchestration. |
 | `services/integrationsService.ts:145` (startMcpOAuth) | `appJson` → <code>'/api/v1/mcps/oauth'</code> | Phase 2: Extensions screen data and editing; provider catalog, connector operations, OAuth and tests are server-owned integration orchestration. |
 | `services/integrationsService.ts:152` (disconnectMcpOAuth) | `appJson` → <code>'/api/v1/mcps/oauth'</code> | Phase 2: Extensions screen data and editing; provider catalog, connector operations, OAuth and tests are server-owned integration orchestration. |
-| `services/knowledgeService.ts:19` (searchKnowledge) | `appJson` → <code>'/api/v1/knowledge/search'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:27` (listMemories) | `appJson` → <code>'/api/v1/memory'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:33` (createMemory) | `appJson` → <code>'/api/v1/memory'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:43` (updateMemory) | `appJson` → <code>'/api/v1/memory'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:50` (deleteMemory) | `appJson` → <code>'/api/v1/memory'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:62` (listKnowledgeFiles) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:66` (getKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:72` (getKnowledgeFileContent) | `appRequest` → <code>/api/v1/files/${fileId}/content</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:82` (createKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:96` (createKnowledgeFolder) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:110` (updateKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:121` (shareKnowledgeFile) | `appJson` → <code>'/api/v1/files/share'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:141` (searchTextInFiles) | `appJson` → <code>'/api/v1/files/search-text'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:148` (deleteKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:164` (getUploadUrl) | `appJson` → <code>'/api/v1/files/presign'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:176` (uploadToR2) | `fetch` → <code>presignedUrl</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:189` (createFileWithStorage) | `appJson` → <code>'/api/v1/files'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:205` (listOutputs) | `appJson` → <code>'/api/v1/outputs'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:214` (deleteOutput) | `appJson` → <code>'/api/v1/outputs'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
-| `services/knowledgeService.ts:229` (shareOutput) | `appJson` → <code>'/api/v1/outputs'</code> | Phase 2: Files, memories, outputs and knowledge search screen data/CRUD; content retrieval, presigning and storage uploads remain server-owned storage orchestration. |
+| `services/knowledgeService.ts:20` (searchKnowledge) | `appJson` → <code>'/api/v1/knowledge/search'</code> | Server-owned semantic chunk/vector retrieval, separate from Convex title/mention search. |
+| `services/knowledgeService.ts:28` (listMemories) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts:34` (createMemory) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts:44` (updateMemory) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts:51` (deleteMemory) | `appJson` → <code>'/api/v1/memory'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts:75` (getKnowledgeFileContent) | `appRequest` → <code>/api/v1/files/${fileId}/content</code> | Authenticated object-storage text retrieval after native metadata reads. |
+| `services/knowledgeService.ts:85` (createKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Web file creation/content-ingestion orchestration; no native create mutation. |
+| `services/knowledgeService.ts:99` (createKnowledgeFolder) | `appJson` → <code>'/api/v1/files'</code> | Web folder creation endpoint; native browse exposes rename/move, not create. |
+| `services/knowledgeService.ts:118` (updateKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Only content PATCH stays HTTP for storage/indexing; name and parent use native rename/move. |
+| `services/knowledgeService.ts:126` (shareKnowledgeFile) | `appJson` → <code>'/api/v1/files/share'</code> | Web public-link visibility and sharing orchestration. |
+| `services/knowledgeService.ts:146` (searchTextInFiles) | `appJson` → <code>'/api/v1/files/search-text'</code> | Server-owned object-storage text search; native title search is separate. |
+| `services/knowledgeService.ts:153` (deleteKnowledgeFile) | `appJson` → <code>'/api/v1/files'</code> | Web deletion and storage cleanup orchestration. |
+| `services/knowledgeService.ts:169` (getUploadUrl) | `appJson` → <code>'/api/v1/files/presign'</code> | Server-owned upload validation and presigning. |
+| `services/knowledgeService.ts:181` (uploadToR2) | `fetch` → <code>presignedUrl</code> | Upload bytes to the server-issued, short-lived storage destination. |
+| `services/knowledgeService.ts:194` (createFileWithStorage) | `appJson` → <code>'/api/v1/files'</code> | Server-owned storage finalization, file creation and ingestion. |
+| `services/knowledgeService.ts:210` (listOutputs) | `appJson` → <code>'/api/v1/outputs'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts:219` (deleteOutput) | `appJson` → <code>'/api/v1/outputs'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
+| `services/knowledgeService.ts:234` (shareOutput) | `appJson` → <code>'/api/v1/outputs'</code> | Deferred Memories/legacy Outputs surface, outside Phase 2e Files metadata migration; storage cleanup/sharing stays server-owned. |
 | `services/modelCatalogService.ts:55` (getGatewayModelCatalog) | `appJson` → <code>'/api/v1/model-catalog'</code> | Phase 2: model catalog screen data. |
-| `services/noteStorage.ts:27` (loadNotesIndex) | `appJson` → <code>'/api/v1/notes'</code> | Phase 2: note screen data and editing. |
-| `services/noteStorage.ts:34` (createNote) | `appJson` → <code>'/api/v1/notes'</code> | Phase 2: note screen data and editing. |
-| `services/noteStorage.ts:47` (loadNote) | `appJson` → <code>'/api/v1/notes'</code> | Phase 2: note screen data and editing. |
-| `services/noteStorage.ts:57` (saveNote) | `appJson` → <code>'/api/v1/notes'</code> | Phase 2: note screen data and editing. |
-| `services/noteStorage.ts:69` (deleteNote) | `appRequest` → <code>'/api/v1/notes'</code> | Phase 2: note screen data and editing. |
-| `services/noteStorage.ts:76` (updateNoteTitle) | `appJson` → <code>'/api/v1/notes'</code> | Phase 2: note screen data and editing. |
+| `services/noteStorage.ts:27` (createNote) | `appJson` → <code>'/api/v1/notes'</code> | Web note creation and content-storage orchestration. |
+| `services/noteStorage.ts:49` (saveNote) | `appJson` → <code>'/api/v1/notes'</code> | Web content/title CAS write with expectedUpdatedAt, storage and indexing; returns the saved revision. |
+| `services/noteStorage.ts:63` (deleteNote) | `appRequest` → <code>'/api/v1/notes'</code> | Web deletion and storage/index cleanup. |
 | `services/onboardingService.ts:25` (getOnboardingStatus) | `mobileOverlayAppClient.onboarding.status` | Phase 2: onboarding state; completion/reset invoke server-owned initialization orchestration. |
 | `services/onboardingService.ts:29` (completeOnboarding) | `mobileOverlayAppClient.onboarding.complete` | Phase 2: onboarding state; completion/reset invoke server-owned initialization orchestration. |
 | `services/onboardingService.ts:33` (resetOnboarding) | `mobileOverlayAppClient.onboarding.resetResponse` | Phase 2: onboarding state; completion/reset invoke server-owned initialization orchestration. |

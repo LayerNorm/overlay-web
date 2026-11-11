@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -9,12 +10,13 @@ const root = path.resolve(__dirname, '..')
 function load(file, dependencies = {}, globals = {}) {
   const source = fs.readFileSync(path.join(root, file), 'utf8')
   const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } })
-  const module = { exports: {} }
+  const loaded = { exports: {} }
   vm.runInNewContext('(function(require,module,exports){' + outputText + '\n})', { Error, console, ...globals })((id) => {
+    if (id === '../lib/activity') return load('lib/activity.ts')
     assert.ok(Object.hasOwn(dependencies, id), 'Unexpected dependency: ' + id)
     return dependencies[id]
-  }, module, module.exports)
-  return module.exports
+  }, loaded, loaded.exports)
+  return loaded.exports
 }
 
 const session = (id = 'user-1', token = 'native-token') => ({ user: { id, email: 'test@example.com' }, accessToken: token, refreshToken: 'refresh-token' })

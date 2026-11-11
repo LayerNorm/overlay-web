@@ -7,6 +7,7 @@ export const WORKSPACE_SEARCH_KINDS = [
   'file',
   'automation',
   'agent',
+  'work',
 ] as const
 export type WorkspaceSearchKind = (typeof WORKSPACE_SEARCH_KINDS)[number]
 

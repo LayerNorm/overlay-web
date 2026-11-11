@@ -1,49 +1,121 @@
 import React, { useEffect, useState } from 'react'
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native'
-import { useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import type { WorkspaceNotification, WorkspaceNotificationFilter } from '@overlay/workspace-contracts'
-import { useTheme } from '../../hooks/useTheme'
+import { Alert } from 'react-native'
+import * as WebBrowser from 'expo-web-browser'
+import type { WorkspaceNotificationFilter } from '@overlay/workspace-contracts'
+import { api } from '../../services/convexClient'
+import { useLiveResource } from '../../hooks/useLiveResource'
+import { filterNotifications, markNotificationsRead } from '../../services/collaborationService'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
-import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
-import { useDrawer } from '../../contexts/DrawerContext'
-import { filterNotifications, markNotificationsRead, subscribeNotifications } from '../../services/collaborationService'
 import { openNotificationDestination } from '../../lib/notificationRouting'
-import { MainScreenHeader, EmptyState, TopBarIconButton } from '../ui/AppChrome'
-import { ListRow, Section } from '../ui/primitives'
+import { AUTH_BASE_URL } from '../../services/appConfig'
+import { getRequestWorkspaceId } from '../../services/appApi'
+import { useResourceScope } from '../knowledge/ResourceScreens'
+import { ActivityFeed, ResourcePage, ResourceState } from '../knowledge/ResourceViews'
 
-const FILTERS: WorkspaceNotificationFilter[] = ['all', 'unread', 'mentions', 'threads', 'reactions']
-
-export function ActivityScreen(): React.ReactElement {
-  const { theme, isDark } = useTheme()
-  const insets = useSafeAreaInsets()
-  const router = useRouter()
-  const { openDrawer } = useDrawer()
-  const ready = useNativeDataReady()
+export function ActivityScreen() {
   const { activeWorkspaceId } = useWorkspace()
-  const [items, setItems] = useState<WorkspaceNotification[]>([])
+  return <ActivityBody key={activeWorkspaceId} />
+}
+
+function ActivityBody() {
+  const { workspaceId, theme, isDark, router, top, openDrawer } = useResourceScope()
+  const feed = useLiveResource(
+    api.collaboration.activity.notifications,
+    workspaceId ? { workspaceId } : null,
+  )
+  const people = useLiveResource(
+    api.collaboration.management.view,
+    workspaceId ? { workspaceId, view: 'people' } : null,
+  )
+  const agents = useLiveResource(
+    api.collaboration.management.view,
+    workspaceId ? { workspaceId, view: 'chats-agents' } : null,
+  )
+  const actors = Object.fromEntries(
+    [...(people.data?.items ?? []), ...(agents.data?.items ?? [])]
+      .filter((item) => item.kind === 'member' && item.principalId)
+      .map((item) => [item.principalId!, { ...item, name: item.name }]),
+  )
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
-  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const unreadIds = JSON.stringify(
+    filterNotifications(feed.data ?? [], filter)
+      .filter((item) => !item.readAt)
+      .map((item) => item.id),
+  )
   useEffect(() => {
-    setItems([])
-    setLoaded(false)
-    if (!ready || !activeWorkspaceId) return
-    return subscribeNotifications(value => { setItems(value); setLoaded(true) })
-  }, [ready, activeWorkspaceId])
-  const visible = filterNotifications(items, filter)
-  return <View style={{ flex: 1, backgroundColor: theme.background }}>
-    <MainScreenHeader theme={theme} isDark={isDark} topInset={insets.top} leftSlot={<TopBarIconButton theme={theme} icon="sidebar" onPress={openDrawer} />} centerSlot={<Text style={{ color: theme.text }}>Activity</Text>} />
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: insets.top + 68, paddingBottom: insets.bottom + 24 }}>
-      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        {FILTERS.map(value => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{ selected: filter === value }} onPress={() => setFilter(value)}>
-          <Text style={{ color: filter === value ? theme.text : theme.textSecondary }}>{value[0].toUpperCase() + value.slice(1)}</Text>
-        </TouchableOpacity>)}
-      </View>
-      {visible.length ? <Section theme={theme}>
-        {visible.map(item => <ListRow key={item.id} theme={theme} title={item.title} subtitle={item.body} detail={item.readAt ? undefined : 'Unread'} onPress={() => {
-          void markNotificationsRead([item.id]).then(() => openNotificationDestination(router, item)).catch(() => Alert.alert('Could not open activity', 'Please try again.'))
-        }} />)}
-      </Section> : <EmptyState theme={theme} icon="bell" title={loaded ? 'You are all caught up' : 'Loading activity…'} description={loaded ? 'New activity will appear here.' : 'Connecting to your workspace.'} />}
-    </ScrollView>
-  </View>
+    const ids: string[] = JSON.parse(unreadIds)
+    if (!workspaceId || !ids.length || getRequestWorkspaceId() !== workspaceId) return
+    let active = true
+    void markNotificationsRead(ids, workspaceId).catch(() => {
+      if (active) setError('Could not mark activity as read.')
+    })
+    return () => {
+      active = false
+    }
+  }, [workspaceId, unreadIds])
+  return (
+    <ResourcePage
+      theme={theme}
+      section="Activity"
+      topInset={top}
+      onDrawer={openDrawer}
+      onSearch={() => router.push('/search')}
+    >
+      {feed.data ? (
+        <ActivityFeed
+          theme={theme}
+          dark={isDark}
+          actors={actors}
+          items={feed.data}
+          filter={filter}
+          onFilter={setFilter}
+          onOpen={(item) => {
+            const scope = workspaceId
+            void markNotificationsRead([item.id], scope ?? undefined)
+              .then(() => {
+                if (getRequestWorkspaceId() === scope)
+                  return openNotificationDestination(router, item)
+              })
+              .catch((cause) => setError(String(cause)))
+          }}
+          onReadAll={() => {
+            if (workspaceId)
+              void markNotificationsRead(
+                feed.data?.filter((item) => !item.readAt).map((item) => item.id) ?? [],
+                workspaceId,
+              ).catch((cause) => setError(String(cause)))
+          }}
+          onBugReport={() =>
+            Alert.alert(
+              'Submit a bug',
+              'Bug reports and attachments are public on GitHub. Open Help → Submit a bug on web to send your report.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Open on web',
+                  onPress: () => {
+                    void WebBrowser.openBrowserAsync(AUTH_BASE_URL + '/home').catch((cause) =>
+                      setError(String(cause)),
+                    )
+                  },
+                },
+              ],
+            )
+          }
+        />
+      ) : (
+        <ResourceState
+          theme={theme}
+          loading={feed.loading || !workspaceId}
+          error={
+            feed.error ||
+            (feed.data === null ? 'Activity is unavailable in this workspace.' : undefined)
+          }
+          onRetry={feed.retry}
+        />
+      )}
+      {error ? <ResourceState theme={theme} error={error} /> : null}
+    </ResourcePage>
+  )
 }

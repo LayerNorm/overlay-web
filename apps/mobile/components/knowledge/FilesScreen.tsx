@@ -13,6 +13,8 @@ import { BottomSheet, MainScreenHeader, TopBarIconButton } from '../ui/AppChrome
 import { MemoriesList } from './MemoriesList'
 import { FilesTree } from './FilesTree'
 import { OutputsGallery } from './OutputsGallery'
+import { FilesBrowserScreen } from './ResourceScreens'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 
 type FilesTab = 'memories' | 'files' | 'outputs'
 type FilesHeaderAction =
@@ -35,6 +37,11 @@ const TITLES: Record<FilesTab, string> = {
 }
 
 export function FilesScreen({ memoriesOnly = false }: { memoriesOnly?: boolean } = {}): React.ReactElement {
+  const { activeWorkspaceId } = useWorkspace()
+  return memoriesOnly ? <LegacyFilesScreen memoriesOnly /> : <FilesBrowserScreen key={activeWorkspaceId} />
+}
+
+function LegacyFilesScreen({ memoriesOnly = false }: { memoriesOnly?: boolean } = {}): React.ReactElement {
   const router = useRouter()
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()

@@ -7,6 +7,7 @@ import type { FunctionReturnType } from 'convex/server'
 import { mobileOverlayAppClient } from './overlayClient'
 import { api, convexWorkspaceId, mutateConvex, queryConvex, subscribeConvex, type Id } from './convexClient'
 import type { RoomMessageRecord } from '../lib/roomMessages'
+import { filterNotifications } from '../lib/activity'
 import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
 
 export const COLLABORATION_NATIVE_READY = true
@@ -225,15 +226,7 @@ export async function searchWorkspacePrincipals(workspaceId: string): Promise<{ 
   return { options: [...options.values()], currentPrincipalId: people?.currentPrincipalId ?? '' }
 }
 
-export function filterNotifications(items: WorkspaceNotification[], filter: WorkspaceNotificationFilter, options: { unreadOnly?: boolean; limit?: number } = {}) {
-  return items.filter(item => {
-    if ((options.unreadOnly || filter === 'unread') && item.readAt) return false
-    if (filter === 'mentions') return item.type === 'mention'
-    if (filter === 'threads') return item.type === 'thread'
-    if (filter === 'reactions') return item.type === 'reaction'
-    return true
-  }).slice(0, options.limit ?? 100)
-}
+export { filterNotifications }
 export async function fetchNotifications(filter: WorkspaceNotificationFilter = 'all', options: { unreadOnly?: boolean; limit?: number } = {}): Promise<WorkspaceNotification[]> {
   const items = await queryConvex(api.collaboration.activity.notifications, { workspaceId: convexWorkspaceId() })
   return filterNotifications(items ?? [], filter, options)
@@ -241,9 +234,9 @@ export async function fetchNotifications(filter: WorkspaceNotificationFilter = '
 export function subscribeNotifications(onValue: (items: WorkspaceNotification[]) => void) {
   return subscribeConvex(api.collaboration.activity.notifications, { workspaceId: convexWorkspaceId() }, items => onValue(items ?? []))
 }
-export async function markNotificationsRead(notificationIds: string[]): Promise<void> {
+export async function markNotificationsRead(notificationIds: string[], workspaceId = convexWorkspaceId()): Promise<void> {
   if (!notificationIds.length) return
-  await mutateConvex(api.collaboration.activity.markRead, { workspaceId: convexWorkspaceId(), notificationIds })
+  await mutateConvex(api.collaboration.activity.markRead, { workspaceId, notificationIds })
 }
 export async function markConversationNotificationsRead(conversationId: string): Promise<void> {
   await mutateConvex(api.collaboration.activity.markRead, roomArgs(conversationId))

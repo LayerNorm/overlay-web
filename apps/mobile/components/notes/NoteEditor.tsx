@@ -194,7 +194,8 @@ export function NoteEditor({ noteId, onTitleChange, onCreateNew }: NoteEditorPro
     async (currentTitle: string, currentMarkdown: string) => {
       if (!note) return
       try {
-        await saveNote({ ...note, title: currentTitle, content: toStoredHtml(currentMarkdown) })
+        const saved = await saveNote({ ...note, title: currentTitle, content: toStoredHtml(currentMarkdown) })
+        setNote(saved)
       } catch {
         // retain dirty state; will retry on next keystroke
       }

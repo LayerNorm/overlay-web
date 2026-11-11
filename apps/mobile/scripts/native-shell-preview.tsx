@@ -9,6 +9,7 @@ import { ShellFixture } from './ShellFixture'
 import { WorkFixture } from './WorkFixture'
 import { AgentFixture } from './AgentFixture'
 import { ChatFixture } from './ChatFixture'
+import { ResourceFixture } from './ResourceFixture'
 
 void NavigationBar.setVisibilityAsync('hidden')
 
@@ -28,6 +29,8 @@ function NativeShellPreview() {
       ? AgentFixture
     : ['personal-new', 'personal-stream', 'model-picker', 'channel-room', 'message-thread'].includes(preview?.screen)
       ? ChatFixture
+    : ['activity-feed', 'files-list', 'note', 'file-preview', 'automations-list', 'automation-detail', 'search-mentions'].includes(preview?.screen)
+      ? ResourceFixture
     : ShellFixture
   return (
     <View style={{ flex: 1 }}>
