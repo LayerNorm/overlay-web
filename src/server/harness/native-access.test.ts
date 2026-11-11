@@ -56,7 +56,7 @@ const delivery = () => ({
 })
 const room = () => ({
   conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question',
-  directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask' }] },
+  directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask', visibility: 'workspace' }] },
   participants: [{ principalId: 'human-principal', principalType: 'human' }, { principalId: 'agent-principal', principalType: 'agent' }],
 })
 
@@ -101,6 +101,7 @@ function configureNamedChild(options: {
     harness: 'overlay',
     modelId: 'fixture/model',
     permissionMode: 'ask',
+    visibility: 'workspace',
   }
   const initiatorAgent = {
     id: 'asking-agent',
@@ -108,6 +109,7 @@ function configureNamedChild(options: {
     harness: options.initiatorHarness ?? 'overlay',
     modelId: 'fixture/model',
     permissionMode: 'ask',
+    visibility: 'workspace',
     ...(options.initiatorArchivedAt === undefined ? {} : { archivedAt: options.initiatorArchivedAt }),
   }
   const agents = [childAgent, ...(options.includeInitiator === false ? [] : [initiatorAgent])]
@@ -408,4 +410,60 @@ test('named child keeps its native delivery identity while inheriting the verifi
   expect(mocks.gate).toHaveBeenCalledWith(expect.objectContaining({
     programmaticSubjectId: 'surface:slack:binding',
   }))
+})
+
+test('a shared surface descendant is denied after its current agent becomes creator-private', async () => {
+  const childAccess = configureNamedChild()
+  mocks.surfaceExecution.mockResolvedValue(surfaceExecution)
+  mocks.bindings.mockResolvedValue([surfaceSource])
+  mocks.conversation.mockResolvedValue(surfaceConversation)
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: true })
+  const childAgent = {
+    id: 'child-agent', principalId: 'child-agent-principal', harness: 'overlay', modelId: 'fixture/model',
+    permissionMode: 'ask', visibility: 'workspace',
+  }
+  const initiator = {
+    id: 'asking-agent', principalId: 'asking-agent-principal', harness: 'overlay', modelId: 'fixture/model',
+    permissionMode: 'ask', visibility: 'workspace',
+  }
+  const sharedRoom = {
+    ...room(), directory: { agents: [childAgent, initiator] },
+    participants: [
+      { principalId: 'human-principal', principalType: 'human' },
+      { principalId: childAgent.principalId, principalType: 'agent' },
+      { principalId: initiator.principalId, principalType: 'agent' },
+    ],
+  }
+  mocks.room.mockResolvedValue(sharedRoom)
+  const rootRun = { ...delivery(), turnId: surfaceExecution.turnId }
+  const childRun = {
+    ...delivery(),
+    id: childAccess.agentRunId,
+    agentId: childAccess.agentId,
+    agentPrincipalId: childAccess.agentPrincipalId,
+    harnessRunId: childAccess.runId,
+    workflowRunId: childAccess.workflowRunId,
+    initiatorPrincipalId: childAccess.principalId,
+  }
+  mocks.run.mockImplementation(async ({ agentRunId }: { agentRunId: string }) =>
+    agentRunId === surfaceExecution.agentRunId ? rootRun : childRun)
+  await expect(refreshNativeHarnessAccess(childAccess, { ...context, sharedRoom: true }, 'read_file'))
+    .resolves.toMatchObject({ agent: { id: 'child-agent' }, sharedRoom: true })
+
+  mocks.room.mockResolvedValueOnce({
+    ...sharedRoom,
+    directory: { agents: [{ ...childAgent, visibility: 'creator' }, initiator] },
+  })
+  await expect(refreshNativeHarnessAccess(childAccess, { ...context, sharedRoom: true }, 'read_file'))
+    .rejects.toThrow(/workspace-visible/)
+})
+
+test('non-surface native runs retain access to creator-private current agents', async () => {
+  mocks.room.mockResolvedValue({
+    ...room(),
+    directory: { agents: [{ ...room().directory.agents[0], visibility: 'creator' }] },
+  })
+
+  await expect(refreshNativeHarnessAccess(access, context, 'read_file'))
+    .resolves.toMatchObject({ agent: { id: 'agent', visibility: 'creator' }, sharedRoom: false })
 })

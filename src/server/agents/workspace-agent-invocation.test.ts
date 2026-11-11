@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   buildRemoteAgentPrompt,
   permissionModeForConnectedHarness,
@@ -9,8 +10,17 @@ import {
   WorkspaceAgentInvocationError,
 } from './workspace-agent-invocation'
 import { isExternalAgentInvocation } from './external-agent-policy'
+import { filterSharedSurfaceAgents } from './shared-surface-agent-policy'
 
 const root = process.cwd()
+
+function agentFixture(overrides: Partial<WorkspaceAgentDirectoryItem> = {}): WorkspaceAgentDirectoryItem {
+  return {
+    id: 'agent', workspaceId: 'workspace-1', principalId: 'agent-principal', name: 'Agent', instructions: '',
+    harness: 'overlay', modelId: 'test-model', allowedToolIds: [], invocationPolicy: 'mention', visibility: 'workspace',
+    createdByPrincipalId: 'creator', createdAt: 0, updatedAt: 0, teamIds: [], roomCount: 0, ...overrides,
+  }
+}
 
 test('native permission modes are not forwarded, while connected harness values are preserved', () => {
   assert.equal(permissionModeForConnectedHarness('overlay', 'ask'), undefined)
@@ -78,6 +88,20 @@ test('a legacy external agent with no usable target cannot be classified as nati
     harness: 'overlay',
     modelId: 'openai/gpt-4.1',
   }, false, false), false)
+})
+
+test('shared-surface target eligibility is reapplied to fresh directory state and leaves ordinary access unchanged', () => {
+  const workspace = agentFixture({ id: 'workspace', principalId: 'workspace-principal' })
+  const privateAgent = agentFixture({ id: 'private', principalId: 'private-principal', visibility: 'creator' })
+  const personalChief = agentFixture({ id: 'personal-chief', principalId: 'personal-chief-principal',
+    agentRole: 'personal_chief', chiefScope: 'personal', visibility: 'workspace' })
+  const sharedSurfaceContext = { surfaceExecution: {} as never }
+
+  assert.deepEqual(filterSharedSurfaceAgents([workspace, privateAgent, personalChief], sharedSurfaceContext), [workspace])
+  assert.deepEqual(filterSharedSurfaceAgents([workspace, { ...privateAgent, visibility: 'workspace' }, personalChief], sharedSurfaceContext), [
+    workspace, { ...privateAgent, visibility: 'workspace' },
+  ])
+  assert.deepEqual(filterSharedSurfaceAgents([workspace, privateAgent, personalChief]), [workspace, privateAgent, personalChief])
 })
 
 test('workspace agents use participant-scoped room history and persistence', async () => {

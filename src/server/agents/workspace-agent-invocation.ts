@@ -21,6 +21,7 @@ import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 import { chiefOrchestrationInstructions } from './chief-orchestration'
+import { filterSharedSurfaceAgents, type SharedSurfaceAgentContext } from './shared-surface-agent-policy'
 
 export function shouldPrepareConnectedAgentDrive(input: {
   enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
@@ -225,7 +226,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
   mentionedPrincipalIds?: string[]
   threadRootMessageId?: string
   workspaceId: string
-}): Promise<WorkspaceAgentInvocation[]> {
+}, options: { sharedSurfaceContext?: SharedSurfaceAgentContext } = {}): Promise<WorkspaceAgentInvocation[]> {
   const server = getOverlayServerContext()
   const collaboration = server.appData.repositories.conversationCollaboration
   const conversation = await loadAccessibleConversation({
@@ -303,7 +304,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
   // directory is read fresh on every trigger.
   const invocableAgents = resolveInvocableAgents({
     candidatePrincipalIds: principalIds.slice(0, MAX_AGENTS_PER_MESSAGE),
-    visibleAgents: directory.agents,
+    visibleAgents: filterSharedSurfaceAgents(directory.agents, options.sharedSurfaceContext),
   })
   const invocablePrincipalIds = new Set(invocableAgents.map((agent) => agent.principalId))
   for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {

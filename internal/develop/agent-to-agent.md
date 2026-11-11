@@ -58,3 +58,18 @@ idempotent launch, attempt history and persisted results remain tied to the
 requester and shared root; acceptance, revision or reasoned exclusion are
 coordination dispositions, not replacements for child execution status. A
 parent cannot finalize while assignment issues or live child execution remain.
+
+For a top-level native surface turn, the caller lineage comes from the verified
+persisted surface execution and its undeleted user trigger message. The canonical
+surface turn ID is preserved; the legacy web caller still requires the
+`agent_<trigger-message-id>_<agent-id>` turn format. Surface source, caller,
+workspace, conversation, agent, and trigger-message identity must match before
+an ask can create an assignment.
+
+For a shared native execution rooted in a verified surface turn, including
+descendants, `list_agents`, direct asks and room mentions are limited to
+workspace-visible agents. Creator-private agents and Personal Chiefs stay
+unavailable until an explicit collaboration-grant flow exists. The restriction
+is recomputed from the persisted surface root and current agent directory at
+discovery, native execution refresh, and dispatch; ordinary non-shared web
+access is unchanged.

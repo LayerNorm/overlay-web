@@ -35,7 +35,7 @@ const input: NativeHarnessToolsInput = {
 }
 const options: HarnessToolExecutionOptions = { toolCallId: 'call', messages: [], context: undefined }
 const authority = { agent: { id: 'agent', principalId: 'agent-principal', name: 'Research', allowedToolIds: ['files'], permissionMode: 'ask' },
-  entitlements: { tools: true }, paid: true, latestUserText: 'Read the source' }
+  entitlements: { tools: true }, paid: true, sharedRoom: true, latestUserText: 'Read the source' }
 const tooling = (needsApproval = false) => ({ tools: { read_file: { execute: mocks.execute, needsApproval } }, toolsContext: { read_file: { fresh: true } } })
 
 beforeEach(() => {
@@ -177,4 +177,23 @@ test('named-agent ask and post tools dispatch in process without rebuilding ordi
   expect(mocks.dispatch).toHaveBeenCalledTimes(2)
   expect(mocks.dispatch).toHaveBeenNthCalledWith(1, input.access, input.context, 'call', 'ask_agent', { agent: 'Writer', message: 'Review this' })
   expect(mocks.dispatch).toHaveBeenNthCalledWith(2, input.access, input.context, 'call', 'post_message', { agent: 'Writer', message: 'Review this' })
+})
+
+test('list_agents is registered through native dispatch and preserves its metadata result', async () => {
+  const result = { success: true, agents: [{
+    id: 'workspace-agent', name: 'Workspace agent', description: 'Handles shared work', kind: 'Overlay agent',
+  }] }
+  mocks.dispatch.mockResolvedValue(result)
+  const tools = createNativeHarnessTools({
+    ...input,
+    definitions: [{ name: 'list_agents', inputSchema: { type: 'object', properties: {} }, needsApproval: false }],
+  })
+  const definition = tools.list_agents!
+
+  expect(await definition.needsApproval!({}, options)).toBe(false)
+  expect(await definition.execute!({}, options)).toEqual(result)
+  expect(mocks.dispatch).toHaveBeenCalledExactlyOnceWith(input.access, input.context, 'call', 'list_agents', {})
+  expect(mocks.refresh).not.toHaveBeenCalled()
+  expect(mocks.build).not.toHaveBeenCalled()
+  expect(mocks.execute).not.toHaveBeenCalled()
 })

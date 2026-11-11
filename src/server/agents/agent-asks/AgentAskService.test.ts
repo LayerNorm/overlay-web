@@ -14,7 +14,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { assignmentResult?: AssignmentResultView; assignmentReadError?: Error; agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]> } = {}) {
+function setup(options: { assignmentResult?: AssignmentResultView; assignmentReadError?: Error; agents?: WorkspaceAgentDirectoryItem[]; directoryResponses?: WorkspaceAgentDirectoryItem[][]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]>; startAgentId?: string } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -32,10 +32,11 @@ function setup(options: { assignmentResult?: AssignmentResultView; assignmentRea
   let askClaims = options.initialAskClaims ?? 0
   const callerLookups: Array<Record<string, unknown>> = []
   let polls = 0
+  let directoryReads = 0
   let clock = 0
   const service = new AgentAskService({
     getCallerRun: async (args) => { callerLookups.push(args); return (options.callerRun ?? null) as never },
-    directory: async () => agents,
+    directory: async () => options.directoryResponses?.[directoryReads++] ?? agents,
     collaboration: {
       readAgentAssignmentResult: async () => {
         if (options.assignmentReadError) throw options.assignmentReadError
@@ -95,7 +96,7 @@ function setup(options: { assignmentResult?: AssignmentResultView; assignmentRea
     recordReply: async (args) => { recordedReplies.push(args) },
     listReplies: async () => options.recorded ?? [],
     releaseBudget: async (args) => { releases.push(args) },
-    startTurns: async (args) => { if (options.startFails) throw new Error('boom'); started.push(args); return [{ agentId: 'planner', turnId: options.replies ? `agent_${args.messageId}_planner` : 'agent_q1_planner' }] },
+    startTurns: async (args) => { if (options.startFails) throw new Error('boom'); started.push(args); return [{ agentId: options.startAgentId ?? 'planner', turnId: options.replies ? `agent_${args.messageId}_${options.startAgentId ?? 'planner'}` : 'agent_q1_planner' }] },
     sleep: async (ms) => { clock += ms },
     now: () => clock,
     waitMs: 6_000,
@@ -142,6 +143,85 @@ test('native assignments isolate dispatches and replay the same assignment messa
   assert.notEqual(replay.assignmentId, second.assignmentId)
   assert.notEqual(replay.conversationId, second.conversationId)
   assert.equal(state.assignments.size, 2)
+})
+
+test('a native surface ask derives lineage from its persisted trigger message without rewriting its turn id', async () => {
+  const trigger = { _id: 'surface-message', turnId: 'slack-turn:canonical-1', authorKind: 'human', authorPrincipalId: 'human-1',
+    role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
+  const source = {
+    actorUserId: 'u1', creatorPrincipalId: 'human-1', workspaceId: 'ws', conversationId: 'c1',
+    agentId: 'scout', agentPrincipalId: 'p-scout', agentRunId: 'delivery-run', userMessageId: 'surface-message',
+    turnId: 'slack-turn:canonical-1', harnessRunId: 'surface-root', workflowRunId: 'surface-workflow',
+  }
+  const state = setup({ trigger })
+  const result = await state.ask({
+    caller: { agentId: 'scout', conversationId: 'c1', turnId: 'slack-turn:canonical-1' },
+    nativeAssignment: nativeAgentAssignmentContext({
+      parentConversationId: 'c1', parentRunId: 'surface-root', rootRunId: 'surface-root', toolCallId: 'surface-ask',
+    }),
+    nativeSurfaceTrigger: source,
+    sharedSurfaceContext: { surfaceExecution: source },
+    wait: false,
+  })
+
+  assert.equal(result.status, 'working')
+  assert.equal(state.assignmentCalls.length, 1)
+  assert.equal(state.claims[0]?.rootKey, 'root:slack-turn:canonical-1')
+  assert.equal(state.claims[0]?.turnKey, 'turn:slack-turn:canonical-1')
+})
+
+test('native surface ask fails closed for mismatched source identity or trigger message', async () => {
+  const trigger = { _id: 'surface-message', turnId: 'slack-turn:canonical-1', authorKind: 'human', authorPrincipalId: 'human-1',
+    role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
+  const source = {
+    actorUserId: 'u1', creatorPrincipalId: 'human-1', workspaceId: 'ws', conversationId: 'c1',
+    agentId: 'scout', agentPrincipalId: 'p-scout', agentRunId: 'delivery-run', userMessageId: 'surface-message',
+    turnId: 'slack-turn:canonical-1', harnessRunId: 'surface-root', workflowRunId: 'surface-workflow',
+  }
+  const mismatches: Array<{ source?: Record<string, string>; trigger?: Row | null; parentConversationId?: string }> = [
+    { source: { actorUserId: 'other-user' } },
+    { source: { creatorPrincipalId: 'other-principal' } },
+    { source: { workspaceId: 'other-workspace' } },
+    { source: { conversationId: 'other-conversation' } },
+    { source: { agentId: 'other-agent' } },
+    { source: { agentPrincipalId: 'other-agent-principal' } },
+    { source: { userMessageId: '' } },
+    { source: { turnId: 'other-turn' } },
+    { source: { harnessRunId: 'other-root' } },
+    { parentConversationId: 'other-conversation' },
+    { trigger: null },
+    { trigger: { ...trigger, _id: 'other-message' } },
+    { trigger: { ...trigger, turnId: 'other-turn' } },
+    { trigger: { ...trigger, deletedAt: 1 } },
+    { trigger: { ...trigger, authorKind: 'agent' } },
+    { trigger: { ...trigger, authorPrincipalId: 'other-principal' } },
+    { trigger: { ...trigger, role: 'assistant' } },
+  ]
+
+  for (const mismatch of mismatches) {
+    const state = setup({ trigger: mismatch.trigger === undefined ? trigger : mismatch.trigger })
+    await assert.rejects(state.ask({
+      caller: { agentId: 'scout', conversationId: 'c1', turnId: 'slack-turn:canonical-1' },
+      nativeAssignment: nativeAgentAssignmentContext({
+        parentConversationId: mismatch.parentConversationId ?? 'c1', parentRunId: 'surface-root', rootRunId: 'surface-root', toolCallId: 'surface-ask',
+      }),
+      nativeSurfaceTrigger: { ...source, ...mismatch.source },
+      wait: false,
+    }), (error: unknown) => error instanceof AgentAskError && error.code === 'turn_unknown')
+    assert.equal(state.assignmentCalls.length, 0)
+  }
+})
+
+test('a surface-shaped turn still fails the legacy caller guard without verified surface context', async () => {
+  const state = setup()
+  await assert.rejects(state.ask({
+    caller: { agentId: 'scout', conversationId: 'c1', turnId: 'slack-turn:canonical-1' },
+    nativeAssignment: nativeAgentAssignmentContext({
+      parentConversationId: 'c1', parentRunId: 'surface-root', rootRunId: 'surface-root', toolCallId: 'surface-ask',
+    }),
+    wait: false,
+  }), (error: unknown) => error instanceof AgentAskError && error.code === 'turn_unknown')
+  assert.equal(state.assignmentCalls.length, 0)
 })
 
 test('assignment reply reads preserve full final text, publication pending and execution failures', async () => {
@@ -295,6 +375,100 @@ test('list shows the agents that can be asked, not the caller and not archived o
   const { service } = setup({ agents: [agent('scout', 'Scout'), agent('planner', 'Planner', { description: 'Plans' }), agent('old', 'Old', { archivedAt: 1 }), agent('cc', 'Claude Code', { harness: 'claude-code' })] })
   const list = await service.list({ actorUserId: 'u1', workspaceId: 'ws', callerAgentId: 'scout' })
   assert.deepEqual(list.map((entry) => [entry.name, entry.kind.startsWith('Overlay')]), [['Planner', true], ['Claude Code', false]])
+})
+
+test('shared surfaces list workspace agents only while normal personal asks retain creator access', async () => {
+  const personal = agent('qa-personal', 'QA Personal Agent', { visibility: 'creator', createdByPrincipalId: 'human-1' })
+  const personalChief = agent('personal-chief', 'Personal Chief', {
+    visibility: 'workspace', agentRole: 'personal_chief', chiefScope: 'personal', createdByPrincipalId: 'human-1',
+  })
+  const state = setup({ agents: [agent('scout', 'Scout'), agent('planner', 'Planner'), personal, personalChief], startAgentId: 'qa-personal' })
+  const sharedSurfaceContext = { surfaceExecution: {} as never }
+
+  const shared = await state.service.list({ actorUserId: 'u1', workspaceId: 'ws', callerAgentId: 'scout', sharedSurfaceContext })
+  assert.deepEqual(shared, [{ id: 'planner', name: 'Planner', description: '', kind: 'Overlay agent' }])
+
+  const ordinary = await state.service.list({ actorUserId: 'u1', workspaceId: 'ws', callerAgentId: 'scout' })
+  assert.deepEqual(ordinary.map((entry) => entry.name), ['Planner', 'QA Personal Agent', 'Personal Chief'])
+  const asked = await state.service.ask({
+    actorUserId: 'u1', actorPrincipalId: 'human-1', workspaceId: 'ws',
+    target: 'QA Personal Agent', message: 'Review this privately.', wait: false,
+  })
+  assert.equal(asked.status, 'working')
+})
+
+test('verified non-shared native surface asks retain creator-private target access', async () => {
+  const trigger = { _id: 'private-surface-message', turnId: 'slack-turn:private-1', authorKind: 'human', authorPrincipalId: 'human-1',
+    role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
+  const source = {
+    actorUserId: 'u1', creatorPrincipalId: 'human-1', workspaceId: 'ws', conversationId: 'c1',
+    agentId: 'scout', agentPrincipalId: 'p-scout', agentRunId: 'delivery-run', userMessageId: 'private-surface-message',
+    turnId: 'slack-turn:private-1', harnessRunId: 'private-root', workflowRunId: 'private-workflow',
+  }
+  const state = setup({
+    trigger, startAgentId: 'qa-personal',
+    agents: [agent('scout', 'Scout'), agent('qa-personal', 'QA Personal Agent', { visibility: 'creator', createdByPrincipalId: 'human-1' })],
+  })
+
+  const result = await state.ask({
+    caller: { agentId: 'scout', conversationId: 'c1', turnId: 'slack-turn:private-1' },
+    nativeAssignment: nativeAgentAssignmentContext({
+      parentConversationId: 'c1', parentRunId: 'private-root', rootRunId: 'private-root', toolCallId: 'private-surface-ask',
+    }),
+    nativeSurfaceTrigger: source, target: 'QA Personal Agent', message: 'Review privately.', wait: false,
+  })
+
+  assert.equal(result.status, 'working')
+  assert.equal(state.assignmentCalls.length, 1)
+})
+
+test('shared-surface direct targeting hides creator-private agents without creating work', async () => {
+  const state = setup({ agents: [
+    agent('scout', 'Scout'), agent('qa-personal', 'QA Personal Agent', { visibility: 'creator', createdByPrincipalId: 'human-1' }),
+    agent('personal-chief', 'Personal Chief', { visibility: 'workspace', agentRole: 'personal_chief', chiefScope: 'personal' }),
+  ] })
+
+  for (const target of ['qa-personal', 'QA Personal Agent', 'personal-chief', 'Personal Chief']) {
+    await assert.rejects(
+      state.ask({ target, sharedSurfaceContext: { surfaceExecution: {} } }),
+      (error: AgentAskError) => error.code === 'agent_not_found',
+    )
+  }
+  assert.equal(state.claims.length, 0)
+  assert.equal(state.assignmentCalls.length, 0)
+  assert.equal(state.started.length, 0)
+})
+
+test('a shared-surface ask rechecks visibility before assignment admission', async () => {
+  const workspaceTarget = agent('qa-personal', 'QA Personal Agent')
+  const creatorOnlyTarget = { ...workspaceTarget, visibility: 'creator' as const }
+  const state = setup({
+    agents: [agent('scout', 'Scout'), workspaceTarget],
+    directoryResponses: [[agent('scout', 'Scout'), workspaceTarget], [agent('scout', 'Scout'), creatorOnlyTarget]],
+  })
+
+  await assert.rejects(state.ask({
+    target: 'qa-personal', sharedSurfaceContext: { surfaceExecution: {} },
+    nativeAssignment: nativeAgentAssignmentContext({
+      parentConversationId: 'c1', parentRunId: 'surface-root', rootRunId: 'surface-root', toolCallId: 'target-became-private',
+    }),
+  }), (error: AgentAskError) => error.code === 'agent_not_found')
+  assert.equal(state.claims.length, 1)
+  assert.equal(state.releases.length, 1)
+  assert.equal(state.assignmentCalls.length, 0)
+  assert.equal(state.started.length, 0)
+})
+
+test('shared-surface post mentions deny creator-private targets before posting or starting work', async () => {
+  const state = setup({ agents: [
+    agent('scout', 'Scout'), agent('qa-personal', 'QA Personal Agent', { visibility: 'creator', createdByPrincipalId: 'human-1' }),
+  ] })
+
+  await assert.rejects(state.post({ mentions: ['QA Personal Agent'], sharedSurfaceContext: { surfaceExecution: {} } }),
+    (error: AgentAskError) => error.code === 'agent_not_found')
+  assert.equal(state.claims.length, 0)
+  assert.equal(state.posted.length, 0)
+  assert.equal(state.started.length, 0)
 })
 
 test('a question that could not be delivered is given back to the budget', async () => {

@@ -3,7 +3,7 @@ import { ConvexError } from 'convex/values'
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), resolve: vi.fn(), build: vi.fn(), get: vi.fn(), apply: vi.fn(), launch: vi.fn(),
-  startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(), directory: vi.fn(),
+  startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(), list: vi.fn(), directory: vi.fn(),
   remoteTarget: vi.fn(), bindings: vi.fn(),
   resolveAssignment: vi.fn(), cancel: vi.fn(), cancelSubtree: vi.fn(),
 }))
@@ -31,7 +31,7 @@ vi.mock('@/server/bootstrap', () => ({
       findInvocationTarget: mocks.remoteTarget, listBindings: mocks.bindings,
     } } },
     workspaceAgentService: { list: mocks.directory },
-    agentAsks: { ask: mocks.ask, post: vi.fn() },
+    agentAsks: { ask: mocks.ask, list: mocks.list, post: vi.fn() },
   }),
 }))
 
@@ -57,6 +57,7 @@ const invocation = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.refresh.mockResolvedValue({})
+  mocks.list.mockResolvedValue([])
   mocks.directory.mockResolvedValue({ agents: [{ ...invocation, id: 'target', name: 'Target' }] })
   mocks.remoteTarget.mockResolvedValue(null)
   mocks.bindings.mockResolvedValue([])
@@ -118,6 +119,131 @@ test('native ask uses trusted caller, forces async delivery, intersects tools, a
   expect(mocks.launch).toHaveBeenCalledWith(access, expect.objectContaining({
     definitions: [{ name: 'read_file', inputSchema: {}, needsApproval: false }],
   }), 'workspace:target-run')
+})
+
+test('native surface trigger is passed only for the matching persisted root, never a child or unrelated run', async () => {
+  const surfaceExecution = {
+    actorUserId: access.actorUserId,
+    workspaceId: access.workspaceId,
+    creatorPrincipalId: access.principalId,
+    agentId: access.agentId,
+    agentPrincipalId: access.agentPrincipalId,
+    conversationId: access.conversationId,
+    agentRunId: access.agentRunId,
+    userMessageId: access.userMessageId,
+    assistantMessageId: access.assistantMessageId,
+    turnId: access.turnId,
+    harnessRunId: access.runId,
+    workflowRunId: access.workflowRunId,
+    platform: 'slack',
+    teamId: 'team',
+    channelId: 'channel',
+    threadId: 'thread',
+    messageId: 'slack-message',
+    bindingId: 'binding',
+    connectionId: 'connection',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  mocks.refresh.mockResolvedValue({ surfaceExecution, sharedRoom: true })
+  mocks.ask.mockResolvedValue({ status: 'working' })
+
+  await dispatchNativeHarnessAgentRequest(access, context, 'root-call', 'ask_agent', {
+    agent: 'Target', message: 'inspect', nativeSurfaceTrigger: { userMessageId: 'forged' }, sharedSurfaceContext: null,
+  })
+  expect(mocks.ask).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    nativeSurfaceTrigger: surfaceExecution, sharedSurfaceContext: { surfaceExecution },
+  }))
+
+  const childAccess = {
+    ...access,
+    agentId: 'child-agent',
+    agentPrincipalId: 'child-principal',
+    agentRunId: 'child-run',
+    userMessageId: 'child-trigger',
+    assistantMessageId: 'child-reply',
+    turnId: 'child-turn',
+    runId: 'workspace:child-run',
+    workflowRunId: 'child-workflow',
+  }
+  const unrelatedAccess = {
+    ...access,
+    agentId: 'unrelated-agent',
+    agentPrincipalId: 'unrelated-principal',
+    agentRunId: 'unrelated-run',
+    userMessageId: 'unrelated-trigger',
+    assistantMessageId: 'unrelated-reply',
+    turnId: 'unrelated-turn',
+    runId: 'workspace:unrelated-run',
+    workflowRunId: 'unrelated-workflow',
+  }
+  const childParent = { ...parent, runId: childAccess.runId, rootRunId: access.runId, workflowRunId: childAccess.workflowRunId }
+  const unrelatedParent = { ...parent, runId: unrelatedAccess.runId, rootRunId: unrelatedAccess.runId,
+    workflowRunId: unrelatedAccess.workflowRunId }
+  mocks.get.mockImplementation(async ({ runId }: { runId: string }) =>
+    runId === childAccess.runId ? childParent : runId === unrelatedAccess.runId ? unrelatedParent : parent)
+  mocks.refresh.mockImplementation(async ({ runId }: { runId: string }) => ({
+    ...(runId === unrelatedAccess.runId ? {} : { surfaceExecution }), sharedRoom: true,
+  }))
+
+  await dispatchNativeHarnessAgentRequest(childAccess, context, 'child-call', 'ask_agent', {
+    agent: 'Target', message: 'inspect', nativeSurfaceTrigger: { userMessageId: 'forged-child' }, sharedSurfaceContext: null,
+  })
+  await dispatchNativeHarnessAgentRequest(unrelatedAccess, context, 'unrelated-call', 'ask_agent', {
+    agent: 'Target', message: 'inspect', nativeSurfaceTrigger: { userMessageId: 'forged-unrelated' },
+  })
+  expect(mocks.ask).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    nativeSurfaceTrigger: undefined, sharedSurfaceContext: { surfaceExecution },
+  }))
+  expect(mocks.ask).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    nativeSurfaceTrigger: undefined, sharedSurfaceContext: undefined,
+  }))
+})
+
+test('shared-surface list uses the verified root context and ignores tool-supplied policy fields', async () => {
+  const surfaceExecution = { harnessRunId: access.runId, workflowRunId: access.workflowRunId } as never
+  mocks.refresh.mockResolvedValue({ surfaceExecution, sharedRoom: true })
+  mocks.list.mockResolvedValue([{
+    id: 'workspace-agent', name: 'Workspace agent', description: 'Handles shared work', kind: 'Overlay agent',
+  }])
+
+  const result = await dispatchNativeHarnessAgentRequest(access, context, 'list-call', 'list_agents', {
+    sharedSurfaceContext: null, workspaceVisibleOnly: false, surfaceExecution: null,
+  })
+
+  expect(result).toEqual({ success: true, agents: [{
+    id: 'workspace-agent', name: 'Workspace agent', description: 'Handles shared work', kind: 'Overlay agent',
+  }] })
+  expect(mocks.list).toHaveBeenCalledWith({
+    actorUserId: access.actorUserId, workspaceId: access.workspaceId, callerAgentId: access.agentId,
+    sharedSurfaceContext: { surfaceExecution },
+  })
+
+  mocks.refresh.mockResolvedValue({ surfaceExecution, sharedRoom: false })
+  await dispatchNativeHarnessAgentRequest(access, context, 'private-list-call', 'list_agents', {
+    sharedSurfaceContext: { surfaceExecution }, workspaceVisibleOnly: true,
+  })
+  expect(mocks.list).toHaveBeenNthCalledWith(2, {
+    actorUserId: access.actorUserId, workspaceId: access.workspaceId, callerAgentId: access.agentId,
+    sharedSurfaceContext: undefined,
+  })
+})
+
+test('shared-surface descendant revalidates targets before creating named child runs', async () => {
+  const surfaceExecution = { harnessRunId: access.runId, workflowRunId: access.workflowRunId } as never
+  mocks.refresh.mockResolvedValue({ surfaceExecution, sharedRoom: true })
+  mocks.resolve.mockResolvedValue([])
+
+  await dispatchNativeHarnessAgentRequest(access, context, 'nested-ask', 'ask_agent', {
+    agent: 'Target', message: 'inspect', sharedSurfaceContext: null,
+  })
+
+  expect(mocks.resolve).toHaveBeenCalledWith(expect.objectContaining({
+    actorUserId: access.actorUserId, workspaceId: access.workspaceId,
+  }), { sharedSurfaceContext: { surfaceExecution } })
+  expect(mocks.startTurn).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(mocks.launch).not.toHaveBeenCalled()
 })
 
 test('native ask gives every target the same workspace budget with no per-child split', async () => {

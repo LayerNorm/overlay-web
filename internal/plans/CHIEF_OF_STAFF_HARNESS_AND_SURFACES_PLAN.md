@@ -374,7 +374,7 @@ Each phase should be a reviewable change set. The boundaries below are implement
 - [~] Preserve existing turn/execution deduplication. This is not reliable delivery: the new outbox, echo suppression and receipt reconciliation remain unimplemented.
 - [ ] Migrate eligible connections with an admin-visible dry run and conflict report.
 - [ ] Update setup documentation and check whether OAuth scope changes require reauthorization.
-- [ ] Complete hosted connected Slack acceptance on the exact isolated Preview, including native preparation and the authorization/privacy matrix.
+- [ ] Complete hosted connected Slack acceptance on the exact isolated Preview, including native preparation and the authorization/privacy matrix. The 20764 resend admitted the root with shared-room restriction and completed `list_agents`, then `ask_agent` failed with `turn_unknown` before assignments or children; the persisted-lineage compatibility fix is in this branch and hosted retest remains pending. Slack wait/resume behavior, reliable-delivery outbox/echo suppression/receipt reconciliation, connection migration/setup, and hosted acceptance remain incomplete.
 
 **Exit gate:** a separate development Slack app on the exact isolated PR Preview passes the web/Slack parity and authorization matrix. No production app is repointed for testing.
 

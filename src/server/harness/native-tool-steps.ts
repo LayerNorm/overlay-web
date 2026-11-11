@@ -5,6 +5,7 @@ import { ConvexError } from 'convex/values'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import { isAvailableToSharedSurface, sharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
 import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
@@ -65,7 +66,7 @@ async function freshTooling(call: NativeToolCall) {
   const tooling = await buildWorkspaceAgentTooling({
     actorUserId: call.access.actorUserId, agentPrincipalId: call.access.agentPrincipalId,
     conversationId: call.access.conversationId, effectiveModelId: call.context.modelId,
-    inheritedSharedRoom: call.context.sharedRoom,
+    inheritedSharedRoom: authority.sharedRoom,
     entitlements: authority.entitlements, paid: authority.paid,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
@@ -217,7 +218,7 @@ async function resolveNativeAssignment(access: NativeHarnessAccess, values: Reco
 }
 
 function assertNativeAgentRequest(toolCallId: string, toolName: string) {
-  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message', 'resolve_assignment'].includes(toolName)) {
+  if (!toolCallId || toolCallId.length > 256 || !['list_agents', 'ask_agent', 'post_message', 'resolve_assignment'].includes(toolName)) {
     throw new FatalError('Invalid native agent request.')
   }
 }
@@ -231,7 +232,8 @@ export async function dispatchNativeHarnessAgentRequest(
 ): Promise<unknown> {
   'use step'
   assertNativeAgentRequest(toolCallId, toolName)
-  await refreshNativeHarnessAccess(access, context, toolName)
+  const authority = await refreshNativeHarnessAccess(access, context, toolName)
+  const sharedSurfaceContext = sharedSurfaceAgentContext(authority.surfaceExecution, authority.sharedRoom)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
@@ -248,7 +250,7 @@ export async function dispatchNativeHarnessAgentRequest(
     prompt: string
     workspaceId: string
   }) => {
-    const invocations = await resolveWorkspaceAgentInvocations(args)
+    const invocations = await resolveWorkspaceAgentInvocations(args, { sharedSurfaceContext })
     if (invocations.some(invocation => invocation.externalAgent || invocation.remoteTarget || invocation.harness !== 'overlay')) {
       throw new Error("External agents can't be asked from this run yet.")
     }
@@ -351,6 +353,17 @@ export async function dispatchNativeHarnessAgentRequest(
     toolName,
     input,
   }
+  if (toolName === 'list_agents') {
+    return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+      success: true,
+      agents: await server.agentAsks.list({
+        actorUserId: access.actorUserId,
+        workspaceId: access.workspaceId,
+        callerAgentId: access.agentId,
+        sharedSurfaceContext,
+      }),
+    }))
+  }
   if (toolName === 'ask_agent') {
     if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
     if ((values.assignmentId !== undefined && typeof values.assignmentId !== 'string')
@@ -364,7 +377,7 @@ export async function dispatchNativeHarnessAgentRequest(
     const normalizedTarget = target.trim().toLocaleLowerCase()
     const targetAgent = directory.agents.find(agent => agent.id === target.trim()
       || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
-    if (targetAgent) {
+    if (targetAgent && (!sharedSurfaceContext || isAvailableToSharedSurface(targetAgent))) {
       const [remoteTarget, bindings] = await Promise.all([
         server.appData.repositories.connectedAgents.findInvocationTarget({
           workspaceId: access.workspaceId,
@@ -383,6 +396,11 @@ export async function dispatchNativeHarnessAgentRequest(
       }
     }
     const parent = await loadNativeParentRun(repository, access)
+    const surfaceExecution = authority.surfaceExecution
+    const nativeSurfaceTrigger = surfaceExecution && parent.runId === parent.rootRunId
+      && access.runId === surfaceExecution.harnessRunId && parent.workflowRunId === surfaceExecution.workflowRunId
+      ? surfaceExecution
+      : undefined
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
       ...await server.agentAsks.ask({
         ...actor,
@@ -397,6 +415,8 @@ export async function dispatchNativeHarnessAgentRequest(
           rootRunId: parent.rootRunId,
           toolCallId,
         }),
+        nativeSurfaceTrigger,
+        sharedSurfaceContext,
       }),
       childRunIds,
     }))
@@ -414,6 +434,7 @@ export async function dispatchNativeHarnessAgentRequest(
       conversationId,
       text,
       mentions,
+      sharedSurfaceContext,
     }),
     childRunIds,
   }))

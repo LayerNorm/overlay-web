@@ -191,3 +191,19 @@ keys, so every serverless instance shares them. A 15-minute cron prunes expired
 rows. `@chat-adapter/state-memory` is used only when no Convex URL is configured
 (unit tests, offline runs); it cannot carry an install from the OAuth callback
 to a later webhook, so Slack does not work there.
+
+Native `ask_agent` uses the persisted surface execution and exact user trigger
+message to establish caller lineage; it does not rewrite the canonical Slack
+turn ID. Deleted or mismatched trigger/source identity fails closed, and the
+legacy web agent-turn check is unchanged.
+
+Shared surface-rooted Harness executions, including descendants created through
+`harness_delegate`, discover and target only workspace-visible agents. Creator-
+private agents and Personal Chiefs require an explicit collaboration grant;
+until that grant flow exists, shared executions omit them from `list_agents`,
+reject direct asks, and re-check current visibility before nested room mentions
+start work. Native execution refresh also denies existing roots or descendants
+whose current agent no longer meets the workspace-visible policy. The policy
+comes from the verified persisted surface root and server-refreshed room
+restrictions, not tool or request fields. Non-shared web and Personal Chief
+behavior is unchanged.

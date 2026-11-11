@@ -9,6 +9,7 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { assertUserCanUseByokModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
+import { isAvailableToSharedSurface } from '@/server/agents/shared-surface-agent-policy'
 import { loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
@@ -245,7 +246,7 @@ function assertRoomIdentity(
   if (agent.modelId !== context.modelId) {
     throw new FatalError('The model is no longer an admitted native agent candidate.')
   }
-  return agent
+  return { agent, sharedRoom: shared }
 }
 
 async function assertNativeCapabilities(access: NativeHarnessAccess, context: NativeHarnessContext, toolName?: string): Promise<void> {
@@ -303,7 +304,10 @@ export async function refreshNativeHarnessAccess(
   ])
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
-  const agent = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
+  const { agent, sharedRoom } = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
+  if (surfaceExecution && sharedRoom && !isAvailableToSharedSurface(agent)) {
+    throw new FatalError('Shared surface execution requires a workspace-visible agent.')
+  }
   await assertNativeCapabilities(access, context, toolName)
   const billingProgrammaticSubjectId = surfaceExecution
     ? `surface:slack:${surfaceExecution.bindingId}`
@@ -328,7 +332,8 @@ export async function refreshNativeHarnessAccess(
       now: Date.now(), leaseMs: 24 * 60 * 60 * 1_000,
     })
   }
-  return { agent, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
+  return { agent, sharedRoom, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
+    surfaceExecution: surfaceExecution ?? undefined,
     billingProgrammaticSubjectId,
     runStatus: state.status,
     requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true }
