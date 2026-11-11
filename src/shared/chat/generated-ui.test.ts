@@ -30,7 +30,7 @@ test('render_ui persists ordered text, tool, UI, text parts and never turns fail
     { text: 'After', toolCalls: [], toolResults: [] },
   ] as never, '')
   assert.deepEqual(result.parts.map(part => part.type), ['text', 'tool-invocation', 'data', 'text'])
-  assert.deepEqual(result.parts[2], { type: 'data', dataType: GENERATED_UI_DATA_TYPE, id: 'view', data: renderedView })
+  assert.deepEqual(result.parts[2], { type: 'data', dataType: GENERATED_UI_DATA_TYPE, id: 'ui', data: renderedView })
   assert.deepEqual(buildAssistantVisualSequence(result.parts).map(block => block.kind), ['text', 'tool', 'generated-ui', 'text'])
   const viewOnly = buildAssistantPersistenceFromSteps([call('ui', 'render_ui', { success: true, id: 'view', generatedUi: renderedView })] as never, '')
   assert.equal(viewOnly.content, 'Weekly summary')
