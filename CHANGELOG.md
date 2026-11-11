@@ -4,12 +4,19 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.
+
+- Show Jump to latest whenever messages remain below the visible conversation, even with no unread messages or while an agent turn is anchored. Jumping releases the turn anchor and scrolls to the bottom.
+
+- Record last-observed GitHub pull-request associations from successful, server-authorized agent tool results and include them in authenticated workspace-thread projections.
+
+- Align agent-thread progress icons beneath the agent avatar and remove curved indentation. Show linked GitHub pull requests only in sidebar threads, with lifecycle icons and last-observed details from successful integration actions. Keep response loading dots beneath the agent name only until the first displayed token. Start new agent exchanges near the viewport top without removing scrollable history. Center Help with the other rail controls and move Work task settings into a popover that does not expand the composer.
+
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
 - Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
-||||||| f8ea73ed7
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
 
 - Fix a cancelled ChatGPT/Codex sign-in staying in the provider list. Removing a subscription connection failed with "Subscription cleanup is pending" when a sign-in check was still running, so the connection was never deleted. That check now hands its lock back as soon as it sees the removal, and removal waits for it (at most a minute) before deleting the stored sign-in data and the connection. This changes Convex subscription mutations.
