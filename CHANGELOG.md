@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Add native-authenticated Expo push registration with device/token rotation, cross-account ownership transfer and sign-out revocation. New activity, mentions, agent approvals and input waits schedule preference- and mute-aware push delivery; invalid Expo devices are revoked from send tickets and receipts. Account deletion also clears push registrations.
+- Keep the exported API schema's onboarding dependency relative so mobile runtime bundles remain free of web-only aliases.
 
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
