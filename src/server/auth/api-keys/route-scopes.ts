@@ -10,7 +10,6 @@ const CHAT_WRITE_PATHS = new Set([
   '/api/v1/generate-tab-group-label',
   '/api/v1/generate-title',
   '/api/v1/generate-video',
-  '/api/v1/notebook-agent',
 ])
 
 const FILE_RESOURCE_PREFIXES = [

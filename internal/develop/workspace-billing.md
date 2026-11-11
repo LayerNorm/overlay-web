@@ -72,7 +72,7 @@ The workspace balance is the only automatic spending limit, plus an optional fix
 
 - Before a paid call, `ensureProviderBudgetNotLow` (`src/server/billing/billing-runtime.ts`) reads the real balance. Under 2% left, it tries one automatic top-up to the 2% line (`workspaceBudgetStopLineCents`) and refuses with `402 insufficient_budget` only if the workspace is still under 2%. It also refuses when the subject's spend limit is used up. Convex background work (embeddings, memory extraction, memory profiles) uses `billing/providerBudget:providerBudgetGate`, which applies the same check without a top-up.
 - After a successful call, the actual cost (provider receipt, or catalog price times reported usage, or a known per-item price for media) is charged directly with `recordBatch`, keyed by a unique operation id. The charge is capped at what the balance holds, and it counts against the subject's spend limit (`programmaticSubjectId` selects a program's limit). A failed call charges nothing.
-- `recordBatch` returns `budgetLow`. A loop (the notebook agent) stops taking steps when a charge leaves the workspace under 2%.
+- `recordBatch` returns `budgetLow`. The Notebook assistant is an ordinary personal chat turn, so it follows the chat Harness billing above.
 
 Explicit BYO inference still requires a workspace that is not under 2%, and charges no Overlay model usage. Computers and managed sandboxes follow the same rule: they start only with at least 2% left (after a top-up), hold nothing, are charged observed usage by the lease meter, and stop when a charge leaves the workspace under 2% or uses up a spend limit (see `billing-holds-and-machine-metering.md`).
 

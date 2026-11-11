@@ -10,6 +10,7 @@ import { defineSchema, defineTable } from 'convex/server'
 import { userMessageMetadata } from './lib/userMessageMetadata'
 import { v } from 'convex/values'
 import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
+import { threadPullRequestValidator } from './lib/threadPullRequests'
 
 const runPlanStepValidator = v.object({
   id: v.string(),
@@ -1353,6 +1354,7 @@ export default defineSchema({
     // them and the chat list can keep them out of Chats. Absent on ordinary
     // chats and on automation-owned threads.
     agentId: v.optional(v.string()),
+    pullRequests: v.optional(v.array(threadPullRequestValidator)),
     dmIdentityKey: v.optional(v.string()),
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),

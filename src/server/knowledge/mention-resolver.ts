@@ -175,3 +175,15 @@ export async function resolveMentionsContext(
   const lines = await Promise.all(unique.map((m) => resolveOne(m, opts)))
   return `\n\n${HEADER}${lines.join('\n')}\n</overlay_user_mentions>`
 }
+
+/** The note a Notebook chat turn is about, read with the caller's own access. */
+export async function resolveNotebookNote(input: { noteId: string; userId: string; workspaceId: string; serverSecret: string }) {
+  const file = await convex.query<{ _id: string; name?: string; kind?: string } | null>('files/files:get', {
+    fileId: input.noteId,
+    userId: input.userId,
+    workspaceId: input.workspaceId,
+    serverSecret: input.serverSecret,
+  }).catch((_error) => null)
+  if (!file || file.kind !== 'note') return undefined
+  return { id: file._id, title: file.name?.trim() || 'Untitled' }
+}
