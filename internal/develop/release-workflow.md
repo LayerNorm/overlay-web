@@ -5,6 +5,8 @@ description: "PR previews on overlay-landing, main integration, and automatic pr
 
 ## Operating contract
 
+Native access-token bootstrap returns HTTP 409 with `code: workspace_setup_required` when its resolved workspace has no configured wallet. Mobile presents the existing web-setup gate; browser-session onboarding and unrelated bootstrap failures retain their existing behavior.
+
 | Environment | Source | Data and providers |
 | --- | --- | --- |
 | Local | Working tree | Engineer-owned dev backend and test credentials |
