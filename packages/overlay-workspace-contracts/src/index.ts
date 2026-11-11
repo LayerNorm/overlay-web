@@ -35,6 +35,7 @@ export {
   type WorkspaceHandleUpdateResponse,
   type WorkspaceInvitation,
   type WorkspaceInvitationAcceptResponse,
+  type WorkspaceInvitationPreviewResponse,
   type WorkspaceInvitationListResponse,
   type WorkspaceInvitationStatus,
   type WorkspaceKind,

@@ -89,6 +89,15 @@ export type WorkspaceTeamMember = {
   createdAt: number
 }
 
+export type WorkspaceInvitationPreviewResponse = {
+  status: WorkspaceInvitationStatus
+  workspaceName: string
+  inviterName: string | null
+  role: Exclude<WorkspaceMembershipRole, 'owner'>
+  invitedEmail: string
+  workspaceBilling: 'paid' | 'free'
+}
+
 export type WorkspaceInvitation = {
   id: string
   workspaceId: string

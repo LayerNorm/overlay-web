@@ -8,6 +8,18 @@ import 'server-only'
  * replacement controls here.
  */
 export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
+  '/api/v1/workspace-invitations/[invitationId]': {
+    methods: ['GET'],
+    reason: 'Invitation landing page must work before account creation or sign-in.',
+    controls: {
+      authentication: 'unguessable UUID v4 invitation bearer in the URL; no session required',
+      authorization: 'redacted invitation preview only; no workspace or principal IDs; acceptance still requires the invited account',
+      rateLimit: '60 requests per IP per minute',
+      csrf: 'read-only GET; no cookie authority or mutations',
+      idempotency: 'read-only; no-store response',
+      audit: 'read-only; no state changes or credentials issued',
+    },
+  },
   '/api/v1/agent-environments/enroll': agentHostException(['POST'], 'Single-use enrollment code redemption plus device public-key registration.'),
   '/api/v1/agent-environments/[environmentId]/credentials': agentHostException(['POST'], 'One-time challenge and Ed25519 proof-of-possession credential issuance.'),
   '/api/v1/agent-environments/[environmentId]/credentials/refresh': agentHostException(['POST'], 'Signed environment credential rotation.'),
