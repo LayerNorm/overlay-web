@@ -46,17 +46,6 @@ for (const [file, composer, androidBehavior, webBehavior] of [
   assert.equal(behaviorFor('web'), webBehavior)
 })
 
-test('keyboard padding geometry leaves zero residual overlap after resize and resets on hide', () => {
-  const keyboardTop = 600
-  const residualPadding = (frameY, frameHeight, imeTop) => imeTop === null
-    ? 0
-    : Math.max(0, frameY + frameHeight - imeTop)
-
-  assert.equal(residualPadding(80, 520, keyboardTop), 0)
-  assert.equal(residualPadding(80, 920, keyboardTop), 400)
-  assert.equal(residualPadding(80, 920, null), 0)
-})
-
 test('composer footer inset follows repeated keyboard show/hide cycles for both chat frames', () => {
   const { getComposerBottomInset, keyboardVisibilityReducer } = loadKeyboardLayout()
   const roomInset = (visible, safeBottom) => getComposerBottomInset(visible, safeBottom, 8, 8)

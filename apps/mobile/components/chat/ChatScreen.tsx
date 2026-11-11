@@ -325,6 +325,7 @@ export function ChatScreen({
     insets.bottom,
     spacing.md,
     spacing.sm,
+    // KAV overrides the container paddingBottom; preserve the closed Android gutter here.
     Platform.OS === 'android' ? spacing.sm : 0,
   )
 
