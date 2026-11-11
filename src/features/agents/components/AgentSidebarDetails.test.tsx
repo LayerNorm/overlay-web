@@ -18,7 +18,6 @@ function renderDetails() {
 
     computersAvailable: false,
     byo: { initialLoading: false },
-    surfaces: { initialLoading: false },
     computer: { initialLoading: false },
     form: {
       instructions: 'Answer clearly and ask questions when details are missing.',
@@ -62,6 +61,7 @@ test('agent details render collapsed Model, Instructions, Tools, and Advanced se
   assert.match(html, /2 on/)
   assert.doesNotMatch(html, /More settings/)
   assert.doesNotMatch(html, /Mention-first is enforced/)
+  assert.doesNotMatch(html, /Reachable on|Connect Slack/)
 })
 
 
@@ -72,7 +72,6 @@ test('the sidebar identifies its current Computer operator instead of reporting 
     form: { name: 'QA agent', permissionMode: 'ask', visibility: 'workspace', enabledToolGroups: new Set(['computer']) },
     computer: { currentUserId: 'qa-operator', computerSize: 'small', computerOpenBusy: false, computerLifecycleBusy: null,
       agentComputer: { id: 'owned-computer', status: 'ready', size: 'small', controlledByUserId: 'qa-operator' } },
-    surfaces: { connections: [], bindings: [], loading: false, enabled: false },
   } as unknown as Controller
   const html = renderToStaticMarkup(<AgentSidebarAdvancedSettings editor={editor} />)
   assert.match(html, /You have control\. QA agent is paused\./)

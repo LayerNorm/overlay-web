@@ -154,13 +154,13 @@ test('environments never carry public keys, pending ones show their phrase, and 
   expect(await as('stranger').query(environments, { workspaceId: 'ws' })).toBeNull()
 })
 
-test('agent surfaces follow agent visibility, workspace scoping and bind rights', async () => {
+test('workspace Slack lists only Chief channels and the viewer identity, with live management rights', async () => {
   const { t, as } = await connectionFixture()
-  const forAgent = makeFunctionReference<'query'>('surfaces/browse:forAgent')
+  const forWorkspace = makeFunctionReference<'query'>('surfaces/browse:forWorkspace')
   await t.run(async ctx => {
     await ctx.db.patch((await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'ws').eq('principalId', 'p-carol')).unique())!._id, { role: 'guest' })
     const agent = (agentId: string, visibility: string) => ctx.db.insert('workspaceAgentDefinitions', {
-      agentId, workspaceId: 'ws', principalId: `ap-${agentId}`, name: agentId, instructions: 'x', harness: 'overlay', modelId: 'm',
+      agentId, agentRole: agentId === 'team' ? 'workspace_chief' : 'agent', workspaceId: 'ws', principalId: `ap-${agentId}`, name: agentId, instructions: 'x', harness: 'overlay', modelId: 'm',
       allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'p-alice', visibility, createdAt: 1, updatedAt: 1,
     } as never)
     await agent('team', 'workspace')
@@ -169,13 +169,25 @@ test('agent surfaces follow agent visibility, workspace scoping and bind rights'
     await ctx.db.insert('surfaceConnections', { id: 'other', workspaceId: 'elsewhere', platform: 'slack', externalTeamId: 'T2', status: 'active', installedByUserId: 'x', createdAt: 1, updatedAt: 1 } as never)
     await ctx.db.insert('surfaceBindings', { id: 'b1', connectionId: 'conn', agentId: 'team', channelId: 'C1', status: 'active', createdByUserId: 'alice', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('surfaceBindings', { id: 'b2', connectionId: 'other', agentId: 'team', channelId: 'C2', status: 'active', createdByUserId: 'x', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('surfaceBindings', { id: 'legacy-specialist', connectionId: 'conn', agentId: 'mine', channelId: 'C3', status: 'active', createdByUserId: 'alice', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('surfaceBindings', { id: 'removed', connectionId: 'conn', agentId: 'team', channelId: 'C4', status: 'removed', createdByUserId: 'alice', createdAt: 1, updatedAt: 1 })
+    for (const link of [
+      { id: 'bob-link', userId: 'bob', slackUserId: 'U_BOB', workspaceId: 'ws', connectionId: 'conn', status: 'active' as const },
+      { id: 'alice-link', userId: 'alice', slackUserId: 'U_ALICE', workspaceId: 'ws', connectionId: 'conn', status: 'active' as const },
+      { id: 'revoked-link', userId: 'bob', slackUserId: 'U_OLD', workspaceId: 'ws', connectionId: 'conn', status: 'revoked' as const },
+      { id: 'elsewhere-link', userId: 'bob', slackUserId: 'U_OTHER', workspaceId: 'elsewhere', connectionId: 'other', status: 'active' as const },
+    ]) await ctx.db.insert('slackIdentityLinks', { ...link, teamId: 'T1', createdAt: 1, updatedAt: 1 })
   })
-  const bob = await as('bob').query(forAgent, { workspaceId: 'ws', agentId: 'team' }) as { connections: Array<{ id: string }>; bindings: Array<{ id: string }>; canBind: boolean }
+  const bob = await as('bob').query(forWorkspace, { workspaceId: 'ws' }) as { connections: Array<{ id: string }>; bindings: Array<{ id: string }>; canManage: boolean; identityLinks: unknown[] }
   expect(bob.connections.map(c => c.id)).toEqual(['conn'])
   expect(bob.bindings.map(b => b.id)).toEqual(['b1'])
-  expect(bob.canBind).toBe(true)
-  expect(await as('bob').query(forAgent, { workspaceId: 'ws', agentId: 'mine' })).toBeNull()
-  expect((await as('alice').query(forAgent, { workspaceId: 'ws', agentId: 'mine' }) as { canBind: boolean }).canBind).toBe(true)
-  expect((await as('carol').query(forAgent, { workspaceId: 'ws', agentId: 'team' }) as { canBind: boolean }).canBind).toBe(false)
-  expect(await as('stranger').query(forAgent, { workspaceId: 'ws', agentId: 'team' })).toBeNull()
+  expect(bob.canManage).toBe(false)
+  expect(bob.identityLinks).toEqual([{ id: 'bob-link', connectionId: 'conn', slackUserId: 'U_BOB' }])
+  expect((await as('carol').query(forWorkspace, { workspaceId: 'ws' }) as { canManage: boolean }).canManage).toBe(false)
+  expect(await as('stranger').query(forWorkspace, { workspaceId: 'ws' })).toBeNull()
+  await t.run(async ctx => {
+    const chief = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'team')).unique()
+    await ctx.db.patch(chief!._id, { archivedAt: 2 })
+  })
+  expect((await as('bob').query(forWorkspace, { workspaceId: 'ws' }) as { bindings: unknown[] }).bindings).toEqual([])
 })

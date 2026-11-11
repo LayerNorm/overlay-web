@@ -24,7 +24,6 @@ import {
 } from '../lib/agent-editor-input'
 import { getInitialEditorState } from '../lib/agent-editor-state'
 import { useByoConnection } from './use-byo-connection'
-import { useAgentSurfaces } from './use-agent-surfaces'
 import { useAgentEditorBootstrap } from './use-agent-editor-bootstrap'
 import { useAgentRuntime } from './use-agent-runtime'
 import { useAgentEditorForm } from './use-agent-editor-form'
@@ -112,7 +111,6 @@ export function useAgentEditorController({
     setAgentType: runtime.setAgentType,
   })
 
-  const surfaces = useAgentSurfaces({ activeWorkspaceId,  agent, agentType: runtime.agentType })
   const computer = useAgentComputer({
      computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
@@ -260,7 +258,6 @@ export function useAgentEditorController({
     runtime,
     byo,
     computer,
-    surfaces,
     closeEditor,
     sayHello,
     persistNew,
@@ -287,7 +284,6 @@ export function useAgentEditorController({
     runtime,
     byo,
     computer,
-    surfaces,
     saveEdit,
     archiveAgent,
   }

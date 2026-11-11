@@ -26,7 +26,6 @@ import {
   DangerZone,
   OverlayAgentPermissionsField,
 } from './AgentEditorForm'
-import { AgentSurfacesField } from './AgentSurfacesField'
 import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import type { ReactNode } from 'react'
@@ -112,7 +111,7 @@ export function AgentSidebarTools({ editor }: { editor: Controller }) {
 }
 
 export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller }) {
-  const { form, runtime, agent, computer, surfaces } = editor
+  const { form, runtime, agent, computer } = editor
   const overlaySettings = runtime.agentType === 'overlay' && !runtime.cloudAgent
 
   return (
@@ -214,15 +213,6 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
               </div>
             </section>
           ) : null}
-          <section>
-            <div className="mt-2">
-              <AgentSurfacesField
-                agentName={form.name}
-                hasAgent={Boolean(agent)}
-                surfaces={surfaces}
-              />
-            </div>
-          </section>
         </>
       ) : null}
       {!agent?.agentRole || agent.agentRole === 'agent' ? <section>

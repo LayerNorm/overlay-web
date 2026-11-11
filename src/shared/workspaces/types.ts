@@ -65,7 +65,7 @@ export interface WorkspaceClient {
 export type WorkspaceLifecycleStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type WorkspaceSettingsTab =
-  WorkspaceManagementView | 'billing'
+  WorkspaceManagementView | 'billing' | 'slack'
 
 export interface WorkspaceManagementClient {
   initializeBilling(workspaceId: string): Promise<WorkspaceBillingSummaryResponse>

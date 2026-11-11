@@ -23,7 +23,7 @@ const row = (id: string, agentId: string) => ({
   updatedAt: 1,
 })
 
-test('live binding affordances allow only workspace managers and only the Chief', async () => {
+test('workspace surface management affordances allow only workspace managers', async () => {
   const convex = convexTest(schema, modules)
   await convex.run(async ctx => {
     await ctx.db.insert('workspaces', { workspaceId: 'ws', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 })
@@ -37,13 +37,12 @@ test('live binding affordances allow only workspace managers and only the Chief'
         invocationPolicy: 'mention', createdByPrincipalId: 'owner', createdAt: 1, updatedAt: 1 })
     }
   })
-  const query = makeFunctionReference<'query'>('surfaces/browse:forAgent')
+  const query = makeFunctionReference<'query'>('surfaces/browse:forWorkspace')
   for (const role of ['owner', 'admin', 'member', 'guest']) {
     const viewer = convex.withIdentity({ subject: role })
-    expect(await viewer.query(query, { workspaceId: 'ws', agentId: 'workspace_chief' })).toMatchObject({ canBind: role === 'owner' || role === 'admin' })
-    expect(await viewer.query(query, { workspaceId: 'ws', agentId: 'agent' })).toMatchObject({ canBind: false })
+    expect(await viewer.query(query, { workspaceId: 'ws' })).toMatchObject({ canManage: role === 'owner' || role === 'admin' })
   }
-  expect(await convex.query(query, { workspaceId: 'ws', agentId: 'workspace_chief' })).toBeNull()
+  expect(await convex.query(query, { workspaceId: 'ws' })).toBeNull()
 })
 
 describe('surface bindings', () => {

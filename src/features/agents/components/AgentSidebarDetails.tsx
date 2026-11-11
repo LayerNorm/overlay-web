@@ -84,7 +84,6 @@ export function AgentSidebarDetails({
   const detailsLoading = editor.loading
     || !editor.connectedAgentsChecked
     || editor.byo.initialLoading
-    || editor.surfaces.initialLoading
     || editor.computer.initialLoading
 
   if (detailsLoading) {

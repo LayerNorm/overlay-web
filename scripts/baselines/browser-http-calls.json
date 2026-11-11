@@ -309,15 +309,6 @@
   "skills.deleteResponse": [
     "src/features/settings/lib/archived-actions.ts"
   ],
-  "surfaces.createBinding": [
-    "src/features/agents/components/use-agent-surfaces.ts"
-  ],
-  "surfaces.listChannels": [
-    "src/features/agents/components/use-agent-surfaces.ts"
-  ],
-  "surfaces.removeBinding": [
-    "src/features/agents/components/use-agent-surfaces.ts"
-  ],
   "webhooks.createResponse": [
     "src/features/settings/components/WebhookSettings.tsx"
   ],

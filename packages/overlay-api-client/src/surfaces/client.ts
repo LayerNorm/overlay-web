@@ -34,15 +34,14 @@ export class SurfacesClient {
     )
   }
 
-  listBindings(workspaceId: string, agentId: string, init?: RequestInit) {
+  listBindings(workspaceId: string, init?: RequestInit) {
     return this.http.json<{ bindings: SurfaceBinding[]; canBind: boolean }>(
-      `/api/v1/surfaces/bindings?agentId=${encodeURIComponent(agentId)}`,
+      '/api/v1/surfaces/bindings',
       workspaceInit(workspaceId, init),
     )
   }
 
   createBinding(workspaceId: string, input: {
-    agentId: string
     connectionId: string
     channelId: string
     channelName?: string
@@ -58,5 +57,18 @@ export class SurfacesClient {
       `/api/v1/surfaces/bindings/${encodeURIComponent(bindingId)}`,
       workspaceInit(workspaceId, { ...init, method: 'DELETE' }),
     )
+  }
+
+  disconnect(workspaceId: string, connectionId: string, init?: RequestInit) {
+    return this.http.json<{ connection: SurfaceConnection }>(
+      `/api/v1/surfaces/connections?connectionId=${encodeURIComponent(connectionId)}`,
+      workspaceInit(workspaceId, { ...init, method: 'DELETE' }),
+    )
+  }
+
+  async unlinkIdentity(workspaceId: string, linkId: string, init?: RequestInit) {
+    const response = await this.http.request('/api/v1/surfaces/slack/identity/unlink',
+      this.http.jsonRequest({ workspaceId, linkId }, { ...init, method: 'POST' }))
+    if (!response.ok) throw new Error('Could not unlink your Slack account.')
   }
 }

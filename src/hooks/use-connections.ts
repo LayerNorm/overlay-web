@@ -69,12 +69,18 @@ export function useLiveAgentBindings(agentId?: string): AgentBinding[] | null | 
     AgentBinding[] | null | undefined
 }
 
-/** An agent's Slack (and later other) surface connections and bindings, live. Null when the agent is not visible. */
-export function useLiveAgentSurfaces(agentId: string | null):
-  { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined {
-  const workspaceId = useConnectionWorkspace()
-  return useQuery(api.surfaces.browse.forAgent, workspaceId && agentId ? { workspaceId, agentId } : 'skip') as
-    { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined
+export type WorkspaceSurfaces = {
+  connections: SurfaceConnection[]
+  bindings: SurfaceBinding[]
+  canManage: boolean
+  identityLinks: { id: string; connectionId: string; slackUserId: string }[]
+}
+
+/** Workspace Slack connection, Chief channels and only the viewer's identity links, live. */
+export function useLiveWorkspaceSurfaces(workspaceId: string | null): WorkspaceSurfaces | null | undefined {
+  const accessibleWorkspaceId = useConnectionWorkspace()
+  return useQuery(api.surfaces.browse.forWorkspace, workspaceId && workspaceId === accessibleWorkspaceId ? { workspaceId } : 'skip') as
+    WorkspaceSurfaces | null | undefined
 }
 
 /** Whether the viewer may connect their own agents in this workspace (owners and admins, rollout permitting), live. */

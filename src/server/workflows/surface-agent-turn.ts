@@ -1,4 +1,5 @@
 import { FatalError, getWorkflowMetadata } from 'workflow'
+import type { HarnessSnapshot } from '@overlay/agent-runtime'
 import type { AutomationAgentTurnInput } from '@/server/automations/automation-turn-runner'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
@@ -118,6 +119,15 @@ async function readNativeSurfaceResultStep(input: {
   }
 }
 
+function isRootSurfaceRun(state: HarnessSnapshot | null, runId: string) {
+  return !state || (state.runId === runId && state.rootRunId === state.runId && !state.parentRunId)
+}
+
+function isCurrentSurfaceExecution(current: SurfaceTurnExecution | null, expected: SurfaceTurnExecution, workflowRunId: string): current is SurfaceTurnExecution {
+  return Boolean(current && current.turnId === expected.turnId && current.workflowRunId === workflowRunId
+    && current.agentRunId === expected.agentRunId && current.assistantMessageId === expected.assistantMessageId)
+}
+
 async function postNativeSurfaceResultStep(input: {
   execution: SurfaceTurnExecution
   status: string
@@ -129,13 +139,10 @@ async function postNativeSurfaceResultStep(input: {
   try {
     const repository = new ConvexHarnessRepository()
     const current = await repository.getSurfaceExecutionByHarnessRunId(input.execution.harnessRunId)
-    if (!current || current.turnId !== input.execution.turnId
-      || current.workflowRunId !== input.workflowRunId
-      || current.agentRunId !== input.execution.agentRunId
-      || current.assistantMessageId !== input.execution.assistantMessageId) return { status: 'not_attempted' as const }
+    if (!isCurrentSurfaceExecution(current, input.execution, input.workflowRunId)) return { status: 'not_attempted' as const }
     const { run } = await assertPersistedSurfaceSource(current, input.workflowRunId)
     const state = await repository.get({ actorUserId: current.actorUserId, runId: current.harnessRunId })
-    if (state && (state.runId !== current.harnessRunId || state.rootRunId !== state.runId || state.parentRunId)) {
+    if (!isRootSurfaceRun(state, current.harnessRunId)) {
       return { status: 'not_attempted' as const }
     }
     const ownedTerminal = state?.workflowRunId === current.workflowRunId && state?.status === input.status

@@ -25,8 +25,6 @@ import type { useByoConnection } from './use-byo-connection'
 import type { useAgentComputer } from './use-agent-computer'
 import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentRuntime } from './use-agent-runtime'
-import type { useAgentSurfaces } from './use-agent-surfaces'
-import { AgentSurfacesField } from './AgentSurfacesField'
 import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
 import { usesOverlayMark } from '@/shared/agents/chief-identity'
@@ -54,7 +52,6 @@ type AgentEditorFormSectionProps = {
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
   computer: ReturnType<typeof useAgentComputer>
-  surfaces: ReturnType<typeof useAgentSurfaces>
   closeEditor(): void
   persistNew(): void
   saveEdit(): void
@@ -102,16 +99,15 @@ function AgentEditorFormSection({
   runtime,
   byo,
   computer,
-  surfaces,
   closeEditor,
   persistNew,
   saveEdit,
   cancelEdit,
   archiveAgent,
 }: AgentEditorFormSectionProps) {
-  // One loading state for the whole form: it shows when everything (the agent's connection, computer, reachability,
+  // One loading state for the whole form: it shows when everything (the agent's connection, computer,
   // machine, memories) has loaded, not piece by piece.
-  useEditorLoad(!connectedAgentsChecked || byo.initialLoading || surfaces.initialLoading || computer.initialLoading)
+  useEditorLoad(!connectedAgentsChecked || byo.initialLoading || computer.initialLoading)
   const {
     name,
     description,
@@ -277,10 +273,6 @@ function AgentEditorFormSection({
             />
           ) : null}
 
-          {agentType === 'overlay' ? (
-            <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />
-          ) : null}
-
           {controls.showAccessSelector ? <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} /> : null}
 
           {mode === 'edit' && agent?.principalId ? (
@@ -381,7 +373,6 @@ export function AgentEditorView({
   runtime,
   byo,
   computer,
-  surfaces,
   closeEditor,
   sayHello,
   persistNew,
@@ -413,7 +404,6 @@ export function AgentEditorView({
   runtime: ReturnType<typeof useAgentRuntime>
   byo: ReturnType<typeof useByoConnection>
   computer: ReturnType<typeof useAgentComputer>
-  surfaces: ReturnType<typeof useAgentSurfaces>
   closeEditor(): void
   sayHello(): void
   persistNew(): void
@@ -481,7 +471,6 @@ export function AgentEditorView({
             runtime={runtime}
             byo={byo}
             computer={computer}
-            surfaces={surfaces}
             closeEditor={closeEditor}
             persistNew={persistNew}
             saveEdit={saveEdit}

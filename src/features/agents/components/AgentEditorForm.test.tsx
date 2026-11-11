@@ -7,7 +7,6 @@ import {
   AccessSelector,
   AgentBehaviorFields,
   AgentComputerSection,
-  AgentSurfacesSection,
   AgentTypeSelector,
   ByoAgentFields,
   OverlayAgentPermissionsField,
@@ -81,6 +80,7 @@ test('overlay fields render instructions, tools, and the mention-first note', ()
     />,
   )
   assert.match(markup, /Agent instructions/)
+  assert.doesNotMatch(markup, /Reachable on|Connect Slack|Add channel/)
   assert.match(markup, /Mention-first is enforced/)
 })
 
@@ -190,32 +190,6 @@ test('computer section warns that disabling a provisioned computer deletes it', 
     <AgentComputerSection enabled={false} computer={agentComputer} {...computerSectionProps} />,
   )
   assert.match(markup, /Saving deletes this computer/)
-})
-
-test('reachable platforms group channels by workspace without dividers or coming-soon rows', () => {
-  const noop = () => undefined
-  const props: React.ComponentProps<typeof AgentSurfacesSection> = {
-    agentName: 'Scout', hasAgent: true, loading: false, canBind: true, canBindResolved: true,
-    channelPicker: null, busyId: null, error: null,
-    onConnectSlack: noop, onToggleChannelPicker: noop, onSelectChannel: noop, onRemoveBinding: noop,
-    connections: [{ id: 'connection', workspaceId: 'workspace', platform: 'slack', externalTeamId: 'team',
-      externalTeamName: 'Acme', externalEnterpriseId: null, botUserId: 'bot', status: 'active',
-      installedByUserId: 'user', createdAt: 1, updatedAt: 1 }],
-    bindings: [{ id: 'binding', connectionId: 'connection', agentId: 'agent', channelId: 'channel',
-      channelName: 'product', status: 'active', createdByUserId: 'user', createdAt: 1, updatedAt: 1 }],
-  }
-  const html = renderToStaticMarkup(<AgentSurfacesSection {...props} />)
-  assert.match(html, /Slack/)
-  assert.match(html, /Acme/)
-  assert.match(html, /product/)
-  assert.match(html, /Add channel/)
-  assert.match(html, /It acts with your access/)
-  assert.doesNotMatch(html, /border-b|coming soon|Teams|Discord/)
-  const readOnly = renderToStaticMarkup(<AgentSurfacesSection {...props} canBind={false} />)
-  assert.doesNotMatch(readOnly, />Add channel<|>Remove<|Connect another/)
-  const empty = renderToStaticMarkup(<AgentSurfacesSection {...props} connections={[]} bindings={[]} />)
-  assert.match(empty, /Not connected/)
-  assert.match(empty, />Connect</)
 })
 
 const behaviorBase = {

@@ -1,10 +1,12 @@
 import { Bot, Download, Link2, Shield, UserPlus, Users, UsersRound, WalletCards } from 'lucide-react'
+import type { ComponentType } from 'react'
 import type { WorkspaceSettingsTab } from '@/shared/workspaces/types'
+import { SlackLogo } from '@/components/brand/SlackLogo'
 
 export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
   id: WorkspaceSettingsTab
   label: string
-  icon: typeof Users
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>
   emptyTitle: string
   emptyDescription: string
   action: string
@@ -64,6 +66,14 @@ export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
     emptyTitle: 'Workspace billing',
     emptyDescription: 'Manage shared credits and usage.',
     action: 'Manage billing',
+  },
+  {
+    id: 'slack',
+    label: 'Slack',
+    icon: SlackLogo,
+    emptyTitle: 'Connect Slack',
+    emptyDescription: 'Route Slack messages to your workspace Chief.',
+    action: 'Connect Slack',
   },
   {
     id: 'import',
