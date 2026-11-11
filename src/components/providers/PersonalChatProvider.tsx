@@ -14,19 +14,23 @@ import { useConvex, useConvexAuth, useMutation, usePaginatedQuery } from 'convex
 import { usePersonalChatTranscript } from './usePersonalChatTranscript'
 import { useNativePersonalExecution } from './native-personal-execution'
 import type { NativePersonalExecutionState } from './native-personal-execution'
-import { updatePersonalChatList, findPersonalChatSummary, minimalSummary, movePersonalChatRow, personalChatListStatus } from './personal-chat-store'
+import {
+  updatePersonalChatList,
+  findPersonalChatSummary,
+  minimalSummary,
+  movePersonalChatRow,
+  personalChatListStatus,
+} from './personal-chat-store'
 import type { FunctionArgs, FunctionReturnType } from 'convex/server'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
-import {
-  createPersonalChatArchiveOptimisticUpdate,
-  updatePersonalChatUnread,
-} from './personal-chat-optimistic'
+import { createPersonalChatArchiveOptimisticUpdate } from './personal-chat-optimistic'
 import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
 import { usePersonalChatCommands, type PersonalChatCommands } from './usePersonalChatCommands'
 import { PersonalChatDirectoryProvider } from './personal-chat-directory-context'
+import { usePersonalChatDirectoryActions } from './usePersonalChatDirectoryActions'
 export { usePersonalChatDirectory } from './personal-chat-directory-context'
 import {
   isWorkspaceRouteTargetPending,
@@ -300,20 +304,7 @@ function NativePersonalChatProvider({
     canQueryArchived ? { workspaceId: workspaceId!, archived: true } : 'skip',
     { initialNumItems: 30 },
   )
-  const renameMutation = useMutation(api.chat.personal.rename).withOptimisticUpdate((store, args) => {
-    const update = (row: PersonalChatSummary) => ({
-      ...row,
-      title: args.title,
-      lastModified: Date.now(),
-    })
-    for (const archived of [false, true]) {
-      updatePersonalChatList(store, args.workspaceId, archived, args.conversationId, update)
-    }
-    const queryArgs = { workspaceId: args.workspaceId, conversationId: args.conversationId }
-    const summary = store.getQuery(api.chat.personal.getSummary, queryArgs)
-    if (summary) store.setQuery(api.chat.personal.getSummary, queryArgs, update(summary))
-  })
-
+  const { rename, setRead } = usePersonalChatDirectoryActions(workspaceId)
   const archiveMutation = useMutation(api.chat.personal.setArchived)
   const createMutation = useMutation(api.chat.personal.create)
   const submitMutation = useMutation(api.chat.personal.submit)
@@ -332,29 +323,6 @@ function NativePersonalChatProvider({
         updatePersonalChatList(store, args.workspaceId, archived, args.conversationId, update)
       }
     })
-
-  const readMutation = useMutation(api.chat.personal.setRead).withOptimisticUpdate((store, args) => {
-    const update = (row: PersonalChatSummary) => updatePersonalChatUnread(
-      row,
-      args.unread,
-      args.throughMessageId ? String(args.throughMessageId) : undefined,
-    )
-    for (const archived of [false, true]) {
-      updatePersonalChatList(store, args.workspaceId, archived, args.conversationId, update)
-    }
-    const queryArgs = { workspaceId: args.workspaceId, conversationId: args.conversationId }
-    const summary = store.getQuery(api.chat.personal.getSummary, queryArgs)
-    if (summary) store.setQuery(api.chat.personal.getSummary, queryArgs, update(summary))
-  })
-
-  const rename = useCallback(async (conversationId: string, title: string) => {
-    if (!workspaceId) throw new Error('Native personal chat is unavailable')
-    await renameMutation({
-      workspaceId,
-      conversationId: conversationId as Id<'conversations'>,
-      title,
-    })
-  }, [renameMutation, workspaceId])
 
   const setArchived = useCallback(async (summary: PersonalChatSummary, archived: boolean) => {
     const current = client.watchQuery(api.chat.personal.getSummary, {
@@ -400,19 +368,6 @@ function NativePersonalChatProvider({
       archived,
     })
   }, [archiveMutation, client])
-
-  const setRead = useCallback(async (
-    summary: PersonalChatSummary,
-    unread: boolean,
-    throughMessageId?: Id<'conversationMessages'>,
-  ) => {
-    await readMutation({
-      workspaceId: summary.workspaceId,
-      conversationId: summary._id,
-      unread,
-      ...(throughMessageId ? { throughMessageId } : {}),
-    })
-  }, [readMutation])
 
   const create = useCallback(async (args: NativePersonalCreateArgs) => {
     return await createMutation(args)
