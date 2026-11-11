@@ -50,8 +50,12 @@ bounds leave other apps clickable outside the panel, and close/toggle actions us
 the retained focus-yield helper. Transparent corners and display-change clamping
 are native window behavior; no full-screen renderer mask is needed.
 
-Settings → Desktop exposes model downloads, dictation preferences, recorded key combinations,
-panels, Agent Host controls and updates. Visible dictation settings refresh device
+Settings → Desktop (Lucide `Laptop` in the settings sidebar) groups its controls into Dictation,
+Local models, Floating panels, Agent host and About sections, matching the Shortcuts page layout.
+Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
+press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
+The Agent host row shows its state and keeps the harness, connection code and Start controls in the
+same row, with the log behind Show log. The model picker lists only downloaded local models. Visible dictation settings refresh device
 choices with capture status and on focus, so connected inputs and disconnected
 preferences update without reopening settings. Shared audio-context cleanup is
 owned by the current take; cancellation settles pending flushes and stale work
