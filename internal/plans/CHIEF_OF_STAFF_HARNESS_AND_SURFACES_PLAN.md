@@ -1,6 +1,6 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1–3 are implemented and the native web scenarios below are accepted, with explicit hosted-verification limits. Latest hosted acceptance is at `8095ca45efe3be3faca284179156fa516147e825`; results not retested there are carried forward from `abb2d2b` / `3e2b8e994e71c6fc18f72ae9f360b6abef11615e`, not claimed as exact-head retests. Phase 4 items 1–5 are implemented, but hosted connected Slack acceptance remains unverified at the install callback; Phase 4 items 6–7 and Phases 5–6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1–3 are implemented and the native web scenarios below are accepted, with explicit hosted-verification limits. The latest previously accepted web scenarios are at `8095ca45efe3be3faca284179156fa516147e825`; results not retested there are carried forward from `abb2d2b` / `3e2b8e994e71c6fc18f72ae9f360b6abef11615e`, not claimed as exact-head retests. Phase 4 items 1–4 are implemented, item 5 is partial, and items 6–8 and Phases 5–6 remain incomplete. Hosted connected Slack acceptance is pending: the latest recorded attempt at `d8397201473c78d29b943d5618b33bcec9ab6075` passed OAuth and sender-linking checks but failed during native preparation. The preparation fix is in this branch; hosted retest remains pending. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
 
 ## Progress
 
@@ -11,15 +11,17 @@ Legend: `[x]` implemented in PR #409, `[~]` partially implemented, `[ ]` not sta
 | 1. Assignment and authorization contracts | Implemented; listed web scenarios accepted | Personal discovery, isolated assignments, same-thread revision, restricted-member/revocation and shared-room memory privacy including follow-up passed. Private files/credentials and unauthorized attempt-ID redaction are not separately hosted-verified. |
 | 2. Native Chief orchestration | Implemented; listed web scenarios accepted | Two-specialist delegation, actual reads/acceptance, follow-up/revision, blocked-child wait/resume/accept, active-child parent Stop cancellation, waiting-parent recovery deferral with one launch and Chief read/accept, and recoverable bad-attempt feedback passed. Early pending reads have narration, not authoritative call traces. |
 | 3. Web experience | Implemented; listed web scenarios accepted | Work grouping, 40px rows, keyboard, attempts, no-match, channel links, search, archive/Undo, read markers, light/dark and 390px passed, as did the dirty-note warning. Pagination and Slack-origin browser interactions remain unverified. |
-| 4. Chief-only Slack | Items 1–5 implemented; hosted connection acceptance blocked at callback | Workspace-scoped settings, verified identity linking, Chief-only admission, normalized inbound turns and durable delivery are implemented. Migration and scope-reauthorization work remains; hosted connection acceptance has not passed. |
+| 4. Chief-only Slack | Items 1–4 implemented; item 5 partial; items 6–8 incomplete; hosted acceptance pending | Workspace-scoped settings, verified identity linking, Chief-only admission and canonical inbound turns are implemented. Existing turn/execution deduplication remains, but new reliable delivery via outbox, echo suppression and receipt reconciliation is not implemented. The latest hosted linked turn failed native preparation with `HARNESS_RUN_NOT_FOUND` before Harness admission; the fix is in this branch and awaits hosted retest. |
 | 5. Personal-Chief contributions | Not started | Cross-owner personal-Chief delegation is refused until grants exist. |
 | 6. Connected agents and transports | Not started | External and connected agents are rejected before any assignment is written. |
 
 ### Hosted acceptance
 
-Canonical preview: `https://pr-409.preview.getoverlay.io`, isolated backend `content-bobcat-927`. Latest accepted deployment: `dpl_Bi9N9PY2zp2vMgiLADW2jiHXUMyn`, exact revision `8095ca45efe3be3faca284179156fa516147e825`. Earlier recovery used `dpl_EsENUkVwMmFyM4vg3jWBseRw7atb` at `3e2b8e99`. The hosted QA record across the revisions above accepts:
+Canonical preview: `https://pr-409.preview.getoverlay.io`, isolated backend `content-bobcat-927`. Latest previously accepted web deployment: `dpl_Bi9N9PY2zp2vMgiLADW2jiHXUMyn`, revision `8095ca45efe3be3faca284179156fa516147e825`. Earlier recovery used `dpl_EsENUkVwMmFyM4vg3jWBseRw7atb` at `3e2b8e99`. The hosted QA record across those accepted revisions covers:
 
-Phase 4 connected Slack acceptance remains unverified. The recorded install consent callback at `17:31:05.623Z` redirected with `account_mismatch` and created no connection, identity, turn or thread. A separate test-harness-delayed-consent retry established only a reachable expired-WorkOS-access-token case: the read-only callback lookup rejected it, while a normal session request refreshed the same principal. **Test harness delayed consent so original17:31 cause still unknown; do not claim original diagnosed.** This change uses the existing refresh-aware helper; no new OAuth acceptance attempt was made.
+Phase 4 connected Slack acceptance remains pending. On head `d8397201473c78d29b943d5618b33bcec9ab6075`, the real install callback with an expired WorkOS access token succeeded through session refresh, matched the same principal and returned a rotated cookie. The private-channel/unlinked-user prompt passed without creating a turn, and the OpenID-only identity link passed; no replay was attempted. One linked Slack task was admitted and created the canonical conversation and delivery, then failed before Harness admission. The safe runtime error was `HARNESS_RUN_NOT_FOUND` from `harness/runs:refreshRoomContextRestrictions`: preparation refreshed the delivery's reserved `workspace:<runId>` before the root existed. No Harness root, child, assignment, receipt or transcript step was created. The preparation fix is in this branch; hosted retest remains pending.
+
+An earlier install callback at `17:31:05.623Z` redirected with `account_mismatch` and created no connection, identity, turn or thread. Its cause remains unconfirmed: available evidence does not distinguish a missing/invalid session from a different Overlay principal, and the later successful refresh does not establish the earlier callback's session state.
 
 - Personal discovery and two-specialist delegation, actual result reads and one consolidated Chief response.
 - Follow-up and revision in the same assignment thread.
@@ -369,9 +371,10 @@ Each phase should be a reviewable change set. The boundaries below are implement
 - [x] Move connection/channel controls to workspace settings; enforce Chief-only binding in the API.
 - [x] Replace named-agent routing with canonical Chief admission.
 - [x] Normalize Slack inbound messages into canonical turns and enable bidirectional parent messages.
-- [x] Add durable delivery intents, echo suppression and receipt reconciliation.
+- [~] Preserve existing turn/execution deduplication. This is not reliable delivery: the new outbox, echo suppression and receipt reconciliation remain unimplemented.
 - [ ] Migrate eligible connections with an admin-visible dry run and conflict report.
 - [ ] Update setup documentation and check whether OAuth scope changes require reauthorization.
+- [ ] Complete hosted connected Slack acceptance on the exact isolated Preview, including native preparation and the authorization/privacy matrix.
 
 **Exit gate:** a separate development Slack app on the exact isolated PR Preview passes the web/Slack parity and authorization matrix. No production app is repointed for testing.
 

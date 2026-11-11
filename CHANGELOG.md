@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resolve shared-room restrictions for a new Slack surface root before Harness admission even though the delivery already has its reserved run ID. Existing roots and parents keep their monotonic privacy refresh; missing or unauthorized roots do not bypass authorization.
 - Keep Slack install and identity callbacks working when a WorkOS access token expires during Slack consent. Callbacks use the existing session refresh path and return the rotated session cookie; same-user, workspace and role checks remain strict, and failed refreshes still deny the callback.
 - Move Slack to Workspace settings: admins connect the Overlay bot, manage public Chief channels and disconnect; members see the connection read-only, and everyone can link or unlink their own Slack identity. Remove agent-level “Reachable on” controls. DMs, private channels and Slack Connect remain unsupported.
 

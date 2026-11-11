@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
   prompt: vi.fn(),
   surface: vi.fn(),
+  get: vi.fn(),
   inherited: vi.fn(),
   preAdmission: vi.fn(),
   assertSurface: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/server/conversations/ActConversationRepository', () => ({ asConversat
 vi.mock('@/server/agents/workspace-agent-preparation', () => ({ prepareWorkspaceAgentInputs: mocks.prepare }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({ buildAgentSystemPrompt: mocks.prompt }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
+  get = mocks.get
   getSurfaceExecutionByHarnessRunId = mocks.surface
   refreshRoomContextRestrictions = mocks.inherited
   resolveConversationRoomRestrictions = mocks.preAdmission
@@ -36,6 +38,7 @@ const run = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.surface.mockResolvedValue(null)
+  mocks.get.mockResolvedValue(null)
   mocks.inherited.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.preAdmission.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.assertSurface.mockResolvedValue({})
@@ -151,7 +154,7 @@ test('rejects a stored triggering message with a different human principal', asy
   expect(mocks.prompt).not.toHaveBeenCalled()
 })
 
-test('surface root uses canonical source billing and preserves Slack context with the actual user task', async () => {
+test('unadmitted surface root resolves conversation restrictions before admission', async () => {
   const execution = {
     turnId: 'surface:slack:binding:message',
     workflowRunId: 'workflow',
@@ -174,14 +177,23 @@ test('surface root uses canonical source billing and preserves Slack context wit
     harnessRunId: 'workspace:run',
   }
   mocks.surface.mockResolvedValue(execution)
+  mocks.get.mockResolvedValueOnce(null)
+  mocks.inherited.mockRejectedValueOnce(new Error('HARNESS_RUN_NOT_FOUND'))
+  mocks.preAdmission.mockResolvedValueOnce({ inheritedSharedRoom: true })
   mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
-    ...run, turnId: execution.turnId,
+    ...run, turnId: execution.turnId, harnessRunId: execution.harnessRunId,
   })
 
   const input = await buildNativeHarnessWorkflowInput({
     actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run',
     memoryEnabled: true, expectedSurfaceWorkflowRunId: 'workflow',
   })
+  expect(mocks.get).toHaveBeenCalledWith({ actorUserId: 'user', runId: execution.harnessRunId })
+  expect(mocks.inherited).not.toHaveBeenCalled()
+  expect(mocks.preAdmission).toHaveBeenCalledWith({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room',
+  })
+  expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ inheritedSharedRoom: true }))
   expect(input.context.sharedRoom).toBe(true)
   expect(mocks.assertSurface).toHaveBeenCalledWith(execution, 'workflow')
   expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
@@ -194,6 +206,63 @@ test('surface root uses canonical source billing and preserves Slack context wit
   }))
   expect(mocks.prepare.mock.calls[0]?.[0].messageId).toBe('question')
 })
+
+test('confirmed existing roots refresh inherited restrictions', async () => {
+  mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
+    ...run, harnessRunId: 'workspace:run',
+  })
+  mocks.get.mockResolvedValueOnce({ runId: 'workspace:run' })
+  mocks.inherited.mockResolvedValueOnce({ inheritedSharedRoom: true })
+
+  const input = await buildNativeHarnessWorkflowInput({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run', memoryEnabled: true,
+  })
+
+  expect(mocks.get).toHaveBeenCalledWith({ actorUserId: 'user', runId: 'workspace:run' })
+  expect(mocks.inherited).toHaveBeenCalledWith({ actorUserId: 'user', runId: 'workspace:run' })
+  expect(mocks.preAdmission).not.toHaveBeenCalled()
+  expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ inheritedSharedRoom: true }))
+  expect(input.context.sharedRoom).toBe(true)
+})
+
+test('a missing non-surface root still fails closed instead of falling back to conversation restrictions', async () => {
+  mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
+    ...run, harnessRunId: 'workspace:missing',
+  })
+  mocks.get.mockResolvedValueOnce(null)
+  mocks.inherited.mockRejectedValueOnce(new Error('HARNESS_RUN_NOT_FOUND'))
+
+  await expect(buildNativeHarnessWorkflowInput({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run', memoryEnabled: true,
+  })).rejects.toThrow('HARNESS_RUN_NOT_FOUND')
+  expect(mocks.preAdmission).not.toHaveBeenCalled()
+})
+
+test('an unauthorized existing root fails closed without pre-admission fallback', async () => {
+  mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
+    ...run, harnessRunId: 'workspace:run',
+  })
+  mocks.get.mockRejectedValueOnce(new Error('HARNESS_RUN_ACCESS_DENIED'))
+
+  await expect(buildNativeHarnessWorkflowInput({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run', memoryEnabled: true,
+  })).rejects.toThrow('HARNESS_RUN_ACCESS_DENIED')
+  expect(mocks.inherited).not.toHaveBeenCalled()
+  expect(mocks.preAdmission).not.toHaveBeenCalled()
+})
+
+test.each(['HARNESS_RUN_NOT_FOUND', 'HARNESS_RUN_ACCESS_DENIED'])(
+  'a missing or unauthorized parent fails closed (%s)', async code => {
+    mocks.inherited.mockRejectedValueOnce(new Error(code))
+
+    await expect(buildNativeHarnessWorkflowInput({
+      actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run',
+      parentRunId: 'workspace:parent', memoryEnabled: true,
+    })).rejects.toThrow(code)
+    expect(mocks.inherited).toHaveBeenCalledWith({ actorUserId: 'user', runId: 'workspace:parent' })
+    expect(mocks.preAdmission).not.toHaveBeenCalled()
+  },
+)
 
 test('named native child in a different room keeps its turn and inherits verified root source billing', async () => {
   const execution = {

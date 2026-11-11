@@ -57,6 +57,12 @@ Shared-room restrictions remain in force. Revoked links, lost workspace membersh
 or changing the linked identity stop admission and resumed execution. Resume
 also requires current conversation participation and never enrolls or adopts
 a replacement identity; historical runs without sender identity fail closed.
+Before admitting a new top-level surface root, preparation resolves restrictions
+from authoritative workspace and conversation access even though the delivery
+already has a reserved Harness run ID. A confirmed existing root and an admitted
+parent use the monotonic restriction refresh; missing or unauthorized parents
+fail closed, and missing non-surface roots do not fall back to pre-admission
+resolution.
 Unlinked/unauthorized inbound senders receive only an ephemeral linking prompt
 and must resend after linking. Historical unlinked runs fail closed.
 

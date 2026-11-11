@@ -159,14 +159,19 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
   })
   assertNativeRunIdentity(run, args)
   const repository = new ConvexHarnessRepository()
-  const restrictionLookup = args.parentRunId || run.harnessRunId
-    ? repository.refreshRoomContextRestrictions({
-      actorUserId: args.actorUserId,
-      runId: args.parentRunId ?? run.harnessRunId!,
-    })
-    : repository.resolveConversationRoomRestrictions({
-      actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
-    })
+  const resolveConversationRestrictions = () => repository.resolveConversationRoomRestrictions({
+    actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+  })
+  const restrictionLookup = args.parentRunId
+    ? repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: args.parentRunId })
+    : run.harnessRunId
+      ? repository.get({ actorUserId: args.actorUserId, runId: run.harnessRunId }).then(existingRoot => {
+        if (existingRoot || !args.expectedSurfaceWorkflowRunId) {
+          return repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: run.harnessRunId! })
+        }
+        return resolveConversationRestrictions()
+      })
+      : resolveConversationRestrictions()
   const [surfaceExecution, roomRestrictions] = await Promise.all([
     loadSurfaceExecution(args, run),
     restrictionLookup,
