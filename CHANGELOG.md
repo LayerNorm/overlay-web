@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Scrolling a DM or channel marks it read once per transcript state instead of sending a read mutation on every scroll event, which re-rendered every loaded message. New messages, a different room, returning to the tab and jumping to latest still mark read.
+- Reuse the room-message time formatter instead of rebuilding locale formatting state for every row render in long DMs and channels. Keep the existing time labels and invalid-date fallback.
 - Redesign Settings → Desktop in the Mac app: clear Dictation, Local models, Floating panels, Agent host and About sections; shortcuts shown as key caps you click to re-record; one Open button per panel with docking in a menu; an Agent host row with its status and start controls together instead of a divided form; and a laptop icon for Desktop in the settings sidebar instead of the generic gear.
 - Add bounded timeline, comparison, diagram and typed-vector components to generated UI, strict JSONL `specStream` final compilation, and transient read-only previews through durable personal and native chat streams.
 - Enable live generated-UI streams for new roots only when they admit `render_ui`, while retaining the workspace allowlist for other roots. Replace successful previews with validated final data at the same transcript anchor and append only missing streamed text.
@@ -16,6 +18,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
   - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation saves are unchanged.
   - Keep completed response work durations stable when generated-form state is edited or submitted by persisting completion time separately from modification time; older messages fall back to their original run completion when available.
 
+- Make invited onboarding workspace-aware and wait for live billing before showing the conversation. Paid workspaces skip subscription offers; free-workspace members can ask owners and admins to subscribe or open Work with their first task safely saved as a draft.
+
+- Preview workspace invitations before signing in, see the inviter and workspace billing context, create an account with the invited email, or switch mismatched accounts. Email verification now signs new accounts in automatically when possible, and invitation emails name the inviter. Email/password sign-in loads the sanitized redirect as a fresh page so invitations immediately reflect the signed-in account.
 - Refuse paid requests from a workspace without billing with `402 workspace_billing_required` (or `403 workspace_wallet_forbidden` for a member who may not spend the wallet) instead of a generic 500. Cloud dictation in a workspace that had not set up billing failed with "Failed to transcribe audio"; it now says billing is required, and the shared API wrapper applies the same answer to any paid route that lets this error escape.
 - Commit the generated Convex API type entry for `lib/threadPullRequests`, which PR 458 added without regenerated bindings, so production backend deploys no longer leave that file changed. Types only; nothing changes at runtime.
 - Keep only Archive in sidebar agent-thread rows, with fixed space beside pull-request indicators. Delete archived items immediately from the Archived page without a confirmation dialog.

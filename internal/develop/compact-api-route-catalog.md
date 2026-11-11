@@ -1,10 +1,10 @@
 # Compact web API route catalog
 
-A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 213 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
+A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 214 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
 
-- **Total routes:** 213
+- **Total routes:** 214
 - **Non-versioned routes:** 42
-- **`/api/v1` routes:** 171
+- **`/api/v1` routes:** 172
 - **Verification status:** 0 missing, 0 stale, 0 HTTP-method mismatches against the route filesystem.
 
 For a description of what each route does and its associated implementation files, see the [full web API route catalog](./api-route-catalog.md).
@@ -241,6 +241,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/account/workspaces`
 - `GET /api/v1/workspace-handles/[handle]`
 - `PATCH /api/v1/workspaces/[workspaceId]/handle`
+- `GET /api/v1/workspace-invitations/[invitationId]`
 - `POST /api/v1/workspace-invitations/[invitationId]/accept`
 - `GET /api/v1/workspaces/[workspaceId]/audit-export`
 - `POST /api/v1/workspaces/[workspaceId]/billing/checkout`
@@ -249,6 +250,7 @@ For a description of what each route does and its associated implementation file
 - `GET, POST /api/v1/workspaces/[workspaceId]/billing`
 - `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`
 - `POST /api/v1/workspaces/[workspaceId]/billing/verify`
+- `POST /api/v1/workspaces/[workspaceId]/billing/request`
 - `GET, POST /api/v1/workspaces/[workspaceId]/governance`
 - `DELETE, POST /api/v1/workspaces/[workspaceId]/invitations/[invitationId]`
 - `GET, POST /api/v1/workspaces/[workspaceId]/invitations`

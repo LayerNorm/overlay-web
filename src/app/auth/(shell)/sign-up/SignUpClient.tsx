@@ -19,6 +19,8 @@ import {
 } from '@/features/landing/lib/landingPageStyles'
 import { SsoProviderIcon } from '../../_components/useAuthUiOptions'
 import { CheckEmailScreen, postVerifyEmail, readAuthErrorMessage } from '../../_components/EmailVerification'
+import { useEmailPasswordSignIn } from '../../_components/useEmailPasswordSignIn'
+import { completeSignupVerification } from '../../_components/completeSignupVerification'
 import type { ClientAuthUiOptions } from '../../_components/useAuthUiOptions'
 import {
   currentLegalAcceptancePayload,
@@ -291,7 +293,7 @@ export function SignUpClient({
   const searchParams = useSearchParams()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => searchParams?.get('email') ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -309,6 +311,7 @@ export function SignUpClient({
   // react-doctor-disable-next-line react-doctor/no-hydration-branch-on-browser-global
   const redirectUrl = sanitizeClientAuthRedirect(searchParams?.get('redirect'))
   const signInHref = `/auth/sign-in${redirectUrl !== '/account' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`
+  const autoSignIn = useEmailPasswordSignIn({ email, password, redirectUrl, setError })
 
   useEffect(() => {
     persistMobilePkceChallengeFromUrl(searchParams)
@@ -362,7 +365,7 @@ export function SignUpClient({
     if (result.error) {
       setError(result.error)
     } else {
-      setVerified(true)
+      await completeSignupVerification(autoSignIn.signIn, () => setVerified(true))
     }
     setVerifying(false)
   }
@@ -405,6 +408,22 @@ export function SignUpClient({
   const showPasswordSignUp = authUiOptions.supportsPasswordSignUp === true
 
   if (success) {
+    if (autoSignIn.verification) {
+      return <CheckEmailScreen
+        email={email}
+        verificationCode={autoSignIn.verification.code}
+        error={error}
+        verifying={autoSignIn.verification.verifying}
+        resending={autoSignIn.verification.resending}
+        fieldClass={field}
+        labelClass={labelText}
+        mutedClass={muted}
+        submitClass={submit}
+        onCodeChange={autoSignIn.verification.onCodeChange}
+        onVerify={autoSignIn.verification.onVerify}
+        onResend={autoSignIn.verification.onResend}
+      />
+    }
     // Show verified success screen
     if (verified) {
       return (
