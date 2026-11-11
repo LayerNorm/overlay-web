@@ -200,23 +200,17 @@ function NotebookHeaderActions({
 }
 
 export interface NotebookAgentHeaderProps {
-  pendingDiffCount: number
   modelPicker: ReactNode
   /** Floating overlays the note; sidebar docks the panel as a column. */
   presentation?: 'floating' | 'sidebar'
   onPresentationChange?: (presentation: 'floating' | 'sidebar') => void
-  onAcceptAllDiffs: () => void
-  onRejectAllDiffs: () => void
   onClose: () => void
 }
 
 export function NotebookAgentHeader({
-  pendingDiffCount,
   modelPicker,
   presentation,
   onPresentationChange,
-  onAcceptAllDiffs,
-  onRejectAllDiffs,
   onClose,
 }: NotebookAgentHeaderProps) {
   const nextPresentation = presentation === 'floating' ? 'sidebar' : 'floating'
@@ -225,22 +219,6 @@ export function NotebookAgentHeader({
     <AppScreenSidePanelHeader>
       <AppScreenSidePanelTitle title="Assistant" />
       <AppScreenSidePanelActions className="gap-2">
-        {pendingDiffCount > 0 && (
-          <>
-            <Button variant="secondary" size="sm"
-              type="button"
-              onClick={onAcceptAllDiffs}
-            >
-              Accept all
-            </Button>
-            <Button variant="outline" size="sm"
-              type="button"
-              onClick={onRejectAllDiffs}
-            >
-              Reject all
-            </Button>
-          </>
-        )}
         {modelPicker}
         {presentation && onPresentationChange ? (
           <Button variant="ghost"

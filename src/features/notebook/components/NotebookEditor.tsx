@@ -1,7 +1,6 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { OverlayMark } from '@/components/brand/OverlayMark'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   readStoredPanelPresentation,
@@ -27,7 +26,6 @@ import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ChatComposer } from '@/features/chat/components/ChatComposer'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { ACT_MODEL_KEY, readStoredActModelId } from '@/shared/chat/chat-model-prefs'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -44,6 +42,9 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
 )
+
+// Separate from chat's last-used model, so a note starts on the chat default until a model is picked here.
+const NOTEBOOK_MODEL_KEY = 'overlay_notebook_model'
 
 export default function NotebookEditor({
   userId: _userId,
@@ -68,9 +69,10 @@ export default function NotebookEditor({
     [],
   )
   const initialModelId = useMemo(() => {
-    const storedModelId = readStoredActModelId()
-    return isByokModelId(storedModelId) ? DEFAULT_MODEL_ID : storedModelId
-  }, [])
+    let storedModelId: string | null = null
+    try { storedModelId = localStorage.getItem(NOTEBOOK_MODEL_KEY) } catch { /* storage may be unavailable */ }
+    return models.find(({ id }) => id === storedModelId)?.id ?? DEFAULT_MODEL_ID
+  }, [models])
 
   // Shared with the chat sources panel so both surfaces present the same way.
   const [panelPresentation, setPanelPresentationState] = useState(readStoredPanelPresentation)
@@ -162,7 +164,7 @@ export default function NotebookEditor({
       models={models}
       initialModelId={initialModelId}
       onModelChange={(modelId) => {
-        try { localStorage.setItem(ACT_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
+        try { localStorage.setItem(NOTEBOOK_MODEL_KEY, modelId) } catch { /* storage may be unavailable */ }
       }}
       onNavigateNote={(noteId) => router.replace(buildWorkspaceHref(null, `/app/notes?id=${encodeURIComponent(noteId)}`, scope))}
       onBackToFiles={() => router.push(buildWorkspaceHref(null, '/app/files', scope))}
@@ -188,11 +190,6 @@ export default function NotebookEditor({
       )}
       renderAgentComposer={(composer) => <NotebookChatComposer {...composer} />}
       renderMarkdown={(text, streaming) => <MarkdownMessage text={text} isStreaming={streaming} />}
-      logo={(
-        <span className="mt-0.5 shrink-0 select-none">
-          <OverlayMark motion="look" size={14} label="" />
-        </span>
-      )}
     />
   )
 }

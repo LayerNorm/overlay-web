@@ -12,7 +12,6 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { OverlayMark } from '@overlay/ui'
 import { EditorContent } from '@tiptap/react'
 import {
   Check,
@@ -141,7 +140,6 @@ export interface CanonicalNotebookEditorProps {
     onKeyDown(event: React.KeyboardEvent<HTMLElement>): void
   }): ReactNode
   renderMarkdown?(text: string, streaming: boolean): ReactNode
-  logo?: ReactNode
   media?: NotebookEditorMediaAdapter
   focusRequest?: number
   contentContainerRef?: Ref<HTMLDivElement>
@@ -251,22 +249,18 @@ function usePendingDiffCount(editor: TiptapEditor): number {
 }
 
 function NotebookAssistantHeader({
-  editor,
   modelPicker,
   agentPanelMode,
   onAgentPanelModeChange,
   onToggleAgentPanel,
 }: {
-  editor: TiptapEditor
   modelPicker: ReactNode
   agentPanelMode: 'docked' | 'floating'
   onAgentPanelModeChange?: (mode: 'docked' | 'floating') => void
   onToggleAgentPanel: () => Promise<void>
 }) {
-  const pendingDiffCount = usePendingDiffCount(editor)
   return (
     <NotebookAgentHeader
-      pendingDiffCount={pendingDiffCount}
       modelPicker={modelPicker}
       presentation={
         onAgentPanelModeChange
@@ -283,10 +277,25 @@ function NotebookAssistantHeader({
               )
           : undefined
       }
-      onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
-      onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
       onClose={() => void onToggleAgentPanel()}
     />
+  )
+}
+
+function NotebookAgentReviewActions({ editor, running }: { editor: TiptapEditor; running: boolean }) {
+  const pendingDiffCount = usePendingDiffCount(editor)
+  if (running || pendingDiffCount === 0) return null
+  return (
+    <div className="flex items-center gap-2 px-1">
+      <Button variant="secondary" size="sm" type="button"
+        onClick={() => editor?.chain().focus().acceptAllDiffs().run()}>
+        Accept all
+      </Button>
+      <Button variant="outline" size="sm" type="button"
+        onClick={() => editor?.chain().focus().rejectAllDiffs().run()}>
+        Reject all
+      </Button>
+    </div>
   )
 }
 
@@ -469,7 +478,6 @@ function NotebookEditorBody({
 
 function notebookChromeElements({
   agent,
-  editor,
   agentPanelMode,
   onAgentPanelModeChange,
   models,
@@ -478,7 +486,6 @@ function notebookChromeElements({
   renderAgentInput,
 }: {
   agent: ReturnType<typeof useNotebookAgent>
-  editor: ReturnType<typeof useNotebookEditor>['editor']
   agentPanelMode: 'docked' | 'floating'
   onAgentPanelModeChange: CanonicalNotebookEditorProps['onAgentPanelModeChange']
   models: CanonicalNotebookEditorProps['models']
@@ -501,7 +508,6 @@ function notebookChromeElements({
 
   const assistantHeader = (
     <NotebookAssistantHeader
-      editor={editor}
       modelPicker={modelPicker}
       agentPanelMode={agentPanelMode}
       onAgentPanelModeChange={onAgentPanelModeChange}
@@ -623,7 +629,6 @@ export function CanonicalNotebookEditor({
   renderExportMenu,
   renderAgentInput,
   renderMarkdown,
-  logo,
   media,
   focusRequest,
   contentContainerRef,
@@ -731,7 +736,6 @@ export function CanonicalNotebookEditor({
 
   const { assistantHeader, agentComposer } = notebookChromeElements({
     agent,
-    editor,
     agentPanelMode,
     onAgentPanelModeChange,
     models,
@@ -740,11 +744,6 @@ export function CanonicalNotebookEditor({
     renderAgentInput,
   })
 
-  const overlayLogo = logo ?? (
-    <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden>
-      <OverlayMark motion="look" size={14} label="" />
-    </span>
-  )
   const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))
   return (
     <AppScreenShell
@@ -773,7 +772,7 @@ export function CanonicalNotebookEditor({
           header={assistantHeader}
           items={agent.agentItems}
           running={agent.agentRunning}
-          logo={overlayLogo}
+          footer={<NotebookAgentReviewActions editor={editor} running={agent.agentRunning} />}
           composer={agentComposer}
             renderMarkdownMessage={(text, isStreaming) =>
               renderMarkdown?.(text, isStreaming) ?? (
