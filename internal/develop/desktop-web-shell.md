@@ -38,6 +38,10 @@ The sidebar's direct sign-out action also awaits the bounded native cleanup
 before deleting its web session and navigating away.
 Agent Host starts and online panels verify the actual server session; sign-out
 stops the host, closes panels, cancels dictation (including microphone tracks and stale paste results) and clears the badge.
+The app shell publishes its background as `<meta name="theme-color">` (normalized
+to `#rrggbb`). The desktop main window listens for `did-change-theme-color` and sets
+`nativeTheme.themeSource` to light or dark from it, so the window frame follows the
+app theme rather than the macOS appearance; without the tag it falls back to system.
 
 `DesktopProvider` negotiates the handshake and marks the root `data-desktop`.
 Regular browsers receive neither Desktop settings nor native composer controls.
@@ -50,8 +54,12 @@ bounds leave other apps clickable outside the panel, and close/toggle actions us
 the retained focus-yield helper. Transparent corners and display-change clamping
 are native window behavior; no full-screen renderer mask is needed.
 
-Settings → Desktop exposes model downloads, dictation preferences, recorded key combinations,
-panels, Agent Host controls and updates. Visible dictation settings refresh device
+Settings → Desktop (Lucide `Laptop` in the settings sidebar) groups its controls into Dictation,
+Local models, Floating panels, Agent host and About sections, matching the Shortcuts page layout.
+Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
+press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
+The Agent host row shows its state and keeps the harness, connection code and Start controls in the
+same row, with the log behind Show log. The model picker lists only downloaded local models. Visible dictation settings refresh device
 choices with capture status and on focus, so connected inputs and disconnected
 preferences update without reopening settings. Shared audio-context cleanup is
 owned by the current take; cancellation settles pending flushes and stale work
@@ -69,7 +77,7 @@ notification objects until interaction, closes them on sign-out/quit and restore
 a minimized main window before click routing.
 
 Local transcription runs without a network connection. Cloud transcription uses
-the web transcription API and the same plan/budget checks. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
+the web transcription API and the same plan/budget checks. Native code maps the API's refusal codes (paid plan, allowance, `workspace_billing_required`, `workspace_wallet_forbidden`, `insufficient_budget`) to actionable messages in `cloud-dictation-errors.ts` and keeps the bare status only for unknown failures. The dictation shortcut keeps the existing tap-to-toggle / hold-to-talk manager
 and recovers after sleep/unlock. The local HUD captures audio; main validates bounded audio bytes, invokes a pinned native model helper or
 the cookie-authenticated cloud endpoint, then pastes into the prior app. Screen and
 microphone permissions remain OS-controlled. Downloaded updates install only after

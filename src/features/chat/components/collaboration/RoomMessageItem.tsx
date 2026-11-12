@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
+import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
@@ -36,6 +37,8 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
+import { roomMessageTime } from './room-message-time'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
@@ -308,15 +311,11 @@ export function RoomMessageItem({
   remoteStatus,
   hideToolbar = false,
 }: RoomMessageItemProps) {
+  recordRender('RoomMessageItem')
   const { mine } = message
   const isAgent =
     message.authorKind === 'agent' || message.authorKind === 'model'
-  // Locale pinned to 'en-US' — SSR and client output are identical.
-  // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
-  const timeLabel = new Date(message.createdAt).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
+  const timeLabel = roomMessageTime(message.createdAt)
   const rootProps = {
     id: roomMessageDomId(message.id),
     'data-room-message': message.id,
@@ -741,6 +740,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
     blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
     <>
+      <AgentResponsePending key={message.id} message={message} />
       {message.askedBy ? (
         <p className="mb-1 text-[11px] text-(--muted)">
           Agent question · step {message.askedBy.hop}

@@ -53,6 +53,16 @@ test('keeps unchanged earlier turns memoized', () => {
   assert.equal(areTextChatMessagePropsEqual(props, { ...props }), true)
 })
 
+test('memoization observes changed actions, presentation, status and permissions', () => {
+  const props = { ...earlierTurnProps(), canonicalTranscript: true }
+  assert.equal(areTextChatMessagePropsEqual(props, { ...props, onBranch: () => {} }), false)
+  assert.equal(areTextChatMessagePropsEqual(props, { ...props, onOpenSources: () => {} }), false)
+  assert.equal(areTextChatMessagePropsEqual(props, { ...props, readOnly: true }), false)
+  assert.equal(areTextChatMessagePropsEqual(props, { ...props, status: 'error' }), false)
+  assert.equal(areTextChatMessagePropsEqual(props, { ...props, presentation: { showActions: false } }), false)
+  assert.equal(areTextChatMessagePropsEqual(props, { ...props, getResponseForExchange: () => null }), true)
+})
+
 test('current and historical failed turns preserve prose and render the structured failure during reconnect', () => {
   for (const latestExchangeIndex of [0, 1]) {
     const props = earlierTurnProps()

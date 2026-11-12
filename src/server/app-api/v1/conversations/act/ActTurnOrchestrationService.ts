@@ -20,6 +20,7 @@ import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { automationService } from '@/server/automations/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
+import { resolveNotebookNote } from '@/server/knowledge/mention-resolver'
 import {
   summarizeErrorForLog,
 } from '@/shared/security/safe-log'
@@ -149,6 +150,7 @@ export async function executeActTurn(
       mediaToolIntent,
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
+      notebookNoteId,
       actAbortTimeoutMs,
       harnessBudget,
       mentions: rawMentions,
@@ -218,6 +220,7 @@ export async function executeActTurn(
       memoryEnabled,
       mentions: rawMentions,
       requestedToolIds,
+      notebook: Boolean(notebookNoteId),
     })
     if (dynamicAuthorization) return dynamicAuthorization
     let modelGate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>>
@@ -283,6 +286,12 @@ export async function executeActTurn(
       requestModelId = effectiveModelId
     }
     if (_ttftDebug) _tAuth = performance.now()
+    const notebookNote = notebookNoteId
+      ? await resolveNotebookNote({ noteId: notebookNoteId, userId: conversationUserId, workspaceId: billingWorkspaceId, serverSecret })
+      : undefined
+    if (notebookNoteId && !notebookNote) {
+      return NextResponse.json({ error: 'note_not_found', message: 'The note is unavailable.' }, { status: 404 })
+    }
 
     const {
       latestUserContent,
@@ -313,6 +322,7 @@ export async function executeActTurn(
         repository: actConversationRepository,
         conversationClientId: durableClientId,
         scope,
+        ...(notebookNote ? { title: notebookNote.title } : {}),
         entitlements: runtimeEntitlements,
         askModelIds,
         actModelId: effectiveModelId,
@@ -504,6 +514,7 @@ export async function executeActTurn(
 	        preloadTasks: toolPreloadTasks,
 	        requestFingerprint: context.requestFingerprint,
 	        requestedToolIds,
+	        notebookNoteId: notebookNote?.id,
 	        serverSecret,
 	        turnId: tid,
 	        userId,
@@ -541,6 +552,7 @@ export async function executeActTurn(
       userSystemPromptExtension,
       automationExecution: automationExecution === true,
       automationMode: automationMode === true,
+      notebookNote,
     })
 
     if (!agentRun || !cid) throw new Error('Personal harness requires an admitted AgentRun.')
@@ -593,6 +605,7 @@ export async function executeActTurn(
           mode: mode ?? 'chat',
           requestFingerprint: context.requestFingerprint,
           requestedToolIds: [...requestedToolIds],
+          ...(notebookNote ? { notebookNoteId: notebookNote.id } : {}),
           turnId: tid,
           userId,
           workspaceId: billingWorkspaceId,

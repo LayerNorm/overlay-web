@@ -314,8 +314,16 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
       : await getJson<{ item?: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`)
     if (!result.ok) {
       if (result.conflict) {
-        const current = await fetchTask(options, input.taskId)
-        return { success: false, conflict: true, ...(current.ok ? { currentRevision: revisionOf(current.data) } : {}) }
+        const current = await fetchTask(options, input.taskId).catch((_error) => null)
+        return {
+          success: false,
+          conflict: true,
+          error: 'The task changed since the supplied revision. Review the current task (or call get_task if it is unavailable), then retry update_task with its revision if your intended changes still apply. Do not omit the revision or overwrite newer edits.',
+          ...(current?.ok ? {
+            currentRevision: revisionOf(current.data),
+            task: fullTask(current.data, contextResult.data.people),
+          } : {}),
+        }
       }
       return { success: false, error: result.error }
     }
@@ -333,7 +341,19 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
 export async function executeCommentOnTask(options: OverlayToolsOptions, input: { taskId: string; body: string }) {
   try {
     const result = await sendJson<{ success: boolean }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}/events`, { body: input.body })
-    return result.ok ? { success: true, taskId: input.taskId.trim() } : { success: false, error: result.error }
+    if (!result.ok) return { success: false, error: result.error }
+    const current = await fetchTask(options, input.taskId).catch((_error) => null)
+    return {
+      success: true,
+      taskId: input.taskId.trim(),
+      ...(current?.ok ? {
+        revision: revisionOf(current.data),
+        task: { ...current.data, priority: PRIORITY_LABEL[current.data.priority], revision: revisionOf(current.data) },
+      } : {}),
+      nextStep: current?.ok
+        ? 'Comment saved. Review the returned task and use its revision for the next update_task. If another change causes a conflict, review the latest task and retry with its revision. Do not post this comment again.'
+        : 'Comment saved, but the latest task could not be read. Call get_task before updating it. Do not post this comment again.',
+    }
   } catch (error) {
     return failure(error, 'Failed to comment on task')
   }

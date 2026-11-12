@@ -155,3 +155,11 @@ test('provider connection tests have dedicated IP and user limits', () => {
     { bucket: 'providers/connections:test:user', key: 'user_1', limit: 20 },
   ])
 })
+
+test('member billing requests have dedicated user and IP limits', () => {
+  const rules = getEndpointRateLimitSpecs({ ip: '203.0.113.5', method: 'POST', pathname: '/api/v1/workspaces/team-a/billing/request', userId: 'member-1' })
+  assert.deepEqual(rules.map(({ bucket, key, limit }) => ({ bucket, key, limit })), [
+    { bucket: 'workspace-billing:request:ip', key: '203.0.113.5', limit: 30 },
+    { bucket: 'workspace-billing:request:user', key: 'member-1', limit: 5 },
+  ])
+})

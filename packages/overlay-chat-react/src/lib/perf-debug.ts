@@ -102,9 +102,21 @@ function isLongTaskDebugEnabled(): boolean {
   }
 }
 
+type PerfDebugWindowApi = {
+  snapshot: () => PerfDebugSnapshot
+  reset: () => void
+}
+
 function startGlobalReporters(): void {
   if (reportersStarted || typeof window === 'undefined') return
   reportersStarted = true
+
+  // Lets the Playwright perf baseline (scripts/qa/perf-baseline.mjs) read and
+  // reset cumulative render counts. Only exposed when the perf flag is on.
+  ;(window as { __overlayPerfDebug?: PerfDebugWindowApi }).__overlayPerfDebug = {
+    snapshot: getPerfDebugSnapshot,
+    reset: resetPerfDebugSnapshot,
+  }
 
   // 1s rollup of render counts + timing stats.
   setInterval(() => {

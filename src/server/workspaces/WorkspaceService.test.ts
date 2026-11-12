@@ -384,6 +384,9 @@ test('resending an invitation publishes a fresh delivery event for the replaceme
     async getInvitation() {
       return existing
     },
+    async getPrincipal() {
+      return { ...actor.principal, displayName: 'Priya Shah' }
+    },
     async createInvitationReplacingPending() {
       return replacement
     },
@@ -407,6 +410,7 @@ test('resending an invitation publishes a fresh delivery event for the replaceme
 
   assert.equal(result.id, 'invite_new')
   assert.equal(events.length, 1)
+  assert.equal((events[0] as { attributes: { inviterName?: string } }).attributes.inviterName, 'Priya Shah')
   assert.equal((events[0] as { idempotencyKey?: string }).idempotencyKey, 'workspace.invitation_sent:invite_new')
   assert.equal(
     (events[0] as { attributes?: { invitedEmail?: string } }).attributes?.invitedEmail,
@@ -760,6 +764,47 @@ test('workspace handle updates require an owner, registry readiness, and map con
       && error.code === 'handle_conflict'
       && error.statusCode === 409,
   )
+})
+
+test('onboarding context resolves accepted invitations for members and admins, not another member', async () => {
+  for (const role of ['member', 'admin'] as const) {
+    const actor = access({ workspaceId: 'workspace_org', role, createdByPrincipalId: 'creator' })
+    const inviter = { ...actor.principal, id: 'inviter', displayName: 'Priya Shah' }
+    const service = new WorkspaceService(repository({
+      async getAccess() { return actor },
+      async listInvitations() { return [
+        { id: 'other', workspaceId: actor.workspace.id, email: 'other@test.com', invitedByPrincipalId: 'other-inviter', acceptedByPrincipalId: 'other', status: 'accepted', role, createdAt: 3, updatedAt: 3, expiresAt: 999 },
+        { id: 'accepted', workspaceId: actor.workspace.id, email: 'member@test.com', invitedByPrincipalId: inviter.id, acceptedByPrincipalId: actor.principal.id, status: 'accepted', role, createdAt: 1, updatedAt: 2, expiresAt: 999 },
+      ] },
+      async getPrincipal(id) { assert.equal(id, 'inviter'); return inviter },
+      async getMembership() { return { ...actor.membership, principalId: inviter.id, role: 'admin' } },
+    }))
+    assert.deepEqual(await service.getOnboardingContext({ actorUserId: 'user_1', workspaceId: actor.workspace.id }), {
+      workspaceName: 'Acme', personal: false, invited: true, inviterName: 'Priya Shah', billingContactName: 'Priya',
+    })
+  }
+})
+
+test('onboarding context keeps personal and owner intros and supports missing or non-manager inviters', async () => {
+  for (const actor of [access(), access({ workspaceId: 'workspace_org', role: 'owner' })]) {
+    const service = new WorkspaceService(repository({ async getAccess() { return actor } }))
+    assert.equal((await service.getOnboardingContext({ actorUserId: 'user_1', workspaceId: actor.workspace.id })).invited, false)
+  }
+  const actor = access({ workspaceId: 'workspace_org', role: 'member', createdByPrincipalId: 'creator' })
+  const noInvitation = new WorkspaceService(repository({ async getAccess() { return actor }, async listInvitations() { return [] } }))
+  const args = { actorUserId: 'user_1', workspaceId: actor.workspace.id }
+  assert.deepEqual(await noInvitation.getOnboardingContext(args), { workspaceName: 'Acme', personal: false, invited: true, inviterName: null, billingContactName: null })
+  for (const missing of [true, false]) {
+    const service = new WorkspaceService(repository({
+      async getAccess() { return actor },
+      async listInvitations() { return [{ id: 'accepted', workspaceId: actor.workspace.id, email: 'member@test.com', invitedByPrincipalId: 'inviter', acceptedByPrincipalId: actor.principal.id, status: 'accepted', role: 'member', createdAt: 1, updatedAt: 2, expiresAt: 999 }] },
+      async getPrincipal() { return missing ? null : { ...actor.principal, id: 'inviter', displayName: 'Morgan' } },
+      async getMembership() { return { ...actor.membership, principalId: 'inviter', role: 'member' } },
+    }))
+    const context = await service.getOnboardingContext(args)
+    assert.equal(context.inviterName, missing ? null : 'Morgan')
+    assert.equal(context.billingContactName, null)
+  }
 })
 
 test('automatic handles fall back safely when handle writes are disabled', async () => {

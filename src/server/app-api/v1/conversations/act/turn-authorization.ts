@@ -26,6 +26,7 @@ export async function authorizeActRequest(args: {
   memoryEnabled: boolean
   mentions: unknown
   requestedToolIds: readonly string[]
+  notebook?: boolean
 }): Promise<NextResponse | null> {
   const modelDenied = await authorizeCatalogResource({
     authorization: args.authorization,
@@ -37,7 +38,7 @@ export async function authorizeActRequest(args: {
   if (modelDenied) return modelDenied
 
   const capabilityRequirements = new Set<AuthorizationCapability>()
-  if (args.requestedToolIds.length > 0) capabilityRequirements.add('tools.use')
+  if (args.requestedToolIds.length > 0 || args.notebook) capabilityRequirements.add('tools.use')
   if (args.requestedToolIds.includes('web_search')) capabilityRequirements.add('web_search.use')
   if (args.memoryEnabled || args.requestedToolIds.includes('memory')) capabilityRequirements.add('memory.use')
   for (const mention of Array.isArray(args.mentions) ? args.mentions : []) {

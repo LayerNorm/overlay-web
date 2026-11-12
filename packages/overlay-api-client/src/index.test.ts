@@ -238,11 +238,6 @@ test('module feature methods use canonical app endpoints', async () => {
   await client.chat.transcribeResponse(new FormData())
   await client.memory.updateResponse({ memoryId: 'mem_1', content: 'Updated' })
   await client.outputs.deleteResponse({ outputId: 'out_1' })
-  await client.notes.notebookAgentResponse({
-    noteContent: '',
-    noteTitle: 'Untitled',
-    message: 'summarize this',
-  })
   await client.integrations.connectResponse({ toolkit: 'github' })
   await client.skills.deleteResponse({ skillId: 'skill_1' })
   await client.mcpServers.testResponse({ url: 'https://mcp.example.test', transport: 'streamable-http' })
@@ -281,29 +276,26 @@ test('module feature methods use canonical app endpoints', async () => {
   assert.equal(String(calls[8]!.input), 'https://example.test/api/v1/outputs?outputId=out_1')
   assert.equal(calls[8]!.init?.method, 'DELETE')
 
-  assert.equal(String(calls[9]!.input), 'https://example.test/api/v1/notebook-agent')
+  assert.equal(String(calls[9]!.input), 'https://example.test/api/v1/integrations')
   assert.equal(calls[9]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[9]!), { toolkit: 'github', action: 'connect' })
 
-  assert.equal(String(calls[10]!.input), 'https://example.test/api/v1/integrations')
-  assert.equal(calls[10]!.init?.method, 'POST')
-  assert.deepEqual(await jsonBody(calls[10]!), { toolkit: 'github', action: 'connect' })
+  assert.equal(String(calls[10]!.input), 'https://example.test/api/v1/skills?skillId=skill_1')
+  assert.equal(calls[10]!.init?.method, 'DELETE')
 
-  assert.equal(String(calls[11]!.input), 'https://example.test/api/v1/skills?skillId=skill_1')
-  assert.equal(calls[11]!.init?.method, 'DELETE')
+  assert.equal(String(calls[11]!.input), 'https://example.test/api/v1/mcps/test')
+  assert.equal(calls[11]!.init?.method, 'POST')
 
-  assert.equal(String(calls[12]!.input), 'https://example.test/api/v1/mcps/test')
-  assert.equal(calls[12]!.init?.method, 'POST')
+  assert.equal(String(calls[12]!.input), 'https://example.test/api/v1/automations')
+  assert.equal(calls[12]!.init?.method, 'PATCH')
+  assert.deepEqual(await jsonBody(calls[12]!), { automationId: 'auto_1', name: 'Renamed' })
 
-  assert.equal(String(calls[13]!.input), 'https://example.test/api/v1/automations')
-  assert.equal(calls[13]!.init?.method, 'PATCH')
-  assert.deepEqual(await jsonBody(calls[13]!), { automationId: 'auto_1', name: 'Renamed' })
-
-  assert.equal(String(calls[14]!.input), 'https://example.test/api/v1/automations/test')
-  assert.equal(calls[14]!.init?.method, 'POST')
-  assert.deepEqual(await jsonBody(calls[14]!), { automationId: 'auto_1' })
+  assert.equal(String(calls[13]!.input), 'https://example.test/api/v1/automations/test')
+  assert.equal(calls[13]!.init?.method, 'POST')
+  assert.deepEqual(await jsonBody(calls[13]!), { automationId: 'auto_1' })
 
   assert.equal(
-    String(calls[15]!.input),
+    String(calls[14]!.input),
     'https://example.test/api/v1/automations?automationId=auto_1&includeRuns=true',
   )
 })

@@ -210,6 +210,7 @@ export function ChatExchange({
           ? { maxWidth: presentation.maxContentWidth }
           : undefined}
         data-exchange-idx={exchIdx}
+        data-text-streaming={isTextStreaming || undefined}
         data-overlay-link-scope=""
         data-exchange-turn={turnIdForActions ?? undefined}
       >
