@@ -283,7 +283,32 @@ function restore(globals) {
   function visit(node) { if (ts.isVariableDeclaration(node) && node.name.getText() === 'restoreStoredSession') callback = node.initializer.arguments[0].getText(); ts.forEachChild(node, visit) }
   visit(file)
   assert.ok(callback)
-  return load(`exports.restore = ${callback}`, {}, globals).restore
+  const authGenerationRef = { current: 0 }
+  const saveRefreshedAuthSessionIfCurrent = globals.saveRefreshedAuthSessionIfCurrent ?? (async (next, previous) => {
+    await globals.saveRefreshedAuthSession?.(next, previous)
+    return next
+  })
+  const clearAuthSessionIfCurrent = globals.clearAuthSessionIfCurrent ?? (async expected => {
+    const current = await globals.loadAuthSession()
+    if (
+      !current || current.user.id !== expected.user.id ||
+      current.accessToken !== expected.accessToken || current.refreshToken !== expected.refreshToken
+    ) return false
+    await globals.clearAuthSession?.()
+    return true
+  })
+  const isInvalidOrExpiredSessionError = globals.isInvalidOrExpiredSessionError ?? (error => {
+    const message = globals.getErrorMessage?.(error) ?? (error instanceof Error ? error.message : '')
+    return message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')
+  })
+  const action = load(`exports.restore = ${callback}`, {}, {
+    ...globals,
+    authGenerationRef,
+    saveRefreshedAuthSessionIfCurrent,
+    clearAuthSessionIfCurrent,
+    isInvalidOrExpiredSessionError,
+  }).restore
+  return () => action(authGenerationRef.current)
 }
 
 test('cold-start restore waits for refresh and durable storage before exposing authentication', async () => {

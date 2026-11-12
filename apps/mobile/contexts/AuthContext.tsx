@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { AppState, Linking } from 'react-native'
@@ -11,6 +12,7 @@ import {
   type AuthSession,
   type AuthUser,
   clearAuthSession,
+  clearAuthSessionIfCurrent,
   completeNativeAuthCallback,
   consumeTransferToken,
   extractTransferToken,
@@ -18,7 +20,7 @@ import {
   refreshAuthSession,
   saveAuthSession,
   saveNativeAuthSession,
-  saveRefreshedAuthSession,
+  saveRefreshedAuthSessionIfCurrent,
 } from '../services/authService'
 import { clearBootstrapCache } from '../services/bootstrapService'
 import { unregisterPushRegistration } from '../services/pushRegistrationService'
@@ -43,6 +45,11 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Authentication failed'
 }
 
+function isInvalidOrExpiredSessionError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase()
+  return message.includes('invalid') || message.includes('expired')
+}
+
 export function AuthProvider({
   children,
 }: {
@@ -51,18 +58,30 @@ export function AuthProvider({
   const [session, setSession] = useState<AuthSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
+  const sessionRef = useRef<AuthSession | null>(null)
+  const authGenerationRef = useRef(0)
+  const loadingOperationRef = useRef(0)
+  const explicitRefreshRef = useRef<Promise<void> | null>(null)
+  const appStateRefreshRef = useRef<{
+    generation: number
+    ownerId: string | null
+    request: Promise<void>
+  } | null>(null)
 
   const applySignedOutState = useCallback(() => {
+    sessionRef.current = null
     setSession(null)
   }, [])
 
   const hydrateSession = useCallback(async (nextSession: AuthSession) => {
+    sessionRef.current = nextSession
     setSession(nextSession)
   }, [])
 
-  const restoreStoredSession = useCallback(async () => {
+  const restoreStoredSession = useCallback(async (generation: number) => {
     console.log('[AuthContext] restoreStoredSession: start')
     const storedSession = await loadAuthSession()
+    if (generation !== authGenerationRef.current) return
 
     if (!storedSession) {
       console.log('[AuthContext] restoreStoredSession: no stored session, signing out')
@@ -72,27 +91,36 @@ export function AuthProvider({
 
     try {
       const nextSession = await refreshAuthSession(storedSession)
-      await saveRefreshedAuthSession(nextSession, storedSession)
-      await hydrateSession(nextSession)
+      if (generation !== authGenerationRef.current) return
+      const currentSession = await saveRefreshedAuthSessionIfCurrent(nextSession, storedSession)
+      if (generation !== authGenerationRef.current) return
+      if (currentSession?.user.id === storedSession.user.id) await hydrateSession(currentSession)
     } catch (error) {
-      const current = await loadAuthSession()
-      if (!current || current.user.id !== storedSession.user.id) return
       const message = getErrorMessage(error)
-      if (current.accessToken !== storedSession.accessToken || current.refreshToken !== storedSession.refreshToken) {
-        await hydrateSession(current)
-      } else if (message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')) {
-        await clearAuthSession()
-        applySignedOutState()
-        setAuthError(message)
-      } else {
-        await hydrateSession(current)
+      if (generation !== authGenerationRef.current) return
+      if (isInvalidOrExpiredSessionError(error)) {
+        const cleared = await clearAuthSessionIfCurrent(storedSession)
+        if (generation !== authGenerationRef.current) return
+        if (cleared) {
+          applySignedOutState()
+          setAuthError(message)
+          return
+        }
+      }
+
+      const currentSession = await loadAuthSession()
+      if (
+        generation === authGenerationRef.current &&
+        currentSession?.user.id === storedSession.user.id
+      ) {
+        await hydrateSession(currentSession)
       }
     }
-
   }, [applySignedOutState, hydrateSession])
 
-  const validateStoredSession = useCallback(async () => {
+  const validateStoredSession = useCallback(async (generation: number) => {
     const storedSession = await loadAuthSession()
+    if (generation !== authGenerationRef.current) return
     if (!storedSession) {
       applySignedOutState()
       return
@@ -100,79 +128,202 @@ export function AuthProvider({
 
     try {
       const nextSession = await refreshAuthSession(storedSession)
-      await saveRefreshedAuthSession(nextSession, storedSession)
-      await hydrateSession(nextSession)
+      if (generation !== authGenerationRef.current) return
+      const currentSession = await saveRefreshedAuthSessionIfCurrent(nextSession, storedSession)
+      if (generation !== authGenerationRef.current) return
+      if (currentSession?.user.id === storedSession.user.id) await hydrateSession(currentSession)
     } catch (error) {
       const message = getErrorMessage(error)
-      if (message.toLowerCase().includes('invalid') || message.toLowerCase().includes('expired')) {
-        await clearAuthSession()
-        applySignedOutState()
-        setAuthError(message)
+      if (generation !== authGenerationRef.current) return
+      if (isInvalidOrExpiredSessionError(error)) {
+        const cleared = await clearAuthSessionIfCurrent(storedSession)
+        if (generation !== authGenerationRef.current) return
+        if (cleared) {
+          applySignedOutState()
+          setAuthError(message)
+          return
+        }
       }
+
+      const currentSession = await loadAuthSession()
+      if (
+        generation === authGenerationRef.current &&
+        currentSession?.user.id === storedSession.user.id
+      ) await hydrateSession(currentSession)
     }
   }, [applySignedOutState, hydrateSession])
 
   const consumeIncomingUrl = useCallback(
     async (url: string): Promise<boolean> => {
       if (getAccountDeletionState().busy || isAccountDeletionCallback(url)) return false
-      console.log('[AuthContext] consumeIncomingUrl: received callback')
-      const token = extractTransferToken(url)
-      if (!token) {
-        const nativeSession = await completeNativeAuthCallback(url)
-        if (!nativeSession) {
-          console.log('[AuthContext] consumeIncomingUrl: no auth payload found, ignoring')
-          return false
+      let generation = authGenerationRef.current
+      try {
+        console.log('[AuthContext] consumeIncomingUrl: received callback')
+        const token = extractTransferToken(url)
+        if (!token) {
+          const nativeSession = await completeNativeAuthCallback(url)
+          if (!nativeSession) {
+            console.log('[AuthContext] consumeIncomingUrl: no auth payload found, ignoring')
+            return false
+          }
+          if (generation !== authGenerationRef.current) return true
+
+          generation = ++authGenerationRef.current
+          const savedSession = await saveNativeAuthSession(nativeSession)
+          if (generation !== authGenerationRef.current) return true
+          await hydrateSession(savedSession)
+          console.log('[AuthContext] consumeIncomingUrl: native session established for user', nativeSession.user?.id)
+          return true
         }
 
-        await hydrateSession(await saveNativeAuthSession(nativeSession))
-        console.log('[AuthContext] consumeIncomingUrl: native session established for user', nativeSession.user?.id)
+        generation = ++authGenerationRef.current
+        console.log('[AuthContext] consumeIncomingUrl: transfer token extracted, consuming...')
+        setAuthError(null)
+        const transferredSession = await consumeTransferToken(token)
+        if (generation !== authGenerationRef.current) return true
+        await saveAuthSession(transferredSession)
+        if (generation !== authGenerationRef.current) return true
+        await hydrateSession(transferredSession)
+        console.log('[AuthContext] consumeIncomingUrl: session established for user', transferredSession.user?.id)
         return true
+      } catch (error) {
+        if (generation !== authGenerationRef.current) return true
+        setAuthError(getErrorMessage(error))
+        throw error
       }
-
-      console.log('[AuthContext] consumeIncomingUrl: transfer token extracted, consuming...')
-      setAuthError(null)
-      const transferredSession = await consumeTransferToken(token)
-      await saveAuthSession(transferredSession)
-      await hydrateSession(transferredSession)
-      console.log('[AuthContext] consumeIncomingUrl: session established for user', transferredSession.user?.id)
-      return true
     },
     [hydrateSession],
   )
 
-  const refreshSession = useCallback(async () => {
-    setIsLoading(true)
-    setAuthError(null)
+  const refreshSession = useCallback(() => {
+    if (explicitRefreshRef.current) return explicitRefreshRef.current
 
-    try {
-      await validateStoredSession()
-    } catch (error) {
-      applySignedOutState()
-      setAuthError(getErrorMessage(error))
-    } finally {
-      setIsLoading(false)
-    }
+    const generation = authGenerationRef.current
+    const loadingOperation = ++loadingOperationRef.current
+    const request = (async () => {
+      setIsLoading(true)
+      setAuthError(null)
+
+      try {
+        await validateStoredSession(generation)
+      } catch (error) {
+        if (generation === authGenerationRef.current) {
+          applySignedOutState()
+          setAuthError(getErrorMessage(error))
+        }
+      } finally {
+        if (loadingOperation === loadingOperationRef.current) setIsLoading(false)
+      }
+    })()
+    explicitRefreshRef.current = request
+    void request.finally(() => {
+      if (explicitRefreshRef.current === request) explicitRefreshRef.current = null
+    }).catch(() => undefined)
+    return request
   }, [applySignedOutState, validateStoredSession])
 
+  const refreshEstablishedSession = useCallback(async () => {
+    const generation = authGenerationRef.current
+    const ownerId = sessionRef.current?.user.id
+    if (!ownerId) return
+
+    const storedSession = await loadAuthSession()
+    if (
+      generation !== authGenerationRef.current ||
+      sessionRef.current?.user.id !== ownerId
+    ) return
+    if (!storedSession || storedSession.user.id !== ownerId) {
+      applySignedOutState()
+      return
+    }
+
+    try {
+      const nextSession = await refreshAuthSession(storedSession)
+      if (generation !== authGenerationRef.current || sessionRef.current?.user.id !== ownerId) return
+      const currentSession = await saveRefreshedAuthSessionIfCurrent(nextSession, storedSession)
+      if (generation !== authGenerationRef.current || sessionRef.current?.user.id !== ownerId) return
+      if (currentSession?.user.id === ownerId) {
+        await hydrateSession(currentSession)
+      } else {
+        applySignedOutState()
+      }
+    } catch (error) {
+      if (generation !== authGenerationRef.current || sessionRef.current?.user.id !== ownerId) return
+      const message = getErrorMessage(error)
+      if (isInvalidOrExpiredSessionError(error)) {
+        const cleared = await clearAuthSessionIfCurrent(storedSession)
+        if (generation !== authGenerationRef.current || sessionRef.current?.user.id !== ownerId) return
+        if (cleared) {
+          applySignedOutState()
+          setAuthError(message)
+          return
+        }
+      }
+
+      const currentSession = await loadAuthSession()
+      if (generation !== authGenerationRef.current || sessionRef.current?.user.id !== ownerId) return
+      if (currentSession?.user.id === ownerId) await hydrateSession(currentSession)
+      else applySignedOutState()
+    }
+  }, [applySignedOutState, hydrateSession])
+
+  const refreshFromAppState = useCallback((isAuthLoading: boolean) => {
+    const generation = authGenerationRef.current
+    const ownerId = sessionRef.current?.user.id ?? null
+    const currentFlight = appStateRefreshRef.current
+    if (currentFlight?.generation === generation && currentFlight.ownerId === ownerId) return currentFlight.request
+
+    let request: Promise<void>
+    if (sessionRef.current) request = refreshEstablishedSession()
+    else if (isAuthLoading) request = Promise.resolve()
+    else request = refreshSession()
+    const flight = { generation, ownerId, request }
+    appStateRefreshRef.current = flight
+    void request.finally(() => {
+      if (appStateRefreshRef.current === flight) appStateRefreshRef.current = null
+    }).catch(() => undefined)
+    return request
+  }, [refreshEstablishedSession, refreshSession])
+
   const signOut = useCallback(async () => {
-    const current = await loadAuthSession()
-    if (current) await unregisterPushRegistration(current.user.id)
-    await clearAuthSession()
-    await Promise.allSettled([
-      clearBootstrapCache(),
-      clearUiSettingsCache(),
-      disableBackgroundVoice(),
-      clearVoiceAuthSessionFromAppGroup(),
-    ])
-    applySignedOutState()
-    setAuthError(null)
+    const generation = ++authGenerationRef.current
+    const loadingOperation = ++loadingOperationRef.current
+    setIsLoading(true)
+    try {
+      const current = await loadAuthSession()
+      if (generation !== authGenerationRef.current) return
+      if (current) await unregisterPushRegistration(current.user.id)
+      if (generation !== authGenerationRef.current) return
+      await clearAuthSession()
+      if (generation !== authGenerationRef.current) return
+      await Promise.allSettled([
+        clearBootstrapCache(),
+        clearUiSettingsCache(),
+        disableBackgroundVoice(),
+        clearVoiceAuthSessionFromAppGroup(),
+      ])
+      if (generation !== authGenerationRef.current) return
+      applySignedOutState()
+      setAuthError(null)
+    } finally {
+      if (loadingOperation === loadingOperationRef.current) setIsLoading(false)
+    }
   }, [applySignedOutState])
 
   const completeNativeSignIn = useCallback(
     async (nextSession: AuthSession) => {
       if (getAccountDeletionState().busy) throw new Error('Finish the account action before signing in.')
-      await hydrateSession(await saveNativeAuthSession(nextSession))
-      setAuthError(null)
+      const generation = ++authGenerationRef.current
+      const loadingOperation = ++loadingOperationRef.current
+      setIsLoading(true)
+      try {
+        const savedSession = await saveNativeAuthSession(nextSession)
+        if (generation !== authGenerationRef.current) return
+        await hydrateSession(savedSession)
+        setAuthError(null)
+      } finally {
+        if (loadingOperation === loadingOperationRef.current) setIsLoading(false)
+      }
     },
     [hydrateSession],
   )
@@ -181,27 +332,30 @@ export function AuthProvider({
     let isMounted = true
 
     async function bootstrap(): Promise<void> {
+      const generation = authGenerationRef.current
+      const loadingOperation = ++loadingOperationRef.current
       console.log('[AuthContext] bootstrap: start')
       setIsLoading(true)
       setAuthError(null)
 
       try {
         const initialUrl = await Linking.getInitialURL()
+        if (!isMounted || generation !== authGenerationRef.current) return
         console.log('[AuthContext] bootstrap: initial callback present =', Boolean(initialUrl))
         const didConsumeTransfer = initialUrl ? await consumeIncomingUrl(initialUrl) : false
         console.log('[AuthContext] bootstrap: didConsumeTransfer =', didConsumeTransfer)
 
         if (!didConsumeTransfer) {
-          await restoreStoredSession()
+          await restoreStoredSession(generation)
         }
       } catch (error) {
         console.error('[AuthContext] bootstrap: error -', getErrorMessage(error), error)
-        if (isMounted) {
+        if (isMounted && generation === authGenerationRef.current) {
           applySignedOutState()
           setAuthError(getErrorMessage(error))
         }
       } finally {
-        if (isMounted) {
+        if (isMounted && loadingOperation === loadingOperationRef.current) {
           console.log('[AuthContext] bootstrap: done, isAuthenticated will update via session state')
           setIsLoading(false)
         }
@@ -213,18 +367,16 @@ export function AuthProvider({
     const subscription = Linking.addEventListener('url', (event) => {
       if (getAccountDeletionState().busy || isAccountDeletionCallback(event.url)) return
       console.log('[AuthContext] Linking event: received callback')
+      const loadingOperation = ++loadingOperationRef.current
       setIsLoading(true)
       setAuthError(null)
 
       void consumeIncomingUrl(event.url)
         .catch((error) => {
           console.error('[AuthContext] Linking event: consumeIncomingUrl error -', getErrorMessage(error), error)
-          if (isMounted) {
-            setAuthError(getErrorMessage(error))
-          }
         })
         .finally(() => {
-          if (isMounted) {
+          if (isMounted && loadingOperation === loadingOperationRef.current) {
             setIsLoading(false)
           }
         })
@@ -232,21 +384,23 @@ export function AuthProvider({
 
     return () => {
       isMounted = false
+      authGenerationRef.current++
+      loadingOperationRef.current++
       subscription.remove()
     }
   }, [applySignedOutState, consumeIncomingUrl, restoreStoredSession])
 
   // Refresh the session when the app comes back from background so that
-  // expired access tokens are rotated before the user types their next message.
+  // expired access tokens are rotated without interrupting an established session.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         console.log('[AuthContext] App became active, refreshing session')
-        void refreshSession()
+        void refreshFromAppState(isLoading)
       }
     })
     return () => subscription.remove()
-  }, [refreshSession])
+  }, [isLoading, refreshFromAppState])
 
   const user = useMemo<AuthUser | null>(() => session?.user ?? null, [session])
 

@@ -119,9 +119,9 @@ export async function loadAuthSession(): Promise<AuthSession | null> {
 
 let sessionWrite: Promise<void> = Promise.resolve()
 
-function serializeSessionWrite(write: () => Promise<void>): Promise<void> {
+function serializeSessionWrite<T>(write: () => Promise<T>): Promise<T> {
   const request = sessionWrite.then(write)
-  sessionWrite = request.catch(() => undefined)
+  sessionWrite = request.then(() => undefined, () => undefined)
   return request
 }
 
@@ -143,13 +143,37 @@ export async function saveNativeAuthSession(session: AuthSession): Promise<AuthS
 }
 
 export function saveRefreshedAuthSession(session: AuthSession, previous: AuthSession): Promise<void> {
-  return serializeSessionWrite(async () => {
-    const current = await loadAuthSession()
-    if (current?.user.id === session.user.id && current.accessToken === session.accessToken) return
-    if (session.user.id !== previous.user.id || current?.user.id !== previous.user.id || current.refreshToken !== previous.refreshToken) {
+  return saveRefreshedAuthSessionIfCurrent(session, previous).then((current) => {
+    if (!current || current.user.id !== session.user.id || current.accessToken !== session.accessToken) {
       throw new Error('The stored session changed during refresh.')
     }
+  })
+}
+
+export function saveRefreshedAuthSessionIfCurrent(session: AuthSession, previous: AuthSession): Promise<AuthSession | null> {
+  return serializeSessionWrite(async () => {
+    if (session.user.id !== previous.user.id) return null
+    const current = await loadAuthSession()
+    if (!current || current.user.id !== previous.user.id) return null
+    if (current.accessToken !== previous.accessToken || current.refreshToken !== previous.refreshToken) return current
     await SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(session))
+    return session
+  })
+}
+
+export function clearAuthSessionIfCurrent(expected: AuthSession): Promise<boolean> {
+  return serializeSessionWrite(async () => {
+    const current = await loadAuthSession()
+    if (
+      !current ||
+      current.user.id !== expected.user.id ||
+      current.accessToken !== expected.accessToken ||
+      current.refreshToken !== expected.refreshToken
+    ) {
+      return false
+    }
+    await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY)
+    return true
   })
 }
 
