@@ -100,7 +100,7 @@ function classify(files) {
     if (file === 'src/server/auth/session.test.ts') {
       add('vitest:react-server', {
         kind: 'vitest',
-        config: 'vitest.unit.config.mts',
+        config: 'vitest.session-rsc.config.mts',
         cwd: '.',
         reactServer: true,
       }, file)

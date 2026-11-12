@@ -21,7 +21,6 @@ export default defineConfig({
       'src/server/harness/**/*.test.ts',
       'src/server/automations/automation-agent-instructions.test.ts',
       'src/server/files/computer-publication.test.ts',
-      'src/server/auth/session.test.ts',
       'src/server/files/computer-publication-service.test.ts',
       'src/server/files/ArtifactPublicationAuthority.test.ts',
       'src/server/storage/object-store.test.ts',
