@@ -161,7 +161,6 @@ export async function* chatStream(
       variantIndex: options.variantIndex,
       messages: toUiMessages(messages),
       mode: requestMode,
-      automationMode: requestMode === 'automate',
     }
     if (options.temporaryChat) {
       body.temporaryChat = true

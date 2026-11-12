@@ -777,6 +777,38 @@ test('failed sends restore unchanged drafts, clear busy, and hide opaque transpo
   await act(async () => renderer.unmount())
 })
 
+test('persisted Act failure retry reuses the turn and conversation owner', async () => {
+  reset()
+  let streamCount = 0
+  state.stream = async function* () {
+    streamCount += 1
+    if (streamCount === 1) yield { type: 'error', content: 'HTTP 410' }
+    else yield { type: 'text', content: 'Recovered' }
+  }
+  const renderer = await mount(CHAT_A)
+  state.pendingLoad = () => null
+  await act(async () => {
+    state.composer.onChangeRequestMode('automate')
+    state.composer.onChangeInput('retry after persisted turn')
+    await tick()
+  })
+  await act(async () => { await state.composer.onSend(); await tick() })
+  const firstRequest = { ...state.streamArgs[2] }
+  assert.equal(state.nativeProps.view.exchanges.at(-1).status, 'error')
+  assert.equal(state.composer.inputValue, 'retry after persisted turn')
+  assert.equal(firstRequest.requestMode, 'automate')
+
+  await act(async () => { await state.composer.onSend(); await tick() })
+  const secondRequest = { ...state.streamArgs[2] }
+  assert.equal(firstRequest.turnId, secondRequest.turnId)
+  assert.equal(firstRequest.conversationId, secondRequest.conversationId)
+  assert.equal(firstRequest.workspaceId, secondRequest.workspaceId)
+  assert.equal(firstRequest.requestMode, secondRequest.requestMode)
+  assert.equal(state.nativeProps.view.exchanges.filter((exchange) => exchange.user.text === 'retry after persisted turn').length, 1)
+  assert.equal(state.nativeProps.view.exchanges.at(-1).status, 'completed')
+  await act(async () => renderer.unmount())
+})
+
 test('opaque, bearer, JWT-shaped, and backend transport errors never reach transcript output', async () => {
   for (const raw of ['xy', 'Bearer hidden-credential-value', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWNyZXQifQ.signature', 'backend body sentinel hidden-response']) {
     reset()
