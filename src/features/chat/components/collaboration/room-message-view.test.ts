@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { createRoomScrollIntent, isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { captureRoomScrollAnchor, createRoomScrollIntent, holdRoomScrollAnchor, isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -376,4 +376,88 @@ test('scrollRoomMessageIntoView corrects layout changes after initially reaching
   harness.runFrame()
   harness.runTimeout()
   assert.deepEqual(harness.calls, ['smooth', 'instant'])
+})
+
+function anchorHarness() {
+  const listeners = new Map<string, Set<() => void>>()
+  let frame: (() => void) | null = null
+  let timeout: (() => void) | null = null
+  // Rows live in content coordinates; the viewport shows [scrollTop, scrollTop + 800).
+  const rows = [{ id: 'old', top: 0, height: 96 }, { id: 'a', top: 96, height: 120 }, { id: 'b', top: 216, height: 80 }]
+  const scroller = {
+    scrollTop: 100,
+    getBoundingClientRect: () => ({ top: 50, bottom: 850 }),
+    querySelectorAll: () => rows.map(row => element(row.id)),
+  } as unknown as HTMLElement & { scrollTop: number }
+  const element = (id: string) => {
+    const row = rows.find(candidate => candidate.id === id)
+    if (!row) return null
+    return {
+      isConnected: true,
+      getAttribute: () => row.id,
+      getBoundingClientRect: () => ({ top: 50 + row.top - scroller.scrollTop, bottom: 50 + row.top + row.height - scroller.scrollTop }),
+    }
+  }
+  const view = {
+    addEventListener: (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn) },
+    removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn) },
+    requestAnimationFrame: (fn: () => void) => { frame = fn; return 1 },
+    cancelAnimationFrame: () => { frame = null },
+    setTimeout: (fn: () => void) => { timeout = fn; return 1 },
+    clearTimeout: () => { timeout = null },
+  }
+  Object.assign(scroller, { ownerDocument: { defaultView: view, getElementById: (domId: string) => element(domId.replace('room-message-', '')) } })
+  /** Grows every row above `id` by `delta`, as rendering estimated rows does. */
+  const growAbove = (id: string, delta: number) => {
+    const index = rows.findIndex(row => row.id === id)
+    rows[index - 1]!.height += delta
+    for (const row of rows.slice(index)) row.top += delta
+  }
+  const prepend = (count: number, height: number) => {
+    for (const row of rows) row.top += count * height
+    rows.unshift(...Array.from({ length: count }, (_, i) => ({ id: `p${i}`, top: i * height, height })))
+  }
+  return { scroller, rows, growAbove, prepend, fire: (type: string) => { for (const fn of [...(listeners.get(type) ?? [])]) fn() },
+    runFrame: () => { const next = frame; frame = null; next?.() }, runTimeout: () => timeout?.(), hasFrame: () => frame !== null }
+}
+
+const anchorOffset = (harness: ReturnType<typeof anchorHarness>, id: string) =>
+  harness.rows.find(row => row.id === id)!.top - harness.scroller.scrollTop
+
+test('captureRoomScrollAnchor records the first row visible at the top edge', () => {
+  const harness = anchorHarness()
+  assert.deepEqual(captureRoomScrollAnchor(harness.scroller), { messageId: 'a', offset: -4 })
+})
+
+test('holdRoomScrollAnchor keeps the reader on the same row after older history is prepended', () => {
+  const harness = anchorHarness()
+  const anchor = captureRoomScrollAnchor(harness.scroller)!
+  // 50 estimated placeholder rows land above the reader.
+  harness.prepend(50, 96)
+  holdRoomScrollAnchor(harness.scroller, anchor)
+  assert.equal(anchorOffset(harness, 'a'), -4)
+  // Rows near the viewport then render far taller than their estimate.
+  harness.growAbove('a', 2900)
+  harness.runFrame()
+  assert.equal(anchorOffset(harness, 'a'), -4)
+  harness.runTimeout()
+  assert.equal(harness.hasFrame(), false)
+})
+
+test('holdRoomScrollAnchor stops correcting once the user scrolls', () => {
+  const harness = anchorHarness()
+  const anchor = captureRoomScrollAnchor(harness.scroller)!
+  harness.prepend(10, 96)
+  holdRoomScrollAnchor(harness.scroller, anchor)
+  harness.fire('wheel')
+  harness.scroller.scrollTop -= 300
+  harness.runFrame()
+  assert.equal(anchorOffset(harness, 'a'), 296)
+})
+
+test('holdRoomScrollAnchor can be released before a newer older-history load', () => {
+  const harness = anchorHarness()
+  const release = holdRoomScrollAnchor(harness.scroller, captureRoomScrollAnchor(harness.scroller)!)
+  release()
+  assert.equal(harness.hasFrame(), false)
 })

@@ -65,12 +65,15 @@ import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import { prefetchTitle } from '@/features/chat/lib/generate-title'
 import {
   compareRoomMessageRecords,
+  captureRoomScrollAnchor,
   createRoomScrollIntent,
+  holdRoomScrollAnchor,
   mergeRoomMessages,
   remoteAgentCommands,
   roomMessageDomId, scrollRoomMessageIntoView,
   type RemoteAgentCommand,
   type RoomMessageRecord,
+  type RoomScrollAnchor,
 } from './collaboration/room-message-view'
 import type { RoomPanelKind } from './collaboration/RoomSidePanels'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -321,7 +324,9 @@ export function useRoomTranscript({
   useEffect(() => {
     messagesRef.current = messages
   })
-  const prependScrollRef = useRef<{ height: number; top: number } | null>(null)
+  /** Where the reader was when older history was requested, and the oldest row then loaded. */
+  const prependScrollRef = useRef<{ anchor: RoomScrollAnchor | null; height: number; top: number; oldestId?: string } | null>(null)
+  const releasePrependAnchorRef = useRef<(() => void) | null>(null)
   const skipNextMessageGrowthRef = useRef(false)
   const previousMessageCountRef = useRef(messages.length)
   const generatingMessages = messages.filter((message) => message.status === 'generating')
@@ -340,7 +345,14 @@ export function useRoomTranscript({
     if (paging.loadingMore || !paging.hasMore) return
     const node = listRef.current
     if (node) {
-      prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
+      releasePrependAnchorRef.current?.()
+      releasePrependAnchorRef.current = null
+      prependScrollRef.current = {
+        anchor: captureRoomScrollAnchor(node),
+        height: node.scrollHeight,
+        top: node.scrollTop,
+        oldestId: messagesRef.current[0]?.id,
+      }
       skipNextMessageGrowthRef.current = true
     }
     paging.loadMore()
@@ -390,13 +402,25 @@ export function useRoomTranscript({
     })
   }, [loading, messages.length, setNewMessageCount, stickToBottom])
 
+  const oldestMessageId = messages[0]?.id
   useLayoutEffect(() => {
     const node = listRef.current
-    const anchor = prependScrollRef.current
-    if (!node || !anchor) return
-    node.scrollTop = anchor.top + (node.scrollHeight - anchor.height)
+    const pending = prependScrollRef.current
+    // Wait for the older page itself: a live message arriving first must not consume the anchor.
+    if (!node || !pending || oldestMessageId === pending.oldestId) return
     prependScrollRef.current = null
-  }, [messages.length])
+    if (pending.anchor && document.getElementById(roomMessageDomId(pending.anchor.messageId))) {
+      releasePrependAnchorRef.current = holdRoomScrollAnchor(node, pending.anchor)
+    } else {
+      node.scrollTop = pending.top + (node.scrollHeight - pending.height)
+    }
+  }, [messages.length, oldestMessageId])
+
+  useEffect(() => () => {
+    releasePrependAnchorRef.current?.()
+    releasePrependAnchorRef.current = null
+    prependScrollRef.current = null
+  }, [conversationId])
 
   // Pin to latest after the initial transcript paint (and when stick-to-bottom).
   // Double rAF waits for layout of markdown/images so open-room no longer starts
