@@ -8,6 +8,13 @@
 
 - [ ] **Measure first-reply time in production** (added 2026-11-06). Nothing reports how long a user waits for a reply's first text; `NEXT_PUBLIC_TTFT_DEBUG` and `TTFT_DEBUG` are off-by-default debug tools, and the server flag collects phases it never logs. Once the Convex-native chat work settles, send one PostHog event per reply with the time to first text, the model and whether it was a new chat, and no message content. Then compare typical and worst-case times over time.
 
+## UI performance
+
+Plan: the "Overlay web: UI snappiness plan (v2)" note. Baseline tooling: `internal/develop/perf-baseline.md`.
+
+- [ ] **Virtualize long DM histories** (added 2026-11-09, deferred from the perf plan, PR 8). `DirectMessageExperience.parts.tsx` renders every loaded message, so the DOM grows as older pages load. Window `mainMessages` with `@tanstack/react-virtual` (variable heights, reverse anchoring). Must keep: scroll position when older pages load, stick-to-bottom, unread-boundary and deep-link jumps, day dividers and grouping (they read the previous item), `role="log"` with `aria-setsize`/`aria-posinset`, and focus when a row is recycled. QA in Chrome, Safari, Firefox and the desktop webview. Use the `dm-scroll` baseline numbers to decide when.
+- [ ] **Add the desktop app to the perf suite** (added 2026-11-09). `npm run perf:baseline` only drives Chromium against the web app. Run the same four scenarios in the Overlay desktop app webview (cold start, thread switch, typing while streaming, DM scroll), so desktop gets the same targets and before/after numbers as web.
+
 ## Editor
 
 - [ ] **Editor "Agent not found" on expired sessions** — the side-panel editor

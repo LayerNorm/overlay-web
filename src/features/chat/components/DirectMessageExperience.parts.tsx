@@ -33,6 +33,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import {
   roomMessageRowKey,
   toRoomMessageView,
@@ -488,11 +489,12 @@ export function RoomTranscript({
   const {
     listRef,
     handleTranscriptScroll: onScroll,
-    stickToBottom,
+    hasContentBelow,
     hasMoreMessages,
     loadingOlderMessages,
     loadOlderMessages,
     loading,
+    turnSpacerRef,
   } = transcript
   const { newMessageCount } = readMarkers
   const { jumpToLatest: onJumpToLatest } = navigation
@@ -500,7 +502,7 @@ export function RoomTranscript({
   const onLoadOlder = () => void loadOlderMessages()
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
-      {newMessageCount > 0 && !stickToBottom ? (
+      {hasContentBelow ? (
         <Button
           variant="ghost"
           type="button"
@@ -508,7 +510,7 @@ export function RoomTranscript({
           data-testid="jump-to-latest"
           className="absolute bottom-4 left-1/2 z-10 h-auto -translate-x-1/2 rounded-full bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
         >
-          {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
+          {newMessageCount > 0 ? `${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'} ↓` : 'Jump to latest ↓'}
         </Button>
       ) : null}
       <div
@@ -516,7 +518,7 @@ export function RoomTranscript({
         onScroll={onScroll}
         className={`h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4 ${hideScrollbar ? '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''}`}
       >
-        <div data-chat-transcript className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
+        <div data-chat-transcript data-loaded-message-count={mainMessages.length} className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
           {hasMoreMessages ? (
             <Button
               variant="ghost"
@@ -579,6 +581,7 @@ export function RoomTranscript({
             })
           )}
           {footer}
+          <div ref={turnSpacerRef} aria-hidden className="shrink-0" />
         </div>
       </div>
     </div>
@@ -740,6 +743,7 @@ export function RoomComposer({
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
 }) {
+  recordRender('RoomComposer')
   useEffect(() => {
     if (guided?.focusRevision) composer.composerRef.current?.focus()
   }, [guided?.focusRevision, composer.composerRef])

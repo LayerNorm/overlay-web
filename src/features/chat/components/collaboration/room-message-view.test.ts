@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getDescriptiveToolLabel } from '@overlay/chat-core'
-import { isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { captureRoomScrollAnchor, createRoomScrollIntent, holdRoomScrollAnchor, isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -268,4 +268,196 @@ test('default-agent identity reaches room authors and mention chips without name
   assert.equal(view.authorIsDefault, true)
   assert.equal(view.mentions?.[0]?.isDefault, true)
   assert.equal(toRoomMessageView({ message: record(), currentPrincipalId: 'me', authorName: 'Overlay' }).authorIsDefault, undefined)
+})
+
+function jumpHarness(offsets: number[]) {
+  const listeners = new Map<string, Set<() => void>>()
+  const on = (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn) }
+  const off = (type: string, fn: () => void) => { listeners.get(type)?.delete(fn) }
+  const fire = (type: string) => { for (const fn of [...(listeners.get(type) ?? [])]) fn() }
+  const calls: string[] = []
+  let timeout: (() => void) | null = null
+  let frame: (() => void) | null = null
+  const view = {
+    addEventListener: on, removeEventListener: off,
+    requestAnimationFrame: (fn: () => void) => { frame = fn; return 1 },
+    cancelAnimationFrame: () => { frame = null },
+    setTimeout: (fn: () => void) => { timeout = fn; return 1 },
+    clearTimeout: () => { timeout = null },
+    getComputedStyle: (node: { overflowY?: string }) => ({ overflowY: node.overflowY ?? 'visible' }),
+  }
+  const scroller = { overflowY: 'auto', scrollHeight: 5000, clientHeight: 800, parentElement: null, addEventListener: on, removeEventListener: off,
+    getBoundingClientRect: () => ({ top: 0, bottom: 800 }) }
+  // overflow-x: hidden computes overflow-y to auto; a wrapper that does not scroll is not the scroller.
+  const clippedWrapper = { overflowY: 'auto', scrollHeight: 400, clientHeight: 400, parentElement: scroller, addEventListener: on, removeEventListener: off,
+    getBoundingClientRect: () => ({ top: 1700, bottom: 2100 }) }
+  const element = {
+    isConnected: true,
+    ownerDocument: { defaultView: view },
+    parentElement: { overflowY: 'visible', parentElement: clippedWrapper },
+    scrollIntoView: (options: ScrollIntoViewOptions) => { calls.push(String(options.behavior)) },
+    getBoundingClientRect: () => { const offset = offsets[Math.min(calls.length - 1, offsets.length - 1)]; return { top: 380 + offset, bottom: 420 + offset } },
+  } as unknown as HTMLElement
+  return { element, calls, fire, runTimeout: () => timeout?.(), runFrame: () => { const next = frame; frame = null; next?.() } }
+}
+
+test('scrollRoomMessageIntoView re-centres a target that lands short once scrolling settles', () => {
+  const harness = jumpHarness([1500, 0])
+  scrollRoomMessageIntoView(harness.element)
+  assert.deepEqual(harness.calls, ['smooth'])
+  harness.fire('scrollend')
+  assert.deepEqual(harness.calls, ['smooth', 'instant'])
+  harness.runTimeout()
+  assert.deepEqual(harness.calls, ['smooth', 'instant'])
+})
+
+test('scrollRoomMessageIntoView leaves a centred target and a user scroll alone', () => {
+  const centred = jumpHarness([0])
+  scrollRoomMessageIntoView(centred.element)
+  centred.runTimeout()
+  assert.deepEqual(centred.calls, ['smooth'])
+  const user = jumpHarness([1500])
+  scrollRoomMessageIntoView(user.element)
+  user.fire('wheel')
+  user.fire('scrollend')
+  assert.deepEqual(user.calls, ['smooth'])
+})
+
+test('scrollRoomMessageIntoView keeps correcting late layout until its deadline', () => {
+  const harness = jumpHarness([1500])
+  scrollRoomMessageIntoView(harness.element)
+  harness.fire('scrollend')
+  harness.runFrame()
+  assert.deepEqual(harness.calls, ['smooth', 'instant', 'instant'])
+  harness.runTimeout()
+  harness.runFrame()
+  assert.deepEqual(harness.calls, ['smooth', 'instant', 'instant', 'instant'])
+})
+
+test('room scroll intent fences queued pins and programmatic bottom scrolls after a jump', () => {
+  const intent = createRoomScrollIntent()
+  assert.equal(intent.followsLatest(), true)
+  intent.navigate(false)
+  assert.equal(intent.followsLatest(), false)
+  assert.equal(intent.onScroll(true), false)
+  assert.equal(intent.onScroll(false), false)
+  intent.onUserInput()
+  assert.equal(intent.onScroll(true), true)
+  intent.navigate(false)
+  intent.navigate(true)
+  assert.equal(intent.followsLatest(), true)
+})
+
+test('room scroll intent follows normal user scrolling without a jump', () => {
+  const intent = createRoomScrollIntent()
+  assert.equal(intent.onScroll(false), false)
+  assert.equal(intent.onScroll(true), true)
+})
+
+test('scrollRoomMessageIntoView ignores a detached target during layout correction', () => {
+  const harness = jumpHarness([1500])
+  scrollRoomMessageIntoView(harness.element)
+  Object.defineProperty(harness.element, 'isConnected', { value: false })
+  harness.fire('scrollend')
+  harness.runTimeout()
+  assert.deepEqual(harness.calls, ['smooth'])
+})
+
+test('scrollRoomMessageIntoView corrects layout changes after initially reaching the centre', () => {
+  const offsets = [0]
+  const harness = jumpHarness(offsets)
+  scrollRoomMessageIntoView(harness.element)
+  harness.fire('scrollend')
+  assert.deepEqual(harness.calls, ['smooth'])
+  offsets[0] = 1800
+  harness.runFrame()
+  assert.deepEqual(harness.calls, ['smooth', 'instant'])
+  harness.fire('pointerdown')
+  harness.runFrame()
+  harness.runTimeout()
+  assert.deepEqual(harness.calls, ['smooth', 'instant'])
+})
+
+function anchorHarness() {
+  const listeners = new Map<string, Set<() => void>>()
+  let frame: (() => void) | null = null
+  let timeout: (() => void) | null = null
+  // Rows live in content coordinates; the viewport shows [scrollTop, scrollTop + 800).
+  const rows = [{ id: 'old', top: 0, height: 96 }, { id: 'a', top: 96, height: 120 }, { id: 'b', top: 216, height: 80 }]
+  const scroller = {
+    scrollTop: 100,
+    getBoundingClientRect: () => ({ top: 50, bottom: 850 }),
+    querySelectorAll: () => rows.map(row => element(row.id)),
+  } as unknown as HTMLElement & { scrollTop: number }
+  const element = (id: string) => {
+    const row = rows.find(candidate => candidate.id === id)
+    if (!row) return null
+    return {
+      isConnected: true,
+      getAttribute: () => row.id,
+      getBoundingClientRect: () => ({ top: 50 + row.top - scroller.scrollTop, bottom: 50 + row.top + row.height - scroller.scrollTop }),
+    }
+  }
+  const view = {
+    addEventListener: (type: string, fn: () => void) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(fn) },
+    removeEventListener: (type: string, fn: () => void) => { listeners.get(type)?.delete(fn) },
+    requestAnimationFrame: (fn: () => void) => { frame = fn; return 1 },
+    cancelAnimationFrame: () => { frame = null },
+    setTimeout: (fn: () => void) => { timeout = fn; return 1 },
+    clearTimeout: () => { timeout = null },
+  }
+  Object.assign(scroller, { ownerDocument: { defaultView: view, getElementById: (domId: string) => element(domId.replace('room-message-', '')) } })
+  /** Grows every row above `id` by `delta`, as rendering estimated rows does. */
+  const growAbove = (id: string, delta: number) => {
+    const index = rows.findIndex(row => row.id === id)
+    rows[index - 1]!.height += delta
+    for (const row of rows.slice(index)) row.top += delta
+  }
+  const prepend = (count: number, height: number) => {
+    for (const row of rows) row.top += count * height
+    rows.unshift(...Array.from({ length: count }, (_, i) => ({ id: `p${i}`, top: i * height, height })))
+  }
+  return { scroller, rows, growAbove, prepend, fire: (type: string) => { for (const fn of [...(listeners.get(type) ?? [])]) fn() },
+    runFrame: () => { const next = frame; frame = null; next?.() }, runTimeout: () => timeout?.(), hasFrame: () => frame !== null }
+}
+
+const anchorOffset = (harness: ReturnType<typeof anchorHarness>, id: string) =>
+  harness.rows.find(row => row.id === id)!.top - harness.scroller.scrollTop
+
+test('captureRoomScrollAnchor records the first row visible at the top edge', () => {
+  const harness = anchorHarness()
+  assert.deepEqual(captureRoomScrollAnchor(harness.scroller), { messageId: 'a', offset: -4 })
+})
+
+test('holdRoomScrollAnchor keeps the reader on the same row after older history is prepended', () => {
+  const harness = anchorHarness()
+  const anchor = captureRoomScrollAnchor(harness.scroller)!
+  // 50 estimated placeholder rows land above the reader.
+  harness.prepend(50, 96)
+  holdRoomScrollAnchor(harness.scroller, anchor)
+  assert.equal(anchorOffset(harness, 'a'), -4)
+  // Rows near the viewport then render far taller than their estimate.
+  harness.growAbove('a', 2900)
+  harness.runFrame()
+  assert.equal(anchorOffset(harness, 'a'), -4)
+  harness.runTimeout()
+  assert.equal(harness.hasFrame(), false)
+})
+
+test('holdRoomScrollAnchor stops correcting once the user scrolls', () => {
+  const harness = anchorHarness()
+  const anchor = captureRoomScrollAnchor(harness.scroller)!
+  harness.prepend(10, 96)
+  holdRoomScrollAnchor(harness.scroller, anchor)
+  harness.fire('wheel')
+  harness.scroller.scrollTop -= 300
+  harness.runFrame()
+  assert.equal(anchorOffset(harness, 'a'), 296)
+})
+
+test('holdRoomScrollAnchor can be released before a newer older-history load', () => {
+  const harness = anchorHarness()
+  const release = holdRoomScrollAnchor(harness.scroller, captureRoomScrollAnchor(harness.scroller)!)
+  release()
+  assert.equal(harness.hasFrame(), false)
 })

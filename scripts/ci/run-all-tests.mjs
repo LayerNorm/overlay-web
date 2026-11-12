@@ -96,6 +96,17 @@ function classify(files) {
       continue
     }
 
+    // The session suite exercises React.cache inside the server-components renderer.
+    if (file === 'src/server/auth/session.test.ts') {
+      add('vitest:react-server', {
+        kind: 'vitest',
+        config: 'vitest.unit.config.mts',
+        cwd: '.',
+        reactServer: true,
+      }, file)
+      continue
+    }
+
     if (VITEST.test(source)) {
       const convex = file.endsWith('.convex.test.ts')
       const workflow = file.endsWith('.workflow.test.ts')
@@ -148,6 +159,9 @@ function commandFor(group) {
   if (group.kind === 'vitest') {
     // Files are passed as filters so the config's include glob never pulls in
     // node:test suites that live beside vitest ones.
+    if (group.reactServer) {
+      env.NODE_OPTIONS = [process.env.NODE_OPTIONS, '--conditions=react-server'].filter(Boolean).join(' ')
+    }
     return {
       cmd: 'npx',
       argv: ['vitest', 'run', '--config', group.config, '--reporter=dot', ...group.files.map(file => group.cwd === '.' ? file : path.relative(group.cwd, file))],

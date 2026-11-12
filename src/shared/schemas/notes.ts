@@ -27,10 +27,4 @@ export const DeleteNoteRequest = z.object({
   noteId: z.string().min(1).optional(),
 })
 
-export const NotebookAgentRequest = z.object({
-  ...AuthFields,
-  noteId: z.string().optional(),
-  prompt: z.string().optional(),
-}).passthrough()
-
 export const NoteResponse = UnknownResponse
