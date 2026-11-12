@@ -1488,11 +1488,30 @@ test('mounted shared reply anchor dispatches scoped jump under filtering and use
     })
 
     await update(snapshot(view, { supportedActions: ['jump-to-reply'], query: '', scrollIntent: { id: 'host-reply-reveal', kind: 'reply', exchangeId: parent.id } }))
-    await page.waitForFunction(() => {
-      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
-      const target = document.querySelector<HTMLElement>('[data-native-exchange="parent-exchange"]')
-      return Boolean(viewport && target && Math.abs(target.getBoundingClientRect().top - viewport.getBoundingClientRect().top) < 1)
-    })
+    try {
+      await page.waitForFunction(() => {
+        const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+        const target = document.querySelector<HTMLElement>('[data-native-exchange="parent-exchange"]')
+        return Boolean(viewport && target && Math.abs(target.getBoundingClientRect().top - viewport.getBoundingClientRect().top) < 1)
+      })
+    } catch (error) {
+      const scrollState = await page.evaluate(() => {
+        const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+        const target = document.querySelector<HTMLElement>('[data-native-exchange="parent-exchange"]')
+        const item = target?.closest<HTMLElement>('[data-message-id]')
+        const state = window as unknown as { __replyBridgeScrollCalls: Array<Record<string, unknown>> }
+        return {
+          viewportTop: viewport?.getBoundingClientRect().top ?? null,
+          targetTop: target?.getBoundingClientRect().top ?? null,
+          scrollTop: viewport?.scrollTop ?? null,
+          scrollHeight: viewport?.scrollHeight ?? null,
+          clientHeight: viewport?.clientHeight ?? null,
+          itemId: item?.dataset.messageId ?? null,
+          scrollCalls: state.__replyBridgeScrollCalls,
+        }
+      })
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; reply scroll state: ${JSON.stringify(scrollState)}`)
+    }
     await page.waitForTimeout(50)
     const revealed = await page.evaluate(() => {
       const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')!

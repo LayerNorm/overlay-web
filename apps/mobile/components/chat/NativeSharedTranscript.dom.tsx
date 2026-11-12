@@ -618,6 +618,10 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     const viewport = viewportRef.current
     const intentKey = intent ? JSON.stringify([scopeKey, intent.id]) : ''
     if (!intent || !viewport || readyScopeKey !== readyKey || processedIntents.current.includes(intentKey)) return
+    const markIntentProcessed = () => {
+      processedIntents.current.push(intentKey)
+      if (processedIntents.current.length > 64) processedIntents.current.shift()
+    }
     if (intent.kind === 'initial-end' || intent.kind === 'submission') {
       if (!viewport.querySelector('[data-chat-transcript]')) return
       viewport.scrollTop = viewport.scrollHeight
@@ -629,13 +633,23 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     }
     else if (intent.kind === 'reply') {
       if (!intent.exchangeId || !filteredView.exchanges.some((exchange) => exchange.id === intent.exchangeId)) return
-      const scrollToMessage = scrollToMessageRef.current
-      if (!scrollToMessage || !scrollToMessage(intent.exchangeId, { align: 'start', behavior: 'instant' })) return
-      scrollPosition.current = viewport.scrollTop
+      let attempts = 0
+      let frame = 0
+      const revealReply = () => {
+        if (!lifecycle.current.active || lifecycle.current.scopeKey !== scopeKey || lifecycle.current.focusNonce !== snapshot.focusNonce) return
+        const scrollToMessage = scrollToMessageRef.current
+        if (scrollToMessage?.(intent.exchangeId, { align: 'start', behavior: 'instant' })) {
+          scrollPosition.current = viewport.scrollTop
+          markIntentProcessed()
+          return
+        }
+        if (attempts++ < 2) frame = window.requestAnimationFrame(revealReply)
+      }
+      frame = window.requestAnimationFrame(revealReply)
+      return () => window.cancelAnimationFrame(frame)
     }
-    processedIntents.current.push(intentKey)
-    if (processedIntents.current.length > 64) processedIntents.current.shift()
-  }, [filteredView.exchanges, readyKey, readyScopeKey, scopeKey, snapshot.scrollIntent])
+    markIntentProcessed()
+  }, [filteredView.exchanges, readyKey, readyScopeKey, scopeKey, snapshot.focusNonce, snapshot.scrollIntent])
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
