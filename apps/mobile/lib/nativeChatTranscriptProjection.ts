@@ -65,6 +65,7 @@ export interface NativeTranscriptPresentationMedia {
 
 export interface NativeTranscriptDomSnapshot {
   version: 1
+  deliveryEpoch: number
   workspaceId: string | null
   conversationId: string
   mountNonce: string
@@ -81,6 +82,7 @@ export interface NativeTranscriptDomSnapshot {
 }
 
 export interface NativeTranscriptProjectionInput {
+  deliveryEpoch?: number
   workspaceId: string | null
   conversationId: string
   mountNonce: string
@@ -93,6 +95,8 @@ export interface NativeTranscriptProjectionInput {
   scrollIntent: NativeTranscriptScrollIntent | null
   assets: readonly NativeTranscriptProjectionAsset[]
 }
+
+export const MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH = 1_000_000
 
 function boundedText(value: unknown, max = MAX_SNAPSHOT_TEXT): string {
   return typeof value === 'string' ? value.slice(0, max) : ''
@@ -594,6 +598,10 @@ export function createNativeTranscriptDomSnapshot(input: NativeTranscriptProject
     const projection = projectMedia(exchange, registrations)
     return projection ? [projection] : []
   })
+  const requestedDeliveryEpoch = input.deliveryEpoch
+  const deliveryEpoch = typeof requestedDeliveryEpoch === 'number' && Number.isSafeInteger(requestedDeliveryEpoch) && requestedDeliveryEpoch >= 0
+    ? Math.min(requestedDeliveryEpoch, MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH)
+    : 0
   let scrollIntent: NativeTranscriptScrollIntent | null = null
   const requestedIntent = input.scrollIntent
   if (requestedIntent && typeof requestedIntent.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(requestedIntent.id)) {
@@ -608,7 +616,7 @@ export function createNativeTranscriptDomSnapshot(input: NativeTranscriptProject
     }
   }
   return {
-    version: 1, workspaceId: input.workspaceId === null ? null : safeScopeId(input.workspaceId), conversationId: safeScopeId(input.conversationId),
+    version: 1, deliveryEpoch, workspaceId: input.workspaceId === null ? null : safeScopeId(input.workspaceId), conversationId: safeScopeId(input.conversationId),
     mountNonce: safeScopeId(input.mountNonce), focusNonce, theme: input.theme === 'dark' ? 'dark' : 'light', view, supportedActions,
     publicModelLabels, query: boundedText(input.query, 512), scrollIntent,
     assets, media, unavailablePreviews,

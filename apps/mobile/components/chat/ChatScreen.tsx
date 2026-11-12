@@ -1442,7 +1442,7 @@ function ChatScreenOwner({
   }, [beginOperation])
 
   const pickFile = useCallback(async () => {
-    const operation = beginOperation('document-picker')
+    const operation = beginOperation('document-picker', chatRef.current?.id ?? null, false)
     try {
       const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true })
       if (!operation.isCurrent() || result.canceled) return

@@ -959,6 +959,48 @@ test('same-chat stream data survives navigation blur and focus returns to a usab
   await act(async () => renderer.unmount())
 })
 
+test('document picker survives same-chat focus return and is cancelled after a chat scope switch', async () => {
+  reset()
+  const pickerResult = deferred()
+  state.documentPicker = { promise: pickerResult.promise }
+  const renderer = await mount(CHAT_A)
+  const before = state.snapshots.at(-1)
+  await act(async () => { state.composer.onPickFile(); await tick() })
+  await act(async () => {
+    setNavigationFocus(false)
+    for (const listener of state.appState) listener('background')
+    await tick()
+  })
+  await act(async () => {
+    for (const listener of state.appState) listener('active')
+    setNavigationFocus(true)
+    await tick()
+  })
+  pickerResult.resolve({ canceled: false, assets: [{ uri: 'file:///AndroidDownloads/qa-native-attachment.txt', name: 'qa-native-attachment.txt', mimeType: 'text/plain' }] })
+  await act(async () => { await tick() })
+  assert.equal(state.uploadCalls.length, 1)
+  assert.equal(state.composer.pendingDocuments.at(-1).name, 'qa-native-attachment.txt')
+  assert.equal(state.composer.pendingDocuments.at(-1).status, 'ready')
+  assert.equal(state.snapshots.at(-1).mountNonce, before.mountNonce)
+  assert.notEqual(state.snapshots.at(-1).focusNonce, before.focusNonce)
+  await act(async () => renderer.unmount())
+
+  reset()
+  const stalePickerResult = deferred()
+  state.documentPicker = { promise: stalePickerResult.promise }
+  const switchedRenderer = await mount(CHAT_A)
+  await act(async () => { state.composer.onPickFile(); await tick() })
+  await act(async () => {
+    switchedRenderer.update(React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue }, React.createElement(ChatScreen, { conversationId: CHAT_B, routeKind: 'detail' })))
+    await tick()
+  })
+  stalePickerResult.resolve({ canceled: false, assets: [{ uri: 'file:///AndroidDownloads/qa-native-attachment.txt', name: 'qa-native-attachment.txt', mimeType: 'text/plain' }] })
+  await act(async () => { await tick() })
+  assert.equal(state.uploadCalls.length, 0)
+  assert.equal(state.composer.pendingDocuments.length, 0)
+  await act(async () => switchedRenderer.unmount())
+})
+
 test('blur cancels in-flight uploads and removes their transient busy state', async () => {
   reset()
   state.uploadGate = deferred()

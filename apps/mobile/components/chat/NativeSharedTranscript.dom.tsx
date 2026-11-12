@@ -406,7 +406,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const scrollPosition = useRef(0)
   const selectionBookmark = useRef<TranscriptSelectionBookmark | null>(null)
   const scopeKey = JSON.stringify([snapshot.workspaceId, snapshot.conversationId, snapshot.mountNonce])
-  const readyKey = JSON.stringify([scopeKey, snapshot.focusNonce])
+  const readyKey = JSON.stringify([scopeKey, snapshot.focusNonce, snapshot.deliveryEpoch])
   const bindScrollToMessage = useCallback((scrollToMessage: ScrollToMessage | null) => {
     scrollToMessageRef.current = scrollToMessage
   }, [])
@@ -524,9 +524,21 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       if (!active || !lifecycle.current.active || lifecycle.current.scopeKey !== scopeKey || lifecycle.current.focusNonce !== snapshot.focusNonce || lifecycle.current.generation !== generation) return
       setReadyScopeKey(readyKey)
     }
+    const notifyOnResume = () => {
+      if (document.visibilityState === 'hidden') return
+      void notifyReady().catch(() => {})
+    }
     void notifyReady().catch(() => {})
-    return () => { active = false }
-  }, [readyKey, scope, scopeKey, snapshot.focusNonce])
+    document.addEventListener('visibilitychange', notifyOnResume)
+    window.addEventListener('pageshow', notifyOnResume)
+    window.addEventListener('focus', notifyOnResume)
+    return () => {
+      active = false
+      document.removeEventListener('visibilitychange', notifyOnResume)
+      window.removeEventListener('pageshow', notifyOnResume)
+      window.removeEventListener('focus', notifyOnResume)
+    }
+  }, [readyKey, scope, scopeKey, snapshot.deliveryEpoch, snapshot.focusNonce])
 
   const dispatch = useCallback(async (request: NativeTranscriptActionRequest) => {
     const generation = lifecycle.current.generation

@@ -16,7 +16,7 @@ import {
   type NativeTranscriptScope as NativeTranscriptScopeContract,
   type NativeTranscriptTrustedReplyTarget,
 } from '../../lib/nativeChatTranscriptActions'
-import { createNativeTranscriptDomSnapshot, type NativeTranscriptDomSnapshot, type NativeTranscriptScrollIntent as NativeTranscriptScrollIntentContract } from '../../lib/nativeChatTranscriptProjection'
+import { createNativeTranscriptDomSnapshot, MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH, type NativeTranscriptDomSnapshot, type NativeTranscriptScrollIntent as NativeTranscriptScrollIntentContract } from '../../lib/nativeChatTranscriptProjection'
 import { getNativeTranscriptCitationEntries, isNativeTranscriptResourceId } from '../../lib/nativeTranscriptCitations'
 import { NativeTranscriptResourceRegistry } from '../../lib/nativeTranscriptResources'
 import { nativeTranscriptShareAdapters, shareNativeTranscriptText } from '../../lib/nativeTranscriptShareCache'
@@ -43,6 +43,9 @@ export interface NativePersonalChatTranscriptProps {
 }
 
 type TranscriptScopeIds = Pick<NativeTranscriptDomSnapshot, 'workspaceId' | 'conversationId' | 'mountNonce' | 'focusNonce'>
+
+const NATIVE_TRANSCRIPT_READY_RETRY_LIMIT = 3
+const NATIVE_TRANSCRIPT_READY_RETRY_DELAY_MS = 250
 type NativeHostSession = {
   focusNonce: string
   controller: ReturnType<typeof createNativeTranscriptActionController>
@@ -151,6 +154,7 @@ function NativePersonalChatTranscriptScope({
   const [focusNonce, setFocusNonce] = useState(() => `${mountNonce}_focus_0`)
   const [session, setSession] = useState<NativeHostSession | null>(null)
   const [readyFocusNonce, setReadyFocusNonce] = useState<string | null>(null)
+  const [snapshotRefreshEpoch, setSnapshotRefreshEpoch] = useState(0)
   const [sharingFocusNonce, setSharingFocusNonce] = useState<string | null>(null)
   const [resourceVersion, setResourceVersion] = useState(0)
   const [draftSession, setDraftSession] = useState<NativeDraftSession | null>(null)
@@ -163,6 +167,7 @@ function NativePersonalChatTranscriptScope({
   const appActiveRef = useRef(AppState.currentState === 'active')
   const authorityActiveRef = useRef(authorityActive)
   const navigationFocusedRef = useRef(false)
+  const readyFocusNonceRef = useRef<string | null>(null)
   const sessionRef = useRef<NativeHostSession | null>(null)
   const contextRef = useRef<NativeTranscriptCommittedContext | null>(null)
   const draftRef = useRef<NativeDraftSession | null>(null)
@@ -183,6 +188,7 @@ function NativePersonalChatTranscriptScope({
   }, [resourceRegistry, view])
 
   const retireSession = useCallback((target: NativeHostSession | null, updateState = true) => {
+    const retiringCurrentSession = !target || sessionRef.current === target
     target?.controller.invalidate()
     if (!target || sessionRef.current === target) sessionRef.current = null
     if (!target || contextRef.current?.focusNonce === target.focusNonce) contextRef.current = null
@@ -197,7 +203,8 @@ function NativePersonalChatTranscriptScope({
         setDraftSaveError(null)
       }
     }
-    if (updateState) {
+    if (updateState && retiringCurrentSession) {
+      readyFocusNonceRef.current = null
       setReadyFocusNonce(null)
       setSharingFocusNonce(null)
       setSession((current) => !target || current === target ? null : current)
@@ -351,6 +358,7 @@ function NativePersonalChatTranscriptScope({
     sessionRef.current = nextSession
     setSession(nextSession)
     setFocusNonce(nextFocusNonce)
+    readyFocusNonceRef.current = null
     setReadyFocusNonce(null)
     setSharingFocusNonce(null)
     setDraftSession(null)
@@ -378,8 +386,20 @@ function NativePersonalChatTranscriptScope({
     if (!mountedRef.current) return
     const context = contextRef.current
     const current = sessionRef.current
-    if (!context || !current || !context.focused || current.focusNonce !== scope.focusNonce ||
-      !sameScope(scope, { workspaceId: context.workspaceId, conversationId: context.conversationId, mountNonce: context.mountNonce, focusNonce: context.focusNonce })) return
+    if (!context || !current || !context.focused) return
+    const currentScope = { workspaceId: context.workspaceId, conversationId: context.conversationId, mountNonce: context.mountNonce, focusNonce: context.focusNonce }
+    if (!sameScope(scope, currentScope) || current.focusNonce !== scope.focusNonce) {
+      const sameMountedConversation = scope.workspaceId === currentScope.workspaceId &&
+        scope.conversationId === currentScope.conversationId && scope.mountNonce === currentScope.mountNonce &&
+        current.focusNonce === context.focusNonce && authorityActiveRef.current && appActiveRef.current && navigationFocusedRef.current
+      if (sameMountedConversation && scope.focusNonce !== currentScope.focusNonce && readyFocusNonceRef.current !== currentScope.focusNonce) {
+        readyFocusNonceRef.current = null
+        setReadyFocusNonce(null)
+        setSnapshotRefreshEpoch(epoch => (epoch + 1) % (MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH + 1))
+      }
+      return
+    }
+    readyFocusNonceRef.current = scope.focusNonce
     setReadyFocusNonce(scope.focusNonce)
   }, [])
 
@@ -451,20 +471,46 @@ function NativePersonalChatTranscriptScope({
     }
   }, [active, conversationId, focusNonce, mountNonce, resourceRegistry, resourceVersion, supportedActions, view, workspaceId])
 
-  const snapshot = useMemo(() => createNativeTranscriptDomSnapshot({
-    workspaceId: authorityActive ? workspaceId : null,
-    conversationId,
-    mountNonce,
-    focusNonce,
-    theme: isDark ? 'dark' : 'light',
-    view: effectiveView,
-    supportedActions,
-    publicModelLabels: authorityActive ? publicModelLabels : [],
-    query: authorityActive ? query : '',
-    scrollIntent: authorityActive ? scrollIntent : null,
-    assets: authorityActive ? assets : [],
-  }), [assets, authorityActive, conversationId, effectiveView, focusNonce, isDark, mountNonce, publicModelLabels, query, scrollIntent, supportedActions, workspaceId])
+  const snapshot = useMemo(() => ({
+    ...createNativeTranscriptDomSnapshot({
+      workspaceId: authorityActive ? workspaceId : null,
+      conversationId,
+      mountNonce,
+      focusNonce,
+      theme: isDark ? 'dark' : 'light',
+      view: effectiveView,
+      supportedActions,
+      publicModelLabels: authorityActive ? publicModelLabels : [],
+      query: authorityActive ? query : '',
+      scrollIntent: authorityActive ? scrollIntent : null,
+      assets: authorityActive ? assets : [],
+      deliveryEpoch: snapshotRefreshEpoch,
+    }),
+  }), [assets, authorityActive, conversationId, effectiveView, focusNonce, isDark, mountNonce, publicModelLabels, query, scrollIntent, snapshotRefreshEpoch, supportedActions, workspaceId])
   const ready = active && readyFocusNonce === focusNonce
+  useEffect(() => {
+    if (!active || ready) return
+    let retries = 0
+    let timeout: ReturnType<typeof setTimeout> | null = null
+    const isCurrentScope = () => {
+      const context = contextRef.current
+      return mountedRef.current && authorityActiveRef.current && appActiveRef.current && navigationFocusedRef.current &&
+        sessionRef.current?.focusNonce === focusNonce && context?.focused === true && context.focusNonce === focusNonce &&
+        readyFocusNonceRef.current !== focusNonce
+    }
+    const scheduleRetry = () => {
+      if (retries >= NATIVE_TRANSCRIPT_READY_RETRY_LIMIT || !isCurrentScope()) return
+      timeout = setTimeout(() => {
+        timeout = null
+        if (retries >= NATIVE_TRANSCRIPT_READY_RETRY_LIMIT || !isCurrentScope()) return
+        retries += 1
+        setSnapshotRefreshEpoch(epoch => (epoch + 1) % (MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH + 1))
+        scheduleRetry()
+      }, NATIVE_TRANSCRIPT_READY_RETRY_DELAY_MS)
+    }
+    scheduleRetry()
+    return () => { if (timeout !== null) clearTimeout(timeout) }
+  }, [active, focusNonce, ready])
   const domOptions = useMemo(() => ({ style: { flex: 1, backgroundColor: theme.background } }), [theme.background])
 
   return (

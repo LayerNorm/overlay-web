@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import React from 'react'
 import { toNativeChatTranscriptView } from '../lib/toNativeChatTranscriptView'
-import { createNativeTranscriptDomSnapshot } from '../lib/nativeChatTranscriptProjection'
+import { createNativeTranscriptDomSnapshot, MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH } from '../lib/nativeChatTranscriptProjection'
 import type { NativeTranscriptProjectionAsset } from '../lib/nativeChatTranscriptProjection'
 import NativeSharedTranscript from '../components/chat/NativeSharedTranscript.dom'
 import { knowledgeSourceHref } from '../../packages/overlay-chat-react/src/lib/knowledge-sources'
@@ -248,11 +248,29 @@ function makeRealDraftView(skillDraft: Record<string, unknown>, automationDraft:
 }
 
 function installDomShims() {
+  const eventTarget = () => {
+    const listeners = new Map<string, Set<(event: Event) => void>>()
+    return {
+      addEventListener(type: string, listener: (event: Event) => void) {
+        const current = listeners.get(type) ?? new Set()
+        current.add(listener)
+        listeners.set(type, current)
+      },
+      removeEventListener(type: string, listener: (event: Event) => void) { listeners.get(type)?.delete(listener) },
+      dispatchEvent(event: Event) {
+        listeners.get(event.type)?.forEach(listener => listener(event))
+        return true
+      },
+    }
+  }
+  const documentEvents = eventTarget()
+  const windowEvents = eventTarget()
   Object.assign(globalThis, {
     Element: DomTestElement,
-    document: { documentElement: { dataset: {} }, fonts: { ready: Promise.resolve() }, addEventListener() {}, removeEventListener() {} },
+    document: { ...documentEvents, visibilityState: 'visible', documentElement: { dataset: {} }, fonts: { ready: Promise.resolve() } },
     window: {
-      getComputedStyle: () => ({ lineHeight: '22px' }), addEventListener() {}, removeEventListener() {},
+      ...windowEvents,
+      getComputedStyle: () => ({ lineHeight: '22px' }),
       matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }),
       setTimeout: globalThis.setTimeout.bind(globalThis), clearTimeout: globalThis.clearTimeout.bind(globalThis),
     },
@@ -348,6 +366,16 @@ test('projection is serializable, allowlisted, and does not mutate the adapter v
   const withoutDraft = createNativeTranscriptDomSnapshot({ ...scope, theme: 'light', view, supportedActions: ['open-asset'], query: '', scrollIntent: null, assets: [] })
   const retainedTool = withoutDraft.view.exchanges[0]?.responses[0]?.blocks.find((block) => block.kind === 'tool')
   assert.equal(retainedTool?.kind === 'tool' ? retainedTool.toolOutput : undefined, undefined)
+})
+
+test('snapshot delivery epoch is a bounded plain number in the serialized contract', () => {
+  const view = makeView()
+  const snapshotAtEpoch = snapshot(view, { deliveryEpoch: 42 })
+  assert.equal(snapshotAtEpoch.deliveryEpoch, 42)
+  assert.equal(JSON.parse(JSON.stringify(snapshotAtEpoch)).deliveryEpoch, 42)
+  assert.equal(snapshot(view, { deliveryEpoch: MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH + 1 }).deliveryEpoch, MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH)
+  assert.equal(snapshot(view, { deliveryEpoch: -1 }).deliveryEpoch, 0)
+  assert.equal(snapshot(view, { deliveryEpoch: 1.5 }).deliveryEpoch, 0)
 })
 
 test('projection preserves complete Generated UI draft text through the shared limit and marks overflow unavailable', () => {
@@ -611,6 +639,23 @@ test('focus epochs cancel captured Copy, Download, and Draft callbacks while pre
       assert.equal(renderer.root.findByProps({ 'data-native-exchange': 'turn-1' }).props['data-native-response-id'], generatedView.exchanges[0]!.responses[1]!.id)
     }
     assert.ok(readyFocuses.includes('focus-2'))
+    const readyCountOnResume = readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length
+    const previousVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    await runAct(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      await settleSharedUi()
+    })
+    assert.ok(readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length > readyCountOnResume)
+    if (previousVisibility) Object.defineProperty(document, 'visibilityState', previousVisibility)
+    else Reflect.deleteProperty(document, 'visibilityState')
+    const readyCountBeforeDeliveryRetry = readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length
+    const deliveryRetrySnapshot = { ...nextSnapshot, deliveryEpoch: nextSnapshot.deliveryEpoch + 1 }
+    await runAct(async () => {
+      renderer.update(<NativeSharedTranscript snapshot={deliveryRetrySnapshot} onAction={async (request) => { requests.push(request); return pending.promise }} onReady={(current) => { readyFocuses.push(current.focusNonce) }} />)
+    })
+    await settleSharedUi()
+    assert.ok(readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length > readyCountBeforeDeliveryRetry)
     await runAct(async () => { oldCallback() })
     await settleSharedUi()
     assert.equal(requests.length, 1, `captured ${actionCase.kind} callback is rejected in the new focus epoch`)

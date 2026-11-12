@@ -556,6 +556,62 @@ test('mounted host keeps DOM mounted while focus and AppState scopes rotate, and
   assert.equal((await firstProps.onAction(firstCopy)).error, 'stale-scope')
 })
 
+test('resumed host replays its current snapshot after the mounted DOM reports a stale focus scope', async () => {
+  const tree = await render()
+  await focus()
+  const firstSnapshot = lastTranscriptProps.snapshot
+  await readyCurrent()
+  const mountedDomCount = transcriptMounts
+  await emitAppState('background')
+  await emitAppState('active')
+  const resumedSnapshot = lastTranscriptProps.snapshot
+  assert.equal(resumedSnapshot.mountNonce, firstSnapshot.mountNonce)
+  assert.notEqual(resumedSnapshot.focusNonce, firstSnapshot.focusNonce)
+  assert.equal(loadingVisible(tree), true)
+
+  const renderCount = transcriptRenders
+  await act(async () => { lastTranscriptProps.onReady(scopeFrom(firstSnapshot)) })
+  assert.equal(transcriptRenders > renderCount, true)
+  const replayedSnapshot = lastTranscriptProps.snapshot
+  assert.notEqual(replayedSnapshot, resumedSnapshot)
+  assert.equal(replayedSnapshot.focusNonce, resumedSnapshot.focusNonce)
+  await readyCurrent()
+  assert.equal(loadingVisible(tree), false)
+  assert.equal(transcriptMounts, mountedDomCount)
+
+  const acknowledgedSnapshot = lastTranscriptProps.snapshot
+  const renderCountAfterCurrentAck = transcriptRenders
+  await act(async () => { lastTranscriptProps.onReady(scopeFrom(firstSnapshot)) })
+  assert.equal(loadingVisible(tree), false)
+  assert.equal(lastTranscriptProps.snapshot.deliveryEpoch, acknowledgedSnapshot.deliveryEpoch)
+  assert.equal(transcriptRenders, renderCountAfterCurrentAck)
+
+  const renderCountAfterAck = transcriptRenders
+  await act(async () => {
+    lastTranscriptProps.onReady({ ...scopeFrom(replayedSnapshot), conversationId: 'other-conversation' })
+  })
+  assert.equal(transcriptRenders, renderCountAfterAck)
+  await unmount(tree)
+})
+
+test('active readiness retries stay bounded without an exact acknowledgement and stop once acknowledged', async () => {
+  const tree = await render()
+  await focus()
+  const initialSnapshot = lastTranscriptProps.snapshot
+  await new Promise((resolve) => setTimeout(resolve, 1_000))
+  const retriedSnapshot = lastTranscriptProps.snapshot
+  assert.equal(retriedSnapshot.focusNonce, initialSnapshot.focusNonce)
+  assert.equal(retriedSnapshot.deliveryEpoch - initialSnapshot.deliveryEpoch, 3)
+  assert.equal(loadingVisible(tree), true)
+
+  await readyCurrent()
+  assert.equal(loadingVisible(tree), false)
+  const acknowledgedEpoch = lastTranscriptProps.snapshot.deliveryEpoch
+  await new Promise((resolve) => setTimeout(resolve, 350))
+  assert.equal(lastTranscriptProps.snapshot.deliveryEpoch, acknowledgedEpoch)
+  await unmount(tree)
+})
+
 test('removing a response during delayed share availability prevents file creation and Share UI', async () => {
   const tree = await render()
   await focus()
