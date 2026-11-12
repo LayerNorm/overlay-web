@@ -34,6 +34,7 @@ import {
   projectCurrentHarnessOwner,
   projectHarnessExecutionResult,
 } from './harness-workflow-projection'
+export { workflowStreamTransportProbe } from './workflow-stream-transport-probe'
 
 function hasChildExecutionIdentity(parent: PersonalHarnessAccess, input: PersonalHarnessWorkflowInput): boolean {
   return input.access.actorUserId === parent.actorUserId
