@@ -10,6 +10,15 @@ export const TIMELINE_DAY_WIDTH = 24
 /** The narrowest a day gets when the timeline is fitted to its width; below it the grid scrolls sideways. */
 export const TIMELINE_MIN_DAY_WIDTH = 7
 
+/**
+ * The width of each end's resize grip on a bar `barWidth` wide: at most 8px and a quarter of the bar, so the middle
+ * always stays a move target. Bars too thin for a 3px grip have none (Shift+arrow keys still resize them).
+ */
+export function resizeGripWidth(barWidth: number): number {
+  const grip = Math.min(8, Math.floor(barWidth / 4))
+  return grip >= 3 ? grip : 0
+}
+
 /** The day width that fits `days` into `available` pixels (rounded down so rounding never adds a sideways scroll). */
 export function fitDayWidth(available: number, days: number): number {
   if (!(available > 0) || days <= 0) return TIMELINE_DAY_WIDTH

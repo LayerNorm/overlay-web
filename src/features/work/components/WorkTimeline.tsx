@@ -16,6 +16,7 @@ import {
   buildTimelineRows,
   dayAtX,
   dependencyArrow,
+  resizeGripWidth,
   fitDayWidth,
   sameSpan,
   spanToDates,
@@ -95,6 +96,8 @@ function TaskBar({ item, span, base, live, layout, day, selected, editable, toda
 } & Pick<RowViewProps, 'onOpen' | 'beginDrag' | 'keyMove' | 'wasDragged'>) {
   const dates = formatWorkDateRange(span.start, span.end, today)
   const border = selected || live ? 'border-(--muted-light)' : 'border-(--border)'
+  const width = Math.max(layout.width, day)
+  const grip = resizeGripWidth(width)
   return (
     <div
       role="button"
@@ -108,14 +111,14 @@ function TaskBar({ item, span, base, live, layout, day, selected, editable, toda
       onClick={() => { if (!wasDragged()) onOpen(item.id) }}
       onKeyDown={(event) => keyMove(event, item, span)}
       className={`group/bar absolute top-[9px] flex h-[22px] touch-none select-none items-center overflow-hidden whitespace-nowrap rounded-md border bg-(--surface-elevated) text-[11.5px] outline-none transition-[border-color] hover:border-(--muted-light) focus-visible:border-(--muted-light) focus-visible:ring-2 focus-visible:ring-(--border) ${border} ${editable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${STATUS_TEXT[item.status]}`}
-      style={{ left: layout.left, width: Math.max(layout.width, day) }}
+      style={{ left: layout.left, width }}
     >
       <span className="absolute inset-0 bg-current opacity-[0.16]" aria-hidden />
       <span className="absolute inset-y-0 left-0 bg-current opacity-[0.28]" style={{ width: `${progressOf(item) * 100}%` }} aria-hidden />
-      {editable ? (
+      {editable && grip ? (
         <>
-          <span data-testid="work-bar-start" onPointerDown={(event) => beginDrag(event, item, base, 'start')} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" aria-hidden />
-          <span data-testid="work-bar-end" onPointerDown={(event) => beginDrag(event, item, base, 'end')} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" aria-hidden />
+          <span data-testid="work-bar-start" onPointerDown={(event) => beginDrag(event, item, base, 'start')} className="absolute inset-y-0 left-0 cursor-ew-resize" style={{ width: grip }} aria-hidden />
+          <span data-testid="work-bar-end" onPointerDown={(event) => beginDrag(event, item, base, 'end')} className="absolute inset-y-0 right-0 cursor-ew-resize" style={{ width: grip }} aria-hidden />
         </>
       ) : null}
     </div>
