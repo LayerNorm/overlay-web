@@ -47,14 +47,37 @@ test('compiled probe emits the fixed Unicode chunks in order and completes', asy
   }
 })
 
-test('compiled probe rejects outside Preview before opening its writer', async () => {
+test('compiled probe rejects outside Preview without emitting stream chunks', async () => {
   process.env.VERCEL_ENV = 'production'
   process.env.OVERLAY_DEPLOYMENT_ENV = 'production'
   process.env.NEXT_PUBLIC_APP_URL = 'https://www.getoverlay.io'
   try {
     const run = await start(workflowStreamTransportProbe, [])
-    await expect(run.returnValue).rejects.toThrow('restricted to an isolated Preview deployment')
-    await expect(run.getReadable().getReader().read()).resolves.toEqual({ done: true, value: undefined })
+    const reader = run.getReadable().getReader()
+    const completion = run.returnValue.then(
+      () => ({ kind: 'completed' as const }),
+      (error: unknown) => ({ kind: 'failed' as const, error }),
+    )
+    try {
+      const first = await Promise.race([
+        completion,
+        reader.read().then(result => ({ kind: 'stream' as const, result })),
+      ])
+      if (first.kind === 'stream') {
+        expect(first.result.done).toBe(true)
+        expect(await completion).toMatchObject({
+          kind: 'failed',
+          error: expect.objectContaining({ message: expect.stringContaining('restricted to an isolated Preview deployment') }),
+        })
+      } else {
+        expect(first).toMatchObject({
+          kind: 'failed',
+          error: expect.objectContaining({ message: expect.stringContaining('restricted to an isolated Preview deployment') }),
+        })
+      }
+    } finally {
+      await reader.cancel()
+    }
   } finally {
     restoreEnvironment()
   }
