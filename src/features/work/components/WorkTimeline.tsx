@@ -332,7 +332,7 @@ export function WorkTimeline({
           <div className="relative shrink-0" style={{ width }}>
             {weeks.map((week) => (
               <div key={week.start} className="absolute top-0 h-full border-l border-(--border)" style={{ left: week.left, width: week.width }}>
-                <b className={`block truncate whitespace-nowrap pt-[7px] text-xs font-medium text-(--foreground) ${showDayLetters ? 'px-2.5' : 'px-1.5'}`}>{formatWorkDate(week.start)}</b>
+                <b className={`block truncate whitespace-nowrap pt-[7px] font-medium text-(--foreground) ${showDayLetters ? 'px-2.5 text-xs' : 'px-1 text-[11px]'}`}>{formatWorkDate(week.start)}</b>
                 {showDayLetters ? <div className="flex pt-1">
                   {Array.from({ length: Math.round(week.width / dayWidth) }, (_, offset) => {
                     const day = addDays(week.start, offset)
