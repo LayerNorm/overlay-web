@@ -8,7 +8,7 @@ import { sortByRank } from './query'
 
 export const TIMELINE_DAY_WIDTH = 24
 /** The narrowest a day gets when the timeline is fitted to its width; below it the grid scrolls sideways. */
-export const TIMELINE_MIN_DAY_WIDTH = 8
+export const TIMELINE_MIN_DAY_WIDTH = 7
 
 /** The day width that fits `days` into `available` pixels (rounded down so rounding never adds a sideways scroll). */
 export function fitDayWidth(available: number, days: number): number {

@@ -127,6 +127,6 @@ test('a mistyped far-off date cannot make the range, or a bar, run for years', (
 test('days stretch to fill the width, never below the minimum and never past it by rounding', () => {
   assert.equal(fitDayWidth(1000, 56), 17.85)
   assert.ok(fitDayWidth(1000, 56) * 56 <= 1000)
-  assert.equal(fitDayWidth(1000, 365), 8)
+  assert.equal(fitDayWidth(1000, 365), 7)
   assert.equal(fitDayWidth(0, 56), 24)
 })
