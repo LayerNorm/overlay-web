@@ -83,9 +83,10 @@ function makeSourcesSnapshot(view = makeSourcesView(), patch: Record<string, unk
     supportedActions: ['copy', 'reply', 'open-source', 'open-citation'],
     query: '',
     scrollIntent: null,
-    assets: exchange ? [{
-      handle: 'opaque_asset_handle_000021', exchangeId: exchange.id, resourceId: 'file-resource-3', resourceKind: 'file', previewable: true, label: 'notes.pdf',
-    }] : [],
+    assets: exchange ? [
+      { handle: 'opaque_asset_handle_000021', exchangeId: exchange.id, resourceId: 'file-resource-3', resourceKind: 'file', previewable: true, label: 'notes.pdf' },
+      { handle: 'opaque_citation_handle_000022', exchangeId: exchange.id, resourceId: 'file-resource-1', resourceKind: 'file', previewable: true, label: 'Project plan' },
+    ] : [],
     ...patch,
   } as Parameters<typeof createNativeTranscriptDomSnapshot>[0])
 }
@@ -317,10 +318,11 @@ test('projection is serializable, allowlisted, and does not mutate the adapter v
     '5': { kind: 'file', title: 'Missing source id' },
   } as never
   const before = structuredClone(view)
-  const result = createNativeTranscriptDomSnapshot({ ...scope, theme: 'light', view, supportedActions: ['open-draft', 'open-asset'], query: '', scrollIntent: { id: 'intent-1', kind: 'submission', secret: 'SCROLL-SECRET' } as never, assets: [
+  const result = createNativeTranscriptDomSnapshot({ ...scope, theme: 'light', view, supportedActions: ['open-draft', 'open-asset', 'open-citation'], query: '', scrollIntent: { id: 'intent-1', kind: 'submission', secret: 'SCROLL-SECRET' } as never, assets: [
     { handle: 'opaque_asset_handle_0001', exchangeId: exchange.id, resourceId: 'resource-file-1', resourceKind: 'file', previewable: true, label: 'safe name', previewDataUrl: 'data:image/png;base64,AAAA' },
     { handle: 'opaque_asset_handle_0002', exchangeId: exchange.id, resourceId: 'https://private.example/file?token=ASSET-URL-SENTINEL', resourceKind: 'file', previewable: true },
     { handle: 'opaque_asset_handle_0003', exchangeId: exchange.id, resourceId: 'resource-not-in-transcript', resourceKind: 'file', previewable: true, label: 'not registered in view' },
+    { handle: 'opaque_asset_handle_0004', exchangeId: exchange.id, resourceId: 'file-resource-1', resourceKind: 'file', previewable: true, label: 'Project plan' },
   ] })
   const serialized = JSON.stringify(result)
   assert.doesNotMatch(serialized, /AUTH-SENTINEL|TOKEN-SENTINEL|RUN-SENTINEL|URL-SENTINEL|ASSET-URL-SENTINEL|resource-file-1|resource-not-in-transcript|public\.example|SCROLL-SECRET|SCHEDULE-SENTINEL|DEEP-SENTINEL|CONNECTOR-SENTINEL|CYCLE-SENTINEL|CITATION-SECRET|CITATION-EXTRA-SENTINEL|message-resource-3|leading-zero-key|oversized-key/)
@@ -329,12 +331,12 @@ test('projection is serializable, allowlisted, and does not mutate the adapter v
   assert.deepEqual(view, before)
   assert.deepEqual(original.exchanges[0]?.user.text, 'User context')
   assert.deepEqual(result.view.exchanges[0]?.user.indexedAttachments[0]?.fileIds, ['opaque_asset_handle_0001'])
-  assert.deepEqual(result.assets.map((asset) => asset.handle), ['opaque_asset_handle_0001'])
+  assert.deepEqual(result.assets.map((asset) => asset.handle), ['opaque_asset_handle_0001', 'opaque_asset_handle_0004'])
   assert.notStrictEqual(result.view, view)
   assert.notStrictEqual(result.view.exchanges[0], exchange)
   assert.equal(result.view.exchanges[0]?.responses[0]?.blocks.find((block) => block.kind === 'reasoning')?.kind, 'reasoning')
   assert.deepEqual(result.view.exchanges[0]?.responses[0]?.sourceCitations, {
-    '1': { kind: 'file', sourceId: 'file-resource-1', title: 'Project plan', snippet: 'Trusted excerpt' },
+    '1': { kind: 'file', sourceId: 'opaque_asset_handle_0004', title: 'Project plan', snippet: 'Trusted excerpt' },
     '2': { kind: 'memory', sourceId: 'memory-resource-2', title: 'Saved preference' },
   })
   assert.notStrictEqual(result.view.exchanges[0]?.responses[0]?.sourceCitations, response.sourceCitations)
@@ -1911,7 +1913,7 @@ test('mounted protected and multiple media use honest fallback rows with scoped 
     const actions = await page.evaluate(() => JSON.parse(JSON.stringify((window as unknown as { __nativeTranscriptActions: unknown[] }).__nativeTranscriptActions)))
     assert.deepEqual(actions, [
       { kind: 'open-asset', ...scope, exchangeId: exchange.id, assetHandle: protectedAsset.handle },
-      { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'media', outputId: 'protected-output' } },
+      { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'media', assetHandle: protectedAsset.handle } },
       { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'user', userId: exchange.user.id } },
     ])
   } finally {
@@ -2330,7 +2332,10 @@ test('shared Sources control opens actual provider and citation rows with scoped
   assert.equal(panel.props.variant, 'shell')
   const wrapper = renderer.root.findByProps({ 'data-native-sources': true })
   const publicHref = 'https://public.example/reference'
-  const fileCitationHref = knowledgeSourceHref({ kind: 'file', sourceId: 'file-resource-1' })
+  const fileCitation = response.sourceCitations?.['1']
+  assert.ok(fileCitation)
+  assert.equal(fileCitation.sourceId, 'opaque_citation_handle_000022')
+  const fileCitationHref = knowledgeSourceHref({ kind: 'file', sourceId: fileCitation.sourceId })
   const memoryCitationHref = knowledgeSourceHref({ kind: 'memory', sourceId: 'memory-resource-2' })
   const providerFileHref = knowledgeSourceHref({ kind: 'file', sourceId: 'opaque_asset_handle_000021' })
   const unknownFileHref = knowledgeSourceHref({ kind: 'file', sourceId: 'not-registered' })
@@ -2557,7 +2562,7 @@ test('completed protected media opens only its registered native preview and rep
   assert.deepEqual(actions[0], { kind: 'open-asset', ...scope, exchangeId: exchange.id, assetHandle: asset.handle })
   const reply = renderer.root.findByProps({ 'aria-label': 'Reply to generated media' })
   await runAct(async () => { reply.props.onClick() })
-  assert.deepEqual(actions[1], { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'media', outputId: 'protected-output' } })
+  assert.deepEqual(actions[1], { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'media', assetHandle: asset.handle } })
   assert.equal(renderer.root.findAllByProps({ title: 'Download' }).length, 0)
   await runAct(async () => { renderer.unmount() })
 })
@@ -2609,11 +2614,15 @@ test('mixed and multiple media results retain every output, one prompt, and trus
     output('mixed-image-generating', 'image', 'pending'),
   ])
   const exchange = view.exchanges[0]!
-  const projected = makeMediaSnapshot(view)
-  assert.equal(projected.media[0]?.results.length, 3)
-  assert.deepEqual(new Set(projected.media[0]?.results.map((result) => result.outputId)), new Set([
-    'mixed-image-complete', 'mixed-video-failed', 'mixed-image-generating',
-  ]))
+  assert.equal(view.exchanges[0]!.media?.results.length, 3)
+  const outputHandle = 'opaque_mixed_output_handle_0001'
+  const projected = makeMediaSnapshot(view, [{
+    handle: outputHandle, exchangeId: exchange.id, resourceId: 'mixed-image-complete', resourceKind: 'output', previewable: true,
+  }])
+  assert.equal(projected.media[0]?.results[0]?.assetHandle, outputHandle)
+  assert.equal(projected.media[0]?.results[1]?.assetHandle, undefined)
+  assert.equal(projected.media[0]?.results[2]?.assetHandle, undefined)
+  assert.equal(JSON.stringify(projected).includes('mixed-image-complete'), false)
   const actions: NativeTranscriptActionRequest[] = []
   let renderer!: ReturnType<typeof create>
   await runAct(async () => { renderer = create(<NativeSharedTranscript snapshot={projected} onAction={async (request) => { actions.push(request); return { ok: true } }} onReady={() => {}} />) })
@@ -2623,7 +2632,7 @@ test('mixed and multiple media results retain every output, one prompt, and trus
   assert.equal(renderedText(renderer.toJSON()).split('Generate one media result').length - 1, 1)
   const replyToOutput = renderer.root.findByProps({ 'aria-label': 'Reply to generated media' })
   await runAct(async () => { replyToOutput.props.onClick() })
-  assert.deepEqual(actions[0], { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'media', outputId: 'mixed-image-complete' } })
+  assert.deepEqual(actions[0], { kind: 'reply', ...scope, exchangeId: exchange.id, target: { kind: 'media', assetHandle: outputHandle } })
   const promptReplies = renderer.root.findAllByProps({ 'aria-label': 'Reply to prompt' }) as Array<{ props: { onClick: () => void } }>
   assert.ok(promptReplies.length >= 2)
   for (const promptReply of promptReplies) await runAct(async () => { promptReply.props.onClick() })

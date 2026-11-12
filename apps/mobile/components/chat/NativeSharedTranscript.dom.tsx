@@ -21,7 +21,7 @@ import { SourcesPanel } from '../../../packages/overlay-chat-react/src/component
 import { knowledgeSourceHref, knowledgeSourcesFromCitations } from '../../../packages/overlay-chat-react/src/lib/knowledge-sources'
 import type { WebSourceItem } from '../../../packages/overlay-chat-react/src/lib/web-sources'
 import type { AttachmentPreviewRequest, ChatExchangeProps } from '../../../packages/overlay-chat-react/src/components/transcript/ChatExchange'
-import type { NativeTranscriptActionRequest, NativeTranscriptActionResult, NativeTranscriptActionTarget } from '../../lib/nativeChatTranscriptActions'
+import type { NativeTranscriptActionRequest, NativeTranscriptActionRequestTarget, NativeTranscriptActionResult, NativeTranscriptActionTarget } from '../../lib/nativeChatTranscriptActions'
 import type {
   NativeTranscriptDomSnapshot,
   NativeTranscriptPresentationAsset,
@@ -208,7 +208,7 @@ function actionTargetIsCurrent(request: NativeTranscriptActionRequest, snapshot:
   if (request.kind === 'jump-to-reply') return request.target.kind === 'user' && Boolean(transcriptReplyParent(snapshot.view.exchanges, exchange.id, request.target.userId))
   const target = request.target
   if (target.kind === 'user') return exchange.user.id === target.userId
-  if (target.kind === 'media') return snapshot.media.find((media) => media.exchangeId === exchange.id)?.results.some((result) => result.outputId === target.outputId && result.status === 'completed') ?? false
+  if (target.kind === 'media') return snapshot.media.find((media) => media.exchangeId === exchange.id)?.results.some((result) => result.assetHandle === target.assetHandle && result.status === 'completed') ?? false
   return selectedIds[exchange.id] === target.responseId && exchange.responses.some((response) => response.id === target.responseId)
 }
 
@@ -232,7 +232,7 @@ function actionTargetEpochKey(request: NativeTranscriptActionRequest, snapshot: 
     case 'open-draft': return key('tool', request.exchangeId, request.target.responseId, request.toolKey)
     default:
       if (request.target.kind === 'user') return key('user', request.exchangeId, request.target.userId)
-      if (request.target.kind === 'media') return key('media', request.exchangeId, request.target.outputId)
+      if (request.target.kind === 'media') return key('media', request.exchangeId, request.target.assetHandle)
       return key('response', request.exchangeId, request.target.responseId)
   }
 }
@@ -258,7 +258,7 @@ function transcriptTargetEpochKeys(snapshot: NativeTranscriptDomSnapshot): Set<s
   }
   for (const media of snapshot.media) {
     for (const result of media.results) {
-      if (result.status === 'completed' && result.outputId) keys.add(key('media', media.exchangeId, result.outputId))
+      if (result.status === 'completed' && result.assetHandle) keys.add(key('media', media.exchangeId, result.assetHandle))
     }
   }
   for (const asset of snapshot.assets) keys.add(key('asset', asset.exchangeId, asset.handle))
@@ -314,7 +314,7 @@ function sharedMediaStatusResult(result: NativeTranscriptPresentationMediaResult
   return {
     type: result.type,
     status: result.status,
-    ...(result.outputId ? { outputId: result.outputId } : {}),
+    ...(result.assetHandle ? { outputId: result.assetHandle } : {}),
     ...(result.modelUsed ? { modelUsed: result.modelUsed } : {}),
   }
 }
@@ -326,6 +326,7 @@ function NativeMediaReplyButton({ label, onReply }: { label: string; onReply: ()
 function NativeMediaRows({
   media,
   assets,
+  publicModelLabelById,
   canOpenAsset,
   canReply,
   openAsset,
@@ -333,6 +334,7 @@ function NativeMediaRows({
 }: {
   media: NativeTranscriptPresentationMedia
   assets: readonly NativeTranscriptPresentationAsset[]
+  publicModelLabelById: ReadonlyMap<string, string>
   canOpenAsset: boolean
   canReply: boolean
   openAsset: (handle: string) => void
@@ -344,19 +346,19 @@ function NativeMediaRows({
   return (
     <div className="space-y-3" aria-label="Media results">
       {media.results.map((result, index) => {
-        const asset = result.outputId
-          ? assets.find((item) => item.exchangeId === media.exchangeId && item.resourceKind === 'output' && item.targetId === result.outputId)
+        const asset = result.assetHandle
+          ? assets.find((item) => item.exchangeId === media.exchangeId && item.resourceKind === 'output' && item.handle === result.assetHandle)
           : undefined
-        const showImage = media.kind === 'image' && result.type === 'image' && result.status === 'completed' && Boolean(result.previewDataUrl)
+        const showImage = result.type === 'image' && result.status === 'completed' && Boolean(result.previewDataUrl)
         const statusSlot = sharedMediaStatusResult(result)
         return (
           <div key={`${media.exchangeId}-media-result-${index}`} className="flex flex-wrap items-center gap-2" data-native-media-result={index} data-native-media-status={result.status} data-native-media-type={result.type}>
             {showImage
               ? <img src={result.previewDataUrl} alt="Generated image preview" data-native-media-preview="image" className="max-h-60 max-w-full rounded-lg border border-(--border) object-contain" />
               : statusSlot
-                ? <MediaSlotOutput genType={statusSlot.type} modelName={statusSlot.modelUsed ?? ''} result={statusSlot} />
-                : <NativeMediaPlaceholder asset={asset} supported={canOpenAsset && result.status === 'completed'} open={openAsset} />}
-            {canReply ? <NativeMediaReplyButton label={result.status === 'completed' && result.outputId ? 'Reply to generated media' : 'Reply to prompt'} onReply={() => onReply(result)} /> : null}
+                ? <MediaSlotOutput genType={statusSlot.type} modelName={statusSlot.modelUsed ? publicModelLabelById.get(statusSlot.modelUsed) ?? statusSlot.modelUsed : ''} result={statusSlot} />
+                : <NativeMediaPlaceholder asset={asset} supported={Boolean(asset && canOpenAsset && result.status === 'completed')} open={openAsset} />}
+            {canReply ? <NativeMediaReplyButton label={result.status === 'completed' && result.assetHandle ? 'Reply to generated media' : 'Reply to prompt'} onReply={() => onReply(result)} /> : null}
           </div>
         )
       })}
@@ -489,6 +491,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const onActionRef = useRef(onAction)
   const scope = useMemo(() => ({ workspaceId: snapshot.workspaceId, conversationId: snapshot.conversationId, mountNonce: snapshot.mountNonce, focusNonce: snapshot.focusNonce }), [snapshot.workspaceId, snapshot.conversationId, snapshot.mountNonce, snapshot.focusNonce])
   const supported = useCallback((kind: NativeTranscriptActionRequest['kind']) => snapshot.supportedActions.includes(kind), [snapshot.supportedActions])
+  const publicModelLabelById = useMemo(() => new Map(snapshot.publicModelLabels.map((entry) => [entry.id, entry.name])), [snapshot.publicModelLabels])
 
   useLayoutEffect(() => {
     const generation = lifecycle.current.generation + 1
@@ -710,8 +713,8 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     }
     const replyMedia = (result?: NativeTranscriptPresentationMediaResult) => {
       if (!supported('reply')) return
-      const target: NativeTranscriptActionTarget = result?.status === 'completed' && result.outputId
-        ? { kind: 'media', outputId: result.outputId }
+      const target: NativeTranscriptActionRequestTarget = result?.status === 'completed' && result.assetHandle
+        ? { kind: 'media', assetHandle: result.assetHandle }
         : userTarget
       void dispatch({ kind: 'reply', ...scope, exchangeId: exchange.id, target }).catch(() => {})
     }
@@ -767,11 +770,11 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
           ))
           if (canUseMediaExchange && mediaKind && statusResult) {
             return <>
-              <PlatformActionsProvider copyText={copyPrompt} downloadText={platformDownload}>
+              <PlatformActionsProvider copyText={copyPrompt}>
                 <div data-native-copy-disabled={supported('copy') ? undefined : 'true'} data-native-media-result={0} data-native-media-status={statusResult.status} data-native-media-type={statusResult.type}>
                   <MediaExchange exchangeIndex={exchange.index} turnId={null} kind={mediaKind} promptText={exchange.user.text} userImages={[]} replyThread={replyThreadMeta}
-                    results={[statusResult]} modelIds={statusResult.modelUsed ? [statusResult.modelUsed] : []} modelLabel={statusResult.modelUsed ?? ''}
-                    getModelDisplayName={(id) => id} onJumpToReply={jumpToReply} onDeleteTurn={() => setNotice('Delete unavailable in native transcript')}
+                    results={[statusResult]} modelIds={statusResult.modelUsed ? [statusResult.modelUsed] : []} modelLabel={statusResult.modelUsed ? publicModelLabelById.get(statusResult.modelUsed) ?? statusResult.modelUsed : ''}
+                    getModelDisplayName={(id) => publicModelLabelById.get(id) ?? id} onJumpToReply={jumpToReply} onDeleteTurn={() => setNotice('Delete unavailable in native transcript')}
                     onReply={() => replyMedia()} onOpenAttachmentPreview={() => setNotice('Attachment preview unavailable')} actionVisibility={presentation?.actionVisibility} />
                 </div>
               </PlatformActionsProvider>
@@ -780,7 +783,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
           }
           return <>
             {userPromptExchange}
-            <NativeMediaRows media={mediaPresentation} assets={mediaAssets} canOpenAsset={supported('open-asset')} canReply={supported('reply')}
+            <NativeMediaRows media={mediaPresentation} assets={mediaAssets} publicModelLabelById={publicModelLabelById} canOpenAsset={supported('open-asset')} canReply={supported('reply')}
               openAsset={(handle) => openAsset(exchange.id, handle)} onReply={replyMedia} />
           </>
         })() : (
@@ -801,7 +804,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
                   exchIdx={exchange.index} responseModelId={response.modelId} assistantVisualBlocks={assistantBlocksForDraftCapability(response.blocks, supported('open-draft'))}
                   responseSources={response.sources} isStreaming={selectedStatus === 'streaming'} isTextStreaming={selectedStatus === 'streaming'}
                   errorMessage={response.errorMessage} responseInProgress={['submitted', 'streaming', 'awaiting-approval', 'executing-tool'].includes(selectedStatus)} status={selectedStatus}
-                  turnIdForActions={null} modelLabel={response.modelId} onDeleteTurn={() => setNotice('Delete unavailable in native transcript')}
+                  turnIdForActions={null} modelLabel={publicModelLabelById.get(response.modelId) ?? response.modelId} onDeleteTurn={() => setNotice('Delete unavailable in native transcript')}
                   onReply={() => { if (supported('reply') && responseTarget) void dispatch({ kind: 'reply', ...scope, exchangeId: exchange.id, target: responseTarget }).catch(() => {}) }}
                   actionsLocked replyThreadMeta={null} onJumpToReply={jumpToReply} onOpenDraft={openDraft} onCreateAutomationDraft={openDraft}
                   onOpenSources={supported('open-source') || supported('open-citation')
@@ -821,7 +824,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
         )}
       </div>
     )
-  }, [changeSourcePanel, dispatch, filteredView.exchanges, openAsset, scope, selectedIds, setNotice, snapshot.assets, snapshot.media, snapshot.query, snapshot.unavailablePreviews, snapshot.view.exchanges, sourcePanel, supported])
+  }, [changeSourcePanel, dispatch, filteredView.exchanges, openAsset, publicModelLabelById, scope, selectedIds, setNotice, snapshot.assets, snapshot.media, snapshot.query, snapshot.unavailablePreviews, snapshot.view.exchanges, sourcePanel, supported])
 
   const dispatchSourceAction = useCallback((action: SourcePanelAction, exchangeId: string, responseId: string) => {
     const target = { kind: 'response' as const, responseId }

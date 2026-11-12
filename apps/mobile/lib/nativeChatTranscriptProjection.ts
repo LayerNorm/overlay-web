@@ -12,7 +12,7 @@ import type { AutomationScheduleDraft, DraftModalState } from '../../packages/ov
 import { MAX_TRANSCRIPT_TEXT_LENGTH, type NativeTranscriptActionKind, type NativeTranscriptAsset } from './nativeChatTranscriptActions'
 import { validateNativeMarkdownLink } from './sharedMarkdownBridge'
 import { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH } from './nativeTranscriptLimits'
-import { isNativeTranscriptResourceId, normalizeNativeTranscriptCitation } from './nativeTranscriptCitations'
+import { getNativeTranscriptCitationEntries, isNativeTranscriptResourceId } from './nativeTranscriptCitations'
 
 const MAX_SNAPSHOT_TEXT = MAX_TRANSCRIPT_TEXT_LENGTH
 const MAX_PREVIEW_BYTES = 2_000_000
@@ -37,7 +37,6 @@ export interface NativeTranscriptPresentationAsset {
   exchangeId: string
   label: string
   resourceKind: 'file' | 'output'
-  targetId?: string
   previewDataUrl?: string
 }
 
@@ -52,7 +51,7 @@ export type NativeTranscriptMediaStatus = 'generating' | 'failed' | 'completed' 
 export interface NativeTranscriptPresentationMediaResult {
   type: NativeTranscriptMediaKind
   status: NativeTranscriptMediaStatus
-  outputId?: string
+  assetHandle?: string
   modelUsed?: string
   previewDataUrl?: string
 }
@@ -73,6 +72,7 @@ export interface NativeTranscriptDomSnapshot {
   theme: 'light' | 'dark'
   view: ChatTranscriptView
   supportedActions: readonly NativeTranscriptActionKind[]
+  publicModelLabels: readonly { id: string; name: string }[]
   query: string
   scrollIntent: NativeTranscriptScrollIntent | null
   assets: readonly NativeTranscriptPresentationAsset[]
@@ -88,6 +88,7 @@ export interface NativeTranscriptProjectionInput {
   theme: 'light' | 'dark'
   view: ChatTranscriptView
   supportedActions: readonly NativeTranscriptActionKind[]
+  publicModelLabels?: readonly { id: string; name: string }[]
   query: string
   scrollIntent: NativeTranscriptScrollIntent | null
   assets: readonly NativeTranscriptProjectionAsset[]
@@ -188,18 +189,20 @@ function safeSchedule(value: unknown): AutomationScheduleDraft | undefined {
   return undefined
 }
 
-function projectSourceCitations(value: unknown): ChatTranscriptResponseView['sourceCitations'] {
-  const citations = plainRecord(value)
-  if (!citations) return undefined
+function projectSourceCitations(
+  value: unknown,
+  exchangeId: string,
+  registrations: readonly NativeTranscriptProjectionAsset[],
+): ChatTranscriptResponseView['sourceCitations'] {
   const safe: NonNullable<ChatTranscriptResponseView['sourceCitations']> = {}
-  const entries = Object.entries(citations)
-    .filter(([key]) => /^(?:0|[1-9][0-9]{0,5})$/.test(key))
-    .sort(([left], [right]) => Number(left) - Number(right))
-  for (const [key, value] of entries) {
-    const citation = normalizeNativeTranscriptCitation(value)
-    if (!citation) continue
-    safe[key] = citation
-    if (Object.keys(safe).length >= 100) break
+  for (const { key, citation } of getNativeTranscriptCitationEntries(value)) {
+    if (citation.kind === 'file') {
+      const asset = registrations.find((item) => item.exchangeId === exchangeId && item.resourceKind === 'file' && item.resourceId === citation.sourceId)
+      if (!asset) continue
+      safe[key] = { ...citation, sourceId: asset.handle }
+    } else {
+      safe[key] = citation
+    }
   }
   return Object.keys(safe).length > 0 ? safe : undefined
 }
@@ -406,7 +409,9 @@ function projectExchange(
       images: [],
       mentions: mentions.slice(0, 100).flatMap((mention) => {
         const safe = plainRecord(mention)
-        return safe ? [{ type: boundedText(safe.type, 64), id: boundedText(safe.id, 512), name: boundedText(safe.name, 256) }] : []
+        if (!safe) return []
+        const fileIds = Array.isArray(safe.fileIds) ? safe.fileIds.map(registeredId).filter((id): id is string => Boolean(id)) : []
+        return [{ type: boundedText(safe.type, 64), id: boundedText(safe.id, 512), name: boundedText(safe.name, 256), fileIds }]
       }),
       replyThread: replyThread
         ? { replyToTurnId: boundedText(replyThread.replyToTurnId, 512), replySnippet: boundedText(replyThread.replySnippet, 2_000) }
@@ -449,15 +454,15 @@ function projectMedia(
         ? rawStatus
         : 'unavailable'
       const outputId = safeScopeId(result?.outputId)
-      const asset = status === 'completed' && kind === 'image' && type === 'image' && outputId
-        ? registrations.find((item) => item.exchangeId === exchange.id && item.resourceKind === 'output' && item.resourceId === outputId && item.previewable)
+      const asset = status === 'completed' && outputId
+        ? registrations.find((item) => item.exchangeId === exchange.id && item.resourceKind === 'output' && item.resourceId === outputId)
         : undefined
-      const previewDataUrl = safePreviewDataUrl(asset?.previewDataUrl)
+      const previewDataUrl = asset?.previewable === true && type === 'image' ? safePreviewDataUrl(asset.previewDataUrl) : undefined
       const modelUsed = result?.modelUsed
       return {
         type,
         status,
-        ...(outputId ? { outputId } : {}),
+        ...(asset?.handle ? { assetHandle: asset.handle } : {}),
         ...(typeof modelUsed === 'string' ? { modelUsed: boundedText(modelUsed, 256) } : {}),
         ...(previewDataUrl ? { previewDataUrl } : {}),
       }
@@ -471,7 +476,7 @@ function projectResponse(
   registrations: readonly NativeTranscriptProjectionAsset[],
   allowDraft: boolean,
 ): ChatTranscriptResponseView {
-  const sourceCitations = projectSourceCitations(response.sourceCitations)
+  const sourceCitations = projectSourceCitations(response.sourceCitations, exchangeId, registrations)
   const blocks = Array.isArray(response.blocks) ? response.blocks.slice(0, 500) : []
   const sources = Array.isArray(response.sources) ? response.sources.slice(0, 200) : []
   return {
@@ -501,16 +506,24 @@ function hasKnownAssetResource(exchange: ChatTranscriptExchangeView, asset: Nati
   if (asset.resourceKind === 'output') {
     const media = plainRecord(exchange.media)
     const results = Array.isArray(media?.results) ? media.results.slice(0, MAX_MEDIA_RESULTS) : []
-    return results.some((value) => plainRecord(value)?.outputId === asset.resourceId)
+    return results.some((value) => {
+      const result = plainRecord(value)
+      return result?.outputId === asset.resourceId && result.status === 'completed' &&
+        (result.type === 'image' || result.type === 'video')
+    })
   }
   const attachments = Array.isArray(exchange.user?.indexedAttachments) ? exchange.user.indexedAttachments.slice(0, 100) : []
   if (attachments.some((attachment) => Array.isArray(attachment.fileIds) && attachment.fileIds.includes(asset.resourceId))) return true
+  const mentions = Array.isArray(exchange.user?.mentions) ? exchange.user.mentions.slice(0, 100) : []
+  if (mentions.some((mention) => Array.isArray(mention.fileIds) && mention.fileIds.includes(asset.resourceId))) return true
   const responses = Array.isArray(exchange.responses) ? exchange.responses.slice(0, 100) : []
   return responses.some((response) => {
     const sources: ChatTranscriptSourceView[] = Array.isArray(response?.sources) ? response.sources.slice(0, 200) : []
     const blocks: AssistantVisualBlock[] = Array.isArray(response?.blocks) ? response.blocks.slice(0, 500) : []
+    const hasFileCitation = getNativeTranscriptCitationEntries(response?.sourceCitations)
+      .some(({ citation }) => citation.kind === 'file' && citation.sourceId === asset.resourceId)
     return sources.some((source) => plainRecord(source)?.sourceKind === 'document' && plainRecord(source)?.sourceId === asset.resourceId) ||
-      blocks.some((block) => plainRecord(block)?.kind === 'source' && plainRecord(block)?.sourceKind === 'document' && plainRecord(block)?.sourceId === asset.resourceId)
+      blocks.some((block) => plainRecord(block)?.kind === 'source' && plainRecord(block)?.sourceKind === 'document' && plainRecord(block)?.sourceId === asset.resourceId) || Boolean(hasFileCitation)
   })
 }
 
@@ -527,24 +540,37 @@ export function createNativeTranscriptDomSnapshot(input: NativeTranscriptProject
   const sourceExchanges: ChatTranscriptExchangeView[] = Array.isArray(input.view?.exchanges) ? input.view.exchanges.slice(0, 5_000) : []
   const assetsInput: NativeTranscriptProjectionAsset[] = Array.isArray(input.assets) ? input.assets.slice(0, 2_000) : []
   const exchangeById = new Map(sourceExchanges.map((exchange) => [exchange.id, exchange]))
-  const registrations = assetsInput.filter((asset, index, all) => asset?.previewable && typeof asset.handle === 'string' && /^[A-Za-z0-9_-]{16,200}$/.test(asset.handle) &&
-    safeScopeId(asset.resourceId) !== '' && ['file', 'output'].includes(asset.resourceKind) &&
-    Boolean(exchangeById.get(asset.exchangeId) && hasKnownAssetResource(exchangeById.get(asset.exchangeId)!, asset)) &&
-    all.findIndex((item) => item.handle === asset.handle) === index)
+  const registrations = assetsInput.filter((asset, index, all) => {
+    if (!asset || typeof asset !== 'object') return false
+    return typeof asset.handle === 'string' && /^[A-Za-z0-9_-]{16,200}$/.test(asset.handle) &&
+      safeScopeId(asset.resourceId) !== '' && ['file', 'output'].includes(asset.resourceKind) &&
+      (asset.resourceKind === 'output' || asset.previewable === true) &&
+      Boolean(exchangeById.get(asset.exchangeId) && hasKnownAssetResource(exchangeById.get(asset.exchangeId)!, asset)) &&
+      all.findIndex((item) => Boolean(item && item.handle === asset.handle)) === index
+  })
   const focusNonce = safeScopeId(input.focusNonce)
+  const publicModelLabels = Array.isArray(input.publicModelLabels) ? input.publicModelLabels.slice(0, 64).flatMap((value) => {
+    const label = plainRecord(value)
+    const id = label?.id
+    const name = label?.name
+    if (Object.keys(label ?? {}).some((key) => key !== 'id' && key !== 'name') || typeof id !== 'string' ||
+      !/^[A-Za-z0-9._:/-]{1,128}$/.test(id) || id.includes('..') || typeof name !== 'string') return []
+    const safeName = name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 96)
+    return safeName ? [{ id, name: safeName }] : []
+  }) : []
   const supportedActions = focusNonce && Array.isArray(input.supportedActions)
     ? [...new Set(input.supportedActions.slice(0, 36).filter((action): action is NativeTranscriptActionKind => typeof action === 'string' && NATIVE_ACTIONS.has(action as NativeTranscriptActionKind)))]
     : []
-  const assets: NativeTranscriptPresentationAsset[] = registrations.map((asset) => {
+  const assets: NativeTranscriptPresentationAsset[] = registrations.filter((asset) => asset.previewable === true).map((asset) => {
     const exchange = exchangeById.get(asset.exchangeId)
     const attachments = Array.isArray(exchange?.user?.indexedAttachments) ? exchange.user.indexedAttachments : []
     const name = safeDisplayName(asset.label ?? attachments
       .find((attachment) => Array.isArray(attachment.fileIds) && attachment.fileIds.includes(asset.resourceId))?.name, asset.resourceKind === 'output' ? 'Generated media' : 'Attached file')
     const outputExchange = asset.resourceKind === 'output' ? exchangeById.get(asset.exchangeId) : undefined
-    const previewDataUrl = asset.resourceKind === 'file' || (outputExchange && hasMatchingImageOutput(outputExchange, asset.resourceId))
+    const previewDataUrl = asset.previewable === true && (asset.resourceKind === 'file' || (outputExchange && hasMatchingImageOutput(outputExchange, asset.resourceId)))
       ? safePreviewDataUrl(asset.previewDataUrl)
       : undefined
-    return { handle: asset.handle, exchangeId: boundedText(asset.exchangeId, 512), label: name, resourceKind: asset.resourceKind, ...(asset.resourceKind === 'output' ? { targetId: safeScopeId(asset.resourceId) } : {}), ...(previewDataUrl ? { previewDataUrl } : {}) }
+    return { handle: asset.handle, exchangeId: boundedText(asset.exchangeId, 512), label: name, resourceKind: asset.resourceKind, ...(previewDataUrl ? { previewDataUrl } : {}) }
   })
   const unavailablePreviews: NativeTranscriptUnavailablePreview[] = sourceExchanges.flatMap((exchange) => {
     const images = Array.isArray(exchange.user?.images) ? exchange.user.images : []
@@ -584,7 +610,7 @@ export function createNativeTranscriptDomSnapshot(input: NativeTranscriptProject
   return {
     version: 1, workspaceId: input.workspaceId === null ? null : safeScopeId(input.workspaceId), conversationId: safeScopeId(input.conversationId),
     mountNonce: safeScopeId(input.mountNonce), focusNonce, theme: input.theme === 'dark' ? 'dark' : 'light', view, supportedActions,
-    query: boundedText(input.query, 512), scrollIntent,
+    publicModelLabels, query: boundedText(input.query, 512), scrollIntent,
     assets, media, unavailablePreviews,
   }
 }

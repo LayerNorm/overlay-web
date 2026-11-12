@@ -576,6 +576,7 @@ test('long native citations are normalized identically for projection and contro
   f.context.view = view
   f.context.allowedActions.push('open-citation')
   const projectionView = structuredClone(view)
+  const citationHandle = 'opaque_citation_resource_007'
 
   const projected = createNativeTranscriptDomSnapshot({
     workspaceId: f.context.workspaceId,
@@ -587,15 +588,19 @@ test('long native citations are normalized identically for projection and contro
     supportedActions: ['open-citation'],
     query: '',
     scrollIntent: null,
-    assets: [],
+    assets: [{ handle: citationHandle, exchangeId: exchange.id, resourceId: 'citation-resource-007', resourceKind: 'file', previewable: true }],
   })
   const expectedCitation = {
     kind: 'file',
-    sourceId: 'citation-resource-007',
+    sourceId: citationHandle,
     title: 'T'.repeat(512),
     snippet: 'S'.repeat(2_000),
   }
-  assert.deepEqual(JSON.parse(JSON.stringify(projected.view.exchanges[0].responses[0].sourceCitations['7'])), expectedCitation)
+  const expectedNativeCitation = { ...expectedCitation, sourceId: 'citation-resource-007' }
+  const projectedCitation = projected.view.exchanges[0].responses[0].sourceCitations?.['7']
+  assert.ok(projectedCitation)
+  assert.deepEqual(JSON.parse(JSON.stringify(projectedCitation)), expectedCitation)
+  assert.equal(JSON.stringify(projected).includes('citation-resource-007'), false)
   assert.doesNotMatch(JSON.stringify(projected), /CITATION_SECRET_SENTINEL/)
 
   const opened = []
@@ -607,7 +612,7 @@ test('long native citations are normalized identically for projection and contro
   }))
   assert.equal(result.ok, true)
   assert.deepEqual(JSON.parse(JSON.stringify(opened[0])), {
-    citation: expectedCitation,
+    citation: expectedNativeCitation,
     scope: { workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', focusNonce: 'focus-a' },
   })
 })
@@ -643,10 +648,32 @@ test('real completed media exchanges support trusted Reply without a fake respon
   assert.equal(exchange.responses.length, 0)
   assert.equal(mediaResult.status, 'completed')
   f.context.view = view
-  assert.equal((await f.controller.dispatch(f.request('reply', { exchangeId: exchange.id, target: { kind: 'media', outputId: mediaResult.outputId } }))).ok, true)
+  const assetHandle = 'media_output_handle_0001'
+  f.context.assets = [{ handle: assetHandle, exchangeId: exchange.id, resourceId: mediaResult.outputId, resourceKind: 'output', previewable: true }]
+  assert.equal((await f.controller.dispatch(f.request('reply', { exchangeId: exchange.id, target: { kind: 'media', assetHandle } }))).ok, true)
   const trusted = f.calls.find(([name]) => name === 'reply')[1]
   assert.equal(trusted.response, null)
   assert.equal(trusted.mediaResult.outputId, mediaResult.outputId)
+})
+
+test('completed video Reply resolves by opaque identity while Open remains preview-only in mixed groups', async () => {
+  const f = fixture()
+  const videoHandle = 'completed_video_reply_handle_0001'
+  const imageHandle = 'completed_image_reply_handle_0001'
+  const exchange = f.context.view.exchanges[0]
+  exchange.media = { kind: 'image', results: [
+    { type: 'video', status: 'completed', outputId: 'completed-video-output', url: 'https://protected.example/video' },
+    { type: 'image', status: 'completed', outputId: 'completed-image-output', url: 'https://protected.example/image' },
+    { type: 'video', status: 'generating', outputId: 'temporary-video-output', url: 'https://protected.example/temp' },
+  ] }
+  f.context.assets = [
+    { handle: videoHandle, exchangeId: exchange.id, resourceId: 'completed-video-output', resourceKind: 'output', previewable: false },
+    { handle: imageHandle, exchangeId: exchange.id, resourceId: 'completed-image-output', resourceKind: 'output', previewable: true },
+  ]
+  assert.equal((await f.controller.dispatch(f.request('reply', { exchangeId: exchange.id, target: { kind: 'media', assetHandle: videoHandle } }))).ok, true)
+  assert.equal(f.calls.find(([name]) => name === 'reply')[1].mediaResult.outputId, 'completed-video-output')
+  assert.equal((await f.controller.dispatch(f.request('open-asset', { exchangeId: exchange.id, assetHandle: videoHandle }))).error, 'unknown-target')
+  assert.equal((await f.controller.dispatch(f.request('open-asset', { exchangeId: exchange.id, assetHandle: imageHandle }))).ok, true)
 })
 
 test('confirmation rejects a changed conversation or removed target before invoking the handler', async () => {
@@ -795,6 +822,196 @@ test('delayed writer completion cannot report success after scope changes', asyn
   f.context.mountNonce = 'new-mount'
   finish()
   assert.equal((await pending).error, 'stale-scope')
+})
+
+test('action leases reject removed responses and changed or canceled Draft origins before follow-up writes', async () => {
+  const f = fixture()
+  let finishDownload
+  let downloadScope
+  let followUpWrites = 0
+  f.handlers.downloadText = async (_filename, _text, scope) => {
+    downloadScope = scope
+    await new Promise((resolve) => { finishDownload = resolve })
+    if (scope.isCurrent()) followUpWrites += 1
+  }
+  const download = f.controller.dispatch(f.request('download-text', { filename: 'answer.txt', text: 'response text' }))
+  await Promise.resolve()
+  assert.equal(downloadScope.isCurrent(), true)
+  f.context.view.exchanges[0].responses = []
+  assert.equal(downloadScope.isCurrent(), false)
+  finishDownload()
+  assert.equal((await download).ok, false)
+  assert.equal(followUpWrites, 0)
+
+  for (const revoke of [
+    (controller, context) => { context.view.exchanges[0].responses[0].blocks = [] },
+    (_controller, context) => { context.view.exchanges[0].responses[0].blocks[1].toolOutput.draft.name = 'Changed source' },
+    (controller, _context, token) => { controller.cancelDraft(token) },
+    (_controller, context) => { context.focused = false },
+  ]) {
+    const current = fixture()
+    await current.controller.dispatch(current.request('open-draft', { toolKey: 'tool-key-a' }))
+    const token = current.getDraftToken()
+    let finishSave
+    let saveScope
+    let writes = 0
+    current.handlers.saveDraft = async (_draft, scope) => {
+      saveScope = scope
+      await new Promise((resolve) => { finishSave = resolve })
+      if (scope.isCurrent()) writes += 1
+    }
+    const pendingSave = current.controller.saveDraft(token, current.draft)
+    await Promise.resolve()
+    revoke(current.controller, current.context, token)
+    assert.equal(saveScope.isCurrent(), false)
+    finishSave()
+    assert.equal((await pendingSave).ok, false)
+    assert.equal(writes, 0)
+  }
+})
+
+test('copy and Download leases preserve requested text through unrelated response streaming', async () => {
+  for (const kind of ['copy', 'download-text']) {
+    const f = fixture()
+    const sourceExchange = f.context.view.exchanges[0]
+    let finish
+    let received
+    const requestedText = kind === 'copy' ? 'selected response text' : 'original download text'
+    if (kind === 'copy') {
+      f.handlers.copyText = async (text, scope) => {
+        received = text
+        f.scope = scope
+        await new Promise((resolve) => { finish = resolve })
+        if (scope.isCurrent()) f.followUpWrites = (f.followUpWrites ?? 0) + 1
+      }
+    } else {
+      f.handlers.downloadText = async (_filename, text, scope) => {
+        received = text
+        f.scope = scope
+        await new Promise((resolve) => { finish = resolve })
+        if (scope.isCurrent()) f.followUpWrites = (f.followUpWrites ?? 0) + 1
+      }
+    }
+    const request = f.request(kind, kind === 'copy'
+      ? { text: requestedText }
+      : { filename: 'answer.txt', text: requestedText })
+    const pending = f.controller.dispatch(request)
+    await Promise.resolve()
+    assert.equal(f.scope.isCurrent(), true)
+    sourceExchange.responses[0].blocks.push({ kind: 'text', text: 'Appended streamed text' })
+    assert.equal(f.scope.isCurrent(), true)
+    finish()
+    assert.equal((await pending).ok, true)
+    assert.equal(received, requestedText)
+    assert.equal(f.followUpWrites, 1)
+  }
+})
+
+test('Copy leases reject removed and replaced response targets', async () => {
+  for (const replace of [
+    (exchange) => { exchange.responses = [] },
+    (exchange) => { exchange.responses[0] = { ...exchange.responses[0], id: 'replacement-response' } },
+  ]) {
+    const f = fixture()
+    let finish
+    let scope
+    let writes = 0
+    f.handlers.copyText = async (_text, currentScope) => {
+      scope = currentScope
+      await new Promise((resolve) => { finish = resolve })
+      if (scope.isCurrent()) writes += 1
+    }
+    const pending = f.controller.dispatch(f.request('copy', { text: 'original selection' }))
+    await Promise.resolve()
+    replace(f.context.view.exchanges[0])
+    assert.equal(scope.isCurrent(), false)
+    finish()
+    assert.equal((await pending).ok, false)
+    assert.equal(writes, 0)
+  }
+})
+
+test('open Draft and jump-to-reply leases survive unrelated text and status updates', async () => {
+  const draftFixture = fixture()
+  let finishDraft
+  let draftScope
+  const openDraft = draftFixture.handlers.openDraft
+  draftFixture.handlers.openDraft = async (draft, scope, token) => {
+    draftScope = scope
+    await new Promise((resolve) => { finishDraft = resolve })
+    await openDraft(draft, scope, token)
+  }
+  const draftOpen = draftFixture.controller.dispatch(draftFixture.request('open-draft', { toolKey: 'tool-key-a' }))
+  await Promise.resolve()
+  draftFixture.context.view.exchanges[0].responses[0].blocks.push({ kind: 'text', text: 'Unrelated streamed text' })
+  assert.equal(draftScope.isCurrent(), true)
+  finishDraft()
+  assert.equal((await draftOpen).ok, true)
+  assert.ok(draftFixture.getDraftToken())
+
+  const f = fixture()
+  const child = f.context.view.exchanges[0]
+  child.user.replyThread = { replyToTurnId: 'parent-turn', replySnippet: 'Parent' }
+  const parent = structuredClone(child)
+  parent.id = 'parent-exchange'
+  parent.turnId = 'parent-turn'
+  parent.user.id = 'parent-user'
+  parent.user.text = 'Parent response'
+  parent.user.replyThread = null
+  f.context.view.exchanges.push(parent)
+  let finishJump
+  let jumpScope
+  let writes = 0
+  f.handlers.jumpToReply = async (_parentId, scope) => {
+    jumpScope = scope
+    await new Promise((resolve) => { finishJump = resolve })
+    if (scope.isCurrent()) writes += 1
+  }
+  const jump = f.controller.dispatch(f.request('jump-to-reply', { target: { kind: 'user', userId: child.user.id } }))
+  await Promise.resolve()
+  parent.user.text = 'Updated parent text'
+  parent.responses[0].status = 'streaming'
+  parent.responses[0].blocks.push({ kind: 'text', text: 'Parent token' })
+  assert.equal(jumpScope.isCurrent(), true)
+  finishJump()
+  assert.equal((await jump).ok, true)
+  assert.equal(writes, 1)
+})
+
+test('source and citation leases still revoke on relevant resource changes', async () => {
+  for (const kind of ['open-source', 'open-citation']) {
+    const f = fixture()
+    const response = f.context.view.exchanges[0].responses[0]
+    let finish
+    let scope
+    let writes = 0
+    let mutate
+    if (kind === 'open-source') {
+      f.handlers.openSource = async (_source, currentScope) => {
+        scope = currentScope
+        await new Promise((resolve) => { finish = resolve })
+        if (scope.isCurrent()) writes += 1
+      }
+      mutate = () => { response.sources[0].url = 'https://changed.example/path' }
+    } else {
+      f.context.allowedActions.push('open-citation')
+      response.sourceCitations = { 0: { kind: 'file', sourceId: 'file-a', title: 'Citation' } }
+      f.handlers.openCitation = async (_citation, currentScope) => {
+        scope = currentScope
+        await new Promise((resolve) => { finish = resolve })
+        if (scope.isCurrent()) writes += 1
+      }
+      mutate = () => { response.sourceCitations[0].title = 'Changed citation' }
+    }
+    const request = f.request(kind, kind === 'open-source' ? { sourceId: 'source-a' } : { citationKey: '0' })
+    const pending = f.controller.dispatch(request)
+    await Promise.resolve()
+    mutate()
+    assert.equal(scope.isCurrent(), false)
+    finish()
+    assert.equal((await pending).ok, false)
+    assert.equal(writes, 0)
+  }
 })
 
 test('sources and keyboard dismiss require current supported native actions', async () => {
