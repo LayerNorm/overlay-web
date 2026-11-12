@@ -40,6 +40,29 @@ function captureModelFailure(
   })
 }
 
+function withGeminiToolArgumentStreaming(
+  reference: HarnessModelReference,
+  options: LanguageModelV4CallOptions,
+): LanguageModelV4CallOptions {
+  const modelMatch = /^(?:google\/)?gemini-(\d+)(?:[.-]|$)/.exec(reference.modelId)
+  if (
+    !modelMatch || Number(modelMatch[1]) < 3 ||
+    !options.tools?.some(tool => tool.type === 'function' && tool.name === 'render_ui') ||
+    options.providerOptions?.vertex?.streamFunctionCallArguments === false
+  ) return options
+
+  return {
+    ...options,
+    providerOptions: {
+      ...options.providerOptions,
+      vertex: {
+        ...options.providerOptions?.vertex,
+        streamFunctionCallArguments: true,
+      },
+    },
+  }
+}
+
 export async function secureModelDoStream(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
   let selectedModel: Awaited<ReturnType<typeof model>>
   try {
@@ -59,7 +82,7 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
   }
   let result: Awaited<ReturnType<Awaited<ReturnType<typeof model>>['doStream']>>
   try {
-    result = await selectedModel.doStream(options)
+    result = await selectedModel.doStream(withGeminiToolArgumentStreaming(reference, options))
   } catch (error) {
     await recordConfirmedRejection(reference, error)
     throw preserveHarnessSDKFailure(error)

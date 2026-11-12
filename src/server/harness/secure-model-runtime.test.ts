@@ -29,7 +29,121 @@ const nativeReference: HarnessModelReference = { modelId: 'openai/gpt-4.1-mini',
   maxOutputTokens: 100, contextWindow: null,
 } }
 
+const automationReference: HarnessModelReference = {
+  ...reference,
+  modelId: 'gemini-3.8-flash',
+  personal: {
+    ...reference.personal!,
+    access: {
+      ...reference.personal!.access,
+      authentication: { type: 'automation', automationId: 'automation', originWorkflowRunId: 'workflow' },
+    },
+  },
+}
+
+const renderUiTool = { type: 'function' as const, name: 'render_ui', description: 'render UI', inputSchema: {} }
+
 beforeEach(() => { vi.resetAllMocks(); mocks.confirmed.mockReturnValue(false); mocks.append.mockResolvedValue({ accepted: true }) })
+
+test.each([
+  ['personal', { ...reference, modelId: 'google/gemini-3.8-flash' }],
+  ['native', { ...nativeReference, modelId: 'google/gemini-3.8-flash' }],
+  ['automation with legacy Gemini id', automationReference],
+] as const)('%s Gemini 3 render_ui stream enables Vertex function-argument streaming', async (_surface, dispatchReference) => {
+  const provider = new MockLanguageModelV4({ doStream: {
+    stream: new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { controller.close() } }),
+  } })
+  mocks.model.mockResolvedValue(provider)
+  const providerOptions = {
+    gateway: { only: ['baseten'], order: ['baseten'], zeroDataRetention: true },
+    vertex: { region: 'us-central1' },
+    anthropic: { thinking: { type: 'enabled' } },
+  }
+  const providerOptionsSnapshot = structuredClone(providerOptions)
+  const abortSignal = new AbortController().signal
+  const toolChoice = { type: 'tool' as const, toolName: 'render_ui' }
+  const options = { prompt: [], tools: [renderUiTool], maxOutputTokens: 73, temperature: 0.4, abortSignal, toolChoice, providerOptions }
+
+  await secureModelDoStream(dispatchReference, options)
+
+  expect(provider.doStreamCalls[0]?.providerOptions).toEqual({
+    ...providerOptions,
+    vertex: { ...providerOptions.vertex, streamFunctionCallArguments: true },
+  })
+  expect(provider.doStreamCalls[0]?.maxOutputTokens).toBe(73)
+  expect(provider.doStreamCalls[0]?.temperature).toBe(0.4)
+  expect(provider.doStreamCalls[0]?.abortSignal).toBe(abortSignal)
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual(toolChoice)
+  expect(options.providerOptions).toEqual(providerOptionsSnapshot)
+})
+
+test.each([
+  ['Gemini 2', { ...reference, modelId: 'google/gemini-2.5-flash' }, [renderUiTool]],
+  ['other Google model', { ...reference, modelId: 'google/gemma-4-26b-a4b-it' }, [renderUiTool]],
+  ['other provider', { ...reference, modelId: 'anthropic/claude-sonnet-5.5' }, [renderUiTool]],
+  ['OpenRouter', { ...reference, modelId: 'openrouter/google/gemini-3.8-flash' }, [renderUiTool]],
+  ['BYOK', { ...reference, modelId: 'byok/connection/google/gemini-3.8-flash' }, [renderUiTool]],
+  ['no render_ui', { ...reference, modelId: 'google/gemini-3.8-flash' }, [{ ...renderUiTool, name: 'other_tool' }]],
+] as const)('%s does not enable Vertex function-argument streaming', async (_case, dispatchReference, tools) => {
+  const provider = new MockLanguageModelV4({ doStream: {
+    stream: new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { controller.close() } }),
+  } })
+  mocks.model.mockResolvedValue(provider)
+  const providerOptions = { vertex: { region: 'us-central1' }, gateway: { only: ['baseten'] } }
+
+  await secureModelDoStream(dispatchReference, { prompt: [], tools, providerOptions })
+
+  expect(provider.doStreamCalls[0]?.providerOptions).toEqual(providerOptions)
+})
+
+test('explicit false remains false for Gemini 3 render_ui streams', async () => {
+  const provider = new MockLanguageModelV4({ doStream: {
+    stream: new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { controller.close() } }),
+  } })
+  mocks.model.mockResolvedValue(provider)
+  const providerOptions = {
+    vertex: { region: 'us-central1', streamFunctionCallArguments: false },
+    gateway: { only: ['baseten'], order: ['baseten'], zeroDataRetention: true },
+  }
+
+  await secureModelDoStream({ ...reference, modelId: 'google/gemini-3.8-flash' }, {
+    prompt: [], tools: [renderUiTool], providerOptions,
+  })
+
+  expect(provider.doStreamCalls[0]?.providerOptions).toEqual(providerOptions)
+  expect(providerOptions.vertex.streamFunctionCallArguments).toBe(false)
+})
+
+test('Gemini 3 render_ui streams enable Vertex argument streaming without existing provider options', async () => {
+  const provider = new MockLanguageModelV4({ doStream: {
+    stream: new ReadableStream<LanguageModelV4StreamPart>({ start(controller) { controller.close() } }),
+  } })
+  mocks.model.mockResolvedValue(provider)
+  const options = { prompt: [], tools: [renderUiTool] }
+
+  await secureModelDoStream({ ...reference, modelId: 'google/gemini-3.8-flash' }, options)
+
+  expect(provider.doStreamCalls[0]?.providerOptions).toEqual({
+    vertex: { streamFunctionCallArguments: true },
+  })
+  expect(options).not.toHaveProperty('providerOptions')
+})
+
+test('Gemini 3 render_ui doGenerate does not add Vertex function-argument streaming', async () => {
+  const providerOptions = { vertex: { region: 'us-central1' } }
+  const provider = new MockLanguageModelV4({ doGenerate: {
+    content: [], finishReason: { unified: 'stop', raw: 'stop' },
+    usage: { inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 0, text: 0, reasoning: 0 } },
+    warnings: [],
+  } })
+  mocks.model.mockResolvedValue(provider)
+
+  await secureModelDoGenerate({ ...reference, modelId: 'google/gemini-3.8-flash' }, {
+    prompt: [], tools: [renderUiTool], providerOptions,
+  })
+
+  expect(provider.doGenerateCalls[0]?.providerOptions).toEqual(providerOptions)
+})
 
 test.each([
   [secureModelDoStream, reference], [secureModelDoGenerate, reference],

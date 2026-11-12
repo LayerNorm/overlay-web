@@ -11,6 +11,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Enable live generated-UI streams for new roots only when they admit `render_ui`, while retaining the workspace allowlist for other roots. Replace successful previews with validated final data at the same transcript anchor and append only missing streamed text.
 - Refuse new transcript steps after a harness run or ancestor is cancelled, while preserving previously committed generated-UI parts and idempotent replays. Terminal SSE still drains committed steps; a read resolving after local request abort is discarded.
 - Render Vector accent text with the theme foreground in light and dark themes while preserving accent shape paint.
+- Enable Vertex incremental tool arguments for streamed `render_ui` calls on hosted Gemini 3+ models when Gateway selects Vertex, without changing routing or overriding an explicit opt-out.
 
 - Chats, agent threads and automation conversations can show interactive comparisons, dashboards and forms. Form edits are saved, and submitting posts a readable response and locks the card.
   - The validated `render_ui` catalog uses lazy-loaded shared components, bounded serialized state, admission-gated prompts and summary fallbacks for non-React delivery. Generated-UI tools remain withheld from MCP clients; existing draft permissions are unchanged.
