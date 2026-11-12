@@ -29,6 +29,7 @@ export default defineConfig({
       'src/features/settings/components/ArchivedSettings.test.tsx',
       'src/components/layout/sidebar/HelpMenu.test.tsx',
       'src/contexts/WorkspaceContext.test.tsx',
+      'src/hooks/use-panel-scope.test.tsx',
       'src/server/agents/workspace-agent-preparation.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
