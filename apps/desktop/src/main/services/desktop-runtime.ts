@@ -618,6 +618,10 @@ export function registerDesktopRuntime(): void {
     alwaysOnTop: true,
     show: false,
     resizable: false,
+    // A non-activating panel floats over full-screen apps without turning the
+    // whole app into a background (UIElement) process, which drops the Dock's
+    // running indicator.
+    ...(process.platform === 'darwin' ? { type: 'panel' as const } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/web-shell.js'),
       autoplayPolicy: 'no-user-gesture-required',
@@ -627,7 +631,7 @@ export function registerDesktopRuntime(): void {
     }
   })
   hud.setIgnoreMouseEvents(true, { forward: true })
-  hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   hudReady = hud.loadFile(join(__dirname, '../renderer/recorder.html'))
   hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   hud.webContents.on('will-navigate', (event) => event.preventDefault())

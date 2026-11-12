@@ -1,6 +1,7 @@
 import './bootstrap'
 import { migrateLegacyDesktopData } from './services/desktop-migration'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeTheme } from 'electron'
+import { themeSourceForColor } from './utils/window-theme'
 import {
   configureWebSession,
   getWebShellOrigin,
@@ -31,6 +32,12 @@ function createMain(): BrowserWindow {
     show: false
   })
   main.once('ready-to-show', () => main?.show())
+  // Follow the web app's theme, not the system appearance: a dark system appearance
+  // around the light theme draws a black window outline.
+  main.webContents.on('did-change-theme-color', (_event, color) => {
+    nativeTheme.themeSource = themeSourceForColor(color)
+    if (color) main?.setBackgroundColor(color)
+  })
   loadWebShell(main)
   main.on('focus', () => main?.webContents.send('overlay-desktop:event', 'window.focus', true))
   main.on('blur', () => main?.webContents.send('overlay-desktop:event', 'window.focus', false))
