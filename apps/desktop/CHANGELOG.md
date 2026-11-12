@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Use the current Overlay logo (the black serif O with two eyes) as the app icon on macOS, Windows and Linux, sized to the macOS icon grid so it matches other Dock icons. Delete the outdated orb and "Dawn" logos, tray images and marketing images that the app no longer used.
 - Restore ESLint: remove the React plugins left in the config after the web-shell switch (they were uninstalled, so lint crashed), drop disable comments that no longer suppress anything, and run `npm run lint` in the clean-clone CI so a broken config fails the build.
 - Explain cloud dictation refusals: a workspace without billing, a member who may not use its billing, or exhausted workspace credit now show what to do (set up Billing or pick a local model) instead of "Cloud dictation failed (402)".
 - Keep a new recording active when a cancelled take finishes its pending worklet flush.

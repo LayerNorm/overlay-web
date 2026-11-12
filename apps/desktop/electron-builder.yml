@@ -48,7 +48,7 @@ extraResources:
     filter:
       - '**/*'
 win:
-  icon: resources/logos/logo-big.png
+  icon: resources/icon.png
   executableName: overlay
 nsis:
   artifactName: overlay-${version}-setup.${ext}
@@ -56,7 +56,7 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
-  icon: resources/logos/logo-big.png
+  icon: resources/icon.png
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
@@ -72,7 +72,7 @@ mac:
 dmg:
   artifactName: overlay-${version}.${ext}
 linux:
-  icon: resources/logos/logo-big.png
+  icon: resources/icon.png
   target:
     - AppImage
     - snap
