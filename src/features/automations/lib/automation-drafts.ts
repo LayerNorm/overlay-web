@@ -69,12 +69,21 @@ function buildGraphSourceFromSteps(steps: string[]): string {
   return ['flowchart TD', ...nodes, ...edges].join('\n')
 }
 
-function buildPointerSteps(input: { userText: string; assistantText?: string }): string[] {
+function buildPointerSteps(input: { userText: string; assistantText?: string }, integrationConflict = false): string[] {
+  if (integrationConflict) return ['Clarify whether the workflow should use an integration']
+
+  const assistantLines = (input.assistantText || '')
+    .split('\n')
+    .map((line) => line.trim().replace(/^(?:[-*]\s+|\d+[.)]\s+)/, '').trim())
+    .filter((line) => line.length > 0)
+
+  if (assistantLines.length > 0 && hasClearWorkflow(assistantLines)) return assistantLines
+
   const source = [input.userText, input.assistantText].filter(Boolean).join('\n')
   const normalized = source.toLowerCase()
   const asksForNewsDigest = /\b(news|digest|headlines)\b/.test(normalized) && /\b(email|gmail|send)\b/.test(normalized)
 
-  if (asksForNewsDigest) {
+  if (asksForNewsDigest && !hasExplicitNoIntegrations(input.userText)) {
     return [
       'Call `web_search` with query "top tech news today"',
       'Call `web_search` with query "top AI news today"',
@@ -90,28 +99,20 @@ function buildPointerSteps(input: { userText: string; assistantText?: string }):
     ]
   }
 
-  const assistantLines = (input.assistantText || '')
-    .split('\n')
-    .map((line) => line.trim().replace(/^[-*\d.)\s]+/, '').trim())
-    .filter((line) => line.length > 0)
-    .slice(0, 8)
+  return ['Clarify what this automation should do']
+}
 
-  if (assistantLines.length >= 3) {
-    return [
-      ...assistantLines,
-      'Post a concise completion summary to the automation chat, including anything that still needs attention',
-    ]
-  }
+function hasClearWorkflow(lines: string[]): boolean {
+  const remaining = lines.join(' ')
+    .replace(/\b(?:a|an|the|this|automation|workflow|schedule|scheduled|daily|weekly|monthly|quarterly|yearly|annually|hourly|every|each|day|week|month|first|second|third|last|on|at|of|for|that|is|runs?|will|utc|integration|integrations|required|needed|none|no|not|do|does|need|needs)\b/gi, ' ')
+    .replace(/\d+/g, ' ')
+    .replace(/[^a-z0-9]/gi, ' ')
+    .trim()
+  return remaining.length > 0
+}
 
-  return [
-    `Interpret the user request: ${clip(input.userText, 240)}`,
-    'Identify the required tools, integrations, recipient/account details, and missing inputs before acting',
-    'Call the relevant search, read, or integration tools needed to gather fresh source data',
-    'Run independent data-gathering tool calls in parallel whenever their inputs do not depend on each other',
-    'Transform the gathered results into the requested output format with clear sections and source links when available',
-    'Call the final delivery or update tool required by the request',
-    'Post a concise completion summary to the automation chat, including anything that still needs attention',
-  ]
+function hasExplicitNoIntegrations(text: string): boolean {
+  return /\b(?:no|without)\s+(?:any\s+)?(?:external\s+)?integrations?\b/i.test(text)
 }
 
 function detectIntegrations(text: string): string[] {
@@ -119,25 +120,189 @@ function detectIntegrations(text: string): string[] {
   return KNOWN_INTEGRATIONS.filter((name) => normalized.includes(name.toLowerCase()))
 }
 
-function inferSchedule(text: string): AutomationScheduleDraft {
-  const normalized = text.toLowerCase()
-  if (/\b(hourly|every hour)\b/.test(normalized)) {
-    return { kind: 'interval', intervalMinutes: 60 }
+type ParsedValue<T> =
+  | { status: 'absent' }
+  | { status: 'value'; value: T }
+  | { status: 'invalid'; missingField: string }
+
+type ScheduleCadence =
+  | { kind: 'interval'; intervalMinutes: number }
+  | { kind: 'daily' }
+  | { kind: 'weekly' }
+  | { kind: 'monthly' }
+
+type ClockTime = { hour: number; minute: number }
+
+function preferUserValue<T>(user: ParsedValue<T>, assistant: ParsedValue<T>): ParsedValue<T> {
+  return user.status === 'absent' ? assistant : user
+}
+
+function containsWeekday(text: string): boolean {
+  return /\b(?:sundays?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?)\b/i.test(text)
+}
+
+function parseCadence(text: string): ParsedValue<ScheduleCadence> {
+  const intervalMatches = [...text.matchAll(/\bevery\s+(\d+)\s+minutes?\b/gi)]
+  const hourly = /\b(?:hourly|every hour)\b/i.test(text)
+  const monthly = /\bmonthly\b|\b(?:every|each)\s+month\b/i.test(text)
+  const weekly = /\bweekly\b|\bevery week\b/i.test(text) || containsWeekday(text)
+  const daily = /\bdaily\b|\bevery day\b/i.test(text)
+  const unsupported = /\b(?:quarterly|every quarter|annual(?:ly)?|yearly|every year|every\s+\d+\s+(?:hours?|days?|weeks?|months?)|every other\s+(?:day|week|month)|biweekly|fortnightly)\b/i.test(text)
+  const kinds = [
+    ...(hourly || intervalMatches.length > 0 ? ['interval'] : []),
+    ...(daily ? ['daily'] : []),
+    ...(weekly ? ['weekly'] : []),
+    ...(monthly ? ['monthly'] : []),
+  ]
+
+  if (unsupported) return { status: 'invalid', missingField: 'Confirm supported schedule frequency' }
+  if (kinds.length === 0) return { status: 'absent' }
+  if (kinds.length > 1) return { status: 'invalid', missingField: 'Confirm schedule frequency' }
+  if (kinds[0] === 'interval') {
+    const values = [
+      ...(hourly ? [60] : []),
+      ...intervalMatches.map((match) => Number(match[1])),
+    ]
+    if (values.some((value) => !Number.isInteger(value) || value < 1 || value > 24 * 60)) {
+      return { status: 'invalid', missingField: 'Confirm interval between 1 and 1440 minutes' }
+    }
+    const uniqueValues = [...new Set(values)]
+    if (uniqueValues.length > 1) {
+      return { status: 'invalid', missingField: 'Confirm one schedule interval' }
+    }
+    return { status: 'value', value: { kind: 'interval', intervalMinutes: uniqueValues[0] ?? 60 } }
   }
-  if (/\b(every\s+(\d+)\s+minutes?)\b/.test(normalized)) {
-    const match = normalized.match(/\bevery\s+(\d+)\s+minutes?\b/)
-    const minutes = Math.max(1, Math.min(24 * 60, Number(match?.[1] ?? 60)))
-    return { kind: 'interval', intervalMinutes: minutes }
+  if (kinds[0] === 'daily') return { status: 'value', value: { kind: 'daily' } }
+  if (kinds[0] === 'weekly') return { status: 'value', value: { kind: 'weekly' } }
+  return { status: 'value', value: { kind: 'monthly' } }
+}
+
+function parseUtcTime(text: string): ParsedValue<ClockTime> {
+  const matches = [...text.matchAll(/(^|[^\w])([+-]?\d+):([+-]?\d+)(?!\w)/g)]
+  if (matches.length === 0) {
+    if (/\b(?:morning|evening|night|noon|midnight)\b|\b(?:at\s+)?[+-]?\d+\s*(?:a\.?m\.?|p\.?m\.?)\b|\bat\s+[+-]?\d+\b/i.test(text)) {
+      return { status: 'invalid', missingField: 'Confirm schedule time in UTC' }
+    }
+    return { status: 'absent' }
   }
-  if (/\bweekly|every week|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?\b/.test(normalized)) {
-    const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-    const dayOfWeekUTC = weekdays.findIndex((day) => normalized.includes(day))
-    return { kind: 'weekly', dayOfWeekUTC: dayOfWeekUTC >= 0 ? dayOfWeekUTC : 1, hourUTC: 14, minuteUTC: 0 }
+
+  const values: ClockTime[] = []
+  for (const match of matches) {
+    const index = match.index ?? 0
+    const timezone = text.slice(index + match[0].length).match(/^\s*UTC\b(?!\s*[+-])/i)
+    if (!timezone) return { status: 'invalid', missingField: 'Confirm schedule time in UTC' }
+    const rawHour = match[2]!
+    const rawMinute = match[3]!
+    if (!/^\d{1,2}$/.test(rawHour) || !/^\d{2}$/.test(rawMinute)) {
+      return { status: 'invalid', missingField: 'Confirm valid UTC time (HH:mm)' }
+    }
+    const hour = Number(rawHour)
+    const minute = Number(rawMinute)
+    if (hour > 23 || minute > 59) {
+      return { status: 'invalid', missingField: 'Confirm valid UTC time (HH:mm)' }
+    }
+    values.push({ hour, minute })
   }
-  if (/\bmonthly|every month\b/.test(normalized)) {
-    return { kind: 'monthly', dayOfMonthUTC: 1, hourUTC: 14, minuteUTC: 0 }
+
+  const uniqueValues = [...new Map(values.map((value) => [`${value.hour}:${value.minute}`, value])).values()]
+  if (uniqueValues.length > 1) {
+    return { status: 'invalid', missingField: 'Confirm one UTC schedule time' }
   }
-  return { kind: 'daily', hourUTC: 14, minuteUTC: 0 }
+  return { status: 'value', value: uniqueValues[0]! }
+}
+
+function parseMonthlyDay(text: string): ParsedValue<number> {
+  const days: string[] = []
+  for (const match of text.matchAll(/\bday\s+([+-]?\d+)(?:st|nd|rd|th)?\b/gi)) {
+    days.push(match[1]!)
+  }
+  for (const match of text.matchAll(/(^|[^\w])([+-]?\d+)(?:st|nd|rd|th)\s+(?:day\b|(?:of\s+)?(?:each|every|the)\s+month\b)/gi)) {
+    days.push(match[2]!)
+  }
+  for (const match of text.matchAll(/\b(first|second|third)\s+(?:day\b|(?:of\s+)?(?:each|every|the)\s+month\b)/gi)) {
+    days.push(String({ first: 1, second: 2, third: 3 }[match[1]!.toLowerCase() as 'first' | 'second' | 'third']))
+  }
+
+  if (days.length === 0) {
+    return /\b(?:last|first|second|third)\s+day\b/i.test(text)
+      ? { status: 'invalid', missingField: 'Confirm monthly day (1-31)' }
+      : { status: 'absent' }
+  }
+  const values = days.map(Number)
+  if (days.some((day, index) => !/^\d{1,2}$/.test(day) || values[index]! < 1 || values[index]! > 31)) {
+    return { status: 'invalid', missingField: 'Confirm valid monthly day (1-31)' }
+  }
+  if (new Set(values).size > 1) {
+    return { status: 'invalid', missingField: 'Confirm one monthly day' }
+  }
+  return { status: 'value', value: values[0]! }
+}
+
+function parseWeekday(text: string): ParsedValue<number> {
+  const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  const found = weekdays.flatMap((day, index) => new RegExp(`\\b${day}s?\\b`, 'i').test(text) ? [index] : [])
+  if (found.length === 0) return { status: 'absent' }
+  if (found.length > 1) return { status: 'invalid', missingField: 'Confirm one weekday' }
+  return { status: 'value', value: found[0]! }
+}
+
+function inferSchedule(userText: string, assistantText = ''): { schedule: AutomationScheduleDraft; missingFields: string[] } {
+  const cadence = preferUserValue(parseCadence(userText), parseCadence(assistantText))
+  const missingFields: string[] = []
+  const time = preferUserValue(parseUtcTime(userText), parseUtcTime(assistantText))
+  const clock = time.status === 'value' ? time.value : { hour: 14, minute: 0 }
+
+  if (cadence.status === 'invalid') {
+    missingFields.push(cadence.missingField)
+  } else if (cadence.status === 'absent') {
+    missingFields.push('Confirm schedule frequency')
+  }
+
+  if (cadence.status === 'value' && cadence.value.kind === 'interval') {
+    return { schedule: cadence.value, missingFields }
+  }
+
+  if (time.status === 'invalid') {
+    missingFields.push(time.missingField)
+  } else if (time.status === 'absent') {
+    missingFields.push('Confirm schedule time in UTC')
+  }
+
+  if (cadence.status !== 'value') {
+    return { schedule: { kind: 'daily', hourUTC: clock.hour, minuteUTC: clock.minute }, missingFields }
+  }
+
+  if (cadence.value.kind === 'monthly') {
+    const day = preferUserValue(parseMonthlyDay(userText), parseMonthlyDay(assistantText))
+    if (day.status === 'invalid') missingFields.push(day.missingField)
+    else if (day.status === 'absent') missingFields.push('Confirm monthly day')
+    return {
+      schedule: {
+        kind: 'monthly',
+        dayOfMonthUTC: day.status === 'value' ? day.value : 1,
+        hourUTC: clock.hour,
+        minuteUTC: clock.minute,
+      },
+      missingFields,
+    }
+  }
+
+  if (cadence.value.kind === 'weekly') {
+    const weekday = preferUserValue(parseWeekday(userText), parseWeekday(assistantText))
+    if (weekday.status === 'invalid') missingFields.push(weekday.missingField)
+    else if (weekday.status === 'absent') missingFields.push('Confirm weekday')
+    return {
+      schedule: {
+        kind: 'weekly',
+        dayOfWeekUTC: weekday.status === 'value' ? weekday.value : 1,
+        hourUTC: clock.hour,
+        minuteUTC: clock.minute,
+      },
+      missingFields,
+    }
+  }
+
+  return { schedule: { kind: 'daily', hourUTC: clock.hour, minuteUTC: clock.minute }, missingFields }
 }
 
 export function buildAutomationDraftFromTurn(input: {
@@ -147,28 +312,40 @@ export function buildAutomationDraftFromTurn(input: {
   timezone?: string
 }): AutomationDraftSummary {
   const source = [input.userText, input.assistantText].filter(Boolean).join('\n')
-  const schedule = inferSchedule(source)
-  const detectedIntegrations = detectIntegrations(source)
-  const missingFields: string[] = []
-  if (!/\b(hourly|daily|weekly|monthly|every|morning|evening|night|at\s+\d)/i.test(source)) {
-    missingFields.push('Confirm schedule')
+  const inferred = inferSchedule(input.userText, input.assistantText)
+  const explicitNoIntegrations = hasExplicitNoIntegrations(input.userText)
+  const integrationConflict =
+    explicitNoIntegrations &&
+    (detectIntegrations(input.userText).length > 0 || detectIntegrations(input.assistantText || '').length > 0)
+  const detectedIntegrations = explicitNoIntegrations ? [] : detectIntegrations(source)
+  const missingFields = [...inferred.missingFields]
+  if (integrationConflict) {
+    missingFields.push('Resolve conflicting integration instructions')
   }
-  if (detectedIntegrations.length === 0) {
+  if (!explicitNoIntegrations && detectedIntegrations.length === 0) {
     missingFields.push('Confirm required integrations')
   }
 
   const name = inferTitle(input.userText)
-  const pointerSteps = buildPointerSteps(input)
+  const pointerSteps = buildPointerSteps(input, integrationConflict)
+  if (pointerSteps[0] === 'Clarify what this automation should do') {
+    missingFields.push('Clarify automation instructions')
+  }
   return {
     name,
     description: clip(input.reason || `Scheduled automation that performs: ${name}`, 140),
     instructions: pointerSteps.map((step, index) => `${index + 1}. ${step}`).join('\n'),
     graphSource: buildGraphSourceFromSteps(pointerSteps),
-    schedule,
+    schedule: inferred.schedule,
     timezone: input.timezone || 'UTC',
     detectedIntegrations,
     missingFields,
-    confidence: missingFields.length === 0 ? 'high' : detectedIntegrations.length > 0 ? 'medium' : 'low',
+    confidence:
+      missingFields.length === 0
+        ? 'high'
+        : inferred.missingFields.length > 0 || integrationConflict || detectedIntegrations.length === 0
+          ? 'low'
+          : 'medium',
     reason: input.reason || 'This looks like a recurring or scheduled workflow.',
   }
 }

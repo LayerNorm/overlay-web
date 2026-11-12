@@ -425,8 +425,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.draft_automation_from_chat = tool({
       description:
         'Create an automation draft from the current chat turn. Use this when the user describes a recurring, scheduled, or background workflow. ' +
-        'The draft instructions must be a detailed numbered pointer list with concrete tool calls, queries, parallelization notes, formatting instructions, and final delivery steps. ' +
-        'After drafting, show the numbered instructions to the user in a fenced code block so they can copy them. This only drafts the automation and never saves or enables it.',
+        'Keep simple workflows simple. Include concrete tool calls, queries, parallelization, formatting, or delivery steps only when the requested workflow needs them. ' +
+        'Preserve actionable short instructions; ask for clarification when the workflow or schedule is unclear. ' +
+        'After drafting, show the numbered instructions in a fenced code block for review. This only drafts the automation and never saves or enables it.',
       inputSchema: z.object({
         userText: z.string().describe('The user request to turn into an automation draft'),
         assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),

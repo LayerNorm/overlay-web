@@ -20,6 +20,10 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
 
+## Automation drafts
+
+`draft_automation_from_chat` preserves explicit schedule details, including validated `HH:mm UTC` times and supported monthly days or weekdays. Missing, invalid, unsupported, or conflicting calendar details remain flagged for confirmation rather than being presented as inferred defaults. Explicit user requests for no integrations resolve to none; otherwise an unknown integration requirement is flagged. Keep short actionable instructions short, and request clarification when the workflow is not actionable. Drafting never creates or enables an automation; `create_automation` remains a separate explicitly confirmed action.
+
 Not tool ids but granted as capabilities:
 
 - **Web** (paid): `web_search`, `deep_search`, `web_fetch`. On the free plan they exist as stubs that answer "needs a paid plan".
