@@ -103,6 +103,36 @@ test('development fixture outlet hides the previous route during warm Back trans
   assert.deepEqual(transition.map(isActiveSharedMarkdownFixtureRoute), [true, false, false])
 })
 
+test('the dev proof keeps Markdown intact and scopes its synthetic transcript mode to focus', () => {
+  const route = fs.readFileSync(path.join(projectRoot, 'app/dev/shared-markdown.tsx'), 'utf8')
+  const transcript = fs.readFileSync(path.join(projectRoot, 'components/chat/SharedTranscriptProofMode.tsx'), 'utf8')
+
+  assert.match(route, /if \(!__DEV__\) return <Redirect href="\/" \/>/)
+  assert.match(route, /Saved math:/)
+  assert.match(route, /Unsafe script link/)
+  assert.match(route, /\| Markdown table \| Shared renderer \|/)
+  assert.match(route, /~~~ts/)
+  assert.match(route, /SharedTranscriptProofMode/)
+  assert.match(route, /\{mode === 'markdown'\s*\?\s*<SharedMarkdownConversation/)
+  assert.match(route, /mode === 'markdown' \? <>[\s\S]*Append stream chunk[\s\S]*Finish stream[\s\S]*<\/> : null/)
+  assert.match(transcript, /useFocusEffect\(useCallback/)
+  assert.match(transcript, /Crypto\.randomUUID\(\)/)
+  assert.match(transcript, /focusNonce = `\$\{mountNonce\}_focus_\$\{focusEpoch\.current\}`/)
+  assert.match(transcript, /focusEpoch\.current \+= 1/)
+  assert.match(transcript, /controller\.invalidate\(\)/)
+  assert.match(transcript, /allowedActions: \['copy'\]/)
+  assert.match(transcript, /supportedActions: context\.allowedActions/)
+  assert.match(transcript, /scopeKey\(scope\) !== scopeKey\(current\.context\)/)
+  assert.match(transcript, /ActivityIndicator/)
+  assert.match(transcript, /theme\.background/)
+  assert.match(transcript, /proof-assistant-alternate/)
+  assert.match(transcript, /\| Item \| Value \|/)
+  assert.match(transcript, /```ts/)
+  assert.match(transcript, /\\frac\{1\}\{2\}/)
+  assert.match(transcript, /Synthetic \$\{label\} section \$\{index \+ 1\}/)
+  assert.doesNotMatch(transcript, /useAuth|useWorkspace|useConvex|fetch\s*\(/)
+})
+
 test('selection fallback waits for detached endpoints and maps exact boundaries consistently', () => {
   const anchorNode = { connected: true }
   const focusNode = { connected: true }

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
-const ts = require('typescript')
+const ts = require('../../node_modules/typescript')
 const vm = require('node:vm')
 
 const root = path.resolve(__dirname, '..')
@@ -28,7 +28,10 @@ function load(file) {
           loadFile('../packages/overlay-chat-core/src/visual-sequence.ts'),
         )
       }
-      if (!id.startsWith('.')) return require(id)
+      if (!id.startsWith('.')) {
+        if (id.startsWith('node:')) return require(id)
+        return require(require.resolve(id, { paths: [path.resolve(root, '..')] }))
+      }
       const base = path.resolve(path.dirname(filename), id)
       const candidate = [base, `${base}.ts`, `${base}.tsx`].find((item) => fs.existsSync(item) && fs.statSync(item).isFile())
       assert.ok(candidate, `Could not resolve ${id} from ${filename}`)
@@ -41,7 +44,37 @@ function load(file) {
 }
 
 const { createNativeTranscriptActionController, MAX_TRANSCRIPT_TEXT_LENGTH } = load('lib/nativeChatTranscriptActions.ts')
+const { createNativeTranscriptDomSnapshot } = load('lib/nativeChatTranscriptProjection.ts')
 const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+const { buildAutomationDraftFromTurn } = load('../src/features/automations/lib/automation-drafts.ts')
+const { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH } = load('lib/nativeTranscriptLimits.ts')
+
+function realAutomationDraft() {
+  return buildAutomationDraftFromTurn({ userText: 'Create a daily tech news digest email using Gmail' })
+}
+
+function realAutomationView(draft) {
+  return toNativeChatTranscriptView([
+    { id: 'real-user', turnId: 'real-automation-turn', role: 'user', content: 'Create a daily tech news digest email using Gmail', timestamp: 10, mode: 'act' },
+    {
+      id: 'real-assistant', turnId: 'real-automation-turn', role: 'assistant', content: 'Automation draft ready', timestamp: 20,
+      modelId: 'provider/model', status: 'completed', toolInvocations: [{
+        toolCallId: 'real-automation-tool-key', toolName: 'draft_automation_from_chat', state: 'output-available',
+        toolOutput: { success: true, draft },
+      }],
+    },
+  ])
+}
+
+function realCitationView(sourceCitations) {
+  return toNativeChatTranscriptView([
+    { id: 'citation-user', turnId: 'citation-turn', role: 'user', content: 'Find sources', timestamp: 10, mode: 'act' },
+    {
+      id: 'citation-assistant', turnId: 'citation-turn', role: 'assistant', content: 'Sources found', timestamp: 20,
+      modelId: 'provider/model', status: 'completed', sourceCitations,
+    },
+  ])
+}
 
 function fixture() {
   const draft = { kind: 'skill', draft: { name: 'Skill', description: '', instructions: 'Do this', confidence: 'high', detectedIntegrations: [], reason: 'reason' } }
@@ -49,9 +82,10 @@ function fixture() {
     workspaceId: 'workspace-a',
     conversationId: 'chat-a',
     mountNonce: 'nonce-a',
+    focusNonce: 'focus-a',
     focused: true,
     mounted: true,
-    allowedActions: ['copy', 'download-text', 'open-link', 'reply', 'open-asset', 'open-source', 'open-draft', 'keyboard-dismiss'],
+    allowedActions: ['copy', 'download-text', 'open-link', 'reply', 'jump-to-reply', 'open-asset', 'open-source', 'open-draft', 'keyboard-dismiss'],
     view: {
       version: 1,
       exchanges: [{
@@ -76,7 +110,7 @@ function fixture() {
   const calls = []
   let openedDraftToken = null
   const handlers = Object.fromEntries([
-    'copyText', 'downloadText', 'openLink', 'reply', 'openAsset', 'openSource', 'openDraft', 'saveDraft', 'dismissKeyboard',
+    'copyText', 'downloadText', 'openLink', 'reply', 'jumpToReply', 'openAsset', 'openSource', 'openDraft', 'saveDraft', 'dismissKeyboard',
   ].map((name) => [name, async (...args) => {
     if (name === 'openDraft') openedDraftToken = args[2]
     calls.push([name, ...args])
@@ -89,8 +123,8 @@ function fixture() {
   })
   const request = (kind, fields = {}) => ({
     ...(kind === 'keyboard-dismiss'
-      ? { kind, workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', intent: 'user-drag' }
-      : { kind, workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', exchangeId: 'exchange-a' }),
+      ? { kind, workspaceId: context.workspaceId, conversationId: context.conversationId, mountNonce: context.mountNonce, focusNonce: context.focusNonce, intent: 'user-drag' }
+      : { kind, workspaceId: context.workspaceId, conversationId: context.conversationId, mountNonce: context.mountNonce, focusNonce: context.focusNonce, exchangeId: 'exchange-a' }),
     ...(kind === 'open-asset' || kind === 'keyboard-dismiss' ? {} : { target: { kind: 'response', responseId: 'response-a' } }),
     ...fields,
   })
@@ -112,6 +146,7 @@ test('copies only a bounded request for a known target and resolves after the na
     target: request.target,
     exchangeId: request.exchangeId,
     mountNonce: request.mountNonce,
+    focusNonce: request.focusNonce,
     conversationId: request.conversationId,
     workspaceId: request.workspaceId,
     kind: request.kind,
@@ -158,6 +193,40 @@ test('rejects stale scope, target, blur, unmount, and revoked action state', asy
   assert.equal((await f.controller.dispatch(f.request('reply', { conversationId: 'chat-b' }))).error, 'stale-scope')
   f.context.allowedActions = f.context.allowedActions.filter((item) => item !== 'reply')
   assert.equal((await f.controller.dispatch(request)).error, 'unsupported')
+})
+
+test('focus epochs reject delayed Copy, Download, and Draft after blur and refocus', async () => {
+  for (const kind of ['copy', 'download-text', 'open-draft']) {
+    const f = fixture()
+    let finish
+    const delayed = new Promise((resolve) => { finish = resolve })
+    if (kind === 'copy') f.handlers.copyText = () => delayed
+    if (kind === 'download-text') f.handlers.downloadText = () => delayed
+    if (kind === 'open-draft') f.handlers.openDraft = () => delayed
+    const request = f.request(kind, kind === 'copy'
+      ? { target: { kind: 'user', userId: 'user-a' }, text: 'prompt' }
+      : kind === 'download-text' ? { filename: 'answer.txt', text: 'answer' } : { toolKey: 'tool-key-a' })
+    const pending = f.controller.dispatch(request)
+    await Promise.resolve()
+    f.context.focused = false
+    f.context.focusNonce = 'focus-b'
+    f.context.focused = true
+    finish()
+    assert.equal((await pending).error, 'stale-scope', `${kind} completion from an old focus epoch`)
+    assert.equal((await f.controller.dispatch(request)).error, 'stale-scope', `${kind} callback from an old focus epoch`)
+  }
+
+  const f = fixture()
+  await f.controller.dispatch(f.request('open-draft', { toolKey: 'tool-key-a' }))
+  let finishSave
+  f.handlers.saveDraft = () => new Promise((resolve) => { finishSave = resolve })
+  const pendingSave = f.controller.saveDraft(f.getDraftToken(), f.draft)
+  await Promise.resolve()
+  f.context.focused = false
+  f.context.focusNonce = 'focus-b'
+  f.context.focused = true
+  finishSave()
+  assert.equal((await pendingSave).error, 'stale-scope', 'draft Save completion from an old focus epoch')
 })
 
 test('revalidates after asynchronous confirmation before opening a link', async () => {
@@ -246,6 +315,126 @@ test('reply receives only the trusted current target, never caller text', async 
   assert.equal(f.calls[0][1].target.kind, 'response')
 })
 
+test('jump-to-reply resolves only the current user reply parent and passes parent ID with scope', async () => {
+  const f = fixture()
+  const source = f.context.view.exchanges[0]
+  source.user.replyThread = { replyToTurnId: 'parent-turn', replySnippet: 'Parent context' }
+  const parent = structuredClone(source)
+  parent.id = 'parent-exchange'
+  parent.turnId = 'parent-turn'
+  parent.user.id = 'parent-user'
+  parent.user.replyThread = null
+  f.context.view.exchanges.push(parent)
+  const target = { kind: 'user', userId: source.user.id }
+  const request = f.request('jump-to-reply', { target })
+
+  assert.equal((await f.controller.dispatch(request)).ok, true)
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls)), [['jumpToReply', 'parent-exchange', {
+    workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', focusNonce: 'focus-a',
+  }]])
+
+  assert.equal((await f.controller.dispatch(f.request('jump-to-reply', { target: { kind: 'user', userId: 'parent-user' } }))).error, 'unknown-target')
+  assert.equal((await f.controller.dispatch(f.request('jump-to-reply', { exchangeId: 'parent-exchange', target }))).error, 'unknown-target')
+  for (const extra of [{ parentExchangeId: 'parent-exchange' }, { destinationTurnId: 'parent-turn' }, { url: 'https://untrusted.example' }]) {
+    assert.equal((await f.controller.dispatch({ ...request, ...extra })).error, 'invalid-request')
+  }
+  assert.equal((await f.controller.dispatch({ ...request, target: { kind: 'response', responseId: 'response-a' } })).error, 'invalid-request')
+  assert.equal(f.calls.length, 1)
+
+  source.user.replyThread = null
+  assert.equal((await f.controller.dispatch(request)).error, 'unknown-target')
+  source.user.replyThread = { replyToTurnId: 'removed-turn', replySnippet: 'Removed parent' }
+  assert.equal((await f.controller.dispatch(request)).error, 'unknown-target')
+  source.user.replyThread = { replyToTurnId: 'parent-turn', replySnippet: 'Ambiguous parent' }
+  f.context.view.exchanges.push({ ...structuredClone(parent), id: 'duplicate-parent' })
+  assert.equal((await f.controller.dispatch(request)).error, 'unknown-target')
+})
+
+test('jump-to-reply revalidates focus, parent, and capability after delayed confirmation', async () => {
+  const f = fixture()
+  const source = f.context.view.exchanges[0]
+  source.user.replyThread = { replyToTurnId: 'parent-turn', replySnippet: 'Parent context' }
+  const parent = structuredClone(source)
+  parent.id = 'parent-exchange'
+  parent.turnId = 'parent-turn'
+  parent.user.id = 'parent-user'
+  parent.user.replyThread = null
+  f.context.view.exchanges.push(parent)
+  const request = f.request('jump-to-reply', { target: { kind: 'user', userId: source.user.id } })
+  const createConfirmedController = (confirm) => createNativeTranscriptActionController({
+    getContext: () => f.context,
+    handlers: f.handlers,
+    confirmActions: ['jump-to-reply'],
+    confirm,
+    createDraftToken: () => 'unused-token',
+  })
+  const deferredConfirmation = () => {
+    let resolve
+    const promise = new Promise((finish) => { resolve = finish })
+    return { promise, resolve }
+  }
+
+  const parentConfirmation = deferredConfirmation()
+  const pendingParent = createConfirmedController(() => parentConfirmation.promise).dispatch(request)
+  f.context.view.exchanges = [source]
+  parentConfirmation.resolve(true)
+  assert.equal((await pendingParent).error, 'unknown-target')
+
+  f.context.view.exchanges.push(parent)
+  const capabilityConfirmation = deferredConfirmation()
+  const pendingCapability = createConfirmedController(() => capabilityConfirmation.promise).dispatch(request)
+  f.context.allowedActions = f.context.allowedActions.filter((action) => action !== 'jump-to-reply')
+  capabilityConfirmation.resolve(true)
+  assert.equal((await pendingCapability).error, 'unsupported')
+
+  f.context.allowedActions.push('jump-to-reply')
+  const scopeConfirmation = deferredConfirmation()
+  const pendingScope = createConfirmedController(() => scopeConfirmation.promise).dispatch(request)
+  f.context.conversationId = 'chat-next'
+  scopeConfirmation.resolve(true)
+  assert.equal((await pendingScope).error, 'stale-scope')
+  f.context.conversationId = 'chat-a'
+  const staleRequest = { ...request, focusNonce: 'old-focus' }
+  assert.equal((await f.controller.dispatch(staleRequest)).error, 'stale-scope')
+  f.context.focusNonce = 'focus-next'
+  assert.equal((await f.controller.dispatch(request)).error, 'stale-scope')
+  assert.equal(f.calls.length, 0)
+})
+
+test('jump-to-reply rejects parent identity changes while its native handler is pending', async () => {
+  const f = fixture()
+  const source = f.context.view.exchanges[0]
+  source.user.replyThread = { replyToTurnId: 'parent-turn', replySnippet: 'Parent context' }
+  const parent = structuredClone(source)
+  parent.id = 'parent-exchange'
+  parent.turnId = 'parent-turn'
+  parent.user.id = 'parent-user'
+  parent.user.replyThread = null
+  const alternate = structuredClone(parent)
+  alternate.id = 'alternate-parent-exchange'
+  alternate.turnId = 'alternate-parent-turn'
+  f.context.view.exchanges.push(parent, alternate)
+
+  let finish
+  const completion = new Promise((resolve) => { finish = resolve })
+  let handlerCall
+  f.handlers.jumpToReply = async (parentExchangeId, actionScope) => {
+    handlerCall = { parentExchangeId, actionScope }
+    await completion
+  }
+  const request = f.request('jump-to-reply', { target: { kind: 'user', userId: source.user.id } })
+  const pending = f.controller.dispatch(request)
+  assert.equal(handlerCall.parentExchangeId, 'parent-exchange')
+  assert.equal(handlerCall.actionScope.workspaceId, 'workspace-a')
+  assert.equal(handlerCall.actionScope.conversationId, 'chat-a')
+  assert.equal(handlerCall.actionScope.mountNonce, 'nonce-a')
+  assert.equal(handlerCall.actionScope.focusNonce, 'focus-a')
+
+  source.user.replyThread = { replyToTurnId: 'alternate-parent-turn', replySnippet: 'Changed parent' }
+  finish()
+  assert.equal((await pending).error, 'unknown-target')
+})
+
 test('real adapter response IDs with model slashes resolve by exact target membership', async () => {
   const f = fixture()
   const view = toNativeChatTranscriptView([
@@ -262,6 +451,165 @@ test('real adapter response IDs with model slashes resolve by exact target membe
     text: 'selected answer',
   }))
   assert.equal(result.ok, true)
+})
+
+test('real news-digest automation graph opens and saves losslessly from its trusted adapter tool', async () => {
+  const draft = realAutomationDraft()
+  assert.ok(draft.graphSource.length > 256)
+  assert.equal((draft.graphSource.match(/step\d+\[/g) ?? []).length, 11)
+  const f = fixture()
+  f.context.view = realAutomationView(draft)
+  const exchange = f.context.view.exchanges[0]
+  const response = exchange.responses[0]
+  const request = f.request('open-draft', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    toolKey: 'real-automation-tool-key',
+  })
+  assert.equal((await f.controller.dispatch({ ...request, toolKey: 'wrong-tool-key' })).error, 'unknown-target')
+  assert.equal((await f.controller.dispatch(request)).ok, true)
+  const opened = f.calls.find(([name]) => name === 'openDraft')
+  assert.equal(JSON.stringify(opened?.[1]), JSON.stringify({ kind: 'automation', draft }))
+  const token = f.getDraftToken()
+  assert.equal((await f.controller.saveDraft(token, { kind: 'automation', draft })).ok, true)
+  const saved = f.calls.find(([name]) => name === 'saveDraft')
+  assert.equal(JSON.stringify(saved?.[1]), JSON.stringify({ kind: 'automation', draft }))
+  assert.equal(JSON.stringify(saved?.[2]), JSON.stringify({ workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', focusNonce: 'focus-a' }))
+
+  const oversized = { ...draft, graphSource: 'x'.repeat(MAX_AUTOMATION_GRAPH_SOURCE_LENGTH + 1) }
+  const oversizedFixture = fixture()
+  oversizedFixture.context.view = realAutomationView(oversized)
+  const oversizedExchange = oversizedFixture.context.view.exchanges[0]
+  const oversizedResponse = oversizedExchange.responses[0]
+  assert.equal((await oversizedFixture.controller.dispatch(oversizedFixture.request('open-draft', {
+    exchangeId: oversizedExchange.id,
+    target: { kind: 'response', responseId: oversizedResponse.id },
+    toolKey: 'real-automation-tool-key',
+  }))).error, 'unknown-target')
+})
+
+test('open-citation resolves only a current numeric key and passes trusted citation with its origin scope', async () => {
+  const f = fixture()
+  const citations = {
+    '1': { kind: 'file', sourceId: 'file-resource-1', title: 'Project plan', snippet: 'Trusted excerpt' },
+    '2': { kind: 'memory', sourceId: 'memory-resource-2', title: 'Saved preference' },
+  }
+  f.context.allowedActions.push('open-citation')
+  f.context.view = realCitationView(citations)
+  const exchange = f.context.view.exchanges[0]
+  const response = exchange.responses[0]
+  const opened = []
+  f.handlers.openCitation = async (...args) => opened.push(args)
+  const request = f.request('open-citation', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    citationKey: '1',
+  })
+  assert.equal(Object.hasOwn(request, 'sourceId'), false)
+  assert.equal(Object.hasOwn(request, 'citation'), false)
+  assert.equal((await f.controller.dispatch(request)).ok, true)
+  assert.equal(JSON.stringify(opened[0][0]), JSON.stringify(citations['1']))
+  assert.equal(JSON.stringify(opened[0][1]), JSON.stringify({ workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', focusNonce: 'focus-a' }))
+  assert.equal((await f.controller.dispatch({ ...request, citation: citations['1'] })).error, 'invalid-request')
+  assert.equal((await f.controller.dispatch({ ...request, href: '/app/files?file=file-resource-1' })).error, 'invalid-request')
+  assert.equal((await f.controller.dispatch({ ...request, citationKey: 'missing' })).error, 'invalid-request')
+  assert.equal((await f.controller.dispatch({ ...request, citationKey: '3' })).error, 'unknown-target')
+
+  response.sourceCitations['2'] = { kind: 'message', sourceId: 'message-resource-2' }
+  assert.equal((await f.controller.dispatch({ ...request, citationKey: '2' })).error, 'unknown-target')
+  response.sourceCitations['2'] = { kind: 'file', sourceId: '../invalid' }
+  assert.equal((await f.controller.dispatch({ ...request, citationKey: '2' })).error, 'unknown-target')
+  response.sourceCitations['2'] = { kind: 'memory', sourceId: 'memory-resource-2', extra: 'untrusted' }
+  assert.equal((await f.controller.dispatch({ ...request, citationKey: '2' })).ok, true)
+  assert.equal(JSON.stringify(opened[1][0]), JSON.stringify({ kind: 'memory', sourceId: 'memory-resource-2' }))
+})
+
+test('open-citation revalidates scope, target, capability, and strict IDs after confirmation', async () => {
+  const mutations = [
+    { error: 'stale-scope', change: (f) => { f.context.conversationId = 'chat-other' } },
+    { error: 'unknown-target', change: (f, response) => { delete response.sourceCitations['1'] } },
+    { error: 'unknown-target', change: (f, response) => { response.sourceCitations['1'].sourceId = '../invalid' } },
+    { error: 'unsupported', change: (f) => { f.context.allowedActions = f.context.allowedActions.filter((action) => action !== 'open-citation') } },
+  ]
+  for (const mutation of mutations) {
+    const f = fixture()
+    f.context.allowedActions.push('open-citation')
+    f.context.view = realCitationView({ '1': { kind: 'file', sourceId: 'file-resource-1', title: 'Plan' } })
+    const exchange = f.context.view.exchanges[0]
+    const response = exchange.responses[0]
+    let handlerCalls = 0
+    f.handlers.openCitation = async () => { handlerCalls += 1 }
+    const controller = createNativeTranscriptActionController({
+      getContext: () => f.context,
+      handlers: f.handlers,
+      confirmActions: ['open-citation'],
+      confirm: async () => { mutation.change(f, response); return true },
+      createDraftToken: () => 'citation-test-draft-token',
+    })
+    const result = await controller.dispatch(f.request('open-citation', {
+      exchangeId: exchange.id,
+      target: { kind: 'response', responseId: response.id },
+      citationKey: '1',
+    }))
+    assert.equal(result.error, mutation.error)
+    assert.equal(handlerCalls, 0)
+  }
+})
+
+test('long native citations are normalized identically for projection and controller dispatch', async () => {
+  const cyclicMetadata = {}
+  cyclicMetadata.self = cyclicMetadata
+  const sourceCitations = {
+    '7': {
+      kind: 'file',
+      sourceId: 'citation-resource-007',
+      title: 'T'.repeat(600),
+      snippet: 'S'.repeat(2_200),
+      secretSentinel: 'CITATION_SECRET_SENTINEL',
+      cyclicMetadata,
+    },
+  }
+  const view = realCitationView(sourceCitations)
+  const exchange = view.exchanges[0]
+  const response = exchange.responses[0]
+  const f = fixture()
+  f.context.view = view
+  f.context.allowedActions.push('open-citation')
+  const projectionView = structuredClone(view)
+
+  const projected = createNativeTranscriptDomSnapshot({
+    workspaceId: f.context.workspaceId,
+    conversationId: f.context.conversationId,
+    mountNonce: f.context.mountNonce,
+    focusNonce: f.context.focusNonce,
+    theme: 'dark',
+    view: projectionView,
+    supportedActions: ['open-citation'],
+    query: '',
+    scrollIntent: null,
+    assets: [],
+  })
+  const expectedCitation = {
+    kind: 'file',
+    sourceId: 'citation-resource-007',
+    title: 'T'.repeat(512),
+    snippet: 'S'.repeat(2_000),
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(projected.view.exchanges[0].responses[0].sourceCitations['7'])), expectedCitation)
+  assert.doesNotMatch(JSON.stringify(projected), /CITATION_SECRET_SENTINEL/)
+
+  const opened = []
+  f.handlers.openCitation = async (citation, scope) => { opened.push({ citation, scope }) }
+  const result = await f.controller.dispatch(f.request('open-citation', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    citationKey: '7',
+  }))
+  assert.equal(result.ok, true)
+  assert.deepEqual(JSON.parse(JSON.stringify(opened[0])), {
+    citation: expectedCitation,
+    scope: { workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', focusNonce: 'focus-a' },
+  })
 })
 
 test('real user-only adapter exchanges support user Copy, links, and trusted Reply without a response', async () => {
@@ -454,7 +802,7 @@ test('sources and keyboard dismiss require current supported native actions', as
   assert.equal((await f.controller.dispatch(f.request('open-source', { sourceId: 'source-a' }))).ok, true)
   assert.equal((await f.controller.dispatch(f.request('open-source', { sourceId: 'unknown' }))).error, 'unknown-target')
   assert.equal((await f.controller.dispatch(f.request('keyboard-dismiss'))).ok, true)
-  assert.equal((await f.controller.dispatch({ kind: 'keyboard-dismiss', workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', intent: 'programmatic-scroll' })).error, 'invalid-request')
+  assert.equal((await f.controller.dispatch({ kind: 'keyboard-dismiss', workspaceId: 'workspace-a', conversationId: 'chat-a', mountNonce: 'nonce-a', focusNonce: 'focus-a', intent: 'programmatic-scroll' })).error, 'invalid-request')
   for (const unsupported of ['delete-turn', 'branch', 'retry', 'continue', 'generated-ui-write', 'regenerate']) {
     assert.equal((await f.controller.dispatch(f.request(unsupported))).error, 'invalid-request')
   }

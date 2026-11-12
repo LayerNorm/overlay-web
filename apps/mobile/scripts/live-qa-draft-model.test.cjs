@@ -5,6 +5,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const test = require('node:test')
 const ts = require('typescript')
+const { loadNativeChatMessageMapper } = require('./native-chat-message-mapper-fixture.cjs')
 const root = path.resolve(__dirname, '..')
 const clean = value => JSON.parse(JSON.stringify(value))
 function loadCode(source, mocks = {}, globals = {}) {
@@ -33,6 +34,7 @@ function storage() {
   const service = loadCode(fs.readFileSync(path.join(root, 'services/chatStorage.ts'), 'utf8'), {
     '@react-native-async-storage/async-storage': {}, '@overlay/chat-core': {},
     './appApi': {}, '../../src/shared/chat/public-stream-projection': {}, './convexPagination': { queryAllPages: async () => [] }, '../lib/agentThread': {},
+    '../lib/toNativeChatMessage': loadNativeChatMessageMapper(),
     './chatTypes': { generateChatId: () => 'chat-generated' },
     './convexClient': {
       api: { chat: { personal: { rename: 'rename', setPreferences: 'preferences', create: 'create', getSummary: 'summary', getMessages: 'messages' } } },

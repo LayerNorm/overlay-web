@@ -74,35 +74,6 @@
   --ring: var(--muted-light);
   --radius: 0.5rem;
 }
-[data-theme='dark'] {
-  --background: #09090b;
-  --foreground: #f5f5f5;
-  --muted: #a1a1aa;
-  --muted-light: #71717a;
-  --border: #27272a;
-  --surface-elevated: #111113;
-  --surface-muted: #151518;
-  --skeleton-sheen: rgba(255, 255, 255, 0.06);
-  --surface-subtle: #1c1c20;
-  --sidebar-surface: #111113;
-  --overlay-scrim: rgba(0, 0, 0, 0.58);
-  --button-primary-bg: #3b3b42;
-  --button-primary-hover: #484850;
-  --button-primary-text: #ededf0;
-  --button-secondary-bg: #252529;
-  --button-secondary-hover: #303036;
-  --button-secondary-border: #27272a;
-  --button-secondary-text: #ededf0;
-  --toast-background: #1c1c20;
-  --toast-border: #38383f;
-  --input-background: #111113;
-  --input-border: #27272a;
-  --input-text: #f5f5f5;
-  --input-placeholder: #71717a;
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
-}
 @keyframes media-shimmer-slide {
   0% {
     transform: translateX(0);
@@ -1393,6 +1364,9 @@ body {
   .inset-0 {
     inset: 0px;
   }
+  .inset-2 {
+    inset: calc(var(--spacing) * 2);
+  }
   .inset-x-0 {
     inset-inline: 0px;
   }
@@ -1875,6 +1849,9 @@ body {
   .max-h-40 {
     max-height: calc(var(--spacing) * 40);
   }
+  .max-h-60 {
+    max-height: calc(var(--spacing) * 60);
+  }
   .max-h-72 {
     max-height: calc(var(--spacing) * 72);
   }
@@ -1904,6 +1881,9 @@ body {
   }
   .max-h-\[min\(240px\,var\(--radix-select-content-available-height\)\)\] {
     max-height: min(240px, var(--radix-select-content-available-height));
+  }
+  .max-h-full {
+    max-height: 100%;
   }
   .min-h-0 {
     min-height: 0px;
@@ -2151,6 +2131,9 @@ body {
   .max-w-56 {
     max-width: calc(var(--spacing) * 56);
   }
+  .max-w-\[24rem\] {
+    max-width: 24rem;
+  }
   .max-w-\[45\%\] {
     max-width: 45%;
   }
@@ -2213,6 +2196,9 @@ body {
   }
   .min-w-8 {
     min-width: calc(var(--spacing) * 8);
+  }
+  .min-w-12 {
+    min-width: calc(var(--spacing) * 12);
   }
   .min-w-30 {
     min-width: calc(var(--spacing) * 30);
@@ -2465,6 +2451,9 @@ body {
   }
   .gap-4 {
     gap: calc(var(--spacing) * 4);
+  }
+  .gap-5 {
+    gap: calc(var(--spacing) * 5);
   }
   .gap-6 {
     gap: calc(var(--spacing) * 6);
@@ -5003,6 +4992,9 @@ body {
     .sm\:gap-2\.5 {
       gap: calc(var(--spacing) * 2.5);
     }
+    .sm\:gap-6 {
+      gap: calc(var(--spacing) * 6);
+    }
     .sm\:rounded-2xl {
       border-radius: var(--radius-2xl);
     }
@@ -5026,6 +5018,9 @@ body {
     }
     .sm\:py-0 {
       padding-block: 0px;
+    }
+    .sm\:py-4 {
+      padding-block: calc(var(--spacing) * 4);
     }
     .sm\:py-6 {
       padding-block: calc(var(--spacing) * 6);
@@ -5762,6 +5757,16 @@ body {
 .shared-markdown-empty {
   color: var(--muted);
 }
+[data-native-copy-disabled="true"] [aria-label^="Copy"] {
+  display: none;
+}
+[data-native-download-disabled="true"] [aria-label="Download"],
+[data-native-reply-disabled="true"] [aria-label="Reply"] {
+  display: none;
+}
+[data-native-prompt-exchange="true"] [data-slot="message"][data-align="start"] {
+  display: none;
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
@@ -6230,4 +6235,33 @@ body {
       --tw-exit-translate-y: 0;
     }
   }
+}
+[data-theme='dark'] {
+  --background: #09090b;
+  --foreground: #f5f5f5;
+  --muted: #a1a1aa;
+  --muted-light: #71717a;
+  --border: #27272a;
+  --surface-elevated: #111113;
+  --surface-muted: #151518;
+  --skeleton-sheen: rgba(255, 255, 255, 0.06);
+  --surface-subtle: #1c1c20;
+  --sidebar-surface: #111113;
+  --overlay-scrim: rgba(0, 0, 0, 0.58);
+  --button-primary-bg: #3b3b42;
+  --button-primary-hover: #484850;
+  --button-primary-text: #ededf0;
+  --button-secondary-bg: #252529;
+  --button-secondary-hover: #303036;
+  --button-secondary-border: #27272a;
+  --button-secondary-text: #ededf0;
+  --toast-background: #1c1c20;
+  --toast-border: #38383f;
+  --input-background: #111113;
+  --input-border: #27272a;
+  --input-text: #f5f5f5;
+  --input-placeholder: #71717a;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
 }

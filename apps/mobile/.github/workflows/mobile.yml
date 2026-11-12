@@ -37,6 +37,9 @@ jobs:
       - name: Install mobile
         working-directory: overlay-web/overlay-mobile
         run: npm ci --no-audit --no-fund
+      - name: Install Chromium for mounted transcript tests
+        working-directory: overlay-web/overlay-mobile
+        run: npx playwright install --with-deps chromium
       - name: Build shared Markdown CSS
         working-directory: overlay-web/overlay-mobile
         run: npm run build:shared-markdown-css
@@ -44,7 +47,8 @@ jobs:
         working-directory: overlay-web/overlay-mobile
         run: |
           npm run check
-          node --test scripts/*.test.cjs
+          node --test $(find scripts -maxdepth 1 -type f -name '*.test.cjs' ! -name 'native-chat-transcript-actions.test.cjs' -print | sort)
+          npm run test:native-transcript
           node scripts/lint-mobile.cjs
       - name: Export and inspect native bundles
         working-directory: overlay-web/overlay-mobile
@@ -53,8 +57,10 @@ jobs:
         run: |
           npx expo export --platform android --source-maps --no-bytecode --output-dir dist/android
           node scripts/verify-shared-markdown-assets.cjs --export-dir dist/android --platform android
+          node scripts/verify-native-transcript-reachability.cjs dist/android
           npx expo export --platform ios --source-maps --no-bytecode --output-dir dist/ios
           node scripts/verify-shared-markdown-assets.cjs --export-dir dist/ios --platform ios
+          node scripts/verify-native-transcript-reachability.cjs dist/ios
           node scripts/inspect-bundles.cjs dist/android dist/ios
       - uses: actions/upload-artifact@v4
         if: failure()

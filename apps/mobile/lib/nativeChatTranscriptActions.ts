@@ -6,6 +6,8 @@ import type {
 } from '@overlay/chat-core'
 import { getDraftFromToolBlock } from '@overlay/chat-core'
 import { validateNativeMarkdownLink } from './sharedMarkdownBridge'
+import { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH } from './nativeTranscriptLimits'
+import { isNativeTranscriptResourceId as validResourceId, normalizeNativeTranscriptCitation, type NativeTranscriptCitation } from './nativeTranscriptCitations'
 
 export const MAX_TRANSCRIPT_TEXT_LENGTH = 1_000_000
 export const MAX_TRANSCRIPT_FILENAME_LENGTH = 160
@@ -15,8 +17,10 @@ export type NativeTranscriptActionKind =
   | 'download-text'
   | 'open-link'
   | 'reply'
+  | 'jump-to-reply'
   | 'open-asset'
   | 'open-source'
+  | 'open-citation'
   | 'open-draft'
   | 'keyboard-dismiss'
 
@@ -24,6 +28,7 @@ interface ScopeRequest {
   workspaceId: string | null
   conversationId: string
   mountNonce: string
+  focusNonce: string
 }
 
 interface ExchangeRequest extends ScopeRequest {
@@ -36,16 +41,18 @@ export type NativeTranscriptActionTarget =
   | { kind: 'media'; outputId: string }
 
 type UserOrResponseTarget = Extract<NativeTranscriptActionTarget, { kind: 'user' | 'response' }>
+type UserTarget = Extract<NativeTranscriptActionTarget, { kind: 'user' }>
 type ResponseTarget = Extract<NativeTranscriptActionTarget, { kind: 'response' }>
 type NativeTranscriptMediaResult = NonNullable<ChatTranscriptExchangeView['media']>['results'][number]
-
 export type NativeTranscriptActionRequest =
   | (ExchangeRequest & { kind: 'copy'; target: UserOrResponseTarget; text: string })
   | (ExchangeRequest & { kind: 'download-text'; target: ResponseTarget; filename: string; text: string })
   | (ExchangeRequest & { kind: 'open-link'; target: UserOrResponseTarget; url: string })
   | (ExchangeRequest & { kind: 'reply'; target: NativeTranscriptActionTarget })
+  | (ExchangeRequest & { kind: 'jump-to-reply'; target: UserTarget })
   | (ExchangeRequest & { kind: 'open-asset'; assetHandle: string })
   | (ExchangeRequest & { kind: 'open-source'; target: ResponseTarget; sourceId: string })
+  | (ExchangeRequest & { kind: 'open-citation'; target: ResponseTarget; citationKey: string })
   | (ExchangeRequest & { kind: 'open-draft'; target: ResponseTarget; toolKey: string })
   | (ScopeRequest & { kind: 'keyboard-dismiss'; intent: 'user-drag' })
 
@@ -61,6 +68,7 @@ export interface NativeTranscriptCommittedContext {
   workspaceId: string | null
   conversationId: string
   mountNonce: string
+  focusNonce: string
   focused: boolean
   mounted: boolean
   allowedActions: readonly NativeTranscriptActionKind[]
@@ -95,6 +103,7 @@ export interface NativeTranscriptScope {
   workspaceId: string | null
   conversationId: string
   mountNonce: string
+  focusNonce: string
 }
 
 export interface NativeTranscriptActionHandlers {
@@ -102,8 +111,10 @@ export interface NativeTranscriptActionHandlers {
   downloadText?: (filename: string, text: string) => Promise<void>
   openLink?: (url: string) => Promise<void>
   reply?: (target: NativeTranscriptTrustedReplyTarget, scope: NativeTranscriptScope) => void | Promise<void>
+  jumpToReply?: (parentExchangeId: string, scope: NativeTranscriptScope) => void | Promise<void>
   openAsset?: (asset: NativeTranscriptAsset, scope: NativeTranscriptScope) => void | Promise<void>
   openSource?: (source: ChatTranscriptResponseView['sources'][number], scope: NativeTranscriptScope) => void | Promise<void>
+  openCitation?: (citation: NativeTranscriptCitation, scope: NativeTranscriptScope) => void | Promise<void>
   openDraft?: (draft: DraftModalState, scope: NativeTranscriptScope, draftToken: string) => void | Promise<void>
   saveDraft?: (draft: DraftModalState, scope: NativeTranscriptScope) => void | Promise<void>
   dismissKeyboard?: () => void | Promise<void>
@@ -137,11 +148,6 @@ function stableSerialize(value: unknown): string {
   return JSON.stringify(value) ?? 'null'
 }
 
-function validResourceId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 256 && value.trim() === value &&
-    !/[\u0000-\u001f\u007f/\\]/.test(value) && !value.includes('..') && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(value)
-}
-
 function validDisplayTargetId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 512 && value.trim() === value &&
     !/[\u0000-\u001f\u007f]/.test(value)
@@ -151,6 +157,10 @@ function validAssetHandle(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{16,200}$/.test(value)
 }
 
+function validCitationKey(value: unknown): value is string {
+  return typeof value === 'string' && /^(?:0|[1-9][0-9]{0,5})$/.test(value)
+}
+
 function isResponseTarget(value: unknown): value is ResponseTarget {
   return isRecord(value) && value.kind === 'response' && hasExactKeys(value, ['kind', 'responseId']) &&
     validDisplayTargetId(value.responseId)
@@ -158,8 +168,12 @@ function isResponseTarget(value: unknown): value is ResponseTarget {
 
 function isUserOrResponseTarget(value: unknown): value is UserOrResponseTarget {
   if (!isRecord(value)) return false
-  if (value.kind === 'user') return hasExactKeys(value, ['kind', 'userId']) && validDisplayTargetId(value.userId)
+  if (value.kind === 'user') return isUserTarget(value)
   return isResponseTarget(value)
+}
+
+function isUserTarget(value: unknown): value is UserTarget {
+  return isRecord(value) && value.kind === 'user' && hasExactKeys(value, ['kind', 'userId']) && validDisplayTargetId(value.userId)
 }
 
 function isActionTarget(value: unknown): value is NativeTranscriptActionTarget {
@@ -190,7 +204,7 @@ function validDraftState(value: unknown): value is DraftModalState {
     !Array.isArray(draft.missingFields) || draft.missingFields.length > 100 ||
     !draft.missingFields.every((item) => typeof item === 'string' && item.length <= 512) ||
     typeof draft.timezone !== 'string' || draft.timezone.length > 128 ||
-    (draft.graphSource !== undefined && (typeof draft.graphSource !== 'string' || draft.graphSource.length > 256)) ||
+    (draft.graphSource !== undefined && (typeof draft.graphSource !== 'string' || draft.graphSource.length > MAX_AUTOMATION_GRAPH_SOURCE_LENGTH)) ||
     !isRecord(draft.schedule)
   ) return false
   const schedule = draft.schedule
@@ -217,7 +231,7 @@ function validFilename(value: unknown): value is string {
 }
 
 function requestKeys(kind: string): readonly string[] | null {
-  const scope = ['kind', 'workspaceId', 'conversationId', 'mountNonce']
+  const scope = ['kind', 'workspaceId', 'conversationId', 'mountNonce', 'focusNonce']
   const exchange = [...scope, 'exchangeId']
   switch (kind) {
     case 'keyboard-dismiss': return [...scope, 'intent']
@@ -225,8 +239,10 @@ function requestKeys(kind: string): readonly string[] | null {
     case 'download-text': return [...exchange, 'target', 'filename', 'text']
     case 'open-link': return [...exchange, 'target', 'url']
     case 'reply': return [...exchange, 'target']
+    case 'jump-to-reply': return [...exchange, 'target']
     case 'open-asset': return [...exchange, 'assetHandle']
     case 'open-source': return [...exchange, 'target', 'sourceId']
+    case 'open-citation': return [...exchange, 'target', 'citationKey']
     case 'open-draft': return [...exchange, 'target', 'toolKey']
     default: return null
   }
@@ -245,6 +261,8 @@ interface NativeTranscriptValidation {
   context: NativeTranscriptCommittedContext
   target: NativeTranscriptResolvedTarget | null
   draft?: DraftModalState
+  citation?: NativeTranscriptCitation
+  replyParentExchangeId?: string
 }
 
 function findTarget(
@@ -275,7 +293,7 @@ function validateRequestShape(value: unknown): value is NativeTranscriptActionRe
   if (!keys || !hasExactKeys(value, keys)) return false
   if (
     !(value.workspaceId === null || validResourceId(value.workspaceId)) ||
-    !validResourceId(value.conversationId) || !validResourceId(value.mountNonce)
+    !validResourceId(value.conversationId) || !validResourceId(value.mountNonce) || !validResourceId(value.focusNonce)
   ) return false
   if (value.kind === 'keyboard-dismiss') return value.intent === 'user-drag'
   if (!validDisplayTargetId(value.exchangeId)) return false
@@ -284,8 +302,10 @@ function validateRequestShape(value: unknown): value is NativeTranscriptActionRe
     case 'download-text': return isResponseTarget(value.target) && validFilename(value.filename) && typeof value.text === 'string' && value.text.length > 0 && value.text.length <= MAX_TRANSCRIPT_TEXT_LENGTH
     case 'open-link': return isUserOrResponseTarget(value.target) && validateNativeMarkdownLink(value.url) !== null
     case 'reply': return isActionTarget(value.target)
+    case 'jump-to-reply': return isUserTarget(value.target)
     case 'open-asset': return validAssetHandle(value.assetHandle)
     case 'open-source': return isResponseTarget(value.target) && validDisplayTargetId(value.sourceId)
+    case 'open-citation': return isResponseTarget(value.target) && validCitationKey(value.citationKey)
     case 'open-draft': return isResponseTarget(value.target) && validDisplayTargetId(value.toolKey)
     default: return false
   }
@@ -293,7 +313,7 @@ function validateRequestShape(value: unknown): value is NativeTranscriptActionRe
 
 function scopeMatches(context: NativeTranscriptCommittedContext, request: NativeTranscriptActionRequest): boolean {
   return context.mounted && context.workspaceId === request.workspaceId &&
-    context.conversationId === request.conversationId && context.mountNonce === request.mountNonce
+    context.conversationId === request.conversationId && context.mountNonce === request.mountNonce && context.focusNonce === request.focusNonce
 }
 
 function contextScope(context: NativeTranscriptCommittedContext): NativeTranscriptScope {
@@ -301,6 +321,7 @@ function contextScope(context: NativeTranscriptCommittedContext): NativeTranscri
     workspaceId: context.workspaceId,
     conversationId: context.conversationId,
     mountNonce: context.mountNonce,
+    focusNonce: context.focusNonce,
   }
 }
 
@@ -310,8 +331,10 @@ function handlerAvailable(handlers: NativeTranscriptActionHandlers, kind: Native
     case 'download-text': return typeof handlers.downloadText === 'function'
     case 'open-link': return typeof handlers.openLink === 'function'
     case 'reply': return typeof handlers.reply === 'function'
+    case 'jump-to-reply': return typeof handlers.jumpToReply === 'function'
     case 'open-asset': return typeof handlers.openAsset === 'function'
     case 'open-source': return typeof handlers.openSource === 'function'
+    case 'open-citation': return typeof handlers.openCitation === 'function'
     case 'open-draft': return typeof handlers.openDraft === 'function' && typeof handlers.saveDraft === 'function'
     case 'keyboard-dismiss': return typeof handlers.dismissKeyboard === 'function'
   }
@@ -355,8 +378,23 @@ export function createNativeTranscriptActionController(options: NativeTranscript
     }
     const target = findTarget(context, value.exchangeId, value.target)
     if (!target) return safeError('unknown-target')
+    if (value.kind === 'jump-to-reply') {
+      const replyToTurnId = target.user.replyThread?.replyToTurnId
+      const parentExchanges = typeof replyToTurnId === 'string' && validDisplayTargetId(replyToTurnId)
+        ? context.view.exchanges.filter((exchange) => exchange.id !== target.exchange.id && exchange.turnId === replyToTurnId)
+        : []
+      const parent = parentExchanges.length === 1 ? parentExchanges[0] : null
+      if (!parent || !validDisplayTargetId(parent.id)) return safeError('unknown-target')
+      return { request: value, context, target, replyParentExchangeId: parent.id }
+    }
     if (value.kind === 'open-source' && !target.response?.sources.some((source) => source.id === value.sourceId &&
       (source.sourceKind === 'url' ? Boolean(validateNativeMarkdownLink(source.url)) : validResourceId(source.sourceId)))) return safeError('unknown-target')
+    if (value.kind === 'open-citation') {
+      const citations = target.response?.sourceCitations
+      const citation = citations && Object.hasOwn(citations, value.citationKey) ? normalizeNativeTranscriptCitation(citations[value.citationKey]) : null
+      if (!citation) return safeError('unknown-target')
+      return { request: value, context, target, citation }
+    }
     if (value.kind === 'open-draft') {
       const draft = draftFromToolTarget(target, value.toolKey)
       if (!draft) return safeError('unknown-target')
@@ -380,6 +418,8 @@ export function createNativeTranscriptActionController(options: NativeTranscript
       return safeError('invalid-request')
     }
     const openingDraftFingerprint = checked.draft ? stableSerialize(checked.draft) : null
+    const openingCitationFingerprint = checked.citation ? stableSerialize(checked.citation) : null
+    const openingReplyParentExchangeId = checked.replyParentExchangeId ?? null
     const key = stableSerialize(request)
     const existing = pending.get(key)
     if (existing) return existing
@@ -391,15 +431,20 @@ export function createNativeTranscriptActionController(options: NativeTranscript
           const afterConfirmation = validate(request)
           if ('ok' in afterConfirmation) return afterConfirmation
           if (request.kind === 'open-draft' && stableSerialize(afterConfirmation.draft) !== openingDraftFingerprint) return safeError('unknown-target')
+          if (request.kind === 'open-citation' && stableSerialize(afterConfirmation.citation) !== openingCitationFingerprint) return safeError('unknown-target')
+          if (request.kind === 'jump-to-reply' && afterConfirmation.replyParentExchangeId !== openingReplyParentExchangeId) return safeError('unknown-target')
         }
         const current = validate(request)
         if ('ok' in current) return current
         if (request.kind === 'open-draft' && stableSerialize(current.draft) !== openingDraftFingerprint) return safeError('unknown-target')
+        if (request.kind === 'open-citation' && stableSerialize(current.citation) !== openingCitationFingerprint) return safeError('unknown-target')
+        if (request.kind === 'jump-to-reply' && current.replyParentExchangeId !== openingReplyParentExchangeId) return safeError('unknown-target')
         switch (request.kind) {
           case 'copy': await options.handlers.copyText!(request.text); break
           case 'download-text': await options.handlers.downloadText!(request.filename, request.text); break
           case 'open-link': await options.handlers.openLink!(validateNativeMarkdownLink(request.url)!); break
           case 'reply': await options.handlers.reply!(current.target!, contextScope(current.context)); break
+          case 'jump-to-reply': await options.handlers.jumpToReply!(current.replyParentExchangeId!, contextScope(current.context)); break
           case 'open-asset': {
             const asset = current.context.assets.find((item) => item.handle === request.assetHandle && item.exchangeId === request.exchangeId &&
               validAssetHandle(item.handle) && validResourceId(item.resourceId) && ['file', 'output'].includes(item.resourceKind) && item.previewable)
@@ -413,6 +458,7 @@ export function createNativeTranscriptActionController(options: NativeTranscript
             await options.handlers.openSource!(source, contextScope(current.context))
             break
           }
+          case 'open-citation': await options.handlers.openCitation!(current.citation!, contextScope(current.context)); break
           case 'open-draft': {
             const originScope = contextScope(current.context)
             const token = options.createDraftToken()
@@ -441,7 +487,10 @@ export function createNativeTranscriptActionController(options: NativeTranscript
           case 'keyboard-dismiss': await options.handlers.dismissKeyboard!(); break
         }
         const afterAction = validate(request)
-        return 'ok' in afterAction ? afterAction : { ok: true }
+        if ('ok' in afterAction) return afterAction
+        if (request.kind === 'open-citation' && stableSerialize(afterAction.citation) !== openingCitationFingerprint) return safeError('unknown-target')
+        if (request.kind === 'jump-to-reply' && afterAction.replyParentExchangeId !== openingReplyParentExchangeId) return safeError('unknown-target')
+        return { ok: true }
       } catch {
         return safeError('action-failed')
       }
@@ -473,7 +522,8 @@ export function createNativeTranscriptActionController(options: NativeTranscript
 
     function validateOrigin(context: NativeTranscriptCommittedContext | null): NativeTranscriptError | null {
       if (invalidated || !context || !context.mounted || context.workspaceId !== draftOrigin.workspaceId ||
-        context.conversationId !== draftOrigin.conversationId || context.mountNonce !== draftOrigin.mountNonce) return 'stale-scope'
+        context.conversationId !== draftOrigin.conversationId || context.mountNonce !== draftOrigin.mountNonce ||
+        context.focusNonce !== draftOrigin.focusNonce) return 'stale-scope'
       if (!context.focused) return 'unfocused'
       if (!context.allowedActions.includes('open-draft') || !handlerAvailable(options.handlers, 'open-draft')) return 'unsupported'
       const exchange = context.view.exchanges.find((item) => item.id === draftOrigin.exchangeId)
@@ -503,6 +553,7 @@ export function createNativeTranscriptActionController(options: NativeTranscript
           workspaceId: origin.workspaceId,
           conversationId: origin.conversationId,
           mountNonce: origin.mountNonce,
+          focusNonce: origin.focusNonce,
         })
       } catch {
         let afterFailure: NativeTranscriptCommittedContext | null

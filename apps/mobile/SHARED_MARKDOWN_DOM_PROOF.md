@@ -2,13 +2,19 @@
 
 ## Bundled styles and fonts
 
-`npm run build:shared-markdown-css` reads web revision `309c6902eb98b6201568511fe3805a5b7525c2b1` (the `scripts/prepare-eas-workspace.cjs` pin) and embeds local Geist, Libre Baskerville, and KaTeX fonts into generated CSS data URLs. It verifies every CSS URL, rejects remote imports, checks the installed KaTeX version against the pinned web lockfile, and fails if a local target is missing. Metro maps the shared renderer's KaTeX stylesheet import to that generated, self-contained CSS.
+`npm run build:shared-markdown-css` reads web revision `1db4b5e346c89676d205862d6974792dfebf056f` (the `scripts/prepare-eas-workspace.cjs` pin) and embeds local Geist, Libre Baskerville, and KaTeX fonts into generated CSS data URLs. It verifies every CSS URL, rejects remote imports, checks the installed KaTeX version against the pinned web lockfile, and fails if a local target is missing. Metro maps the shared renderer's KaTeX stylesheet import to that generated, self-contained CSS.
 
 CI builds this CSS before tests and exports. It exports Android and iOS with `EXPO_NO_BUNDLE_SPLITTING=1` and verifies each platform's generated DOM CSS, font payloads, local URL targets, and native bundle metadata before running the existing bundle inspection.
 
 ## Development fixture
 
 Open exactly `overlay://dev/shared-markdown`. The URI is development-only and exact-match allowlisted; it does not enable arbitrary `/dev` routes. The fixture is isolated from Auth, Convex, and application API providers so it can be opened signed out without app API calls.
+
+The same route includes a separately labeled shared-transcript proof mode using synthetic conversation data and the native scoped action controller. Copy is the only supported action and writes the selected synthetic text to the system clipboard; no backend or session state is used.
+
+## Native transcript tests
+
+Run `npm run test:native-transcript` for the action-controller suite and the mounted React/Chromium transcript suite. Mobile locks `tsx`, `esbuild`, and Playwright; React, React DOM, and `react-test-renderer` resolve from the pinned parent Web checkout and are version-checked by the test preload. Install Chromium locally with `npx playwright install chromium`; CI installs Chromium and its Linux dependencies.
 
 ## Metro and export behavior
 
@@ -20,4 +26,4 @@ Shared external Markdown links may display a Google S2 favicon via `WebSourceToo
 
 ## Checks
 
-Run `npm run build:shared-markdown-css`, `npm run check`, `node --test scripts/*.test.cjs`, and `node scripts/lint-mobile.cjs`. The proof test registers its TypeScript, React, and style hooks locally, so it also runs under the CI test glob without changing other tests. For local Android proof export, run `npm run export:android:shared-markdown`; CI exports both platforms and invokes `scripts/verify-shared-markdown-assets.cjs` for each.
+Run `npm run build:shared-markdown-css`, `npm run check`, the remaining CJS tests, `npm run test:native-transcript`, and `node scripts/lint-mobile.cjs`. The proof test registers its TypeScript, React, and style hooks locally. CI exports both platforms and invokes the CSS asset verifier, the transcript source-map reachability verifier, and the credential-safe bundle inspection.

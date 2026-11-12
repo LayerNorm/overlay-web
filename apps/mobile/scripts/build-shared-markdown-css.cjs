@@ -73,6 +73,22 @@ function inlineKatexFonts(postcss, webRoot) {
   return { css: root.toString(), fontFaceCount }
 }
 
+function moveDarkThemeTokensAfterLightDefaults(postcss, css, inputPath) {
+  const root = postcss.parse(css, { from: inputPath })
+  const darkThemeRules = []
+  root.walkRules((rule) => {
+    if (rule.parent === root && /^\[data-theme\s*=\s*(['"]?)dark\1\]$/.test(rule.selector.trim())) {
+      darkThemeRules.push(rule)
+    }
+  })
+  if (darkThemeRules.length !== 1) throw new Error(`Expected one root dark theme token rule, found ${darkThemeRules.length}`)
+  for (const rule of darkThemeRules) {
+    rule.remove()
+    root.append(rule)
+  }
+  return root.toString()
+}
+
 async function main() {
   if (!revisionMatch) throw new Error('Could not read the EAS web revision pin')
 
@@ -147,7 +163,8 @@ async function main() {
     to: outputPath,
     map: false,
   })
-  const localFonts = inlineLocalFontUrls(result.css, outputPath, appRoot)
+  const themedCss = moveDarkThemeTokensAfterLightDefaults(postcss, result.css, outputPath)
+  const localFonts = inlineLocalFontUrls(themedCss, outputPath, appRoot)
   const katex = inlineKatexFonts(postcss, webRoot)
   if (/@import\s+(?:url\()?['"]?https?:\/\//i.test(localFonts.css) || /url\(\s*['"]?https?:\/\//i.test(localFonts.css)) {
     throw new Error('Generated shared Markdown CSS contains a remote asset')

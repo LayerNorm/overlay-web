@@ -5,6 +5,7 @@ const path = require('node:path')
 const test = require('node:test')
 const vm = require('node:vm')
 const ts = require('typescript')
+const { loadNativeChatMessageMapper } = require('./native-chat-message-mapper-fixture.cjs')
 const root = path.resolve(__dirname, '..')
 
 function load(file, dependencies = {}, globals = {}) {
@@ -211,6 +212,7 @@ function fixture() {
     '../lib/agentThread': load('lib/agentThread.ts', { '@overlay/chat-core': {}, '../../src/shared/agents/native-agent-approval': {}, '../../src/shared/agents/native-agent-input': {}, '../../src/shared/agents/run-questions': {} }),
     '@react-native-async-storage/async-storage': { default: { getItem: async () => null, setItem: async () => {} } },
     '@overlay/chat-core': { normalizeTranscriptAssistantParts: () => ({ blocks: [], sources: [] }) },
+    '../lib/toNativeChatMessage': loadNativeChatMessageMapper(),
     './convexClient': convex,
     './convexPagination': load('services/convexPagination.ts', { './convexClient': convex }),
     './appApi': {}, './chatTypes': { generateChatId: () => 'draft-1' },
