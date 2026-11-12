@@ -18,6 +18,7 @@ import { BootScreen, OfflineBanner, WorkspaceGate } from './EntryScreens'
 import { Button, T } from './primitives'
 
 let bootCompleted = false
+let newChatIntentSequence = 0
 
 function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
   const { theme, isDark } = useTheme()
@@ -34,6 +35,13 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
   const navigate = (path: string) => {
     closeDrawer()
     router.push(path as never)
+  }
+  const navigateToNewChat = () => {
+    closeDrawer()
+    router.push({
+      pathname: '/(tabs)/chat',
+      params: { newChatIntent: `${Date.now()}-${++newChatIntentSequence}` },
+    } as never)
   }
   const onChat = (chat: SidebarChat) =>
     navigate(chat.kind === 'personal' ? `/chat/${chat.id}` : `/${chat.kind}/${chat.id}`)
@@ -65,7 +73,7 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
       onClose={closeDrawer}
       onAccount={onAccount}
       onSearch={() => navigate('/search')}
-      onAdd={() => navigate(panel === 'agents' ? '/agent/new' : '/(tabs)/chat')}
+      onAdd={() => panel === 'agents' ? navigate('/agent/new') : navigateToNewChat()}
       onAgent={(id, create) => {
         if (!activeWorkspaceId) return
         setActionError(null)

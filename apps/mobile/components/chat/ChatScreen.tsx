@@ -311,8 +311,7 @@ function ownedPromotionMatchesChat(promotion: OwnedDraftPromotion, chat: Chat | 
 }
 
 let lastOpenedWriteQueue: Promise<void> = Promise.resolve()
-
-export function ChatScreen(props: { conversationId?: string; routeKind: 'tab' | 'detail' }): React.ReactElement {
+export function ChatScreen(props: { conversationId?: string; newChatIntent?: string; routeKind: 'tab' | 'detail' }): React.ReactElement {
   const { activeWorkspaceId } = useWorkspace()
   const { user } = useAuth()
   return <ChatScreenOwner key={`${user?.id ?? 'signed-out'}:${activeWorkspaceId ?? 'no-workspace'}`} {...props} />
@@ -320,13 +319,15 @@ export function ChatScreen(props: { conversationId?: string; routeKind: 'tab' | 
 
 function ChatScreenOwner({
   conversationId,
+  newChatIntent,
   routeKind,
 }: {
   conversationId?: string
+  newChatIntent?: string
   routeKind: 'tab' | 'detail'
 }): React.ReactElement {
   const router = useRouter()
-  const navigation = useNavigation<{ setParams: (params: { id: string }) => void }>()
+  const navigation = useNavigation<{ setParams: (params: { id?: string; newChatIntent?: string | undefined }) => void }>()
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels, imageModels, videoModels, uiSettings, capabilities } = useAppSession()
@@ -895,13 +896,28 @@ function ChatScreenOwner({
     setAttachmentError(null)
   }, [activeWorkspaceId])
 
+  const startsNewChat = routeKind === 'tab' && Boolean(newChatIntent)
+  const handledNewChatIntentRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!startsNewChat || !newChatIntent) {
+      handledNewChatIntentRef.current = null
+      return
+    }
+    if (handledNewChatIntentRef.current === newChatIntent) return
+    handledNewChatIntentRef.current = newChatIntent
+    dataEpochRef.current += 1
+    invalidateOperations()
+    clearConversationScope()
+  }, [clearConversationScope, invalidateOperations, newChatIntent, startsNewChat])
+
   useEffect(() => {
     if (!nativeReady || !activeWorkspaceId) {
       initializedRouteKeyRef.current = null
       completedRouteKeyRef.current = null
       return
     }
-    const routeKey = `${activeWorkspaceId}:${routeKind}:${conversationId ?? 'tab-root'}`
+    const baseRouteKey = `${activeWorkspaceId}:${routeKind}:${conversationId ?? 'tab-root'}`
+    const routeKey = startsNewChat ? `${baseRouteKey}:new-chat:${newChatIntent}` : baseRouteKey
     const ownedPromotion = ownedDraftPromotionRef.current
     const promotionCaughtUp = ownedPromotion?.workspaceId === activeWorkspaceId &&
       ownedPromotion.sourceRouteKind === routeKind && ownedPromotion.conversationId === conversationId &&
@@ -962,6 +978,12 @@ function ChatScreenOwner({
           return
         }
 
+        if (startsNewChat) {
+          await createConversation(models, { operation, preserveComposer })
+          if (operation.isCurrent() && preserveComposer) readinessResumeRouteRef.current = null
+          return
+        }
+
         const lastOpenedChatId = await getLastOpenedChatId(operation.workspaceId ?? undefined)
         if (!operation.isCurrent()) return
         if (lastOpenedChatId && !lastOpenedChatId.startsWith('chat-')) {
@@ -989,7 +1011,8 @@ function ChatScreenOwner({
         }
       } finally {
         if (operation.isCurrent()) {
-          completedRouteKeyRef.current = routeKey
+          completedRouteKeyRef.current = startsNewChat ? baseRouteKey : routeKey
+          if (startsNewChat) navigation.setParams({ newChatIntent: undefined })
           setIsLoading(false)
         }
         operation.finish()
@@ -1009,9 +1032,14 @@ function ChatScreenOwner({
     chatModels,
     conversationId,
     createConversation,
+    clearConversationScope,
     entitlements?.tier,
     hydrateConversation,
+    invalidateOperations,
+    navigation,
+    newChatIntent,
     routeKind,
+    startsNewChat,
     router,
     uiSettings.defaultActModelId,
     beginOperation,
@@ -2137,7 +2165,7 @@ function ChatScreenOwner({
   const renderedActionChatId = actionsChat?.id
   const renderedActionOperation = actionsChat ? chatActionsOperationRef.current : null
 
-  if (isLoading) {
+  if (isLoading || startsNewChat) {
     return (
       <View style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
         <ActivityIndicator color={theme.textSecondary} size="large" />

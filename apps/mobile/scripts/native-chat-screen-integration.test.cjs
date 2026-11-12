@@ -8,13 +8,15 @@ const React = require('../../node_modules/react')
 const { act, create } = require('../../node_modules/react-test-renderer')
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 const ThemeContext = React.createContext({ background: '#111', text: '#eee', textSecondary: '#aaa', foreground: '#eee', surfaceElevated: '#222', surfaceSubtle: '#333', border: '#444' })
+const RouteParamsContext = React.createContext({})
 const state = {
   workspaceId: 'workspace-a', user: { id: 'user-a' }, nativeReady: true, models: [], loads: [], pendingLoad: null, createGate: null, createError: null, history: [], stream: null, streamArgs: null,
   picker: null, documentPicker: null, uploadGate: null, uploadCalls: [], mediaGate: null, mediaCalls: [],
  preferenceGate: null, modelPreferences: [], saveCalls: [], createCalls: [], lastOpenedWrites: [], lastOpenedGate: null, lastOpenedError: null, skillCalls: [],
  skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0, snapshots: [], domRenders: 0,
-  composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, domProps: null, search: null, appState: new Set(), actionsProps: null, headerProps: null,
-  stopCalls: [], stopGate: null, routeParams: null, globalRouteParams: null, foregroundRouteParams: null, historyLoads: 0, replaceCalls: [],
+  composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, domProps: null, search: null, appState: new Set(), actionsProps: null, headerProps: null, drawerProps: null, draftIds: [],
+  stopCalls: [], stopGate: null, routeParams: null, routeParamCalls: [], routeParamSetter: null, localRouteParams: {}, lastOpenedChatId: null, globalRouteParams: null, foregroundRouteParams: null, historyLoads: 0, replaceCalls: [],
+  routerPushCalls: [], pathname: '/(tabs)/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
   focusSubscriptions: new Set(), focused: true, listRows: new Map(), personalChatListeners: [],
 }
 let uuid = 0
@@ -31,7 +33,7 @@ const fixture = id => ({ id, title: id, createdAt: 1, updatedAt: 2, modelId: 'mo
   { id: id + '-a', turnId: id + '-turn', role: 'assistant', content: 'Answer', timestamp: 2, selectedModelId: 'model-a', responses: [{ id: id + '-r', modelId: 'model-a', modelName: 'Model A', provider: 'test', content: 'Answer', isLoading: false }] },
 ] })
 const appState = { currentState: 'active', addEventListener: (_e, fn) => { state.appState.add(fn); return { remove: () => state.appState.delete(fn) } } }
-const rn = { ActivityIndicator: 'ActivityIndicator', Alert: { alert() {} }, AppState: appState, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { absoluteFillObject: {}, hairlineWidth: 1, create: x => x }, Text: 'Text', TextInput: 'TextInput', TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView' }
+const rn = { ActivityIndicator: 'ActivityIndicator', Alert: { alert() {} }, AppState: appState, BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Modal: 'Modal', Platform: { OS: 'ios' }, Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { absoluteFillObject: {}, hairlineWidth: 1, create: x => x }, Text: 'Text', TextInput: 'TextInput', TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView' }
 const focus = callback => React.useEffect(() => {
   const subscription = { callback, cleanup: null }
   state.focusSubscriptions.add(subscription)
@@ -48,13 +50,29 @@ function setNavigationFocus(focused) {
 const useTheme = () => ({ theme: React.useContext(ThemeContext), isDark: false })
 function MockDom(props) { state.domRenders++; state.domProps = props; state.snapshots.push(props.snapshot); React.useEffect(() => props.onReady(props.snapshot), [props.snapshot, props.onReady]); return React.createElement('TranscriptProbe', { snapshot: props.snapshot }) }
 function MockComposer(props) { state.composer = props; return React.createElement('ComposerProbe', { value: props.inputValue, imageBase64: props.imageBase64, onChangeInput: props.onChangeInput, onSend: props.onSend, onPickImage: props.onPickImage, onPickCamera: props.onPickCamera, onPickFile: props.onPickFile }) }
-function MockChatHeader(props) { state.headerProps = props; return null }
+function RouteParamsProvider({ children }) {
+  const [params, setParams] = React.useState({})
+  state.routeParamSetter = setParams
+  state.localRouteParams = params
+  return React.createElement(RouteParamsContext.Provider, { value: params }, children)
+}
+function MockChatHeader(props) {
+  state.headerProps = props
+  return React.createElement('HeaderNewChatEntry', { testID: 'header-new-chat', onPress: props.onNew })
+}
+function MockDrawerSidebar(props) {
+  state.drawerProps = props
+  return React.createElement('DrawerNewChatEntry', { testID: 'drawer-new-chat', onPress: props.onCreateChat })
+}
+function MockShellIconButton({ label, onPress }) {
+  return React.createElement('ShellIconButton', { accessibilityLabel: label, onPress })
+}
 function MockActionsSheet(props) { state.actionsProps = props; return null }
 function MockModelPicker(props) { state.modelPicker = props; return null }
 function MockSearch(props) { state.search = props; return null }
 const storage = {
   createNewChat: async (modelId, options) => { state.createCalls.push({ modelId, options }); if (state.createGate) await state.createGate.promise; if (state.createError) throw state.createError; return fixture(SERVER_NEW) },
-  getLastOpenedChatId: async () => null,
+  getLastOpenedChatId: async () => state.lastOpenedChatId,
   loadChat: async (id, workspaceId) => { state.loads.push({ id, workspaceId }); return state.pendingLoad ? state.pendingLoad(id, workspaceId) : fixture(id) },
   loadChatsMeta: async () => { state.historyLoads++; return state.history }, saveChat: async (chat, workspaceId) => { state.saveCalls.push({ chat, workspaceId }) }, subscribeChats: () => () => {},
   subscribePersonalChat: (conversationId, onValue) => {
@@ -69,7 +87,8 @@ const storage = {
 }
 const ai = {
   chatStream: async function* (...args) { state.streamArgs = args; if (state.stream) yield* state.stream() },
-  getAvailableModels: async () => state.models, getLastSelectedModelId: async () => null,
+  getAvailableModels: async () => state.models,
+  getLastSelectedModelId: async () => { if (state.lastModelIdGate) await state.lastModelIdGate.promise; return null },
   setLastSelectedModelId: async (id, workspaceId) => { state.modelPreferences.push({ id, workspaceId }); if (state.preferenceGate) await state.preferenceGate.promise },
   stopConversation: async (conversationId, messageId, options) => {
     state.stopCalls.push({ conversationId, messageId, options })
@@ -80,15 +99,66 @@ const ai = {
     return state.uploadGate ? state.uploadGate.promise : { ids: ['file-1'], name }
   },
 }
-const router = { push() {}, replace(params) { state.replaceCalls.push(params) }, setParams(params) { state.globalRouteParams = params; state.foregroundRouteParams = { ...state.foregroundRouteParams, ...params } } }
-const navigation = { setParams(params) { state.routeParams = params } }
+const router = {
+  push(target) {
+    state.routerPushCalls.push(target)
+    const pathname = typeof target === 'string' ? target : target?.pathname
+    if (state.stackRouteSetter && pathname === '/(tabs)/chat') {
+      state.pathname = pathname
+      state.stackRouteSetter('chat')
+      const params = typeof target === 'string' ? {} : target?.params ?? {}
+      state.routeParamSetter?.(params)
+    }
+  },
+  replace(params) { state.replaceCalls.push(params) },
+  setParams(params) { state.globalRouteParams = params; state.foregroundRouteParams = { ...state.foregroundRouteParams, ...params } },
+}
+const navigation = { setParams(params) {
+  state.routeParams = params
+  state.routeParamCalls.push(params)
+  state.routeParamSetter?.(current => {
+    const next = { ...current }
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined) delete next[key]
+      else next[key] = value
+    }
+    return next
+  })
+} }
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
   const filename = parent?.filename || ''
   if (request === 'react') return React
   if (request === 'react/jsx-runtime') return require('../../node_modules/react/jsx-runtime')
   if (request === 'react-native') return rn
-  if (request === 'expo-router') return { useFocusEffect: focus, useRouter: () => router, useNavigation: () => navigation }
+  if (request === 'expo-router') return { useFocusEffect: focus, useRouter: () => router, useNavigation: () => navigation, useLocalSearchParams: () => React.useContext(RouteParamsContext), usePathname: () => state.pathname, useGlobalSearchParams: () => state.globalRouteParams ?? {} }
+  if (filename.endsWith('/components/shell/AppShell.tsx')) {
+    const mocks = {
+      '@react-native-community/netinfo': { useNetInfo: () => ({ isConnected: true, isInternetReachable: true }) },
+      'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+      '../../contexts/AuthContext': { useAuth: () => ({ user: state.user, isAuthenticated: true, isLoading: false, signOut: async () => {} }) },
+      '../../contexts/WorkspaceContext': { useWorkspace: () => ({ activeWorkspaceId: state.workspaceId, isLoading: false, error: null, workspaces: [{ id: state.workspaceId }], isSwitching: false, refresh: async () => {}, switchWorkspace: async () => {} }) },
+      '../../contexts/AppSessionContext': { useAppSession: () => ({ bootstrap: { featureFlagRegistry: [] }, isFeatureEnabled: () => false }) },
+      '../../contexts/DrawerContext': { useDrawer: () => ({ drawerVisible: true, closeDrawer() {}, isSidebarPermanent: false, shellPanel: state.shellPanel, selectShellPanel() {} }) },
+      '../../hooks/useTheme': { useTheme },
+      '../../hooks/useShellData': { useShellAgents: () => ({ agents: [], loading: false, error: null }), useShellChats: () => ({ chats: [], loading: false, error: null }) },
+      '../../services/shellService': { openAgentThread: async () => null },
+      '../../lib/mobileEntryState': { mobileEntryState: () => 'ready' },
+      './AccountSheet': { AccountSheet: () => null },
+      './EntryScreens': { BootScreen: () => null, OfflineBanner: () => null, WorkspaceGate: () => null },
+      './primitives': { Button: () => null, T: () => null },
+    }
+    if (Object.hasOwn(mocks, request)) return mocks[request]
+  }
+  if (filename.endsWith('/components/shell/SidebarView.tsx')) {
+    const mocks = {
+      'lucide-react-native': new Proxy({}, { get: (_target, name) => String(name) }),
+      './AgentAvatar': { AgentAvatar: () => null },
+      './Brand': { OverlayMark: () => null },
+      './primitives': { IconButton: MockShellIconButton, T: props => React.createElement('ShellText', props) },
+    }
+    if (Object.hasOwn(mocks, request)) return mocks[request]
+  }
   if (filename.endsWith('/components/chat/ChatScreen.tsx')) {
     if (request === './NativePersonalChatTranscript') {
       const nativeHost = originalLoad.call(this, request, parent, isMain)
@@ -98,7 +168,11 @@ Module._load = function (request, parent, isMain) {
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }, '@expo/vector-icons': { Feather: 'Feather' },
       'expo-image-picker': { requestMediaLibraryPermissionsAsync: async () => ({ status: 'granted' }), requestCameraPermissionsAsync: async () => ({ status: 'granted' }), launchImageLibraryAsync: async () => state.picker?.promise ?? ({ canceled: true, assets: [] }), launchCameraAsync: async () => ({ canceled: true, assets: [] }) },
       'expo-document-picker': { getDocumentAsync: async () => state.documentPicker?.promise ?? ({ canceled: true, assets: [] }) }, '../../lib/haptics': { hapticImpact() {} },
-      '../../services/chatTypes': { generateChatId: () => 'chat-client-' + (++uuid), generateMessageId: () => 'message-' + (++uuid), generateTempTitle: x => x },
+      '../../services/chatTypes': {
+        generateChatId: () => { const id = 'chat-client-' + (++uuid); state.draftIds.push(id); return id },
+        generateMessageId: () => 'message-' + (++uuid),
+        generateTempTitle: x => x,
+      },
       '../../services/chatStorage': storage, '../../services/aiService': ai, '../../services/conversationActionsService': {
         generateImage: async input => { state.mediaCalls.push(input); return state.mediaGate ? state.mediaGate.promise : {} },
         generateVideo: async input => { state.mediaCalls.push(input); return state.mediaGate ? state.mediaGate.promise : {} },
@@ -124,8 +198,8 @@ Module._load = function (request, parent, isMain) {
       } }, '../../hooks/useTheme': { useTheme }, '../../constants/theme': { borderRadius: { lg: 8, full: 99 }, fontSize: { sm: 12, md: 16 }, spacing: { sm: 8, md: 12, lg: 16, xl: 24 } },
       './Composer': { Composer: MockComposer }, './ChatActionsSheet': { ChatActionsSheet: MockActionsSheet }, '../../services/integrationsService': {
         createSkill: async (...args) => { state.skillCalls.push(args); if (state.skillGate) await state.skillGate.promise },
-      }, './DrawerSidebar': { DrawerSidebar: () => null },
-      '../ui/ScreenWithDrawer': { ScreenWithDrawer: p => p.children }, '../ui/FeatureGate': { FeatureGate: () => null }, '../../contexts/DrawerContext': { useDrawer: () => ({ openDrawer() {}, drawerVisible: false }) },
+      }, './DrawerSidebar': { DrawerSidebar: MockDrawerSidebar },
+      '../ui/ScreenWithDrawer': { ScreenWithDrawer: p => React.createElement(React.Fragment, null, p.drawer, p.children) }, '../ui/FeatureGate': { FeatureGate: () => null }, '../../contexts/DrawerContext': { useDrawer: () => ({ openDrawer() {}, drawerVisible: false }) },
       '../ui/FloatingSearchBar': { FloatingSearchBar: MockSearch }, '../ui/primitives': { ListRow: p => { state.listRows.set(p.title, p); return null }, Section: p => p.children },
       '../../contexts/AppSessionContext': { useAppSession: () => ({ chatModels: state.models, imageModels: imageModelCatalog, videoModels: videoModelCatalog, uiSettings: {}, entitlements: { tier: 'free' }, capabilities: { chat: true }, memoryEnabled: false, setMemoryEnabled() {} }) },
       '../auth/UpgradePrompt': { UpgradePrompt: () => null }, '../../contexts/AuthContext': { useAuth: () => ({ user: state.user, isAuthenticated: true, isLoading: false }) },
@@ -140,6 +214,8 @@ Module._load = function (request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain)
 }
 const { ChatScreen, buildStopPartialPayload } = require('../components/chat/ChatScreen.tsx')
+const ChatTabScreen = require('../app/(tabs)/chat.tsx').default
+const { AppShell } = require('../components/shell/AppShell.tsx')
 Module._load = originalLoad
 function reset() {
   Object.assign(state, {
@@ -148,15 +224,45 @@ function reset() {
     loads: [], pendingLoad: null, stream: null, streamArgs: null, picker: null, documentPicker: null, uploadGate: null,
     uploadCalls: [], mediaGate: null, mediaCalls: [], preferenceGate: null, modelPreferences: [], saveCalls: [], createCalls: [],
     lastOpenedWrites: [], lastOpenedGate: null, lastOpenedError: null, skillCalls: [], skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0,
-   snapshots: [], domRenders: 0, composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, search: null, routeParams: null, globalRouteParams: null, foregroundRouteParams: null, actionsProps: null, headerProps: null,
+   snapshots: [], domRenders: 0, composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, search: null, routeParams: null, routeParamCalls: [], routeParamSetter: null, localRouteParams: {}, lastOpenedChatId: null, globalRouteParams: null, foregroundRouteParams: null, actionsProps: null, headerProps: null, drawerProps: null, draftIds: [],
     historyLoads: 0, replaceCalls: [],
     domProps: null, stopCalls: [], stopGate: null, personalChatListeners: [],
     focused: true, listRows: new Map(),
+    routerPushCalls: [], pathname: '/(tabs)/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
   })
   state.appState.clear()
   state.focusSubscriptions.clear()
 }
 async function mount(id) { let renderer; await act(async () => { renderer = create(React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue }, React.createElement(ChatScreen, { conversationId: id, routeKind: 'detail' }))); await tick() }); return renderer }
+function tabTree(child = React.createElement(ChatTabScreen)) {
+  return React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue },
+    React.createElement(RouteParamsProvider, null, child))
+}
+async function mountTab() { let renderer; await act(async () => { renderer = create(tabTree()); await tick() }); return renderer }
+function globalShellTree({ initialRoute = 'settings', preserveTabDuringSettings = false } = {}) {
+  function TestStack() {
+    const [route, setRoute] = React.useState(initialRoute)
+    state.stackRouteSetter = setRoute
+    const children = preserveTabDuringSettings
+      ? React.createElement(React.Fragment, null,
+        React.createElement('View', { style: route === 'settings' ? { display: 'none' } : undefined }, React.createElement(ChatTabScreen)),
+        route === 'settings' ? React.createElement('SettingsAppearanceProbe') : null)
+      : route === 'settings' ? React.createElement('SettingsAppearanceProbe') : React.createElement(ChatTabScreen)
+    return React.createElement(AppShell, { children })
+  }
+  return React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue },
+    React.createElement(RouteParamsProvider, null, React.createElement(TestStack)))
+}
+async function mountGlobalShell(options) { let renderer; await act(async () => { renderer = create(globalShellTree(options)); await tick() }); return renderer }
+async function pressNewChat(renderer, testID) {
+  await act(async () => { renderer.root.findByProps({ testID }).props.onPress(); await tick() })
+}
+async function setNewChatRouteIntent(intent) {
+  await act(async () => {
+    state.routeParamSetter(current => ({ ...current, newChatIntent: intent }))
+    await tick()
+  })
+}
 async function mountWithAutomationDraft(id, draft) {
   state.pendingLoad = conversationId => {
     const chat = fixture(conversationId)
@@ -274,6 +380,169 @@ test('new-chat first send promotes only its own draft and stays current through 
   await act(async () => { sendGate.resolve(); await tick() })
   assert.equal(state.loads.at(-1).id, SERVER_NEW)
   assert.equal(state.loads.at(-1).workspaceId, 'workspace-a')
+  await act(async () => renderer.unmount())
+})
+
+test('global drawer New Chat from Settings opens a fresh conversation instead of restoring last-opened', async () => {
+  reset()
+  state.pathname = '/(tabs)/settings'
+  state.shellPanel = 'chat'
+  state.lastOpenedChatId = CHAT_A
+  const renderer = await mountGlobalShell()
+  await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'New chat' }).props.onPress(); await tick() })
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0, 'the old transcript must be hidden before draft creation settles')
+  assert.equal(state.localRouteParams.newChatIntent, undefined, 'the route intent is consumed after the fresh draft is ready')
+  assert.notEqual(state.snapshots.at(-1)?.conversationId, CHAT_A)
+  const firstIntent = state.routerPushCalls[0]
+  assert.equal(typeof firstIntent, 'object')
+  assert.equal(firstIntent.pathname, '/(tabs)/chat')
+  const intents = [firstIntent.params.newChatIntent]
+  const drafts = [state.draftIds.at(-1)]
+  for (let i = 0; i < 2; i++) {
+    await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'New chat' }).props.onPress(); await tick() })
+    assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
+    assert.equal(state.localRouteParams.newChatIntent, undefined)
+    assert.equal(state.loads.filter(load => load.id === CHAT_A).length, 0)
+    intents.push(state.routerPushCalls.at(-1).params.newChatIntent)
+    drafts.push(state.draftIds.at(-1))
+  }
+  assert.equal(intents.every(intent => typeof intent === 'string'), true)
+  assert.equal(new Set(intents).size, 3, 'repeated global actions must carry distinct route intents')
+  assert.equal(new Set(drafts).size, 3, 'each global action must create a distinct draft')
+  await act(async () => renderer.unmount())
+})
+
+test('global new-chat route hides prior transcript and controls while route initialization is pending', async () => {
+  reset()
+  state.lastOpenedChatId = CHAT_A
+  state.models = [model('model-a', 'Model A')]
+  const preferredModelLoad = deferred()
+  state.lastModelIdGate = preferredModelLoad
+  const renderer = await mountGlobalShell()
+  await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'New chat' }).props.onPress(); await tick() })
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
+  assert.equal(renderer.root.findAllByType('ComposerProbe').length, 0)
+  assert.equal(renderer.root.findAllByType('HeaderNewChatEntry').length, 0)
+  assert.equal(typeof state.localRouteParams.newChatIntent, 'string')
+  assert.equal(state.draftIds.length, 0, 'the route remains gated until its new draft can be initialized')
+
+  await act(async () => { preferredModelLoad.resolve(); await tick() })
+  assert.equal(state.localRouteParams.newChatIntent, undefined)
+  assert.equal(state.headerProps.title, 'New Chat')
+  assert.equal(state.composer.inputValue, '')
+  assert.notEqual(state.draftIds.at(-1), CHAT_A)
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
+  await act(async () => renderer.unmount())
+})
+
+test('global New Chat from a loaded tab invalidates captured actions and subscriptions before draft initialization', async () => {
+  reset()
+  state.pathname = '/(tabs)/chat'
+  state.lastOpenedChatId = CHAT_A
+  const renderer = await mountGlobalShell({ initialRoute: 'chat', preserveTabDuringSettings: true })
+  assert.equal(state.snapshots.at(-1).conversationId, CHAT_A)
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 1)
+  const oldNativeProps = state.nativeProps
+  const oldExchange = oldNativeProps.view.exchanges[0]
+  const oldScope = {
+    workspaceId: state.workspaceId,
+    conversationId: CHAT_A,
+    mountNonce: 'old-mount',
+    focusNonce: 'old-focus',
+    isCurrent: () => true,
+  }
+  const oldListener = state.personalChatListeners.find(listener => listener.conversationId === CHAT_A && listener.active)
+  assert.ok(oldListener)
+  const lateChat = { ...fixture(CHAT_A), title: 'Late old subscription', messages: [{ ...fixture(CHAT_A).messages[0], content: 'late old subscription content' }] }
+  const preferredModelLoad = deferred()
+  state.lastModelIdGate = preferredModelLoad
+  await act(async () => {
+    state.pathname = '/(tabs)/settings'
+    state.stackRouteSetter('settings')
+    await tick()
+  })
+  await act(async () => { renderer.root.findByProps({ accessibilityLabel: 'New chat' }).props.onPress(); await tick() })
+  assert.equal(oldListener.active, false, 'the old subscription is stopped by the route transition')
+  await act(async () => {
+    oldNativeProps.onReply({ exchange: oldExchange, target: { kind: 'user', userId: oldExchange.user.id }, user: oldExchange.user, response: null, mediaResult: null }, oldScope)
+    oldListener.onValue(lateChat)
+    await tick()
+  })
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0, 'the old transcript must be removed in the intent transition')
+  assert.equal(renderer.root.findAllByType('ComposerProbe').length, 0, 'the old composer must not remain interactive')
+  assert.equal(renderer.root.findAllByType('HeaderNewChatEntry').length, 0, 'the old header actions must not remain interactive')
+  assert.equal(typeof state.localRouteParams.newChatIntent, 'string')
+  assert.equal(state.draftIds.length, 0, 'fresh draft initialization remains blocked on preferred model lookup')
+
+  await act(async () => { preferredModelLoad.resolve(); await tick() })
+  assert.equal(state.localRouteParams.newChatIntent, undefined)
+  assert.equal(state.headerProps.title, 'New Chat')
+  assert.equal(state.composer.inputValue, '')
+  assert.equal(state.composer.replyContext, null, 'the captured old native reply action cannot seed the new composer')
+  await act(async () => { oldListener.onValue(lateChat); await tick() })
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0, 'the late old subscription cannot populate the fresh transcript')
+  assert.equal(state.draftIds.length, 1)
+  assert.equal(state.loads.filter(load => load.id === CHAT_A).length, 1)
+  await act(async () => renderer.unmount())
+})
+
+test('mounted tab resumes last-opened after settings; drawer and header New Chat are fresh and repeatable', async () => {
+  reset()
+  state.lastOpenedChatId = CHAT_A
+  const renderer = await mountTab()
+  assert.equal(state.snapshots.at(-1).conversationId, CHAT_A)
+  assert.equal(state.loads.filter(load => load.id === CHAT_A).length, 1)
+
+  await act(async () => { renderer.update(tabTree(React.createElement('SettingsAppearanceProbe'))); await tick() })
+  await act(async () => { renderer.update(tabTree()); await tick() })
+  assert.equal(state.snapshots.at(-1).conversationId, CHAT_A)
+  assert.equal(state.loads.filter(load => load.id === CHAT_A).length, 2)
+  const loadsAfterResume = state.loads.length
+
+  const drafts = []
+  for (const entry of ['header-new-chat', 'drawer-new-chat', 'header-new-chat']) {
+    await pressNewChat(renderer, entry)
+    assert.equal(state.headerProps.title, 'New Chat')
+    assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
+    assert.equal(state.loads.length, loadsAfterResume, 'an explicit New Chat must not hydrate last-opened content')
+    assert.deepEqual(state.localRouteParams, {}, 'local New Chat keeps the existing direct fresh-chat path')
+    drafts.push(state.draftIds.at(-1))
+  }
+  assert.equal(new Set(drafts).size, 3, 'each explicit action must create a distinct client-side draft')
+
+  await act(async () => { renderer.update(tabTree(React.createElement('SettingsAppearanceProbe'))); await tick() })
+  await act(async () => { renderer.update(tabTree()); await tick() })
+  assert.equal(state.snapshots.at(-1).conversationId, CHAT_A, 'ordinary tab resume still restores last-opened history')
+  assert.equal(state.loads.filter(load => load.id === CHAT_A).length, 3)
+  await act(async () => renderer.unmount())
+})
+
+test('tab New Chat intent cancels late last-opened hydration and first-send promotion stays on the fresh draft', async () => {
+  reset()
+  state.lastOpenedChatId = CHAT_A
+  const lateLoad = deferred()
+  state.pendingLoad = id => id === CHAT_A ? lateLoad.promise : null
+  state.stream = async function* () { yield { type: 'text', content: 'Fresh reply' } }
+  const renderer = await mountTab()
+  assert.equal(state.loads.filter(load => load.id === CHAT_A).length, 1)
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
+
+  await setNewChatRouteIntent('late-load-new-chat')
+  assert.equal(state.headerProps.title, 'New Chat')
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
+  await act(async () => { renderer.root.findByType('ComposerProbe').props.onChangeInput('Fresh first send'); await tick() })
+  await act(async () => { renderer.root.findByType('ComposerProbe').props.onSend(); await tick() })
+  assert.equal(state.createCalls.length, 1)
+  assert.equal(state.createCalls[0].options.clientId.startsWith('chat-'), true)
+  assert.equal(state.streamArgs[2].conversationId, SERVER_NEW)
+
+  await act(async () => { lateLoad.resolve(fixture(CHAT_A)); await tick() })
+  const snapshot = state.snapshots.at(-1)
+  assert.equal(snapshot.conversationId, SERVER_NEW)
+  assert.match(JSON.stringify(snapshot.view), /Fresh first send/)
+  assert.match(JSON.stringify(snapshot.view), /Fresh reply/)
+  assert.doesNotMatch(JSON.stringify(snapshot.view), /Question|Answer|aaaaaaaaaaaaaaaaaaaa/)
+  assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 1)
   await act(async () => renderer.unmount())
 })
 
