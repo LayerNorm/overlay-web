@@ -335,7 +335,12 @@ export async function uploadDocument(uri: string, name: string, mimeType: string
   return { ids, name: data.name ?? name }
 }
 
-export async function stopConversation(conversationId: string, messageId?: string, options: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<void> {
+export async function stopConversation(conversationId: string, messageId?: string, options: {
+  workspaceId?: string
+  signal?: AbortSignal
+  partialContent?: string
+  partialParts?: Array<Record<string, unknown>>
+} = {}): Promise<void> {
   const res = await appRequest('/api/v1/conversations/stop', {
     method: 'POST',
     workspaceId: options.workspaceId,
@@ -343,6 +348,8 @@ export async function stopConversation(conversationId: string, messageId?: strin
     json: {
       conversationId,
       messageId,
+      ...(options.partialContent !== undefined ? { partialContent: options.partialContent } : {}),
+      ...(options.partialParts !== undefined ? { partialParts: options.partialParts } : {}),
     },
   })
   if (!res.ok) {

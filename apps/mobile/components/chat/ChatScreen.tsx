@@ -60,7 +60,7 @@ import { toNativeChatTranscriptView, type NativeChatTranscriptRuntime } from '..
 import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
 import { ChatActionsSheet } from './ChatActionsSheet'
 import { createSkill } from '../../services/integrationsService'
-import type { DraftModalState } from '@overlay/chat-core'
+import type { AssistantVisualBlock, DraftModalState } from '@overlay/chat-core'
 import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
@@ -73,6 +73,40 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import * as DocumentPicker from 'expo-document-picker'
+
+function partialPartsFromBlocks(blocks: readonly AssistantVisualBlock[] | undefined, content: string): Array<Record<string, unknown>> {
+  const parts = (blocks ?? []).flatMap((block): Array<Record<string, unknown>> => {
+    switch (block.kind) {
+      case 'text': return [{ type: 'text', text: block.text, storageOmittedParts: 0 }]
+      case 'reasoning': return [{ type: 'reasoning', text: block.text }]
+      case 'tool': return [{ type: 'tool-invocation', id: block.key, toolInvocation: {
+        toolCallId: block.key, toolName: block.name, state: block.state,
+        toolInput: block.toolInput, toolOutput: block.toolOutput,
+      } }]
+      case 'file': return [{ type: 'file', url: block.url, ...(block.mediaType ? { mediaType: block.mediaType } : {}) }]
+      case 'source': return [{
+        type: 'source', id: block.sourceId, text: block.title ?? block.sourceId,
+        ...(block.url ? { url: block.url } : {}),
+        ...(block.mediaType ? { mediaType: block.mediaType } : {}),
+        ...(block.filename ? { fileName: block.filename } : {}),
+      }]
+      case 'generated-ui': return [{ ...block.part }]
+    }
+  })
+  if (content && !parts.some(part => part.type === 'text')) parts.unshift({ type: 'text', text: content, storageOmittedParts: 0 })
+  return parts
+}
+
+export function buildStopPartialPayload(message: Message | undefined, modelId?: string) {
+  const response = modelId ? message?.responses?.findLast(candidate => candidate.modelId === modelId) : undefined
+  const content = response ? response.content : message?.content ?? ''
+  const blocks = response ? response.blocks : message?.blocks
+  const parts = partialPartsFromBlocks(blocks, content)
+  return {
+    ...(content ? { partialContent: content } : {}),
+    ...(parts.length ? { partialParts: parts } : {}),
+  }
+}
 
 
 async function orderedChatModels(models: ChatModel[]): Promise<ChatModel[]> {
@@ -342,8 +376,8 @@ function ChatScreenOwner({
   const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
   const sendLockTurnIdRef = useRef<string | null>(null)
-  const activeDataSendRef = useRef<{ turnId: string; workspaceId: string; conversationId: string; cancel: () => void } | null>(null)
-  const sendLockOwnerRef = useRef<{ turnId: string; workspaceId: string; conversationId: string; cancel: () => void } | null>(null)
+  const activeDataSendRef = useRef<{ turnId: string; workspaceId: string; conversationId: string; modelId: string; cancel: () => void } | null>(null)
+  const sendLockOwnerRef = useRef<{ turnId: string; workspaceId: string; conversationId: string; modelId: string; cancel: () => void } | null>(null)
   const conversationStopLocksRef = useRef(new Map<string, number>())
   const stopLockSequenceRef = useRef(0)
   const composerRevisionRef = useRef(0)
@@ -1255,6 +1289,17 @@ function ChatScreenOwner({
     const run = currentRun?.conversationId === activeChat.id && currentRun.turnId === activeTurnId ? currentRun : null
     const assistantMessageId = run?.assistantMessageId
     const messageId = assistantMessageId && /^[a-z0-9]{20,40}$/i.test(assistantMessageId) ? assistantMessageId : undefined
+    const activeSendOwnsChat = activeSend?.workspaceId === workspaceId && activeSend.conversationId === activeChat.id
+    const turnMessages = activeTurnId === null ? [] : committedMessagesRef.current.filter(message =>
+      message.role === 'assistant' && message.turnId === activeTurnId,
+    )
+    const partialMessage = (activeSendOwnsChat
+      ? committedMessagesRef.current.find(message => message.role === 'assistant' && message.id === activeSend.turnId)
+      : undefined) ?? (messageId
+        ? committedMessagesRef.current.find(message => message.role === 'assistant' && message.id === messageId)
+        : turnMessages.length === 1 ? turnMessages[0] : undefined)
+    const partialModelId = activeSendOwnsChat ? activeSend.modelId : partialMessage?.selectedModelId
+    const partialPayload = buildStopPartialPayload(partialMessage, partialModelId)
     if (activeSend && activeSend.workspaceId === workspaceId && activeSend.conversationId === activeChat.id) {
       activeSend.cancel()
       if (activeDataSendRef.current === activeSend) activeDataSendRef.current = null
@@ -1290,7 +1335,11 @@ function ChatScreenOwner({
     const operation = beginOperation(`stop-generation:${stopLockKey}`, activeChat.id, false)
     try {
       if (!operation.isCurrent()) return
-      await stopConversation(activeChat.id, messageId, { workspaceId, signal: operation.signal })
+      await stopConversation(activeChat.id, messageId, {
+        workspaceId,
+        signal: operation.signal,
+        ...partialPayload,
+      })
       if (operation.isCurrent()) {
         setMessages(current => current.map(message => {
           if (activeTurnId && message.turnId !== activeTurnId && message.id !== messageId) return message
@@ -1468,7 +1517,7 @@ function ChatScreenOwner({
       const userMessageId = retryTurn?.userMessageId ?? generateMessageId()
       sendLockTurnIdRef.current = turnId
       pendingTurn.current = { conversationId: activeChat.id, signature, turnId, userMessageId }
-      const sendOwner = { turnId, workspaceId: mediaWorkspaceId, conversationId: activeChat.id, cancel: operation.cancel }
+      const sendOwner = { turnId, workspaceId: mediaWorkspaceId, conversationId: activeChat.id, modelId, cancel: operation.cancel }
       activeDataSendRef.current = sendOwner
       sendLockOwnerRef.current = sendOwner
       const promptText = capturedReply?.bodyForModel
@@ -1725,7 +1774,7 @@ function ChatScreenOwner({
     sendLockTurnIdRef.current = assistantId
     abortRef.current = false
     pendingTurn.current = { conversationId: activeChat.id, signature, turnId: assistantId }
-    const sendOwner = { turnId: assistantId, workspaceId: workspaceAtSend, conversationId: activeChat.id, cancel: operation.cancel }
+    const sendOwner = { turnId: assistantId, workspaceId: workspaceAtSend, conversationId: activeChat.id, modelId: sentModel.id, cancel: operation.cancel }
     activeDataSendRef.current = sendOwner
     sendLockOwnerRef.current = sendOwner
 
@@ -1956,7 +2005,7 @@ function ChatScreenOwner({
       dataOperation.finish()
       throw new Error('This chat is no longer available.')
     }
-    const sendOwner = { turnId, workspaceId, conversationId: chat.id, cancel: dataOperation.cancel }
+    const sendOwner = { turnId, workspaceId, conversationId: chat.id, modelId: model.id, cancel: dataOperation.cancel }
     activeDataSendRef.current = sendOwner
     sendLockOwnerRef.current = sendOwner
     const handoff = new Promise<void>((resolve, reject) => {

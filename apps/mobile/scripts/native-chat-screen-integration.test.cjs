@@ -15,7 +15,7 @@ const state = {
  skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0, snapshots: [], domRenders: 0,
   composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, domProps: null, search: null, appState: new Set(), actionsProps: null, headerProps: null,
   stopCalls: [], stopGate: null, routeParams: null, globalRouteParams: null, foregroundRouteParams: null, historyLoads: 0, replaceCalls: [],
-  focusSubscriptions: new Set(), focused: true, listRows: new Map(),
+  focusSubscriptions: new Set(), focused: true, listRows: new Map(), personalChatListeners: [],
 }
 let uuid = 0
 const tick = async () => { for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve)) }
@@ -57,7 +57,11 @@ const storage = {
   getLastOpenedChatId: async () => null,
   loadChat: async (id, workspaceId) => { state.loads.push({ id, workspaceId }); return state.pendingLoad ? state.pendingLoad(id, workspaceId) : fixture(id) },
   loadChatsMeta: async () => { state.historyLoads++; return state.history }, saveChat: async (chat, workspaceId) => { state.saveCalls.push({ chat, workspaceId }) }, subscribeChats: () => () => {},
-  subscribePersonalChat: () => () => {}, setPersonalChatRead: async () => {}, setLastOpenedChatId: async (id, workspaceId) => {
+  subscribePersonalChat: (conversationId, onValue) => {
+    const listener = { conversationId, onValue, active: true }
+    state.personalChatListeners.push(listener)
+    return () => { listener.active = false }
+  }, setPersonalChatRead: async () => {}, setLastOpenedChatId: async (id, workspaceId) => {
     state.lastOpenedWrites.push({ id, workspaceId })
     if (state.lastOpenedGate) await state.lastOpenedGate.promise
     if (state.lastOpenedError) throw state.lastOpenedError
@@ -107,7 +111,17 @@ Module._load = function (request, parent, isMain) {
       '../../services/appApi': { getRequestWorkspaceId: () => state.workspaceId }, '../../hooks/useFavoriteModels': { useFavoriteModels: () => ({ favoriteIds: [], toggleFavorite() {} }) },
       '../../hooks/useAndroidKeyboardVisible': { useAndroidKeyboardVisible: () => false }, '../../lib/chatModels': { resolveAutoModel: x => x[0], sortChatModels: x => x }, '../../lib/keyboardLayout': { getComposerBottomInset: () => 0 },
       './ModelPicker': { ModelPicker: MockModelPicker }, './ChatViews': { ChatHeader: MockChatHeader, ChatSheet: p => p.children || null, EmptyPersonalChat: () => null },
-      '../../lib/personalStream': { appendPersonalBlock: x => x || [] }, '../../hooks/useTheme': { useTheme }, '../../constants/theme': { borderRadius: { lg: 8, full: 99 }, fontSize: { sm: 12, md: 16 }, spacing: { sm: 8, md: 12, lg: 16, xl: 24 } },
+      '../../lib/personalStream': { appendPersonalBlock: (blocks, chunk) => {
+        const next = [...(blocks ?? [])]
+        const last = next.at(-1)
+        if (chunk.type === 'text') {
+          if (last?.kind === 'text') next[next.length - 1] = { ...last, text: last.text + chunk.content }
+          else next.push({ kind: 'text', text: chunk.content })
+        } else if (chunk.type === 'tool') {
+          next.push({ kind: 'tool', key: chunk.toolCallId, name: chunk.toolName, state: chunk.state, toolInput: chunk.input, toolOutput: chunk.output })
+        }
+        return next
+      } }, '../../hooks/useTheme': { useTheme }, '../../constants/theme': { borderRadius: { lg: 8, full: 99 }, fontSize: { sm: 12, md: 16 }, spacing: { sm: 8, md: 12, lg: 16, xl: 24 } },
       './Composer': { Composer: MockComposer }, './ChatActionsSheet': { ChatActionsSheet: MockActionsSheet }, '../../services/integrationsService': {
         createSkill: async (...args) => { state.skillCalls.push(args); if (state.skillGate) await state.skillGate.promise },
       }, './DrawerSidebar': { DrawerSidebar: () => null },
@@ -125,7 +139,7 @@ Module._load = function (request, parent, isMain) {
   }
   return originalLoad.call(this, request, parent, isMain)
 }
-const { ChatScreen } = require('../components/chat/ChatScreen.tsx')
+const { ChatScreen, buildStopPartialPayload } = require('../components/chat/ChatScreen.tsx')
 Module._load = originalLoad
 function reset() {
   Object.assign(state, {
@@ -136,7 +150,7 @@ function reset() {
     lastOpenedWrites: [], lastOpenedGate: null, lastOpenedError: null, skillCalls: [], skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0,
    snapshots: [], domRenders: 0, composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, search: null, routeParams: null, globalRouteParams: null, foregroundRouteParams: null, actionsProps: null, headerProps: null,
     historyLoads: 0, replaceCalls: [],
-    domProps: null, stopCalls: [], stopGate: null,
+    domProps: null, stopCalls: [], stopGate: null, personalChatListeners: [],
     focused: true, listRows: new Map(),
   })
   state.appState.clear()
@@ -570,19 +584,124 @@ test('temporary sends finish busy state without creating a persisted conversatio
 test('Stop clears composer busy and terminal streaming projection immediately', async () => {
   reset()
   const responseGate = deferred()
-  state.stream = async function* () { await responseGate.promise; yield { type: 'text', content: 'late response' } }
+  const partialApplied = deferred()
+  const partial = 'legitimate partial response\n\n'
+  state.stream = async function* () {
+    yield { type: 'tool', toolCallId: 'tool-1', toolName: 'Lookup', state: 'output-available', input: { query: 'safe' }, output: { count: 1 } }
+    yield { type: 'text', content: partial }
+    partialApplied.resolve()
+    await responseGate.promise
+    yield { type: 'text', content: 'late response' }
+  }
   const renderer = await mount(CHAT_A)
   state.pendingLoad = () => null
   await act(async () => { state.composer.onChangeInput('stop me'); await tick() })
-  await act(async () => { state.composer.onSend(); await tick() })
+  await act(async () => { state.composer.onSend(); await partialApplied.promise; await tick() })
   assert.equal(state.composer.isSending, true)
   assert.equal(state.nativeProps.view.exchanges.at(-1).status, 'streaming')
+  const turnId = state.streamArgs[2].turnId
+  assert.ok(state.nativeProps.view.exchanges.at(-1).responses.some(response =>
+    response.blocks.some(block => block.kind === 'text' && block.text.includes(partial)),
+  ))
   await act(async () => { state.composer.onStop(); await tick() })
   assert.equal(state.composer.isSending, false)
   assert.equal(state.nativeProps.view.exchanges.at(-1).status, 'interrupted')
+  assert.equal(state.stopCalls[0].options.partialContent, partial)
+  assert.deepEqual(state.stopCalls[0].options.partialParts, [
+    { type: 'tool-invocation', id: 'tool-1', toolInvocation: {
+      toolCallId: 'tool-1', toolName: 'Lookup', state: 'output-available', toolInput: { query: 'safe' }, toolOutput: { count: 1 },
+    } },
+    { type: 'text', text: partial, storageOmittedParts: 0 },
+  ])
+  const listener = state.personalChatListeners.find(item => item.conversationId === CHAT_A && item.active)
+  assert.ok(listener)
+  const interruptedContent = `${partial}\n\nThis response was interrupted. Should I continue?`
+  await act(async () => {
+    listener.onValue({
+      ...fixture(CHAT_A),
+      messages: [
+        { id: `${turnId}-user`, turnId, role: 'user', content: 'stop me', timestamp: 3 },
+        {
+          id: `${turnId}-assistant`, turnId, role: 'assistant', content: interruptedContent, timestamp: 4,
+          selectedModelId: 'model-a', status: 'interrupted',
+          responses: [{ id: `${turnId}-response`, modelId: 'model-a', modelName: 'Model A', provider: 'test', content: interruptedContent, isLoading: false, status: 'interrupted' }],
+        },
+      ],
+    })
+    await tick()
+  })
+  assert.equal(state.nativeProps.view.exchanges.at(-1).status, 'interrupted')
+  assert.ok(state.nativeProps.view.exchanges.at(-1).responses.some(response =>
+    response.blocks.some(block => block.kind === 'text' && block.text.includes(partial)),
+  ))
   responseGate.resolve()
   await act(async () => { await tick() })
   assert.equal(state.nativeProps.view.exchanges.at(-1).status, 'interrupted')
+  assert.equal(JSON.stringify(state.nativeProps.view).includes('late response'), false)
+  await act(async () => renderer.unmount())
+})
+
+test('Stop does not borrow another response text or blocks before selected response text', () => {
+  const otherText = 'other model aggregate text'
+  const payload = buildStopPartialPayload({
+    id: 'assistant', turnId: 'turn', role: 'assistant', timestamp: 1,
+    content: otherText,
+    selectedModelId: 'model-a',
+    blocks: [{ kind: 'text', text: otherText }],
+    responses: [
+      { modelId: 'model-b', content: otherText, blocks: [{ kind: 'text', text: otherText }], isLoading: false },
+      { modelId: 'model-a', content: '', isLoading: true },
+    ],
+  }, 'model-a')
+  assert.deepEqual(payload, {})
+})
+
+test('Stop preserves reasoning and tool parts when selected response has no text', () => {
+  const otherText = 'other model aggregate text'
+  const payload = buildStopPartialPayload({
+    id: 'assistant', turnId: 'turn', role: 'assistant', timestamp: 1,
+    content: otherText,
+    selectedModelId: 'model-a',
+    blocks: [{ kind: 'text', text: otherText }],
+    responses: [
+      { modelId: 'model-b', content: otherText, blocks: [{ kind: 'text', text: otherText }], isLoading: false },
+      { modelId: 'model-a', content: '', isLoading: true, blocks: [
+        { kind: 'reasoning', key: 'reason-1', text: 'reasoning only', state: 'streaming' },
+        { kind: 'tool', key: 'tool-2', name: 'Lookup', state: 'output-available', toolInput: { query: 'safe' }, toolOutput: { count: 2 } },
+      ] },
+    ],
+  }, 'model-a')
+  assert.deepEqual(payload, { partialParts: [
+    { type: 'reasoning', text: 'reasoning only' },
+    { type: 'tool-invocation', id: 'tool-2', toolInvocation: {
+      toolCallId: 'tool-2', toolName: 'Lookup', state: 'output-available', toolInput: { query: 'safe' }, toolOutput: { count: 2 },
+    } },
+  ] })
+})
+
+test('Stop payload contains only the active chat partial response after a route switch', async () => {
+  reset()
+  const firstGate = deferred()
+  const secondGate = deferred()
+  state.stream = async function* () { yield { type: 'text', content: 'chat A partial' }; await firstGate.promise; yield { type: 'text', content: 'stale chat A chunk' } }
+  const renderer = await mount(CHAT_A)
+  await act(async () => { state.composer.onChangeInput('chat A prompt'); await tick() })
+  await act(async () => { state.composer.onSend(); await tick() })
+  await act(async () => {
+    renderer.update(React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue }, React.createElement(ChatScreen, { conversationId: CHAT_B, routeKind: 'detail' })))
+    await tick()
+  })
+  state.stream = async function* () { yield { type: 'text', content: 'chat B partial' }; await secondGate.promise }
+  await act(async () => { state.composer.onChangeInput('chat B prompt'); await tick() })
+  await act(async () => { state.composer.onSend(); await tick() })
+  await act(async () => { state.composer.onStop(); await tick() })
+  assert.equal(state.stopCalls[0].conversationId, CHAT_B)
+  assert.equal(state.stopCalls[0].options.partialContent, 'chat B partial')
+  assert.equal(JSON.stringify(state.stopCalls[0].options).includes('chat A partial'), false)
+  firstGate.resolve()
+  secondGate.resolve()
+  await act(async () => { await tick() })
+  assert.equal(JSON.stringify(state.nativeProps.view).includes('stale chat A chunk'), false)
   await act(async () => renderer.unmount())
 })
 

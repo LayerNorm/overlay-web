@@ -127,6 +127,31 @@ test('personal submit precedes HTTP act orchestration; temporary mode skips dura
   calls.length = 0; assert.equal((await collect({})).at(-1).type, 'error'); assert.equal(calls.length, 0)
 })
 
+test('stop request forwards the scoped partial assistant response', async () => {
+  const calls = []
+  const service = load('services/aiService.ts', {
+    '@react-native-async-storage/async-storage': {},
+    './appConfig': { AUTH_BASE_URL: 'https://isolated.invalid' },
+    './bootstrapService': {},
+    '../lib/chatModels': {},
+    './convexClient': { convexWorkspaceId: () => 'ws' },
+    './personalChatService': { submitPersonalTurn: async () => ({ conversationId: 'unused' }) },
+    './appApi': {
+      getRequestWorkspaceId: () => 'ws',
+      appRequest: async (url, options) => { calls.push({ url, options }); return { ok: true } },
+    },
+  })
+  const partialContent = 'visible partial response'
+  const partialParts = [{ type: 'text', text: partialContent, storageOmittedParts: 0 }]
+  await service.stopConversation('conversation-id', 'real-assistant-message-id', {
+    workspaceId: 'ws', partialContent, partialParts,
+  })
+  assert.equal(calls[0].url, '/api/v1/conversations/stop')
+  assert.deepEqual(clean(calls[0].options.json), {
+    conversationId: 'conversation-id', messageId: 'real-assistant-message-id', partialContent, partialParts,
+  })
+})
+
 test('chatStream logs only a fixed diagnostic for transport failures', async () => {
   const logs = []
   const sentinel = 'Bearer secret-sentinel backend-body-sentinel'
