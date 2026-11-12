@@ -424,13 +424,20 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('draft_automation_from_chat')) {
     tools.draft_automation_from_chat = tool({
       description:
-        'Create an automation draft from the current chat turn. Use this when the user describes a recurring, scheduled, or background workflow. ' +
+        'Create an automation draft only when the actual work to perform is clear. Supply the concise executable workflow in assistantText, separate from schedule details, rationale, and draft/create/run controls. ' +
+        'If the workflow is missing or unclear, ask the user for clarification instead of calling this tool. ' +
         'Keep simple workflows simple. Include concrete tool calls, queries, parallelization, formatting, or delivery steps only when the requested workflow needs them. ' +
         'Preserve actionable short instructions; ask for clarification when the workflow or schedule is unclear. ' +
         'After drafting, show the numbered instructions in a fenced code block for review. This only drafts the automation and never saves or enables it.',
       inputSchema: z.object({
         userText: z.string().describe('The user request to turn into an automation draft'),
-        assistantText: z.string().optional().describe('Optional assistant summary of the workflow'),
+        assistantText: z
+          .string()
+          .trim()
+          .min(1)
+          .describe(
+            'Required concise executable workflow the automation should perform. Do not put schedule details, rationale, or draft/create/run control text here. Ask the user for missing workflow details instead of submitting a summary or control text.',
+          ),
         reason: z.string().optional().describe('Why this should become a scheduled automation'),
         timezone: z.string().optional().describe('The user timezone if known; default UTC'),
       }),

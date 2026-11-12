@@ -4,7 +4,11 @@ import { asSchema, type ToolSet } from 'ai'
 import { DRIVER_VERSION, type SandboxInstance } from '@overlay/sandbox-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildOverlayToolSet } from './build'
-import { executeComputerActionWithApproval, executeComputerActionWithTakeover } from './overlay-executes'
+import {
+  executeComputerActionWithApproval,
+  executeComputerActionWithTakeover,
+  executeDraftAutomationFromChat,
+} from './overlay-executes'
 
 function buildTestTools() {
   return buildOverlayToolSet({
@@ -57,6 +61,80 @@ test('present_generated_ui still validates variant-specific required fields', as
     title: 'Landing page',
     body: '<!DOCTYPE html>\n<html><body>Hello</body></html>',
   }).success, false)
+})
+
+test('draft_automation_from_chat requires executable workflow text and passes it through the draft executor', async () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    serverSecret: 'secret-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['draft_automation_from_chat'],
+    memoryEnabled: true,
+  })
+  const draftTool = tools.draft_automation_from_chat as unknown as {
+    description: string
+    inputSchema: {
+      safeParse(input: unknown): {
+        success: boolean
+        data?: { userText: string; assistantText: string; reason?: string; timezone?: string }
+      }
+    }
+    execute: (
+      input: { userText: string; assistantText: string; reason?: string; timezone?: string },
+      options: unknown,
+    ) => Promise<unknown>
+  }
+  const schema = await asSchema(tools.draft_automation_from_chat.inputSchema).jsonSchema as {
+    required?: string[]
+    properties?: { assistantText?: { description?: string } }
+  }
+  const input = {
+    userText: 'Write OK monthly on day 1 at 01:00 UTC, no integrations',
+    reason: 'Recurring monthly task',
+    timezone: 'UTC',
+  }
+
+  assert.ok(schema.required?.includes('assistantText'))
+  assert.match(schema.properties?.assistantText?.description ?? '', /required concise executable workflow/i)
+  assert.match(draftTool.description, /supply the concise executable workflow in assistantText/i)
+  assert.equal(draftTool.inputSchema.safeParse(input).success, false)
+  assert.equal(draftTool.inputSchema.safeParse({ ...input, assistantText: ' \n\t ' }).success, false)
+
+  const parsed = draftTool.inputSchema.safeParse({ ...input, assistantText: 'Write OK.' })
+  if (!parsed.success || !parsed.data) throw new Error('Expected the executable workflow input to validate')
+
+  const output = await draftTool.execute(parsed.data, {}) as {
+    success: boolean
+    draft?: {
+      schedule: unknown
+      timezone: string
+      detectedIntegrations: string[]
+      missingFields: string[]
+      instructions: string
+      confidence: string
+    }
+  }
+
+  assert.equal(output.success, true)
+  assert.ok(output.draft)
+  assert.deepEqual(output.draft.schedule, { kind: 'monthly', dayOfMonthUTC: 1, hourUTC: 1, minuteUTC: 0 })
+  assert.equal(output.draft.timezone, 'UTC')
+  assert.deepEqual(output.draft.detectedIntegrations, [])
+  assert.deepEqual(output.draft.missingFields, [])
+  assert.equal(output.draft.instructions, '1. Write OK.')
+  assert.equal(output.draft.confidence, 'high')
+})
+
+test('legacy direct draft executor calls still clarify when workflow text is omitted', async () => {
+  const output = await executeDraftAutomationFromChat(
+    { userId: 'user-test' },
+    { userText: 'Monthly day 1 at 01:00 UTC, without integrations.', timezone: 'UTC' },
+  )
+
+  assert.equal(output.success, true)
+  if (!output.success) assert.fail(output.error)
+  assert.equal(output.draft.instructions, '1. Clarify what this automation should do')
+  assert.ok(output.draft.missingFields.includes('Clarify automation instructions'))
 })
 
 test('computer screenshot returns image content and computer input validates action variants', () => {
