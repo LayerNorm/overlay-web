@@ -18,6 +18,9 @@ const tick = makeFunctionReference<'mutation'>('dev/performanceQa:tick')
 const initCode = makeFunctionReference<'mutation', Record<string, never>, {
   workspaceId: string; conversationId: Id<'conversations'>
 }>('dev/performanceQa:initCode')
+const initPagination = makeFunctionReference<'mutation', { workspaceId?: string }, {
+  workspaceId: string; conversationId: Id<'conversations'>
+}>('dev/performanceQa:initPagination')
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers() })
 
 test.each(['production', 'development', 'staging', ''])('performance fixtures refuse %s', async environment => {
@@ -25,6 +28,7 @@ test.each(['production', 'development', 'staging', ''])('performance fixtures re
   const t = convexTest(schema, modules)
   await expect(t.mutation(init, {})).rejects.toThrow('Preview seed is unavailable')
   await expect(t.mutation(initCode, {})).rejects.toThrow('Preview seed is unavailable')
+  await expect(t.mutation(initPagination, {})).rejects.toThrow('Preview seed is unavailable')
   expect(await t.run(ctx => ctx.db.query('conversations').collect())).toHaveLength(0)
 })
 
@@ -100,4 +104,124 @@ test('fixed histories are idempotent; public-stream replay is bounded, repeatabl
   }
   expect(await t.run(ctx => ctx.db.query('conversationMessages')
     .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', fixtures.stream)).collect())).toHaveLength(50)
+})
+
+test('pagination fixture is a separate idempotent 120-row personal history and preserves baseline data', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  vi.stubEnv('PREVIEW_LOGIN_USER_ID', 'user_pagination_fixture')
+  vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'pagination@example.test')
+  const t = convexTest(schema, modules)
+  await expect(t.mutation(initPagination, {})).rejects.toThrow('existing active QA owner')
+
+  const fixtures = await t.mutation(init, {})
+  const baselineIds = [fixtures.personalA, fixtures.personalB, fixtures.stream, fixtures.dm]
+  const readBaseline = () => t.run(async ctx => Promise.all(baselineIds.map(async conversationId => ({
+    conversation: await ctx.db.get(conversationId),
+    messages: await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversationId)).collect(),
+  }))))
+  const readSetupState = () => t.run(async ctx => ({
+    workspaces: await ctx.db.query('workspaces').collect(),
+    memberships: await ctx.db.query('workspaceMemberships').collect(),
+    billingAccounts: await ctx.db.query('billingAccounts').collect(),
+    balances: await ctx.db.query('billingAccountBalances').collect(),
+    subscriptions: await ctx.db.query('billingAccountSubscriptions').collect(),
+    agents: await ctx.db.query('workspaceAgentDefinitions').collect(),
+    resourceScopes: await ctx.db.query('workspaceResourceScopes').collect(),
+  }))
+  const readPagination = (conversationId: Id<'conversations'>) => t.run(async ctx => ({
+    conversation: await ctx.db.get(conversationId),
+    messages: await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversationId)).collect(),
+  }))
+  const baselineBefore = await readBaseline()
+  const setupBefore = await readSetupState()
+  const fixture = await t.mutation(initPagination, {})
+  const firstState = await readPagination(fixture.conversationId)
+
+  expect(fixture.workspaceId).toBe(fixtures.workspaceId)
+  expect(firstState.conversation).toMatchObject({
+    userId: 'user_pagination_fixture',
+    workspaceId: fixtures.workspaceId,
+    conversationType: 'personal',
+    title: 'Performance pagination',
+    clientId: `preview-performance-v1-pagination-${fixtures.workspaceId}`,
+  })
+  expect(firstState.messages).toHaveLength(120)
+  expect(firstState.messages.every(message => message.status === 'completed')).toBe(true)
+  expect(firstState.messages[0]).toMatchObject({ role: 'user', contentType: 'text' })
+  expect(firstState.messages[1]).toMatchObject({ role: 'assistant', contentType: 'text' })
+  expect(firstState.messages.at(-1)).toMatchObject({
+    role: 'assistant', content: 'Performance pagination final sentinel',
+  })
+
+  expect(await t.mutation(initPagination, {})).toEqual(fixture)
+  expect(await readPagination(fixture.conversationId)).toEqual(firstState)
+  expect(await readBaseline()).toEqual(baselineBefore)
+  expect(await readSetupState()).toEqual(setupBefore)
+  expect(await t.run(ctx => ctx.db.query('conversations').collect())).toHaveLength(6)
+  await t.run(async ctx => {
+    expect(await ctx.db.query('conversationAgentRuns').collect()).toHaveLength(0)
+    expect(await ctx.db.query('harnessRuns').collect()).toHaveLength(0)
+    expect(await ctx.db.query('workflowStepEvents').collect()).toHaveLength(0)
+    expect(await ctx.db.system.query('_scheduled_functions').collect()).toHaveLength(0)
+    expect(await ctx.db.query('knowledgeSources').collect()).toHaveLength(0)
+    expect(await ctx.db.query('knowledgeChunks').collect()).toHaveLength(0)
+  })
+
+  const firstMessage = firstState.messages[0]
+  await t.run(ctx => ctx.db.patch(firstMessage._id, { content: 'Edited outside the fixture' }))
+  await expect(t.mutation(initPagination, {})).rejects.toThrow('Performance fixture history changed; inspect before reuse')
+  expect((await t.run(ctx => ctx.db.get(firstMessage._id)))?.content).toBe('Edited outside the fixture')
+})
+
+test('pagination fixture can target a second active Preview workspace owned by the configured QA user', async () => {
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
+  vi.stubEnv('PREVIEW_LOGIN_USER_ID', 'user_second_pagination_fixture')
+  vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'second-pagination@example.test')
+  const t = convexTest(schema, modules)
+  const primary = await t.mutation(init, {})
+  const secondWorkspaceId = `preview-computer-qa-${primary.workspaceId.slice('preview-qa-team-'.length)}`
+  const now = 1
+  const principalId = `${secondWorkspaceId}-owner`
+  await t.run(async ctx => {
+    await ctx.db.insert('workspaces', {
+      workspaceId: secondWorkspaceId, kind: 'organization', name: 'Second Preview QA workspace',
+      slug: secondWorkspaceId, status: 'active', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspacePrincipals', {
+      principalId, workspaceId: secondWorkspaceId, userId: 'user_second_pagination_fixture',
+      email: 'second-pagination@example.test', displayName: 'Preview QA', type: 'human',
+      createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      membershipId: `${principalId}-membership`, workspaceId: secondWorkspaceId, principalId,
+      role: 'member', status: 'active', joinedAt: now, updatedAt: now,
+    })
+  })
+
+  await expect(t.mutation(initPagination, { workspaceId: secondWorkspaceId }))
+    .rejects.toThrow('existing active QA owner and workspace')
+  await expect(t.mutation(initPagination, { workspaceId: `customer-${primary.workspaceId}` }))
+    .rejects.toThrow('Preview QA workspaces')
+  expect(await t.run(ctx => ctx.db.query('conversations').collect())).toHaveLength(5)
+
+  const secondMembership = await t.run(ctx => ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', secondWorkspaceId).eq('principalId', principalId)).unique())
+  await t.run(ctx => ctx.db.patch(secondMembership!._id, { role: 'owner' }))
+  const fixture = await t.mutation(initPagination, { workspaceId: secondWorkspaceId })
+  const messages = await t.run(ctx => ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', fixture.conversationId)).collect())
+  expect(fixture.workspaceId).toBe(secondWorkspaceId)
+  expect(fixture.conversationId).not.toBe(primary.personalA)
+  expect(messages).toHaveLength(120)
+  expect(await t.mutation(initPagination, { workspaceId: secondWorkspaceId })).toEqual(fixture)
+  expect(await t.run(ctx => ctx.db.query('conversations').collect())).toHaveLength(6)
+
+  const deletedAt = Date.now()
+  await t.run(ctx => ctx.db.patch(fixture.conversationId, { deletedAt }))
+  await expect(t.mutation(initPagination, { workspaceId: secondWorkspaceId }))
+    .rejects.toThrow('Performance fixture changed; inspect before reuse')
+  expect((await t.run(ctx => ctx.db.get(fixture.conversationId)))?.deletedAt).toBe(deletedAt)
+  expect(await t.run(ctx => ctx.db.query('conversations').collect())).toHaveLength(6)
 })

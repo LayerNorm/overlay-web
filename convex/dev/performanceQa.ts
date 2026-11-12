@@ -7,6 +7,7 @@ import { seedPreviewWorkspace } from './previewWorkspace'
 import { createHarnessSnapshot } from '../../packages/overlay-agent-runtime/src/harness-state'
 
 const PREFIX = 'preview-performance-v1'
+const PAGINATION_MESSAGE_COUNT = 120
 const STEPS = 80
 const INTERVAL_MS = 150
 const MODEL = 'openrouter/free'
@@ -37,6 +38,27 @@ function identity() {
   return { userId, email, workspaceId: `preview-qa-team-${userId}` }
 }
 
+function paginationOwner(owner: ReturnType<typeof identity>, workspaceId?: string) {
+  const selectedWorkspaceId = workspaceId ?? owner.workspaceId
+  if (!selectedWorkspaceId.startsWith('preview-') || !selectedWorkspaceId.endsWith(`-${owner.userId}`)) {
+    throw new Error('Pagination fixture accepts only Preview QA workspaces for the configured owner')
+  }
+  return { ...owner, workspaceId: selectedWorkspaceId }
+}
+
+async function hasActiveQaOwnerWorkspace(ctx: MutationCtx, owner: ReturnType<typeof identity>) {
+  const principalId = `${owner.workspaceId}-owner`
+  const [workspace, principal, membership] = await Promise.all([
+    ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', owner.workspaceId)).unique(),
+    ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', principalId)).unique(),
+    ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId',
+      q => q.eq('workspaceId', owner.workspaceId).eq('principalId', principalId)).unique(),
+  ])
+  return workspace?.status === 'active' && principal?.userId === owner.userId
+    && principal.workspaceId === owner.workspaceId && principal.type === 'human'
+    && membership?.status === 'active' && membership.role === 'owner'
+}
+
 /** Explicit synthetic histories. No provider, worker or workflow is started. */
 export const init = internalMutation({
   args: {},
@@ -57,31 +79,39 @@ export const initCode = internalMutation({
   args: {},
   handler: async ctx => {
     const owner = identity()
-    const principalId = `${owner.workspaceId}-owner`
-    const [workspace, principal, membership] = await Promise.all([
-      ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', owner.workspaceId)).unique(),
-      ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', principalId)).unique(),
-      ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId',
-        q => q.eq('workspaceId', owner.workspaceId).eq('principalId', principalId)).unique(),
-    ])
-    if (workspace?.status !== 'active' || principal?.userId !== owner.userId
-      || principal.workspaceId !== owner.workspaceId || principal.type !== 'human'
-      || membership?.status !== 'active' || membership.role !== 'owner') {
+    if (!await hasActiveQaOwnerWorkspace(ctx, owner)) {
       throw new Error('Code fixture requires the existing active QA owner and workspace')
     }
     return { workspaceId: owner.workspaceId, conversationId: await history(ctx, owner, 'code', 2) }
   },
 })
 
+/** Separate disposable personal history for pagination QA; it never seeds or repairs a workspace. */
+export const initPagination = internalMutation({
+  args: { workspaceId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const owner = paginationOwner(identity(), args.workspaceId)
+    if (!await hasActiveQaOwnerWorkspace(ctx, owner)) {
+      throw new Error('Pagination fixture requires the existing active QA owner and workspace')
+    }
+    return {
+      workspaceId: owner.workspaceId,
+      conversationId: await history(ctx, owner, 'pagination', PAGINATION_MESSAGE_COUNT),
+    }
+  },
+})
+
 async function history(ctx: MutationCtx, owner: ReturnType<typeof identity>, kind: string, count: number) {
-  const clientId = `${PREFIX}-${kind}`
+  const clientId = kind === 'pagination' ? `${PREFIX}-${kind}-${owner.workspaceId}` : `${PREFIX}-${kind}`
   const existing = await ctx.db.query('conversations')
     .withIndex('by_userId_clientId', q => q.eq('userId', owner.userId).eq('clientId', clientId)).unique()
   if (existing) {
     const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId',
       q => q.eq('conversationId', existing._id).eq('principalId', `${owner.workspaceId}-owner`)).unique()
     if (existing.workspaceId !== owner.workspaceId || existing.deletedAt !== undefined || participant?.archivedAt !== undefined
-      || (kind === 'code' && existing.conversationType !== 'personal')) {
+      || (kind === 'code' && existing.conversationType !== 'personal')
+      || (kind === 'pagination' && (existing.conversationType !== 'personal' || existing.scope === 'workspace'
+        || existing.isAutomation === true || existing.agentId !== undefined || existing.title !== 'Performance pagination'))) {
       throw new Error('Performance fixture changed; inspect before reuse')
     }
     const messages = await ctx.db.query('conversationMessages')
@@ -90,6 +120,10 @@ async function history(ctx: MutationCtx, owner: ReturnType<typeof identity>, kin
       || message.clientNonce !== `${clientId}-message-${index}`
       || (kind === 'code' && (message.status !== 'completed' || message.contentType !== 'text'
         || message.role !== (index === 0 ? 'user' : 'assistant')))
+      || (kind === 'pagination' && (message.userId !== owner.userId || message.status !== 'completed'
+        || message.contentType !== 'text' || message.mode !== 'act'
+        || message.role !== (index % 2 === 0 ? 'user' : 'assistant')
+        || message.turnId !== `${clientId}-${Math.floor(index / 2)}`))
       || ((kind !== 'stream' || index < count - 1) && message.content !== historyText(kind, index, count)))) {
       throw new Error('Performance fixture history changed; inspect before reuse')
     }
