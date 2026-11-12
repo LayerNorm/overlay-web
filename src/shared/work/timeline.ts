@@ -7,6 +7,14 @@ import { addDays, diffDays, startOfWeek, taskSpan } from './dates'
 import { sortByRank } from './query'
 
 export const TIMELINE_DAY_WIDTH = 24
+/** The narrowest a day gets when the timeline is fitted to its width; below it the grid scrolls sideways. */
+export const TIMELINE_MIN_DAY_WIDTH = 8
+
+/** The day width that fits `days` into `available` pixels (rounded down so rounding never adds a sideways scroll). */
+export function fitDayWidth(available: number, days: number): number {
+  if (!(available > 0) || days <= 0) return TIMELINE_DAY_WIDTH
+  return Math.max(TIMELINE_MIN_DAY_WIDTH, Math.floor((available / days) * 100) / 100)
+}
 export const TIMELINE_ROW_HEIGHT = 40
 export const TIMELINE_LABEL_WIDTH = 300
 /** The task-name column on a phone-sized screen. */
