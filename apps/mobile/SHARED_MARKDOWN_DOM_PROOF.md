@@ -1,4 +1,4 @@
-# Shared Markdown DOM proof
+# Shared Markdown DOM verification
 
 ## Bundled styles and fonts
 
@@ -6,11 +6,7 @@
 
 CI builds this CSS before tests and exports. It exports Android and iOS with `EXPO_NO_BUNDLE_SPLITTING=1` and verifies each platform's generated DOM CSS, font payloads, local URL targets, and native bundle metadata before running the existing bundle inspection.
 
-## Development fixture
-
-Open exactly `overlay://dev/shared-markdown`. The URI is development-only and exact-match allowlisted; it does not enable arbitrary `/dev` routes. The fixture is isolated from Auth, Convex, and application API providers so it can be opened signed out without app API calls.
-
-The same route includes a separately labeled shared-transcript proof mode using synthetic conversation data and the native scoped action controller. Copy is the only supported action and writes the selected synthetic text to the system clipboard; no backend or session state is used.
+The standalone synthetic transcript component is retained for its focused test and is not wired to an Expo Router route.
 
 ## Native transcript tests
 
@@ -26,4 +22,4 @@ Shared external Markdown links may display a Google S2 favicon via `WebSourceToo
 
 ## Checks
 
-Run `npm run build:shared-markdown-css`, `npm run check`, the remaining CJS tests, `npm run test:native-transcript`, and `node scripts/lint-mobile.cjs`. The proof test registers its TypeScript, React, and style hooks locally. CI exports both platforms and invokes the CSS asset verifier, the transcript source-map reachability verifier, and the credential-safe bundle inspection.
+Run `npm run build:shared-markdown-css`, `npm run check`, the remaining CJS tests, `npm run test:native-transcript`, and `node scripts/lint-mobile.cjs`. The Markdown and transcript tests register their TypeScript, React, and style hooks locally. CI exports both platforms and invokes the CSS asset verifier, the transcript source-map reachability verifier, and the credential-safe bundle inspection.

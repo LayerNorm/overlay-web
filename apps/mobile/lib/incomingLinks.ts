@@ -21,8 +21,7 @@ export async function activateLinkWorkspace(
   return true
 }
 
-export function incomingRoute(value: string, development = false): string {
-  if (development && value === 'overlay://dev/shared-markdown') return '/dev/shared-markdown'
+export function incomingRoute(value: string): string {
   try {
     const url = new URL(value, 'https://www.getoverlay.io')
     if (url.protocol !== 'overlay:' && (url.protocol !== 'https:' || !HOSTS.has(url.hostname)))

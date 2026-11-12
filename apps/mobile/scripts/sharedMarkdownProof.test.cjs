@@ -25,9 +25,6 @@ const {
   getWorkspaceLazyModulePath,
   resolveWorkspaceLazyModule,
 } = require('./resolve-shared-markdown-lazy-module.cjs')
-const {
-  isActiveSharedMarkdownFixtureRoute,
-} = require('../lib/sharedMarkdownFixtureNavigation.ts')
 
 const projectRoot = path.resolve(__dirname, '..')
 const sampleCssPath = path.join(projectRoot, 'assets/shared-markdown-proof-test.css')
@@ -74,63 +71,28 @@ test('generated dark theme colors the Markdown viewport', () => {
   assert.match(css, /\.shared-markdown-viewport\s*\{[^}]*background:\s*var\(--background\);[^}]*color:\s*var\(--foreground\);/s)
 })
 
-test('development fixture outlet follows only the exact active Navigator route', () => {
-  const routes = [
-    { name: 'dev/shared-markdown' },
-    { name: 'index' },
-    { name: '(tabs)' },
-    { name: 'auth-flow' },
-    { name: 'dev/unknown' },
-  ]
-
-  assert.equal(isActiveSharedMarkdownFixtureRoute({ routes, index: 0 }), true)
-  for (let index = 1; index < routes.length; index += 1) {
-    assert.equal(isActiveSharedMarkdownFixtureRoute({ routes, index }), false)
+test('Expo route tree excludes the synthetic screen and preserves personal Chat', () => {
+  const appRoot = path.join(projectRoot, 'app')
+  const routeFiles = []
+  const walk = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name)
+      if (entry.isDirectory()) walk(file)
+      else if (/\.(?:js|jsx|ts|tsx)$/.test(entry.name)) routeFiles.push(file)
+    }
   }
-  assert.equal(isActiveSharedMarkdownFixtureRoute({ routes, index: routes.length }), false)
-  assert.equal(isActiveSharedMarkdownFixtureRoute({ routes: [], index: 0 }), false)
-  assert.equal(isActiveSharedMarkdownFixtureRoute(undefined), false)
-})
+  walk(appRoot)
 
-test('development fixture outlet hides the previous route during warm Back transition', () => {
-  const routes = [{ name: 'dev/shared-markdown' }, { name: 'index' }]
-  const transition = [
-    { routes, index: 0 },
-    { routes, index: 1 },
-    { routes: [{ name: 'index' }], index: 0 },
-  ]
+  assert.equal(fs.existsSync(path.join(appRoot, 'dev/shared-markdown.tsx')), false)
+  for (const file of routeFiles) {
+    const source = fs.readFileSync(file, 'utf8')
+    assert.doesNotMatch(source, /SharedTranscriptProofMode|shared-transcript-proof-workspace|dev\/shared-markdown/)
+  }
 
-  assert.deepEqual(transition.map(isActiveSharedMarkdownFixtureRoute), [true, false, false])
-})
-
-test('the dev proof keeps Markdown intact and scopes its synthetic transcript mode to focus', () => {
-  const route = fs.readFileSync(path.join(projectRoot, 'app/dev/shared-markdown.tsx'), 'utf8')
-  const transcript = fs.readFileSync(path.join(projectRoot, 'components/chat/SharedTranscriptProofMode.tsx'), 'utf8')
-
-  assert.match(route, /if \(!__DEV__\) return <Redirect href="\/" \/>/)
-  assert.match(route, /Saved math:/)
-  assert.match(route, /Unsafe script link/)
-  assert.match(route, /\| Markdown table \| Shared renderer \|/)
-  assert.match(route, /~~~ts/)
-  assert.match(route, /SharedTranscriptProofMode/)
-  assert.match(route, /\{mode === 'markdown'\s*\?\s*<SharedMarkdownConversation/)
-  assert.match(route, /mode === 'markdown' \? <>[\s\S]*Append stream chunk[\s\S]*Finish stream[\s\S]*<\/> : null/)
-  assert.match(transcript, /useFocusEffect\(useCallback/)
-  assert.match(transcript, /Crypto\.randomUUID\(\)/)
-  assert.match(transcript, /focusNonce = `\$\{mountNonce\}_focus_\$\{focusEpoch\.current\}`/)
-  assert.match(transcript, /focusEpoch\.current \+= 1/)
-  assert.match(transcript, /controller\.invalidate\(\)/)
-  assert.match(transcript, /allowedActions: \['copy'\]/)
-  assert.match(transcript, /supportedActions: context\.allowedActions/)
-  assert.match(transcript, /scopeKey\(scope\) !== scopeKey\(current\.context\)/)
-  assert.match(transcript, /ActivityIndicator/)
-  assert.match(transcript, /theme\.background/)
-  assert.match(transcript, /proof-assistant-alternate/)
-  assert.match(transcript, /\| Item \| Value \|/)
-  assert.match(transcript, /```ts/)
-  assert.match(transcript, /\\frac\{1\}\{2\}/)
-  assert.match(transcript, /Synthetic \$\{label\} section \$\{index \+ 1\}/)
-  assert.doesNotMatch(transcript, /useAuth|useWorkspace|useConvex|fetch\s*\(/)
+  const chatRoute = fs.readFileSync(path.join(appRoot, '(tabs)/chat.tsx'), 'utf8')
+  const chatScreen = fs.readFileSync(path.join(projectRoot, 'components/chat/ChatScreen.tsx'), 'utf8')
+  assert.match(chatRoute, /ChatScreen/)
+  assert.match(chatScreen, /NativePersonalChatTranscript/)
 })
 
 test('selection fallback waits for detached endpoints and maps exact boundaries consistently', () => {

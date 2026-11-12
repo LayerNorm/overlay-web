@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { View, ActivityIndicator, Alert } from 'react-native'
-import { Navigator, Slot, Stack, useGlobalSearchParams, usePathname } from 'expo-router'
+import { Stack, useGlobalSearchParams } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
@@ -17,7 +17,6 @@ import { SettingsLiveBridge } from '../components/settings/SettingsLiveBridge'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useNotificationWatcher } from '../hooks/useNotificationWatcher'
 import { initNotificationHandler } from '../services/notificationsService'
-import { isActiveSharedMarkdownFixtureRoute } from '../lib/sharedMarkdownFixtureNavigation'
 
 initNotificationHandler()
 
@@ -83,7 +82,6 @@ function RootLayoutNav(): React.ReactElement {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="dev/shared-markdown" options={{ headerShown: false }} />
         <Stack.Screen
           name="auth-flow"
           options={{
@@ -169,25 +167,7 @@ function RootLayoutNav(): React.ReactElement {
   )
 }
 
-function DevelopmentFixtureOutlet(): React.ReactElement | null {
-  const { state } = Navigator.useContext()
-  return isActiveSharedMarkdownFixtureRoute(state) ? <Slot /> : null
-}
-
-function DevelopmentFixtureNavigation(): React.ReactElement {
-  const { isDark } = useTheme()
-  return (
-    <>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Navigator>
-        <DevelopmentFixtureOutlet />
-      </Navigator>
-    </>
-  )
-}
-
 export default function RootLayout(): React.ReactElement {
-  const pathname = usePathname()
   const [fontsLoaded] = useFonts({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     Geist: require('@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf'),
@@ -208,16 +188,6 @@ export default function RootLayout(): React.ReactElement {
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator />
       </View>
-    )
-  }
-
-  if (__DEV__ && pathname === '/dev/shared-markdown') {
-    return (
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <DevelopmentFixtureNavigation />
-        </ThemeProvider>
-      </SafeAreaProvider>
     )
   }
 
