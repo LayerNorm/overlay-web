@@ -65,11 +65,15 @@ import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import { prefetchTitle } from '@/features/chat/lib/generate-title'
 import {
   compareRoomMessageRecords,
+  captureRoomScrollAnchor,
+  createRoomScrollIntent,
+  holdRoomScrollAnchor,
   mergeRoomMessages,
   remoteAgentCommands,
-  roomMessageDomId,
+  roomMessageDomId, scrollRoomMessageIntoView,
   type RemoteAgentCommand,
   type RoomMessageRecord,
+  type RoomScrollAnchor,
 } from './collaboration/room-message-view'
 import type { RoomPanelKind } from './collaboration/RoomSidePanels'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -305,7 +309,12 @@ export function useRoomTranscript({
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
   const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
-  const [stickToBottom, setStickToBottom] = useState(true)
+  const [stickToBottom, updateStickToBottom] = useState(true)
+  const [scrollIntent] = useState(createRoomScrollIntent)
+  const setStickToBottom = useCallback((latest: boolean) => {
+    scrollIntent.navigate(latest)
+    updateStickToBottom(latest)
+  }, [scrollIntent])
   const listRef = useRef<HTMLDivElement>(null)
   const turnScroll = useAgentTurnScroll({ enabled: anchorAgentTurns, conversationId, messages, listRef })
   const { spacerRef: turnSpacerRef } = turnScroll
@@ -315,7 +324,9 @@ export function useRoomTranscript({
   useEffect(() => {
     messagesRef.current = messages
   })
-  const prependScrollRef = useRef<{ height: number; top: number } | null>(null)
+  /** Where the reader was when older history was requested, and the oldest row then loaded. */
+  const prependScrollRef = useRef<{ anchor: RoomScrollAnchor | null; height: number; top: number; oldestId?: string } | null>(null)
+  const releasePrependAnchorRef = useRef<(() => void) | null>(null)
   const skipNextMessageGrowthRef = useRef(false)
   const previousMessageCountRef = useRef(messages.length)
   const generatingMessages = messages.filter((message) => message.status === 'generating')
@@ -334,7 +345,14 @@ export function useRoomTranscript({
     if (paging.loadingMore || !paging.hasMore) return
     const node = listRef.current
     if (node) {
-      prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
+      releasePrependAnchorRef.current?.()
+      releasePrependAnchorRef.current = null
+      prependScrollRef.current = {
+        anchor: captureRoomScrollAnchor(node),
+        height: node.scrollHeight,
+        top: node.scrollTop,
+        oldestId: messagesRef.current[0]?.id,
+      }
       skipNextMessageGrowthRef.current = true
     }
     paging.loadMore()
@@ -384,13 +402,25 @@ export function useRoomTranscript({
     })
   }, [loading, messages.length, setNewMessageCount, stickToBottom])
 
+  const oldestMessageId = messages[0]?.id
   useLayoutEffect(() => {
     const node = listRef.current
-    const anchor = prependScrollRef.current
-    if (!node || !anchor) return
-    node.scrollTop = anchor.top + (node.scrollHeight - anchor.height)
+    const pending = prependScrollRef.current
+    // Wait for the older page itself: a live message arriving first must not consume the anchor.
+    if (!node || !pending || oldestMessageId === pending.oldestId) return
     prependScrollRef.current = null
-  }, [messages.length])
+    if (pending.anchor && document.getElementById(roomMessageDomId(pending.anchor.messageId))) {
+      releasePrependAnchorRef.current = holdRoomScrollAnchor(node, pending.anchor)
+    } else {
+      node.scrollTop = pending.top + (node.scrollHeight - pending.height)
+    }
+  }, [messages.length, oldestMessageId])
+
+  useEffect(() => () => {
+    releasePrependAnchorRef.current?.()
+    releasePrependAnchorRef.current = null
+    prependScrollRef.current = null
+  }, [conversationId])
 
   // Pin to latest after the initial transcript paint (and when stick-to-bottom).
   // Double rAF waits for layout of markdown/images so open-room no longer starts
@@ -401,26 +431,39 @@ export function useRoomTranscript({
     const node = listRef.current
     if (!node) return
     const pin = () => {
-      if (turnScroll.anchored.current) return
-      node.scrollTop = node.scrollHeight
+      if (scrollIntent.followsLatest() && !turnScroll.anchored.current) node.scrollTop = node.scrollHeight
     }
     pin()
+    let secondFrame: number | undefined
     const frame = window.requestAnimationFrame(() => {
       pin()
-      window.requestAnimationFrame(pin)
+      secondFrame = window.requestAnimationFrame(pin)
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, stickToBottom, turnScroll.anchored])
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (secondFrame !== undefined) window.cancelAnimationFrame(secondFrame)
+    }
+  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, scrollIntent, stickToBottom, turnScroll.anchored])
+
+  useEffect(() => {
+    const node = listRef.current
+    if (!node) return
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+    for (const event of events) node.addEventListener(event, scrollIntent.onUserInput, { capture: true, passive: true })
+    return () => {
+      for (const event of events) node.removeEventListener(event, scrollIntent.onUserInput, { capture: true })
+    }
+  }, [scrollIntent])
 
   const handleTranscriptScroll = useCallback(() => {
     const node = listRef.current
     if (node) {
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-      setStickToBottom(!turnScroll.anchored.current && distanceFromBottom <= 96)
+      updateStickToBottom(scrollIntent.onScroll(!turnScroll.anchored.current && distanceFromBottom <= 96))
       if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
     }
     void markVisibleRead(roomScrollReadKey(conversationId, messagesRef.current))
-  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, turnScroll.anchored])
+  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent, turnScroll.anchored])
 
   return {
     messages,
@@ -1669,8 +1712,8 @@ export function useMessageNavigation({
 }: {
   listRef: RefObject<HTMLDivElement | null>
   messagesRef: RefObject<OptimisticMessage[]>
+  setStickToBottom: (latest: boolean) => void
   releaseTurnAnchor?: () => void
-  setStickToBottom: Dispatch<SetStateAction<boolean>>
   markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
   setThreadRootId: Dispatch<SetStateAction<string | null>>
@@ -1696,15 +1739,14 @@ export function useMessageNavigation({
       setRoomPanel(null)
     }
     setHighlightedMessageId(messageId)
+    setStickToBottom(false)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        document.getElementById(roomMessageDomId(messageId))?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        })
+        const element = document.getElementById(roomMessageDomId(messageId))
+        if (element) scrollRoomMessageIntoView(element)
       })
     })
-  }, [messagesRef, setRoomPanel, setThreadRootId])
+  }, [messagesRef, setRoomPanel, setStickToBottom, setThreadRootId])
 
   const jumpToLatest = useCallback(() => {
     const node = listRef.current
