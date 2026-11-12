@@ -10,7 +10,17 @@ export type OnboardingReply = {
   suggestions?: string[]
   mode: 'prepared' | 'live'
 }
+export const OnboardingWorkspaceContextSchema = z.object({
+  workspaceName: z.string().min(1).max(200),
+  personal: z.boolean(),
+  invited: z.boolean(),
+  inviterName: z.string().max(200).nullable(),
+  billingContactName: z.string().max(200).nullable(),
+}).strict()
+export type OnboardingWorkspaceContext = z.infer<typeof OnboardingWorkspaceContextSchema>
+
 export type OnboardingSession = {
+  workspaceContext?: OnboardingWorkspaceContext
   version: 1
   flowVersion?: 2 | 3
   member?: boolean
@@ -42,7 +52,7 @@ export const OnboardingActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('draft_task'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),
   z.object({ action: z.literal('save_task'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200) }).strict(),
   z.object({ action: z.literal('advance'), runId: OnboardingRunIdSchema, revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional(), connectedTools: z.array(z.enum(['gmail', 'googlecalendar', 'slack', 'notion', 'github'])).max(5).optional() }).strict(),
-  z.object({ action: z.literal('finish'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200) }).strict(),
+  z.object({ action: z.literal('finish'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200), start: z.literal(false).optional() }).strict(),
 ])
 export type OnboardingAction = z.infer<typeof OnboardingActionSchema>
 

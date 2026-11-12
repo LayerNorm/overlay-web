@@ -361,3 +361,122 @@ export function toRoomMessageView({
 export function roomMessageDomId(messageId: string): string {
   return `room-message-${messageId}`
 }
+
+const JUMP_CENTER_TOLERANCE_PX = 24
+const JUMP_SETTLE_TIMEOUT_MS = 1_200
+const JUMP_CANCEL_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+
+export function createRoomScrollIntent() {
+  let following = true
+  let targetingMessage = false
+  return {
+    followsLatest: () => following,
+    navigate: (latest: boolean) => {
+      following = latest
+      targetingMessage = !latest
+    },
+    onUserInput: () => { targetingMessage = false },
+    onScroll: (nearBottom: boolean) => {
+      if (!targetingMessage) following = nearBottom
+      return following
+    },
+  }
+}
+
+/**
+ * Centres a room message in its scroller. Off-screen rows keep estimated heights
+ * until they render, so keep the target centred through bounded layout settling
+ * unless the user takes over.
+ */
+export function scrollRoomMessageIntoView(element: HTMLElement): void {
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const view = element.ownerDocument.defaultView
+  const scroller = view ? scrollParent(element, view) : null
+  if (!view || !scroller) return
+  let frame: number | undefined
+  const cleanup = () => {
+    view.clearTimeout(timer)
+    if (frame !== undefined) view.cancelAnimationFrame(frame)
+    scroller.removeEventListener('scrollend', start)
+    for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, cleanup, { capture: true })
+  }
+  const correct = () => {
+    if (element.isConnected && Math.abs(centerOffset(element, scroller)) > JUMP_CENTER_TOLERANCE_PX) {
+      element.scrollIntoView({ behavior: 'instant', block: 'center' })
+    }
+  }
+  const settle = () => {
+    correct()
+    frame = view.requestAnimationFrame(settle)
+  }
+  const start = () => {
+    scroller.removeEventListener('scrollend', start)
+    settle()
+  }
+  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, cleanup, { capture: true, passive: true })
+  scroller.addEventListener('scrollend', start)
+  const timer = view.setTimeout(() => { correct(); cleanup() }, JUMP_SETTLE_TIMEOUT_MS)
+}
+
+function scrollParent(element: HTMLElement, view: Window): HTMLElement | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const { overflowY } = view.getComputedStyle(node)
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) return node
+  }
+  return null
+}
+
+function centerOffset(element: HTMLElement, scroller: HTMLElement): number {
+  const target = element.getBoundingClientRect()
+  const frame = scroller.getBoundingClientRect()
+  return (target.top + target.bottom) / 2 - (frame.top + frame.bottom) / 2
+}
+
+const ANCHOR_HOLD_TIMEOUT_MS = 1_000
+
+/** The first row visible at the top of the scroller and its offset from that edge. */
+export type RoomScrollAnchor = { messageId: string; offset: number }
+
+export function captureRoomScrollAnchor(scroller: HTMLElement): RoomScrollAnchor | null {
+  const top = scroller.getBoundingClientRect().top
+  for (const row of scroller.querySelectorAll<HTMLElement>('[data-room-message]')) {
+    const rect = row.getBoundingClientRect()
+    const messageId = row.getAttribute('data-room-message')
+    if (messageId && rect.bottom > top) return { messageId, offset: rect.top - top }
+  }
+  return null
+}
+
+/**
+ * Keeps the anchored message where the reader left it after older history is
+ * prepended. Off-screen rows start at an estimated height and change size as
+ * they render, so a scrollHeight delta alone can land far from the reader's
+ * place. Corrects from the anchor row's measured position, then for a bounded
+ * settle period unless the user takes over. Returns a function that stops it.
+ */
+export function holdRoomScrollAnchor(scroller: HTMLElement, anchor: RoomScrollAnchor): () => void {
+  const document = scroller.ownerDocument
+  const correct = () => {
+    const element = document.getElementById(roomMessageDomId(anchor.messageId))
+    if (!element?.isConnected) return
+    const drift = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.offset
+    if (Math.abs(drift) >= 1) scroller.scrollTop += drift
+  }
+  correct()
+  const view = document.defaultView
+  if (!view) return () => {}
+  let frame: number | undefined
+  const settle = () => {
+    correct()
+    frame = view.requestAnimationFrame(settle)
+  }
+  const stop = () => {
+    view.clearTimeout(timer)
+    if (frame !== undefined) view.cancelAnimationFrame(frame)
+    for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, stop, { capture: true })
+  }
+  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, stop, { capture: true, passive: true })
+  frame = view.requestAnimationFrame(settle)
+  const timer = view.setTimeout(stop, ANCHOR_HOLD_TIMEOUT_MS)
+  return stop
+}

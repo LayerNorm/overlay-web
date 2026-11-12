@@ -122,6 +122,9 @@ export const ActConversationRequest = z.object({
   mediaToolIntent: z.enum(['image', 'video']).nullable().optional(),
   requestedToolIds: z.unknown().optional(),
   memoryEnabled: z.boolean().optional(),
+  notebookNoteId: z.string().min(1).max(64).optional().describe(
+    'The note open in the Notebook editor. The turn runs as a normal personal chat with that note as its subject and note editing tools available.',
+  ),
   actAbortTimeoutMs: z.number().finite().positive().optional(),
   harnessBudget: z.object({
     durationMs: z.number().int().min(30_000).optional(),

@@ -12,7 +12,6 @@ const rules = [
   ['src/server/app-api/v1/chat-suggestions/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
   ['src/server/app-api/v1/generate-image/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
   ['src/server/app-api/v1/generate-video/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
-  ['src/server/app-api/v1/notebook-agent/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
   ['src/server/app-api/v1/transcribe/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
 ]
 

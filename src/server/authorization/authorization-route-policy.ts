@@ -51,6 +51,7 @@ const resource = (
 })
 
 export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule[] = [
+  { path: '/api/v1/workspace-invitations/:invitationId', methods: { GET: publicPolicy() } },
   { path: '/api/v1/capabilities', methods: { GET: publicPolicy() } },
   // Deployment discovery is intentionally anonymous: it advertises API versions
   // and capabilities to clients that have not authenticated yet.
@@ -249,6 +250,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/request', methods: { POST: authenticated() } },
   {
     path: '/api/v1/subscription/settings',
     methods: { GET: authenticated(), POST: authenticated() },
@@ -413,7 +415,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/generate-tab-group-label', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-image', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-video', methods: { POST: capability('models.use') } },
-  { path: '/api/v1/notebook-agent', methods: { POST: capability('models.use', 'tools.use') } },
   {
     path: '/api/v1/imports/slack',
     methods: { GET: authenticated(), POST: authenticated() },

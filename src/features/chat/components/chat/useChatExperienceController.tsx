@@ -57,6 +57,7 @@ import {
   useNativePersonalSafetyScope,
 } from './useNativePersonalControllerState'
 import {
+  chatViewerUserId,
   selectNativePersonalDisplay,
   useNativePersonalReadObservation,
   useNativePersonalRouteState,
@@ -96,7 +97,7 @@ export type ChatExperienceProps = {
 }
 
 export function useChatExperienceController({
-  userId,
+  userId: initialUserId,
   firstName,
   hideSidebar,
   projectName,
@@ -118,6 +119,7 @@ export function useChatExperienceController({
 
   const { settings, updateSettings } = useAppSettings()
   const { user: authUser, isLoading: authLoading } = useAuth()
+  const userId = chatViewerUserId(initialUserId, authUser?.id ?? null, authLoading)
   const gatewayCatalogEnabled = shouldLoadGatewayModelCatalog({
     isAuthenticated: Boolean(authUser),
     isAuthLoading: authLoading,
@@ -154,7 +156,7 @@ export function useChatExperienceController({
   const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
-  const viewerUserId = authUser?.id ?? userId
+  const viewerUserId = userId
   const {
     chatWorkspaceId,
     getNativePersonalSummary,

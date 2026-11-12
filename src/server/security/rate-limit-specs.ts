@@ -121,10 +121,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'automations/automations:update:ip', limit: 60, windowMs: TEN_MINUTES },
     { bucket: 'automations/automations:update:user', limit: 30, windowMs: TEN_MINUTES },
   ],
-  'POST /api/v1/notebook-agent': [
-    { bucket: 'notebook-agent:ip', limit: 60, windowMs: TEN_MINUTES },
-    { bucket: 'notebook-agent:user', limit: 30, windowMs: TEN_MINUTES },
-  ],
   'POST /api/v1/conversations/act': CHAT_RATE_LIMITS,
   'POST /api/v1/providers/connections/test': [
     { bucket: 'providers/connections:test:ip', limit: 40, windowMs: TEN_MINUTES },
@@ -224,6 +220,14 @@ type DynamicEndpointRateLimit = {
 }
 
 const DYNAMIC_ENDPOINT_RATE_LIMITS: DynamicEndpointRateLimit[] = [
+  {
+    method: 'POST',
+    pattern: /^\/api\/v1\/workspaces\/[^/]+\/billing\/request$/,
+    limits: [
+      { bucket: 'workspace-billing:request:ip', limit: 30, windowMs: TEN_MINUTES },
+      { bucket: 'workspace-billing:request:user', limit: 5, windowMs: TEN_MINUTES },
+    ],
+  },
   {
     method: 'GET',
     pattern: /^\/api\/v1\/agents\/[^/]+(\/(bundle|threads|automations))?$/,

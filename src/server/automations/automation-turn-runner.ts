@@ -38,7 +38,7 @@ import {
 } from '@/server/agent/knowledge-agent-instructions'
 import { MATH_FORMAT_INSTRUCTION } from '@/shared/markdown/math-format-instructions'
 import { TABLE_FORMAT_INSTRUCTION } from '@/shared/markdown/markdown-table-instructions'
-import { buildActAgentInstructions } from '@/server/app-api/v1/conversations/act/instructions'
+import { buildAutomationAgentInstructions } from './automation-agent-instructions'
 import {
   resolveEffectiveActModelId,
 } from '@/server/app-api/v1/conversations/act/route-helpers'
@@ -716,7 +716,8 @@ export async function prepareAutomationAgentTurn(
     })
   }
 
-  const instructions = buildActAgentInstructions({
+  const instructions = buildAutomationAgentInstructions({
+    automationAgent,
     availableToolIds: Object.keys(actTooling.tools),
     autoRetrieval,
     constants: {

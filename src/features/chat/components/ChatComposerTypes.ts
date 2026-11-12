@@ -57,6 +57,8 @@ export type ChatComposerActions = {
 }
 export type ChatComposerSurface = {
   textOnly?: boolean
+  /** Fills a side panel that already provides its own gutter. */
+  embedded?: boolean
   hideModeMenu?: boolean
   hideGenerationModes?: boolean
   placeholder?: string

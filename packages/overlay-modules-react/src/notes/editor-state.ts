@@ -46,6 +46,8 @@ import { noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-
 import type { SlashMenuItem } from './slash-menu'
 import { createSlashMenuItems } from './slash-menu-items'
 import {
+  agentReviewBase,
+  getPendingDiffs,
   InlineDiffExtension,
   INLINE_DIFF_CSS,
 } from './inline-diff-extension'
@@ -58,6 +60,9 @@ import type {
 
 type TiptapEditor = ReturnType<typeof useEditor>
 type FlushSaveRef = MutableRefObject<() => Promise<void> | void>
+/** The note before the assistant's unresolved edits, kept while its turn runs or its changes await review. */
+export type NotebookAgentReview = { noteId: string; baseBlocks: Record<string, unknown>[]; running: boolean }
+type AgentReviewRef = MutableRefObject<NotebookAgentReview | null>
 
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
@@ -511,6 +516,7 @@ export function useNotebookNotes({
   setTitle,
   hydratingEditorRef,
   editor,
+  agentReviewRef,
 }: {
   noteId: string | null
   /** The open note as the host's subscription sees it; null once it is deleted or unreadable. */
@@ -526,6 +532,7 @@ export function useNotebookNotes({
   setTitle: (title: string) => void
   hydratingEditorRef: MutableRefObject<boolean>
   editor: TiptapEditor | null
+  agentReviewRef: AgentReviewRef
 }) {
   const openNote = useCallback((note: NotebookNote) => {
     lifecycleController.current?.select({
@@ -594,9 +601,15 @@ export function useNotebookNotes({
       id: note._id, title: note.title, content: note.content, revision: String(note.updatedAt), updatedAt: note.updatedAt,
     })
     if (!adopted) return
+    const review = agentReviewRef.current
+    const reviewing = review?.noteId === note._id && (review.running || getPendingDiffs(editor).length > 0)
+    if (review && !reviewing) agentReviewRef.current = null
     hydratingEditorRef.current = true
     editor.commands.setContent(noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(note.content)))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+    // The assistant's edits are already saved; show each one so it can be kept or reverted.
+    if (reviewing) editor.commands.showAgentEdits(review.baseBlocks)
+    else editor.commands.clearAllDiffs()
     hydratingEditorRef.current = false
     setActiveNote(note)
     setTitle(note.title)
@@ -745,7 +758,6 @@ export function useNoteMutations({
 
 async function readAgentStream(
   res: Response,
-  editor: TiptapEditor | null,
   setAgentItems: React.Dispatch<React.SetStateAction<NotebookAgentUiItem[]>>,
 ) {
   const reader = res.body?.getReader()
@@ -768,12 +780,6 @@ async function readAgentStream(
       const evt = parseNotebookAgentStreamLine(trimmed)
       if (!evt) continue
 
-      if (evt.type === 'edit_proposal') {
-        const edit = evt.edit
-        if (edit) editor?.chain().focus().addDiffProposal(edit).run()
-        continue
-      }
-
       const item = notebookAgentEventToUiItem(evt)
       if (item) setAgentItems((prev) => [...prev, item])
     }
@@ -789,7 +795,9 @@ export function useNotebookAgent({
   flushSaveRef,
   controlledAgentPanelOpen,
   onAgentPanelOpenChange,
+  agentReviewRef,
 }: {
+  agentReviewRef: AgentReviewRef
   runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
   editor: TiptapEditor | null
   activeNote: NotebookNote | null
@@ -816,9 +824,10 @@ export function useNotebookAgent({
   useEffect(() => {
     notebookAgentAbortRef.current?.abort()
     notebookAgentAbortRef.current = null
+    agentReviewRef.current = null
     setAgentRunning(false)
     setAgentItems([])
-  }, [activeNoteId])
+  }, [activeNoteId, agentReviewRef])
 
   useEffect(() => {
     if (controlledAgentPanelOpen === undefined) return
@@ -862,8 +871,12 @@ export function useNotebookAgent({
     if (!editor || !activeNote || agentRunning) return
     const message = agentInput.trim()
     if (!message) return
+    await flushSaveRef.current()
     const noteContent = noteContentFromEditor(editor)
     const modelId = selectedModelId
+    agentReviewRef.current = { noteId: activeNote._id, baseBlocks: agentReviewBase(editor), running: true }
+    // The assistant saves its edits to the note; typing meanwhile would conflict with them.
+    editor.setEditable(false, false)
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
     const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
@@ -876,6 +889,7 @@ export function useNotebookAgent({
 
     try {
       const res = await runAgent({
+        noteId: activeNote._id,
         noteContent,
         noteTitle: normalizeNotebookTitle(title),
         message,
@@ -899,16 +913,21 @@ export function useNotebookAgent({
         return
       }
 
-      await readAgentStream(res, editor, setAgentItems)
+      await readAgentStream(res, setAgentItems)
     } catch (e) {
       if (ac.signal.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
       setAgentItems((prev) => [...prev, { type: 'error', text: msg }])
     } finally {
       notebookAgentAbortRef.current = null
+      const review = agentReviewRef.current
+      if (review?.noteId === activeNote._id) {
+        agentReviewRef.current = getPendingDiffs(editor).length > 0 ? { ...review, running: false } : null
+      }
+      if (!editor.isDestroyed) editor.setEditable(true, false)
       setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, setAgentMentions, title])
+  }, [activeNote, agentInput, agentReviewRef, agentRunning, editor, flushSaveRef, runAgent, selectedModelId, setAgentMentions, title])
 
   return {
     agentPanelOpen,

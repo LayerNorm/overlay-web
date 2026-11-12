@@ -174,6 +174,8 @@ export async function prepareActTooling(params: {
   billingProgrammaticSubjectId?: string
   workspaceId?: string
   requestedToolIds?: readonly ChatToolRequestId[]
+  /** A Notebook chat turn: the open note's read and edit tools are always offered. */
+  notebookNoteId?: string
   serverSecret: string
   turnId: string
   userId: string
@@ -182,7 +184,7 @@ export async function prepareActTooling(params: {
   const memoryEnabled = params.memoryEnabled !== false && capabilities.memory && capabilities.vectorSearch
   // Account policy is applied after deployment gates and only ever narrows,
   // so it can never reintroduce a tool the deployment withheld.
-  const intentToolIds = withRequestedOverlayToolIds(
+  const intentToolIds = withNotebookToolIds(withRequestedOverlayToolIds(
     allowedOverlayToolIdsForTurn({
       latestUserText: params.latestUserText ?? '',
       automationMode: params.automationMode === true || params.mode === 'automate',
@@ -191,7 +193,7 @@ export async function prepareActTooling(params: {
     }),
     params.requestedToolIds ?? [],
     memoryEnabled,
-  )
+  ), params.notebookNoteId)
   const baseToolIds = await withPersonalComputerToolIds(
     withAgentGrantToolIds(
       intentToolIds,
@@ -419,6 +421,12 @@ function exposedMediaToolIds(webToolSet: ToolSet): string[] {
     'apply_motion_control',
     'edit_video',
   ].filter((toolId) => toolId in webToolSet)
+}
+
+const NOTEBOOK_TOOL_IDS = ['get_note', 'edit_note', 'replace_note_section', 'append_to_note', 'update_note'] as const
+
+function withNotebookToolIds(toolIds: string[], notebookNoteId: string | undefined): string[] {
+  return notebookNoteId ? [...new Set([...toolIds, ...NOTEBOOK_TOOL_IDS])] : toolIds
 }
 
 function withRequestedOverlayToolIds(

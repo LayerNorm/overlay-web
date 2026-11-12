@@ -7,11 +7,14 @@ import { OnboardingActionSchema } from '@/shared/onboarding/session'
 import { ConvexOnboardingStateRepository, ConversationalOnboardingService, OnboardingServiceError } from '@/server/onboarding'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
+import { workspaceBillingService } from '@/server/billing/http'
+import { onboardingTaskMessage } from '@/shared/onboarding/billing-copy'
 
 function service() {
   const server = getOverlayServerContext()
   return new ConversationalOnboardingService({
     repository: new ConvexOnboardingStateRepository(),
+    taskReply: async (actorUserId, workspaceId, workspaceName) => onboardingTaskMessage(await workspaceBillingService.summary({ actorUserId, workspaceId }), workspaceName),
     effects: {
       agents: server.workspaceAgentService,
       collaboration: server.appData.repositories.conversationCollaboration,

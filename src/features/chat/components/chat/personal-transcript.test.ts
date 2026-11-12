@@ -1,12 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { HydratedRemoteMessage } from '../../../../../convex/lib/remoteMessageText'
-import { personalMessageToUi, projectPersonalTranscript, type PersonalPendingTurn } from './personal-transcript'
+import { createPersonalMessageProjector, personalMessageToUi, projectPersonalTranscript, type PersonalPendingTurn } from './personal-transcript'
 
 function message(id: string, turnId: string, role: 'user' | 'assistant', extra: Partial<HydratedRemoteMessage> = {}): HydratedRemoteMessage {
   return { _id: id, _creationTime: 1, conversationId: 'chat', userId: 'owner', turnId,
     role, mode: 'act', content: id, contentType: 'text', createdAt: 1, ...extra } as HydratedRemoteMessage
 }
+
+test('stream-only projections preserve unchanged live messages without retaining rows by ID', () => {
+  const project = createPersonalMessageProjector()
+  const earlier = message('earlier', 'earlier-turn', 'assistant', { status: 'completed' })
+  const live = message('live', 'live-turn', 'assistant', { status: 'generating' })
+  const before = projectPersonalTranscript([earlier, live].map(message => ({ message, contextUser: null })), [], project)
+  const changed = { ...live, content: 'More text', nativeProgressSequence: 2 }
+  const after = projectPersonalTranscript([earlier, changed].map(message => ({ message, contextUser: null })), [], project)
+  assert.equal(after.messages[0], before.messages[0])
+  assert.notEqual(after.messages[1], before.messages[1])
+  assert.equal(after.messages[1].parts[0].type, 'text')
+  assert.deepEqual(after.messages[1].parts, [{ type: 'text', text: 'More text' }])
+  const deleted = project({ ...earlier, deletedAt: 123 })
+  assert.notEqual(deleted, before.messages[0])
+  assert.deepEqual(deleted.parts, [{ type: 'text', text: 'Message deleted' }])
+  assert.equal(projectPersonalTranscript([], [], project).messages.length, 0)
+  assert.notEqual(createPersonalMessageProjector()(earlier), before.messages[0])
+})
 
 test('native run sequence wins over stale timestamps and terminal snapshots win over progress', () => {
   const current = message('assistant', 'turn', 'assistant', { status: 'generating', nativeRunId: 'run' as HydratedRemoteMessage['nativeRunId'],

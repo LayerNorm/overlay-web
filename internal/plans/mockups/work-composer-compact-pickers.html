@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work composer: compact pickers at narrow widths</title>
+<style>
+  :root {
+    --foreground:#0a0a0a; --muted:#71717a; --muted-light:#a1a1aa;
+    --bg:#ffffff; --shell:#f4f4f5; --border:#e4e4e7;
+    --subtle:#f0f0f0; --surface-muted:#e9e9ec;
+    --primary-bg:#dcdce1; --primary-text:#27272a; --primary-hover:#ccccd3;
+    --tip-bg:#18181b; --tip-text:#fafafa;
+  }
+  .dark {
+    --foreground:#f5f5f5; --muted:#a1a1aa; --muted-light:#71717a;
+    --bg:#0a0a0a; --shell:#0d0d0d; --border:#242424;
+    --subtle:#1c1c20; --surface-muted:#1c1c20;
+    --primary-bg:#3b3b42; --primary-text:#ededf0; --primary-hover:#484850;
+    --tip-bg:#f4f4f5; --tip-text:#18181b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--foreground);
+    font-family:Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .page { max-width:960px; margin:0 auto; padding:32px 24px 64px; }
+  h1 { font-size:18px; font-weight:600; margin:0 0 4px; }
+  p.lead { font-size:13px; color:var(--muted); margin:0 0 20px; line-height:1.5; }
+  .toolbar { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:28px;
+    font-size:12px; color:var(--muted); }
+  .toolbar input[type=range] { width:240px; accent-color:var(--muted); }
+  .toolbar button { font:inherit; font-size:12px; color:var(--foreground); background:var(--subtle);
+    border:1px solid var(--border); border-radius:8px; height:30px; padding:0 10px; cursor:pointer; }
+  .section { margin-bottom:32px; }
+  .label { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted-light); margin:0 0 8px; }
+  .frame { resize:horizontal; overflow:hidden; min-width:300px; max-width:100%; }
+
+  /* Composer */
+  .composer { container-type:inline-size; container-name:composer; }
+  .shell { background:var(--shell); border:1px solid var(--border); border-radius:16px; padding:12px; }
+  .textarea { min-height:44px; font-size:14px; line-height:24px; padding:4px 2px; color:var(--muted-light); }
+  .footer { margin-top:8px; display:flex; align-items:center; gap:6px; min-height:36px; flex-wrap:nowrap; }
+  .icon-btn { width:36px; height:36px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    border-radius:8px; color:var(--muted); background:transparent; border:0; cursor:pointer; padding:0; }
+  .icon-btn:hover { background:var(--surface-muted); color:var(--foreground); }
+  .picker { position:relative; height:32px; flex-shrink:0; display:inline-flex; align-items:center; gap:6px;
+    padding:0 8px; border-radius:8px; border:0; background:transparent; color:var(--muted);
+    font:inherit; font-size:12px; font-weight:400; cursor:pointer; white-space:nowrap; }
+  .picker:hover { background:var(--subtle); color:var(--foreground); }
+  .picker .text { max-width:112px; overflow:hidden; text-overflow:ellipsis; }
+  .picker .count { display:none; }
+  .avatar { display:block; width:16px; height:16px; border-radius:999px; background:#a78bfa; flex-shrink:0; }
+  .spacer { flex:1; min-width:0; }
+  .hint { font-size:11px; color:var(--muted-light); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .submit { width:36px; height:36px; flex-shrink:0; border-radius:8px; border:0; background:var(--primary-bg);
+    color:var(--primary-text); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .submit:hover { background:var(--primary-hover); }
+  .tip { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+    background:var(--tip-bg); color:var(--tip-text); font-size:11px; padding:4px 7px; border-radius:6px;
+    white-space:nowrap; pointer-events:none; opacity:0; transition:opacity .12s; display:none; }
+
+  /* Compact: labels collapse to icons so everything stays on one row */
+  @container composer (max-width: 520px) {
+    .picker { width:32px; padding:0; justify-content:center; gap:0; }
+    .picker .text { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+    .picker .count { display:flex; position:absolute; top:3px; right:2px; min-width:13px; height:13px;
+      padding:0 3px; border-radius:999px; background:var(--foreground); color:var(--shell);
+      font-size:9px; font-weight:600; align-items:center; justify-content:center; line-height:1; }
+    .picker .tip { display:block; }
+    .picker:hover .tip, .picker:focus-visible .tip { opacity:1; }
+    .hint { display:none; }
+  }
+  svg { display:block; }
+  .ico-user { display:flex; }
+  .notes { font-size:13px; color:var(--muted); line-height:1.6; border-top:1px solid var(--border); padding-top:16px; }
+  .notes code { font-size:12px; background:var(--subtle); padding:1px 5px; border-radius:4px; color:var(--foreground); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Work composer: compact pickers</h1>
+  <p class="lead">When the composer gets narrow, Assignee, Schedule and Depends on drop their labels and become 32px icon buttons, so the gear never wraps to a second line. Labels move into a tooltip and the accessible name; counts become a small badge.</p>
+
+  <div class="toolbar">
+    <label>Live width <input id="w" type="range" min="300" max="900" value="420"> <span id="wv">420px</span></label>
+    <button id="theme">Toggle dark</button>
+    <span>Compact below 520px composer width</span>
+  </div>
+
+  <div class="section">
+    <div class="label">Interactive (drag the slider or the frame's corner)</div>
+    <div class="frame" id="live"></div>
+  </div>
+  <div class="section">
+    <div class="label">Wide · 760px · full labels</div>
+    <div class="frame" style="width:760px" data-variant="empty"></div>
+  </div>
+  <div class="section">
+    <div class="label">Narrow · 400px · icons only, everything on one row</div>
+    <div class="frame" style="width:400px" data-variant="empty"></div>
+  </div>
+  <div class="section">
+    <div class="label">Narrow · 400px · with assignee, 2 dates and 3 dependencies</div>
+    <div class="frame" style="width:400px" data-variant="filled"></div>
+  </div>
+  <div class="section">
+    <div class="label">Wide · 760px · same state, full labels</div>
+    <div class="frame" style="width:760px" data-variant="filled"></div>
+  </div>
+
+  <div class="notes">
+    Implementation sketch: drop <code>flex-wrap</code> from the footer in <code>WorkTaskComposer.tsx</code>, add <code>@container</code> to the composer shell, and in <code>WorkComposerPickers.tsx</code> give the label <code>@max-[520px]:sr-only</code>, the button <code>@max-[520px]:w-8 @max-[520px]:px-0</code>, and a tooltip with the label. The "Starts when dependencies finish" hint hides in compact mode. A container query (not a viewport breakpoint) keeps it correct when sidebars or the details panel squeeze the main column.
+  </div>
+</div>
+
+<template id="tpl">
+  <div class="composer">
+    <div class="shell">
+      <div class="textarea">Describe a task</div>
+      <div class="footer">
+        <button class="icon-btn" aria-label="Add context">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </button>
+        <button class="picker" data-k="assignee">
+          <span class="ico-user"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+          <span class="text">Assignee</span><span class="tip">Assignee</span>
+        </button>
+        <button class="picker" data-k="schedule">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+          <span class="text">Schedule</span><span class="count"></span><span class="tip">Schedule</span>
+        </button>
+        <button class="picker" data-k="deps">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+          <span class="text">Depends on</span><span class="count"></span><span class="tip">Depends on</span>
+        </button>
+        <button class="icon-btn" aria-label="Task settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <span class="spacer"></span>
+        <span class="hint" hidden>Starts when dependencies finish</span>
+        <button class="icon-btn" aria-label="Dictate">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+        </button>
+        <button class="submit" aria-label="Add task">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  const tpl = document.getElementById('tpl');
+  function render(frame, variant) {
+    frame.innerHTML = '';
+    const node = tpl.content.cloneNode(true);
+    if (variant === 'filled') {
+      const a = node.querySelector('[data-k=assignee]');
+      a.querySelector('.ico-user').innerHTML = '<span class="avatar"></span>';
+      a.querySelector('.text').textContent = 'Research agent';
+      a.querySelector('.tip').textContent = 'Assigned to Research agent';
+      const s = node.querySelector('[data-k=schedule]');
+      s.querySelector('.text').textContent = 'Schedule (2)';
+      s.querySelector('.count').textContent = '2';
+      s.querySelector('.tip').textContent = 'Schedule (2)';
+      const d = node.querySelector('[data-k=deps]');
+      d.querySelector('.text').textContent = 'Depends on (3)';
+      d.querySelector('.count').textContent = '3';
+      d.querySelector('.tip').textContent = 'Depends on (3)';
+      node.querySelector('.hint').hidden = false;
+      node.querySelector('.textarea').textContent = 'Draft outreach emails for the shortlisted leads';
+      node.querySelector('.textarea').style.color = 'var(--foreground)';
+    }
+    node.querySelectorAll('.count').forEach(c => { if (!c.textContent) c.remove(); });
+    frame.appendChild(node);
+  }
+  document.querySelectorAll('[data-variant]').forEach(f => render(f, f.dataset.variant));
+  const live = document.getElementById('live');
+  render(live, 'filled');
+  const w = document.getElementById('w'), wv = document.getElementById('wv');
+  const setW = () => { live.style.width = w.value + 'px'; wv.textContent = w.value + 'px'; };
+  w.addEventListener('input', setW); setW();
+  document.getElementById('theme').addEventListener('click', () => document.documentElement.classList.toggle('dark'));
+</script>
+</body>
+</html>

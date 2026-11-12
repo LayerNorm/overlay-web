@@ -19,6 +19,8 @@ type TestNode = {
     onPointerEnter(event: { pointerType: string }): void
     onPointerLeave(event: { pointerType: string }): void
     onClick?: unknown
+    className?: string
+    size?: string
   }
   findByType(type: string): TestNode
 }
@@ -40,6 +42,8 @@ test('touch and pen leave opening to the trigger and do not schedule hover dismi
   const isOpen = () => root.findByType('test-popover').props.open
   try {
     expect(root.findByType('test-menu-button').props.onClick).toBeUndefined()
+    expect(root.findByType('test-menu-button').props.className).toBe('justify-center px-0')
+    expect(root.findByType('test-menu-button').props.size).toBe('lg')
     for (const pointerType of ['touch', 'pen']) {
       await act(() => root.findByType('test-item').props.onPointerEnter({ pointerType }))
       expect(isOpen()).toBe(false)

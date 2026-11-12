@@ -203,6 +203,7 @@ export function useNativePersonalControllerState({
   const nativeTranscriptState = useNativePersonalTranscript({
     enabled: scope.enabled,
     conversationId: scope.conversationId,
+    scopeKey: nativeCommandScopeKey,
     summaryConversationId: scope.summaryConversationId,
     transcriptConversationId: nativePersonal.transcript.conversationId,
     pendingFirstConversationId: pendingRunConversationId,

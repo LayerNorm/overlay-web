@@ -1,30 +1,36 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
-import { Button, Input, ListboxSelect } from "@overlay/ui/primitives";
-import {
-  SettingsActionRow,
-  SettingsGroup,
-  SettingRow,
-} from "@overlay/modules-react/settings";
+  Button,
+  FloatingMenu,
+  Input,
+  ListboxSelect,
+  MenuItem,
+} from "@overlay/ui/primitives";
+import { SettingsGroup, SettingsToggle } from "@overlay/modules-react/settings";
 import {
   DesktopDictationSettings,
   useLiveDictationStatus,
 } from "./DesktopDictationSettings";
+import {
+  DesktopRow,
+  DesktopSection,
+  ShortcutRecorder,
+} from "./DesktopSettingsParts";
 import { useDesktopBridge } from "@/components/desktop/DesktopProvider";
 import type {
+  DesktopBridge,
   Input as BridgeInput,
   HostStatus,
   Model,
   TranscriptionStatus,
   UpdateStatus,
 } from "@overlay/desktop-bridge";
+
+type HotkeyId = BridgeInput<"hotkeys.set">["id"];
+type Run = (action: () => Promise<unknown>) => Promise<void>;
 
 export function DesktopSettings() {
   const desktop = useDesktopBridge();
@@ -35,8 +41,6 @@ export function DesktopSettings() {
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [keys, setKeys] = useState<Record<string, string>>({});
-  const [code, setCode] = useState("");
-  const [adapter, setAdapter] = useState<"codex" | "claude-code">("codex");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [diagnostics, setDiagnostics] = useState(false);
@@ -108,7 +112,7 @@ export function DesktopSettings() {
     };
   }, [desktop, refresh]);
   useLiveDictationStatus(desktop, setTranscription, setDevices);
-  const run = async (action: () => Promise<unknown>) => {
+  const run: Run = async (action) => {
     setBusy(true);
     setError("");
     try {
@@ -124,258 +128,83 @@ export function DesktopSettings() {
   };
   if (!desktop) return null;
   const { bridge, info } = desktop;
-  return (
-    <div className="space-y-6">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() =>
-          void run(() => bridge.call("window.openDataFolder", undefined))
+  const mac = info.platform === "darwin";
+  const can = (capability: (typeof info.capabilities)[number]) =>
+    info.capabilities.includes(capability);
+  const shortcut = (id: HotkeyId, label: string) =>
+    can("hotkeys") ? (
+      <ShortcutRecorder
+        label={label}
+        accelerator={keys[id]}
+        mac={mac}
+        disabled={busy}
+        onChange={(accelerator) =>
+          void run(() => bridge.call("hotkeys.set", { id, accelerator }))
         }
-      >
-        Open local recordings and preserved data
-      </Button>
-      <p className="text-sm text-muted-foreground">
-        Overlay for {info.platform === "darwin" ? "Mac" : info.platform} ·{" "}
-        {info.appVersion}
-      </p>
+        onReset={() => void run(() => bridge.call("hotkeys.reset", { id }))}
+      />
+    ) : null;
+  return (
+    <div className="flex flex-col gap-8">
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="px-1 text-sm text-red-500">
           {error}
         </p>
       ) : null}
-      {info.capabilities.includes("notifications") ? (
-        <SettingsGroup>
-          <SettingsActionRow
-            icon={null}
-            title="Notifications"
-            description="Allow Overlay in macOS System Settings → Notifications to receive alerts."
-            action={
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  void run(() =>
-                    bridge.call("notifications.show", {
-                      title: "Overlay",
-                      body: "Desktop notifications are working.",
-                      route: "/app/work",
-                    }),
-                  )
-                }
-              >
-                Send test notification
-              </Button>
-            }
-          />
-        </SettingsGroup>
-      ) : null}
-      {info.capabilities.includes("transcription") ? (
+      {can("transcription") ? (
         <DesktopDictationSettings
           bridge={bridge}
           models={models}
           devices={devices}
           transcription={transcription}
           busy={busy}
+          shortcut={shortcut("dictation", "Dictation")}
           run={run}
         />
       ) : null}
-      {info.capabilities.includes("hotkeys") ? (
-        <SettingsGroup>
-          {Object.entries(keys).map(([id, value]) => (
-            <SettingsActionRow
-              icon={null}
-              key={id}
-              title={`${id[0].toUpperCase()}${id.slice(1)} shortcut`}
-              description="Click the shortcut, then press a new key combination."
-              action={
-                <div className="flex gap-2">
-                  <Input
-                    aria-label={`${id} shortcut`}
-                    className="w-52"
-                    value={shortcutLabel(value, info.platform === "darwin")}
-                    readOnly
-                    disabled={busy}
-                    onKeyDown={(event) => {
-                      const accelerator = shortcutFromKey(event);
-                      if (accelerator)
-                        void run(() =>
-                          bridge.call("hotkeys.set", {
-                            id: id as BridgeInput<"hotkeys.set">["id"],
-                            accelerator,
-                          }),
-                        );
-                    }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() =>
-                        bridge.call("hotkeys.reset", {
-                          id: id as BridgeInput<"hotkeys.set">["id"],
-                        }),
-                      )
-                    }
-                  >
-                    Reset
-                  </Button>
-                </div>
-              }
-            />
-          ))}
-        </SettingsGroup>
-      ) : null}
-      {info.capabilities.includes("panels") ? (
-        <SettingsGroup>
-          {(["chat", "notes"] as const).map((kind) => (
-            <SettingsActionRow
-              icon={null}
-              key={kind}
-              title={`${kind === "chat" ? "Chat" : "Notes"} panel`}
-              description="Keep a compact Overlay window over your other apps."
-              action={
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      void run(() => bridge.call("panels.toggle", { kind }))
-                    }
-                  >
-                    Toggle
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      void run(() =>
-                        bridge.call("panels.setDocked", {
-                          kind,
-                          edge: "right",
-                        }),
-                      )
-                    }
-                  >
-                    Dock right
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      void run(() =>
-                        bridge.call("panels.setDocked", { kind, edge: "none" }),
-                      )
-                    }
-                  >
-                    Undock
-                  </Button>
-                </div>
-              }
-            />
-          ))}
-        </SettingsGroup>
-      ) : null}
-      {info.capabilities.includes("agentHost") ? (
-        <SettingsGroup>
-          <SettingsActionRow
-            icon={null}
-            title="Local Agent Host"
-            description={`State: ${host?.state ?? "checking"}. Create a connection code in Agents, then start the host on this Mac.`}
-            action={
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={
-                  busy || !host || !["running", "starting"].includes(host.state)
+      {can("panels") ? (
+        <DesktopSection
+          title="Floating panels"
+          description="Keep chat or notes over your other apps."
+        >
+          <SettingsGroup>
+            {(["chat", "notes"] as const).map((kind) => (
+              <DesktopRow
+                key={kind}
+                title={kind === "chat" ? "Chat" : "Notes"}
+                control={
+                  <>
+                    {shortcut(kind, kind === "chat" ? "Chat" : "Notes")}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        void run(() => bridge.call("panels.toggle", { kind }))
+                      }
+                    >
+                      Open
+                    </Button>
+                    <PanelMenu bridge={bridge} kind={kind} run={run} />
+                  </>
                 }
-                onClick={() =>
-                  void run(() => bridge.call("agentHost.stop", undefined))
-                }
-              >
-                Stop
-              </Button>
-            }
-          />
-          <div className="flex flex-wrap gap-2 px-4 pb-4">
-            <ListboxSelect
-              value={adapter}
-              options={[
-                { value: "codex", label: "Codex" },
-                { value: "claude-code", label: "Claude Code" },
-              ]}
-              onChange={setAdapter}
-              aria-label="Agent adapter"
-            />
-            <Input
-              aria-label="Agent enrollment code"
-              placeholder="Connection code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-52"
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || !code.trim()}
-              onClick={() =>
-                void run(async () => {
-                  await bridge.call("agentHost.start", {
-                    adapter,
-                    enrollmentCode: code,
-                  });
-                  setCode("");
-                })
-              }
-            >
-              Start host
-            </Button>
-          </div>
-          {host?.logTail.length ? (
-            <pre className="max-h-40 overflow-auto px-4 pb-4 text-xs">
-              {host.logTail.join("\n")}
-            </pre>
-          ) : null}
-        </SettingsGroup>
+              />
+            ))}
+          </SettingsGroup>
+        </DesktopSection>
       ) : null}
-      {info.capabilities.includes("diagnostics") ? (
-        <SettingsGroup>
-          <SettingRow
-            icon={null}
-            title="Send desktop crash reports"
-            description="Share redacted diagnostics to help fix desktop crashes."
-            checked={diagnostics}
-            disabled={busy}
-            onChange={() =>
-              void run(() =>
-                bridge.call("diagnostics.configure", { enabled: !diagnostics }),
-              )
-            }
-          />
-        </SettingsGroup>
+      {can("agentHost") ? (
+        <AgentHostSection bridge={bridge} host={host} busy={busy} run={run} />
       ) : null}
-      {info.capabilities.includes("updates") ? (
+      <DesktopSection title="About">
         <SettingsGroup>
-          <SettingsActionRow
-            icon={null}
-            title="Updates"
-            description={update?.message ?? update?.state ?? "Checking"}
-            action={
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(() => bridge.call("updates.check", undefined))
-                  }
-                >
-                  Check for updates
-                </Button>
-                {update?.state === "downloaded" ? (
+          <DesktopRow
+            title={`Overlay for ${mac ? "Mac" : info.platform} ${info.appVersion}`}
+            description={can("updates") ? updateLabel(update) : undefined}
+            control={
+              can("updates") ? (
+                update?.state === "downloaded" ? (
                   <Button
+                    variant="secondary"
                     size="sm"
                     onClick={() =>
                       void run(() => bridge.call("updates.install", undefined))
@@ -383,69 +212,265 @@ export function DesktopSettings() {
                   >
                     Restart to update
                   </Button>
-                ) : null}
-              </div>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(() => bridge.call("updates.check", undefined))
+                    }
+                  >
+                    Check for updates
+                  </Button>
+                )
+              ) : null
+            }
+          />
+          {can("notifications") ? (
+            <DesktopRow
+              title="Notifications"
+              description="If nothing appears, allow Overlay in System Settings → Notifications."
+              control={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() =>
+                      bridge.call("notifications.show", {
+                        title: "Overlay",
+                        body: "Desktop notifications are working.",
+                        route: "/app/work",
+                      }),
+                    )
+                  }
+                >
+                  Send test
+                </Button>
+              }
+            />
+          ) : null}
+          {can("diagnostics") ? (
+            <DesktopRow
+              title="Crash reports"
+              description="Share redacted diagnostics to help fix desktop crashes."
+              control={
+                <SettingsToggle
+                  aria-label="Send desktop crash reports"
+                  checked={diagnostics}
+                  disabled={busy}
+                  onChange={() =>
+                    void run(() =>
+                      bridge.call("diagnostics.configure", {
+                        enabled: !diagnostics,
+                      }),
+                    )
+                  }
+                />
+              }
+            />
+          ) : null}
+          <DesktopRow
+            title="Local data"
+            description="Recordings and data kept from earlier versions of the app."
+            control={
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  void run(() => bridge.call("window.openDataFolder", undefined))
+                }
+              >
+                Open folder
+              </Button>
             }
           />
         </SettingsGroup>
-      ) : null}
+      </DesktopSection>
     </div>
   );
 }
 
-function shortcutLabel(accelerator: string, mac: boolean): string {
-  const labels: Record<string, string> = {
-    CommandOrControl: mac ? "⌘" : "Ctrl",
-    Command: "⌘",
-    Control: mac ? "⌃" : "Ctrl",
-    Alt: mac ? "⌥" : "Alt",
-    Shift: mac ? "⇧" : "Shift",
+function PanelMenu({
+  bridge,
+  kind,
+  run,
+}: {
+  bridge: DesktopBridge;
+  kind: "chat" | "notes";
+  run: Run;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const dock = (edge: "right" | "none") => {
+    setOpen(false);
+    void run(() => bridge.call("panels.setDocked", { kind, edge }));
   };
-  return accelerator
-    .split("+")
-    .map((key) => labels[key] ?? key)
-    .join(mac ? " " : " + ");
+  return (
+    <FloatingMenu
+      kind="menu"
+      align="end"
+      anchorRef={anchor}
+      open={open}
+      onOpenChange={setOpen}
+      className="w-44"
+      trigger={
+        <Button
+          ref={anchor}
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`${kind === "chat" ? "Chat" : "Notes"} panel position`}
+        >
+          <MoreHorizontal strokeWidth={1.75} />
+        </Button>
+      }
+    >
+      <MenuItem onClick={() => dock("right")}>Dock to right edge</MenuItem>
+      <MenuItem onClick={() => dock("none")}>Float freely</MenuItem>
+    </FloatingMenu>
+  );
 }
-function shortcutFromKey(
-  event: KeyboardEvent<HTMLInputElement>,
-): string | null {
-  if (event.key === "Tab") return null;
-  event.preventDefault();
-  if (["Escape", "Meta", "Control", "Alt", "Shift"].includes(event.key))
-    return null;
-  if (
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey &&
-    !/^F\d+$/.test(event.key)
-  )
-    return null;
-  const physical: Record<string, string> = {
-    Space: "Space",
-    Period: ".",
-    Comma: ",",
-    Slash: "/",
-    Backslash: "\\",
-    BracketLeft: "[",
-    BracketRight: "]",
-    Minus: "-",
-    Equal: "=",
-    Semicolon: ";",
-    Quote: "'",
-    Backquote: "`",
+
+const HOST_STATES: Record<string, { label: string; dot: string }> = {
+  running: { label: "Running", dot: "bg-emerald-500" },
+  starting: { label: "Starting", dot: "bg-amber-500" },
+  stopping: { label: "Stopping", dot: "bg-amber-500" },
+  error: { label: "Stopped with an error", dot: "bg-red-500" },
+};
+
+function AgentHostSection({
+  bridge,
+  host,
+  busy,
+  run,
+}: {
+  bridge: DesktopBridge;
+  host: HostStatus | null;
+  busy: boolean;
+  run: Run;
+}) {
+  const [code, setCode] = useState("");
+  const [adapter, setAdapter] = useState<"codex" | "claude-code">("codex");
+  const [showLog, setShowLog] = useState(false);
+  const active = !!host && ["running", "starting"].includes(host.state);
+  const state = (host && HOST_STATES[host.state]) ?? {
+    label: host ? "Not running" : "Checking",
+    dot: "bg-(--muted-light)",
   };
-  const key =
-    physical[event.code] ??
-    (/^(Key|Digit)/.test(event.code)
-      ? event.code.replace(/^(Key|Digit)/, "")
-      : event.key.replace("Arrow", ""));
-  return [
-    event.metaKey ? "Command" : "",
-    event.ctrlKey ? "Control" : "",
-    event.altKey ? "Alt" : "",
-    event.shiftKey ? "Shift" : "",
-    key,
-  ]
-    .filter(Boolean)
-    .join("+");
+  const harness = host?.adapterId === "claude-code" ? "Claude Code" : "Codex";
+  return (
+    <DesktopSection
+      title="Agent host"
+      description="Run Codex or Claude Code on this Mac for your Overlay agents."
+    >
+      <SettingsGroup>
+        <DesktopRow
+          title={
+            <span className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${state.dot}`}
+              />
+              {state.label}
+              {active ? (
+                <span className="text-(--muted-light)">· {harness}</span>
+              ) : null}
+            </span>
+          }
+          description={
+            active
+              ? "Your agents can use this Mac while the host runs."
+              : "Create a connection code in Agents, then start the host here."
+          }
+          control={
+            <>
+              {host?.logTail.length ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-expanded={showLog}
+                  onClick={() => setShowLog((value) => !value)}
+                >
+                  {showLog ? "Hide log" : "Show log"}
+                </Button>
+              ) : null}
+              {active ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(() => bridge.call("agentHost.stop", undefined))
+                  }
+                >
+                  Stop
+                </Button>
+              ) : null}
+            </>
+          }
+        >
+          {active ? null : (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!code.trim()) return;
+                void run(async () => {
+                  await bridge.call("agentHost.start", {
+                    adapter,
+                    enrollmentCode: code.trim(),
+                  });
+                  setCode("");
+                });
+              }}
+            >
+              <ListboxSelect
+                className="w-36 shrink-0"
+                value={adapter}
+                options={[
+                  { value: "codex", label: "Codex" },
+                  { value: "claude-code", label: "Claude Code" },
+                ]}
+                onChange={setAdapter}
+                aria-label="Agent harness"
+              />
+              <Input
+                aria-label="Connection code"
+                placeholder="Connection code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="min-w-0 flex-1"
+              />
+              <Button
+                type="submit"
+                variant="secondary"
+                size="md"
+                className="shrink-0"
+                disabled={busy || !code.trim()}
+              >
+                Start host
+              </Button>
+            </form>
+          )}
+          {showLog && host?.logTail.length ? (
+            <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-(--surface-subtle) p-3 font-mono text-[11px] leading-relaxed text-(--muted)">
+              {host.logTail.join("\n")}
+            </pre>
+          ) : null}
+        </DesktopRow>
+      </SettingsGroup>
+    </DesktopSection>
+  );
+}
+
+function updateLabel(update: UpdateStatus | null): string {
+  if (!update) return "Checking for updates…";
+  if (update.state === "downloaded")
+    return `Version ${update.version ?? "update"} is ready to install.`;
+  if (update.state === "downloading")
+    return `Downloading update${update.percent ? ` · ${Math.round(update.percent)}%` : "…"}`;
+  if (update.state === "checking") return "Checking for updates…";
+  if (update.state === "error") return "Couldn't check for updates.";
+  return update.message ?? "You're up to date.";
 }

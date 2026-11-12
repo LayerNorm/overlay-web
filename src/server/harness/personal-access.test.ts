@@ -67,6 +67,12 @@ test('refreshes permissions and entitlements in the original workspace without e
   expect(mocks.subject).toHaveBeenCalledTimes(2)
 })
 
+test('keeps the Notebook note on refreshed tool contexts so its note tools are rebuilt', async () => {
+  const refreshed = await refreshPersonalHarnessAccess(access, { ...context, notebookNoteId: 'note-1' }, 'read_file')
+  expect(refreshed).toMatchObject({ notebookNoteId: 'note-1' })
+  expect(await refreshPersonalHarnessAccess(access, context, 'read_file')).not.toHaveProperty('notebookNoteId')
+})
+
 test('rejects stale execution, cancelled delivery, changed principals and out-of-run tools', async () => {
   for (const state of [null, { ...snapshot(), workflowRunId: 'other' }, { ...snapshot(), status: 'cancelled' },
     { ...snapshot(), policy: { ...snapshot().policy, deadlineAt: 1 } }]) {

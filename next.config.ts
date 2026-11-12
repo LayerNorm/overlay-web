@@ -3,6 +3,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 import createBundleAnalyzer from "@next/bundle-analyzer";
 import { withWorkflow } from "workflow/next";
 import { skipDuplicateBuildTypecheck } from "./scripts/release/build-typecheck-policy.mjs";
+import { BundleEntrypointsPlugin } from "./scripts/ci/bundle-entrypoints-plugin.mjs";
 
 const withBundleAnalyzer = createBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -44,6 +45,10 @@ const staticSecurityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  webpack(config, { isServer, dev }) {
+    if (!isServer && !dev) config.plugins.push(new BundleEntrypointsPlugin());
+    return config;
+  },
   env: {
     NEXT_PUBLIC_AGENT_UI_TRACE: process.env.VERCEL_ENV === "preview" && process.env.OVERLAY_AGENT_UI_TRACE === "1" ? "1" : "",
     NEXT_PUBLIC_AGENT_UI_TRACE_SHA: process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_GIT_COMMIT_SHA ?? "" : "",

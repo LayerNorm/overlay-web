@@ -19,8 +19,10 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { markComposerReady } from '../lib/realtime-baseline'
 import { MentionInput } from './chat-interface/MentionInput'
 import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
 import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
@@ -97,6 +99,7 @@ const TOOL_REQUEST_OPTIONS: Array<{
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
 export function ChatComposer(props: ChatComposerProps) {
+  recordRender('ChatComposer')
   const viewProps = toComposerViewProps(props)
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
@@ -109,7 +112,7 @@ export function ChatComposer(props: ChatComposerProps) {
       <div
         className={`flex min-h-0 flex-col ${
           viewProps.showCenteredEmptyChat ? 'min-h-0 flex-1' : 'shrink-0'
-        } px-3 pb-3 sm:px-4 sm:pb-4 ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
+        } ${viewProps.embedded ? '' : 'px-3 pb-3 sm:px-4 sm:pb-4'} ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
       >
         {/* A new chat or automation keeps the composer where it stays once the conversation starts: the greeting (and
             any automation intro) is centred in the free space, suggestions sit just above the composer. */}
@@ -146,6 +149,9 @@ export function ChatComposer(props: ChatComposerProps) {
 }
 
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
+  useEffect(() => {
+    if (!props.isSendBlocked) markComposerReady()
+  }, [props.isSendBlocked])
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
   const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)

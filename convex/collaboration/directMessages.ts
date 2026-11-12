@@ -7,6 +7,7 @@ import { internal } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
+import { projectAgentThreadPullRequests } from '../lib/threadPullRequests'
 import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
@@ -1048,6 +1049,14 @@ export const appendAgentMessageDelta = mutation({
       ...(nextParts ? { parts: nextParts } : {}),
       updatedAt: Date.now(),
     })
+    if (nextParts) {
+      await projectAgentThreadPullRequests(
+        ctx,
+        { conversationId: args.conversationId, workspaceId: args.workspaceId, serverSecret: args.serverSecret },
+        message.parts ?? [],
+        nextParts,
+      )
+    }
     if (!args.emitEvent) return
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId,
@@ -1083,15 +1092,24 @@ export const finalizeAgentMessage = mutation({
     if (!message) return
     const now = Date.now()
     const toolNames = args.toolNames ? new Set(args.toolNames) : undefined
+    const finalParts = args.parts
+      ? toolNames ? stripTextualToolCallsFromParts(args.parts, toolNames) : args.parts
+      : undefined
     await ctx.db.patch(args.messageId, {
       content: toolNames ? stripTextualToolCalls(args.content, toolNames) : args.content,
-      ...(args.parts ? {
-        parts: toolNames ? stripTextualToolCallsFromParts(args.parts, toolNames) : args.parts,
-      } : {}),
+      ...(finalParts ? { parts: finalParts } : {}),
       ...(args.tokens ? { tokens: args.tokens } : {}),
       status: 'completed',
       updatedAt: now,
     })
+    if (finalParts) {
+      await projectAgentThreadPullRequests(
+        ctx,
+        { conversationId: args.conversationId, workspaceId: args.workspaceId, serverSecret: args.serverSecret },
+        message.parts ?? [],
+        finalParts,
+      )
+    }
     await ctx.db.patch(args.conversationId, { lastMode: 'act', lastModified: now, updatedAt: now })
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId,
@@ -1159,9 +1177,12 @@ export const failAgentMessage = mutation({
       }
       : undefined
     const activeContinues = activeStream?.continuesPrevious === true
+    const failedParts = activePart
+      ? appendStepParts(merged.parts, [activePart], activeContinues) as typeof merged.parts
+      : merged.parts
     await ctx.db.patch(args.messageId, {
       content: joinStepText(merged.content, activeText, activeContinues),
-      parts: activePart ? appendStepParts(merged.parts, [activePart], activeContinues) as typeof merged.parts : merged.parts,
+      parts: failedParts,
       ...(activeStream ? { publicStreamCheckpoint: {
         runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,
         receiptId: activeStream.receiptId, invocation: activeStream.invocation,
@@ -1169,6 +1190,12 @@ export const failAgentMessage = mutation({
       status: 'error',
       updatedAt: Date.now(),
     })
+    await projectAgentThreadPullRequests(
+      ctx,
+      { conversationId: args.conversationId, workspaceId: args.workspaceId, serverSecret: args.serverSecret },
+      message.parts ?? [],
+      failedParts,
+    )
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId,
       workspaceId: args.workspaceId,
@@ -1259,6 +1286,14 @@ export const completeAgentToolInvocation = mutation({
       parts: parts as unknown as NonNullable<typeof message.parts>,
       updatedAt: Date.now(),
     })
+    if (args.state === 'output-available') {
+      await projectAgentThreadPullRequests(
+        ctx,
+        { conversationId: args.conversationId, workspaceId: args.workspaceId, serverSecret: args.serverSecret },
+        message.parts ?? [],
+        parts,
+      )
+    }
   },
 })
 

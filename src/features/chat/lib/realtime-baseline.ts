@@ -1,7 +1,23 @@
 // Opt-in, local-only User Timing marks. Never include content or resource IDs.
+// Marks are only written when the QA harness sets `overlay:baseline:enabled`
+// (scripts/qa/realtime-baseline.mjs and scripts/qa/perf-baseline.mjs), so they
+// cost one `getEntriesByName` lookup in normal sessions.
+function baselineEnabled(): boolean {
+  return typeof window !== 'undefined'
+    && performance.getEntriesByName('overlay:baseline:enabled').length > 0
+}
+
+function markBaseline(name: string): void {
+  if (!baselineEnabled()) return
+  performance.clearMarks(name)
+  performance.mark(name)
+}
+
 export function markPersonalChatQueryReady() {
-  if (typeof window === 'undefined') return
-  if (!performance.getEntriesByName('overlay:baseline:enabled').length) return
-  performance.clearMarks('overlay:baseline:personal-query-ready')
-  performance.mark('overlay:baseline:personal-query-ready')
+  markBaseline('overlay:baseline:personal-query-ready')
+}
+
+/** The chat composer is mounted and accepts input. */
+export function markComposerReady() {
+  markBaseline('overlay:baseline:composer-ready')
 }

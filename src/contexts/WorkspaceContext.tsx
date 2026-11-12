@@ -53,6 +53,7 @@ type HandleResolver = (handle: string) => Promise<{ workspaceId: string; canonic
 async function resolveRouteWorkspace(
   routeTarget: WorkspaceRouteTarget | null,
   resolveHandle: HandleResolver,
+  liveWorkspaces: readonly WorkspaceSummary[],
 ): Promise<{ workspaceId: string | null; canonicalHandle: string | null; unavailable: boolean }> {
   if (routeTarget?.kind === 'id') {
     return { workspaceId: routeTarget.value, canonicalHandle: null, unavailable: false }
@@ -60,6 +61,9 @@ async function resolveRouteWorkspace(
   if (routeTarget?.kind !== 'handle') {
     return { workspaceId: null, canonicalHandle: null, unavailable: false }
   }
+  const known = liveWorkspaces.find(workspace => workspace.status === 'active'
+    && workspace.routingHandle === routeTarget.value)
+  if (known) return { workspaceId: known.id, canonicalHandle: null, unavailable: false }
   try {
     const resolution = await resolveHandle(routeTarget.value)
     if (!resolution) return { workspaceId: null, canonicalHandle: null, unavailable: true }
@@ -165,7 +169,7 @@ export function WorkspaceProvider({
     const softReload = !options?.force && statusRef.current === 'ready' && targetMatchesCurrent
     if (!softReload) setStatus('loading')
     setError(null)
-    const routeResolution = await resolveRouteWorkspace(routeTarget, resolveHandle)
+    const routeResolution = await resolveRouteWorkspace(routeTarget, resolveHandle, directory.workspaces)
     if (cancelled()) return
     if (routeResolution.canonicalHandle) {
       const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(routeResolution.canonicalHandle)}`)

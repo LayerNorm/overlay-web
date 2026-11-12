@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@overlay/ui/primitives";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useLiveWorkspaceBilling } from "@/hooks/use-billing";
 import type { OnboardingSession, OnboardingSessionResponse } from "@/shared/onboarding/session";
 import { useWorkspaceHref } from "@/hooks/use-workspace-href";
 import { OnboardingWorkHandoff } from "@/components/providers/OnboardingWorkHandoff";
@@ -72,6 +73,8 @@ function AuthenticatedOnboardingShell({
   workspaceId,
 }: ShellProps & { workspaceId: string }) {
   const router = useRouter();
+  const billingSummary = useLiveWorkspaceBilling(workspaceId);
+  const { activeWorkspace } = useWorkspace();
   const buildWorkspaceHref = useWorkspaceHref();
   const pathname = usePathname();
   const [result, setResult] = useState<OnboardingSessionResponse | null>(null);
@@ -136,7 +139,7 @@ function AuthenticatedOnboardingShell({
   const locked = !bypass && !billingRecovery && (!result || (active && !result.completed) || Boolean(handoff));
   const visibleSession = handoff?.session ?? result?.session;
   const showConversation =
-    !bypass && !billingRecovery && visibleSession && (active || Boolean(handoff));
+    !bypass && !billingRecovery && billingSummary && visibleSession && (active || Boolean(handoff));
   return (
     <>
       <div
@@ -151,13 +154,13 @@ function AuthenticatedOnboardingShell({
         data-onboarding-locked={locked}
         className={`app-main ${styles.main} ${locked ? "" : "pt-14 md:pt-0"}`}
       >
-        {!bypass && !result ? (
+        {!bypass && (!result || (active && !result.completed && !billingSummary)) ? (
           <div className="flex h-full items-center justify-center px-6">
             <div className="max-w-sm space-y-4 text-center">
-              {error ? (
+              {error || billingSummary === null ? (
                 <>
                   <p role="alert" className="text-sm text-muted-foreground">
-                    {error}
+                    {error ?? 'Workspace billing is unavailable. Please reload and try again.'}
                   </p>
                   <div className="flex justify-center gap-2">
                     <Button
@@ -185,16 +188,19 @@ function AuthenticatedOnboardingShell({
           >
             <OnboardingConversation
               session={visibleSession}
+              billingSummary={billingSummary!}
+              personal={activeWorkspace?.kind === 'personal'}
+              workspaceName={activeWorkspace?.name ?? visibleSession.workspaceContext?.workspaceName ?? 'Your workspace'}
               onChange={updateResult}
               onShowWork={() => openWork()}
               onSkip={skip}
             />
           </div>
         ) : null}
-        {(!showConversation && (bypass || result)) || handoff ? <OnboardingWorkHandoff pending={handoff ? { taskId: handoff.taskId, onReady: finishHandoff, onTaskMissing: () => openWork(handoff.taskId, true) } : null}>
+        {(!locked && (bypass || result)) || handoff ? <OnboardingWorkHandoff pending={handoff ? { taskId: handoff.taskId, onReady: finishHandoff, onTaskMissing: () => openWork(handoff.taskId, true) } : null}>
           {children}
         </OnboardingWorkHandoff> : null}
-        {intro && !billingRecovery ? <OnboardingIntro onDone={dismissIntro} /> : null}
+        {intro && !billingRecovery && billingSummary ? <OnboardingIntro onDone={dismissIntro} /> : null}
       </main>
     </>
   );

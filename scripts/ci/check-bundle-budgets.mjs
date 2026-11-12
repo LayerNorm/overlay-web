@@ -1,19 +1,9 @@
 import { readFile, access } from 'node:fs/promises'
 import path from 'node:path'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-
-const require = createRequire(import.meta.url)
-const { getJsPageSizeInKb } = require('next/dist/build/utils')
+import { measureRoute, readOption } from './bundle-measurements.mjs'
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
-const projectRoot = path.resolve(scriptDir, '..')
-
-function readOption(name, fallback) {
-  const inline = process.argv.find((arg) => arg.startsWith(`${name}=`))
-  if (inline) return inline.slice(name.length + 1)
-  const index = process.argv.indexOf(name)
-  return index >= 0 ? process.argv[index + 1] : fallback
-}
+const projectRoot = path.resolve(scriptDir, '../..')
 
 function formatBytes(bytes) {
   return `${(bytes / 1024).toFixed(1)} KiB`
@@ -31,45 +21,20 @@ async function requireFile(filePath, label) {
   }
 }
 
-const distDir = path.resolve(projectRoot, readOption('--dist-dir', '.next'))
+const distDir = path.resolve(projectRoot, readOption(process.argv, '--dist-dir', '.next'))
 const requireAnalyzer = process.argv.includes('--require-analyzer')
 const budgets = await readJson(path.join(scriptDir, 'bundle-budgets.json'))
-const buildManifestPath = path.join(distDir, 'build-manifest.json')
-const appBuildManifestPath = path.join(distDir, 'app-build-manifest.json')
-
-await requireFile(buildManifestPath, 'Next build manifest')
-await requireFile(appBuildManifestPath, 'Next app build manifest')
+const manifestPath = path.join(distDir, 'analyze/entrypoints.json')
+await requireFile(manifestPath, 'Webpack entrypoint manifest (run npm run build or npm run analyze)')
 if (requireAnalyzer) {
   await requireFile(path.join(distDir, 'analyze', 'client.html'), 'Client bundle analyzer report')
 }
 
-const buildManifest = await readJson(buildManifestPath)
-const appBuildManifest = await readJson(appBuildManifestPath)
+const manifest = await readJson(manifestPath)
 const failures = []
 
 for (const [route, budget] of Object.entries(budgets)) {
-  const [routeGzipBytes, firstLoadGzipBytes] = await getJsPageSizeInKb(
-    'app',
-    route,
-    distDir,
-    buildManifest,
-    structuredClone(appBuildManifest),
-    true,
-  )
-  const [routeRawBytes, firstLoadRawBytes] = await getJsPageSizeInKb(
-    'app',
-    route,
-    distDir,
-    buildManifest,
-    structuredClone(appBuildManifest),
-    false,
-  )
-  const measurements = {
-    routeGzipBytes,
-    firstLoadGzipBytes,
-    routeRawBytes,
-    firstLoadRawBytes,
-  }
+  const measurements = await measureRoute(distDir, manifest, route)
 
   console.log(`Bundle budget: ${route}`)
   for (const [metric, limit] of Object.entries(budget)) {

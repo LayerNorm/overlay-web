@@ -1,9 +1,10 @@
 'use client'
 
 import type { ComponentProps } from 'react'
-import { Archive, Trash2, Workflow } from 'lucide-react'
+import { Archive, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
+import { ThreadPullRequests } from './sidebar/ThreadPullRequests'
 import { hasThreadActivity, THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
 import {
   SidebarMenuAction,
@@ -26,7 +27,6 @@ export function AgentThreadRows({
   onOpenThread,
   onOpenAutomation,
   onArchiveThread,
-  onDeleteThread,
 }: {
   agent: WorkspaceAgentDirectoryItem
   bundle: WorkspaceAgentBundle | 'loading' | 'error'
@@ -36,7 +36,6 @@ export function AgentThreadRows({
   onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
   onOpenAutomation(automationId: string): void
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
-  onDeleteThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
 }) {
   if (bundle === 'loading') {
     return (
@@ -69,40 +68,32 @@ export function AgentThreadRows({
         const raw = statuses.get(thread.conversationId)
         const status = raw === 'idle' || raw === 'completed' ? undefined : raw
         return (
-          <SidebarMenuSubItem key={thread.conversationId}>
+          <SidebarMenuSubItem key={thread.conversationId} className="flex items-center">
             <ThreadButton
               isActive={active}
               aria-current={active ? 'page' : undefined}
               aria-label={status ? `${thread.title}, ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               title={status ? `${thread.title} · ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               onClick={() => onOpenThread(agent, thread.conversationId)}
-              className="agent-thread-button gap-[7px] pr-14"
+              className={`agent-thread-button min-w-0 flex-1 gap-[7px] ${thread.pullRequests?.length ? 'pr-1' : 'pr-8'}`}
             >
-              <ThreadActivityIndicator status={status} />
+              <span className="agent-thread-icon"><ThreadActivityIndicator status={status} /></span>
               <span className="flex-1 truncate">{thread.title}</span>
             </ThreadButton>
+            {thread.pullRequests?.length ? <div className="mr-8 shrink-0">
+              <ThreadPullRequests pullRequests={thread.pullRequests} />
+            </div> : null}
             <SidebarMenuAction
               aria-label="Archive thread"
               title="Archive thread"
               // Shown by hovering or focusing this thread only, not the agent that contains it.
-              className="right-7 top-1 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100"
+              className="right-1 top-1 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100"
               onClick={(event) => {
                 event.stopPropagation()
                 onArchiveThread(agent, thread.conversationId, true)
               }}
             >
               <Archive aria-hidden />
-            </SidebarMenuAction>
-            <SidebarMenuAction
-              aria-label="Delete thread"
-              title="Delete thread"
-              className="right-1 top-1 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100"
-              onClick={(event) => {
-                event.stopPropagation()
-                onDeleteThread(agent, thread.conversationId)
-              }}
-            >
-              <Trash2 aria-hidden />
             </SidebarMenuAction>
           </SidebarMenuSubItem>
         )
@@ -119,7 +110,7 @@ export function AgentThreadRows({
                 else onOpenAutomation(automation.automationId)
               }}
             >
-              <Workflow aria-hidden />
+              <span className="agent-thread-icon"><Workflow size={14} aria-hidden /></span>
               <span className="flex-1 truncate">{automation.name}</span>
               {!automation.enabled ? <span className="text-[10px] text-(--muted-light)">Paused</span> : null}
             </ThreadButton>
