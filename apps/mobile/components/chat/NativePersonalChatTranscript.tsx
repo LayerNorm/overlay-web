@@ -128,7 +128,7 @@ function safeActionError(): Error {
   return new Error('Transcript action is no longer available')
 }
 
-export function NativePersonalChatTranscript(props: NativePersonalChatTranscriptProps): React.ReactElement {
+export const NativePersonalChatTranscript = React.memo(function NativePersonalChatTranscript(props: NativePersonalChatTranscriptProps): React.ReactElement {
   const scopeKey = JSON.stringify([props.workspaceId, props.conversationId])
   return <NativePersonalChatTranscriptScope key={scopeKey} {...props} />
 }
@@ -465,12 +465,13 @@ function NativePersonalChatTranscriptScope({
     assets: authorityActive ? assets : [],
   }), [assets, authorityActive, conversationId, effectiveView, focusNonce, isDark, mountNonce, publicModelLabels, query, scrollIntent, supportedActions, workspaceId])
   const ready = active && readyFocusNonce === focusNonce
+  const domOptions = useMemo(() => ({ style: { flex: 1, backgroundColor: theme.background } }), [theme.background])
 
   return (
     <View style={[styles.surface, { backgroundColor: theme.background }]}>
       <NativeSharedTranscript
         key={`${mountNonce}:${conversationId}`}
-        dom={{ style: { flex: 1, backgroundColor: theme.background } }}
+        dom={domOptions}
         snapshot={snapshot}
         onAction={onAction}
         onReady={onReady}
@@ -490,7 +491,7 @@ function NativePersonalChatTranscriptScope({
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   surface: { flex: 1, minHeight: 0, overflow: 'hidden' },
