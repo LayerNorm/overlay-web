@@ -173,7 +173,8 @@ function responseStatus(
     hasResponse: true,
     hasVisibleContent: Boolean(content.trim()) || blocks.length > 0,
     interrupted: (activeResponse && Boolean(runtime?.interrupted)) || status === 'interrupted',
-    error: (activeResponse ? runtime?.error : undefined) || errorMessage,
+    error: (activeResponse && runtime?.error ? 'This response could not be completed.' : undefined) ||
+      (errorMessage ? 'This response could not be completed.' : undefined),
   })
 }
 
@@ -198,7 +199,7 @@ function responseView(
   let sources = response?.sources ?? (ownsTopLevel ? message.transcriptSources : undefined)
   const sourceCitations = response?.sourceCitations ?? (ownsTopLevel ? message.sourceCitations : undefined)
 
-  if (!blocks) {
+  if (!blocks || (blocks.length === 0 && content.trim())) {
     const normalized = normalizeTranscriptAssistantParts(
       fallbackParts(content, reasoning, tools, files),
       { ...(terminalState(status) ? { terminalState: terminalState(status) } : {}) },
@@ -226,7 +227,8 @@ function responseView(
     }
   }
 
-  const activeError = isActive && isSelected ? runtime?.error ?? undefined : undefined
+  const activeError = isActive && isSelected && runtime?.error ? 'This response could not be completed.' : undefined
+  const safeErrorMessage = errorMessage ? 'This response could not be completed.' : undefined
   return {
     id: `${transcriptResponseId(turnId, candidate.modelId, variantIndex)}:${variantIndex}`,
     modelId: candidate.modelId,
@@ -243,9 +245,9 @@ function responseView(
       runtime,
       blocks,
       content,
-      activeError ?? errorMessage,
+      activeError ?? safeErrorMessage,
     ),
-    errorMessage: activeError ?? errorMessage ?? null,
+    errorMessage: activeError ?? safeErrorMessage ?? null,
   }
 }
 
@@ -326,7 +328,22 @@ function mediaView(
     outputs.push(output)
     grouped.set(type, outputs)
   }
-  if (grouped.size === 0) return null
+  if (grouped.size === 0) {
+    if (generationMode !== 'image' && generationMode !== 'video') return null
+    const userMessage = messages.find((message) => message?.role === 'user' && message.turnId === turnId)
+    const assistantMessage = messages.find((message) => message?.role === 'assistant' && message.turnId === turnId)
+    if (!userMessage || !assistantMessage) return null
+    const failed = assistantMessage.status === 'error' || assistantMessage.status === 'interrupted' ||
+      assistantMessage.responses?.some(response => response.status === 'error' || response.status === 'interrupted') === true
+    const generating = assistantMessage.isStreaming || assistantMessage.responses?.some(response => response.isLoading) === true
+    const modelUsed = assistantMessage.responses?.find(response => response.modelId)?.modelId ?? assistantMessage.selectedModelId ?? assistantMessage.modelId
+    const result: GenerationResult = {
+      type: generationMode,
+      status: failed ? 'failed' : generating ? 'generating' : 'completed',
+      ...(modelUsed ? { modelUsed } : {}),
+    }
+    return { kind: generationMode, results: [result] }
+  }
 
   const groups: RestoredOutputGroup[] = [...grouped].map(([type, outputs]) => ({
     type,

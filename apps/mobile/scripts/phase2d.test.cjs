@@ -7,12 +7,12 @@ const test = require('node:test')
 const ts = require('typescript')
 const root = path.resolve(__dirname, '..')
 const clean = value => JSON.parse(JSON.stringify(value))
-function load(file, mocks = {}) {
+function load(file, mocks = {}, globals = {}) {
   const filename = path.resolve(root, file)
   const source = fs.readFileSync(filename, 'utf8')
   const result = { exports: {} }
   const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.React } }).outputText
-  vm.runInNewContext('(function(require,module,exports){' + output + '\n})', { console: { log() {}, error() {} }, Error })(id => {
+  vm.runInNewContext('(function(require,module,exports){' + output + '\n})', { console: { log() {}, error() {} }, Error, ...globals })(id => {
     if (Object.hasOwn(mocks, id)) return mocks[id]
     if (id.endsWith('.png')) return 1
     if (id === '@overlay/chat-core') return { ...load('../packages/overlay-chat-core/src/visual-sequence.ts', mocks), ...load('../packages/overlay-chat-core/src/messages.ts', mocks) }
@@ -113,16 +113,40 @@ test('personal Convex submit preserves exact typed payload, nonce, scope and bac
 test('personal submit precedes HTTP act orchestration; temporary mode skips durable writes', async () => {
   const calls = []
   let failure
-  const ai = load('services/aiService.ts', { '@react-native-async-storage/async-storage': {}, './appConfig': { AUTH_BASE_URL: 'https://isolated.invalid' }, './bootstrapService': { getAppBootstrap: async () => ({ chatModels: [] }) }, './convexClient': { convexWorkspaceId: () => 'ws' }, './personalChatService': { submitPersonalTurn: async (args, ws) => { calls.push(['submit', clean(args), ws]); if (failure) throw failure; return { conversationId: 'canonical' } } }, './appApi': { getRequestWorkspaceId: () => 'ws', appXhrStreamSse: async function* (url, options) { calls.push(['http', url, clean(options)]); yield { type: 'text-delta', delta: 'Hello' } } } })
+  const ai = load('services/aiService.ts', { '@react-native-async-storage/async-storage': {}, './appConfig': { AUTH_BASE_URL: 'https://isolated.invalid' }, './bootstrapService': { getAppBootstrap: async () => ({ chatModels: [] }) }, './convexClient': { convexWorkspaceId: () => 'ws' }, './personalChatService': { submitPersonalTurn: async (args, ws, signal) => { calls.push(['submit', clean(args), ws, signal]); if (failure) throw failure; return { conversationId: 'canonical' } } }, './appApi': { getRequestWorkspaceId: () => 'ws', appXhrStreamSse: async function* (url, options) { calls.push(['http', url, clean(options)]); yield { type: 'text-delta', delta: 'Hello' } } } })
   const collect = async options => { const chunks = []; for await (const chunk of ai.chatStream('model', [{ role: 'user', content: 'Prompt', replyToTurnId: 'prior' }], options)) chunks.push(chunk); return chunks }
-  const chunks = await collect({ turnId: 'nonce', conversationClientId: 'draft', indexedFileNames: ['file'] })
+  const owner = new AbortController()
+  const chunks = await collect({ turnId: 'nonce', conversationClientId: 'draft', indexedFileNames: ['file'], signal: owner.signal })
   assert.deepEqual(calls.map(call => call[0]), ['submit', 'http'])
   assert.equal(calls[0][1].turnId, 'nonce'); assert.equal(calls[0][1].parts[0].text, 'Prompt'); assert.equal(calls[0][1].replyToTurnId, 'prior')
+  assert.equal(calls[0][3], owner.signal)
   assert.equal(calls[1][2].json.conversationId, 'canonical'); assert.equal(calls[1][2].headers['x-overlay-workspace-id'], 'ws')
   assert.equal(chunks[0].metadata.conversationId, 'canonical')
   calls.length = 0; await collect({ turnId: 'temp', temporaryChat: true }); assert.deepEqual(calls.map(call => call[0]), ['http'])
   calls.length = 0; failure = new Error('offline'); assert.equal((await collect({ turnId: 'nonce' })).at(-1).type, 'error'); assert.deepEqual(calls.map(call => call[0]), ['submit'])
   calls.length = 0; assert.equal((await collect({})).at(-1).type, 'error'); assert.equal(calls.length, 0)
+})
+
+test('chatStream logs only a fixed diagnostic for transport failures', async () => {
+  const logs = []
+  const sentinel = 'Bearer secret-sentinel backend-body-sentinel'
+  const service = load('services/aiService.ts', {
+    '@react-native-async-storage/async-storage': {},
+    './appConfig': { AUTH_BASE_URL: 'https://isolated.invalid' },
+    './bootstrapService': {},
+    '../lib/chatModels': {},
+    './convexClient': { convexWorkspaceId: () => 'ws' },
+    './personalChatService': { submitPersonalTurn: async () => ({ conversationId: 'unused' }) },
+    './appApi': {
+      getRequestWorkspaceId: () => 'ws',
+      appXhrStreamSse: async function* () { throw new Error(sentinel) },
+    },
+  }, { console: { log() {}, error: (...args) => logs.push(args) } })
+  const chunks = []
+  for await (const chunk of service.chatStream('model', [{ role: 'user', content: 'Hello' }], { temporaryChat: true })) chunks.push(chunk)
+  assert.equal(chunks.at(-1).type, 'error')
+  assert.deepEqual(logs, [['[aiService] act failed']])
+  assert.equal(JSON.stringify(logs).includes(sentinel), false)
 })
 
 test('stream blocks stay sequential, update tools in place and hold incomplete Markdown', () => {

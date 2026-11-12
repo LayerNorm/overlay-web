@@ -226,13 +226,14 @@ test('personal transcript receives native updates, streams, timestamps and read-
   const { personal, emit, calls, watches } = fixture()
   const storage = personal()
   const received = []
-  const stop = storage.subscribePersonalChat('chat-1', chat => received.push(chat))
-  emit('personal.getSummary', { _id: 'chat-1', workspaceId: 'workspace-1', title: 'Hello', createdAt: 1, lastModified: 5, askModelIds: [], actModelId: 'model-1', lastMode: 'act' })
+  const personalChatId = 'personal-conversation-0001'
+  const stop = storage.subscribePersonalChat(personalChatId, chat => received.push(chat))
+  emit('personal.getSummary', { _id: personalChatId, workspaceId: 'workspace-1', title: 'Hello', createdAt: 1, lastModified: 5, askModelIds: [], actModelId: 'model-1', lastMode: 'act' })
   emit('personal.getMessages', { page: [{ message: { _id: 'assistant-1', role: 'assistant', content: '', parts: [], createdAt: 123, status: 'generating' }, contextUser: null, outputs: [] }], isDone: true, continueCursor: '' })
   emit('personal.activePublicStreams', [{ assistantMessageId: 'assistant-1', runId: 'run-1', receiptId: 'receipt-1', executionGeneration: 1, invocation: 1, sequence: 1, text: 'Live reply' }])
   assert.equal(received.at(-1).messages[0].content, 'Live reply')
   assert.equal(received.at(-1).messages[0].timestamp, 123)
-  await storage.setPersonalChatRead('chat-1', false, 'assistant-1')
+  await storage.setPersonalChatRead(personalChatId, false, 'assistant-1')
   assert.equal(calls.at(-1)[2].throughMessageId, 'assistant-1')
   emit('personal.getSummary', null)
   assert.equal(received.at(-1), null)
@@ -248,7 +249,7 @@ test('personal chat returns null for unavailable scope and propagates query fail
   assert.equal(await storage.loadChat('unavailable'), null)
   const error = new Error('offline')
   values.set('personal.getSummary', error)
-  await assert.rejects(storage.loadChat('chat-1'), value => value === error)
+  await assert.rejects(storage.loadChat('personal-conversation-0001'), value => value === error)
 })
 
 test('search and notifications resolve personal chats, rooms and threads without REST', async () => {

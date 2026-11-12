@@ -567,3 +567,20 @@ mobile phase. Mobile groundwork for each is already committed.
   A native rebuild (expo prebuild / EAS) is required before the entitlement
   and Android channel exist in a binary — dev-client smoke tests covered
   the JS layer only.
+
+### Personal Chat transcript host integration
+
+- Populated personal Chat now maps its full exchange history through
+  `toNativeChatTranscriptView` and mounts `NativePersonalChatTranscript`;
+  the native header, composer, pickers, generation controls, approvals,
+  loading/empty/offline states, drawer, and navigation remain native.
+- Data operations are scoped to the committed user/workspace/route epochs;
+  UI callbacks and asynchronous writes validate their current operation.
+  Draft Skill Save uses `createSkill`; automation Draft Save uses a scoped
+  text-only preset path and preserves unrelated composer state.
+- Unsupported transcript Delete/Branch/Regenerate/Continue/generated-UI
+  writes remain unavailable. Protected/local binary-media previews and
+  unsupported attachment download paths remain honest unavailable states.
+- Full-app visual/native QA, unsupported transcript controls/media adapters,
+  export/reachability checks, and release validation remain pending; no live
+  QA or export was performed in this integration step.

@@ -63,6 +63,7 @@ test('new-chat model selection stays local and never renames or sets preferences
   }
   const syncConversationMeta = callback('syncConversationMeta', globals)
   const select = callback('handleModelSelect', {
+    beginOperation: () => ({ workspaceId: 'workspace-1', isCurrent: () => true, finish() {} }),
     syncConversationMeta, setSelectedModel: model => events.push(['selected', model.id]),
     setModelPickerVisible: visible => events.push(['picker', visible]), setLastSelectedModelId: async id => events.push(['last-model', id]),
   })

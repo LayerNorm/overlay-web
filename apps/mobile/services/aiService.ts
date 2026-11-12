@@ -10,12 +10,16 @@ import { buildActStreamIdempotencyKey } from '../../src/shared/api/act-idempoten
 
 const LAST_SELECTED_MODEL_KEY = 'overlay-last-selected-model-id'
 
-export async function getLastSelectedModelId(): Promise<string | null> {
-  return AsyncStorage.getItem(LAST_SELECTED_MODEL_KEY)
+function lastSelectedModelKey(workspaceId?: string): string {
+  return workspaceId ? `${LAST_SELECTED_MODEL_KEY}:${workspaceId}` : LAST_SELECTED_MODEL_KEY
 }
 
-export async function setLastSelectedModelId(modelId: string): Promise<void> {
-  await AsyncStorage.setItem(LAST_SELECTED_MODEL_KEY, modelId)
+export async function getLastSelectedModelId(workspaceId?: string): Promise<string | null> {
+  return AsyncStorage.getItem(lastSelectedModelKey(workspaceId))
+}
+
+export async function setLastSelectedModelId(modelId: string, workspaceId?: string): Promise<void> {
+  await AsyncStorage.setItem(lastSelectedModelKey(workspaceId), modelId)
 }
 
 interface ChatMessage {
@@ -64,6 +68,7 @@ export interface IndexedAttachment {
 
 interface ChatStreamOptions {
   workspaceId?: string
+  signal?: AbortSignal
   conversationId?: string
   /** Client-side draft id sent for first-turn persistence (web `conversationClientId`). */
   conversationClientId?: string
@@ -138,6 +143,7 @@ export async function* chatStream(
   options: ChatStreamOptions = {},
 ): AsyncGenerator<StreamChunk> {
   try {
+    if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
     console.log(
       '[aiService] act: baseUrl=%s conversationId=%s modelId=%s messages=%d',
       AUTH_BASE_URL,
@@ -201,7 +207,8 @@ export async function* chatStream(
         attachmentNames: options.indexedFileNames,
         userMetadata: { indexedAttachments: options.indexedAttachments, mentions: options.mentions as NonNullable<PersonalTurn['userMetadata']>['mentions'] },
         replyToTurnId: user.replyToTurnId, replySnippet: user.replySnippet,
-      }, workspaceId)
+      }, workspaceId, options.signal)
+      if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
       body.conversationId = submitted.conversationId
       delete body.conversationClientId
       yield { type: 'start', content: '', metadata: { conversationId: submitted.conversationId } }
@@ -211,7 +218,9 @@ export async function* chatStream(
       method: 'POST',
       headers: { 'x-overlay-workspace-id': workspaceId, 'Idempotency-Key': idempotencyKey },
       json: body,
+      signal: options.signal,
     })) {
+      if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
       switch (chunk.type) {
         case 'text-delta': {
           let delta = chunk.delta
@@ -303,17 +312,19 @@ export async function* chatStream(
 
     yield { type: 'done', content: '' }
   } catch (error) {
-    console.error('[aiService] act failed:', error)
+    console.error('[aiService] act failed')
     yield { type: 'error', content: getChatErrorMessage(error) }
   }
 }
 
-export async function uploadDocument(uri: string, name: string, mimeType: string): Promise<{ ids: string[]; name: string }> {
+export async function uploadDocument(uri: string, name: string, mimeType: string, options: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<{ ids: string[]; name: string }> {
   const form = new FormData()
   form.append('file', { uri, name, type: mimeType } as unknown as Blob)
   const res = await appRequest('/api/v1/files/ingest-document', {
     method: 'POST',
     formData: form,
+    workspaceId: options.workspaceId,
+    signal: options.signal,
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
@@ -324,9 +335,11 @@ export async function uploadDocument(uri: string, name: string, mimeType: string
   return { ids, name: data.name ?? name }
 }
 
-export async function stopConversation(conversationId: string, messageId?: string): Promise<void> {
+export async function stopConversation(conversationId: string, messageId?: string, options: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<void> {
   const res = await appRequest('/api/v1/conversations/stop', {
     method: 'POST',
+    workspaceId: options.workspaceId,
+    signal: options.signal,
     json: {
       conversationId,
       messageId,

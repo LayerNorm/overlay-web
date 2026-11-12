@@ -16,6 +16,7 @@ interface AppRequestOptions {
   formData?: FormData
   headers?: Record<string, string>
   timeoutMs?: number | null
+  signal?: AbortSignal
   /**
    * Explicit workspace scope for this request. When omitted, the module-level
    * active workspace (set by WorkspaceContext via `setRequestWorkspaceId`) is
@@ -26,6 +27,13 @@ interface AppRequestOptions {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  const error = new Error('The operation was cancelled.')
+  error.name = 'AbortError'
+  throw error
+}
 
 export const ACTIVE_WORKSPACE_HEADER = 'x-overlay-workspace-id'
 
@@ -186,8 +194,11 @@ export async function appRequest(
 ): Promise<Response> {
   const workspaceId = resolveWorkspaceId(options)
   const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
-  const controller = timeoutMs > 0 ? new AbortController() : null
-  const timer = controller
+  throwIfAborted(options.signal)
+  const controller = timeoutMs > 0 || options.signal ? new AbortController() : null
+  const abortFromOwner = () => controller?.abort()
+  options.signal?.addEventListener('abort', abortFromOwner, { once: true })
+  const timer = controller && timeoutMs > 0
     ? setTimeout(() => {
         console.warn(
           '[appApi] request timed out after %d ms: %s',
@@ -201,6 +212,7 @@ export async function appRequest(
   let response: Response
   try {
     response = await fetchWithSessionRetry(session => {
+      throwIfAborted(options.signal)
       const headers = new Headers(options.headers)
       if (session?.accessToken) headers.set('Authorization', `Bearer ${session.accessToken}`)
       if (workspaceId) headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
@@ -214,6 +226,7 @@ export async function appRequest(
       })
     })
   } finally {
+    options.signal?.removeEventListener('abort', abortFromOwner)
     if (timer) {
       clearTimeout(timer)
     }
@@ -240,6 +253,7 @@ export async function appFetch(
         ? input.toString()
         : input.url
   return fetchWithSessionRetry(session => {
+    throwIfAborted(init.signal ?? undefined)
     const attemptHeaders = new Headers(headers)
     if (session?.accessToken) attemptHeaders.set('Authorization', `Bearer ${session.accessToken}`)
     return fetch(createUrl(path, session), { ...init, headers: attemptHeaders })
@@ -361,12 +375,16 @@ function xhrRawStream(
   method: string,
   headers: Record<string, string>,
   body?: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const queue: Array<{ text: string } | { error: Error } | null> = []
   let notify: (() => void) | null = null
   let finished = false
 
   const xhr = new XMLHttpRequest()
+  throwIfAborted(signal)
+  const abort = () => xhr.abort()
+  signal?.addEventListener('abort', abort, { once: true })
   xhr.open(method, url)
   for (const [key, value] of Object.entries(headers)) {
     xhr.setRequestHeader(key, value)
@@ -390,6 +408,7 @@ function xhrRawStream(
   }
 
   xhr.onload = () => {
+    signal?.removeEventListener('abort', abort)
     if (xhr.status < 200 || xhr.status >= 300) {
       finished = true
       push({ error: new Error(`HTTP ${xhr.status}: ${xhr.statusText || 'Request failed'} — ${xhr.responseText.slice(0, 200)}`) })
@@ -406,35 +425,58 @@ function xhrRawStream(
   }
 
   xhr.onerror = () => {
+    signal?.removeEventListener('abort', abort)
     finished = true
     push({ error: new Error(`XHR request failed (status ${xhr.status})`) })
   }
 
+  xhr.onabort = () => {
+    signal?.removeEventListener('abort', abort)
+    finished = true
+    const error = new Error('The operation was cancelled.')
+    error.name = 'AbortError'
+    push({ error })
+    push(null)
+  }
+
   xhr.ontimeout = () => {
+    signal?.removeEventListener('abort', abort)
     finished = true
     push({ error: new Error('XHR request timed out') })
   }
 
+  throwIfAborted(signal)
   xhr.send(body)
 
   async function* gen(): AsyncGenerator<string> {
-    while (true) {
-      if (queue.length > 0) {
-        const item = queue.shift()!
-        if (item === null) return
-        if ('error' in item) throw item.error
-        yield item.text
-      } else if (finished) {
-        return
-      } else {
-        await new Promise<void>((resolve) => {
-          notify = resolve
-        })
+    try {
+      while (true) {
+        throwIfAborted(signal)
+        if (queue.length > 0) {
+          const item = queue.shift()!
+          if (item === null) return
+          if ('error' in item) throw item.error
+          yield item.text
+        } else if (finished) {
+          return
+        } else {
+          await new Promise<void>((resolve) => {
+            notify = resolve
+          })
+        }
       }
+    } finally {
+      signal?.removeEventListener('abort', abort)
     }
   }
 
-  return gen()
+  const iterator = gen()
+  const originalReturn = iterator.return.bind(iterator)
+  iterator.return = async (value) => {
+    if (!finished) xhr.abort()
+    return originalReturn(value)
+  }
+  return iterator
 }
 
 async function* xhrStreamSse<T>(
@@ -442,10 +484,11 @@ async function* xhrStreamSse<T>(
   method: string,
   headers: Record<string, string>,
   body?: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<T> {
   let buffer = ''
 
-  for await (const chunk of xhrRawStream(url, method, headers, body)) {
+  for await (const chunk of xhrRawStream(url, method, headers, body, signal)) {
     buffer += chunk
     let delimiterIndex = buffer.indexOf('\n\n')
     while (delimiterIndex >= 0) {
@@ -464,16 +507,18 @@ async function* xhrStreamSse<T>(
   }
 }
 
-export async function* appXhrStreamSse<T>(
+async function* appXhrStreamSseInner<T>(
   path: string,
   options: AppRequestOptions = {},
 ): AsyncGenerator<T> {
+  throwIfAborted(options.signal)
+  const streamWorkspaceId = resolveWorkspaceId(options)
   const session = await getValidSession()
+  throwIfAborted(options.signal)
   const headers: Record<string, string> = { ...options.headers }
   if (session?.accessToken) {
     headers['Authorization'] = `Bearer ${session.accessToken}`
   }
-  const streamWorkspaceId = resolveWorkspaceId(options)
   if (streamWorkspaceId && !headers[ACTIVE_WORKSPACE_HEADER]) {
     headers[ACTIVE_WORKSPACE_HEADER] = streamWorkspaceId
   }
@@ -487,7 +532,36 @@ export async function* appXhrStreamSse<T>(
     })
   }
   const url = createUrl(path, session, options.query)
-  yield* xhrStreamSse<T>(url, options.method ?? 'POST', headers, body)
+  yield* xhrStreamSse<T>(url, options.method ?? 'POST', headers, body, options.signal)
+}
+
+export function appXhrStreamSse<T>(
+  path: string,
+  options: AppRequestOptions = {},
+): AsyncGenerator<T> {
+  const controller = new AbortController()
+  const abortFromOwner = () => controller.abort()
+  if (options.signal?.aborted) controller.abort()
+  else options.signal?.addEventListener('abort', abortFromOwner, { once: true })
+  const inner = appXhrStreamSseInner<T>(path, { ...options, signal: controller.signal })
+  const generator = (async function* (): AsyncGenerator<T> {
+    try {
+      yield* inner
+    } finally {
+      options.signal?.removeEventListener('abort', abortFromOwner)
+    }
+  })()
+  const originalReturn = generator.return.bind(generator)
+  const originalThrow = generator.throw.bind(generator)
+  generator.return = async (value) => {
+    controller.abort()
+    return originalReturn(value)
+  }
+  generator.throw = async (error) => {
+    controller.abort()
+    return originalThrow(error)
+  }
+  return generator
 }
 
 function* parseSseText<T>(text: string): Generator<T> {

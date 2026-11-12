@@ -10,7 +10,7 @@
     "verify:shared-markdown-assets": "node scripts/verify-shared-markdown-assets.cjs",
     "export:android:shared-markdown": "node scripts/export-shared-markdown-android.cjs",
     "test:shared-markdown": "node --test scripts/sharedMarkdownProof.test.cjs",
-    "test:native-transcript": "node --test scripts/native-chat-transcript-actions.test.cjs scripts/shared-transcript-proof-mode.test.cjs scripts/native-personal-chat-transcript-host.test.cjs && TSX_TSCONFIG_PATH=../tsconfig.json NODE_OPTIONS='--require=./scripts/register-shared-markdown-style-noop.cjs --require=./scripts/register-native-transcript-test-runtime.cjs' node --import tsx --test scripts/native-chat-transcript-dom.test.tsx",
+    "test:native-transcript": "node --test scripts/native-chat-transcript-actions.test.cjs scripts/shared-transcript-proof-mode.test.cjs scripts/native-personal-chat-transcript-host.test.cjs scripts/native-chat-screen-integration.test.cjs && TSX_TSCONFIG_PATH=../tsconfig.json NODE_OPTIONS='--require=./scripts/register-shared-markdown-style-noop.cjs --require=./scripts/register-native-transcript-test-runtime.cjs' node --import tsx --test scripts/native-chat-transcript-dom.test.tsx",
     "start": "expo start",
     "start:device": "expo start --dev-client --host tunnel --clear",
     "android": "expo run:android",

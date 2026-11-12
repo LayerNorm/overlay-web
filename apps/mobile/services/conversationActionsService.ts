@@ -85,8 +85,12 @@ export async function submitRunApproval(input: {
   agentRunId: string
   token: string
   approved: boolean
-}): Promise<void> {
-  await mobileOverlayAppClient.conversations.submitRunApproval(input)
+}, options: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<void> {
+  if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
+  await mobileOverlayAppClient.conversations.submitRunApproval(input, {
+    signal: options.signal,
+    headers: options.workspaceId ? { 'x-overlay-workspace-id': options.workspaceId } : undefined,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +139,8 @@ export async function generateImage(input: {
   temporaryChat?: boolean
   turnId: string
   imageUrl?: string
+  workspaceId?: string
+  signal?: AbortSignal
 }): Promise<GeneratedMediaResult> {
   if (!input.turnId.trim()) throw new Error('A turn ID is required for image generation.')
   const res = await appRequest('/api/v1/generate-image', {
@@ -149,6 +155,8 @@ export async function generateImage(input: {
     },
     // Generations can run minutes; `0` disables the default 10s request timeout.
     timeoutMs: 0,
+    workspaceId: input.workspaceId,
+    signal: input.signal,
   })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string; error?: string }
@@ -172,6 +180,8 @@ export async function generateVideo(input: {
   temporaryChat?: boolean
   turnId: string
   imageUrl?: string
+  workspaceId?: string
+  signal?: AbortSignal
 }): Promise<GeneratedMediaResult> {
   if (!input.turnId.trim()) throw new Error('A turn ID is required for video generation.')
   let final: GeneratedMediaResult | null = null
@@ -187,6 +197,8 @@ export async function generateVideo(input: {
       videoSubMode: input.imageUrl ? 'image-to-video' : 'text-to-video',
       ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
     },
+    workspaceId: input.workspaceId,
+    signal: input.signal,
   })) {
     if (evt.type === 'completed') {
       final = { url: evt.url, modelUsed: evt.modelUsed, outputId: evt.outputId }

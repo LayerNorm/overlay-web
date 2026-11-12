@@ -131,7 +131,7 @@ function safeActionError(): Error {
 export const NativePersonalChatTranscript = React.memo(function NativePersonalChatTranscript(props: NativePersonalChatTranscriptProps): React.ReactElement {
   const scopeKey = JSON.stringify([props.workspaceId, props.conversationId])
   return <NativePersonalChatTranscriptScope key={scopeKey} {...props} />
-}
+})
 
 function NativePersonalChatTranscriptScope({
   view,
@@ -491,7 +491,7 @@ function NativePersonalChatTranscriptScope({
       />
     </View>
   )
-})
+}
 
 const styles = StyleSheet.create({
   surface: { flex: 1, minHeight: 0, overflow: 'hidden' },

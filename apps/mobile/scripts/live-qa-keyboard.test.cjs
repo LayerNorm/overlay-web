@@ -158,9 +158,11 @@ for (const file of ['components/chat/RoomScreen.tsx', 'components/chat/ChatScree
 
 test('personal chat keeps list drag dismissal without a whole-screen pan responder', () => {
   const source = fs.readFileSync(path.join(root, 'components/chat/ChatScreen.tsx'), 'utf8')
+  const host = fs.readFileSync(path.join(root, 'components/chat/NativePersonalChatTranscript.tsx'), 'utf8')
   assert.doesNotMatch(source, /keyboardHeight|keyboardDidShow|keyboardWillShow/)
   assert.doesNotMatch(source, /PanResponder/)
-  assert.match(source, /keyboardDismissMode="on-drag"/)
+  assert.doesNotMatch(source, /keyboardDismissMode="on-drag"/)
+  assert.match(host, /dismissKeyboard: \(scope\) => \{[\s\S]*?Keyboard\.dismiss\(\)/)
 })
 
 test('chat transcripts occupy a bounded flex region without legacy header offsets', () => {

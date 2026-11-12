@@ -55,10 +55,11 @@ export async function createSkill(input: {
   description: string
   instructions: string
   enabled?: boolean
-}): Promise<{ id: string }> {
+}, requestOptions: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/skills', {
     method: 'POST',
     json: input,
+    ...requestOptions,
   })
 }
 

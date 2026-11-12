@@ -75,55 +75,56 @@ async function removeChatSnapshot(id: string): Promise<void> {
 }
 
 type NativeSummary = NonNullable<FunctionReturnType<typeof api.chat.personal.getSummary>>
-function personalArgs(id: string) { return { workspaceId: convexWorkspaceId(), conversationId: id as Id<'conversations'> } }
+function personalArgs(id: string, workspaceId?: string) { return { workspaceId: workspaceId ?? convexWorkspaceId(), conversationId: id as Id<'conversations'> } }
 function mapNativeSummary(summary: NativeSummary): ChatMeta {
   return { id: summary._id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.lastModified,
     lastMode: summary.lastMode, askModelIds: summary.askModelIds, actModelId: summary.actModelId,
     conversationType: 'personal', archivedAt: summary.archivedAt }
 }
-export async function loadChatsMeta(): Promise<ChatMeta[]> { return loadChatsMetaByView('personal') }
+export async function loadChatsMeta(workspaceId?: string): Promise<ChatMeta[]> { return loadChatsMetaByView('personal', workspaceId) }
 export type ChatListView = 'personal' | 'dms' | 'channels' | 'all'
 
-function roomListArgs(view: ChatListView) {
-  return { workspaceId: convexWorkspaceId(), kind: view === 'dms' ? 'dm' as const : view === 'channels' ? 'channel' as const : 'all' as const, limit: 500 }
+function roomListArgs(view: ChatListView, workspaceId?: string) {
+  return { workspaceId: workspaceId ?? convexWorkspaceId(), kind: view === 'dms' ? 'dm' as const : view === 'channels' ? 'channel' as const : 'all' as const, limit: 500 }
 }
 type RoomList = NonNullable<FunctionReturnType<typeof api.collaboration.roomList.list>>
 function roomMetas(result: RoomList | null): ChatMeta[] {
   return (result?.rooms ?? []).map(room => ({ id: room._id, title: room.title, createdAt: room.createdAt, updatedAt: room.updatedAt, conversationType: room.conversationType }))
 }
-export async function loadChatsMetaByView(view: ChatListView): Promise<ChatMeta[]> {
+export async function loadChatsMetaByView(view: ChatListView, workspaceId?: string): Promise<ChatMeta[]> {
   const [personal, rooms] = await Promise.all([
-    view === 'personal' || view === 'all' ? queryAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: false }).then(rows => rows.map(mapNativeSummary)) : [],
-    view !== 'personal' ? queryConvex(api.collaboration.roomList.list, roomListArgs(view)).then(roomMetas) : [],
+    view === 'personal' || view === 'all' ? queryAllPages(api.chat.personal.list, { workspaceId: workspaceId ?? convexWorkspaceId(), archived: false }).then(rows => rows.map(mapNativeSummary)) : [],
+    view !== 'personal' ? queryConvex(api.collaboration.roomList.list, roomListArgs(view, workspaceId)).then(roomMetas) : [],
   ])
   return [...personal, ...rooms].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-export function subscribeChats(view: ChatListView, onValue: (chats: ChatMeta[]) => void) {
+export function subscribeChats(view: ChatListView, onValue: (chats: ChatMeta[]) => void, workspaceId?: string) {
   let personal: ChatMeta[] = []
   let rooms: ChatMeta[] = []
   const emit = () => onValue([...personal, ...rooms].sort((a, b) => b.updatedAt - a.updatedAt))
   const stops: Array<() => void> = []
-  if (view === 'personal' || view === 'all') stops.push(subscribeAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: false }, rows => { personal = rows.map(mapNativeSummary); emit() }))
-  if (view !== 'personal') stops.push(subscribeConvex(api.collaboration.roomList.list, roomListArgs(view), result => { rooms = roomMetas(result); emit() }))
+  if (view === 'personal' || view === 'all') stops.push(subscribeAllPages(api.chat.personal.list, { workspaceId: workspaceId ?? convexWorkspaceId(), archived: false }, rows => { personal = rows.map(mapNativeSummary); emit() }))
+  if (view !== 'personal') stops.push(subscribeConvex(api.collaboration.roomList.list, roomListArgs(view, workspaceId), result => { rooms = roomMetas(result); emit() }))
   return () => stops.forEach(stop => stop())
 }
 
 export async function loadArchivedChats(): Promise<ChatMeta[]> {
   return (await queryAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: true })).map(mapNativeSummary)
 }
-export async function setPersonalChatRead(id: string, unread = false, throughMessageId?: string): Promise<void> {
-  await mutateConvex(api.chat.personal.setRead, { ...personalArgs(id), unread, throughMessageId: throughMessageId as Id<'conversationMessages'> | undefined })
+export async function setPersonalChatRead(id: string, unread = false, throughMessageId?: string, workspaceId?: string, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return
+  await mutateConvex(api.chat.personal.setRead, { ...personalArgs(id, workspaceId), unread, throughMessageId: throughMessageId as Id<'conversationMessages'> | undefined })
 }
 export async function setPersonalChatArchived(id: string, archived: boolean): Promise<void> {
   await mutateConvex(api.chat.personal.setArchived, { ...personalArgs(id), archived })
 }
-export async function saveChat(chat: Chat): Promise<void> {
+export async function saveChat(chat: Chat, workspaceId?: string): Promise<void> {
   if (chat.id.startsWith('chat-') && !chat.clientId) return
   await Promise.all([
-    updateChatTitle(chat.id, chat.title),
+    updateChatTitle(chat.id, chat.title, workspaceId),
     mutateConvex(api.chat.personal.setPreferences, {
-      ...personalArgs(chat.id), askModelIds: chat.askModelIds ?? [], actModelId: chat.actModelId || chat.modelId || '', lastMode: chat.lastMode ?? 'act',
+      ...personalArgs(chat.id, workspaceId), askModelIds: chat.askModelIds ?? [], actModelId: chat.actModelId || chat.modelId || '', lastMode: chat.lastMode ?? 'act',
     }),
   ])
 }
@@ -132,8 +133,9 @@ function nativeChat(summary: NativeSummary, rows: FunctionReturnType<typeof api.
   return { ...mapNativeSummary(summary), modelId: summary.actModelId || summary.askModelIds[0], messages,
     lastMessage: messages.at(-1)?.content.slice(0, 100) }
 }
-export async function loadChat(id: string): Promise<Chat | null> {
-  const args = personalArgs(id)
+export async function loadChat(id: string, workspaceId?: string): Promise<Chat | null> {
+  if (id.startsWith('chat-')) return null
+  const args = personalArgs(id, workspaceId)
   const summary = await queryConvex(api.chat.personal.getSummary, args)
   if (!summary) return null
   const rows = await queryAllPages(api.chat.personal.getMessages, args)
@@ -141,8 +143,9 @@ export async function loadChat(id: string): Promise<Chat | null> {
   void saveChatSnapshot(chat)
   return chat
 }
-export function subscribePersonalChat(id: string, onValue: (chat: Chat | null) => void) {
-  const args = personalArgs(id)
+export function subscribePersonalChat(id: string, onValue: (chat: Chat | null) => void, workspaceId?: string) {
+  if (id.startsWith('chat-')) return () => {}
+  const args = personalArgs(id, workspaceId)
   let summary: NativeSummary | null | undefined
   let rows: FunctionReturnType<typeof api.chat.personal.getMessages>['page'] | undefined
   let stopMessages: (() => void) | undefined
@@ -183,16 +186,21 @@ export async function deleteChat(id: string): Promise<void> {
   void removeChatSnapshot(id)
 }
 
-export async function getLastOpenedChatId(): Promise<string | null> {
-  return AsyncStorage.getItem(LAST_CHAT_ID_KEY)
+function lastChatIdKey(workspaceId?: string): string {
+  return workspaceId ? `${LAST_CHAT_ID_KEY}:${workspaceId}` : LAST_CHAT_ID_KEY
 }
 
-export async function setLastOpenedChatId(id: string): Promise<void> {
-  await AsyncStorage.setItem(LAST_CHAT_ID_KEY, id)
+export async function getLastOpenedChatId(workspaceId?: string): Promise<string | null> {
+  return AsyncStorage.getItem(lastChatIdKey(workspaceId))
 }
 
-export async function updateChatTitle(id: string, title: string): Promise<void> {
-  await mutateConvex(api.chat.personal.rename, { ...personalArgs(id), title })
+export async function setLastOpenedChatId(id: string, workspaceId?: string): Promise<void> {
+  if (id.startsWith('chat-')) return
+  await AsyncStorage.setItem(lastChatIdKey(workspaceId), id)
+}
+
+export async function updateChatTitle(id: string, title: string, workspaceId?: string): Promise<void> {
+  await mutateConvex(api.chat.personal.rename, { ...personalArgs(id, workspaceId), title })
 }
 
 export async function updateChatMessages(_id: string, _messages: Message[]): Promise<void> {
@@ -202,14 +210,17 @@ export async function updateChatMessages(_id: string, _messages: Message[]): Pro
 
 export async function createNewChat(
   modelId?: string,
-  options: { title?: string; clientId?: string } = {},
+  options: { title?: string; clientId?: string; workspaceId?: string; signal?: AbortSignal } = {},
 ): Promise<Chat> {
+  if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
   const clientId = options.clientId ?? generateChatId()
   const id = await mutateConvex(api.chat.personal.create, {
-    workspaceId: convexWorkspaceId(), clientId, title: options.title || 'New Chat',
+    workspaceId: options.workspaceId ?? convexWorkspaceId(), clientId, title: options.title || 'New Chat',
     askModelIds: modelId ? [modelId] : [], actModelId: modelId ?? '', lastMode: 'act',
   })
-  const chat = await loadChat(id)
+  if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
+  const chat = await loadChat(id, options.workspaceId)
+  if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
   if (!chat) throw new Error('Could not open the new chat.')
   return { ...chat, clientId }
 }

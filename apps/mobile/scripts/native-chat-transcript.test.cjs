@@ -246,7 +246,7 @@ test('streaming completion keeps response ids stable and maps settled, failed, a
   }).exchanges[0]
   assert.equal(failed.status, 'error')
   assert.equal(failed.responses[0].status, 'error')
-  assert.equal(failed.responses[0].errorMessage, 'Generation failed')
+  assert.equal(failed.responses[0].errorMessage, 'This response could not be completed.')
 
   const interrupted = toNativeChatTranscriptView(streaming, {
     activeTurnId: 'stable-turn',
@@ -436,8 +436,52 @@ test('typed Convex rows map modelId, status, user metadata, normalized parts, an
   assert.equal(errorMessages[0].errorMessage, 'Safe display error')
   const errorResponse = toNativeChatTranscriptView(errorMessages).exchanges[0].responses[0]
   assert.equal(errorResponse.status, 'error')
-  assert.equal(errorResponse.errorMessage, 'Safe display error')
+  assert.equal(errorResponse.errorMessage, 'This response could not be completed.')
   assert.equal(JSON.stringify(errorResponse).includes('test-run-id'), false)
+})
+
+test('opaque, bearer, JWT, and backend errors never reach transcript projection while partial text survives', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const { createNativeTranscriptDomSnapshot } = load('lib/nativeChatTranscriptProjection.ts')
+  const sentinels = [
+    'xy',
+    'Bearer abcdefghijklmnopqrstuvwxyz',
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWNyZXQifQ.signature',
+    'BACKEND_BODY_SECRET_SENTINEL',
+  ]
+  sentinels.forEach((sentinel, index) => {
+    const turnId = 'error-turn-' + index
+    const view = toNativeChatTranscriptView([
+      user('error-user-' + index, turnId),
+      assistant('error-assistant-' + index, turnId, {
+        modelId: 'model-a',
+        content: 'Partial assistant text is legitimate.',
+        responses: [{
+          modelId: 'model-a',
+          content: 'Partial assistant text is legitimate.',
+          status: 'error',
+          isLoading: false,
+          error: sentinel,
+        }],
+      }),
+    ], { activeTurnId: turnId, status: 'failed', error: sentinel })
+    const response = view.exchanges[0].responses[0]
+    assert.equal(response.errorMessage, 'This response could not be completed.')
+    assert.equal(response.blocks.find(block => block.kind === 'text').text, 'Partial assistant text is legitimate.')
+    const snapshot = createNativeTranscriptDomSnapshot({
+      workspaceId: 'workspace-a',
+      conversationId: 'conversation-a',
+      mountNonce: 'mount-identifier-0001',
+      focusNonce: 'focus-identifier-0001',
+      theme: 'light',
+      view,
+      supportedActions: [],
+      query: '',
+      scrollIntent: null,
+      assets: [],
+    })
+    assert.equal(JSON.stringify(snapshot).includes(sentinel), false)
+  })
 })
 
 test('pagination context users and repeated output rows are deduplicated without replacing real users', () => {
@@ -636,4 +680,38 @@ test('image and video exchange status follows pending, failed, and completed out
   assert.equal(exchangeFor(['pending'], 'video').status, 'streaming')
   assert.equal(exchangeFor(['failed'], 'video').status, 'error')
   assert.equal(exchangeFor(['completed'], 'video').status, 'completed')
+})
+
+test('local media turns retain typed status and model without inventing output IDs', () => {
+  const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+  const exchangeFor = (kind, responseStatus, isLoading) => toNativeChatTranscriptView([
+    user('local-media-user', 'local-media-turn', { contentType: kind, content: 'A local prompt' }),
+    assistant('local-media-assistant', 'local-media-turn', {
+      contentType: kind,
+      modelId: kind + '-model',
+      status: responseStatus,
+      responses: [{ modelId: kind + '-model', content: '', isLoading, status: responseStatus }],
+    }),
+  ]).exchanges[0]
+
+  for (const kind of ['image', 'video']) {
+    const generating = exchangeFor(kind, 'generating', true).media.results[0]
+    assert.equal(generating.type, kind)
+    assert.equal(generating.status, 'generating')
+    assert.equal(generating.modelUsed, kind + '-model')
+    assert.equal(generating.outputId, undefined)
+
+    const failed = exchangeFor(kind, 'error', false).media.results[0]
+    assert.equal(failed.status, 'failed')
+    assert.equal(failed.outputId, undefined)
+
+    const stoppedExchange = exchangeFor(kind, 'interrupted', false)
+    assert.equal(stoppedExchange.media.results[0].status, 'failed')
+    assert.equal(stoppedExchange.media.results[0].outputId, undefined)
+    assert.equal(stoppedExchange.status, 'error')
+
+    const completed = exchangeFor(kind, 'completed', false).media.results[0]
+    assert.equal(completed.status, 'completed')
+    assert.equal(completed.outputId, undefined)
+  }
 })
