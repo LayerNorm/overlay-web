@@ -8,10 +8,12 @@ import { SYNC_HISTORY_WINDOW_MS, type SyncInboundEvent, type SyncProvider } from
 import { SyncLinkPausedError, SyncRateLimitedError, type SyncHistoryAdapter, type SyncLinkRef } from './adapters'
 import { SyncBudgetExhaustedError } from './rate-limit'
 import { slackHistoryAdapter } from './slack/history'
+import { teamsHistoryAdapter } from './teams/history'
 
 /** One line per provider. */
 const HISTORY_ADAPTERS: Partial<Record<SyncProvider, SyncHistoryAdapter>> = {
   slack: slackHistoryAdapter,
+  teams: teamsHistoryAdapter,
 }
 
 /** Gap repair compares this much recent platform history with what we stored. */

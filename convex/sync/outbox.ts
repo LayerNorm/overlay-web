@@ -172,6 +172,7 @@ async function prepare(ctx: MutationCtx, row: Doc<'syncOutbox'>, now: number) {
       ...(link.externalGroupId ? { externalGroupId: link.externalGroupId } : {}),
       conversationId: link.conversationId,
     },
+    actorUserId: row.actorUserId,
     externalUserId: account.externalUserId,
     sealedToken: account.sealedToken,
     content: message.content,

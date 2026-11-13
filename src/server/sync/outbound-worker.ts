@@ -11,14 +11,25 @@ import {
   SyncOutboundRejectedError,
   SyncRateLimitedError,
   type SyncLinkRef,
+  type SyncMemberCredential,
   type SyncOutboundAdapter,
 } from './adapters'
 import { slackOutboundAdapter } from './slack/outbound'
+import { resolveTeamsMemberCredential, teamsOutboundAdapter } from './teams/outbound'
 import { openSyncToken } from './token-seal'
 
-/** Outbound adapters by provider. Teams registers its adapter here. */
+/** Outbound adapters by provider. */
 export const SYNC_OUTBOUND_ADAPTERS: Partial<Record<SyncProvider, SyncOutboundAdapter>> = {
   slack: slackOutboundAdapter,
+  teams: teamsOutboundAdapter,
+}
+
+/** Teams tokens expire hourly, so they are refreshed before use; Slack user tokens do not expire. */
+async function memberCredential(item: SyncOutboxWork): Promise<SyncMemberCredential> {
+  if (item.link.provider !== 'teams') return { externalUserId: item.externalUserId, accessToken: openSyncToken(item.sealedToken) }
+  const credential = await resolveTeamsMemberCredential({ workspaceId: item.link.workspaceId, userId: item.actorUserId })
+  if (!credential) throw new SyncAccountRevokedError('Connect Microsoft Teams again to reply')
+  return credential
 }
 
 /** One claimed sync/outbox row, as returned by sync/outbox:claimDue. */
@@ -28,6 +39,7 @@ export type SyncOutboxWork = {
   emoji?: string
   attempts: number
   link: SyncLinkRef
+  actorUserId: string
   externalUserId: string
   sealedToken: string
   content: string
@@ -91,7 +103,7 @@ export async function runSyncOutbound(args: {
       const adapter = adapters[item.link.provider]
       try {
         if (!adapter) throw new SyncOutboundRejectedError('Sending to ' + item.link.provider + ' is not available yet')
-        const credential = { externalUserId: item.externalUserId, accessToken: openSyncToken(item.sealedToken) }
+        const credential = await memberCredential(item)
         const message = { content: item.content, ...(item.externalThreadId ? { externalThreadId: item.externalThreadId } : {}) }
         if (item.action === 'post') {
           const { externalMessageId } = await adapter.post(item.link, credential, message)

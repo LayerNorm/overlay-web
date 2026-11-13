@@ -9,7 +9,7 @@ process.env.SLACK_ENCRYPTION_KEY = 'b'.repeat(64)
 const link = { linkId: 'link', workspaceId: 'ws', provider: 'slack' as const, externalOrgId: 'T1', externalChannelId: 'C1', conversationId: 'conv' }
 
 function work(overrides: Partial<SyncOutboxWork>): SyncOutboxWork {
-  return { outboxId: 'row', action: 'post', attempts: 1, link, externalUserId: 'U1', sealedToken: sealSyncToken('xoxp-1'), content: 'hi', ...overrides }
+  return { outboxId: 'row', action: 'post', attempts: 1, link, actorUserId: 'user_1', externalUserId: 'U1', sealedToken: sealSyncToken('xoxp-1'), content: 'hi', ...overrides }
 }
 
 function memoryStore(batches: SyncOutboxWork[][]) {

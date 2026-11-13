@@ -1,0 +1,43 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#teams('fbe2bf47-16c8-47cf-b4a5-4b9b187c508b')/channels('19%3A4a95f7d8db4c4e7fae857bcebe0623e6%40thread.tacv2')/messages('1612509044972')/replies/$entity",
+  "id": "1613671348387",
+  "replyToId": "1612509044972",
+  "etag": "1613671348387",
+  "messageType": "message",
+  "createdDateTime": "2021-02-18T18:02:28.387Z",
+  "lastModifiedDateTime": "2021-02-18T18:02:28.387Z",
+  "lastEditedDateTime": null,
+  "deletedDateTime": null,
+  "subject": null,
+  "summary": null,
+  "chatId": null,
+  "importance": "normal",
+  "locale": "en-us",
+  "webUrl": "https://teams.microsoft.com/l/message/19%3A4a95f7d8db4c4e7fae857bcebe0623e6%40thread.tacv2/1613671348387?groupId=fbe2bf47-16c8-47cf-b4a5-4b9b187c508b&tenantId=2432b57b-0abd-43db-aa7b-16eadd115d34&createdTime=1613671348387&parentMessageId=1612509044972",
+  "policyViolation": null,
+  "eventDetail": null,
+  "from": {
+    "application": null,
+    "device": null,
+    "conversation": null,
+    "user": {
+      "@odata.type": "#microsoft.graph.teamworkUserIdentity",
+      "id": "8ea0e38b-efb3-4757-924a-5f94061cf8c2",
+      "displayName": "Robin Kline",
+      "userIdentityType": "aadUser",
+      "tenantId": "e61ef81e-8bd8-476a-92e8-4a62f8426fca"
+    }
+  },
+  "body": {
+    "contentType": "html",
+    "content": "<div><div>Test</div></div>"
+  },
+  "channelIdentity": {
+    "teamId": "fbe2bf47-16c8-47cf-b4a5-4b9b187c508b",
+    "channelId": "19:4a95f7d8db4c4e7fae857bcebe0623e6@thread.tacv2"
+  },
+  "attachments": [],
+  "mentions": [],
+  "reactions": [],
+  "messageHistory": []
+}
