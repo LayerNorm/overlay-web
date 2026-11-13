@@ -10,6 +10,7 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { SYNC_SOURCE_LABEL, useChannelSyncSources, useSyncHistoryPriority } from '@/hooks/use-sync-sources'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
@@ -272,6 +273,13 @@ export function DirectMessageExperience({
       ? { workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'> }
       : 'skip',
   )
+  const syncSource = useChannelSyncSources().get(conversationId)
+  useSyncHistoryPriority({
+    conversationId,
+    importing: syncSource?.importing === true,
+    listRef: transcript.listRef,
+    hasMoreMessages: transcript.hasMoreMessages,
+  })
   const pathname = usePathname()
   const agentId = roomAgentId(vm)
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
@@ -351,6 +359,11 @@ export function DirectMessageExperience({
             breadcrumbs={header.breadcrumbs}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={header.leading}
+            metadata={syncSource ? (
+              <span className="rounded-sm bg-(--surface-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--muted)">
+                {SYNC_SOURCE_LABEL[syncSource.provider]}
+              </span>
+            ) : undefined}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 vm={vm}

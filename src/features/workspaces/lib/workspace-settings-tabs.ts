@@ -1,4 +1,4 @@
-import { Bot, Download, Link2, Shield, UserPlus, Users, UsersRound, WalletCards } from 'lucide-react'
+import { ArrowLeftRight, Bot, Link2, Shield, UserPlus, Users, UsersRound, WalletCards } from 'lucide-react'
 import type { WorkspaceSettingsTab } from '@/shared/workspaces/types'
 
 export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
@@ -67,10 +67,10 @@ export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
   },
   {
     id: 'import',
-    label: 'Import',
-    icon: Download,
+    label: 'Import & sync',
+    icon: ArrowLeftRight,
     emptyTitle: 'No imports yet',
-    emptyDescription: 'Bring data from external platforms into this workspace.',
+    emptyDescription: 'Keep Slack and Microsoft Teams channels in sync, or import history once.',
     action: 'Start import',
   },
 ]
