@@ -4,7 +4,8 @@ import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { compactHarnessPrompt, estimateContextTokens } from '@/server/chat/context-compaction-core'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
-import { buildHarnessStepInstructions } from './context'
+import { buildHarnessStepInstructions, buildHarnessStepStateMessage } from './context'
+import { harnessStateMessage, withoutHarnessStateMessages } from './prompt-cache'
 import { prepareHarnessArtifactPrompt } from './artifact-prompt'
 import { createHarnessCompactionPort } from './compaction-port'
 import { captureHarnessModelUsage } from './model-usage'
@@ -161,9 +162,10 @@ export function createHarnessModelPorts(input: {
       const { maxOutputTokens, compactionOutputReserve } = harnessOutputLimits(
         request.settings.maxOutputTokens, limits.maxOutputTokens, contextWindow, modelContextWindow)
       let state = request.state
-      let promptMessages = request.messages
-      promptMessages = await prepareHarnessArtifactPrompt({
-        reference, state, messages: request.messages, receiptId: request.receiptId,
+      // The SDK carries the previous step's state message forward; only the newest belongs in the prompt.
+      const conversation = withoutHarnessStateMessages(request.messages)
+      const promptMessages = await prepareHarnessArtifactPrompt({
+        reference, state, messages: conversation, receiptId: request.receiptId,
       })
       const fixedState: HarnessSnapshot = { ...state, workingSummary: '' }
       const fixedOverheadTokens = estimateContextTokens(buildHarnessStepInstructions(fixedState, request.instructionContext))
@@ -191,7 +193,6 @@ export function createHarnessModelPorts(input: {
         },
       })
       let messages = compacted.messages
-      let instructions: string
       let responseMaxOutputTokens = maxOutputTokens
       if (compacted.summaryFailed || !compacted.fitsBudget) {
         state = await readHarnessState(reference)
@@ -222,17 +223,17 @@ export function createHarnessModelPorts(input: {
         // eslint-disable-next-line no-console
         console.warn('[harness] compaction failed; continuing with uncompacted history within the model context window')
         messages = fallbackMessages
-        instructions = fallbackInstructions
         responseMaxOutputTokens = fallbackMaxOutputTokens
       } else if (compacted.didCompact) {
         state = await applyHarnessOperation(reference, `compact:${request.receiptId}`, {
           type: 'checkpoint', summary: compacted.summary, purpose: 'compaction',
         })
-        instructions = buildHarnessStepInstructions(state, request.instructionContext)
-      } else {
-        // Nothing was written since the boundary read: no summary, no checkpoint.
-        instructions = buildHarnessStepInstructions(state, request.instructionContext)
       }
+      // Otherwise nothing was written since the boundary read: no summary, no checkpoint.
+      // Keep the cached prefix stable: fixed instructions in the system prompt,
+      // the working state as one trailing message (see prompt-cache.ts).
+      const instructions = request.instructionContext.instructions
+      messages = [...messages, harnessStateMessage(buildHarnessStepStateMessage(state, request.instructionContext))]
       const prepared = await prepare({
         modelId: input.modelId,
         receiptId: request.receiptId,
