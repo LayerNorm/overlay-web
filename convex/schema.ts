@@ -3264,6 +3264,11 @@ export default defineSchema({
     historyCompletedAt: v.optional(v.number()),
     /** Raised when a member scrolls past imported history. */
     historyPriorityAt: v.optional(v.number()),
+    /** Set while a history or repair worker holds the link, so ticks never overlap. */
+    historyLeaseUntil: v.optional(v.number()),
+    /** Last completed gap repair; links repaired before the nightly cutoff are due again. */
+    repairedAt: v.optional(v.number()),
+    repairCursor: v.optional(v.string()),
     catchUpUntil: v.optional(v.number()),
     subscriptionId: v.optional(v.string()),
     subscriptionExpiresAt: v.optional(v.number()),
@@ -3277,6 +3282,10 @@ export default defineSchema({
     .index('by_workspaceId_provider', ['workspaceId', 'provider'])
     .index('by_connectionId', ['connectionId'])
     .index('by_status_updatedAt', ['status', 'updatedAt'])
+    .index('by_status_workspaceId_updatedAt', ['status', 'workspaceId', 'updatedAt'])
+    .index('by_status_workspaceId_historyPriorityAt', ['status', 'workspaceId', 'historyPriorityAt'])
+    .index('by_status_repairedAt', ['status', 'repairedAt'])
+    .index('by_historyLeaseUntil', ['historyLeaseUntil'])
     .index('by_subscriptionExpiresAt', ['subscriptionExpiresAt']),
 
   syncMessageMap: defineTable({
@@ -3364,5 +3373,8 @@ export default defineSchema({
     tokens: v.number(),
     refilledAt: v.number(),
     blockedUntil: v.optional(v.number()),
+    /** A denied higher-priority caller holds the next tokens until this time, so lower-priority work can't starve it. */
+    reservedPriority: v.optional(v.number()),
+    reservedUntil: v.optional(v.number()),
   }).index('by_key', ['key']),
 })

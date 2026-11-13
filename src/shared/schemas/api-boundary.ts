@@ -1132,6 +1132,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
   { routePath: '/api/v1/webhooks/slack', reason: 'Inbound Slack Events API webhook, authenticated by the Slack request signature.' },
+  { routePath: '/api/v1/sync/history/process', reason: 'Internal channel sync history and repair worker tick called by the Convex cron; not part of the public web API reference.' },
   { routePath: '/api/v1/sync/slack', reason: 'Slack channel sync settings for the workspace settings page; boundary definition pending. Owners and admins only, protected by workspace authorization.' },
   { routePath: '/api/v1/surfaces/connections', reason: 'Surface connection listing; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/surfaces/connections/[connectionId]/channels', reason: 'Surface channel listing; boundary definition pending. Protected by workspace authorization.' },

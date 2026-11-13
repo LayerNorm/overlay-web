@@ -12,7 +12,7 @@ Mockup: [mockups/slack-teams-sync.html](mockups/slack-teams-sync.html), built fr
 | --- | --- | --- |
 | 0 | Slack and Microsoft app registrations, Slack Marketplace submission | Not started |
 | 1 | Data model and Slack live sync into Overlay | In review (foundation PR); the settings UI lands separately |
-| 2 | Rate-limited Slack history backfill and gap repair | Not started |
+| 2 | Rate-limited Slack history backfill and gap repair | In review: shared rate limiter, newest-first history with thread replies, member prioritization, `app_rate_limited` and 429 catch-up, nightly last-day repair and auto-link for new public channels. Not merged; not yet run against a real Slack workspace. Folding the one-time importer onto the sync tables and showing progress in settings are still to do. |
 | 3 | Replying from Overlay to Slack as yourself | Not started |
 | 4 | Teams live sync and history into Overlay | Not started |
 | 5 | Replying from Overlay to Teams as yourself | Not started |

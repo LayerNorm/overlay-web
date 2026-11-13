@@ -59,6 +59,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated remote-run supervision and settlement reconciliation.'),
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
+  '/api/v1/sync/history/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex bridge for the channel sync history and repair worker.'),
   '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
   '/api/v1/harness/continuation': internalContinuationException(),
   '/api/v1/work/resume-assignment': internalServiceException(['POST'], 'Internal-secret authenticated dependency release; generation-fenced assignment claim and current permissions/budget are rechecked.'),

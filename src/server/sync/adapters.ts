@@ -31,8 +31,13 @@ export type SyncHistoryPage = {
 
 export interface SyncHistoryAdapter {
   provider: SyncProvider
-  /** Fetches one page, newest first, stopping at targetAt. Throws SyncRateLimitedError when the platform says to wait. */
-  fetchHistoryPage(link: SyncLinkRef, args: { cursor?: string; targetAt: number }): Promise<SyncHistoryPage>
+  /**
+   * Fetches one page, newest first, stopping at targetAt. The cursor is the
+   * adapter's own and must carry targetAt once started. Calls draw from the
+   * shared rate budget at the given priority (history unless repairing).
+   * Throws SyncRateLimitedError when the platform says to wait.
+   */
+  fetchHistoryPage(link: SyncLinkRef, args: { cursor?: string; targetAt: number; priority?: 'history' | 'repair' }): Promise<SyncHistoryPage>
 }
 
 /** A member's own platform grant, unsealed only inside the outbound worker. */
