@@ -76,6 +76,18 @@ export interface Entitlements {
   dailyLimits: { ask: number; write: number; agent: number }
 }
 
+export interface PersistedFileReference {
+  fileId: string
+  name: string
+  mimeType: string
+  sizeBytes?: number
+  revision?: string
+  conversationId?: string
+  durationMs?: number
+  width?: number
+  height?: number
+}
+
 export type AssistantVisualBlock =
   | {
       kind: 'tool'
@@ -86,7 +98,7 @@ export type AssistantVisualBlock =
       toolOutput?: unknown
     }
   | { kind: 'text'; text: string }
-  | { kind: 'file'; url: string; mediaType?: string }
+  | { kind: 'file'; url: string; mediaType?: string; fileReference?: PersistedFileReference }
   | {
       kind: 'source'
       id: string

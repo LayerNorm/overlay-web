@@ -8,6 +8,7 @@ export type UploadedFileInput = {
   mimeType?: string
   extension?: string
   scope?: 'personal' | 'workspace'
+  conversationId?: string
 }
 
 export type ArtifactExecutionReference = {
@@ -43,6 +44,7 @@ export type ComputerArtifactPrepare = ComputerArtifactLookup & {
 }
 
 export type ComputerArtifactRecord = ComputerArtifactInput & ComputerArtifactSnapshot & {
+  conversationId?: string
   userId: string
   workspaceId: string
   rootRunId: string
@@ -63,6 +65,7 @@ export type ComputerArtifactCommit = ComputerArtifactLookup & {
 }
 
 export type PublishedComputerArtifact = ComputerArtifactInput & {
+  conversationId?: string
   artifactIdentity: string
   fileId: string
   rootRunId: string

@@ -32,6 +32,40 @@ test('failed agent rows display recorded causes after reload, not assistant netw
   assert.equal(view({ ...message, authorKind: 'human' }).generationError, undefined)
 })
 
+test('agent room reload turns successful persisted file results into one visual deliverable', () => {
+  const message = record({
+    content: 'Here is the result.',
+    parts: [
+      { type: 'text', text: 'Here is the result.' },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'write-1', toolName: 'write_file', state: 'output-available',
+        toolOutput: {
+          success: true,
+          fileId: 'file-1',
+          saved: { name: 'launch.md', revision: '12' },
+          fileReference: { fileId: 'file-1', name: 'launch.md', mimeType: 'text/markdown', revision: '12' },
+        },
+      } },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'write-2', toolName: 'write_file', state: 'output-available',
+        toolOutput: {
+          success: true,
+          fileId: 'file-1',
+          saved: { name: 'launch.md', revision: '13' },
+          fileReference: { fileId: 'file-1', name: 'launch.md', mimeType: 'text/markdown', revision: '13' },
+        },
+      } },
+    ],
+  })
+  const reloaded = toRoomMessageView({
+    message: JSON.parse(JSON.stringify(message)), currentPrincipalId: 'me', authorName: 'Agent',
+  })
+  const files = reloaded.blocks.filter(block => block.kind === 'file')
+  assert.equal(files.length, 1)
+  assert.equal(files[0]?.kind === 'file' ? files[0].fileReference?.revision : null, '13')
+  assert.ok(reloaded.blocks.some(block => block.kind === 'text' && block.text === 'Here is the result.'))
+})
+
 test('pending reply hands its row identity to streaming, completed, and failed snapshots', () => {
   const pending = record({ id: 'optimistic_pending_reply_send_agent', content: '', createdAt: 31_000,
     updatedAt: 1_000, status: 'generating' })

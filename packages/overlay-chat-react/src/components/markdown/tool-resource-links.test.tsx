@@ -103,3 +103,51 @@ test('personal and room transcripts pass tool URLs to streaming and reloaded fin
     }
   }
 })
+
+test('chat and room render persisted video, image, and generic file cards compactly', () => {
+  const blocks: AssistantVisualBlock[] = [
+    { kind: 'text', text: 'Here are the finished assets.' },
+    { kind: 'file', url: fileHref, mediaType: 'video/mp4', fileReference: {
+      fileId: 'file:one', name: 'Day 01.mp4', mimeType: 'video/mp4', sizeBytes: 2_000_000, durationMs: 18_000,
+    } },
+    { kind: 'file', url: '/api/v1/files/image-1/content', mediaType: 'image/png', fileReference: {
+      fileId: 'image-1', name: 'End card.png', mimeType: 'image/png', sizeBytes: 400,
+    } },
+    { kind: 'file', url: '/api/v1/files/note-1/content', mediaType: 'text/markdown', fileReference: {
+      fileId: 'note-1', name: 'Launch notes', mimeType: 'text/markdown', revision: '7',
+    } },
+    { kind: 'file', url: '/api/v1/files/legacy-pdf/content', mediaType: 'application/pdf' },
+  ]
+  const elements = [
+    <ChatExchange key="chat" {...exchangeProps(blocks, false)} />,
+    <AssistantVisualBlocks key="room" blocks={blocks} blockKeyPrefix="room" markdownKeyPrefix="room"
+      isStreaming={false} isTextStreaming={false} onOpenDraft={noop} onCreateAutomationDraft={noop} />,
+  ]
+  for (const element of elements) {
+    const html = renderToStaticMarkup(element)
+    assert.match(html, /Preview Day 01\.mp4/)
+    assert.match(html, /aspect-video/)
+    assert.match(html, /w-\[288px\]/)
+    assert.match(html, /w-\[240px\]/)
+    assert.match(html, /h-auto/)
+    assert.match(html, /max-w-full/)
+    assert.match(html, /End card\.png/)
+    assert.match(html, /Launch notes/)
+    assert.match(html, /legacy-pdf/)
+    assert.match(html, /Here are the finished assets/)
+    assert.doesNotMatch(html, /autoplay/)
+  }
+})
+
+test('safe external Markdown images stay compact and openable without changing link rendering', () => {
+  const html = renderToStaticMarkup(<MarkdownMessage
+    text={'![Campaign poster](https://images.example/poster.jpg) [Docs](https://docs.example/guide) ![Unsafe](javascript:alert(1))'}
+    isStreaming={false}
+    onOpenAttachmentPreview={noop}
+  />)
+  assert.match(html, /aria-label="Preview Campaign poster"/)
+  assert.match(html, /src="https:\/\/images\.example\/poster\.jpg"/)
+  assert.match(html, /max-w-\[240px\]/)
+  assert.match(html, /href="https:\/\/docs\.example\/guide"/)
+  assert.doesNotMatch(html, /javascript:/)
+})

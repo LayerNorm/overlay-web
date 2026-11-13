@@ -1,4 +1,5 @@
 import 'server-only'
+import type { PersistedFileReference } from '@overlay/chat-core'
 import { roomListScope } from './room-scope'
 
 import { utf8ByteLength } from '@/shared/storage/convex-file-content'
@@ -27,6 +28,7 @@ type FileSummary = {
   mimeType?: string
   sizeBytes?: number
   updatedAt: number
+  conversationId?: string
   isStorageBacked?: boolean
 }
 
@@ -48,9 +50,9 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   py: 'text/x-python',
 }
 
-function mimeTypeFor(name: string): string {
+function mimeTypeFor(name: string, fallback = 'application/octet-stream'): string {
   const extension = name.split('.').pop()?.toLowerCase() ?? ''
-  return MIME_BY_EXTENSION[extension] ?? 'text/plain'
+  return MIME_BY_EXTENSION[extension] ?? fallback
 }
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -116,7 +118,7 @@ async function persistedFilePath(options: OverlayToolsOptions, file: FileSummary
   return folders.length ? folders.join(' / ') : 'Library'
 }
 
-async function savedFile(
+async function persistedFile(
   options: OverlayToolsOptions,
   fileId: string | undefined,
   record: FileSummary | undefined,
@@ -133,14 +135,29 @@ async function savedFile(
   }
   if (file?.name) {
     return {
-      name: file.name,
-      path: file.path ?? await persistedFilePath(options, file),
+      file,
+      saved: {
+        name: file.name,
+        path: file.path ?? await persistedFilePath(options, file),
+      },
     }
   }
   return {
-    ...(fallback.name !== undefined ? { name: fallback.name } : {}),
-    ...(fallback.path !== undefined ? { path: fallback.path } : {}),
+    ...(file ? { file } : {}),
+    saved: {
+      ...(fallback.name !== undefined ? { name: fallback.name } : {}),
+      ...(fallback.path !== undefined ? { path: fallback.path } : {}),
+    },
   }
+}
+
+async function savedFile(
+  options: OverlayToolsOptions,
+  fileId: string | undefined,
+  record: FileSummary | undefined,
+  fallback: { name?: string; path?: string },
+) {
+  return (await persistedFile(options, fileId, record, fallback)).saved
 }
 
 export async function executeListFiles(
@@ -241,10 +258,21 @@ export async function executeWriteFile(
       }
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to write file') }
       const data = await res.json().catch((_error) => null) as { file?: FileSummary } | null
+      const persisted = await persistedFile(options, input.fileId.trim(), data?.file, { name: input.name?.trim() })
+      const { saved, file } = persisted
+      const fileReference: PersistedFileReference | undefined = saved.name ? {
+        fileId: input.fileId.trim(),
+        name: saved.name,
+        mimeType: file?.mimeType ?? mimeTypeFor(saved.name),
+        ...(file?.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
+        ...(file && Number.isFinite(file.updatedAt) ? { revision: String(file.updatedAt) } : {}),
+        ...(file?.conversationId ? { conversationId: file.conversationId } : {}),
+      } : undefined
       return {
         success: true,
         fileId: input.fileId.trim(),
-        saved: await savedFile(options, input.fileId.trim(), data?.file, { name: input.name?.trim() }),
+        saved,
+        ...(fileReference ? { fileReference } : {}),
       }
     }
     const name = input.name?.trim()
@@ -254,20 +282,31 @@ export async function executeWriteFile(
       byAgent: true,
       type: 'file',
       kind: 'upload',
-      mimeType: mimeTypeFor(name),
+      mimeType: mimeTypeFor(name, 'text/plain'),
       textContent: input.content,
       ...(options.conversationId ? { conversationId: options.conversationId } : {}),
       ...(input.folderId ? { parentId: input.folderId } : {}),
     })
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create file') }
     const data = await res.json() as { id?: string; file?: FileSummary }
+    const persisted = await persistedFile(options, data.id, data.file, {
+      name,
+      path: input.folderId ?? 'Library',
+    })
+    const { saved, file } = persisted
+    const fileReference: PersistedFileReference | undefined = data.id && saved.name ? {
+      fileId: data.id,
+      name: saved.name,
+      mimeType: file?.mimeType ?? mimeTypeFor(saved.name, 'text/plain'),
+      ...(file?.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
+      ...(file && Number.isFinite(file.updatedAt) ? { revision: String(file.updatedAt) } : {}),
+      ...((file?.conversationId ?? options.conversationId) ? { conversationId: file?.conversationId ?? options.conversationId } : {}),
+    } : undefined
     return {
       success: true,
       fileId: data.id,
-      saved: await savedFile(options, data.id, data.file, {
-        name,
-        path: input.folderId ?? 'Library',
-      }),
+      saved,
+      ...(fileReference ? { fileReference } : {}),
     }
   } catch (err) {
     return failure(err, 'Failed to write file')

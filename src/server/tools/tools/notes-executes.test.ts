@@ -80,6 +80,12 @@ test('create_note links new notes to its conversation only when available', asyn
     assert.equal('conversationId' in (bodies[1] ?? {}), false)
     assert.deepEqual(created.saved, { title: 'Plan', tags: [] })
     assert.deepEqual(personal.saved, { title: 'Personal', tags: [] })
+    assert.deepEqual(created.fileReference, {
+      fileId: 'note_created', name: 'Plan', mimeType: 'text/markdown', conversationId: 'conv_1',
+    })
+    assert.deepEqual(personal.fileReference, {
+      fileId: 'note_created', name: 'Personal', mimeType: 'text/markdown',
+    })
     assert.equal(created.url, '/app/w/ws_1/notes?id=note_created&scope=personal')
     assert.equal(personal.url, '/app/w/ws_1/notes?id=note_created&scope=personal')
   } finally {
@@ -136,6 +142,9 @@ test('create_note with a title echoes the persisted title', async () => {
   try {
     const result = await executeCreateNote(options, { title: 'Requested title', content: 'A note body' })
     assert.deepEqual(result.saved, { title: 'Persisted title', tags: [] })
+    assert.deepEqual(result.fileReference, {
+      fileId: 'note_created', name: 'Persisted title', mimeType: 'text/markdown', revision: '7',
+    })
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -154,6 +163,9 @@ test('update_note echoes fields from the persisted note', async () => {
       tags: ['requested'],
     })
     assert.deepEqual(result.saved, { title: 'Persisted title', tags: ['saved'] })
+    assert.deepEqual(result.fileReference, {
+      fileId: 'note_1', name: 'Persisted title', mimeType: 'text/markdown', revision: '8',
+    })
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -167,15 +179,21 @@ test('patch tools write guarded by the revision they read', async () => {
       success: true,
       noteId: 'note_1',
       revision: '11',
+      fileReference: { fileId: 'note_1', name: 'Doc', mimeType: 'text/markdown', revision: '11' },
     })
     assert.equal(api.writes[0]?.expectedUpdatedAt, 10)
     assert.equal(note.content, '# Doc\n\n## Tasks\n\n- a\n\n## Log\n\nstarted\n')
 
-    await executeReplaceNoteSection(options, { noteId: 'note_1', heading: 'Tasks', content: '- b' })
+    const replaced = await executeReplaceNoteSection(options, { noteId: 'note_1', heading: 'Tasks', content: '- b' })
+    assert.equal(replaced.success, true)
+    assert.deepEqual('fileReference' in replaced ? replaced.fileReference : null, {
+      fileId: 'note_1', name: 'Doc', mimeType: 'text/markdown', revision: '12',
+    })
     assert.equal(note.content, '# Doc\n\n## Tasks\n\n- b\n\n## Log\n\nstarted\n')
 
     const failed = await executeEditNote(options, { noteId: 'note_1', edits: [{ find: 'missing', replace: 'x' }] })
     assert.equal(failed.success, false)
+    assert.equal('fileReference' in failed, false)
     assert.match('error' in failed ? failed.error : '', /was not in the note/)
     assert.equal(api.writes.length, 2)
   } finally {

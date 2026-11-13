@@ -4,25 +4,35 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
 import { useState, type ReactNode } from 'react'
-import { Maximize2, PanelRightOpen, X } from 'lucide-react'
+import { ArrowLeft, Maximize2, PanelRightOpen, X } from 'lucide-react'
 import { cn, Dialog, DialogContent } from '@overlay/ui'
 
 export type AttachmentPreviewMode = 'panel' | 'dialog'
 
 export type AttachmentPreview = {
   name: string
+  previewName?: string
   content: string
   url?: string
   fileId?: string
+  mimeType?: string
+  sizeBytes?: number
+  loading?: boolean
+  error?: string
+  onBack?: () => void
+  onRetry?: () => void
+  onMediaError?: () => void
 }
 
 export type AttachmentPreviewOpenOptions = {
   mode?: AttachmentPreviewMode
+  onBack?: () => void
 }
 
 type AttachmentViewerRenderProps = {
   preview: AttachmentPreview
   headerRight: ReactNode
+  headerLeft?: ReactNode
 }
 
 function AttachmentPreviewHeaderActions({
@@ -73,6 +83,13 @@ export function AttachmentPreviewPanel({
   onModeChange: (mode: AttachmentPreviewMode) => void
   renderViewer: (props: AttachmentViewerRenderProps) => ReactNode
 }) {
+  const headerLeft = preview.onBack ? (
+    <Button variant="ghost" type="button" onClick={() => { onClose(); preview.onBack?.() }}
+      className={unstyledButton(`h-auto shrink-0 gap-1 rounded-md px-2 py-1.5 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>
+      <ArrowLeft size={14} />
+      Back to Library
+    </Button>
+  ) : undefined
   const headerRight = (
     <AttachmentPreviewHeaderActions
       mode={mode}
@@ -80,7 +97,7 @@ export function AttachmentPreviewPanel({
       onModeChange={onModeChange}
     />
   )
-  return <>{renderViewer({ preview, headerRight })}</>
+  return <>{renderViewer({ preview, headerRight, headerLeft })}</>
 }
 
 export function AttachmentPreviewDialog({
@@ -113,6 +130,13 @@ export function AttachmentPreviewDialog({
         <div className="flex min-h-0 flex-1 flex-col">
           {renderViewer({
             preview: activePreview,
+            headerLeft: activePreview.onBack ? (
+              <Button variant="ghost" type="button" onClick={() => { onClose(); activePreview.onBack?.() }}
+                className={unstyledButton(`h-auto shrink-0 gap-1 rounded-md px-2 py-1.5 text-xs text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>
+                <ArrowLeft size={14} />
+                Back to Library
+              </Button>
+            ) : undefined,
             headerRight: (
               <AttachmentPreviewHeaderActions
                 mode="dialog"

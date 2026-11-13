@@ -1899,6 +1899,7 @@ export default defineSchema({
     name: v.string(),
     parentId: v.optional(v.string()),
     scope: v.union(v.literal('personal'), v.literal('workspace')),
+    conversationId: v.optional(v.string()),
     userId: v.string(),
     workspaceId: v.string(),
     rootRunId: v.string(),

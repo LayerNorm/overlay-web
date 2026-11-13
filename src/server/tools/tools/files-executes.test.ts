@@ -63,6 +63,7 @@ test('write_file creates with a mime type and reports a stale revision as a conf
       success: true,
       fileId: 'f2',
       saved: { name: 'report.md', path: 'd1' },
+      fileReference: { fileId: 'f2', name: 'report.md', mimeType: 'text/markdown' },
     })
     assert.equal(bodies[0]?.mimeType, 'text/markdown')
     assert.equal(bodies[0]?.parentId, 'd1')
@@ -107,11 +108,17 @@ test('file and folder writes echo persisted names and folder paths', async () =>
   try {
     const created = await executeWriteFile(options, { name: 'Requested file.md', content: 'body', folderId: 'd1' })
     assert.deepEqual(created.saved, { name: 'Persisted file.md', path: 'Docs' })
+    assert.deepEqual(created.fileReference, {
+      fileId: 'file_created', name: 'Persisted file.md', mimeType: 'text/markdown', revision: '2',
+    })
 
     const updated = await executeWriteFile(options, {
       fileId: 'file_created', name: 'Requested edit', content: 'new body',
     })
     assert.deepEqual(updated.saved, { name: 'Persisted edit', path: 'Docs' })
+    assert.deepEqual(updated.fileReference, {
+      fileId: 'file_created', name: 'Persisted edit', mimeType: 'application/octet-stream', revision: '2',
+    })
 
     const moved = await executeMoveFile(options, {
       fileId: 'file_created', folderId: null, name: 'Requested move',

@@ -117,6 +117,60 @@ function describeComposioIntegrationTool(toolName: string, input?: Record<string
 
 export type ToolLabelPhase = 'running' | 'complete' | 'error' | 'denied'
 
+const CREDENTIAL_ASSIGNMENT = /\b(([A-Z0-9_]*(?:access[_-]?token|api[_-]?key|token|secret|password|passwd|authorization|credential|private[_-]?key|client[_-]?secret)[A-Z0-9_]*)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi
+const SENSITIVE_FLAG = /(--(?:token|password|api-key|secret)(?:=|\s+))(?:"[^"]*"|'[^']*'|[^\s]+)/gi
+const AUTHORIZATION_HEADER = /(\bauthorization\s*:\s*)(?:Bearer|Basic)\s+[^\s'";]+/gi
+const URL_USERINFO = /(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi
+const URL_CREDENTIAL_QUERY = /([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|token|key|secret|password|passwd|client[_-]?secret|credential|authorization|signature|sig)=)[^&#\s"']+/gi
+
+export function sanitizeToolActivityText(value: string): string {
+  return value
+    .replace(URL_USERINFO, '$1[REDACTED]@')
+    .replace(URL_CREDENTIAL_QUERY, '$1[REDACTED]')
+    .replace(AUTHORIZATION_HEADER, '$1[REDACTED]')
+    .replace(/\bBearer\s+[^\s"']+/gi, 'Bearer [REDACTED]')
+    .replace(CREDENTIAL_ASSIGNMENT, '$1[REDACTED]')
+    .replace(SENSITIVE_FLAG, '$1[REDACTED]')
+}
+
+function clippedSafe(value: string, maxLength: number) {
+  const safe = sanitizeToolActivityText(value.trim())
+  return safe.length > maxLength ? `${safe.slice(0, maxLength)}…` : safe
+}
+
+function firstInputValue(input: Record<string, unknown> | undefined, keys: string[]): string | null {
+  return pickFirstStringFromInput(input, keys)
+}
+
+function resultRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+export function getComputerToolActivityDetails(
+  toolName: string,
+  input?: Record<string, unknown>,
+  output?: unknown,
+): Array<{ label: string; value: string }> {
+  if (!['computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_exec', 'computer_publish_file'].includes(toolName)) return []
+  const details: Array<{ label: string; value: string }> = []
+  const path = firstInputValue(input, ['path', 'filePath', 'sourcePath', 'directoryPath', 'directory', 'dir'])
+  const command = firstInputValue(input, ['command'])
+  if (toolName === 'computer_exec' && command) details.push({ label: 'Command', value: clippedSafe(command, 300) })
+  else if (path) details.push({ label: 'Path', value: clippedSafe(path, 300) })
+  const outer = resultRecord(output)
+  const result = resultRecord(outer?.display) ?? outer
+  if (result && typeof result.exitCode === 'number' && Number.isSafeInteger(result.exitCode)) {
+    details.push({ label: 'Exit code', value: String(result.exitCode) })
+  }
+  const duration = result?.durationMs
+  if (typeof duration === 'number' && Number.isFinite(duration) && duration >= 0) {
+    details.push({ label: 'Duration', value: `${Math.round(duration)} ms` })
+  }
+  return details
+}
+
 const MCP_CALL_LABEL_BY_PHASE: Record<ToolLabelPhase, string> = {
   running: 'Calling MCP tool',
   complete: 'Called MCP tool',
@@ -157,19 +211,20 @@ export function getDescriptiveToolLabel(
   toolName: string,
   toolInput?: Record<string, unknown>,
   phase: ToolLabelPhase = 'running',
+  toolOutput?: unknown,
 ): string {
   // A connected agent (Claude Code, Codex…) names its own actions; show that, not the generic tool name.
   if (toolName === 'remote_action') {
     const title = pickFirstStringFromInput(toolInput, ['title'])
     // An action the agent gave no real name (it says "tool call"/"tool") is shown as a plain "Tool call".
     if (title && /^(tool( call)?|tool_call|action)$/i.test(title)) return 'Tool call'
-    if (title) return title.length > 140 ? `${title.slice(0, 140)}…` : title
+    if (title) return clippedSafe(title, 140)
   }
   // What a connected agent's terminal, file edits, and plan show, named for what they are.
   if (toolName === 'remote_terminal') return 'Terminal output'
   if (toolName === 'remote_diff') {
     const path = pickFirstStringFromInput(toolInput, ['title'])
-    return path ? `Edited ${path.length > 120 ? `${path.slice(0, 120)}…` : path}` : 'File changes'
+    return path ? `Edited ${clippedSafe(path, 120)}` : 'File changes'
   }
   if (toolName === 'remote_plan') return 'Plan'
 
@@ -181,6 +236,23 @@ export function getDescriptiveToolLabel(
 
   if (toolName === 'call_mcp_tool') {
     return describeMcpToolCall(toolInput, phase)
+  }
+
+  const outer = resultRecord(toolOutput)
+  const result = resultRecord(outer?.display) ?? outer
+  const failed = phase === 'error' || phase === 'denied' || result?.success === false
+  const computerPath = firstInputValue(toolInput, ['path', 'filePath', 'sourcePath', 'directoryPath', 'directory', 'dir'])
+  const safePath = computerPath ? clippedSafe(computerPath, 120) : null
+  const command = firstInputValue(toolInput, ['command'])
+  const safeCommand = command ? clippedSafe(command, 90) : null
+  if (toolName === 'computer_read_file') return safePath ? `${failed ? 'Could not read' : phase === 'complete' ? 'Read' : 'Reading'} ${safePath}` : (failed ? 'Could not read file on the computer' : phase === 'complete' ? 'Read a file on the computer' : 'Reading a file on the computer')
+  if (toolName === 'computer_write_file') return safePath ? `${failed ? 'Could not write' : phase === 'complete' ? 'Wrote' : 'Writing'} ${safePath}` : (failed ? 'Could not write file on the computer' : phase === 'complete' ? 'Wrote a file on the computer' : 'Writing a file on the computer')
+  if (toolName === 'computer_list_files') return safePath ? `${failed ? 'Could not list' : phase === 'complete' ? 'Listed' : 'Listing'} ${safePath}` : (failed ? 'Could not list files on the computer' : phase === 'complete' ? 'Listed files on the computer' : 'Listing files on the computer')
+  if (toolName === 'computer_exec') return safeCommand ? `${failed ? 'Command failed' : phase === 'complete' ? 'Ran command' : 'Running command'} · ${safeCommand}` : (failed ? 'Command failed on the computer' : phase === 'complete' ? 'Ran a command on the computer' : 'Running a command on the computer')
+  if (toolName === 'computer_publish_file') {
+    const name = firstInputValue(toolInput, ['name'])
+    const safeName = name ? clippedSafe(name, 120) : null
+    return safeName ? `${failed ? 'Could not publish' : phase === 'complete' ? 'Published' : 'Publishing'} ${safeName}` : (failed ? 'Could not publish file' : phase === 'complete' ? 'Published a file' : 'Publishing a file')
   }
 
   if (toolName === 'search_mcp_tools') {

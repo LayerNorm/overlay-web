@@ -1,6 +1,8 @@
 import 'katex/dist/katex.min.css'
 import { OverlayMark } from '@overlay/ui'
-import { type ReactNode, memo, useMemo, useState } from 'react'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+import { type ComponentProps, type ReactNode, memo, useMemo, useState } from 'react'
 import { AtSign, BookOpen, Bot, FileText, Hash, Plug, Server, Sparkles } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import type { Pluggable } from 'unified'
@@ -51,6 +53,23 @@ interface Props {
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
   ) => void
+}
+
+function safeExternalImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password
+      ? url.href
+      : null
+  } catch {
+    return null
+  }
+}
+
+function externalImagePreviewName(url: string): string {
+  const extension = new URL(url).pathname.match(/\.(avif|gif|jpe?g|png|svg|webp)$/i)?.[1]?.toLowerCase()
+  return `external-image.${extension === 'jpeg' ? 'jpg' : extension ?? 'png'}`
 }
 
 function MarkdownMessageImpl({
@@ -123,6 +142,29 @@ function MarkdownMessageImpl({
 
       return {
         ...baseComponents,
+        // Keep remote Markdown images compact; only explicit http(s) image sources are previewable.
+        img(props: ComponentProps<'img'>) {
+          const source = safeExternalImageUrl(props.src)
+          if (!source) return null
+          const label = typeof props.alt === 'string' && props.alt.trim() ? props.alt.trim() : 'Image preview'
+          return (
+            <Button
+              variant="ghost"
+              type="button"
+              aria-label={`Preview ${label}`}
+              onClick={() => onOpenAttachmentPreview?.({
+                name: label,
+                previewName: externalImagePreviewName(source),
+                content: '',
+                url: source,
+              }, { mode: 'panel' })}
+              className={unstyledButton('my-1 inline-flex h-auto max-w-full rounded-xl p-1 text-left focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)')}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- Markdown image URLs are user/model content and need native URL loading. */}
+              <img src={source} alt="" loading="lazy" className="max-h-48 max-w-[240px] rounded-lg border border-(--border) object-contain" />
+            </Button>
+          )
+        },
         // Keep semantic emphasis; Streamdown's defaults render styled spans.
         strong: ({ children }: { children?: ReactNode }) => <strong>{children}</strong>,
         em: ({ children }: { children?: ReactNode }) => <em>{children}</em>,

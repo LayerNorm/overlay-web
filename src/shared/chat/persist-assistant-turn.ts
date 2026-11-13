@@ -9,6 +9,7 @@ import {
   generatedUiDataToPlainText,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
+import { parsePersistedFileReference } from '@overlay/chat-core'
 import { collectWebSourcesFromSingleBlock } from '@overlay/chat-core/sources'
 import type { WebSourceItem } from '@overlay/chat-core/types'
 import { compactPullRequestToolValues } from './persist-pull-request-tool'
@@ -49,7 +50,7 @@ function stringifyForPersistence(value: unknown): string {
   }
 }
 
-function compactToolValueForPersistence(value: unknown): unknown {
+function compactToolValueForPersistence(value: unknown, fileReference?: ReturnType<typeof parsePersistedFileReference>): unknown {
   if (value == null) return value
   if (typeof value === 'string') return truncateForPersistence(value, MAX_PERSISTED_TOOL_VALUE_CHARS)
   if (typeof value === 'number' || typeof value === 'boolean') return value
@@ -58,9 +59,22 @@ function compactToolValueForPersistence(value: unknown): unknown {
   if (serialized.length <= MAX_PERSISTED_TOOL_VALUE_CHARS) {
     return clampNestingDepth(value)
   }
+  const source = value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+  const display = source?.display !== null && typeof source?.display === 'object' && !Array.isArray(source.display)
+    ? source.display as Record<string, unknown>
+    : null
+  const result = display ?? source
   return {
     truncated: true,
     summary: truncateForPersistence(serialized, MAX_PERSISTED_TOOL_VALUE_CHARS),
+    ...(typeof result?.success === 'boolean' ? { success: result.success } : {}),
+    ...(typeof result?.exitCode === 'number' && Number.isSafeInteger(result.exitCode) ? { exitCode: result.exitCode } : {}),
+    ...(typeof result?.durationMs === 'number' && Number.isFinite(result.durationMs) && result.durationMs >= 0
+      ? { durationMs: result.durationMs }
+      : {}),
+    ...(fileReference ? { success: true, fileReference } : {}),
   }
 }
 
@@ -204,7 +218,9 @@ function compactAssistantPartForPersistence(
     const toolName = typeof invocation.toolName === 'string' ? invocation.toolName : ''
     const pullRequestValues = compactPullRequestToolValues(invocation)
     const webSources = compactWebSourcesForPersistence(toolName, invocation.toolOutput)
-    const compactedToolOutput = compactToolValueForPersistence(pullRequestValues?.toolOutput ?? invocation.toolOutput)
+    const toolOutput = pullRequestValues?.toolOutput ?? invocation.toolOutput
+    const fileReference = parsePersistedFileReference(toolName, toolOutput) ?? undefined
+    const compactedToolOutput = compactToolValueForPersistence(toolOutput, fileReference)
     return {
       part: {
         ...part,

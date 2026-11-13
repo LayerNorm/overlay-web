@@ -37,6 +37,7 @@ export interface FileViewerProps {
   /** Injected fetch implementation so the presentational module does not call global fetch directly. */
   fetchImpl?: typeof fetch
   resolveFileHref?: (href: string) => string | undefined
+  onMediaError?: () => void
 }
 
 function previewSource(name: string, content: string, url?: string): string {
@@ -246,7 +247,7 @@ function ViewerOperationButtons({
   )
 }
 
-export function FileViewer({ name, content, url, operations, fetchImpl, resolveFileHref }: FileViewerProps) {
+export function FileViewer({ name, content, url, operations, fetchImpl, resolveFileHref, onMediaError }: FileViewerProps) {
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
@@ -254,9 +255,9 @@ export function FileViewer({ name, content, url, operations, fetchImpl, resolveF
   if (type === 'text') return <TextViewer content={content} />
   if (type === 'html') return <HtmlViewer name={name} source={source} />
   if (type === 'csv') return <CsvViewer content={content} />
-  if (type === 'image') return <ImageViewer name={name} source={source} />
+  if (type === 'image') return <ImageViewer name={name} source={source} onMediaError={onMediaError} />
   if (type === 'audio') return <AudioViewer name={name} source={source} />
-  if (type === 'video') return <VideoViewer name={name} source={source} />
+  if (type === 'video') return <VideoViewer name={name} source={source} onMediaError={onMediaError} />
   if (type === 'pdf') {
     return (
       <PdfViewer
@@ -349,14 +350,14 @@ function CsvViewer({ content }: { content: string }) {
   )
 }
 
-function ImageViewer({ name, source }: { name: string; source: string }) {
+function ImageViewer({ name, source, onMediaError }: { name: string; source: string; onMediaError?: () => void }) {
   const mediaUrl = resolveSafeViewerUrl(source, 'media')
   if (!mediaUrl) return <UnavailablePreview name={name} />
   return (
     <div className="overlay-file-viewer overlay-file-viewer--image flex flex-1 items-center justify-center overflow-auto bg-(--surface-subtle) p-8">
       {/* Shared web/Electron viewer; Next's image runtime is intentionally unavailable here. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={mediaUrl} alt={name} className="max-h-full max-w-full rounded-lg object-contain shadow-xs" />
+      <img src={mediaUrl} alt={name} onError={onMediaError} className="max-h-full max-w-full rounded-lg object-contain shadow-xs" />
     </div>
   )
 }
@@ -375,12 +376,12 @@ function AudioViewer({ name, source }: { name: string; source: string }) {
   )
 }
 
-function VideoViewer({ name, source }: { name: string; source: string }) {
+function VideoViewer({ name, source, onMediaError }: { name: string; source: string; onMediaError?: () => void }) {
   const mediaUrl = resolveSafeViewerUrl(source, 'media')
   if (!mediaUrl) return <UnavailablePreview name={name} />
   return (
     <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
-      <video controls src={mediaUrl} className="max-h-full max-w-full" />
+      <video controls src={mediaUrl} onError={onMediaError} className="max-h-full max-w-full" />
     </div>
   )
 }
@@ -549,6 +550,10 @@ export function FileViewerPanel({
   headerLeft,
   headerRight,
   operations,
+  loading,
+  error,
+  onRetry,
+  onMediaError,
 }: {
   name: string
   /** Optional classification name when the displayed file name differs from its preview payload. */
@@ -561,6 +566,10 @@ export function FileViewerPanel({
   headerLeft?: React.ReactNode
   headerRight?: React.ReactNode
   operations?: FileViewerOperations
+  loading?: boolean
+  error?: string
+  onRetry?: () => void
+  onMediaError?: () => void
 }) {
   const type = getFileType(name)
   const editable = isEditable && (type === 'text' || type === 'html' || type === 'markdown') && onContentChange
@@ -587,7 +596,15 @@ export function FileViewerPanel({
       }
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full flex-col">
-      {editable ? (
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center text-sm text-(--muted)" role="status">Loading preview…</div>
+      ) : error ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
+          <FileQuestion size={24} className="text-(--muted)" />
+          <p className="max-w-sm text-sm text-(--muted)">{error}</p>
+          {onRetry ? <Button variant="outline" type="button" onClick={onRetry}>Retry</Button> : null}
+        </div>
+      ) : editable ? (
         <>
           <Textarea
             aria-label="File contents"
@@ -611,6 +628,7 @@ export function FileViewerPanel({
           content={content}
           url={url}
           operations={operations}
+          onMediaError={onMediaError}
         />
       )}
       </AppScreenBody>

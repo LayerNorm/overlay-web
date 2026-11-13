@@ -15,6 +15,7 @@ import type { WebSourceItem } from '@/shared/web/web-sources'
 export type RenderAttachmentViewer = (args: {
   preview: AttachmentPreview
   headerRight: ReactNode
+  headerLeft?: ReactNode
 }) => ReactNode
 
 type ShellPanelKind = 'attachment' | 'link' | 'sources'

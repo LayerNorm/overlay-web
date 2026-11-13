@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from 'react'
-import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { MarkdownMessage, UserMessageBubble, type AttachmentPreviewOpenOptions } from '@overlay/chat-react'
+import type { PersistedFileReference } from '@overlay/chat-core'
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
 import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
@@ -32,6 +33,7 @@ import {
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { ConversationFilePreviewProvider } from '@/components/ConversationFilePreviewContext'
 
 function RoomComposerArea({
   safety,
@@ -223,6 +225,7 @@ export function DirectMessageExperience({
   externalRightPanelMode,
   externalRightPanelWidth,
   onExternalRightPanelClose,
+  onReturnToLibrary,
   bodyOverlay,
   guided,
 }: {
@@ -237,6 +240,7 @@ export function DirectMessageExperience({
   externalRightPanelMode?: "docked" | "floating";
   externalRightPanelWidth?: number;
   onExternalRightPanelClose?: () => void;
+  onReturnToLibrary?: () => void;
   bodyOverlay?: ReactNode;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
@@ -246,6 +250,29 @@ export function DirectMessageExperience({
   const { settings: appSettings } = useAppSettings()
   const router = useRouter()
   const panels = useRoomPanels({ renderAttachmentViewer: AttachmentViewer })
+  const { openAttachmentPreview, openFilePreview } = panels
+  const openRoomAttachmentPreview = useCallback((
+    ...args: Parameters<typeof openAttachmentPreview>
+  ) => {
+    const [preview, options] = args
+    openAttachmentPreview(preview, {
+      ...options,
+      ...(onReturnToLibrary ? { onBack: onReturnToLibrary } : {}),
+    })
+  }, [onReturnToLibrary, openAttachmentPreview])
+  const openExternalFilePreview = useCallback((reference: PersistedFileReference, options?: AttachmentPreviewOpenOptions) => {
+    openFilePreview(reference.name, [reference.fileId], {
+      ...options,
+      ...(onReturnToLibrary ? { onBack: onReturnToLibrary } : {}),
+      mimeType: reference.mimeType,
+      ...(reference.sizeBytes === undefined ? {} : { sizeBytes: reference.sizeBytes }),
+    })
+  }, [onReturnToLibrary, openFilePreview])
+  const scopedExternalRightPanel = externalRightPanel ? (
+    <ConversationFilePreviewProvider openFilePreview={openExternalFilePreview}>
+      {externalRightPanel}
+    </ConversationFilePreviewProvider>
+  ) : null
   const room = useDirectMessageRoom({
     conversationId,
 
@@ -255,7 +282,7 @@ export function DirectMessageExperience({
     router,
     activeWorkspaceId,
     markConversationRead,
-    onOpenAttachmentPreview: panels.openAttachmentPreview,
+    onOpenAttachmentPreview: openRoomAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
   const pathname = usePathname()
@@ -267,7 +294,7 @@ export function DirectMessageExperience({
 
   const { rightPanel, rightPanelClose } = resolveRoomRightPanel({
     panels,
-    externalRightPanel,
+    externalRightPanel: scopedExternalRightPanel,
     externalRightPanelClose: onExternalRightPanelClose,
     room,
     vm,
@@ -277,7 +304,7 @@ export function DirectMessageExperience({
 
     messageCtx,
       })
-      const externalPanelOpen = Boolean(externalRightPanel)
+      const externalPanelOpen = Boolean(scopedExternalRightPanel)
       const roomPanelOpen = roomPanelIsOpen(room.roomPanel, Boolean(vm.threadRoot))
       useExclusiveRightPanels({
         externalPanelOpen,
@@ -387,8 +414,8 @@ export function DirectMessageExperience({
                 memoryEnabled: room.memoryEnabled,
                 setMemoryEnabled: room.setMemoryEnabled,
                 setMentions: room.setMentions,
-                onOpenAttachmentPreview: panels.openAttachmentPreview,
-                onOpenFilePreview: panels.openFilePreview,
+                onOpenAttachmentPreview: openRoomAttachmentPreview,
+                onOpenFilePreview: openFilePreview,
               }}
             />
           </AppScreenBody>

@@ -92,15 +92,23 @@ export default function ChatExperience(props: ChatExperienceProps) {
     ({
       preview,
       headerRight,
+      headerLeft,
     }: {
       preview: AttachmentPreview;
       headerRight: React.ReactNode;
+      headerLeft?: React.ReactNode;
     }) => (
       <FileViewerPanel
         name={preview.name}
+        previewName={preview.previewName}
         content={preview.content}
         url={preview.url}
         headerRight={headerRight}
+        headerLeft={headerLeft}
+        loading={preview.loading}
+        error={preview.error}
+        onRetry={preview.onRetry}
+        onMediaError={preview.onMediaError}
       />
     ),
     [],

@@ -13,11 +13,13 @@ import type { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
 import { isAgentEditSaveFailure } from '../lib/agent-edit-save-result'
 import { usesOverlayMark } from '@/shared/agents/chief-identity'
+import { useConversationFilePreview } from '@/components/ConversationFilePreviewContext'
 
 export function AgentRightSidebar({
   conversationId,
   activeTab,
   onTabChange,
+  onReturnToLibrary,
   onClose,
 
   editor,
@@ -29,6 +31,7 @@ export function AgentRightSidebar({
   conversationId: string
   activeTab: string
   onTabChange(id: string): void
+  onReturnToLibrary?(): void
   onClose(): void
 
   editor: ReturnType<typeof useAgentEditorController>
@@ -39,6 +42,7 @@ export function AgentRightSidebar({
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true
+  const filePreview = useConversationFilePreview()
   const selectedTab = activeTab
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)
@@ -86,7 +90,19 @@ export function AgentRightSidebar({
     {
       id: 'library',
       label: 'Library',
-      content: selectedTab === 'library' ? <AgentLibraryTab conversationId={conversationId} /> : null,
+      content: selectedTab === 'library' ? (
+        <AgentLibraryTab
+          conversationId={conversationId}
+          onOpenFile={(file) => filePreview?.openFilePreview({
+            fileId: file._id,
+            name: file.name,
+            mimeType: file.mimeType ?? (file.kind === 'note' ? 'text/markdown' : 'application/octet-stream'),
+            ...(file.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
+            ...(file.updatedAt === undefined ? {} : { revision: String(file.updatedAt) }),
+            conversationId,
+          }, { mode: 'panel', onBack: onReturnToLibrary ?? (() => onTabChange('library')) })}
+        />
+      ) : null,
     },
     {
       id: 'computer',

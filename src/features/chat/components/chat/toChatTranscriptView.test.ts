@@ -50,6 +50,34 @@ test('web transcript renders one selected model response', () => {
   assert.equal(view.exchanges[0]!.responses[0]!.blocks[0]?.kind, 'text')
 })
 
+test('reloaded chat transcript exposes one card for the latest successful file revision', () => {
+  const user = message({ id: 'user-file', turnId: 'turn-file', role: 'user', parts: [{ type: 'text', text: 'Save this' }] })
+  const assistant = message({
+    id: 'assistant-file', role: 'assistant', status: 'completed', parts: [
+      { type: 'text', text: 'Created [Launch notes](/app/notes?id=note-1&scope=personal). Here it is.' },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'note-1', toolName: 'create_note', state: 'output-available',
+        toolOutput: { success: true, noteId: 'note-1', saved: { title: 'Launch notes' },
+          fileReference: { fileId: 'note-1', name: 'Launch notes', mimeType: 'text/markdown', revision: '1' } },
+      } },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'note-2', toolName: 'update_note', state: 'output-available',
+        toolOutput: { success: true, noteId: 'note-1', saved: { title: 'Launch notes' },
+          fileReference: { fileId: 'note-1', name: 'Launch notes', mimeType: 'text/markdown', revision: '2' } },
+      } },
+    ],
+  })
+  const view = createWebChatTranscriptAdapter()({
+    primaryMessages: [user], exchangeModes: ['ask'], exchangeModels: [['model-a']],
+    selectedModels: ['model-a'], latestExchangeIndex: 0, getResponseForExchange: () => assistant,
+  })
+  const blocks = view.exchanges[0]!.responses[0]!.blocks
+  const files = blocks.filter((block) => block.kind === 'file')
+  assert.equal(files.length, 1)
+  assert.equal(files[0]?.kind === 'file' ? files[0].fileReference?.revision : null, '2')
+  assert.ok(blocks.some((block) => block.kind === 'text' && block.text.includes('Created Launch notes. Here it is.')))
+})
+
 test('the web-shell transcript preserves the canonical rich-markdown fixture', () => {
   const fixture = CHAT_PARITY_TEXT_SCENARIOS.find((scenario) => scenario.id === 'rich-markdown')!
   const assistantText = fixture.assistantBlocks.find((block) => block.kind === 'text')?.text ?? ''

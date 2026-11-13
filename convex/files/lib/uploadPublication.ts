@@ -8,6 +8,7 @@ export function assertMatchingFile(file: Doc<'files'> | null, input: UploadedFil
   if (!file || file.deletedAt || file.archivedAt || file.type !== 'file' || file.kind !== 'upload'
     || file.userId !== input.userId || file.r2Key !== input.r2Key || file.sizeBytes !== input.sizeBytes
     || file.name !== input.name || file.parentId !== input.parentId || file.workspaceId !== input.workspaceId
+    || (input.conversationId !== undefined && file.conversationId !== undefined && file.conversationId !== input.conversationId)
     || (file.scope ?? 'personal') !== input.scope || file.mimeType !== input.mimeType
     || file.extension !== input.extension) throw new Error('upload_publication_conflict')
 }
@@ -23,17 +24,24 @@ export async function commitUploadedFile(ctx: MutationCtx, input: UploadedFileIn
   if (intent.status === 'finalized') {
     const file = intent.fileId ? await ctx.db.get(intent.fileId) : null
     assertMatchingFile(file, input)
+    if (input.conversationId && !file.conversationId) await ctx.db.patch(file._id, { conversationId: input.conversationId })
     return file._id
   }
   if (now > intent.expiresAt + 15 * 60_000) throw new Error('upload_intent_expired')
   const existing = await ctx.db.query('files').withIndex('by_r2Key', q => q.eq('r2Key', input.r2Key)).take(2)
   if (existing.length > 1) throw new Error('upload_publication_conflict')
   let fileId = existing[0]?._id
-  if (existing.length) assertMatchingFile(existing[0], input)
+  if (existing.length) {
+    assertMatchingFile(existing[0], input)
+    if (input.conversationId && !existing[0]!.conversationId) {
+      await ctx.db.patch(existing[0]!._id, { conversationId: input.conversationId })
+    }
+  }
   else {
     await ensureStorageAvailable(ctx, input.userId, input.sizeBytes)
     fileId = await ctx.db.insert('files', {
       userId: input.userId, workspaceId: input.workspaceId, scope: input.scope,
+      ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       name: input.name, parentId: input.parentId, r2Key: input.r2Key, sizeBytes: input.sizeBytes,
       mimeType: input.mimeType, extension: input.extension, type: 'file', kind: 'upload',
       indexable: false, indexStatus: 'skipped', createdAt: now, updatedAt: now,

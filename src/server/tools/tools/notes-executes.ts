@@ -1,4 +1,5 @@
 import 'server-only'
+import type { PersistedFileReference } from '@overlay/chat-core'
 import { roomListScope } from './room-scope'
 
 import {
@@ -35,6 +36,15 @@ type ToolFailure = { success: false; error: string; conflict?: true; currentRevi
 
 function revisionOf(note: Pick<NoteDoc, 'updatedAt'>): string {
   return String(note.updatedAt)
+}
+
+function noteFileReference(noteId: string, name: string, revision?: string): PersistedFileReference {
+  return {
+    fileId: noteId,
+    name,
+    mimeType: 'text/markdown',
+    ...(revision ? { revision } : {}),
+  }
 }
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -125,10 +135,12 @@ async function patchNote(
     }
     const written = await writeNote(options, { noteId: note._id, content: next, expectedUpdatedAt: note.updatedAt })
     if (written.ok) {
+      const revision = written.note ? revisionOf(written.note) : undefined
       return {
         success: true as const,
         noteId: note._id,
-        revision: written.note ? revisionOf(written.note) : undefined,
+        revision,
+        fileReference: noteFileReference(note._id, note.title || 'Untitled', revision),
       }
     }
     if (!written.conflict) return { success: false as const, error: written.error }
@@ -242,9 +254,17 @@ export async function executeCreateNote(
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create note') }
     const data = (await res.json()) as { id?: string; note?: NoteDoc | null }
     const noteId = data.id ?? data.note?._id
+    const fileReference: PersistedFileReference | undefined = noteId ? {
+      fileId: noteId,
+      name: data.note?.title ?? title,
+      mimeType: 'text/markdown',
+      ...(data.note ? { revision: revisionOf(data.note) } : {}),
+      ...(options.conversationId ? { conversationId: options.conversationId } : {}),
+    } : undefined
     return {
       success: true,
       noteId,
+      ...(fileReference ? { fileReference } : {}),
       url: noteId ? noteUrl(options, noteId, data.note) : undefined,
       revision: data.note ? revisionOf(data.note) : undefined,
       saved: data.note
@@ -277,11 +297,15 @@ export async function executeUpdateNote(
       const saved = !fetched || 'success' in fetched
         ? { title: input.title, tags: input.tags }
         : { title: fetched.title, tags: fetched.tags ?? [] }
+      const savedTitle = !fetched || 'success' in fetched ? input.title?.trim() : fetched.title
+      const savedRevision = written.note ? revisionOf(written.note)
+        : fetched && !('success' in fetched) ? revisionOf(fetched) : undefined
       return {
         success: true,
         noteId: input.noteId.trim(),
         revision: written.note ? revisionOf(written.note) : undefined,
         saved,
+        ...(savedTitle ? { fileReference: noteFileReference(input.noteId.trim(), savedTitle, savedRevision) } : {}),
       }
     }
     if (written.conflict) return staleRevision(input.expectedRevision ?? '', written.currentRevision ?? 'unknown')

@@ -307,6 +307,9 @@ function AgentConversationWorkspaceContent() {
     if (id !== 'details' && id !== 'library' && id !== 'computer') return
     setSidebarPreferences((current) => ({ ...current, tab: id }))
   }, [])
+  const returnToLibrary = useCallback(() => {
+    setSidebarPreferences((current) => ({ ...current, open: true, tab: 'library' }))
+  }, [])
 
   // "New agent" opens the creation dialog; nothing is created until the
   // person confirms.
@@ -438,6 +441,7 @@ function AgentConversationWorkspaceContent() {
         conversationId={conversationId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
+        onReturnToLibrary={returnToLibrary}
         onClose={closeRightSidebar}
 
         editor={sidebarEditor}
@@ -472,6 +476,7 @@ function AgentConversationWorkspaceContent() {
           externalRightPanelMode="docked"
           externalRightPanelWidth={380}
           onExternalRightPanelClose={closeRightSidebar}
+          onReturnToLibrary={returnToLibrary}
           bodyOverlay={computerControl ? (
             <AgentComputerControlOverlay
               ticketUrl={computerControl.ticketUrl}

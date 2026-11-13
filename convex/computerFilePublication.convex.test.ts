@@ -91,8 +91,8 @@ function publicationArgs(reference: { actorUserId: string; runId: string; workfl
   return { reference, input: artifactInput, snapshot: artifactSnapshot, serverSecret: secret }
 }
 
-test('admitted and claimed run prepares concurrently once, then commits and replays one file and one charge', async () => {
-  const { convex, reference } = await fixture()
+test('admitted and claimed run prepares concurrently once, then commits and replays one conversation file and one charge', async () => {
+  const { convex, reference, conversationId } = await fixture()
   const args = publicationArgs(reference)
   const [first, replay] = await Promise.all([
     convex.mutation(publicationMutation('prepare'), args),
@@ -109,16 +109,101 @@ test('admitted and claimed run prepares concurrently once, then commits and repl
     sizeBytes: snapshot.sizeBytes, serverSecret: secret,
   })).toBe(committedId)
   expect(await convex.query(publicationQuery, { reference, input, serverSecret: secret })).toMatchObject({
-    artifactId: input.artifactId, fileId: committedId, r2Key: first.r2Key,
+    artifactId: input.artifactId, fileId: committedId, r2Key: first.r2Key, conversationId,
   })
   await convex.run(async ctx => {
     const files = (await ctx.db.query('files').collect()).filter(file => file.type === 'file')
     expect(files).toHaveLength(1)
     expect(files[0]?.createdByAgent).toBe(true)
+    expect(files[0]?.conversationId).toBe(conversationId)
     expect(await ctx.db.query('r2UploadIntents').collect()).toHaveLength(1)
     expect(await ctx.db.query('subscriptions').collect()).toContainEqual(expect.objectContaining({
       userId, overlayStorageBytesUsed: snapshot.sizeBytes,
     }))
+  })
+})
+
+test('publication rejects manifest conversation mismatches on lookup and replay', async () => {
+  const { convex, reference } = await fixture()
+  const args = publicationArgs(reference)
+  const prepared = await convex.mutation(publicationMutation('prepare'), args)
+  await convex.run(async ctx => {
+    const record = await ctx.db.query('harnessArtifacts').unique()
+    if (record) await ctx.db.patch(record._id, { conversationId: 'different-conversation' })
+  })
+  await expect(convex.query(publicationQuery, {
+    reference, input, serverSecret: secret,
+  })).rejects.toThrow('artifact_identity_conflict')
+  await expect(convex.mutation(publicationMutation('prepare'), {
+    ...publicationArgs(reference),
+    snapshot,
+  })).rejects.toThrow('artifact_identity_conflict')
+  await expect(convex.mutation(publicationMutation('commit'), {
+    reference, input, r2Key: prepared.r2Key,
+    checksumSha256: snapshot.checksumSha256, sizeBytes: snapshot.sizeBytes, serverSecret: secret,
+  })).rejects.toThrow('artifact_identity_conflict')
+})
+
+test('legacy publications remain replayable and an in-flight manifest gains trusted conversation ownership', async () => {
+  const { convex, reference, conversationId } = await fixture()
+  const args = publicationArgs(reference)
+  const pending = await convex.mutation(publicationMutation('prepare'), args)
+  await convex.run(async ctx => {
+    const record = await ctx.db.query('harnessArtifacts').unique()
+    expect(record?._id).toBeTruthy()
+    if (record) await ctx.db.patch(record._id, { conversationId: undefined })
+  })
+
+  const upgraded = await convex.mutation(publicationMutation('prepare'), args)
+  expect(upgraded.conversationId).toBe(conversationId)
+  const fileId = await convex.mutation(publicationMutation('commit'), {
+    reference, input, r2Key: pending.r2Key, checksumSha256: snapshot.checksumSha256,
+    sizeBytes: snapshot.sizeBytes, serverSecret: secret,
+  })
+
+  const finalized = await convex.mutation(publicationMutation('prepare'), args)
+  await convex.run(async ctx => {
+    const record = await ctx.db.query('harnessArtifacts').unique()
+    expect(record?.fileId).toBe(fileId)
+    await ctx.db.patch(record!._id, { conversationId: undefined })
+    await ctx.db.patch(fileId, { conversationId: undefined })
+  })
+
+  const legacyInput = { ...input }
+  const legacyManifest = await convex.query(publicationQuery, {
+    reference, input: legacyInput, serverSecret: secret,
+  })
+  expect(legacyManifest).toMatchObject({ fileId, artifactId: input.artifactId })
+  expect(legacyManifest?.conversationId).toBeUndefined()
+  expect(await convex.mutation(publicationMutation('commit'), {
+    reference, input: legacyInput, r2Key: finalized.r2Key, checksumSha256: snapshot.checksumSha256,
+    sizeBytes: snapshot.sizeBytes, serverSecret: secret,
+  })).toBe(fileId)
+  await convex.run(async ctx => {
+    const file = await ctx.db.get(fileId)
+    const record = await ctx.db.query('harnessArtifacts').unique()
+    expect(file?.conversationId).toBeUndefined()
+    expect(record?.conversationId).toBeUndefined()
+  })
+})
+
+test('direct commit upgrades only an unowned in-flight manifest from root authority', async () => {
+  const { convex, reference, conversationId } = await fixture()
+  const prepared = await convex.mutation(publicationMutation('prepare'), publicationArgs(reference))
+  await convex.run(async ctx => {
+    const record = await ctx.db.query('harnessArtifacts').unique()
+    if (record) await ctx.db.patch(record._id, { conversationId: undefined })
+  })
+
+  const fileId = await convex.mutation(publicationMutation('commit'), {
+    reference, input, r2Key: prepared.r2Key, checksumSha256: snapshot.checksumSha256,
+    sizeBytes: snapshot.sizeBytes, serverSecret: secret,
+  })
+  await convex.run(async ctx => {
+    const record = await ctx.db.query('harnessArtifacts').unique()
+    const file = await ctx.db.get(fileId)
+    expect(record?.conversationId).toBe(conversationId)
+    expect(file?.conversationId).toBe(conversationId)
   })
 })
 

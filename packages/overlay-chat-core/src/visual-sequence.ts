@@ -11,6 +11,7 @@ import {
 import { TOOL_UI_DONE_STATES } from './constants'
 import type { AssistantVisualBlock, ToolVisualBlock } from './types'
 import { getToolName, isReasoningUIPart, isToolUIPart } from './ui-parts'
+import { parsePersistedFileReference, removeKnownFileMarkdown } from './file-reference'
 
 /** Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript). */
 export type TerminalAssistantState = 'completed' | 'error' | 'cancelled' | 'interrupted'
@@ -27,6 +28,24 @@ export function buildAssistantVisualSequence(
   if (!parts?.length) return []
   const remoteRunOutcome = getRemoteRunOutcome(parts)
   const out: AssistantVisualBlock[] = []
+  const knownFileIds = new Set<string>()
+  for (const value of parts) {
+    const part = value as { type?: string; toolInvocation?: { toolName?: string; toolOutput?: unknown }; output?: unknown }
+    const invocation = part.type === 'tool-invocation' ? part.toolInvocation : undefined
+    const toolName = invocation?.toolName ?? (isToolUIPart(value) ? getToolName(value) : undefined)
+    const output = invocation?.toolOutput ?? part.output
+    if (toolName && output !== undefined) {
+      const reference = parsePersistedFileReference(toolName, output)
+      if (reference) knownFileIds.add(reference.fileId)
+    }
+  }
+  const appendFileReference = (toolName: string, toolOutput: unknown) => {
+    const reference = parsePersistedFileReference(toolName, toolOutput)
+    if (!reference) return
+    const existingIndex = out.findIndex(block => block.kind === 'file' && block.fileReference?.fileId === reference.fileId)
+    if (existingIndex >= 0) out.splice(existingIndex, 1)
+    out.push({ kind: 'file', url: `/api/v1/files/${encodeURIComponent(reference.fileId)}/content`, mediaType: reference.mimeType, fileReference: reference })
+  }
   for (const p of parts) {
     const remote = p as { type?: string; data?: Record<string, unknown> }
     const remoteToolName = remote.type === 'data-remote-agent-plan' ? 'remote_plan'
@@ -87,6 +106,7 @@ export function buildAssistantVisualSequence(
         toolInput: inv.toolInput,
         toolOutput: inv.toolOutput,
       })
+      if (typeof inv.toolName === 'string') appendFileReference(inv.toolName, inv.toolOutput)
       continue
     }
     if (isToolUIPart(p)) {
@@ -132,6 +152,7 @@ export function buildAssistantVisualSequence(
         toolInput: part.input,
         toolOutput: part.output,
       })
+      appendFileReference(toolName, part.output)
       continue
     }
     if (isReasoningUIPart(p)) {
@@ -164,7 +185,7 @@ export function buildAssistantVisualSequence(
       const segList = splitRedactedThinkingSegments(pt.text)
       for (const seg of segList) {
         if (seg.kind === 'text') {
-          const merged = normalizeAgentAssistantText(seg.text)
+          const merged = normalizeAgentAssistantText(removeKnownFileMarkdown(seg.text, knownFileIds))
           if (!merged) continue
           const prev = out[out.length - 1]
           if (prev?.kind === 'text') {

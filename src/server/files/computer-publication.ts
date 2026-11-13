@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { PersistedFileReference } from '@overlay/chat-core'
 import { randomUUID } from 'node:crypto'
 import { authorizeComputerPublication, type ArtifactPublicationAuthority } from './ArtifactPublicationAuthority'
 import { COMPUTER_PUBLICATION_HELPER } from './computer-publication-helper'
@@ -26,9 +27,18 @@ type ResolvedComputer = {
 export type ComputerPublicationRequest = ComputerArtifactInput
 
 function publishedResult(artifact: PublishedComputerArtifact) {
+  const fileReference: PersistedFileReference = {
+    fileId: artifact.fileId,
+    name: artifact.name,
+    mimeType: artifact.mimeType,
+    sizeBytes: artifact.sizeBytes,
+    revision: artifact.checksumSha256,
+    ...(artifact.conversationId ? { conversationId: artifact.conversationId } : {}),
+  }
   return {
     success: true as const,
     artifact,
+    fileReference,
     downloadUrl: `/api/v1/files/${encodeURIComponent(artifact.fileId)}/content`,
   }
 }
@@ -41,6 +51,7 @@ function canonicalResult(manifest: ComputerArtifactManifest): PublishedComputerA
     name: manifest.name,
     ...(manifest.parentId ? { parentId: manifest.parentId } : {}),
     scope: manifest.scope,
+    ...(manifest.conversationId ? { conversationId: manifest.conversationId } : {}),
     artifactIdentity: JSON.stringify([manifest.rootRunId, manifest.artifactId]),
     fileId: manifest.fileId,
     rootRunId: manifest.rootRunId,

@@ -3,7 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 import {buildAssistantVisualSequence, type ToolGroupItem} from '@overlay/chat-core'
-import {ToolCallsCollapsedGroup} from './tool-call-rows'
+import {ToolCallRowWithReasoning, ToolCallsCollapsedGroup} from './tool-call-rows'
 
 function markup(items: ToolGroupItem[]) {
   return renderToStaticMarkup(<ToolCallsCollapsedGroup items={items} connectTop={false} connectBottom={false} />)
@@ -60,4 +60,20 @@ test('mixed work reports the actual running count, including after an earlier in
   ]
   assert.match(markup(items), /3 tools · 1 running/)
   assert.doesNotMatch(markup(items), /3 tools in progress/)
+})
+
+test('Computer command details start collapsed behind an accessible control', () => {
+  const block = buildAssistantVisualSequence([{
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId: 'exec-1', toolName: 'computer_exec', state: 'output-available',
+      toolInput: { command: 'curl https://host.test/?token=secret-value' },
+      toolOutput: { success: true, exitCode: 0, durationMs: 250 },
+    },
+  }]).find(item => item.kind === 'tool')
+  assert.ok(block && block.kind === 'tool')
+  const html = renderToStaticMarkup(<ToolCallRowWithReasoning block={block} />)
+  assert.match(html, /aria-label="Show tool details"/)
+  assert.match(html, /Ran command/)
+  assert.doesNotMatch(html, /Exit code|250 ms|secret-value/)
 })

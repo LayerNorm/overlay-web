@@ -110,6 +110,7 @@ function toManifest(record: Doc<'harnessArtifacts'>): ComputerArtifactManifest {
     name: record.name,
     ...(record.parentId === undefined ? {} : { parentId: record.parentId }),
     scope: record.scope,
+    ...(record.conversationId === undefined ? {} : { conversationId: record.conversationId }),
     sourceComputerId: record.sourceComputerId,
     stagingPath: record.stagingPath,
     checksumSha256: record.checksumSha256,
@@ -134,7 +135,8 @@ async function getManifest(ctx: ArtifactReadCtx, rootRunId: string, artifactId: 
 
 async function assertCommittedFile(ctx: ArtifactReadCtx, record: Doc<'harnessArtifacts'>) {
   if (!record.fileId) return
-  assertMatchingFile(await ctx.db.get(record.fileId), {
+  const file = await ctx.db.get(record.fileId)
+  assertMatchingFile(file, {
     userId: record.userId,
     workspaceId: record.workspaceId,
     name: record.name,
@@ -144,7 +146,9 @@ async function assertCommittedFile(ctx: ArtifactReadCtx, record: Doc<'harnessArt
     mimeType: record.mimeType,
     extension: extensionOf(record.name),
     scope: record.scope,
+    ...(record.conversationId === undefined ? {} : { conversationId: record.conversationId }),
   })
+  if (file.conversationId !== record.conversationId) throw new Error('artifact_identity_conflict')
 }
 
 export const get = query({
@@ -163,6 +167,7 @@ export const get = query({
       || record.rootRunId !== authority.rootRunId || record.artifactId !== args.input.artifactId
       || record.sourcePath !== args.input.sourcePath || record.name !== args.input.name
       || record.parentId !== args.input.parentId || record.scope !== args.input.scope
+      || (record.conversationId !== undefined && record.conversationId !== authority.conversationId)
       || record.mimeType !== args.input.mimeType) {
       throw new Error('artifact_identity_conflict')
     }
@@ -196,6 +201,7 @@ export const prepare = mutation({
         || existing.rootRunId !== authority.rootRunId || existing.artifactId !== args.input.artifactId
         || existing.sourcePath !== args.input.sourcePath || existing.name !== args.input.name
         || existing.parentId !== args.input.parentId || existing.scope !== scope
+        || (existing.conversationId !== undefined && existing.conversationId !== authority.conversationId)
         || args.input.mimeType !== args.snapshot.mimeType
         || existing.checksumSha256 !== args.snapshot.checksumSha256
         || existing.sizeBytes !== args.snapshot.sizeBytes || existing.mimeType !== args.snapshot.mimeType) {
@@ -206,11 +212,13 @@ export const prepare = mutation({
       if (existing.fileId) return toManifest(existing)
       const updated = {
         ...existing,
+        ...(existing.conversationId === undefined && authority.conversationId ? { conversationId: authority.conversationId } : {}),
         sourceComputerId: args.snapshot.sourceComputerId,
         stagingPath: args.snapshot.stagingPath,
         updatedAt: now,
       }
       await ctx.db.patch(existing._id, {
+        ...(existing.conversationId === undefined && authority.conversationId ? { conversationId: authority.conversationId } : {}),
         sourceComputerId: updated.sourceComputerId,
         stagingPath: updated.stagingPath,
         updatedAt: now,
@@ -231,6 +239,7 @@ export const prepare = mutation({
     })
     const record = {
       ...args.input,
+      ...(authority.conversationId ? { conversationId: authority.conversationId } : {}),
       userId: args.reference.actorUserId,
       workspaceId: authority.workspaceId,
       rootRunId: authority.rootRunId,
@@ -267,16 +276,21 @@ export const commit = mutation({
       throw new Error('artifact_snapshot_invalid')
     }
     const scope = await authorizeDestination(ctx, args.input, args.reference.actorUserId, authority.workspaceId)
-    const record = await getManifest(ctx, authority.rootRunId, args.input.artifactId)
+    let record = await getManifest(ctx, authority.rootRunId, args.input.artifactId)
     if (!record) throw new Error('artifact_manifest_not_found')
     if (record.userId !== args.reference.actorUserId || record.workspaceId !== authority.workspaceId
       || record.rootRunId !== authority.rootRunId || record.artifactId !== args.input.artifactId
       || record.sourcePath !== args.input.sourcePath || record.name !== args.input.name
       || record.parentId !== args.input.parentId || record.scope !== scope
+      || (record.conversationId !== undefined && record.conversationId !== authority.conversationId)
       || record.mimeType !== args.input.mimeType
       || record.r2Key !== args.r2Key || record.checksumSha256 !== args.checksumSha256
       || record.sizeBytes !== args.sizeBytes) {
       throw new Error('artifact_identity_conflict')
+    }
+    if (!record.fileId && record.conversationId === undefined && authority.conversationId) {
+      record = { ...record, conversationId: authority.conversationId }
+      await ctx.db.patch(record._id, { conversationId: authority.conversationId })
     }
     await assertCommittedFile(ctx, record)
     if (record.fileId) return record.fileId
@@ -300,9 +314,14 @@ export const commit = mutation({
       mimeType: record.mimeType,
       extension: extensionOf(record.name),
       scope: record.scope,
+      ...(record.conversationId ?? authority.conversationId ? { conversationId: record.conversationId ?? authority.conversationId } : {}),
     }, now)
     await ctx.db.patch(fileId, { createdByAgent: true })
-    await ctx.db.patch(record._id, { fileId, updatedAt: now })
+    await ctx.db.patch(record._id, {
+      fileId,
+      ...(record.conversationId === undefined && authority.conversationId ? { conversationId: authority.conversationId } : {}),
+      updatedAt: now,
+    })
     return fileId
   },
 })

@@ -1,15 +1,13 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
+import { fileContentHref, getDraftFromToolBlock, isOverlayGatedToolOutput } from '@overlay/chat-core'
+import { File, FileText, Film, Image as ImageIcon, Play } from 'lucide-react'
 import { lazy, Suspense, type ComponentProps, type ReactNode } from 'react'
 import type {
   AssistantVisualSegment,
   DraftModalState,
   ToolVisualBlock,
-} from '@overlay/chat-core'
-import {
-  getDraftFromToolBlock,
-  isOverlayGatedToolOutput,
 } from '@overlay/chat-core'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { SourceCitationMap } from '../../lib/source-citations'
@@ -230,15 +228,17 @@ function SingleToolSegmentItem({
 function FilePreviewButton({
   onOpen,
   children,
+  className,
 }: {
   onOpen: () => void
   children: ReactNode
+  className?: string
 }) {
   return (
     <Button variant="ghost"
       type="button"
       onClick={onOpen}
-      className={unstyledButton(`rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)`)}
+      className={unstyledButton(`h-auto min-w-0 max-w-full rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background) ${className ?? ''}`)}
       title="Open attachment"
     >
       {children}
@@ -248,35 +248,117 @@ function FilePreviewButton({
 
 function FileSegmentItem({ seg, ctx }: SegmentItemProps<'file'>) {
   const block = seg.block
+  const reference = block.fileReference
+  if (reference) {
+    const href = fileContentHref(reference.fileId)
+    const image = reference.mimeType.startsWith('image/')
+    const video = reference.mimeType.startsWith('video/')
+    const Icon = image ? ImageIcon : video ? Film : reference.mimeType.startsWith('text/') ? FileText : File
+    const openPreview = () => ctx.onOpenAttachmentPreview?.({
+      name: reference.name,
+      content: '',
+      url: href,
+      fileId: reference.fileId,
+      mimeType: reference.mimeType,
+      ...(reference.sizeBytes === undefined ? {} : { sizeBytes: reference.sizeBytes }),
+    }, { mode: 'panel' })
+    const metadata = [formatFileSize(reference.sizeBytes), reference.durationMs ? formatDuration(reference.durationMs) : null]
+      .filter(Boolean).join(' · ')
+    return (
+      <div className="px-1 py-1">
+        <Button variant="ghost" type="button" onClick={openPreview} title={`Preview ${reference.name}`}
+          className={unstyledButton(`h-auto ${image ? 'w-[240px]' : 'w-[288px]'} min-w-0 max-w-full rounded-xl p-0 text-left focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)`)}>
+          {video ? (
+            <span className="flex w-full min-w-0 flex-col gap-2">
+              <span className="relative block aspect-video overflow-hidden rounded-xl border border-(--border) bg-(--surface-subtle)">
+                <video src={href} preload="metadata" playsInline aria-hidden="true" className="h-full w-full object-cover" />
+                <span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={30} fill="currentColor" /></span>
+              </span>
+              <span className="flex min-w-0 items-center gap-2 px-1">
+                <Film size={15} className="shrink-0 text-(--muted)" />
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-(--foreground)">{reference.name}</span>
+                {metadata ? <span className="shrink-0 text-[11px] text-(--muted)">{metadata}</span> : null}
+              </span>
+            </span>
+          ) : image ? (
+            <span className="flex w-full min-w-0 flex-col gap-1.5">
+              <img src={href} alt={reference.name} className="max-h-64 w-full rounded-xl border border-(--border) object-contain" />
+              <span className="flex min-w-0 items-center gap-2 px-1">
+                <ImageIcon size={14} className="shrink-0 text-(--muted)" />
+                <span className="truncate text-xs font-medium text-(--foreground)">{reference.name}</span>
+              </span>
+            </span>
+          ) : (
+            <span className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg border border-(--border) bg-(--surface) px-3 py-2">
+              <Icon size={16} className="shrink-0 text-(--muted)" />
+              <span className="min-w-0 truncate text-xs font-medium text-(--foreground)">{reference.name}</span>
+              {metadata ? <span className="shrink-0 text-[11px] text-(--muted)">{metadata}</span> : null}
+            </span>
+          )}
+        </Button>
+      </div>
+    )
+  }
   const isImg = (block.mediaType?.startsWith('image/') ?? true)
   const isVideo = block.mediaType?.startsWith('video/') ?? false
-  if (!isImg && !isVideo) return null
-  const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
+  const fileType = isImg ? 'image' : isVideo ? 'video' : 'file'
+  const previewName = isImg ? 'generated-image.png' : isVideo ? 'generated-video.mp4' : fileNameFromUrl(block.url)
+  const Icon = block.mediaType?.startsWith('text/') ? FileText : File
   const openPreview = () =>
-    ctx.onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })
+    ctx.onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url, mimeType: block.mediaType })
   return (
     <div className="w-full px-1 py-1">
-      {isImg ? (
-        <FilePreviewButton onOpen={openPreview}>
+      {fileType === 'image' ? (
+        <FilePreviewButton onOpen={openPreview} className="w-[240px]">
           <img
             src={block.url}
             alt="Generated"
-            className="max-h-[320px] max-w-full rounded-xl border border-(--border) object-contain"
+            className="max-h-64 w-full rounded-xl border border-(--border) object-contain"
           />
         </FilePreviewButton>
-      ) : (
-        <FilePreviewButton onOpen={openPreview}>
+      ) : fileType === 'video' ? (
+        <FilePreviewButton onOpen={openPreview} className="w-[288px]">
           <video
             src={block.url}
             preload="metadata"
             playsInline
             aria-hidden="true"
-            className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-(--border) object-contain"
+            className="pointer-events-none aspect-video w-full rounded-xl border border-(--border) object-cover"
           />
+        </FilePreviewButton>
+      ) : (
+        <FilePreviewButton onOpen={openPreview} className="w-[288px]">
+          <span className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg border border-(--border) bg-(--surface) px-3 py-2 text-left">
+            <Icon size={16} className="shrink-0 text-(--muted)" />
+            <span className="min-w-0 truncate text-xs font-medium text-(--foreground)">{previewName}</span>
+          </span>
         </FilePreviewButton>
       )}
     </div>
   )
+}
+
+function fileNameFromUrl(value: string): string {
+  try {
+    const segments = new URL(value, 'https://overlay.invalid').pathname.split('/').filter(Boolean)
+    const last = segments.at(-1)
+    const segment = last === 'content' ? segments.at(-2) : last
+    return segment ? decodeURIComponent(segment) : 'File'
+  } catch {
+    return 'File'
+  }
+}
+
+function formatFileSize(size?: number) {
+  if (!size || !Number.isFinite(size)) return null
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function formatDuration(durationMs: number) {
+  const seconds = Math.floor(durationMs / 1000)
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
 function GeneratedUiSegmentItem({ seg, ctx }: SegmentItemProps<'generated-ui'>) {

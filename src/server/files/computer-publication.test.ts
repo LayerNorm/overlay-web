@@ -66,6 +66,15 @@ function localComputer(audit?: { commands: string[]; written: Array<{ path: stri
   }
 }
 
+function expectedFileReference(artifact: {
+  fileId: string; name: string; mimeType: string; sizeBytes: number; checksumSha256: string
+}) {
+  return {
+    fileId: artifact.fileId, name: artifact.name, mimeType: artifact.mimeType,
+    sizeBytes: artifact.sizeBytes, revision: artifact.checksumSha256,
+  }
+}
+
 beforeEach(() => {
   vi.resetAllMocks()
   controllerMocks.authorize.mockResolvedValue({
@@ -117,6 +126,59 @@ test('uses the caller actor and workspace rather than authority fields before to
   expect(controllerMocks.service.getComputerArtifactUploadUrl).not.toHaveBeenCalled()
   expect(controllerMocks.service.verifyAndCommitComputerArtifact).not.toHaveBeenCalled()
   expect(controllerMocks.authorize).toHaveBeenCalledTimes(2)
+})
+
+test('uses the root-run manifest conversation association, not a caller conversation field', async () => {
+  const artifact = {
+    artifactId: 'root-room-output',
+    sourcePath: '/tmp/final.mp4',
+    name: 'final.mp4',
+    mimeType: 'video/mp4',
+    scope: 'personal' as const,
+    conversationId: 'root-conversation',
+    sourceComputerId: 'computer-1',
+    stagingPath: '/tmp/overlay-artifact-root-room-output.mp4',
+    checksumSha256: 'a'.repeat(64),
+    sizeBytes: 13,
+    userId: 'user',
+    workspaceId: 'workspace',
+    rootRunId: 'root-run',
+    r2Key: 'private-key',
+    uploadExpiresAt: Date.now() + 60_000,
+    fileId: 'files:root-output',
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  controllerMocks.service.getComputerArtifact.mockResolvedValue(artifact)
+  const resolveComputer = vi.fn()
+  const result = await publishComputerFile({
+    request: {
+      artifactId: artifact.artifactId,
+      sourcePath: artifact.sourcePath,
+      name: artifact.name,
+      mimeType: artifact.mimeType,
+      scope: artifact.scope,
+    },
+    authority: {
+      kind: 'native',
+      access: { actorUserId: 'user', workspaceId: 'workspace', conversationId: 'child-conversation' } as never,
+      context: {} as never,
+    },
+    userId: 'user',
+    workspaceId: 'workspace',
+    resolveComputer,
+  })
+
+  expect(controllerMocks.service.getComputerArtifact).toHaveBeenCalledWith(
+    { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    { artifactId: artifact.artifactId, sourcePath: artifact.sourcePath, name: artifact.name,
+      mimeType: artifact.mimeType, scope: artifact.scope },
+  )
+  expect(result).toMatchObject({
+    success: true,
+    fileReference: { fileId: artifact.fileId, conversationId: 'root-conversation' },
+  })
+  expect(resolveComputer).not.toHaveBeenCalled()
 })
 
 test('revocation after the source snapshot prevents scoped signing and upload', async () => {
@@ -239,6 +301,7 @@ test('returns a verified publication when post-commit Computer cleanup fails', a
     })
     expect(result).toEqual({
       success: true, artifact,
+      fileReference: expectedFileReference(artifact),
       downloadUrl: `/api/v1/files/${encodeURIComponent(artifact.fileId)}/content`,
     })
     expect(operations).toBe(3)
@@ -392,6 +455,10 @@ test('a finalized retry returns the canonical Files artifact without resolving a
   expect(result).toMatchObject({
     success: true,
     artifact: { fileId: 'files:published', rootRunId: 'root' },
+    fileReference: {
+      fileId: 'files:published', name: manifest.name, mimeType: manifest.mimeType,
+      sizeBytes: manifest.sizeBytes, revision: manifest.checksumSha256,
+    },
     downloadUrl: '/api/v1/files/files%3Apublished/content',
   })
   expect(JSON.stringify(result)).not.toContain('private-object-key')
@@ -540,6 +607,7 @@ test('a prepared object is reconciled before Computer resolution', async () => {
   })
   expect(result).toEqual({
     success: true, artifact,
+    fileReference: expectedFileReference(artifact),
     downloadUrl: '/api/v1/files/files%3Apublished/content',
   })
 })
@@ -640,6 +708,7 @@ test('a restored Computer with identical bytes refreshes an expired URL for the 
     expect(controllerMocks.service.verifyAndCommitComputerArtifact).toHaveBeenCalledTimes(3)
     expect(result).toEqual({
       success: true, artifact,
+      fileReference: expectedFileReference(artifact),
       downloadUrl: '/api/v1/files/files%3Apublished/content',
     })
     expect(JSON.stringify(result)).not.toContain(origin)
@@ -729,6 +798,7 @@ test('the controller reconciles after the upload acknowledgement is lost', async
     expect(controllerMocks.service.verifyAndCommitComputerArtifact).toHaveBeenCalledTimes(1)
     expect(result).toEqual({
       success: true, artifact,
+      fileReference: expectedFileReference(artifact),
       downloadUrl: '/api/v1/files/files%3Apublished/content',
     })
   } finally {

@@ -85,16 +85,24 @@ function roomDayLabel(timestamp: number): string {
 export function AttachmentViewer({
   preview,
   headerRight,
+  headerLeft,
 }: {
   preview: AttachmentPreview
   headerRight: React.ReactNode
+  headerLeft?: React.ReactNode
 }) {
   return (
     <FileViewerPanel
       name={preview.name}
+      previewName={preview.previewName}
       content={preview.content}
       url={preview.url}
       headerRight={headerRight}
+      headerLeft={headerLeft}
+      loading={preview.loading}
+      error={preview.error}
+      onRetry={preview.onRetry}
+      onMediaError={preview.onMediaError}
     />
   )
 }

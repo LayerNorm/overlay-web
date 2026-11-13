@@ -31,6 +31,55 @@ test('long transcript text budgets reserve space for the latest answer', () => {
   assert.ok(saved.parts.reduce((total, part) => total + String(part.text ?? '').length, 0) < 181_000)
 })
 
+test('large successful file tool results keep their reference through durable transcript compaction', () => {
+  const fileReference = {
+    fileId: 'file-1', name: 'clip.mp4', mimeType: 'video/mp4',
+    sizeBytes: 25, revision: 'sha256:abc', conversationId: 'conversation-1',
+  }
+  const saved = compactAssistantPersistenceForConvex({
+    content: 'Published the clip.',
+    parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'publish-1', toolName: 'computer_publish_file', state: 'output-available',
+      toolInput: {}, toolOutput: {
+        success: true, artifact: { fileId: 'file-1' }, fileReference,
+        verboseOutput: 'x'.repeat(5_000),
+      },
+    } }],
+  })
+  const toolOutput = (saved.parts[0]?.toolInvocation as { toolOutput?: Record<string, unknown> }).toolOutput
+  assert.deepEqual(toolOutput?.fileReference, fileReference)
+  assert.equal(toolOutput?.success, true)
+  assert.equal(toolOutput?.truncated, true)
+})
+
+test('large Computer success and failure results retain actual execution metadata', () => {
+  const saved = compactAssistantPersistenceForConvex({
+    content: 'Ran two commands.',
+    parts: [
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'computer-success', toolName: 'computer_exec', state: 'output-available', toolInput: { command: 'true' },
+        toolOutput: { success: true, exitCode: 0, durationMs: 37, duration: 900, stdout: 'x'.repeat(5_000) },
+      } },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'computer-failure', toolName: 'computer_exec', state: 'output-error', toolInput: { command: 'false' },
+        toolOutput: { success: false, exitCode: 1, durationMs: 52, duration: 900, stderr: 'x'.repeat(5_000) },
+      } },
+    ],
+  })
+  const success = saved.parts[0]?.toolInvocation as { state?: string; toolOutput?: Record<string, unknown> }
+  const failure = saved.parts[1]?.toolInvocation as { state?: string; toolOutput?: Record<string, unknown> }
+  assert.equal(success.state, 'output-available')
+  assert.equal(success.toolOutput?.success, true)
+  assert.equal(success.toolOutput?.exitCode, 0)
+  assert.equal(success.toolOutput?.durationMs, 37)
+  assert.equal('duration' in (success.toolOutput ?? {}), false)
+  assert.equal(failure.state, 'output-error')
+  assert.equal(failure.toolOutput?.success, false)
+  assert.equal(failure.toolOutput?.exitCode, 1)
+  assert.equal(failure.toolOutput?.durationMs, 52)
+  assert.equal('duration' in (failure.toolOutput ?? {}), false)
+})
+
 test('a long answer joined from several model calls keeps up to the whole part-text budget', () => {
   const answer = { type: 'text', text: `${'1. An item that continues across model calls. '.repeat(3_000)}End.` }
   const saved = compactAssistantPersistenceForConvex({ content: answer.text, parts: [answer] })

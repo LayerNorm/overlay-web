@@ -12,7 +12,8 @@ TOOL_UI_DONE_STATES,
 isOverlayGatedToolOutput
 } from '@overlay/chat-core'
 import { useState } from 'react'
-import { getDescriptiveToolLabel } from '../../lib/tool-labels'
+import { ChevronDown } from 'lucide-react'
+import { getComputerToolActivityDetails, getDescriptiveToolLabel } from '../../lib/tool-labels'
 
 import { ReasoningBlock } from './reasoning-block'
 import { TraceMark } from './tool-rail'
@@ -39,17 +40,49 @@ export function ToolCallRowWithReasoning({
         : toolDone
           ? 'complete'
           : 'running',
+    block.toolOutput,
   )
+  const details = getComputerToolActivityDetails(block.name, block.toolInput, block.toolOutput)
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   return (
     <div className="w-full max-w-[min(100%,36rem)]">
-      <TraceLine
-        status={running ? 'running' : err ? 'error' : undefined}
-        className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
-      >
-        <TraceMark running={running} />
-        <TraceTitle className="whitespace-normal">{label}</TraceTitle>
-      </TraceLine>
+      {details.length ? (
+        <TraceCollapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <TraceCollapsibleTrigger
+            aria-label={detailsOpen ? 'Hide tool details' : 'Show tool details'}
+            title={detailsOpen ? 'Hide details' : 'Show details'}
+            className="group/tool w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--foreground)"
+          >
+            <TraceLine
+              status={running ? 'running' : err ? 'error' : undefined}
+              className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
+            >
+              <TraceMark running={running} />
+              <TraceTitle className="min-w-0 whitespace-normal">{label}</TraceTitle>
+              <ChevronDown size={13} className={`ml-auto shrink-0 text-(--muted) transition-transform ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </TraceLine>
+          </TraceCollapsibleTrigger>
+          <TraceCollapsibleContent className="ml-5 mt-0.5">
+            <dl className="flex min-w-0 flex-col gap-0.5 text-[11px] leading-4 text-(--muted)">
+              {details.map((detail) => (
+                <div key={detail.label} className="flex min-w-0 gap-1.5">
+                  <dt className="shrink-0">{detail.label}</dt>
+                  <dd className="min-w-0 truncate font-mono" title={detail.value}>{detail.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </TraceCollapsibleContent>
+        </TraceCollapsible>
+      ) : (
+        <TraceLine
+          status={running ? 'running' : err ? 'error' : undefined}
+          className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
+        >
+          <TraceMark running={running} />
+          <TraceTitle className="whitespace-normal">{label}</TraceTitle>
+        </TraceLine>
+      )}
     </div>
   )
 }

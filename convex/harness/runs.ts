@@ -1037,8 +1037,15 @@ export async function requireHarnessPublicationAuthority(
     || lineage.some(entry => entry.metadata.policy.deadlineAt <= Date.now())) {
     throw new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED')
   }
+  const root = lineage.at(-1)
+  if (!root || root.run.runId !== run.rootRunId) throw new Error('HARNESS_ROOT_NOT_FOUND')
+  const source = parseJson<HarnessSource>(root.run.sourceJson)
+  const conversationId = source && 'conversationId' in source && typeof source.conversationId === 'string'
+    ? source.conversationId
+    : undefined
   return { rootRunId: run.rootRunId, workspaceId: metadata.policy.workspaceId,
-    deadlineAt: Math.min(...lineage.map(entry => entry.metadata.policy.deadlineAt)) }
+    deadlineAt: Math.min(...lineage.map(entry => entry.metadata.policy.deadlineAt)),
+    ...(conversationId ? { conversationId } : {}) }
 }
 
 function waitBlockerQuestion(metadata: HarnessMetadata, kind: HarnessWaitRequest['kind']): string {

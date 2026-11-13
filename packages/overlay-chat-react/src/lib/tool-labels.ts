@@ -1,4 +1,5 @@
 export {
+  getComputerToolActivityDetails,
   getDescriptiveToolLabel,
   pickFirstStringFromInput,
   titleCaseUnderscore,
