@@ -33,6 +33,13 @@ type FileSummary = {
 }
 
 type FileDetail = FileSummary & { textContent?: string; textInObjectStore?: boolean }
+type WriteFileInput = {
+  fileId?: string
+  name?: string
+  folderId?: string
+  content: string
+  expectedRevision?: string
+}
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   md: 'text/markdown',
@@ -229,85 +236,86 @@ export async function executeReadFile(
   }
 }
 
-export async function executeWriteFile(
-  options: OverlayToolsOptions,
-  input: { fileId?: string; name?: string; folderId?: string; content: string; expectedRevision?: string },
-) {
+async function updateWrittenFile(options: OverlayToolsOptions, fileId: string, input: WriteFileInput) {
+  const expectedUpdatedAt = input.expectedRevision ? Number(input.expectedRevision) : undefined
+  if (input.expectedRevision && !Number.isFinite(expectedUpdatedAt)) {
+    return { success: false, error: 'expectedRevision must be the revision returned by read_file.' }
+  }
+  const res = await send(options, 'PATCH', {
+    fileId,
+    textContent: input.content,
+    byAgent: true,
+    ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+    ...(expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
+  })
+  if (res.status === 409) {
+    return {
+      success: false,
+      conflict: true,
+      error: 'The file changed since you read it. Call read_file again and redo the edit on the current text.',
+    }
+  }
+  if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to write file') }
+  const data = await res.json().catch((_error) => null) as { file?: FileSummary } | null
+  const { saved, file } = await persistedFile(options, fileId, data?.file, { name: input.name?.trim() })
+  const fileReference: PersistedFileReference | undefined = saved.name ? {
+    fileId,
+    name: saved.name,
+    mimeType: file?.mimeType ?? mimeTypeFor(saved.name),
+    ...(file?.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
+    ...(file && Number.isFinite(file.updatedAt) ? { revision: String(file.updatedAt) } : {}),
+    ...(file?.conversationId ? { conversationId: file.conversationId } : {}),
+  } : undefined
+  return {
+    success: true,
+    fileId,
+    saved,
+    ...(fileReference ? { fileReference } : {}),
+  }
+}
+
+async function createWrittenFile(options: OverlayToolsOptions, input: WriteFileInput) {
+  const name = input.name?.trim()
+  if (!name) return { success: false, error: 'name is required to create a file.' }
+  const res = await send(options, 'POST', {
+    name,
+    byAgent: true,
+    type: 'file',
+    kind: 'upload',
+    mimeType: mimeTypeFor(name, 'text/plain'),
+    textContent: input.content,
+    ...(options.conversationId ? { conversationId: options.conversationId } : {}),
+    ...(input.folderId ? { parentId: input.folderId } : {}),
+  })
+  if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create file') }
+  const data = await res.json() as { id?: string; file?: FileSummary }
+  const { saved, file } = await persistedFile(options, data.id, data.file, {
+    name,
+    path: input.folderId ?? 'Library',
+  })
+  const fileReference: PersistedFileReference | undefined = data.id && saved.name ? {
+    fileId: data.id,
+    name: saved.name,
+    mimeType: file?.mimeType ?? mimeTypeFor(saved.name, 'text/plain'),
+    ...(file?.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
+    ...(file && Number.isFinite(file.updatedAt) ? { revision: String(file.updatedAt) } : {}),
+    ...((file?.conversationId ?? options.conversationId) ? { conversationId: file?.conversationId ?? options.conversationId } : {}),
+  } : undefined
+  return {
+    success: true,
+    fileId: data.id,
+    saved,
+    ...(fileReference ? { fileReference } : {}),
+  }
+}
+
+export async function executeWriteFile(options: OverlayToolsOptions, input: WriteFileInput) {
   try {
     if (utf8ByteLength(input.content) > MAX_WRITE_BYTES) {
       return { success: false, error: 'Content is over 10 MB; split it into several files.' }
     }
-    if (input.fileId) {
-      const expectedUpdatedAt = input.expectedRevision ? Number(input.expectedRevision) : undefined
-      if (input.expectedRevision && !Number.isFinite(expectedUpdatedAt)) {
-        return { success: false, error: 'expectedRevision must be the revision returned by read_file.' }
-      }
-      const res = await send(options, 'PATCH', {
-        fileId: input.fileId.trim(),
-        textContent: input.content,
-        byAgent: true,
-        ...(input.name?.trim() ? { name: input.name.trim() } : {}),
-        ...(expectedUpdatedAt !== undefined ? { expectedUpdatedAt } : {}),
-      })
-      if (res.status === 409) {
-        return {
-          success: false,
-          conflict: true,
-          error: 'The file changed since you read it. Call read_file again and redo the edit on the current text.',
-        }
-      }
-      if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to write file') }
-      const data = await res.json().catch((_error) => null) as { file?: FileSummary } | null
-      const persisted = await persistedFile(options, input.fileId.trim(), data?.file, { name: input.name?.trim() })
-      const { saved, file } = persisted
-      const fileReference: PersistedFileReference | undefined = saved.name ? {
-        fileId: input.fileId.trim(),
-        name: saved.name,
-        mimeType: file?.mimeType ?? mimeTypeFor(saved.name),
-        ...(file?.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
-        ...(file && Number.isFinite(file.updatedAt) ? { revision: String(file.updatedAt) } : {}),
-        ...(file?.conversationId ? { conversationId: file.conversationId } : {}),
-      } : undefined
-      return {
-        success: true,
-        fileId: input.fileId.trim(),
-        saved,
-        ...(fileReference ? { fileReference } : {}),
-      }
-    }
-    const name = input.name?.trim()
-    if (!name) return { success: false, error: 'name is required to create a file.' }
-    const res = await send(options, 'POST', {
-      name,
-      byAgent: true,
-      type: 'file',
-      kind: 'upload',
-      mimeType: mimeTypeFor(name, 'text/plain'),
-      textContent: input.content,
-      ...(options.conversationId ? { conversationId: options.conversationId } : {}),
-      ...(input.folderId ? { parentId: input.folderId } : {}),
-    })
-    if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create file') }
-    const data = await res.json() as { id?: string; file?: FileSummary }
-    const persisted = await persistedFile(options, data.id, data.file, {
-      name,
-      path: input.folderId ?? 'Library',
-    })
-    const { saved, file } = persisted
-    const fileReference: PersistedFileReference | undefined = data.id && saved.name ? {
-      fileId: data.id,
-      name: saved.name,
-      mimeType: file?.mimeType ?? mimeTypeFor(saved.name, 'text/plain'),
-      ...(file?.sizeBytes === undefined ? {} : { sizeBytes: file.sizeBytes }),
-      ...(file && Number.isFinite(file.updatedAt) ? { revision: String(file.updatedAt) } : {}),
-      ...((file?.conversationId ?? options.conversationId) ? { conversationId: file?.conversationId ?? options.conversationId } : {}),
-    } : undefined
-    return {
-      success: true,
-      fileId: data.id,
-      saved,
-      ...(fileReference ? { fileReference } : {}),
-    }
+    if (input.fileId) return await updateWrittenFile(options, input.fileId.trim(), input)
+    return await createWrittenFile(options, input)
   } catch (err) {
     return failure(err, 'Failed to write file')
   }
