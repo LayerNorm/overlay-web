@@ -8,6 +8,8 @@ Web's `AppShellLayout` runs `ensureDefaultUserRole(session.user.id)`. Native boo
 
 Mobile now requires fresh bootstrap at sign-in and workspace activation, blocks native shell children until it succeeds, and retains Retry/sign-out on failure. A cached bootstrap is not evidence that authorization has initialized. Work also waits for Convex authentication, matching web's readiness gate.
 
+Bootstrap cache reads use a limited readiness guard for required top-level containers, basic user/entitlement shape, and model identity fields consumed by Mobile. Malformed persisted entries are removed before a fresh request; invalid fresh responses fail initialization and are not cached. The guard accepts additive fields and is not full schema or authorization validation; existing auth/owner-scope checks remain separate. Explicit empty model arrays remain data, and the client does not synthesize models, entitlements or workspace values.
+
 Deploy the companion web change before verifying mobile-only first sign-in. No preview policy, role assignment or other preview data was changed as part of this investigation.
 
 ## Agent editor
