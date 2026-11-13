@@ -42,6 +42,7 @@ import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
+import { captureNavigationIntent } from '@/shared/app/navigation-intent'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -171,6 +172,7 @@ function useAgentAutoOpen(args: {
     onResolvingChange(true)
     onError(null)
     let cancelled = false
+    const intentIsCurrent = captureNavigationIntent(`${window.location.pathname}${window.location.search}${window.location.hash}`)
     void (async () => {
       try {
         await startAgentChat({
@@ -181,10 +183,10 @@ function useAgentAutoOpen(args: {
           scope,
           buildHref,
           resolveMainThread,
-          push: (href) => { if (!cancelled) router.replace(href) },
+          push: (href) => { if (!cancelled && intentIsCurrent()) router.replace(href) },
         })
       } catch (chatError) {
-        if (!cancelled) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
+        if (!cancelled && intentIsCurrent()) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
       } finally {
         if (!cancelled) onResolvingChange(false)
       }

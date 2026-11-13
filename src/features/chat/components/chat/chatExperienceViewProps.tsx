@@ -1,6 +1,5 @@
 'use client'
 
-import { appendDictatedText } from '@/components/desktop/composer-dictation'
 
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import { latestContextUsage, UsageExhaustedNotice } from '@overlay/chat-react'
@@ -256,8 +255,6 @@ export function buildChatExperienceViewProps(
               ) : null,
             },
             inputState: {
-              draftIdentity: JSON.stringify([c.activeWorkspaceId, c.activeChatId, c.selectedAutomation?._id, c.isTemporaryChat]),
-              onAppendText: (text: string) => c.setInput(previous => appendDictatedText(previous, text)),
               replyContext: c.replyContext,
               setReplyContext: c.setReplyContext,
               textareaRef: c.textareaRef,

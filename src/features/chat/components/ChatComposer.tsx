@@ -2,7 +2,6 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { DesktopComposerControls } from '@/components/desktop/DesktopComposerControls'
 import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
 import {
   AtSign,
@@ -240,7 +239,6 @@ function ComposerControls(props: ComposerControlsProps) {
   const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <PromptInputFooter>
-      {!props.textOnly ? <DesktopComposerControls key={props.draftIdentity} onAppendText={props.onAppendText} onImages={props.onAddImages} /> : null}
       {props.textOnly ? null : <AttachMenu {...props} />}
       {props.textOnly ? null : <DelayedTooltip label={mentionTooltip} side="top">
         <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">

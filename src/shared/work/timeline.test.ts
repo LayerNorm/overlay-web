@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkItem } from '@overlay/app-core'
-import { applyDrag, barLayout, buildTimelineRows, dayAtX, dependencyArrow, timelineRange, unionSpan, weekColumns } from './timeline'
+import { applyDrag, barLayout, buildTimelineRows, dayAtX, dependencyArrow, fitDayWidth, resizeGripWidth, timelineRange, unionSpan, weekColumns } from './timeline'
 
 function item(overrides: Partial<WorkItem> & { id: string }): WorkItem {
   return {
@@ -122,4 +122,18 @@ test('a mistyped far-off date cannot make the range, or a bar, run for years', (
   }
   // A span that straddles the edge keeps its real start inside the range.
   assert.deepEqual(barLayout({ start: '2026-10-07', end: '9999-12-31' }, { start: '2026-10-05', days: 56 }), { left: 48, width: 54 * 24 })
+})
+
+test('days stretch to fill the width, never below the minimum and never past it by rounding', () => {
+  assert.equal(fitDayWidth(1000, 56), 17.85)
+  assert.ok(fitDayWidth(1000, 56) * 56 <= 1000)
+  assert.equal(fitDayWidth(1000, 365), 7)
+  assert.equal(fitDayWidth(0, 56), 24)
+})
+
+test('resize grips never cover the whole bar, so narrow bars can still be moved', () => {
+  assert.equal(resizeGripWidth(96), 8)
+  assert.equal(resizeGripWidth(12.5), 3)
+  assert.ok(12.5 - 2 * resizeGripWidth(12.5) > 0)
+  assert.equal(resizeGripWidth(7), 0)
 })

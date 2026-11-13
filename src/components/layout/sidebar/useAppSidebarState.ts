@@ -47,6 +47,7 @@ import {
   selectSidebarNavItem,
   type SidebarNavItem,
 } from './appSidebarNav'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
@@ -218,6 +219,7 @@ function useSidebarNavInteractions(args: {
     closeDrawer: closeMobileDrawer,
   })
   const beginSecondaryNavigation = (id: string) => {
+    beginNavigationIntent(`secondary:${currentRouteKey}:${id}`)
     setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
   }
 

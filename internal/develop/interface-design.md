@@ -15,6 +15,11 @@ expansion and per-agent new-thread controls; manual collapse survives rerenders.
 Work → Organization sits directly below Timeline in both scoped desktop/mobile
 lists, retains the selected subpage when switching scopes and closes the mobile drawer.
 
+The Organization chart is fill-only, with no resting borders: the chief sits in a centred
+`--surface-subtle` card, a single 1px stem leads to one grouped `--surface-subtle` grid of
+the agents it coordinates (1/2/3 columns), and each agent is a compact row (30px creature,
+name, owner; chiefs show their role). No per-row connectors, which would imply a chain.
+
 Organization details use one hero avatar. Only the personal-chief owner can edit
 name, description, shape and color, with explicit save/error feedback. Peers and
 workspace admins see read-only owner details. Workspace chiefs use the Overlay
@@ -320,7 +325,7 @@ collision/dialog/mobile tests and all 39 preset variable checks. Set
 
 ## Work: tasks, board, and timeline
 
-Work has a bottom-pinned prompt composer in Personal and Workspace scope. It is the same `PromptInput` box as chat and agent threads: one outlined card centered at `max-w-4xl`, a 44px text area, and one footer row with context +, Assignee, Schedule, Depends on, the settings gear and submit. The page header has no New task button; the composer (and the C shortcut) is how a task starts. Enter creates a task from the first line (200 characters maximum); Shift+Enter adds description lines. Assignee and Depends on use searchable Popover/Command pickers; Schedule has Start/Due date inputs and presets. Inline settings offer Backlog/Todo and Low/Medium/High (Medium by default). Successful creation clears all fields and refocuses. Context reuses Work's file/note/chat/link search; dictation appears only in Desktop when supported. There is no expand control or Repeat setting yet.
+Work has a bottom-pinned prompt composer in Personal and Workspace scope. It is the same `PromptInput` box as chat and agent threads: one outlined card centered at `max-w-4xl`, a 44px text area, and one footer row with context +, Assignee, Schedule, Depends on, the settings gear and submit. The page header has no New task button; the composer (and the C shortcut) is how a task starts. Enter creates a task from the first line (200 characters maximum); Shift+Enter adds description lines. Assignee and Depends on use searchable Popover/Command pickers; Schedule has Start/Due date inputs and presets. Inline settings offer Backlog/Todo and Low/Medium/High (Medium by default). Successful creation clears all fields and refocuses. Context reuses Work's file/note/chat/link search. The composer has no microphone on any platform (Desktop dictates through its global shortcut). There is no expand control or Repeat setting yet.
 
 The composer footer never wraps. Below 520px of composer width (a named Tailwind container query, not a viewport breakpoint), Assignee, Schedule and Depends on become 32px square icon buttons. Labels remain accessible and appear in tooltips; selected assignees retain their 16px avatar, while date/dependency counts become compact badges. The dependency-start hint hides at this width. Wider composers keep their existing labelled controls. The approved reference is `internal/plans/mockups/work-composer-compact-pickers.html`.
 
