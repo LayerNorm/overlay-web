@@ -63,7 +63,7 @@ test('loading, unavailable directories and workspace switches settle without a r
   }
 })
 
-test('an agent without a loaded thread navigates before resolving, and a newer click is not locked out', async () => {
+test('clicking an agent only expands its threads and never navigates', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('window', new EventTarget())
   mocks.push.mockClear()
@@ -75,15 +75,31 @@ test('an agent without a loaded thread navigates before resolving, and a newer c
   let renderer!: ReturnType<typeof create>
   try {
     await act(() => { renderer = create(<AgentsInlinePanel workspaceId="workspace_1" />) })
-    const rows = () => renderer.root.findAllByType('button').filter(row => row.props.className?.includes('h-12'))
+    const rows = () => renderer.root.findAllByType('button').filter(row => row.props.className?.includes('h-10'))
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('Loading alpha threads')
     await act(() => { rows()[0].props.onClick?.() })
-    expect(mocks.push).toHaveBeenCalledTimes(1)
-    expect(mocks.push.mock.calls[0][0]).toContain('agent=alpha')
-    expect(mocks.push.mock.calls[0][0]).not.toContain('id=')
+    expect(JSON.stringify(renderer.toJSON())).toContain('Loading alpha threads')
     await act(() => { rows()[1].props.onClick?.() })
-    expect(mocks.push).toHaveBeenCalledTimes(2)
+    expect(mocks.push).not.toHaveBeenCalled()
+    expect(mocks.replace).not.toHaveBeenCalled()
     expect(mocks.mutate).not.toHaveBeenCalled()
+    // A second click collapses again.
+    await act(() => { rows()[0].props.onClick?.() })
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('Loading alpha threads')
   } finally {
     if (renderer) await act(() => renderer.unmount())
   }
+})
+
+test('agents with no in-progress threads show no subtitle', async () => {
+  const { AgentActivitySummary } = await import('./sidebar/ThreadActivityIndicator')
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let renderer!: ReturnType<typeof create>
+  await act(() => { renderer = create(<AgentActivitySummary activity={[]} />) })
+  expect(renderer.toJSON()).toBeNull()
+  await act(() => renderer.update(<AgentActivitySummary activity={[{ conversationId: 'c', status: 'idle' } as never]} />))
+  expect(renderer.toJSON()).toBeNull()
+  await act(() => renderer.update(<AgentActivitySummary activity={[{ conversationId: 'c', status: 'working' } as never]} />))
+  expect(JSON.stringify(renderer.toJSON())).toContain('working')
+  await act(() => renderer.unmount())
 })

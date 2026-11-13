@@ -24,6 +24,7 @@ import {
   exitBlockToParagraph,
   type MentionInputFormatCommand,
 } from './mention-input-dom'
+import { handleListBackspace, handleListTab } from './composer-list-editing'
 
 export interface MentionInputHandle {
   focus: () => void
@@ -537,6 +538,24 @@ export function handleEditorKeyDown(
   // On an empty item/line, exit the block instead.
   if (e.key === 'Enter' && e.shiftKey && el) {
     if (handleShiftEnterInBlock(e, el)) return
+  }
+
+  // Tab / Shift+Tab inside a list: indent or outdent the point, Markdown style,
+  // instead of moving focus to the next control.
+  if (e.key === 'Tab' && el && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (handleListTab(el, e.shiftKey)) {
+      e.preventDefault()
+      return
+    }
+  }
+
+  // Backspace at the start of a point: outdent a sub-point, or turn a
+  // top-level point back into plain text (including the very first point).
+  if (e.key === 'Backspace' && el && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (handleListBackspace(el)) {
+      e.preventDefault()
+      return
+    }
   }
 
   // Backspace on empty list item / blockquote / pre: exit the block
