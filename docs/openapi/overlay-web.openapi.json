@@ -2451,6 +2451,12 @@
                   "memoryEnabled": {
                     "type": "boolean"
                   },
+                  "notebookNoteId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "The note open in the Notebook editor. The turn runs as a normal personal chat with that note as its subject and note editing tools available."
+                  },
                   "actAbortTimeoutMs": {
                     "type": "number",
                     "exclusiveMinimum": true,
@@ -2461,8 +2467,7 @@
                     "properties": {
                       "durationMs": {
                         "type": "integer",
-                        "minimum": 30000,
-                        "maximum": 604800000
+                        "minimum": 30000
                       }
                     },
                     "additionalProperties": false
