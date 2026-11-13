@@ -12,6 +12,10 @@ including which routes were converted, which were intentionally left with
 `Suspense` boundary with `WorkRouteSkeleton`. Scope/search-param hooks stay within
 that boundary; no `instant = false` opt-out is added.
 
+## Request-scoped session reads
+
+`getOverlaySession()` memoizes only ordinary ambient server-component reads with React `cache()`. The cached function has no arguments, enters the existing `connection()` boundary and reads the current request's headers/cookies. React owns the request lifetime; this is not `use cache`, a process-global session map or a persistent permission cache. Explicit `Request` calls and `{ refresh: true }` always resolve independently, preserving provider refresh behavior. Default-role provisioning, authorization checks and protected workspace hydration are unchanged.
+
 ## Boot fallback continuity
 
 Only the outer `/app` layout fallback starts the brand entrance. The nested
@@ -55,7 +59,10 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 8. `/app` layout — `src/app/app/layout.tsx` — `AppLayoutContent` already wrapped
    in `<Suspense>`. Removed opt-out. All `/app/*` child routes benefit.
 9. `/app/chat` — `src/app/app/chat/page.tsx` — Moved `getOverlaySession()` and
-   `searchParams` inside existing `<Suspense>`.
+   `searchParams` inside existing `<Suspense>`. Current code still exports
+   `instant = false`; the earlier conversion does not establish that this
+   route currently passes instant-navigation validation. Retain the opt-out
+   until an optimized build and authenticated navigation validate its removal.
 10. `/app/home` — `src/app/app/home/page.tsx` — Pure compat redirect to `/home`. Removed opt-out.
 11. `/app/pricing` — `src/app/app/pricing/page.tsx` — Pure compat redirect to `/pricing`. Removed opt-out.
 12. `/app/manifesto` — `src/app/app/manifesto/page.tsx` — Pure compat redirect to `/manifesto`. Removed opt-out.
@@ -207,7 +214,12 @@ with the specific reason.
 34. `/(app)/notes` — `src/app/(app)/notes/page.tsx` — Pure `redirect('/app/notes')`.
     Same reasoning as `/(app)/chat`.
 
-## Summary
+## Historical migration summary
+
+These counts describe the migration batches, not an assertion about today's
+route declarations. In particular, `/app/chat` currently retains its opt-out
+as noted above. Check the current source and optimized-build evidence before
+using this historical inventory to claim instant-navigation coverage.
 
 | Category | Count | Status |
 | --- | --- | --- |
