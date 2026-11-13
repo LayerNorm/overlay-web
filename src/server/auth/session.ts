@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { cache } from 'react'
 import { connection } from 'next/server'
 import { cookies, headers } from 'next/headers'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -41,13 +42,23 @@ export async function getOverlaySession(
   request?: Request,
   options: { refresh?: boolean } = {},
 ): Promise<AuthSession | null> {
+  if (!request && !options.refresh) return getAmbientSession()
   // Route handlers already have an explicit request and can resolve auth
   // without opting into dynamic rendering. Keep the connection boundary for
   // server components that derive their request from ambient headers/cookies.
   if (!request) await connection()
   const sessionRequest = request ?? await requestFromCurrentHeaders()
+  return resolveSession(sessionRequest, options.refresh)
+}
+
+const getAmbientSession = cache(async () => {
+  await connection()
+  return resolveSession(await requestFromCurrentHeaders())
+})
+
+async function resolveSession(sessionRequest: Request, refresh = false): Promise<AuthSession | null> {
   const auth = getOverlayServerContext().auth
-  const session = options.refresh && auth.refreshSession
+  const session = refresh && auth.refreshSession
     ? await auth.refreshSession(sessionRequest)
     : await auth.getSession(sessionRequest)
   return session ? toAuthSession(session) : null

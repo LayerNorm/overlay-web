@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Deduplicate ambient server-component session reads within each React request, while keeping explicit-request reads and refresh operations uncached. Session and authorization data are never cached across users or requests.
 - Show notes and files created by agents, plus media they explicitly publish to Files, as compact cards in conversation replies and the conversation-scoped Agent Library. Open the same file in the existing side-panel preview from either place, and identify Computer work by its path or command.
 - Publish the app theme as the page's theme colour. The Mac app now uses it so its window follows the Overlay theme rather than the macOS appearance, which removes the black outline drawn around the light theme when macOS is in Dark mode.
 - Fix the app flickering and loading forever when several Overlay tabs were open on different Personal/Workspace scopes. Each tab saved its own URL scope again whenever another tab changed the remembered one, so the tabs overwrote each other through browser storage many times a second, and any page whose address named no scope (such as `/app/work`, where opening getoverlay.io lands) kept remounting between Personal and Workspace. A tab now saves its scope only when its own address changes.
