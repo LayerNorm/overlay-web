@@ -1,5 +1,6 @@
 import { getDraftFromToolBlock } from '../../packages/overlay-chat-core/src/messages'
 import { generatedUiDataToPlainText, normalizeGeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
+import { collectWebSourcesFromBlocks } from '@overlay/chat-core'
 import type { GeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
 import type { AssistantVisualBlock } from '../../packages/overlay-chat-core/src/types'
 import type {
@@ -11,7 +12,7 @@ import type {
 import type { AutomationScheduleDraft, DraftModalState } from '../../packages/overlay-chat-core/src/types'
 import { MAX_TRANSCRIPT_TEXT_LENGTH, type NativeTranscriptActionKind, type NativeTranscriptAsset } from './nativeChatTranscriptActions'
 import { validateNativeMarkdownLink } from './sharedMarkdownBridge'
-import { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH } from './nativeTranscriptLimits'
+import { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT } from './nativeTranscriptLimits'
 import { getNativeTranscriptCitationEntries, isNativeTranscriptResourceId } from './nativeTranscriptCitations'
 
 const MAX_SNAPSHOT_TEXT = MAX_TRANSCRIPT_TEXT_LENGTH
@@ -117,7 +118,7 @@ function safePreviewDataUrl(value: unknown): string | undefined {
   return /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value) ? value : undefined
 }
 
-function safePublicUrl(value: unknown): string | undefined {
+export function safePublicUrl(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 2048 || !validateNativeMarkdownLink(value)) return undefined
   try {
     const parsed = new URL(value)
@@ -331,6 +332,8 @@ function projectBlock(
   exchangeId: string,
   registrations: readonly NativeTranscriptProjectionAsset[],
   allowDraft: boolean,
+  sourceTitles: ReadonlyMap<string, string>,
+  emittedToolSourceUrls: Set<string>,
 ): AssistantVisualBlock | null {
   const source = plainRecord(block)
   if (!source) return null
@@ -355,6 +358,17 @@ function projectBlock(
     const safe: Extract<AssistantVisualBlock, { kind: 'tool' }> = {
       kind: 'tool', key: boundedText(source.key, 512), name: boundedText(source.name, 256), state,
     }
+    const safeSources = collectWebSourcesFromBlocks([block]).flatMap((item) => {
+      const url = safePublicUrl(item.url)
+      const title = url ? sourceTitles.get(url) : undefined
+      if (
+        !url || !title || emittedToolSourceUrls.has(url) ||
+        emittedToolSourceUrls.size >= MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT
+      ) return []
+      emittedToolSourceUrls.add(url)
+      return [{ url, title }]
+    })
+    if (safeSources.length > 0) safe.toolOutput = { sources: safeSources }
     if (allowDraft) {
       const draft = safeDraft(getDraftFromToolBlock(block))
       if (draft) safe.toolOutput = { success: true, draft: draft.draft }
@@ -482,10 +496,20 @@ function projectResponse(
 ): ChatTranscriptResponseView {
   const sourceCitations = projectSourceCitations(response.sourceCitations, exchangeId, registrations)
   const blocks = Array.isArray(response.blocks) ? response.blocks.slice(0, 500) : []
-  const sources = Array.isArray(response.sources) ? response.sources.slice(0, 200) : []
+  const sources = Array.isArray(response.sources) ? response.sources.slice(0, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT) : []
+  const sourceTitles = new Map<string, string>()
+  for (const source of sources) {
+    const safe = plainRecord(source)
+    if (!safe || safe.sourceKind !== 'url') continue
+    const url = safePublicUrl(safe.url)
+    if (url && !sourceTitles.has(url)) sourceTitles.set(url, boundedText(safe.title, 512) || url)
+  }
+  const emittedToolSourceUrls = new Set<string>()
   return {
     id: boundedText(response.id, 512), modelId: boundedText(response.modelId, 256),
-    blocks: blocks.map((block) => projectBlock(block, exchangeId, registrations, allowDraft)).filter((block): block is AssistantVisualBlock => Boolean(block)),
+    blocks: blocks.map((block) => projectBlock(
+      block, exchangeId, registrations, allowDraft, sourceTitles, emittedToolSourceUrls,
+    )).filter((block): block is AssistantVisualBlock => Boolean(block)),
     sources: sources.flatMap((source) => {
       const safe = plainRecord(source)
       if (!safe || (safe.sourceKind !== 'url' && safe.sourceKind !== 'document')) return []
@@ -522,7 +546,9 @@ function hasKnownAssetResource(exchange: ChatTranscriptExchangeView, asset: Nati
   if (mentions.some((mention) => Array.isArray(mention.fileIds) && mention.fileIds.includes(asset.resourceId))) return true
   const responses = Array.isArray(exchange.responses) ? exchange.responses.slice(0, 100) : []
   return responses.some((response) => {
-    const sources: ChatTranscriptSourceView[] = Array.isArray(response?.sources) ? response.sources.slice(0, 200) : []
+    const sources: ChatTranscriptSourceView[] = Array.isArray(response?.sources)
+      ? response.sources.slice(0, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT)
+      : []
     const blocks: AssistantVisualBlock[] = Array.isArray(response?.blocks) ? response.blocks.slice(0, 500) : []
     const hasFileCitation = getNativeTranscriptCitationEntries(response?.sourceCitations)
       .some(({ citation }) => citation.kind === 'file' && citation.sourceId === asset.resourceId)

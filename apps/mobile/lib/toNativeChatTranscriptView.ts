@@ -3,6 +3,7 @@ import {
   generationResultViewsFromOutputGroup,
   getUserMessageDocNames,
   groupTranscriptMessages,
+  collectWebSourcesFromBlocks,
   normalizeTranscriptAssistantParts,
   selectTranscriptResponse,
   splitUserDisplayText,
@@ -21,6 +22,8 @@ import {
   type RestoredOutputGroup,
 } from '@overlay/chat-core'
 import { completePersonalBlocks } from './personalStream'
+import { MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT } from './nativeTranscriptLimits'
+import { safePublicUrl } from './nativeChatTranscriptProjection'
 import type { Message, NativeMessageStatus, ProviderResponse } from '../services/chatTypes'
 
 export interface NativeChatTranscriptRuntime {
@@ -111,6 +114,58 @@ function sourceViewsFromBlocks(blocks: readonly AssistantVisualBlock[]): ChatTra
     : [])
 }
 
+function sourceHash(value: string): string {
+  let first = 2_166_136_261
+  let second = 2_654_435_761
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    first = Math.imul(first ^ code, 16_777_619)
+    second = Math.imul(second ^ code, 2_246_822_519)
+  }
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`
+}
+
+function webSourceViewsFromBlocks(
+  blocks: readonly AssistantVisualBlock[],
+  responseId: string,
+): ChatTranscriptSourceView[] {
+  const sources: ChatTranscriptSourceView[] = []
+  const seen = new Set<string>()
+  blocks.forEach((block, originIndex) => {
+    if (sources.length >= MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT || block.kind !== 'tool') return
+    for (const item of collectWebSourcesFromBlocks([block])) {
+      const url = safePublicUrl(item.url)
+      if (!url || seen.has(url)) continue
+      seen.add(url)
+      const id = `web-${sourceHash(`${responseId}\u0000${url}`)}`
+      const title = item.title.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 512) || url
+      sources.push({ id, sourceKind: 'url', sourceId: id, url, title, originIndex })
+      if (sources.length >= MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT) break
+    }
+  })
+  return sources
+}
+
+function mergeWebSourceViews(
+  existing: readonly ChatTranscriptSourceView[],
+  webSources: readonly ChatTranscriptSourceView[],
+): ChatTranscriptSourceView[] {
+  const merged = [...existing]
+  const seen = new Set(existing.flatMap((source) => {
+    if (source.sourceKind !== 'url') return []
+    const url = safePublicUrl(source.url)
+    return url ? [url] : []
+  }))
+  for (const source of webSources) {
+    if (merged.length >= MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT) break
+    const url = safePublicUrl(source.url)
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    merged.push(source)
+  }
+  return merged.slice(0, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT)
+}
+
 function fallbackParts(
   content: string,
   reasoning?: string,
@@ -136,6 +191,27 @@ function fallbackParts(
     parts.push({ type: 'file', url: file.url, mediaType: file.mediaType })
   }
   return parts
+}
+
+function preserveSourceToolStates(
+  blocks: AssistantVisualBlock[],
+  tools: Message['toolInvocations'] | undefined,
+): AssistantVisualBlock[] {
+  if (!tools) return blocks
+  const invocations = new Map(tools.flatMap((tool) => tool.toolCallId
+    ? [[tool.toolCallId, tool] as const]
+    : []))
+  return blocks.map((block) => {
+    if (block.kind !== 'tool') return block
+    const invocation = invocations.get(block.key)
+    if (!invocation || invocation.state === 'output-available') return block
+    if (collectWebSourcesFromBlocks([{ ...block, state: 'output-available' }]).length === 0) return block
+    if (typeof invocation.state === 'string') return { ...block, state: invocation.state }
+    return {
+      ...block,
+      toolOutput: undefined,
+    }
+  })
 }
 
 function responseStatus(
@@ -188,6 +264,7 @@ function responseView(
 ): ChatTranscriptResponseView {
   const { message, response } = candidate
   const ownsTopLevel = candidate.ownsTopLevelFields
+  const responseId = `${transcriptResponseId(turnId, candidate.modelId, variantIndex)}:${variantIndex}`
   const content = response?.content ?? (ownsTopLevel ? message.content : '')
   const reasoning = response?.reasoning ?? (ownsTopLevel ? message.reasoning : undefined)
   const tools = response?.toolInvocations ?? (ownsTopLevel ? message.toolInvocations : undefined)
@@ -207,7 +284,8 @@ function responseView(
     blocks = normalized.blocks
     sources ??= normalized.sources
   }
-  sources ??= sourceViewsFromBlocks(blocks)
+  blocks = preserveSourceToolStates(blocks, tools)
+  sources = mergeWebSourceViews(sources ?? sourceViewsFromBlocks(blocks), webSourceViewsFromBlocks(blocks, responseId))
 
   const responseStreaming = Boolean(
     response?.isLoading ||
@@ -230,7 +308,7 @@ function responseView(
   const activeError = isActive && isSelected && runtime?.error ? 'This response could not be completed.' : undefined
   const safeErrorMessage = errorMessage ? 'This response could not be completed.' : undefined
   return {
-    id: `${transcriptResponseId(turnId, candidate.modelId, variantIndex)}:${variantIndex}`,
+    id: responseId,
     modelId: candidate.modelId,
     blocks,
     sources,

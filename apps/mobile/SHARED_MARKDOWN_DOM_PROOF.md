@@ -12,6 +12,10 @@ The standalone synthetic transcript component is retained for its focused test a
 
 Run `npm run test:native-transcript` for the action-controller suite and the mounted React/Chromium transcript suite. Mobile locks `tsx`, `esbuild`, and Playwright; React, React DOM, and `react-test-renderer` resolve from the pinned parent Web checkout and are version-checked by the test preload. Install Chromium locally with `npx playwright install chromium`; CI installs Chromium and its Linux dependencies.
 
+## Search-source projection boundary
+
+The personal transcript host uses the pinned shared `collectWebSourcesFromBlocks` collector on completed allowlisted search and browser tools before raw tool output is removed. It merges bounded, response-scoped URL/title sources into canonical `response.sources`, while provider sources and document citations stay intact. The DOM projection revalidates URLs with the existing native link boundary and emits tool source metadata only when its URL is in that response's capped canonical source list. A response-wide dedupe and 200-source budget keep inline chips aligned with native open-source targets. Raw tool input and raw tool output never cross the projection boundary; the only tool-output exception is synthesized `toolOutput: { sources: [{ url, title }] }` metadata for completed allowlisted source tools whose URLs are in canonical `response.sources`. Snippets, credentials, and all other raw payload remain excluded.
+
 ## Metro and export behavior
 
 Metro's web lazy-bundle requests can be rooted at the mobile app's `./node_modules/` even when their packages are in the pinned parent web workspace. The resolver tries the app-local request first, then falls back to the parent workspace only for safe Metro-generated `./node_modules/...` paths. It does not redirect ordinary relative source imports or unresolved bare imports. Restart Metro after changing this resolver.

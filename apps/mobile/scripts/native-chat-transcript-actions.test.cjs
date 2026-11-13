@@ -24,6 +24,7 @@ function load(file) {
         return Object.assign(
           {},
           loadFile('../packages/overlay-chat-core/src/messages.ts'),
+          loadFile('../packages/overlay-chat-core/src/sources.ts'),
           loadFile('../packages/overlay-chat-core/src/transcript-view.ts'),
           loadFile('../packages/overlay-chat-core/src/visual-sequence.ts'),
         )
@@ -46,8 +47,10 @@ function load(file) {
 const { createNativeTranscriptActionController, MAX_TRANSCRIPT_TEXT_LENGTH } = load('lib/nativeChatTranscriptActions.ts')
 const { createNativeTranscriptDomSnapshot } = load('lib/nativeChatTranscriptProjection.ts')
 const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
+const { mapNativePersonalMessageRows } = load('lib/toNativeChatMessage.ts')
+const { collectWebSourcesFromBlocks } = load('../packages/overlay-chat-core/src/sources.ts')
 const { buildAutomationDraftFromTurn } = load('../src/features/automations/lib/automation-drafts.ts')
-const { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH } = load('lib/nativeTranscriptLimits.ts')
+const { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT } = load('lib/nativeTranscriptLimits.ts')
 
 function realAutomationDraft() {
   return buildAutomationDraftFromTurn({ userText: 'Create a daily tech news digest email using Gmail' })
@@ -75,6 +78,302 @@ function realCitationView(sourceCitations) {
     },
   ])
 }
+
+function sourceBridgeMessages(toolInvocation, providerSources = []) {
+  return [
+    { id: 'source-user', turnId: 'source-turn', role: 'user', content: 'Find sources', timestamp: 10, mode: 'act' },
+    {
+      id: 'source-assistant', turnId: 'source-turn', role: 'assistant', content: 'Sources found', timestamp: 20,
+      modelId: 'provider/model', selectedModelId: 'provider/model', status: 'completed',
+      responses: [{
+        modelId: 'provider/model', variantIndex: 0, content: 'Sources found', status: 'completed',
+        sources: providerSources,
+        sourceCitations: {
+          '0': { kind: 'file', sourceId: 'file-evidence-1', title: 'Evidence document' },
+          '1': { kind: 'memory', sourceId: 'memory-evidence-1', title: 'Evidence memory' },
+        },
+        toolInvocations: Array.isArray(toolInvocation) ? toolInvocation : [toolInvocation],
+      }],
+    },
+  ]
+}
+
+function sourceBridgeView(toolInvocation, providerSources = []) {
+  return toNativeChatTranscriptView(sourceBridgeMessages(toolInvocation, providerSources))
+}
+
+function persistedSourceRows(toolInvocation) {
+  const userMessage = {
+    _id: 'persisted-source-user', turnId: 'persisted-source-turn', role: 'user', contentType: 'text',
+    mode: 'act', content: 'Find persisted sources', parts: [{ type: 'text', text: 'Find persisted sources' }], createdAt: 10,
+  }
+  const assistantMessage = {
+    _id: 'persisted-source-assistant', turnId: 'persisted-source-turn', role: 'assistant', contentType: 'text',
+    mode: 'act', modelId: 'provider/model', status: 'completed', content: 'Sources found', createdAt: 20,
+    parts: [
+      { type: 'text', text: 'Sources found' },
+      { type: 'tool-invocation', toolInvocation },
+    ],
+  }
+  return [
+    { message: assistantMessage, contextUser: null, outputs: [] },
+    { message: userMessage, contextUser: null, outputs: [] },
+  ]
+}
+
+test('persisted search sources bridge through native projection, shared source extraction, and open-source actions', async () => {
+  const providerUrl = 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map'
+  const results = Array.from({ length: 8 }, (_, index) => ({
+    url: index === 0 ? providerUrl : `https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Array/result-${index}`,
+    title: `MDN result ${index + 1}`,
+    snippet: `SNIPPET_SECRET_${index}`,
+    authorization: `AUTH_SECRET_${index}`,
+  }))
+  const rawOutput = {
+    sources: [...results, results[1],
+      { url: 'https://user:password@private.example/reference', title: 'Credential URL' },
+      { url: 'https://private.example/api/files/private', title: 'Private file URL' },
+      { url: 'https://search.example/reference?access_token=TOKEN_SECRET', title: 'Credential query URL' },
+      { url: 'not-a-url', title: 'Malformed URL' }],
+    raw: { authorization: 'RAW_AUTH_SECRET', snippet: 'RAW_SNIPPET_SECRET' },
+  }
+  const toolInvocation = {
+    toolCallId: 'web-search-call',
+    toolName: 'web_search',
+    state: 'output-available',
+    toolInput: { query: 'QUERY_SECRET', headers: { authorization: 'INPUT_AUTH_SECRET' } },
+    toolOutput: rawOutput,
+  }
+  const providerSources = [
+    { id: 'provider-mdn-source', sourceKind: 'url', sourceId: 'provider-mdn', url: providerUrl, title: 'Provider MDN source', originIndex: 0 },
+    { id: 'provider-reference-source', sourceKind: 'url', sourceId: 'provider-reference', url: 'https://provider.example/reference', title: 'Provider reference', originIndex: 1 },
+    { id: 'provider-file-source', sourceKind: 'document', sourceId: 'file-evidence-1', title: 'Evidence document', filename: 'evidence.pdf', originIndex: 2 },
+  ]
+  const view = sourceBridgeView(toolInvocation, providerSources)
+  const exchange = view.exchanges[0]
+  const response = exchange.responses[0]
+  const webSources = response.sources.filter((source) => source.sourceKind === 'url' && source.id.startsWith('web-'))
+
+  assert.equal(response.sources.filter((source) => source.url === providerUrl).length, 1)
+  assert.equal(response.sources.find((source) => source.id === 'provider-file-source').sourceId, 'file-evidence-1')
+  assert.equal(response.sourceCitations['0'].sourceId, 'file-evidence-1')
+  assert.equal(webSources.length, 7)
+  assert.ok(webSources.every((source) => source.url && source.title && source.sourceId === source.id))
+  assert.equal(response.sources.some((source) => source.url?.includes('private.example')), false)
+  assert.equal(response.sources.some((source) => source.url?.includes('TOKEN_SECRET')), false)
+
+  const reloaded = sourceBridgeView(structuredClone(toolInvocation), structuredClone(providerSources))
+  assert.deepEqual(reloaded.exchanges[0].responses[0].sources.map((source) => source.id), response.sources.map((source) => source.id))
+  const otherMessages = sourceBridgeMessages(toolInvocation, providerSources)
+  otherMessages[0].turnId = 'other-source-turn'
+  otherMessages[1].turnId = 'other-source-turn'
+  const otherResponse = toNativeChatTranscriptView(otherMessages).exchanges[0].responses[0]
+  assert.notEqual(otherResponse.sources.find((source) => source.url === webSources[0].url).id, webSources[0].id)
+
+  const oversizedSources = Array.from({ length: MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT + 5 }, (_, index) => ({
+    url: `https://bounded.example/result-${index}`,
+    title: 'x'.repeat(600),
+  }))
+  const boundedResponse = sourceBridgeView({ ...toolInvocation, toolOutput: { sources: oversizedSources } }, providerSources)
+    .exchanges[0].responses[0]
+  assert.equal(boundedResponse.sources.length, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT)
+  assert.ok(boundedResponse.sources.find((item) => item.id.startsWith('web-')).title.length <= 512)
+
+  const fileHandle = 'file_evidence_handle_0001'
+  const projected = createNativeTranscriptDomSnapshot({
+    workspaceId: 'workspace-source', conversationId: 'conversation-source', mountNonce: 'mount-source', focusNonce: 'focus-source',
+    theme: 'dark', view: structuredClone(view), supportedActions: ['open-source', 'open-citation'], query: '', scrollIntent: null,
+    assets: [{ handle: fileHandle, exchangeId: exchange.id, resourceId: 'file-evidence-1', resourceKind: 'file', previewable: true, label: 'evidence.pdf' }],
+  })
+  const projectedResponse = projected.view.exchanges[0].responses[0]
+  const projectedSources = projectedResponse.sources.filter((source) => source.sourceKind === 'url')
+  assert.equal(projectedSources.some((source) => source.url === providerUrl), true)
+  assert.equal(projectedResponse.sources.find((source) => source.id === 'provider-file-source').sourceId, fileHandle)
+  assert.equal(projectedResponse.sourceCitations['0'].sourceId, fileHandle)
+  assert.equal(projectedResponse.sourceCitations['1'].sourceId, 'memory-evidence-1')
+
+  const projectedTool = projectedResponse.blocks.find((block) => block.kind === 'tool')
+  assert.deepEqual(Object.keys(projectedTool.toolOutput), ['sources'])
+  assert.ok(projectedTool.toolOutput.sources.every((source) => Object.keys(source).sort().join(',') === 'title,url'))
+  const sharedSources = collectWebSourcesFromBlocks(projectedResponse.blocks)
+  assert.equal(sharedSources.length, 8)
+  assert.ok(sharedSources.every((source) => !source.snippet || !source.snippet.includes('SNIPPET_SECRET')))
+  const projectedJson = JSON.stringify(projected)
+  for (const secret of ['SNIPPET_SECRET', 'AUTH_SECRET', 'RAW_AUTH_SECRET', 'RAW_SNIPPET_SECRET', 'QUERY_SECRET', 'INPUT_AUTH_SECRET', 'TOKEN_SECRET', 'user:password']) {
+    assert.equal(projectedJson.includes(secret), false)
+  }
+
+  const f = fixture()
+  f.context.view = view
+  const source = webSources[0]
+  const request = f.request('open-source', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    sourceId: source.id,
+  })
+  assert.equal((await f.controller.dispatch(request)).ok, true)
+  assert.equal(f.calls.find(([name]) => name === 'openSource')[1].url, source.url)
+  const staleRequest = f.request('open-source', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    sourceId: webSources[1].id,
+  })
+  f.context.focusNonce = 'focus-next'
+  assert.equal((await f.controller.dispatch(staleRequest)).ok, false)
+})
+
+test('persisted Convex assistant parts map through the row adapter to native sources and open-source actions', async () => {
+  const nestedSources = Array.from({ length: 8 }, (_, index) => ({
+    url: `https://persisted.example/result-${index + 1}`,
+    title: `Persisted result ${index + 1}`,
+    snippet: `PERSISTED_SNIPPET_SECRET_${index}`,
+  }))
+  const toolInvocation = {
+    toolCallId: 'persisted-web-search-call',
+    toolName: 'web_search',
+    state: 'output-available',
+    toolInput: { query: 'PERSISTED_QUERY_SECRET', headers: { authorization: 'PERSISTED_AUTH_SECRET' } },
+    toolOutput: { sources: nestedSources, raw: { authorization: 'PERSISTED_RAW_AUTH_SECRET' } },
+  }
+  const messages = mapNativePersonalMessageRows(persistedSourceRows(toolInvocation))
+  const mappedAssistant = messages.find((message) => message.role === 'assistant')
+  assert.ok(mappedAssistant.responses[0].blocks.some((block) => block.kind === 'tool' && block.name === 'web_search'))
+  assert.equal(mappedAssistant.responses[0].sources.length, 0)
+
+  const view = toNativeChatTranscriptView(messages)
+  const exchange = view.exchanges[0]
+  const response = exchange.responses[0]
+  const webSources = response.sources.filter((source) => source.id.startsWith('web-'))
+  assert.equal(webSources.length, 8)
+  assert.deepEqual(Array.from(webSources, (source) => source.url), nestedSources.map((source) => source.url))
+
+  const projected = createNativeTranscriptDomSnapshot({
+    workspaceId: 'workspace-source', conversationId: 'conversation-source', mountNonce: 'mount-source', focusNonce: 'focus-source',
+    theme: 'dark', view: structuredClone(view), supportedActions: ['open-source'], query: '', scrollIntent: null, assets: [],
+  })
+  const projectedResponse = projected.view.exchanges[0].responses[0]
+  const projectedTool = projectedResponse.blocks.find((block) => block.kind === 'tool')
+  assert.deepEqual(Array.from(projectedTool.toolOutput.sources, (source) => source.url), nestedSources.map((source) => source.url))
+  assert.ok(projectedTool.toolOutput.sources.every((source) => Object.keys(source).sort().join(',') === 'title,url'))
+  assert.equal(collectWebSourcesFromBlocks(projectedResponse.blocks).length, 8)
+  const projectedJson = JSON.stringify(projected)
+  for (const secret of ['PERSISTED_SNIPPET_SECRET', 'PERSISTED_QUERY_SECRET', 'PERSISTED_AUTH_SECRET', 'PERSISTED_RAW_AUTH_SECRET']) {
+    assert.equal(projectedJson.includes(secret), false)
+  }
+
+  const f = fixture()
+  f.context.view = view
+  const source = webSources[0]
+  const request = f.request('open-source', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    sourceId: source.id,
+  })
+  assert.equal((await f.controller.dispatch(request)).ok, true)
+  assert.equal(f.calls.find(([name]) => name === 'openSource')[1].url, source.url)
+
+  const pendingMessages = mapNativePersonalMessageRows(persistedSourceRows({ ...toolInvocation, state: 'input-available' }))
+  const pendingView = toNativeChatTranscriptView(pendingMessages)
+  const pendingResponse = pendingView.exchanges[0].responses[0]
+  assert.equal(pendingResponse.sources.some((candidate) => candidate.id.startsWith('web-')), false)
+  assert.equal(pendingResponse.blocks.find((block) => block.kind === 'tool').state, 'input-available')
+  const pendingProjection = createNativeTranscriptDomSnapshot({
+    workspaceId: 'workspace-source', conversationId: 'conversation-source', mountNonce: 'mount-source', focusNonce: 'focus-source',
+    theme: 'dark', view: structuredClone(pendingView), supportedActions: ['open-source'], query: '', scrollIntent: null, assets: [],
+  })
+  assert.equal('toolOutput' in pendingProjection.view.exchanges[0].responses[0].blocks.find((block) => block.kind === 'tool'), false)
+})
+
+test('projection deduplicates multiple tool blocks and gates chip URLs by the response source budget', async () => {
+  const providerSources = Array.from({ length: MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT - 1 }, (_, index) => ({
+    id: `provider-source-${index}`,
+    sourceKind: 'url',
+    sourceId: `provider-${index}`,
+    url: `https://provider.example/source-${index}`,
+    title: `Provider source ${index}`,
+    originIndex: index,
+  }))
+  const firstUrl = 'https://search.example/first'
+  const toolInvocations = [
+    {
+      toolCallId: 'search-block-one', toolName: 'web_search', state: 'output-available',
+      toolOutput: { sources: [
+        { url: firstUrl, title: 'Canonical first' },
+        { url: 'https://search.example/second', title: 'Over budget second' },
+      ] },
+    },
+    {
+      toolCallId: 'search-block-two', toolName: 'web_search', state: 'output-available',
+      toolOutput: { sources: [
+        { url: firstUrl, title: 'Duplicate first' },
+        { url: 'https://search.example/third', title: 'Over budget third' },
+      ] },
+    },
+  ]
+  const view = sourceBridgeView(toolInvocations, providerSources)
+  const exchange = view.exchanges[0]
+  const response = exchange.responses[0]
+  const webSources = response.sources.filter((source) => source.id.startsWith('web-'))
+  assert.equal(response.sources.length, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT)
+  assert.equal(webSources.length, 1)
+
+  const projected = createNativeTranscriptDomSnapshot({
+    workspaceId: 'workspace-source', conversationId: 'conversation-source', mountNonce: 'mount-source', focusNonce: 'focus-source',
+    theme: 'dark', view: structuredClone(view), supportedActions: ['open-source'], query: '', scrollIntent: null, assets: [],
+  })
+  const projectedResponse = projected.view.exchanges[0].responses[0]
+  const projectedToolSources = projectedResponse.blocks
+    .filter((block) => block.kind === 'tool')
+    .flatMap((block) => block.toolOutput?.sources ?? [])
+  assert.equal(projectedToolSources.length, 1)
+  assert.equal(projectedToolSources[0].url, webSources[0].url)
+  assert.ok(projectedToolSources.every((source) => projectedResponse.sources.some((candidate) => candidate.url === source.url)))
+  assert.equal(collectWebSourcesFromBlocks(projectedResponse.blocks).length, 1)
+
+  const f = fixture()
+  f.context.view = view
+  const request = f.request('open-source', {
+    exchangeId: exchange.id,
+    target: { kind: 'response', responseId: response.id },
+    sourceId: webSources[0].id,
+  })
+  assert.equal((await f.controller.dispatch(request)).ok, true)
+  assert.equal(f.calls.find(([name]) => name === 'openSource')[1].url, firstUrl)
+})
+
+test('source-specific state reconciliation preserves legacy non-source tool outputs', () => {
+  const toolOutput = { success: true, draft: { kind: 'automation', draft: { name: 'Legacy draft' } } }
+  const view = sourceBridgeView({
+    toolCallId: 'legacy-draft-call', toolName: 'draft_automation_from_chat', toolOutput,
+  })
+  const block = view.exchanges[0].responses[0].blocks.find((candidate) => candidate.kind === 'tool')
+  assert.equal(block.state, 'output-available')
+  assert.equal(JSON.stringify(block.toolOutput), JSON.stringify(toolOutput))
+  assert.equal(view.exchanges[0].responses[0].sources.some((source) => source.id.startsWith('web-')), false)
+})
+
+test('empty, failed, denied, pending, malformed, and unallowlisted source tools project no source metadata', () => {
+  const cases = [
+    { state: 'output-available', toolOutput: { sources: [] } },
+    { state: 'output-error', toolOutput: { sources: [{ url: 'https://search.example/result', title: 'failed' }], error: 'ERROR_SECRET' } },
+    { state: 'output-denied', toolOutput: { sources: [{ url: 'https://search.example/result', title: 'denied' }] } },
+    { state: 'input-available', toolOutput: { sources: [{ url: 'https://search.example/result', title: 'pending' }] } },
+    { state: 'output-available', toolOutput: { rawResult: 'MALFORMED_SECRET' } },
+    { state: 'output-available', toolName: 'ordinary_tool', toolOutput: { sources: [{ url: 'https://search.example/result', title: 'unallowlisted' }] } },
+  ]
+  for (const [index, toolState] of cases.entries()) {
+    const view = sourceBridgeView({ toolCallId: `source-call-${index}`, toolName: 'web_search', toolInput: { query: 'QUERY_SECRET' }, ...toolState })
+    const response = view.exchanges[0].responses[0]
+    assert.equal(response.sources.some((source) => source.id.startsWith('web-')), false, `case ${index}`)
+    const projected = createNativeTranscriptDomSnapshot({
+      workspaceId: 'workspace-source', conversationId: 'conversation-source', mountNonce: 'mount-source', focusNonce: 'focus-source',
+      theme: 'dark', view: structuredClone(view), supportedActions: ['open-source'], query: '', scrollIntent: null, assets: [],
+    })
+    const tool = projected.view.exchanges[0].responses[0].blocks.find((block) => block.kind === 'tool')
+    assert.equal('toolOutput' in tool, false)
+    assert.equal(JSON.stringify(projected).includes('SECRET'), false)
+  }
+})
 
 function fixture() {
   const draft = { kind: 'skill', draft: { name: 'Skill', description: '', instructions: 'Do this', confidence: 'high', detectedIntegrations: [], reason: 'reason' } }

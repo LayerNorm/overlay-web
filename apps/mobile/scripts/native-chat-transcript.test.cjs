@@ -26,6 +26,7 @@ function load(file) {
         return Object.assign(
           {},
           loadFile('../packages/overlay-chat-core/src/messages.ts'),
+          loadFile('../packages/overlay-chat-core/src/sources.ts'),
           loadFile('../packages/overlay-chat-core/src/transcript-view.ts'),
           loadFile('../packages/overlay-chat-core/src/visual-sequence.ts'),
         )
