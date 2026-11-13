@@ -472,6 +472,17 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   // Channel sync settings: the handler allows workspace link changes only for
   // owners and admins, and member account actions only on the caller's own account.
   { path: '/api/v1/sync/slack', methods: { GET: authenticated(), POST: authenticated() } },
+  // Teams channel sync. Settings and the app package check owner or admin in
+  // the handler; connect/callback legs check the Overlay session themselves;
+  // Graph notifications are verified by our signed clientState.
+  { path: '/api/v1/sync/teams', methods: { GET: authenticated(), POST: authenticated() } },
+  { path: '/api/v1/sync/teams/app-package', methods: { GET: authenticated() } },
+  { path: '/api/v1/sync/teams/connect', methods: { GET: authenticated() } },
+  { path: '/api/v1/sync/teams/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/sync/teams/account/connect', methods: { GET: authenticated() } },
+  { path: '/api/v1/sync/teams/account/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/sync/teams/maintain', methods: { POST: internal() } },
+  { path: '/api/v1/webhooks/teams', methods: { POST: publicPolicy() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
   {
