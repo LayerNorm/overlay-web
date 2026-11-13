@@ -38,6 +38,10 @@ The sidebar's direct sign-out action also awaits the bounded native cleanup
 before deleting its web session and navigating away.
 Agent Host starts and online panels verify the actual server session; sign-out
 stops the host, closes panels, cancels dictation (including microphone tracks and stale paste results) and clears the badge.
+The app shell publishes its background as `<meta name="theme-color">` (normalized
+to `#rrggbb`). The desktop main window listens for `did-change-theme-color` and sets
+`nativeTheme.themeSource` to light or dark from it, so the window frame follows the
+app theme rather than the macOS appearance; without the tag it falls back to system.
 
 `DesktopProvider` negotiates the handshake and marks the root `data-desktop`.
 Regular browsers receive neither Desktop settings nor native composer controls.
