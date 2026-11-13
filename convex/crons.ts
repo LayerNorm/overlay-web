@@ -186,6 +186,11 @@ crons.interval(
   (internal as any).surfaces.chatState.pruneExpired,
 )
 
+// Retries outbound Slack/Teams sync rows that are due or whose worker died mid-send.
+crons.interval('sync outbox sweep', { minutes: 1 }, internal.sync.outbox.sweep, {})
+
+crons.interval('sync outbox prune', { hours: 1 }, internal.sync.outbox.prune, {})
+
 // Counts yesterday (UTC) for the admin console's growth panel. Runs a little
 // after midnight so late writes for the day have landed.
 crons.daily('growth daily totals', { hourUTC: 0, minuteUTC: 20 }, internal.platform.growth.startDaily)

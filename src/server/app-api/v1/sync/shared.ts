@@ -5,6 +5,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { logger } from '@/server/observability/logger'
+import { openSyncToken } from '@/server/sync/token-seal'
 import type { SyncChannelKind, SyncProvider } from '@/shared/sync/types'
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const
@@ -20,6 +21,7 @@ const KNOWN_ERRORS: Record<string, [number, string]> = {
   SYNC_TARGET_INVALID: [400, 'Choose an Overlay channel you belong to.'],
   SYNC_TARGET_ALREADY_LINKED: [409, 'That Overlay channel already syncs with another channel.'],
   SYNC_TARGET_MUST_BE_PRIVATE: [400, 'Private and shared channels can only sync into private Overlay channels.'],
+  SYNC_ACCOUNT_NOT_CONNECTED: [409, 'Connect your own account first.'],
   WORKSPACE_ACCESS_DENIED: [403, 'You do not have access to this workspace.'],
 }
 
@@ -48,6 +50,11 @@ type ActionBody =
   | { action: 'unlink'; linkId: string }
   | { action: 'autoLink'; enabled: boolean }
   | { action: 'disconnect' }
+  | { action: 'disconnectAccount' }
+  | { action: 'dmSync'; enabled: boolean }
+
+/** Actions on the member's own account, open to every member rather than only owners and admins. */
+const MEMBER_ACTIONS = new Set<ActionBody['action']>(['disconnectAccount', 'dmSync'])
 
 function parseAction(raw: unknown): ActionBody | null {
   if (!raw || typeof raw !== 'object') return null
@@ -69,18 +76,42 @@ function parseAction(raw: unknown): ActionBody | null {
       return typeof body.enabled === 'boolean' ? { action: 'autoLink', enabled: body.enabled } : null
     case 'disconnect':
       return { action: 'disconnect' }
+    case 'disconnectAccount':
+      return { action: 'disconnectAccount' }
+    case 'dmSync':
+      return typeof body.enabled === 'boolean' ? { action: 'dmSync', enabled: body.enabled } : null
     default:
       return null
   }
 }
 
-/** Shared POST handler for the settings page's link, unlink, auto-link and disconnect actions. */
+/**
+ * Shared POST handler for the settings page: link, unlink, auto-link and
+ * disconnect for owners and admins, and disconnecting or setting DM sync on
+ * the member's own account for everyone.
+ */
 export async function handleSyncAction(request: Request, context: AppApiRouteContext, provider: SyncProvider) {
-  if (!canManageSync(context)) return syncErrorResponse(new Error('SYNC_MANAGE_DENIED'), provider)
   const body = parseAction(await request.json().catch((_error) => null))
+  const ownAccount = body !== null && MEMBER_ACTIONS.has(body.action)
+  if (!ownAccount && !canManageSync(context)) return syncErrorResponse(new Error('SYNC_MANAGE_DENIED'), provider)
   if (!body) return syncJson({ error: 'Invalid sync request', code: 'invalid_request' }, 400)
   const base = { serverSecret: getInternalApiSecret(), actorUserId: context.auth.userId, workspaceId: context.workspace.workspace.id }
   try {
+    if (body.action === 'disconnectAccount') {
+      const sealed = await convex.mutation<string | null>('sync/accounts:disconnect', { ...base, provider }, options)
+      if (sealed && provider === 'slack') {
+        try {
+          await fetch('https://slack.com/api/auth.revoke', { method: 'POST', headers: { Authorization: 'Bearer ' + openSyncToken(sealed) } })
+        } catch (error) {
+          logger.warn('[sync/slack] member token revoke failed', { reason: error instanceof Error ? error.name : 'unknown' })
+        }
+      }
+      return syncJson({ ok: true })
+    }
+    if (body.action === 'dmSync') {
+      await convex.mutation('sync/accounts:setDmSync', { ...base, provider, enabled: body.enabled }, options)
+      return syncJson({ ok: true })
+    }
     if (body.action === 'link') {
       const result = await convex.mutation('sync/links:linkChannel', {
         ...base, provider, externalChannelId: body.channelId, externalChannelName: body.name, externalChannelKind: body.kind,

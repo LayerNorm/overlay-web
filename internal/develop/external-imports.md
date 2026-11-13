@@ -2,7 +2,7 @@
 
 Living documentation for importing data from external communication platforms (Slack, Teams, Discord, Telegram) into Overlay. This is the source of truth for the import architecture, canonical model, and adapter interface.
 
-Continuous two-way channel sync is separate from these one-time imports. It lives in `convex/sync/` and `src/server/sync/`, with its own tables (`syncConnections`, `syncChannelLinks`, `syncMessageMap`, `syncIdentities`, `syncMemberAccounts`, `syncOutbox`, `syncRateBudgets`) and normalized events in `src/shared/sync/types.ts`. Sync history import and nightly gap repair run in `src/server/sync/history-worker.ts` under the shared rate limiter in `src/server/sync/rate-limit.ts`, and write through the same idempotent `sync/ingest:applyInbound` as live events. See `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`.
+Continuous two-way channel sync is separate from these one-time imports. It lives in `convex/sync/` and `src/server/sync/`, with its own tables (`syncConnections`, `syncChannelLinks`, `syncMessageMap`, `syncIdentities`, `syncMemberAccounts`, `syncOutbox`, `syncRateBudgets`) and normalized events in `src/shared/sync/types.ts`. Sync history import and nightly gap repair run in `src/server/sync/history-worker.ts` under the shared rate limiter in `src/server/sync/rate-limit.ts`, and write through the same idempotent `sync/ingest:applyInbound` as live events. See `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`.Members' own grants for replying live in `convex/sync/accounts.ts`; outbound changes are queued by `convex/sync/outbox.ts` and sent by `src/server/sync/outbound-worker.ts` through each provider's outbound adapter (Slack: `src/server/sync/slack/outbound.ts`). See `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`.
 
 ## Architecture
 

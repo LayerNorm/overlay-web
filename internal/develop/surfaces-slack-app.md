@@ -60,6 +60,10 @@ oauth_config:
       - channels:read
       - groups:read
       - channels:join
+    user:
+      # channel sync: members reply, edit, delete and react as themselves
+      - chat:write
+      - reactions:write
 
 settings:
   event_subscriptions:
@@ -132,6 +136,24 @@ calls a minute, 1,000 messages a page). A 429 or an `app_rate_limited` event
 shows the affected channels as Catching up; they resume and repair on their
 own. With auto-link on, `channel_created` links each new public channel to a
 new Overlay channel and Overlay joins it (`channels:join`).
+Replying from Overlay uses each member's own Slack user token, so messages
+appear in Slack under their name. A member signs in once through
+`/api/v1/surfaces/slack/connect?purpose=sync_member&returnTo=…`, which asks
+only for the user scopes above (no bot scopes, no reinstall). The callback
+exchanges the code with `oauth.v2.access` itself, because the Chat SDK
+callback handles bot installs; the token is sealed with `sealSyncToken` before
+it reaches Convex (`syncMemberAccounts`) and is only opened by the outbound
+worker. Adding the user scopes to an existing app does not require workspaces
+to reinstall; members grant them when they connect.
+
+Outbound changes (posts, thread replies, edits, deletes, reactions) are queued
+in `syncOutbox` by the existing room mutations and sent by
+`src/server/sync/outbound-worker.ts`. Our own posts come back through the
+Events API as ordinary user messages, sometimes before `chat.postMessage`
+returns. Ingest drops them by their recorded `ts`; while a member's post is in
+flight, a new message from their Slack user is re-checked two seconds later
+instead of being stored, and completing the post folds in any copy that
+slipped through, so each message exists once in Overlay.
 
 ## Several agents in one channel
 

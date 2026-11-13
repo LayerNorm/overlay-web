@@ -180,6 +180,7 @@
     "src/app/api/v1/surfaces/slack/callback/route.ts",
     "src/app/api/v1/surfaces/slack/connect/route.ts",
     "src/app/api/v1/sync/history/process/route.ts",
+    "src/app/api/v1/sync/outbound/route.ts",
     "src/app/api/v1/sync/slack/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
@@ -245,6 +246,7 @@
     "src/features/chat/components/ConversationExperienceRouter.tsx",
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
+    "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAutomationDetail.ts",
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
@@ -375,6 +377,16 @@
       "target": "(internal as any).surfaces.chatState.pruneExpired"
     },
     {
+      "cadence": "{ hours: 1 }",
+      "name": "sync outbox prune",
+      "target": "internal.sync.outbox.prune"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "sync outbox sweep",
+      "target": "internal.sync.outbox.sweep"
+    },
+    {
       "cadence": "{ minutes: 2 }",
       "name": "tool loop agent run lease cleanup",
       "target": "internal.chat.conversations.expireToolLoopAgentRunLeases"
@@ -430,6 +442,7 @@
     "src/features/chat/components/ConversationExperienceRouter.tsx",
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
+    "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAutomationDetail.ts",
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
@@ -592,6 +605,7 @@
     "src/server/surfaces/convex-chat-state.ts",
     "src/server/surfaces/surface-authors.ts",
     "src/server/sync/history-worker.ts",
+    "src/server/sync/outbound-worker.ts",
     "src/server/sync/rate-limit.ts",
     "src/server/sync/slack/events.ts",
     "src/server/sync/slack/inbound.ts",
@@ -637,6 +651,7 @@
     "convex/platform/nativePolicy.ts",
     "convex/sync/ingest.ts",
     "convex/sync/links.ts",
+    "convex/sync/outbox.ts",
     "convex/webhooks/deliveryRunner.ts",
     "convex/work/workItems.ts"
   ]
