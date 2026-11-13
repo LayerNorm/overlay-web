@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { createHarnessDiagnostic } from '../packages/overlay-agent-runtime/src/harness-diagnostic'
-import { appendHarnessDiagnosticIndex } from './harness/diagnostic-index'
+import { appendHarnessDiagnosticIndex } from './harness/diagnosticIndex'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')

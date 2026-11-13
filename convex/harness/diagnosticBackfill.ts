@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { internalMutation } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { createHarnessDiagnostic, type HarnessDiagnostic } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
-import { appendHarnessDiagnosticIndex } from './diagnostic-index'
+import { appendHarnessDiagnosticIndex } from './diagnosticIndex'
 
 const PAGE_SIZE = 100
 const PAGE_MAXIMUM_BYTES = 1_000_000

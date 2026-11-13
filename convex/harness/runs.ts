@@ -51,7 +51,7 @@ import type {
   HarnessTranscriptPage,
   HarnessTranscriptPersistence,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
-import { appendHarnessDiagnosticIndex, persistHarnessToolFailure } from './diagnostic-index'
+import { appendHarnessDiagnosticIndex, persistHarnessToolFailure } from './diagnosticIndex'
 import { ConvexError, v } from 'convex/values'
 
 const MAX_ID_LENGTH = 256
