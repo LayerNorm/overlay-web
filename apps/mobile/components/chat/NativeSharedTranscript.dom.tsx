@@ -8,10 +8,11 @@ import { getDraftFromToolBlock } from '../../../packages/overlay-chat-core/src/m
 import { selectTranscriptResponse } from '../../../packages/overlay-chat-core/src/transcript-view'
 import type { ChatTranscriptExchangeView } from '../../../packages/overlay-chat-core/src/transcript-view'
 import type { DraftModalState } from '../../../packages/overlay-chat-core/src/types'
-import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from '../../../packages/overlay-ui/src/ai'
+import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller, useMessageScrollerScrollable } from '../../../packages/overlay-ui/src/ai'
 import { Button } from '../../../packages/overlay-ui/src/primitives'
+import { DelayedTooltip } from '../../../packages/overlay-ui/src/components/overlays/DelayedTooltip'
 import { PlatformActionsProvider } from '../../../packages/overlay-ui/src/platform-actions'
-import { ChevronLeft, ChevronRight, Eye, Reply } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Eye, Reply } from 'lucide-react'
 import { ChatExchange } from '../../../packages/overlay-chat-react/src/components/transcript/ChatExchange'
 import { ChatTranscript } from '../../../packages/overlay-chat-react/src/components/transcript/ChatTranscript'
 import type { ChatTranscriptPresentation } from '../../../packages/overlay-chat-react/src/components/transcript/ChatTranscript'
@@ -31,6 +32,10 @@ import type {
 import { validateNativeMarkdownLink } from '../../lib/sharedMarkdownBridge'
 import { selectionNeedsReconstruction, textSelectionPoints, type SelectionNodes } from '../../lib/sharedMarkdownSelection'
 import '../../assets/shared-markdown.generated.css'
+
+const SCROLL_EDGE_THRESHOLD = 24
+const TRANSCRIPT_SCROLL_KEYS = new Set(['ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 'PageUp', ' '])
+const TRANSCRIPT_SCROLL_AWAY_KEYS = new Set(['ArrowUp', 'Home', 'PageUp'])
 
 interface Props {
   snapshot: NativeTranscriptDomSnapshot
@@ -392,6 +397,51 @@ function MessageScrollerScrollBridge({ bind }: { bind: (scrollToMessage: ScrollT
   return null
 }
 
+function isNearTranscriptBottom(viewport: HTMLElement) {
+  return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= SCROLL_EDGE_THRESHOLD
+}
+
+function hasTranscriptSelection(viewport: HTMLElement) {
+  const selection = typeof window.getSelection === 'function' ? window.getSelection() : null
+  return Boolean(
+    selection && !selection.isCollapsed && selection.anchorNode && viewport.contains(selection.anchorNode) &&
+    selection.focusNode && viewport.contains(selection.focusNode),
+  )
+}
+
+function JumpToLatestControl({
+  request,
+  onJump,
+}: {
+  request: number
+  onJump: () => void
+}) {
+  const { scrollToEnd } = useMessageScroller()
+  const { end } = useMessageScrollerScrollable()
+  useLayoutEffect(() => {
+    if (request > 0) scrollToEnd({ behavior: 'smooth' })
+  }, [request, scrollToEnd])
+  if (!end) return null
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center">
+      <div className="pointer-events-auto">
+        <DelayedTooltip label="Jump to latest" side="top">
+          <Button
+            variant="ghost"
+            size="icon"
+            type="button"
+            aria-label="Jump to latest message"
+            onClick={onJump}
+            className="h-9 w-9 rounded-full border border-(--border) bg-(--surface-elevated) p-0 text-(--muted) shadow-xs transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
+          >
+            <ChevronDown size={17} strokeWidth={1.9} />
+          </Button>
+        </DelayedTooltip>
+      </div>
+    </div>
+  )
+}
+
 export default function NativeSharedTranscript(props: Props) {
   const { snapshot } = props
   const key = JSON.stringify([snapshot.workspaceId, snapshot.conversationId, snapshot.mountNonce])
@@ -403,12 +453,28 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const scrollToMessageRef = useRef<ScrollToMessage | null>(null)
   const processedIntents = useRef<string[]>([])
   const pointerDrag = useRef<{ id: number; y: number; fired: boolean } | null>(null)
+  const touchScrollStart = useRef<{ x: number; y: number; rearmed: boolean } | null>(null)
+  const suppressFollowOnScrollRef = useRef(false)
   const scrollPosition = useRef(0)
+  const followsLatestRef = useRef(false)
+  const [followsLatest, setFollowsLatest] = useState(false)
+  const [scrollToEndRequest, setScrollToEndRequest] = useState(0)
   const selectionBookmark = useRef<TranscriptSelectionBookmark | null>(null)
   const scopeKey = JSON.stringify([snapshot.workspaceId, snapshot.conversationId, snapshot.mountNonce])
   const readyKey = JSON.stringify([scopeKey, snapshot.focusNonce, snapshot.deliveryEpoch])
   const bindScrollToMessage = useCallback((scrollToMessage: ScrollToMessage | null) => {
     scrollToMessageRef.current = scrollToMessage
+  }, [])
+  const requestScrollToLatest = useCallback(() => {
+    suppressFollowOnScrollRef.current = false
+    followsLatestRef.current = true
+    setFollowsLatest(true)
+    setScrollToEndRequest((request) => request + 1)
+  }, [])
+  const pauseLatestFollow = useCallback(() => {
+    if (!followsLatestRef.current) return
+    followsLatestRef.current = false
+    setFollowsLatest(false)
   }, [])
   const lifecycle = useRef({ scopeKey, focusNonce: snapshot.focusNonce, generation: 0, active: false })
   const committedScopeKey = useRef(scopeKey)
@@ -594,7 +660,8 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       focusExchangeId: focus.exchangeId, focusRole: focus.role, focusTargetId: focus.targetId, focusOffset,
       anchorNode: selection.anchorNode, focusNode: selection.focusNode,
     }
-  }, [])
+    pauseLatestFollow()
+  }, [pauseLatestFollow])
 
   useEffect(() => {
     document.addEventListener('selectionchange', rememberSelection)
@@ -636,15 +703,19 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     }
     if (intent.kind === 'initial-end' || intent.kind === 'submission') {
       if (!viewport.querySelector('[data-chat-transcript]')) return
+      requestScrollToLatest()
       viewport.scrollTop = viewport.scrollHeight
       scrollPosition.current = viewport.scrollTop
     } else if (intent.kind === 'restore') {
       if (!viewport.querySelector('[data-chat-transcript]')) return
       viewport.scrollTop = intent.scrollTop
       scrollPosition.current = viewport.scrollTop
-    }
-    else if (intent.kind === 'reply') {
+      if (isNearTranscriptBottom(viewport)) requestScrollToLatest()
+      else pauseLatestFollow()
+    } else if (intent.kind === 'reply') {
       if (!intent.exchangeId || !filteredView.exchanges.some((exchange) => exchange.id === intent.exchangeId)) return
+      pauseLatestFollow()
+      suppressFollowOnScrollRef.current = true
       let attempts = 0
       let frame = 0
       const revealReply = () => {
@@ -661,7 +732,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       return () => window.cancelAnimationFrame(frame)
     }
     markIntentProcessed()
-  }, [filteredView.exchanges, readyKey, readyScopeKey, scopeKey, snapshot.focusNonce, snapshot.scrollIntent])
+  }, [filteredView.exchanges, pauseLatestFollow, readyKey, readyScopeKey, requestScrollToLatest, scopeKey, snapshot.focusNonce, snapshot.scrollIntent])
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
@@ -670,10 +741,18 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       committedScopeKey.current = scopeKey
       selectionBookmark.current = null
       scrollPosition.current = 0
+      suppressFollowOnScrollRef.current = false
+      followsLatestRef.current = false
+      setFollowsLatest(false)
       viewport.scrollTop = 0
       return
     }
-    viewport.scrollTop = scrollPosition.current
+    if (followsLatestRef.current) {
+      viewport.scrollTop = viewport.scrollHeight
+      scrollPosition.current = viewport.scrollTop
+    } else {
+      viewport.scrollTop = scrollPosition.current
+    }
     const saved = selectionBookmark.current
     if (!saved || !selectionNeedsReconstruction(saved, (node) => node.isConnected && viewport.contains(node))) return
     const anchorRoot = selectionRoot(viewport, saved.anchorExchangeId, saved.anchorRole, saved.anchorTargetId)
@@ -691,8 +770,69 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
 
   const handleScroll = useCallback(() => {
     const viewport = viewportRef.current
-    if (viewport) scrollPosition.current = viewport.scrollTop
+    if (!viewport) return
+    const previousScrollTop = scrollPosition.current
+    scrollPosition.current = viewport.scrollTop
+    if (selectionBookmark.current || hasTranscriptSelection(viewport)) {
+      pauseLatestFollow()
+      return
+    }
+    if (suppressFollowOnScrollRef.current) return
+    if (isNearTranscriptBottom(viewport)) {
+      if (!followsLatestRef.current) requestScrollToLatest()
+    } else if (viewport.scrollTop < previousScrollTop) {
+      pauseLatestFollow()
+    }
+  }, [pauseLatestFollow, requestScrollToLatest])
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    suppressFollowOnScrollRef.current = false
+    const selected = selectionBookmark.current !== null || hasTranscriptSelection(viewport)
+    const horizontal = event.shiftKey || event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+    if (horizontal) {
+      if (!selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
+      return
+    }
+    if (event.deltaY < 0) {
+      pauseLatestFollow()
+      return
+    }
+    if (!selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
+  }, [pauseLatestFollow, requestScrollToLatest])
+  const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0]
+    touchScrollStart.current = touch ? { x: touch.clientX, y: touch.clientY, rearmed: false } : null
   }, [])
+  const handleTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const start = touchScrollStart.current
+    const touch = event.touches[0]
+    const viewport = viewportRef.current
+    if (!start || !touch || !viewport) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    suppressFollowOnScrollRef.current = false
+    if (deltaY > 8 && Math.abs(deltaY) >= Math.abs(deltaX)) {
+      pauseLatestFollow()
+      return
+    }
+    const selected = selectionBookmark.current !== null || hasTranscriptSelection(viewport)
+    if (start.rearmed || selected || !(followsLatestRef.current || isNearTranscriptBottom(viewport))) return
+    start.rearmed = true
+    requestScrollToLatest()
+  }, [pauseLatestFollow, requestScrollToLatest])
+  const handleTouchEnd = useCallback(() => { touchScrollStart.current = null }, [])
+  const handleScrollKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!TRANSCRIPT_SCROLL_KEYS.has(event.key)) return
+    suppressFollowOnScrollRef.current = false
+    if (TRANSCRIPT_SCROLL_AWAY_KEYS.has(event.key)) {
+      pauseLatestFollow()
+      return
+    }
+    const viewport = viewportRef.current
+    const selected = selectionBookmark.current !== null || Boolean(viewport && hasTranscriptSelection(viewport))
+    if (viewport && !selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
+  }, [pauseLatestFollow, requestScrollToLatest])
 
   const renderExchange = useCallback((exchange: ChatTranscriptExchangeView, presentation: ChatTranscriptPresentation) => {
     const mediaPresentation = snapshot.media.find((item) => item.exchangeId === exchange.id)
@@ -908,20 +1048,28 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     const drag = pointerDrag.current
     if (!drag || !event.isTrusted || drag.id !== event.pointerId || drag.fired || Math.abs(event.clientY - drag.y) < 12) return
     drag.fired = true
+    suppressFollowOnScrollRef.current = false
+    if (event.clientY > drag.y) pauseLatestFollow()
+    else if (event.pointerType !== 'touch') {
+      const viewport = viewportRef.current
+      const selected = selectionBookmark.current !== null || Boolean(viewport && hasTranscriptSelection(viewport))
+      if (viewport && !selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
+    }
     if (supported('keyboard-dismiss')) void dispatch({ kind: 'keyboard-dismiss', ...scope, intent: 'user-drag' }).catch(() => {})
-  }, [dispatch, scope, supported])
+  }, [dispatch, pauseLatestFollow, requestScrollToLatest, scope, supported])
   const dragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => { if (pointerDrag.current?.id === event.pointerId) pointerDrag.current = null }, [])
 
   return (
-    <MessageScrollerProvider defaultScrollPosition="start" autoScroll={false}>
+    <MessageScrollerProvider defaultScrollPosition="start" autoScroll={followsLatest} scrollEdgeThreshold={SCROLL_EDGE_THRESHOLD}>
       <MessageScrollerScrollBridge bind={bindScrollToMessage} />
       <MessageScroller className="overlay-chat-surface relative h-full min-h-0 w-full overflow-hidden bg-(--background) text-(--foreground)" data-theme={snapshot.theme}>
-        <MessageScrollerViewport ref={viewportRef} aria-label="Conversation" onClickCapture={onClickCapture} onScroll={handleScroll} onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4">
+        <MessageScrollerViewport ref={viewportRef} aria-label="Conversation" onClickCapture={onClickCapture} onScroll={handleScroll} onWheel={handleWheel} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd} onKeyDown={handleScrollKeyDown} onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4">
           <MessageScrollerContent data-chat-transcript className="mx-auto w-full min-w-0 max-w-4xl gap-5 sm:gap-6">
             <ChatTranscript view={filteredView} actions={{ renderExchange }} presentation={{ density: 'comfortable', actionVisibility: 'always', showActions: true }} scrollItems />
             {notice ? <p className="px-2 text-xs text-(--muted)" role="status" aria-live="polite">{notice}</p> : null}
           </MessageScrollerContent>
         </MessageScrollerViewport>
+        <JumpToLatestControl request={scrollToEndRequest} onJump={requestScrollToLatest} />
         {sourceResponse && sourcePanel ? <div
           data-native-sources
           role="dialog"

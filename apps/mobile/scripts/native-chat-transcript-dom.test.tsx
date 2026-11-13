@@ -1119,6 +1119,20 @@ test('mounted React scroll intents wait for readiness, deduplicate old IDs, and 
     await page.waitForTimeout(40)
     assert.equal(await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollTop), 82)
 
+    const viewportBox = await page.locator('[aria-label="Conversation"]').boundingBox()
+    assert.ok(viewportBox)
+    const beforeGesture = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollTop)
+    await page.mouse.move(viewportBox.x + viewportBox.width / 2, viewportBox.y + viewportBox.height / 2)
+    await page.mouse.wheel(0, 5000)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+    const bottomScrollTop = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollTop)
+    await page.mouse.wheel(0, -5000)
+    await page.waitForFunction((top) => document.querySelector<HTMLElement>('[aria-label="Conversation"]')!.scrollTop < top - 1, bottomScrollTop)
+    assert.notEqual(await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollTop), beforeGesture)
+
     await update(snapshot(view, { query: '__no_matching_exchange__', scrollIntent: { id: 'reply-wait-1', kind: 'reply', exchangeId: 'parent-exchange' } }))
     await page.waitForFunction(() => !document.querySelector('[data-native-exchange="parent-exchange"]'))
     await page.waitForTimeout(40)
@@ -1644,6 +1658,281 @@ test('mounted shared reply anchor dispatches scoped jump under filtering and use
     await replyAnchor.click()
     assert.equal((await page.getByRole('status').textContent())?.trim(), 'Reply unavailable')
     assert.equal(await page.evaluate(() => (window as unknown as { __nativeTranscriptActions: unknown[] }).__nativeTranscriptActions.length), 3)
+  } finally {
+    await browser.close()
+  }
+})
+
+test('mounted settled transcript exposes an accessible themed jump-to-latest control and follows later growth', async () => {
+  const view = makeView()
+  const response = view.exchanges[0]!.responses[0]!
+  response.status = 'completed'
+  let transcript = Array.from({ length: 45 }, (_, index) => 'Settled paragraph ' + index + ': transcript history remains available above the latest message.').join('\n\n')
+  response.blocks = [{ kind: 'text', text: transcript } as never]
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const css = readFileSync('assets/shared-markdown.generated.css', 'utf8')
+    await page.setContent('<style>' + css + ' html,body,#root{height:100%;margin:0} #root{height:844px;width:100%}</style><div id="root"></div>')
+    await page.addScriptTag({ content: await nativeTranscriptBrowserBundle() })
+    await page.evaluate((value) => {
+      (window as unknown as { __mountNativeTranscript: (snapshot: unknown) => void }).__mountNativeTranscript(value)
+    }, snapshot(view, { theme: 'light' }))
+    await page.waitForFunction(() => (window as unknown as { __nativeTranscriptReady: unknown[] }).__nativeTranscriptReady.length > 0)
+
+    const button = page.getByRole('button', { name: 'Jump to latest message' })
+    await button.waitFor({ state: 'visible' })
+    assert.equal(await button.getAttribute('type'), 'button')
+    assert.ok((await button.getAttribute('class'))?.includes('bg-(--surface-elevated)'))
+    assert.ok((await button.getAttribute('class'))?.includes('text-(--muted)'))
+    assert.equal(await page.locator('[data-slot="message-scroller"]').getAttribute('data-theme'), 'light')
+    assert.ok(await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24
+    }))
+
+    await button.click()
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+    await page.waitForFunction(() => !document.querySelector('[aria-label="Jump to latest message"]'))
+
+    const previousHeight = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollHeight)
+    transcript += '\n\nSettled follow-up growth: ' + Array.from({ length: 8 }, (_, index) => 'additional content ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view, { theme: 'light' }))
+    await page.waitForFunction((height) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    }, previousHeight)
+  } finally {
+    await browser.close()
+  }
+})
+
+test('mounted streaming jump resumes follow, preserves later scroll-away intent, and resets on scope change', async () => {
+  const view = makeView()
+  const response = view.exchanges[0]!.responses[0]!
+  response.status = 'streaming'
+  let transcript = Array.from({ length: 45 }, (_, index) => 'Streaming paragraph ' + index + ': current response content remains scrollable.').join('\n\n')
+  response.blocks = [{ kind: 'text', text: transcript } as never]
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const css = readFileSync('assets/shared-markdown.generated.css', 'utf8')
+    await page.setContent('<style>' + css + ' html,body,#root{height:100%;margin:0} #root{height:844px;width:100%}</style><div id="root"></div>')
+    await page.addScriptTag({ content: await nativeTranscriptBrowserBundle() })
+    await page.evaluate((value) => {
+      (window as unknown as { __mountNativeTranscript: (snapshot: unknown) => void }).__mountNativeTranscript(value)
+    }, snapshot(view, { theme: 'dark' }))
+    await page.waitForFunction(() => (window as unknown as { __nativeTranscriptReady: unknown[] }).__nativeTranscriptReady.length > 0)
+
+    const button = page.getByRole('button', { name: 'Jump to latest message' })
+    await button.waitFor({ state: 'visible' })
+    assert.equal(await page.locator('[data-slot="message-scroller"]').getAttribute('data-theme'), 'dark')
+    await button.click()
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+
+    let previousHeight = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollHeight)
+    transcript += '\n\nStreaming chunk after jump: ' + Array.from({ length: 12 }, (_, index) => 'new chunk ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view, { theme: 'dark' }))
+    await page.waitForFunction((height) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    }, previousHeight)
+
+    await page.mouse.move(190, 420)
+    await page.mouse.wheel(0, -500)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24)
+    })
+    const scrolledAway = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight }
+    })
+    assert.ok(await button.isVisible())
+
+    transcript += '\n\nStreaming chunk while reading history: ' + Array.from({ length: 12 }, (_, index) => 'later chunk ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view, { theme: 'dark' }))
+    await page.waitForFunction((height) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height)
+    }, scrolledAway.scrollHeight)
+    const afterAwayGrowth = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return { scrollTop: viewport.scrollTop, distanceFromBottom: viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight }
+    })
+    assert.equal(afterAwayGrowth.scrollTop, scrolledAway.scrollTop)
+    assert.ok(afterAwayGrowth.distanceFromBottom > 24)
+    assert.ok(await button.isVisible())
+
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view, { theme: 'light', conversationId: 'conversation-2', mountNonce: 'mount-2', focusNonce: 'focus-2' }))
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      const scroller = document.querySelector<HTMLElement>('[data-slot="message-scroller"]')
+      return Boolean(viewport && viewport.scrollTop === 0 && scroller?.dataset.theme === 'light')
+    })
+    await page.getByRole('button', { name: 'Jump to latest message' }).waitFor({ state: 'visible' })
+
+    previousHeight = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollHeight)
+    transcript += '\n\nNew scope content: ' + Array.from({ length: 8 }, (_, index) => 'new conversation ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view, { theme: 'light', conversationId: 'conversation-2', mountNonce: 'mount-2', focusNonce: 'focus-2' }))
+    await page.waitForFunction((height) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollTop === 0)
+    }, previousHeight)
+  } finally {
+    await browser.close()
+  }
+})
+
+test('mounted wheel gestures resume follow at the bottom and keep it through endward wheels', async () => {
+  const view = makeView()
+  const response = view.exchanges[0]!.responses[0]!
+  response.status = 'streaming'
+  let transcript = Array.from({ length: 45 }, (_, index) => 'Wheel history ' + index + ': use a real gesture to return to the latest response.').join('\n\n')
+  response.blocks = [{ kind: 'text', text: transcript } as never]
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const css = readFileSync('assets/shared-markdown.generated.css', 'utf8')
+    await page.setContent('<style>' + css + ' html,body,#root{height:100%;margin:0} #root{height:844px;width:100%}</style><div id="root"></div>')
+    await page.addScriptTag({ content: await nativeTranscriptBrowserBundle() })
+    await page.evaluate((value) => {
+      (window as unknown as { __mountNativeTranscript: (snapshot: unknown) => void }).__mountNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction(() => (window as unknown as { __nativeTranscriptReady: unknown[] }).__nativeTranscriptReady.length > 0)
+
+    const button = page.getByRole('button', { name: 'Jump to latest message' })
+    await button.waitFor({ state: 'visible' })
+    await page.mouse.move(190, 420)
+    await page.mouse.wheel(0, 5000)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+    await button.waitFor({ state: 'hidden' })
+
+    const grow = async (label: string) => {
+      const previousHeight = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollHeight)
+      transcript += '\n\n' + label + ': ' + Array.from({ length: 14 }, (_, index) => 'stream growth ' + index).join(' ')
+      response.blocks = [{ kind: 'text', text: transcript } as never]
+      await page.evaluate((value) => {
+        (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+      }, snapshot(view))
+      await page.waitForFunction((height) => {
+        const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+        return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+      }, previousHeight)
+    }
+
+    await grow('Growth after manual return')
+    await page.mouse.wheel(0, 500)
+    await grow('Growth after downward wheel at bottom')
+    await page.mouse.wheel(500, 0)
+    await grow('Growth after horizontal wheel at bottom')
+    await button.waitFor({ state: 'hidden' })
+  } finally {
+    await browser.close()
+  }
+})
+
+test('mounted browser pointer text selection at bottom pauses follow during streaming growth', async () => {
+  const view = makeView()
+  const response = view.exchanges[0]!.responses[0]!
+  response.status = 'streaming'
+  let transcript = Array.from({ length: 36 }, (_, index) => 'Selection history ' + index + ': preserve the active reading position.').join('\n\n')
+  transcript += '\n\nLong-press selection target at the latest response.'
+  response.blocks = [{ kind: 'text', text: transcript } as never]
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const css = readFileSync('assets/shared-markdown.generated.css', 'utf8')
+    await page.setContent('<style>' + css + ' html,body,#root{height:100%;margin:0} #root{height:844px;width:100%}</style><div id="root"></div>')
+    await page.addScriptTag({ content: await nativeTranscriptBrowserBundle() })
+    await page.evaluate((value) => {
+      (window as unknown as { __mountNativeTranscript: (snapshot: unknown) => void }).__mountNativeTranscript(value)
+    }, snapshot(view, { scrollIntent: { id: 'selection-follow', kind: 'initial-end' } }))
+    await page.waitForFunction(() => (window as unknown as { __nativeTranscriptReady: unknown[] }).__nativeTranscriptReady.length > 0)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+
+    const start = await page.evaluate(() => {
+      const root = document.querySelector('[data-native-assistant-exchange]')
+      if (!root) throw new Error('assistant transcript not found')
+      const target = 'Long-press selection target at the latest response.'
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        const offset = node.data.indexOf(target)
+        if (offset < 0) continue
+        const range = document.createRange()
+        range.setStart(node, offset)
+        range.setEnd(node, offset + 1)
+        const rect = range.getBoundingClientRect()
+        return { x: rect.left + 1, y: rect.top + rect.height / 2 }
+      }
+      throw new Error('selection target not found')
+    })
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    await page.mouse.move(start.x + 120, start.y, { steps: 8 })
+    await page.mouse.up()
+    await page.waitForFunction(() => {
+      const selection = window.getSelection()
+      return Boolean(selection && !selection.isCollapsed && selection.toString().length > 0)
+    })
+    await page.waitForTimeout(20)
+    const before = await page.evaluate(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')!
+      return {
+        scrollTop: viewport.scrollTop,
+        distanceFromBottom: viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight,
+        selectedText: window.getSelection()?.toString() ?? '',
+      }
+    })
+    assert.ok(before.distanceFromBottom <= 24)
+    assert.ok(before.selectedText.length > 0)
+
+    const previousHeight = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollHeight)
+    transcript += '\n\nStream growth after text selection: ' + Array.from({ length: 16 }, (_, index) => 'new output ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction(({ height, scrollTop, selectedText }) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(
+        viewport && viewport.scrollHeight > height && viewport.scrollTop === scrollTop &&
+        window.getSelection()?.toString() === selectedText &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24,
+      )
+    }, { height: previousHeight, scrollTop: before.scrollTop, selectedText: before.selectedText })
   } finally {
     await browser.close()
   }
