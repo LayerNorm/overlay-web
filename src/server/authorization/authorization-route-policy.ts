@@ -421,6 +421,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   // Called by the Slack import cron with the internal API secret.
   { path: '/api/v1/imports/slack/process', methods: { POST: internal() } },
+  // Called by the Convex sync history cron with the internal API secret.
+  { path: '/api/v1/sync/history/process', methods: { POST: internal() } },
   // BYOK provider connections are scoped to the caller's own user id.
   {
     path: '/api/v1/providers/connections',

@@ -179,6 +179,7 @@
     "src/app/api/v1/surfaces/connections/route.ts",
     "src/app/api/v1/surfaces/slack/callback/route.ts",
     "src/app/api/v1/surfaces/slack/connect/route.ts",
+    "src/app/api/v1/sync/history/process/route.ts",
     "src/app/api/v1/sync/slack/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
@@ -272,6 +273,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "automation scheduler",
       "target": "internal.automations.automationRunner.runMinuteTick"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "channel sync history and repair",
+      "target": "internal.sync.history.runTick"
     },
     {
       "cadence": "{ minutes: 15 }",
@@ -585,6 +591,9 @@
     "src/server/surfaces/chat.ts",
     "src/server/surfaces/convex-chat-state.ts",
     "src/server/surfaces/surface-authors.ts",
+    "src/server/sync/history-worker.ts",
+    "src/server/sync/rate-limit.ts",
+    "src/server/sync/slack/events.ts",
     "src/server/sync/slack/inbound.ts",
     "src/server/tools/tools/files-executes.ts",
     "src/server/tools/tools/record-tool-invocation.ts",

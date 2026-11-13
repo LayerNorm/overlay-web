@@ -8,7 +8,7 @@ export type SlackSyncEnvelope = {
   userIds: string[]
 }
 
-type SlackMessage = {
+export type SlackMessage = {
   type?: string
   subtype?: string
   ts?: string
@@ -91,6 +91,12 @@ function messageEnvelope(teamId: string, channelId: string, event: SlackEvent): 
   }
   const upsert = upsertFrom(message, editedAt)
   return upsert ? { teamId, channelId, events: [upsert], userIds: message.user ? [message.user] : [] } : null
+}
+
+/** A message from conversations.history or conversations.replies as a sync upsert, or null for joins and other non-posts. */
+export function slackHistoryMessageEvent(message: SlackMessage): SyncInboundEvent | null {
+  if (!POSTED_SUBTYPES.has(message.subtype)) return null
+  return upsertFrom(message, slackTsToMs(message.edited?.ts))
 }
 
 /**

@@ -71,6 +71,7 @@ settings:
       - message.im
       - message.mpim
       - member_joined_channel
+      - channel_created         # channel sync auto-link
       - reaction_added          # channel sync
       - reaction_removed        # channel sync
       - app_home_opened
@@ -116,6 +117,22 @@ runs this OAuth flow with `purpose=sync`. Message, edit, delete and reaction
 events from linked channels are applied by `src/server/sync/slack/`. Private
 channels only sync once Overlay has been invited to them.
 
+History and repair: a Convex cron (`sync/history:runTick`) wakes
+`/api/v1/sync/history/process` every minute while there is work. The worker
+(`src/server/sync/history-worker.ts`) imports each new link's last 180 days
+newest first, then its thread replies, and repairs every syncing link's last
+day once a night (after 10:00 UTC). Every call draws from one token bucket per
+Slack workspace and method (`src/server/sync/rate-limit.ts`,
+`syncRateBudgets`), shared with outbound sends, which come first. Until the
+app is approved in the Slack Marketplace, Slack allows us one
+`conversations.history` or `conversations.replies` call a minute with 15
+messages a page, so a busy channel's history takes hours; set
+`SLACK_SYNC_MARKETPLACE_APPROVED=true` after approval to use Tier 3 (about 50
+calls a minute, 1,000 messages a page). A 429 or an `app_rate_limited` event
+shows the affected channels as Catching up; they resume and repair on their
+own. With auto-link on, `channel_created` links each new public channel to a
+new Overlay channel and Overlay joins it (`channels:join`).
+
 ## Several agents in one channel
 
 One Slack install has one bot user (`@Overlay`), and any number of agents can
@@ -138,6 +155,7 @@ name. Inbound routing (`src/shared/surfaces/surface-routing.ts`):
 | `SLACK_SIGNING_SECRET` | webhook signature verification |
 | `SLACK_ENCRYPTION_KEY` | AES-256-GCM key encrypting stored bot tokens at rest (`openssl rand -hex 32`) |
 | `SLACK_REDIRECT_URI` | optional override; default `<origin>/api/v1/surfaces/slack/callback` |
+| `SLACK_SYNC_MARKETPLACE_APPROVED` | `true` once the app is approved in the Slack Marketplace; switches channel sync history from 1 call a minute (15 messages a page) to Tier 3. Leave unset before approval. |
 
 Chat SDK state: `ConvexChatStateAdapter` (`src/server/surfaces/convex-chat-state.ts`
 over `convex/surfaces/chatState.ts` and the `surfaceChatState` table) stores

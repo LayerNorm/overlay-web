@@ -11,6 +11,7 @@ import {
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import { handleSlackSyncEvent } from '@/server/sync/slack/inbound'
 import { normalizeSlackSyncEvent } from '@/server/sync/slack/normalize'
+import { handleSlackSyncNotice, parseSlackSyncNotice } from '@/server/sync/slack/events'
 
 let handlersRegistered = false
 
@@ -74,15 +75,22 @@ export async function POST(request: Request) {
 
   // Channel sync reads the same events. It only acts on linked channels and runs
   // after the response, so agent routing and Slack's ack window are unchanged.
+  // app_rate_limited is sync's alone and is acknowledged here.
+  const notice = parseSlackSyncNotice(body)
   if (
-    normalizeSlackSyncEvent(body)
+    (notice || normalizeSlackSyncEvent(body))
     && verifySlackRequestSignature({
       headers: request.headers,
       body,
       signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
     })
   ) {
-    after(async () => { await handleSlackSyncEvent(body) })
+    if (notice) {
+      after(async () => { await handleSlackSyncNotice(notice) })
+      if (notice.kind === 'app_rate_limited') return NextResponse.json({ ok: true })
+    } else {
+      after(async () => { await handleSlackSyncEvent(body) })
+    }
   }
 
   return await chat.webhooks.slack(request, {

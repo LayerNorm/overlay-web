@@ -158,6 +158,12 @@ crons.interval(
   {},
 )
 
+// Slack and Teams channel sync: imports linked channels' history newest
+// first, resumes links whose rate-limit window passed and runs each syncing
+// link's nightly gap repair. The web server's worker does the platform calls
+// within each workspace's rate budget; this only wakes it when work exists.
+crons.interval('channel sync history and repair', { minutes: 1 }, internal.sync.history.runTick, {})
+
 // knowledgeChunks have no tombstone — a chunk is dead when its source row is.
 // Interrupted purges can strand retrievable chunks; a daily whole-table scan
 // deletes provable orphans (missing source row, tombstoned memory). The action

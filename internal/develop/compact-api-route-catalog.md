@@ -129,6 +129,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/surfaces/connections/[connectionId]/channels`
 - `GET, POST /api/v1/surfaces/bindings`
 - `DELETE /api/v1/surfaces/bindings/[bindingId]`
+- `POST /api/v1/sync/history/process`
 - `GET, POST /api/v1/sync/slack`
 - `POST /api/v1/webhooks/slack`
 
