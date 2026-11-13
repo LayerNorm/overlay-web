@@ -65,19 +65,43 @@ test('normalizes only known canonical links outside inline and fenced code', () 
   const markdown = [
     `![poster](${href}?download=1)`,
     `[Open](https://app.getoverlay.io${href})`,
+    `[Canonical origin](https://getoverlay.io${href})`,
     '[Note](/app/w/workspace/notes?id=note-1&scope=personal)',
+    `[unknown file](${fileContentHref('file-2')})`,
     `[external](https://outside.test${href})`,
     `[protocol-relative](//evil.example${href})`,
     `\`[code](${href})\``,
     `\`\`\`md\n[code](${href})\n\`\`\``,
   ].join('\n')
   const normalized = removeKnownFileMarkdown(markdown, new Set(['file-1', 'note-1']))
-  assert.equal(normalized.includes('![poster]'), false)
-  assert.equal(normalized.includes('[Open]('), false)
-  assert.equal(normalized.includes('[Note]('), false)
-  assert.equal(normalized.includes('[external](https://outside.test'), true)
-  assert.equal(normalized.includes(`[protocol-relative](//evil.example${href})`), true)
-  assert.equal(normalized.includes(`\`[code](${href})\``), true)
-  assert.equal(normalized.includes(`\`\`\`md\n[code](${href})\n\`\`\``), true)
+  assert.equal(normalized, [
+    'poster',
+    'Open',
+    'Canonical origin',
+    'Note',
+    `[unknown file](${fileContentHref('file-2')})`,
+    `[external](https://outside.test${href})`,
+    `[protocol-relative](//evil.example${href})`,
+    `\`[code](${href})\``,
+    `\`\`\`md\n[code](${href})\n\`\`\``,
+  ].join('\n'))
   assert.equal(removeKnownFileMarkdown(markdown, new Set()), markdown)
+})
+
+test('handles long malformed brackets, inline ticks, and fences', () => {
+  const href = fileContentHref('file-1')
+  const fileIds = new Set(['file-1'])
+  const unterminatedLink = '['.repeat(5_000) + '](' + 'x'.repeat(5_000)
+  assert.equal(removeKnownFileMarkdown(unterminatedLink, fileIds), unterminatedLink)
+
+  const unmatchedInline = '`[Open](' + href + ')'
+  assert.equal(removeKnownFileMarkdown(unmatchedInline, fileIds), '`Open')
+
+  const repeatedTicks = '`'.repeat(4_001)
+  const malformedInline = `${repeatedTicks}[Open](${href})`
+  assert.equal(removeKnownFileMarkdown(malformedInline, fileIds), malformedInline)
+
+  const unmatchedFences = '~~~'.repeat(1_001)
+  const malformedFence = `${unmatchedFences}[Open](${href})`
+  assert.equal(removeKnownFileMarkdown(malformedFence, fileIds), malformedFence)
 })

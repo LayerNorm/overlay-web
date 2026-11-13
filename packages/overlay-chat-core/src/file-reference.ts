@@ -120,44 +120,233 @@ export function fileContentHref(fileId: string): string {
   return `/api/v1/files/${encodeURIComponent(fileId)}/content`
 }
 
-export function removeKnownFileMarkdown(text: string, fileIds: ReadonlySet<string>): string {
-  const replaceKnownLinks = (source: string, expectedPaths: ReadonlySet<string>) => source.replace(
-    /!?\[([^\]]*)\]\((<[^>]*>|[^)\s]+)(?:\s+[^)]*)?\)/g,
-    (match, label: string, target: string) => {
-      const href = target.startsWith('<') && target.endsWith('>') ? target.slice(1, -1) : target
-      try {
-        const baseOrigin = 'https://overlay.invalid'
-        const url = new URL(href, baseOrigin)
-        if (url.username || url.password) return match
-        if (href.startsWith('//')) return match
-        if (/^[a-z][a-z\d+.-]*:/i.test(href)) {
-          const host = url.hostname.toLowerCase()
-          const trustedOrigin = url.protocol === 'https:' && (
-            host === 'getoverlay.io' || host.endsWith('.getoverlay.io')
-          ) || url.protocol === 'http:' && (host === 'localhost' || host === '127.0.0.1')
-          if (!trustedOrigin) return match
-        } else if (!href.startsWith('/') || url.origin !== baseOrigin) {
-          return match
-        }
-        const notePath = url.pathname === '/app/notes' || /^\/app\/w\/[^/]+\/notes$/.test(url.pathname)
-        const noteId = url.searchParams.get('id')
-        return expectedPaths.has(url.pathname) || (notePath && noteId && fileIds.has(noteId)) ? label : match
-      } catch {
-        return match
-      }
-    },
-  )
+function findMarkdownFenceEnd(source: string, openingStart: number, delimiter: '`' | '~'): number {
+  for (let index = openingStart + 3; index < source.length; index++) {
+    if (source[index] === delimiter && source[index + 1] === delimiter && source[index + 2] === delimiter) {
+      return index + 3
+    }
+  }
+  return -1
+}
 
-  let result = text
-  if (!fileIds.size) return result
+function isMarkdownWhitespaceAt(source: string, index: number): boolean {
+  const code = source.charCodeAt(index)
+  return (code >= 0x09 && code <= 0x0d) || code === 0x20 || code === 0x00a0 || code === 0x1680
+    || (code >= 0x2000 && code <= 0x200a) || code === 0x2028 || code === 0x2029
+    || code === 0x202f || code === 0x205f || code === 0x3000 || code === 0xfeff
+}
+
+type MarkdownTargetParse =
+  | { kind: 'complete'; href: string; end: number }
+  | { kind: 'invalid'; resumeAt: number }
+  | { kind: 'unterminated' }
+
+function parseMarkdownLinkTarget(source: string, openParen: number): MarkdownTargetParse {
+  let index = openParen + 1
+  let href: string
+  if (source[index] === '<') {
+    const targetStart = ++index
+    while (index < source.length && source[index] !== '>') index++
+    if (index === source.length) return { kind: 'unterminated' }
+    href = source.slice(targetStart, index)
+    index++
+    if (source[index] === ')') return { kind: 'complete', href, end: index + 1 }
+    if (!isMarkdownWhitespaceAt(source, index)) return { kind: 'invalid', resumeAt: index }
+  } else {
+    const targetStart = index
+    while (index < source.length && source[index] !== ')' && !isMarkdownWhitespaceAt(source, index)) index++
+    if (index === targetStart) return { kind: 'invalid', resumeAt: index }
+    href = source.slice(targetStart, index)
+    if (source[index] === ')') return { kind: 'complete', href, end: index + 1 }
+    while (index < source.length && source[index] !== ')') index++
+    if (index === source.length) return { kind: 'unterminated' }
+    return { kind: 'complete', href, end: index + 1 }
+  }
+
+  while (isMarkdownWhitespaceAt(source, index)) index++
+  while (index < source.length && source[index] !== ')') index++
+  if (index === source.length) return { kind: 'unterminated' }
+  return { kind: 'complete', href, end: index + 1 }
+}
+
+function isAsciiLetter(code: number): boolean {
+  return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
+}
+
+function hasUriScheme(href: string): boolean {
+  if (!isAsciiLetter(href.charCodeAt(0))) return false
+  for (let index = 1; index < href.length; index++) {
+    const code = href.charCodeAt(index)
+    if (code === 0x3a) return true
+    if (isAsciiLetter(code) || (code >= 0x30 && code <= 0x39)
+      || code === 0x2b || code === 0x2d || code === 0x2e) continue
+    return false
+  }
+  return false
+}
+
+function isWorkspaceNotePath(pathname: string): boolean {
+  const prefix = '/app/w/'
+  if (!pathname.startsWith(prefix)) return false
+  const workspaceEnd = pathname.indexOf('/', prefix.length)
+  return workspaceEnd > prefix.length && pathname.slice(workspaceEnd) === '/notes'
+}
+
+function isKnownFileHref(
+  href: string,
+  expectedPaths: ReadonlySet<string>,
+  fileIds: ReadonlySet<string>,
+): boolean {
+  try {
+    const baseOrigin = 'https://overlay.invalid'
+    const url = new URL(href, baseOrigin)
+    if (url.username || url.password || href.startsWith('//')) return false
+    if (hasUriScheme(href)) {
+      const host = url.hostname.toLowerCase()
+      const trustedOrigin = (url.protocol === 'https:' && (
+        host === 'getoverlay.io' || host.endsWith('.getoverlay.io')
+      )) || (url.protocol === 'http:' && (host === 'localhost' || host === '127.0.0.1'))
+      if (!trustedOrigin) return false
+    } else if (!href.startsWith('/') || url.origin !== baseOrigin) {
+      return false
+    }
+    const notePath = url.pathname === '/app/notes' || isWorkspaceNotePath(url.pathname)
+    const noteId = url.searchParams.get('id')
+    return expectedPaths.has(url.pathname) || (notePath && !!noteId && fileIds.has(noteId))
+  } catch {
+    return false
+  }
+}
+
+function replaceKnownMarkdownLinks(
+  source: string,
+  expectedPaths: ReadonlySet<string>,
+  fileIds: ReadonlySet<string>,
+): string {
+  const parts: string[] = []
+  let outputStart = 0
+  let openBracket = -1
+  for (let index = 0; index < source.length;) {
+    if (source[index] === '[') {
+      if (openBracket < 0) openBracket = index
+      index++
+      continue
+    }
+    if (source[index] !== ']' || openBracket < 0) {
+      index++
+      continue
+    }
+
+    const labelStart = openBracket
+    openBracket = -1
+    const openParen = index + 1
+    if (source[openParen] !== '(') {
+      index++
+      continue
+    }
+
+    const target = parseMarkdownLinkTarget(source, openParen)
+    if (target.kind === 'unterminated') {
+      parts.push(source.slice(outputStart))
+      return parts.join('')
+    }
+    if (target.kind === 'invalid') {
+      index = Math.max(index + 1, target.resumeAt)
+      continue
+    }
+
+    if (isKnownFileHref(target.href, expectedPaths, fileIds)) {
+      const matchStart = labelStart > 0 && source[labelStart - 1] === '!' ? labelStart - 1 : labelStart
+      parts.push(source.slice(outputStart, matchStart))
+      parts.push(source.slice(labelStart + 1, index))
+      outputStart = target.end
+    }
+    index = target.end
+  }
+  parts.push(source.slice(outputStart))
+  return parts.join('')
+}
+
+function replaceKnownLinksOutsideInlineCode(
+  source: string,
+  expectedPaths: ReadonlySet<string>,
+  fileIds: ReadonlySet<string>,
+): string {
+  const parts: string[] = []
+  let segmentStart = 0
+  let openTickStart = -1
+  let openTickEnd = -1
+  for (let index = 0; index < source.length;) {
+    if (source[index] === '\n') {
+      if (openTickStart < 0) {
+        parts.push(replaceKnownMarkdownLinks(source.slice(segmentStart, index), expectedPaths, fileIds))
+      } else {
+        parts.push(replaceKnownMarkdownLinks(source.slice(segmentStart, openTickStart), expectedPaths, fileIds))
+        parts.push(source.slice(openTickStart, openTickEnd))
+        parts.push(replaceKnownMarkdownLinks(source.slice(openTickEnd, index), expectedPaths, fileIds))
+      }
+      parts.push('\n')
+      segmentStart = index + 1
+      openTickStart = -1
+      openTickEnd = -1
+      index++
+      continue
+    }
+    if (source[index] !== '`') {
+      index++
+      continue
+    }
+
+    const tickStart = index
+    let tickEnd = index + 1
+    while (tickEnd < source.length && source[tickEnd] === '`') tickEnd++
+    if (openTickStart < 0) {
+      openTickStart = tickStart
+      openTickEnd = tickEnd
+    } else {
+      parts.push(replaceKnownMarkdownLinks(source.slice(segmentStart, openTickStart), expectedPaths, fileIds))
+      parts.push(source.slice(openTickStart, tickEnd))
+      segmentStart = tickEnd
+      openTickStart = -1
+      openTickEnd = -1
+    }
+    index = tickEnd
+  }
+
+  if (openTickStart < 0) {
+    parts.push(replaceKnownMarkdownLinks(source.slice(segmentStart), expectedPaths, fileIds))
+  } else {
+    parts.push(replaceKnownMarkdownLinks(source.slice(segmentStart, openTickStart), expectedPaths, fileIds))
+    parts.push(source.slice(openTickStart, openTickEnd))
+    parts.push(replaceKnownMarkdownLinks(source.slice(openTickEnd), expectedPaths, fileIds))
+  }
+  return parts.join('')
+}
+
+export function removeKnownFileMarkdown(text: string, fileIds: ReadonlySet<string>): string {
+  if (!fileIds.size) return text
   const expectedPaths = new Set([...fileIds].map(fileContentHref))
-  const fencedSegments = result.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g)
-  result = fencedSegments.map((segment) => {
-    if (segment.startsWith('```') || segment.startsWith('~~~')) return segment
-    return segment.split(/(`+[^`\n]*`+)/g).map((part) => {
-      if (part.startsWith('`') && part.endsWith('`')) return part
-      return replaceKnownLinks(part, expectedPaths)
-    }).join('')
-  }).join('')
-  return result
+  const parts: string[] = []
+  let segmentStart = 0
+  for (let index = 0; index < text.length;) {
+    const delimiter = text[index]
+    if ((delimiter !== '`' && delimiter !== '~')
+      || text[index + 1] !== delimiter || text[index + 2] !== delimiter) {
+      index++
+      continue
+    }
+
+    const fenceEnd = findMarkdownFenceEnd(text, index, delimiter)
+    if (fenceEnd < 0) {
+      parts.push(replaceKnownLinksOutsideInlineCode(text.slice(segmentStart, index), expectedPaths, fileIds))
+      parts.push(text.slice(index))
+      return parts.join('')
+    }
+    parts.push(replaceKnownLinksOutsideInlineCode(text.slice(segmentStart, index), expectedPaths, fileIds))
+    parts.push(text.slice(index, fenceEnd))
+    segmentStart = fenceEnd
+    index = fenceEnd
+  }
+  parts.push(replaceKnownLinksOutsideInlineCode(text.slice(segmentStart), expectedPaths, fileIds))
+  return parts.join('')
 }
