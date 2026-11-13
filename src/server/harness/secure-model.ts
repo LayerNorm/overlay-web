@@ -86,9 +86,12 @@ export class HarnessLanguageModel implements LanguageModelV4 {
   }
 }
 
-export async function streamHarnessModel(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+export async function streamHarnessModel(reference: HarnessModelReference, rawOptions: LanguageModelV4CallOptions) {
   'use step'
   assertSingleAuthority(reference)
+  // Provider prompt-cache markers, applied inside the step so the workflow bundle stays credential- and import-free.
+  const { applyHarnessPromptCache } = await import('./prompt-cache')
+  const options = applyHarnessPromptCache(reference.modelId, rawOptions)
   if (reference.personal) {
     const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
     await authorizePersonalHarnessModelDispatch(reference, options)
@@ -101,9 +104,12 @@ export async function streamHarnessModel(reference: HarnessModelReference, optio
   return secureModelDoStream(reference, options)
 }
 
-export async function generateHarnessModel(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+export async function generateHarnessModel(reference: HarnessModelReference, rawOptions: LanguageModelV4CallOptions) {
   'use step'
   assertSingleAuthority(reference)
+  // Provider prompt-cache markers, applied inside the step so the workflow bundle stays credential- and import-free.
+  const { applyHarnessPromptCache } = await import('./prompt-cache')
+  const options = applyHarnessPromptCache(reference.modelId, rawOptions)
   if (reference.personal) {
     const { authorizePersonalHarnessModelDispatch } = await import('./personal-model-dispatch')
     await authorizePersonalHarnessModelDispatch(reference, options)
