@@ -26,7 +26,7 @@ export function sealSyncToken(token: string): string {
 export function openSyncToken(sealed: string): string {
   const [version, iv, tag, body] = sealed.split('.')
   if (version !== VERSION || !iv || !tag || !body) throw new Error('Unrecognized sealed sync token')
-  const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv, 'base64url'))
+  const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv, 'base64url'), { authTagLength: 16 })
   decipher.setAuthTag(Buffer.from(tag, 'base64url'))
   return Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8')
 }

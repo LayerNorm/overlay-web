@@ -465,6 +465,9 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/surfaces/slack/connect', methods: { GET: authenticated() } },
   { path: '/api/v1/surfaces/slack/callback', methods: { GET: authenticated() } },
   { path: '/api/v1/webhooks/slack', methods: { POST: publicPolicy() } },
+  // Channel sync settings: the handler resolves the caller's workspace role and
+  // allows link changes only for workspace owners and admins.
+  { path: '/api/v1/sync/slack', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
   {

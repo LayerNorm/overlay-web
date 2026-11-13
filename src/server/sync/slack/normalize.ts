@@ -59,6 +59,40 @@ function upsertFrom(message: SlackMessage, editedAt?: number): SyncInboundEvent 
   }
 }
 
+function reactionEnvelope(teamId: string, event: SlackEvent): SlackSyncEnvelope | null {
+  const item = event.item
+  if (item?.type !== 'message' || !item.channel || !item.ts || !event.user || !event.reaction) return null
+  return {
+    teamId,
+    channelId: item.channel,
+    events: [{
+      kind: event.type === 'reaction_added' ? 'reaction.add' : 'reaction.remove',
+      externalMessageId: item.ts,
+      externalUserId: event.user,
+      emoji: event.reaction,
+    }],
+    userIds: [event.user],
+  }
+}
+
+function messageEnvelope(teamId: string, channelId: string, event: SlackEvent): SlackSyncEnvelope | null {
+  if (event.subtype === 'message_deleted') {
+    const ts = event.deleted_ts ?? event.previous_message?.ts
+    return ts ? { teamId, channelId, events: [{ kind: 'message.delete', externalMessageId: ts }], userIds: [] } : null
+  }
+  let message: SlackMessage = event
+  let editedAt: number | undefined
+  if (event.subtype === 'message_changed') {
+    if (!event.message || event.message.subtype === 'tombstone') return null
+    message = event.message
+    editedAt = slackTsToMs(message.edited?.ts) ?? slackTsToMs(event.ts)
+  } else if (!POSTED_SUBTYPES.has(event.subtype)) {
+    return null
+  }
+  const upsert = upsertFrom(message, editedAt)
+  return upsert ? { teamId, channelId, events: [upsert], userIds: message.user ? [message.user] : [] } : null
+}
+
 /**
  * Reads a raw Events API body and returns the sync change it carries, or null
  * for anything sync ignores (joins, topic changes, app events). Pure, so the
@@ -74,36 +108,9 @@ export function normalizeSlackSyncEvent(body: string): SlackSyncEnvelope | null 
   const event = envelope?.type === 'event_callback' ? envelope.event : undefined
   const teamId = envelope?.team_id ?? envelope?.authorizations?.[0]?.team_id
   if (!event || !teamId) return null
-
-  if (event.type === 'reaction_added' || event.type === 'reaction_removed') {
-    if (event.item?.type !== 'message' || !event.item.channel || !event.item.ts || !event.user || !event.reaction) return null
-    return {
-      teamId,
-      channelId: event.item.channel,
-      events: [{
-        kind: event.type === 'reaction_added' ? 'reaction.add' : 'reaction.remove',
-        externalMessageId: event.item.ts,
-        externalUserId: event.user,
-        emoji: event.reaction,
-      }],
-      userIds: [event.user],
-    }
-  }
-
+  if (event.type === 'reaction_added' || event.type === 'reaction_removed') return reactionEnvelope(teamId, event)
   if (event.type !== 'message' || !event.channel) return null
-  if (event.subtype === 'message_deleted') {
-    const ts = event.deleted_ts ?? event.previous_message?.ts
-    return ts ? { teamId, channelId: event.channel, events: [{ kind: 'message.delete', externalMessageId: ts }], userIds: [] } : null
-  }
-  if (event.subtype === 'message_changed') {
-    const message = event.message
-    if (!message || message.subtype === 'tombstone') return null
-    const upsert = upsertFrom(message, slackTsToMs(message.edited?.ts) ?? slackTsToMs(event.ts))
-    return upsert ? { teamId, channelId: event.channel, events: [upsert], userIds: message.user ? [message.user] : [] } : null
-  }
-  if (!POSTED_SUBTYPES.has(event.subtype)) return null
-  const upsert = upsertFrom(event)
-  return upsert ? { teamId, channelId: event.channel, events: [upsert], userIds: event.user ? [event.user] : [] } : null
+  return messageEnvelope(teamId, event.channel, event)
 }
 
 const USER_MENTION = /<@([UW][A-Z0-9]+)(?:\|([^>]+))?>/g
