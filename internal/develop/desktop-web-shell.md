@@ -38,9 +38,15 @@ The sidebar's direct sign-out action also awaits the bounded native cleanup
 before deleting its web session and navigating away.
 Agent Host starts and online panels verify the actual server session; sign-out
 stops the host, closes panels, cancels dictation (including microphone tracks and stale paste results) and clears the badge.
+The app shell publishes its background as `<meta name="theme-color">` (normalized
+to `#rrggbb`). The desktop main window listens for `did-change-theme-color` and sets
+`nativeTheme.themeSource` to light or dark from it, so the window frame follows the
+app theme rather than the macOS appearance; without the tag it falls back to system.
 
 `DesktopProvider` negotiates the handshake and marks the root `data-desktop`.
-Regular browsers receive neither Desktop settings nor native composer controls.
+Regular browsers do not receive Desktop settings. Composers are identical on web and
+desktop: there is no composer microphone or screenshot button; desktop dictation runs
+through the global shortcut and recorder HUD.
 Titlebar CSS reserves traffic-light space and makes interactive header children
 non-draggable. Chat and notes support `?surface=panel` only with the bridge;
 the compact surface keeps app providers and authorization boundaries. The optional
@@ -59,8 +65,7 @@ same row, with the log behind Show log. The model picker lists only downloaded l
 choices with capture status and on focus, so connected inputs and disconnected
 preferences update without reopening settings. Shared audio-context cleanup is
 owned by the current take; cancellation settles pending flushes and stale work
-cannot suspend a newer recording. Composer controls use native local/cloud
-dictation and screenshot attachments. Agent enrollment starts the local host from
+cannot suspend a newer recording. Agent enrollment starts the local host from
 the existing Agents connection flow. Notifications use the existing activity feed;
 desktop keeps its subscription active while hidden and applies the native badge.
 Default dictation is Control+Space (tap to toggle, hold to talk); saved custom
@@ -157,9 +162,8 @@ missing offline dependencies without replacing model weights.
 The recorder HUD keeps its state in a private script scope so it cannot collide
 with the non-configurable preload bridge. CI captures synthetic audio through the
 actual HUD, in addition to testing direct transcription and downloaded models.
-For local composer capture, the isolated preload decodes WebM/MP4 into bounded
-16 kHz mono PCM WAV before IPC; Core Audio does not decode Chromium's WebM capture.
-The native HUD captures PCM directly and bypasses that decode.
+The bridge's `transcription.transcribe` and `capture.screenshot` methods (and the
+preload WebM/MP4 decode) no longer have a web caller; the native HUD captures PCM directly.
 The HUD carries a native capture epoch through decoding and transcription so
 sign-out/cancel rejects late audio and never clears a newer recording's state.
 
@@ -167,11 +171,7 @@ Agent reply acceptance includes answer-only milestones. Their empty evidence-too
 arrays are normalized to omission before persistence; action milestones retain
 the required execution-evidence checks.
 
-Composer capture belongs to its workspace/conversation draft. Switching drafts or
-signing out cancels pending microphone acquisition and discards late transcription
-or screenshot results. Dictation appends through the programmatic draft setter,
-including text typed since recording began. Each capture releases only its own
-microphone stream. Desktop settings subscribes to native host/update events and
+Desktop settings subscribes to native host/update events and
 rejects older status reads that arrive after an event.
 
 Reply notifications capture their workspace and chat view when a stream starts.

@@ -1,6 +1,5 @@
 'use client'
 
-import { appendDictatedText } from '@/components/desktop/composer-dictation'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 
 import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
@@ -723,7 +722,6 @@ export type GuidedRoomComposer = {
 }
 
 export function RoomComposer({
-  conversationId,
   composer,
   mentionCategories,
   agentCommands,
@@ -736,7 +734,6 @@ export function RoomComposer({
   onOpenFilePreview,
   guided,
 }: {
-  conversationId: string
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
   agentCommands: import('./collaboration/room-message-view').RemoteAgentCommand[]
@@ -788,8 +785,6 @@ export function RoomComposer({
         blockedComposerContent: null,
       }}
       inputState={{
-        draftIdentity: conversationId,
-        onAppendText: text => composer.setInput(previous => appendDictatedText(previous, text)),
         replyContext: composer.replyContext,
         setReplyContext: composer.setReplyContext,
         textareaRef: composer.composerRef,

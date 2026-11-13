@@ -242,8 +242,6 @@ function NotebookChatComposer(props: NotebookAgentComposerRenderProps) {
         blockedComposerContent: null,
       }}
       inputState={{
-        draftIdentity: 'notebook',
-        onAppendText: (text) => props.onChange(props.value ? `${props.value} ${text}` : text),
         replyContext: null,
         setReplyContext: ignore,
         textareaRef,

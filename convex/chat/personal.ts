@@ -115,10 +115,13 @@ export const getExecution = query({
 })
 
 export const getMessages = query({
-  args: { ...resourceArgs, paginationOpts: paginationOptsValidator },
+  args: { ...resourceArgs, paginationOpts: paginationOptsValidator, unavailableAsEmpty: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const access = await requireNativePersonalChat(ctx, args)
-    await requireNativeCapability(ctx, access.userId, 'conversations.read')
+    const access = args.unavailableAsEmpty
+      ? await optionalMessageAccess(ctx, args)
+      : await requireNativePersonalChat(ctx, args)
+    if (!access) return { page: [], isDone: true, continueCursor: '' }
+    if (!args.unavailableAsEmpty) await requireNativeCapability(ctx, access.userId, 'conversations.read')
     const result = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', args.conversationId))
       .order('desc').paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(100, args.paginationOpts.numItems)) })
@@ -140,6 +143,12 @@ export const getMessages = query({
     })) }
   },
 })
+
+async function optionalMessageAccess(ctx: QueryCtx, args: { workspaceId: string; conversationId: Id<'conversations'> }) {
+  const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+  await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
+  return nativePersonalChatScope(ctx, viewer, await ctx.db.get(args.conversationId))
+}
 
 export const activePublicStreams = query({
   args: { ...resourceArgs, messageIds: v.array(v.id('conversationMessages')) },
