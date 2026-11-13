@@ -60,7 +60,9 @@ function clip(value: string, max: number): string {
 }
 
 export function basename(path: string): string {
-  const trimmed = path.replace(/\/+$/, '')
+  let end = path.length
+  while (end > 0 && path[end - 1] === '/') end--
+  const trimmed = path.slice(0, end)
   const slash = trimmed.lastIndexOf('/')
   return slash >= 0 ? trimmed.slice(slash + 1) || trimmed : trimmed
 }
@@ -69,9 +71,11 @@ export function basename(path: string): string {
  * Hides secret values a command might carry inline before it is shown: env assignments whose name says
  * key/token/secret/password, Authorization headers and password flags. Display only; the stored input is unchanged.
  */
+const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL/i
+
 export function redactCommand(command: string): string {
   return command
-    .replace(/\b([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/gi, '$1=•••')
+    .replace(/\b([A-Za-z_]\w*)=("[^"]*"|'[^']*'|\S+)/g, (whole, name: string) => (SECRET_NAME.test(name) ? `${name}=•••` : whole))
     .replace(/(Authorization:\s*(?:Bearer|Basic|Token)?\s*)("[^"]*"|'[^']*'|[^\s'"]+)/gi, '$1•••')
     .replace(/(--?(?:password|passwd|token|api-key|secret)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi, '$1•••')
 }

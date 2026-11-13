@@ -28,7 +28,7 @@ export function ChatImageThumb({ src, name, fileId }: { src: string; name?: stri
   return (
     <>
       <Button variant="ghost" type="button" onClick={() => setOpen(true)} aria-label={`Enlarge ${label}`}
-        className={cardButton('my-1 block max-w-full hover:bg-transparent')}>
+        className={cardButton('my-2 block max-w-full hover:bg-transparent')}>
         <img src={src} alt={name ?? ''} loading="lazy"
           className="block max-h-[240px] w-auto max-w-[min(100%,320px)] rounded-[10px] border border-(--border) object-cover transition-colors hover:border-(--muted-light)" />
       </Button>

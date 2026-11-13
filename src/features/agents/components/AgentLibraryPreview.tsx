@@ -7,7 +7,6 @@ import { Button } from '@overlay/ui/primitives'
 import { chatFileKind, fileContentUrl, useChatFilesHost } from '@overlay/chat-react'
 import { shouldFetchTextContent } from '@overlay/app-core/file-viewer'
 import { FileViewer, type FileViewerAsset } from '@overlay/modules-react/knowledge'
-import { useLiveNote } from '@/hooks/use-file-tree'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
@@ -29,19 +28,26 @@ const viewerOperations = {
   },
 }
 
-/** Text for text-like files that are not notes, read once from the content route. */
-function useFileText(fileId: string, name: string, enabled: boolean): string {
+/**
+ * The full text of a note or text file, read like the Files page does (`fullText`, so text kept in object storage
+ * is complete). Media and binary documents load from their content URL instead.
+ */
+function useFileText(fileId: string, viewerName: string, enabled: boolean): string | null {
   const [text, setText] = useState<{ fileId: string; value: string } | null>(null)
   useEffect(() => {
-    if (!enabled || !shouldFetchTextContent(name)) return
+    if (!enabled || !shouldFetchTextContent(viewerName)) return
     let cancelled = false
-    void overlayAppClient.files.contentResponse(fileId)
-      .then(async (response) => (response.ok ? await response.text() : ''))
+    void overlayAppClient.files.getResponse({ fileId, fullText: true })
+      .then(async (response) => {
+        if (!response.ok) return ''
+        const file = await response.json() as { content?: string; textContent?: string }
+        return file.content ?? file.textContent ?? ''
+      })
       .then((value) => { if (!cancelled) setText({ fileId, value }) })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [enabled, fileId, name])
-  return text?.fileId === fileId ? text.value : ''
+  }, [enabled, fileId, viewerName])
+  return text?.fileId === fileId ? text.value : null
 }
 
 /**
@@ -55,12 +61,11 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
   const summaries = useFileSummaries([fileId])
   const file = summaries?.get(fileId)
   const kind = file ? chatFileKind(file) : null
-  const note = useLiveNote(kind === 'note' ? fileId : null)
   const name = file?.name ?? ''
   const viewerName = kind === 'note' ? `${name || 'Note'}.md` : name
-  const fetchedText = useFileText(fileId, viewerName, Boolean(file) && kind !== 'note')
+  const text = useFileText(fileId, viewerName, Boolean(file))
   const url = fileContentUrl(fileId)
-  const content = kind === 'note' ? note?.content ?? '' : fetchedText
+  const content = text ?? ''
   const meta = kind === 'note' ? 'Note' : kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'File'
 
   return (
