@@ -5,7 +5,7 @@ import { handleSlackSyncNotice, parseSlackSyncNotice } from './events'
 process.env.INTERNAL_API_SECRET = 'sync-test-secret'
 
 /** Payloads as documented for the Events API (app_rate_limited is top level, channel_created is an event_callback). */
-const rateLimited = JSON.stringify({ token: 'Jhj5dZrVaK7ZwHHjRyZWjbDl', type: 'app_rate_limited', team_id: 'T123ABC456', minute_rate_limited: 1518467820, api_app_id: 'A123ABC456' })
+const rateLimited = JSON.stringify({ token: 'x', type: 'app_rate_limited', team_id: 'T123ABC456', minute_rate_limited: 1518467820, api_app_id: 'A123ABC456' })
 const created = (channel: Record<string, unknown>) => JSON.stringify({
   token: 'x', team_id: 'T123ABC456', api_app_id: 'A123ABC456', type: 'event_callback', event_id: 'Ev1', event_time: 1360782400,
   event: { type: 'channel_created', channel: { id: 'C024BE91L', name: 'fun', created: 1360782804, creator: 'U024BE7LH', ...channel } },
