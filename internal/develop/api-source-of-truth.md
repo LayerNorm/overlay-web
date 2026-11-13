@@ -425,7 +425,13 @@ byte transfer.
   optimistically to every cached tree. Create, delete, uploads, ingestion, text saves and note
   saves stay on the server: they place large text in object storage, clean up objects, and
   canonicalize and sanitize note Markdown.
-- `files/browse:forConversation` is a thread's live Library (the agent drive panel).
+- `files/browse:forConversation` is a thread's live Library (the agent drive panel), newest
+  created first. Every agent creation path writes the file's `conversationId`: `write_file`,
+  `create_note`, generated images and videos, `computer_publish_file` (from the harness run's
+  source thread) and connected-agent drive uploads.
+- `files/browse:summariesByIds` returns card metadata for the files a chat message shows, under the
+  same read rules as `get`. Unreadable, deleted and malformed ids are left out, so a card never
+  renders for a file the viewer lost access to (`useFileSummaries`).
 - `knowledge/memoryBrowse:list` is the live Memories list with the server's rules: owner-only
   memories reach only their author, attribution covers active members and agents the viewer can
   see, and an owner filter accepts a member or agent principal. Memory writes stay on

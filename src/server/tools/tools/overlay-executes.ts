@@ -785,6 +785,12 @@ export async function executeDeleteAutomation(options: OverlayToolsOptions, inpu
   }
 }
 
+/** Generated outputs are `files` rows; the id and content URL let chat render a file card. */
+function generatedFileFields(outputId: unknown): { fileId?: string; url?: string } {
+  if (typeof outputId !== 'string' || !outputId) return {}
+  return { fileId: outputId, url: `/api/v1/files/${encodeURIComponent(outputId)}/content` }
+}
+
 export async function executeGenerateImage(
   options: OverlayToolsOptions,
   input: {
@@ -822,6 +828,7 @@ export async function executeGenerateImage(
     return {
       success: true,
       outputId: data.outputId,
+      ...generatedFileFields(data.outputId),
       modelUsed: data.modelUsed,
       message: `Image generated successfully with ${data.modelUsed}. OutputId: ${data.outputId}`,
     }
@@ -917,6 +924,7 @@ export async function executeGenerateVideo(
         success: true,
         status: 'completed',
         outputId: finalResult.outputId,
+        ...generatedFileFields(finalResult.outputId),
         modelUsed: finalResult.modelUsed,
         message: `Video generated successfully with ${finalResult.modelUsed}. OutputId: ${finalResult.outputId}`,
       }
@@ -1150,6 +1158,38 @@ export async function executeComputerReadFile(
   }
 }
 
+/** Old files larger than this are rewritten without line counts. */
+const COMPUTER_DIFF_MAX_BYTES = 1024 * 1024
+
+function splitLines(text: string): string[] {
+  if (!text) return []
+  const lines = text.split('\n')
+  if (text.endsWith('\n')) lines.pop()
+  return lines
+}
+
+function countLines(text: string): number {
+  return splitLines(text).length
+}
+
+/**
+ * Lines added and removed between two versions, counted as a multiset difference. It matches a diff's counts for
+ * ordinary edits; moved lines count as unchanged.
+ */
+export function lineChanges(before: string, after: string): { linesAdded: number; linesRemoved: number } {
+  const remaining = new Map<string, number>()
+  for (const line of splitLines(before)) remaining.set(line, (remaining.get(line) ?? 0) + 1)
+  let linesAdded = 0
+  for (const line of splitLines(after)) {
+    const left = remaining.get(line) ?? 0
+    if (left > 0) remaining.set(line, left - 1)
+    else linesAdded++
+  }
+  let linesRemoved = 0
+  for (const left of remaining.values()) linesRemoved += left
+  return { linesAdded, linesRemoved }
+}
+
 export async function executeComputerWriteFile(
   options: OverlayToolsOptions,
   input: { path: string; contents: string },
@@ -1158,11 +1198,22 @@ export async function executeComputerWriteFile(
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const bytes = new TextEncoder().encode(input.contents)
-    await resolved.operate((instance) => instance.writeFiles([{ path: input.path, contents: bytes }]))
+    const previous = await resolved.operate(async (instance) => {
+      // Read the old text first so the row can say "Created" or "Edited +a −b". A failed read only drops the counts.
+      const before = await instance.readFile(input.path).catch((_error) => undefined)
+      await instance.writeFiles([{ path: input.path, contents: bytes }])
+      return before
+    })
+    const changes = previous === undefined ? {}
+      : previous === null ? { created: true, linesAdded: countLines(input.contents), linesRemoved: 0 }
+        : previous.length <= COMPUTER_DIFF_MAX_BYTES
+          ? { created: false, ...lineChanges(new TextDecoder().decode(previous), input.contents) }
+          : { created: false }
     return {
       success: true,
       path: input.path,
       bytes: bytes.length,
+      ...changes,
       computerId: resolved.computer.id,
     }
   } catch (err) {

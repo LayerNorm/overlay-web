@@ -249,6 +249,19 @@ export const prepare = mutation({
   },
 })
 
+/** The thread a harness run was started from, so published files show in that thread's Library. */
+async function harnessSourceConversationId(ctx: Pick<QueryCtx, 'db'>, rootRunId: string): Promise<string | undefined> {
+  const root = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', rootRunId)).first()
+  if (!root) return undefined
+  try {
+    const source = JSON.parse(root.sourceJson) as { conversationId?: unknown }
+    if (typeof source.conversationId !== 'string') return undefined
+    return ctx.db.normalizeId('conversations', source.conversationId) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
 export const commit = mutation({
   args: {
     reference: referenceValidator,
@@ -301,7 +314,8 @@ export const commit = mutation({
       extension: extensionOf(record.name),
       scope: record.scope,
     }, now)
-    await ctx.db.patch(fileId, { createdByAgent: true })
+    const conversationId = await harnessSourceConversationId(ctx, authority.rootRunId)
+    await ctx.db.patch(fileId, { createdByAgent: true, ...(conversationId ? { conversationId } : {}) })
     await ctx.db.patch(record._id, { fileId, updatedAt: now })
     return fileId
   },

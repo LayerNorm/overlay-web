@@ -5,6 +5,7 @@ import type { FunctionReturnType } from 'convex/server'
 import { useConvexAuth, useMutation, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { KnowledgeFile, NoteDoc } from '@overlay/app-core'
+import type { ChatFileSummary } from '@overlay/chat-react'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { api } from '../../convex/_generated/api'
@@ -36,6 +37,27 @@ export function useConversationFiles(conversationId: string): KnowledgeFile[] | 
     workspaceId && isAuthenticated && !isLoading ? { workspaceId, conversationId } : 'skip',
   )
   return rows as KnowledgeFile[] | null | undefined
+}
+
+/** Card metadata for the files a chat message shows, live and keyed by id: undefined while loading or with no ids. */
+export function useFileSummaries(ids: readonly string[]): ReadonlyMap<string, ChatFileSummary> | undefined {
+  const { activeWorkspaceId, status } = useWorkspace()
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const workspaceId = status === 'ready' ? activeWorkspaceId : null
+  // A stable key keeps one subscription per distinct set of ids across renders.
+  const key = ids.join('\n')
+  const stableIds = useMemo(() => (key ? key.split('\n') : []), [key])
+  const rows = useQuery(
+    api.files.browse.summariesByIds,
+    stableIds.length && workspaceId && isAuthenticated && !isLoading ? { workspaceId, ids: stableIds } : 'skip',
+  )
+  return useMemo(() => {
+    if (!rows) return undefined
+    return new Map(rows.map((row) => [String(row._id), {
+      _id: String(row._id), name: row.name, kind: row.kind, mimeType: row.mimeType,
+      previewText: row.previewText, createdAt: row.createdAt,
+    }]))
+  }, [rows])
 }
 
 /**

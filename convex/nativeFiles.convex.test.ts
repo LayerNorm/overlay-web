@@ -104,8 +104,9 @@ test("a thread's Library lists its files live for each reader", async () => {
     const file = (fields: Record<string, unknown>) => ctx.db.insert('files', {
       workspaceId: 'ws', userId: 'alice', type: 'file', kind: 'output', conversationId: 'c1', createdAt: 1, updatedAt: 1, ...fields,
     } as never)
-    await file({ name: 'chart.png', updatedAt: 3 })
-    await file({ name: 'report.md', scope: 'workspace', updatedAt: 2 })
+    // Newest created first: a later edit to an older file does not move it above new output.
+    await file({ name: 'chart.png', createdAt: 3, updatedAt: 3 })
+    await file({ name: 'report.md', scope: 'workspace', createdAt: 2, updatedAt: 20 })
     await file({ name: 'elsewhere.md', conversationId: 'c2' })
     await file({ name: 'removed.png', deletedAt: 5 })
   })
@@ -117,4 +118,16 @@ test("a thread's Library lists its files live for each reader", async () => {
     workspaceId: 'ws', userId: 'alice', name: 'new.csv', type: 'file', kind: 'output', conversationId: 'c1', createdAt: 9, updatedAt: 9,
   }))
   expect(names(await as('alice').query(forConversation, { workspaceId: 'ws', conversationId: 'c1' }))[0]).toBe('new.csv')
+})
+
+test('file cards read only the files the viewer can see, in the order asked', async () => {
+  const { as, ids } = await fixture()
+  const summariesByIds = makeFunctionReference<'query'>('files/browse:summariesByIds')
+  const asked = [ids.blob, ids.shared, ids.note, ids.deleted, ids.elsewhere, ids.folder, 'not-an-id', ids.blob]
+  const alice = await as('alice').query(summariesByIds, { workspaceId: 'ws', ids: asked }) as Row[]
+  expect(names(alice)).toEqual(['deck.pdf', 'Team.md', 'Ideas'])
+  expect(alice.every(row => row.r2Key === undefined && row.content === undefined)).toBe(true)
+  expect(alice.find(row => row.name === 'Ideas')?.previewText).toContain('Ship it')
+  expect(names(await as('bob').query(summariesByIds, { workspaceId: 'ws', ids: asked }))).toEqual(['Team.md'])
+  expect(await as('stranger').query(summariesByIds, { workspaceId: 'ws', ids: asked })).toBeNull()
 })
