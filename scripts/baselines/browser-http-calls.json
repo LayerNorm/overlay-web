@@ -179,6 +179,9 @@
   "files.deleteResponse": [
     "src/features/settings/lib/archived-actions.ts"
   ],
+  "files.getResponse": [
+    "src/features/agents/components/AgentLibraryPreview.tsx"
+  ],
   "files.ingestDocumentResponse": [
     "src/features/chat/components/useChatAttachments.ts",
     "src/features/knowledge/adapters/webKnowledgeFilePort.ts"

@@ -9,7 +9,7 @@ import { Archive, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, EmptyState } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
+import { usePersonalChatDirectory } from '@/components/providers/PersonalChatProvider'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { ARCHIVED_SETTINGS_PATH } from '@/shared/workspaces/panel-scope'
@@ -36,7 +36,7 @@ function readSelectedId(searchId: string | null): string | null {
 
 /** Archived personal chats (live chat list) and channels and DMs (live archived-rooms query), newest first. */
 function useArchivedConversations(userId: string | null, selectedId: string | null) {
-  const nativePersonal = usePersonalChat()
+  const nativePersonal = usePersonalChatDirectory()
   const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? null
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const canQueryRooms = Boolean(workspaceId && userId && isAuthenticated && !authLoading)
@@ -92,7 +92,7 @@ function ArchivedSpinner({ label }: { label: string }) {
 
 /** Replaces the composer of an archived personal chat: it is read-only until restored. */
 function ArchivedChatFooter({ conversationId }: { conversationId: string }) {
-  const nativePersonal = usePersonalChat()
+  const nativePersonal = usePersonalChatDirectory()
   const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? null
   const buildWorkspaceHref = useWorkspaceHref()
   const router = useRouter()

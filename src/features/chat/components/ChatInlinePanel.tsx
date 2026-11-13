@@ -54,7 +54,8 @@ import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { usePersonalChat, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
+import { usePersonalChatDirectory, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 
@@ -872,7 +873,7 @@ export function ChatInlinePanel({
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
-  const nativePersonal = usePersonalChat()
+  const nativePersonal = usePersonalChatDirectory()
   const nativePersonalOwner = Boolean(user) || authLoading
   const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
     baseHref, workspaceId, sectionView,
@@ -882,6 +883,7 @@ export function ChatInlinePanel({
   // router to re-read the URL; `router.push` alone leaves the pane rendering
   // the previous room until Next commits its own history update.
   const navigateChatHref = useCallback((href: string, detail: { chatId: string | null; view: string }) => {
+    beginNavigationIntent(href)
     if (isSameChatSurface(pathname, baseHref)) {
       window.history.pushState(null, '', href)
       window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail }))

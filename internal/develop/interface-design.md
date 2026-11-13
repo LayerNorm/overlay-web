@@ -400,6 +400,16 @@ avatar box. Do not infer default identity from a name or gray color.
 Non-default creatures retain legacy color normalization.
 
 
+## Files in chat and the Library panel
+
+Chat shows files as compact cards, never full-width media (`packages/overlay-chat-react/src/components/files/`):
+images are thumbnails of at most 320 × 240 that open a lightbox; videos are 16:9 poster cards with
+a play badge, three across (two on narrow screens) within 600px; notes and documents are a
+bordered card with a title and two-line preview, at most 460px. Markdown images go through the
+same cards. Hosts provide file lookup and opening with `ChatFilesProvider`: agent threads open
+files in the Library panel's in-place preview (`AgentLibraryPreview`), other surfaces open the
+Files page. Tool rows stay logo-free; a created file's name in a row opens it the same way.
+
 ## Avatars are edited in place
 
 The default Overlay agent has a fixed, read-only brand mark; do not expose shape/color

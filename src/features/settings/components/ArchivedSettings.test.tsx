@@ -14,6 +14,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({ useOptionalWorkspace: () => ({ a
 vi.mock('@/hooks/use-workspace-href', () => ({ useWorkspaceHref: () => (_id: string, path: string) => path }))
 vi.mock('@/components/providers/PersonalChatProvider', () => ({
   usePersonalChat: () => ({ archived: { rows: mocks.rows, status: 'ready', hasMore: false } }),
+  usePersonalChatDirectory: () => ({ archived: { rows: mocks.rows }, selectedSummary: null }),
 }))
 vi.mock('@/components/layout/ScopeTag', () => ({ ScopeTag: () => null }))
 vi.mock('../lib/use-live-archived', () => ({ useLiveArchivedItems: () => ({ items: mocks.items, failed: [] }) }))
