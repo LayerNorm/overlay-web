@@ -2,6 +2,8 @@
 
 Living documentation for importing data from external communication platforms (Slack, Teams, Discord, Telegram) into Overlay. This is the source of truth for the import architecture, canonical model, and adapter interface.
 
+Continuous two-way channel sync is separate from these one-time imports. It lives in `convex/sync/` and `src/server/sync/`, with its own tables (`syncConnections`, `syncChannelLinks`, `syncMessageMap`, `syncIdentities`, `syncMemberAccounts`, `syncOutbox`, `syncRateBudgets`) and normalized events in `src/shared/sync/types.ts`. See `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`.
+
 ## Architecture
 
 External imports follow a deterministic, server-side pipeline — no LLM agent loops. The flow is:

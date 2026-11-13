@@ -11,7 +11,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
  * different account.
  */
 export interface SlackConnectState {
-  agentId: string
+  /** The agent being bound; absent when a workspace connects Slack for channel sync. */
+  agentId?: string
+  purpose?: 'sync'
   workspaceId: string
   userId: string
   returnTo?: string
@@ -92,10 +94,11 @@ export function openSlackConnectState(value: string | null | undefined): SlackCo
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as
       SlackConnectState & { expiresAt?: number }
-    if (!parsed.agentId || !parsed.workspaceId || !parsed.userId) return null
+    if (!parsed.workspaceId || !parsed.userId) return null
+    if (parsed.purpose !== 'sync' && !parsed.agentId) return null
     if (!parsed.expiresAt || parsed.expiresAt < Date.now()) return null
     return {
-      agentId: parsed.agentId,
+      ...(parsed.purpose === 'sync' ? { purpose: 'sync' as const } : { agentId: parsed.agentId }),
       workspaceId: parsed.workspaceId,
       userId: parsed.userId,
       returnTo: parsed.returnTo,
