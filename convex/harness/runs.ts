@@ -7,6 +7,7 @@ import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
+import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
 import { readActivePublicStreams } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
@@ -1724,6 +1725,7 @@ export const writeTranscriptStep = mutation({
     persistence: v.object({ content: v.string(), parts: v.array(v.any()), outputLimitReached: v.optional(v.literal(true)) }),
     fullPersistenceStorageId: v.optional(v.id('_storage')),
     fullPersistenceDigest: v.optional(v.string()),
+    reconcileToolResults: v.optional(v.boolean()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1757,15 +1759,36 @@ export const writeTranscriptStep = mutation({
       || args.fullPersistenceStorageId && !await ctx.db.system.get(args.fullPersistenceStorageId)) {
       throw new Error('Invalid full harness transcript payload.')
     }
+    if (args.reconcileToolResults && (!args.fullPersistenceStorageId || !args.fullPersistenceDigest)) {
+      throw new Error('Invalid reconciled harness transcript payload.')
+    }
     const existing = await ctx.db.query('harnessTranscriptSteps')
       .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
       .unique()
     if (existing) {
-      if (existing.stepNumber !== args.stepNumber || existing.persistenceJson !== persistenceJson
-        || existing.fullPersistenceDigest && existing.fullPersistenceDigest !== args.fullPersistenceDigest) {
+      if (existing.stepNumber !== args.stepNumber) throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+      if (existing.persistenceJson === persistenceJson
+        && (!existing.fullPersistenceDigest || existing.fullPersistenceDigest === args.fullPersistenceDigest)
+        && (!args.reconcileToolResults || existing.fullPersistenceDigest === args.fullPersistenceDigest)) {
+        return { persisted: false }
+      }
+      if (!args.reconcileToolResults) throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+      const current = parseJson<HarnessTranscriptPersistence>(existing.persistenceJson)
+      const merged = reconcileToolInvocationOutcomes(current, args.persistence as HarnessTranscriptPersistence)
+      const safePreview = stableJson(compactTranscriptSnapshot(merged.persistence))
+      if (existing.persistenceJson !== persistenceJson && (!merged.changed || safePreview !== persistenceJson)) {
         throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
       }
-      return { persisted: false }
+      await ctx.db.patch(existing._id, {
+        persistenceJson,
+        fullPersistenceStorageId: args.fullPersistenceStorageId,
+        fullPersistenceDigest: args.fullPersistenceDigest,
+      })
+      if (existing.fullPersistenceStorageId && existing.fullPersistenceStorageId !== args.fullPersistenceStorageId) {
+        await ctx.storage.delete(existing.fullPersistenceStorageId)
+      }
+      await projectNativePersonalProgress(ctx, run, lineage[0]!.metadata, Number(sequenceMatch[1]))
+      return { persisted: true }
     }
     await ctx.db.insert('harnessTranscriptSteps', {
       runId: run.runId,
@@ -2084,13 +2107,17 @@ export const listTranscriptSteps = query({
       .order('desc')
       .paginate(args.paginationOpts)
     return {
-      steps: page.page.map(row => ({
+      steps: await Promise.all(page.page.map(async row => ({
         receiptId: row.receiptId,
         stepNumber: row.stepNumber,
         sequence: row.sequence,
         executionGeneration: row.executionGeneration ?? 0,
         persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
-      })),
+        ...(row.fullPersistenceStorageId ? {
+          fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
+          fullPersistenceDigest: row.fullPersistenceDigest,
+        } : {}),
+      }))),
       cursor: page.continueCursor,
       isDone: page.isDone,
     }

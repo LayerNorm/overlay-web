@@ -126,6 +126,8 @@ export type HarnessTranscriptStep = {
   sequence: number
   executionGeneration?: number
   persistence: HarnessTranscriptPersistence
+  fullPersistenceUrl?: string | null
+  fullPersistenceDigest?: string
 }
 
 export type HarnessTranscriptPage = {

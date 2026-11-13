@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
 import { createHash } from 'node:crypto'
+import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
 import { createHarnessDiagnostic } from '../packages/overlay-agent-runtime/src/harness-diagnostic'
 import type {
   HarnessAdmission,
@@ -1185,6 +1186,73 @@ describe('durable harness runs', () => {
       isDone: true,
     })
   })
+})
+
+test('reconciles a provisional tool result in the durable transcript row', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('transcript-outcome-finalize', await seedConversation(convex))
+  let state = await admit(convex, input)
+  state = (await apply(convex, input, 'claim-outcome', state.revision, {
+    type: 'claim_execution', workflowRunId: 'workflow-outcome',
+  })).snapshot
+  state = (await apply(convex, input, 'reserve-outcome', state.revision, {
+    type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+  })).snapshot
+  await apply(convex, input, 'settle-outcome', state.revision, {
+    type: 'record_receipt', receipt: {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1,
+    },
+  })
+  const early = {
+    content: 'Starting the command.',
+    parts: [
+      { id: 'text-id', type: 'text', text: 'Starting the command.' },
+      { id: 'call-id', type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'computer-call', toolName: 'computer_exec', state: 'output-error',
+        toolInput: { command: 'printf ok' },
+        toolOutput: { success: false, error: 'The tool call ended without an execution result.' },
+      } },
+    ],
+  }
+  const observed = { content: 'Ignore this duplicate text.', parts: [{
+    type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'computer-call', toolName: 'computer_exec', state: 'output-available',
+      toolOutput: { success: true, stdout: 'ok' },
+    },
+  }] }
+  const reconciled = reconcileToolInvocationOutcomes(early, observed).persistence
+  const store = async (value: unknown) => {
+    const json = JSON.stringify(value)
+    return { id: await convex.run(ctx => ctx.storage.store(new Blob([json]))), digest: createHash('sha256').update(json).digest('hex') }
+  }
+  const initialStorage = await store(early)
+  const args = {
+    actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'workflow-outcome',
+    receiptId: 'model:0', stepNumber: 0, persistence: early,
+    fullPersistenceStorageId: initialStorage.id, fullPersistenceDigest: initialStorage.digest, serverSecret: secret,
+  }
+  const write = mutation('writeTranscriptStep')
+  expect(await convex.mutation(write, args)).toEqual({ persisted: true })
+  const updatedStorage = await store(reconciled)
+  expect(await convex.mutation(write, {
+    ...args, persistence: reconciled, fullPersistenceStorageId: updatedStorage.id,
+    fullPersistenceDigest: updatedStorage.digest, reconcileToolResults: true,
+  })).toEqual({ persisted: true })
+
+  const rows = await convex.run(ctx => ctx.db.query('harnessTranscriptSteps')
+    .withIndex('by_runId_receiptId', q => q.eq('runId', input.runId).eq('receiptId', 'model:0')).collect())
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ sequence: 0, stepNumber: 0, persistenceJson: expect.any(String) })
+  expect(rows[0]!.fullPersistenceStorageId).toBe(updatedStorage.id)
+  expect(await convex.run(ctx => ctx.db.system.get(initialStorage.id))).toBeNull()
+  const page = await convex.query(query('listTranscriptSteps'), {
+    actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'workflow-outcome',
+    paginationOpts: { cursor: null, numItems: 25 }, serverSecret: secret,
+  })
+  expect(page.steps).toHaveLength(1)
+  expect(page.steps[0]!.persistence).toEqual(reconciled)
+  expect(page.steps[0]!.fullPersistenceDigest).toBe(updatedStorage.digest)
 })
 
 test('message trace retrieval enforces conversation access and reads every page in sequence', async () => {

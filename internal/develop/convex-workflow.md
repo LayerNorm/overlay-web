@@ -467,6 +467,11 @@ do not write tool progress into the parent's room.
 Native tool steps persist tool results before returning, allowing a
 tool that finishes during Stop to retain its evidence; the workflow event hook
 skips evidence already recorded by the step.
+Finalization reconciles later structured results into a matching provisional
+transcript invocation before building the assistant delivery. It updates only
+the original call's receipt/step row, preserves settled text and part identity,
+and does not turn real errors, denials or unresolved calls into success; the
+conversation trace reads the reconciled journal.
 Plans are optional for every run. The model makes one when a task is long and
 needs structure, and a step is done when the model marks it done. Plan changes
 on a root run are copied to its delivery run (`plan`) and assistant message

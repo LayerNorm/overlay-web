@@ -9,9 +9,12 @@ import type {
   HarnessTranscriptStep,
 } from '@overlay/agent-runtime/harness-store'
 import { buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
+import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
+import { isPersonalChatWorkToolOutputEnvelope } from '@/shared/agents/personal-chat-work'
 import { HARNESS_CONTROL_TOOLS } from './context'
 import { stripTextualToolCalls } from './textual-tool-calls'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
+import { readPublicTranscriptStep } from './public-transcript'
 import { HarnessAuthorizationError, HarnessPersistenceError } from './harness-diagnostics'
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
 import { joinStepTranscripts, keepCutOffTrailingWhitespace } from '@/shared/chat/step-text-join'
@@ -88,6 +91,7 @@ export async function writeSettledHarnessTranscriptStep(
   receiptId: string,
   stepNumber: number,
   persistence: HarnessTranscriptPersistence,
+  options: { reconcileToolResults?: boolean } = {},
 ): Promise<void> {
   'use step'
   try {
@@ -103,10 +107,58 @@ export async function writeSettledHarnessTranscriptStep(
       stepNumber,
       persistence: reference.runId.startsWith('personal:')
         ? withTranscriptPartIds(reference.runId, receiptId, persistence, state.executionGeneration ?? 0) : persistence,
+      ...(options.reconcileToolResults ? { reconcileToolResults: true } : {}),
     })
   } catch (error) {
     throw transcriptError(error)
   }
+}
+
+export async function reconcileSettledHarnessTranscriptForDelivery(
+  reference: HarnessExecutionReference,
+  result: HarnessExecutionResult,
+  activeToolNames: ReadonlySet<string>,
+  settledTranscript: SettledHarnessTranscriptWindow,
+): Promise<SettledHarnessTranscriptWindow> {
+  'use step'
+  const repository = new ConvexHarnessRepository()
+  const state = await repository.get(reference)
+  if (!state) throw new HarnessAuthorizationError()
+  if (state.policy.publicProgressVersion !== 1 && state.policy.publicStreamVersion !== 1) return settledTranscript
+  const reconciled = reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, settledTranscript)
+  for (const update of reconciled.updatedSteps) {
+    const original = settledTranscript.steps.find(step => (
+      step.receiptId === update.receiptId && step.stepNumber === update.stepNumber
+    ))
+    if (!original) continue
+    const full = await readPublicTranscriptStep({
+      sequence: original.sequence,
+      persistence: original.persistence,
+      fullPersistenceUrl: original.fullPersistenceUrl,
+      fullPersistenceDigest: original.fullPersistenceDigest,
+    }, AbortSignal.timeout(120_000))
+    const fullWindow = {
+      ...settledTranscript,
+      steps: settledTranscript.steps.map(step => step === original
+        ? { ...step, persistence: full.persistence } : step),
+    }
+    const fullUpdate = reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, fullWindow)
+      .updatedSteps.find(step => step.receiptId === update.receiptId && step.stepNumber === update.stepNumber)
+    if (!fullUpdate) continue
+    const persistence = reference.runId.startsWith('personal:')
+      ? withTranscriptPartIds(reference.runId, update.receiptId, fullUpdate.persistence, state.executionGeneration ?? 0)
+      : fullUpdate.persistence
+    await repository.writeTranscriptStep({
+      actorUserId: reference.actorUserId,
+      runId: reference.runId,
+      workflowRunId: reference.workflowRunId,
+      receiptId: update.receiptId,
+      stepNumber: update.stepNumber,
+      persistence,
+      reconcileToolResults: true,
+    })
+  }
+  return reconciled.transcript
 }
 
 export async function readSettledHarnessTranscriptPage(
@@ -145,6 +197,64 @@ export type SettledHarnessTranscriptWindow = {
   truncated: boolean
   newestSequence: number | null
   oldestSequence: number | null
+}
+
+type SettledHarnessTranscriptInput = {
+  persistence: HarnessTranscriptPersistence
+  steps: HarnessTranscriptStep[]
+  newestSequence?: number | null
+  truncated?: boolean
+  oldestSequence?: number | null
+}
+
+export function reconcileSettledHarnessTranscriptOutcomes<T extends SettledHarnessTranscriptInput>(
+  result: HarnessExecutionResult,
+  activeToolNames: ReadonlySet<string>,
+  settledTranscript: T,
+): { transcript: T; updatedSteps: HarnessTranscriptStep[] } {
+  const origins = new Map<string, { receiptId: string; stepNumber: number; toolName: string }>()
+  result.steps.forEach((step, index) => {
+    const receiptId = result.stepReceiptIds?.[index]
+    if (!receiptId) return
+    for (const call of step.toolCalls) {
+      if (activeToolNames.has(call.toolName) && !origins.has(call.toolCallId)) {
+        origins.set(call.toolCallId, { receiptId, stepNumber: step.stepNumber, toolName: call.toolName })
+      }
+    }
+  })
+  if (!origins.size) return { transcript: settledTranscript, updatedSteps: [] }
+
+  const observed = buildAssistantPersistenceFromSteps(result.steps, '', { fullValues: true })
+  const observedParts = observed.parts.filter(part => part.type === 'tool-invocation').map(part => {
+    const invocation = part.toolInvocation as Record<string, unknown>
+    if (!isPersonalChatWorkToolOutputEnvelope(invocation.toolOutput)) return part
+    return { ...part, toolInvocation: { ...invocation, toolOutput: invocation.toolOutput.display } }
+  })
+  const updatedSteps: HarnessTranscriptStep[] = []
+  const steps = settledTranscript.steps.map(step => {
+    const matches = observedParts.filter(part => {
+      const invocation = part.toolInvocation as Record<string, unknown>
+      const origin = origins.get(String(invocation.toolCallId))
+      return origin?.receiptId === step.receiptId && origin.stepNumber === step.stepNumber
+        && origin.toolName === invocation.toolName
+    })
+    if (!matches.length) return step
+    const reconciled = reconcileToolInvocationOutcomes(step.persistence, { content: '', parts: matches })
+    if (!reconciled.changed) return step
+    const updated = { ...step, persistence: reconciled.persistence }
+    updatedSteps.push(updated)
+    return updated
+  })
+  if (!updatedSteps.length) return { transcript: settledTranscript, updatedSteps }
+  const joined = joinStepTranscripts(steps.map(step => step.persistence))
+  return {
+    transcript: {
+      ...settledTranscript,
+      steps,
+      persistence: compactHarnessTranscriptPersistence({ content: joined.content, parts: joined.parts }),
+    } as T,
+    updatedSteps,
+  }
 }
 
 export function compactHarnessTranscriptPersistence(input: HarnessTranscriptPersistence): HarnessTranscriptPersistence {

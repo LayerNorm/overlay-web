@@ -235,3 +235,47 @@ export function resolveToolOutcomes(
 
   return outcomes
 }
+
+const MISSING_TOOL_RESULT_MESSAGE = 'The tool call ended without an execution result.'
+
+export function reconcileToolInvocationOutcomes(
+  settled: { content: string; parts: Array<Record<string, unknown>> },
+  observed: { content: string; parts: Array<Record<string, unknown>> },
+): { persistence: { content: string; parts: Array<Record<string, unknown>> }; changed: boolean } {
+  const observedById = new Map<string, ToolRecord>()
+  for (const part of observed.parts) {
+    const invocation = part.type === 'tool-invocation' ? asRecord(part.toolInvocation) : null
+    if (invocation && typeof invocation.toolCallId === 'string' && typeof invocation.toolName === 'string') {
+      observedById.set(invocation.toolCallId, invocation)
+    }
+  }
+  let changed = false
+  const parts = settled.parts.map(part => {
+    const current = part.type === 'tool-invocation' ? asRecord(part.toolInvocation) : null
+    if (!current || typeof current.toolCallId !== 'string' || typeof current.toolName !== 'string') return part
+    const next = observedById.get(current.toolCallId)
+    if (!next || next.toolName !== current.toolName) return part
+    const output = asRecord(current.toolOutput)
+    const missingResult = current.state === 'output-error' && output?.success === false
+      && output.error === MISSING_TOOL_RESULT_MESSAGE
+    const pendingApproval = current.state === 'input-available'
+    if (!missingResult && !pendingApproval) return part
+    const nextOutput = asRecord(next.toolOutput)
+    const actualOutcome = next.state === 'output-available' || next.state === 'output-denied'
+      || (next.state === 'output-error' && !(nextOutput?.success === false
+        && nextOutput.error === MISSING_TOOL_RESULT_MESSAGE))
+    const pendingOutcome = next.state === 'input-available'
+      && (next.approvalStatus === 'requested' || next.approvalStatus === 'approved')
+    if (!actualOutcome && !pendingOutcome) return part
+    const invocation: ToolRecord = { ...current, state: next.state, toolOutput: next.toolOutput }
+    for (const key of ['approvalStatus', 'approvalReason'] as const) {
+      if (typeof next[key] === 'string') invocation[key] = next[key]
+      else delete invocation[key]
+    }
+    if (typeof next.approvalId === 'string') invocation.approvalId = next.approvalId
+    if (JSON.stringify(invocation) === JSON.stringify(current)) return part
+    changed = true
+    return { ...part, toolInvocation: invocation }
+  })
+  return { persistence: changed ? { ...settled, parts } : settled, changed }
+}

@@ -8,7 +8,9 @@ import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citati
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { HARNESS_CONTROL_TOOLS } from './context'
 import { stripTextualToolCalls } from './textual-tool-calls'
-import { compactHarnessTranscriptPersistence } from './harness-transcript'
+import {
+  compactHarnessTranscriptPersistence, reconcileSettledHarnessTranscriptOutcomes,
+} from './harness-transcript'
 import { joinStepTranscripts, stepsEndMidOutput } from '@/shared/chat/step-text-join'
 import type { HarnessTranscriptPersistence, HarnessTranscriptStep } from '@overlay/agent-runtime/harness-store'
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
@@ -49,15 +51,44 @@ export function buildPersonalHarnessDelivery(
     toolCalls: step.toolCalls.filter(isPublic),
     toolResults: step.toolResults.filter(isPublic).map(displayResult),
   }))
-  const journalStepKeys = new Set(settledTranscript?.steps.map(step => (
+  const reconciledTranscript = settledTranscript
+    ? reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, settledTranscript).transcript
+    : undefined
+  const settledCallIds = new Set(reconciledTranscript?.steps.flatMap(step => step.persistence.parts
+    .filter(part => part.type === 'tool-invocation')
+    .map(part => {
+      const invocation = part.toolInvocation as Record<string, unknown>
+      return typeof invocation.toolCallId === 'string' ? invocation.toolCallId : null
+    }).filter((id): id is string => id !== null)) ?? [])
+  const journalStepKeys = new Set(reconciledTranscript?.steps.map(step => (
     `${step.receiptId}\u0000${step.stepNumber}`
   )) ?? [])
-  const liveSteps = steps.filter((step, index) => {
+  const liveSteps = steps.flatMap((step, index) => {
     const receiptId = result.stepReceiptIds?.[index]
-    if (receiptId && journalStepKeys.has(`${receiptId}\u0000${step.stepNumber}`)) return false
+    if (receiptId && journalStepKeys.has(`${receiptId}\u0000${step.stepNumber}`)) return []
     const sequence = receiptId ? /^model:(\d+)$/.exec(receiptId)?.[1] : undefined
-    return !sequence || settledTranscript?.newestSequence == null
-      || Number(sequence) > settledTranscript.newestSequence
+    if (sequence && reconciledTranscript?.newestSequence != null
+      && Number(sequence) <= reconciledTranscript.newestSequence) return []
+    if (!settledCallIds.size) return [step]
+    const callId = (part: object) => {
+      const record = part as Record<string, unknown>
+      if (typeof record.toolCallId === 'string') return record.toolCallId
+      return record.toolCall && typeof record.toolCall === 'object'
+        && 'toolCallId' in record.toolCall && typeof record.toolCall.toolCallId === 'string'
+        ? record.toolCall.toolCallId : undefined
+    }
+    const keep = (part: object) => {
+      const id = callId(part)
+      return !id || !settledCallIds.has(id)
+    }
+    const filtered = {
+      ...step,
+      content: step.content?.filter(keep),
+      toolCalls: step.toolCalls.filter(keep),
+      toolResults: step.toolResults.filter(keep),
+    }
+    return filtered.content?.length || filtered.toolCalls.length || filtered.toolResults.length
+      || filtered.text?.trim() ? [filtered] : []
   })
   const summary = [
     result.snapshot.resultSummary,
@@ -67,8 +98,8 @@ export function buildPersonalHarnessDelivery(
   const liveTranscript = liveSteps.length
     ? buildAssistantPersistenceFromSteps(liveSteps, summary)
     : undefined
-  const joined = settledTranscript && joinStepTranscripts([
-    { ...settledTranscript.persistence, outputLimitReached: stepsEndMidOutput(settledTranscript.steps.map(step => step.persistence)) },
+  const joined = reconciledTranscript && joinStepTranscripts([
+    { ...reconciledTranscript.persistence, outputLimitReached: stepsEndMidOutput(reconciledTranscript.steps.map(step => step.persistence)) },
     ...(liveTranscript ? [liveTranscript] : []),
   ])
   let transcript = joined

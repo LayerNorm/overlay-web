@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Reject invalid native tool inputs before approval or side effects with safe corrective guidance, and add operator-only diagnostic-ID lookup backed by durable diagnostic history, sanitized tool-failure records and an unexecuted bounded legacy backfill.
+- Reject invalid native tool inputs before approval or side effects with safe corrective guidance, keep later confirmed tool results in the final delivery and durable transcript after approval resumes, and add operator-only diagnostic-ID lookup backed by durable diagnostic history, sanitized tool-failure records and an unexecuted bounded legacy backfill.
 - Show bullet and number markers in Markdown files opened in Files and in the agent Library preview. Tailwind's base reset strips list markers and indent, and the viewer's `prose` classes had no typography plugin behind them, so lists read as plain lines. The file viewer now restores disc, circle and decimal markers with a normal indent (task lists stay unmarked); chat Markdown is unchanged. A render test covers the marker rules.
 - Redesign the Work → Organization chart. Agents are now compact, borderless rows in one grouped panel under the chief of staff, joined by a single line, instead of large outlined cards with connector stubs between grid rows that looked like a chain of command (Desktop → Growth → Scripting) that does not exist.
 - Make the chat, agent-thread and Work composers identical in the Mac app and the browser by removing the desktop-only microphone and screenshot buttons. They squeezed the footer and showed a wrapping "Could not start dictation" error beside the send button; desktop dictation still works through its global shortcut.

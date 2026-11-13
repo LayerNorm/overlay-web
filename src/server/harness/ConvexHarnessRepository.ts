@@ -173,6 +173,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
     receiptId: string
     stepNumber: number
     persistence: HarnessTranscriptPersistence
+    reconcileToolResults?: boolean
   }): Promise<{ persisted: boolean }> {
     const identity = { actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId,
       receiptId: input.receiptId, serverSecret: this.serverSecret }
