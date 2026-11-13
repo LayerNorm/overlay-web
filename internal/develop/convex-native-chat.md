@@ -3,6 +3,9 @@ title: "Convex-native personal chat"
 description: "Reproducible realtime baselines, retained consumers, and migration security requirements."
 ---
 
+Workflow stream transport behavior and provider-free regression coverage are
+documented in [Convex and Vercel Workflow](./convex-workflow.md#workflow-stream-transport).
+
 ## CN-01 baseline protocol
 
 ### Parallel transcript reads
