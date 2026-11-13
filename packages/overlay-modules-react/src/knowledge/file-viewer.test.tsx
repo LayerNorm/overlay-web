@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -100,4 +101,27 @@ test('Markdown file links use authorized routes, preserve external links and dis
   assert.match(html, /href="https:\/\/example.test"/)
   assert.doesNotMatch(html, /href="(?:GUIDE|missing)\.md"/)
   assert.match(html, /aria-disabled="true"/)
+})
+
+test('Markdown files keep bullet and number markers despite the list reset', () => {
+  const markup = renderToStaticMarkup(
+    <FileViewer name="notes.md" content={'- first\n- second\n  - nested\n\n1. one\n2. two\n\n- [ ] task'} />,
+  )
+  assert.match(markup, /class="overlay-file-viewer overlay-file-viewer--markdown[^"]*"/)
+  assert.match(markup, /<ul>[\s\S]*<li>first/)
+  assert.match(markup, /<ol>[\s\S]*<li>one/)
+  assert.match(markup, /<ul class="contains-task-list">/)
+
+  const css = readFileSync(new URL('../styles/file-viewer.css', import.meta.url), 'utf8')
+  const rule = (selector: string) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const match = css.match(new RegExp(`(?:^|\\n)${escaped} \\{([^}]*)\\}`))
+    assert.ok(match, `missing rule for ${selector}`)
+    return match[1]
+  }
+  assert.match(rule('.overlay-file-viewer--markdown ul'), /list-style-type: disc;/)
+  assert.match(rule('.overlay-file-viewer--markdown ol'), /list-style-type: decimal;/)
+  assert.match(rule('.overlay-file-viewer--markdown ul ul'), /list-style-type: circle;/)
+  assert.match(rule('.overlay-file-viewer--markdown :is(ul, ol)'), /padding-inline-start: 1\.5em;/)
+  assert.match(rule('.overlay-file-viewer--markdown ul.contains-task-list'), /list-style-type: none;/)
 })

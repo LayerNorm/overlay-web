@@ -88,7 +88,7 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
         <p className="p-4 text-xs text-(--muted)">This file is no longer available.</p>
       ) : file ? (
         <>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&_.overlay-file-viewer]:px-4 [&_.overlay-file-viewer]:py-4 [&_.overlay-file-viewer_ol]:list-decimal [&_.overlay-file-viewer_ol]:pl-5 [&_.overlay-file-viewer_ul]:list-disc [&_.overlay-file-viewer_ul]:pl-5">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&_.overlay-file-viewer]:px-4 [&_.overlay-file-viewer]:py-4">
             <FileViewer key={fileId} name={viewerName} content={content} url={kind === 'note' ? undefined : url}
               operations={viewerOperations} />
           </div>
