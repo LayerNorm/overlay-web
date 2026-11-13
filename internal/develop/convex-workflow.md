@@ -976,3 +976,25 @@ the backend for recovery and cannot report successful cleanup. Six-hour inventor
 includes tagged Stripe endpoints; a missing backend is reported on that PR's
 cleanup rather than silently deleting an ambiguous resource. No package install,
 PR checkout or additional deployment credential is needed by the controller.
+
+## Workflow stream transport
+
+The app uses `workflow` 5.2.3 with `@workflow/vitest` 5.0.6. The Vercel World
+uses WebSocket stream writes by default; `WORKFLOW_STREAMS_TRANSPORT=http`
+selects HTTP, while an HTTP-only proxy can also affect transport selection.
+Read the effective Preview setting before attributing a hosted result to either
+transport. Model retry, authorization and billing policies are unchanged.
+
+`node --test scripts/ci/workflow-stream-transport.test.mjs` exercises the SDK's
+HTTP append path against a credential-free loopback server: a healthy append, a
+confirmed 429 retry with the complete body, and no replay after an ambiguous 500.
+It does not reproduce the reported 30-second drain timeout or prove that the
+historical incident had this cause.
+
+`workflowStreamTransportProbe` is a no-argument, static workflow re-exported by
+the existing personal-harness module so production compilation discovers it. It
+is never invoked automatically and adds no application route. Its one I/O step
+fails closed outside a PR Preview and emits 16 fixed Unicode chunks only; it
+does not call users, models, Convex, billing or harness code. An exact-deployment
+SDK start/readback verifies only healthy synthetic stream delivery and completion
+on that Preview. It does not establish the original timeout's cause or resolution.
