@@ -703,6 +703,35 @@ export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: 
   )
 }
 
+export function syncConnectNotice(provider: 'slack' | 'teams'): string {
+  return `Connect ${provider === 'slack' ? 'Slack' : 'Microsoft Teams'} to reply`
+}
+
+/**
+ * Stands in for the composer in a channel synced with Slack or Teams until the
+ * viewer connects their own account, because replies are posted there as them.
+ */
+export function SyncConnectComposer({ provider, workspaceId }: { provider: 'slack' | 'teams'; workspaceId: string }) {
+  const connect = () => {
+    const url = new URL('/api/v1/surfaces/slack/connect', window.location.origin)
+    url.searchParams.set('purpose', 'sync_member')
+    url.searchParams.set('workspaceId', workspaceId)
+    url.searchParams.set('returnTo', window.location.pathname + window.location.search)
+    window.location.assign(url.toString())
+  }
+  return (
+    <div className="flex shrink-0 flex-wrap items-center justify-center gap-3 px-4 py-4">
+      <p role="status" className="flex items-center gap-2 text-xs text-(--muted)">
+        {provider === 'slack' ? <Slack size={13} /> : <Hash size={13} />}
+        <span>This channel syncs with {provider === 'slack' ? 'Slack' : 'Microsoft Teams'}. Replies post there as you.</span>
+      </p>
+      {provider === 'slack' ? (
+        <Button variant="outline" size="sm" onClick={connect}>{syncConnectNotice(provider)}</Button>
+      ) : null}
+    </div>
+  )
+}
+
 export type GuidedRoomComposer = {
   value: string
   onChange(value: string): void

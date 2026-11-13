@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   }
 }
 
-/** POST /api/v1/sync/slack — link, unlink, auto-link and disconnect. */
+/** POST /api/v1/sync/slack — link, unlink, auto-link and disconnect; disconnectAccount and dmSync for the member's own account. */
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   return await handleSyncAction(request, context, 'slack')
 }

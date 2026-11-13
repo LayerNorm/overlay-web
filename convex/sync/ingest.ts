@@ -7,6 +7,7 @@ import { validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
 import { syncExternalPrincipalId, syncTurnId } from '../../src/shared/sync/types'
 import { providerValidator, syncInboundBatchValidator } from './validators'
+import { SYNC_ECHO_RECHECK_MS, outboundEditEcho, outboundPostInFlight } from './outbox'
 
 type Batch = {
   provider: 'slack' | 'teams'
@@ -103,7 +104,9 @@ async function identityFor(
 /**
  * Applies one normalized batch to its linked Overlay channel. Every write is
  * keyed by the platform's message id, so retries, live/backfill overlap and
- * echoes of our own outbound posts never create duplicates.
+ * echoes of our own outbound posts never create duplicates. A new message from
+ * someone whose Overlay post is still being sent waits until the post's id is
+ * recorded, because it may be that post's echo.
  */
 export async function applyInboundBatch(ctx: MutationCtx, batch: Batch) {
   const link = await findLink(ctx, batch.provider, batch.externalOrgId, batch.externalChannelId)
@@ -118,6 +121,7 @@ export async function applyInboundBatch(ctx: MutationCtx, batch: Batch) {
     const mapped = await findMapped(ctx, batch.provider, batch.externalChannelId, event.externalMessageId)
     if (event.kind === 'message.upsert') {
       if (mapped) {
+        if (mapped.direction === 'outbound' && (!event.editedAt || await outboundEditEcho(ctx, mapped.messageId, now))) continue
         const message = await ctx.db.get(mapped.messageId)
         if (!message || message.deletedAt || message.content === event.text) continue
         await ctx.db.patch(message._id, {
@@ -128,6 +132,10 @@ export async function applyInboundBatch(ctx: MutationCtx, batch: Batch) {
           updatedAt: now,
         })
         applied += 1
+        continue
+      }
+      if (await outboundPostInFlight(ctx, link, event.externalUserId, now)) {
+        await ctx.scheduler.runAfter(SYNC_ECHO_RECHECK_MS, internal.sync.ingest.applyInboundInternal, { batch: { ...batch, events: [event], authors: [] } })
         continue
       }
       const author = await identityFor(ctx, resolved, link.workspaceId, batch.provider, event.externalUserId)

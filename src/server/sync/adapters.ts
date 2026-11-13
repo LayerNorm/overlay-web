@@ -68,6 +68,12 @@ export class SyncRateLimitedError extends Error {
   }
 }
 
+/** The member's own grant no longer works (revoked, deactivated); they must reconnect. */
+export class SyncAccountRevokedError extends Error {}
+
+/** The platform refused this change for good (not in channel, message too old to edit); retrying cannot help. */
+export class SyncOutboundRejectedError extends Error {}
+
 /** The link can't sync until someone acts (app removed from the channel, install revoked). */
 export class SyncLinkPausedError extends Error {
   constructor(readonly reason: string) {

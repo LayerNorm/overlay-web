@@ -1,6 +1,6 @@
 # Slack and Teams sync
 
-Status: In progress. The foundation (data model, Slack live sync into Overlay, link management API) is in review; nothing is merged, deployed or accepted yet.
+Status: In progress. The foundation (data model, Slack live sync into Overlay, link management API), Phase 2 (Slack history and repair) and Phase 3 (replying to Slack as yourself) are in review; nothing is merged, deployed or accepted yet.
 
 Overlay becomes the hub of a customer's chat: chosen Slack channels and Microsoft Teams channels stay in sync with Overlay channels in both directions, so a team can start using Overlay without everyone leaving Slack or Teams on the same day. This plan builds that on official platform APIs and our existing Convex backend.
 
@@ -13,10 +13,10 @@ Mockup: [mockups/slack-teams-sync.html](mockups/slack-teams-sync.html), built fr
 | 0 | Slack and Microsoft app registrations, Slack Marketplace submission | Not started |
 | 1 | Data model and Slack live sync into Overlay | In review (foundation PR); the settings UI lands separately |
 | 2 | Rate-limited Slack history backfill and gap repair | In review: shared rate limiter, newest-first history with thread replies, member prioritization, `app_rate_limited` and 429 catch-up, nightly last-day repair and auto-link for new public channels. Not merged; not yet run against a real Slack workspace. Folding the one-time importer onto the sync tables and showing progress in settings are still to do. |
-| 3 | Replying from Overlay to Slack as yourself | Not started |
+| 3 | Replying from Overlay to Slack as yourself | In review (Phase 3 change, stacked on the foundation): member Slack sign-in, outbox, outbound worker, echo suppression and the "Connect Slack to reply" composer. Covered by unit tests with recorded Slack payloads; not yet tested against a live Slack workspace |
 | 4 | Teams live sync and history into Overlay | Not started |
 | 5 | Replying from Overlay to Teams as yourself | Not started |
-| 6 | Opt-in DM sync, attachments, reaction and edit mirroring outward | Not started |
+| 6 | Opt-in DM sync, attachments, reaction and edit mirroring outward | Partly in review: Slack edits, deletes and reactions mirror outward with Phase 3, and the DM opt-in preference is stored. DM syncing, attachments and the Teams side are not started |
 | 7 | Queue-backed ingest for scale (only when the numbers call for it) | Not started |
 
 Nothing above is merged, deployed or accepted.
