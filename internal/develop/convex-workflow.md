@@ -1003,11 +1003,21 @@ PR checkout or additional deployment credential is needed by the controller.
 
 ## Workflow stream transport
 
-The app uses `workflow` 5.2.3 with `@workflow/vitest` 5.0.6. The Vercel World
+The app uses `workflow` 5.5.0 with `@workflow/vitest` 5.0.9 and
+`@workflow/world-postgres` 5.2.0. The Vercel World
 uses WebSocket stream writes by default; `WORKFLOW_STREAMS_TRANSPORT=http`
 selects HTTP, while an HTTP-only proxy can also affect transport selection.
 Read the effective Preview setting before attributing a hosted result to either
 transport. Model retry, authorization and billing policies are unchanged.
+
+Since `@workflow/builders` 5.1, the step bundle inlines AI SDK provider model
+files (they define serde classes) but leaves their `@ai-sdk/provider-utils`
+imports external, so those resolve to the root-hoisted copy rather than each
+provider's own. A root override pins `@ai-sdk/provider-utils` to one version that
+satisfies every provider; without it, compiled steps fail at import with a
+missing-export error (for example `createJsonLinesResponseHandler`). When AI SDK
+providers are upgraded, raise that override to the newest version they require.
+`npx vitest run --config vitest.workflow.config.mts` catches a mismatch.
 
 `node --test scripts/ci/workflow-stream-transport.test.mjs` exercises the SDK's
 HTTP append path against a credential-free loopback server: a healthy append, a
