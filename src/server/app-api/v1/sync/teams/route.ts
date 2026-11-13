@@ -42,14 +42,14 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       teams.push(...(page.value ?? []))
       next = page['@odata.nextLink']
     }
-    const channels: Array<{ id: string; name: string; kind: SyncChannelKind; teamId: string; teamName: string }> = []
+    const channels: Array<{ id: string; name: string; kind: SyncChannelKind; groupId: string; groupName: string }> = []
     for (let index = 0; index < teams.length; index += CONCURRENCY) {
       await Promise.all(teams.slice(index, index + CONCURRENCY).map(async team => {
         try {
           const page = await graphRequest<GraphPage<TeamsChannel>>(token, '/teams/' + encodeURIComponent(team.id) + '/channels?$select=id,displayName,membershipType')
           for (const channel of page.value ?? []) {
             if (!channel.id || !channel.displayName) continue
-            channels.push({ id: channel.id, name: channel.displayName, kind: KINDS[channel.membershipType ?? 'standard'] ?? 'public', teamId: team.id, teamName: team.displayName ?? team.id })
+            channels.push({ id: channel.id, name: channel.displayName, kind: KINDS[channel.membershipType ?? 'standard'] ?? 'public', groupId: team.id, groupName: team.displayName ?? team.id })
           }
         } catch (error) {
           if (!isAppMissing(error)) throw error
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       }))
     }
     return syncJson({
-      channels: channels.sort((a, b) => a.teamName.localeCompare(b.teamName) || a.name.localeCompare(b.name)),
+      channels: channels.sort((a, b) => a.groupName.localeCompare(b.groupName) || a.name.localeCompare(b.name)),
       ...(teams.length >= MAX_TEAMS ? { truncated: true } : {}),
     })
   } catch (error) {

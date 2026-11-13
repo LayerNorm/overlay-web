@@ -6,6 +6,7 @@ import { useConvexAuth, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { SYNC_SOURCE_LABEL, useChannelSyncSources } from '@/hooks/use-sync-sources'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -544,6 +545,7 @@ function ChatListRow({
   isStreaming,
   unread,
   editingTitle,
+  syncProvider,
 
   onOpenChat,
   onBeginRename,
@@ -559,6 +561,7 @@ function ChatListRow({
   isStreaming: boolean
   unread: number
   editingTitle: string
+  syncProvider?: 'slack' | 'teams'
 
   onOpenChat: (chat: Conversation) => void
   onBeginRename: (chat: Conversation, event: MouseEvent<HTMLButtonElement>) => void
@@ -621,6 +624,9 @@ function ChatListRow({
           >
             <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
             <span className="flex-1 truncate">{chat.title}</span>
+            {syncProvider ? (
+              <span className="shrink-0 text-[10px] text-(--muted-light)">{SYNC_SOURCE_LABEL[syncProvider]}</span>
+            ) : null}
             {isStreaming && !unread ? (
               <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
             ) : null}
@@ -730,6 +736,7 @@ function ChatListBody({
     all: 'No chats yet',
   }[chatView]
   const deletingChatIdSet = new Set(deletingChatIds)
+  const syncSources = useChannelSyncSources()
   const listClassName = 'ml-0 border-l-0 pl-0'
   if (loading) {
     return (
@@ -787,6 +794,7 @@ function ChatListBody({
                 ? (chat.unread ? 1 : 0)
                 : Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
               editingTitle={editingTitle}
+              syncProvider={syncSources.get(chat._id)?.provider}
 
               onOpenChat={openChat}
               onBeginRename={beginRename}
