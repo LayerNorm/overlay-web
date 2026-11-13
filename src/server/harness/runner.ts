@@ -19,6 +19,7 @@ import {
 } from './context'
 import { buildHarnessCheckpoint } from './continuity'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings, HarnessRunnerCheckpoint } from './ports'
+import { stickyGatewayUpstream, withoutHarnessStateMessages } from './prompt-cache'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import type { HarnessToolApprovals } from './tool-approvals'
 import { assertNoControlToolReplacement, prepareToolDefinitions } from './tool-definitions'
@@ -220,6 +221,13 @@ async function finishOrCheckpointInvocation(
 
 // WorkflowAgent ends its loop at an output-limit finish without adding that
 // response to its history, so the next call would never see what was written.
+// Keep a run on one Gateway upstream so its prompt cache is reused (see prompt-cache.ts).
+function withGatewayUpstream<T extends { providerOptions?: Record<string, Record<string, unknown>> }>(settings: T, upstream: string): T {
+  const gateway = settings.providerOptions?.gateway
+  if (gateway?.order !== undefined || gateway?.only !== undefined) return settings
+  return { ...settings, providerOptions: { ...settings.providerOptions, gateway: { ...gateway, order: [upstream] } } }
+}
+
 export function withCutOffResponse(messages: ModelMessage[], step: StepResult<ToolSet> | undefined): ModelMessage[] {
   if (step?.finishReason !== 'length' || !step.text || messages.at(-1)?.role === 'assistant') return messages
   return [...messages, { role: 'assistant', content: [{ type: 'text', text: step.text }] }]
@@ -418,7 +426,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       }],
       prepareStep: async ({ messages: prompt }) => {
         // This boundary includes completed tools, but none of the next call's partial output.
-        recoveryMessages = prompt.filter(message => message.role !== 'system')
+        recoveryMessages = withoutHarnessStateMessages(prompt.filter(message => message.role !== 'system'))
         recoverySteps = [...settledSteps]
         // Authority and the lease are renewed once, just before the call is reserved.
         let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, false)
@@ -433,8 +441,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         }
         const receiptId = `model:${modelCall}`
         preparedReceiptId = receiptId
+        const upstream = stickyGatewayUpstream(input.model.modelId, [...deliverySteps, ...settledSteps])
+        const settings = upstream ? withGatewayUpstream(input.settings ?? {}, upstream) : input.settings ?? {}
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
-          toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
+          toolNames: Object.keys(tools), toolDefinitions, settings })
         assertPreparedModelAuthority(prepared, input.model.credentialOwnerId)
         current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`)
         const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
@@ -540,7 +550,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     // WorkflowAgent returns its system prompt in history. Rebuild it exclusively
     // from trusted instructions and current durable state on every invocation.
-    messages = withCutOffResponse(invocationMessages.filter(message => message.role !== 'system'), invocationSteps.at(-1))
+    messages = withCutOffResponse(withoutHarnessStateMessages(invocationMessages.filter(message => message.role !== 'system')), invocationSteps.at(-1))
     stepReceiptIds.push(...invocationSteps.map(step => receiptByStepNumber.get(step.stepNumber)))
     steps.push(...invocationSteps)
     deliverySteps.push(...invocationSteps)
