@@ -1,10 +1,14 @@
 import type { StepResult, ToolSet } from 'ai'
+import { normalizeTranscriptAssistantParts } from '@overlay/chat-core'
 import type { HarnessExecutionResult } from './runner'
 import { isPersonalChatWorkToolOutputEnvelope } from '@/shared/agents/personal-chat-work'
 import {
   buildAssistantPersistenceFromSteps, mapAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
-import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
+import {
+  linkifySourceCitationsMarkdown,
+  shouldLinkifyKnowledgeSourceCitations,
+} from '@/shared/knowledge/source-citations'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { HARNESS_CONTROL_TOOLS } from './context'
 import { stripTextualToolCalls } from './textual-tool-calls'
@@ -82,7 +86,10 @@ export function buildPersonalHarnessDelivery(
     })
   }
   if (sourceCitations && Object.keys(sourceCitations).length) {
-    transcript = mapAssistantTextForPersistence(transcript, text => linkifySourceCitationsMarkdown(text, sourceCitations))
+    const { blocks } = normalizeTranscriptAssistantParts(transcript.parts)
+    if (shouldLinkifyKnowledgeSourceCitations(blocks)) {
+      transcript = mapAssistantTextForPersistence(transcript, text => linkifySourceCitationsMarkdown(text, sourceCitations))
+    }
   }
   const persisted = withTranscriptPartIds(result.snapshot.runId, 'final', compactHarnessTranscriptPersistence(transcript))
   return {

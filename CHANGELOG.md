@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep bare numeric knowledge citations unlinked when a turn also has successful web sources, so ambiguous references are not attached to unrelated memories or files.
 - Add a Preview-only personal conversation with 120 deterministic completed messages for pagination QA, without changing the existing performance histories or starting execution.
 - Deduplicate ambient server-component session reads within each React request, while keeping explicit-request reads and refresh operations uncached. Session and authorization data are never cached across users or requests.
 - Update the Workflow runtime (`workflow` 5.1.0 → 5.2.3) and its test plugin for upstream stream-transport fixes. Streamed chat output is now written to Vercel Workflow over WebSocket by default instead of HTTP, and HTTP appends that hit a confirmed rate limit (429) are retried with the full body instead of failing. Adds loopback retry coverage and a bounded Preview-only synthetic Workflow probe. Model retry and billing policies remain unchanged.
