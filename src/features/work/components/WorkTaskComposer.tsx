@@ -11,7 +11,6 @@ import { PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, Pro
 import type { CreateWorkItemRequest, WorkContextRef, WorkItem, WorkPerson } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { WORK_LIMITS, WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/work/status'
-import { DesktopComposerControls } from '@/components/desktop/DesktopComposerControls'
 import { composerRequest, emptyComposerDraft, type ComposerDraft } from '../lib/composer-draft'
 import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkData } from './WorkDataProvider'
@@ -101,7 +100,6 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
           </Popover>
           <span className="min-w-0 flex-1" />
           {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
-          <DesktopComposerControls disabled={locked} onAppendText={text => setDraft(current => ({ ...current, text: [current.text, text].filter(Boolean).join('\n') }))} />
           <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
         </PromptInputFooter>
         {error ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}

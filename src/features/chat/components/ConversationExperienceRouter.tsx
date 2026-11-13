@@ -17,7 +17,7 @@ import {
   readWorkspacePathScope,
 } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
+import { usePersonalChatDirectory } from '@/components/providers/PersonalChatProvider'
 import {
   ConversationDetailScopeGate,
   conversationDetailRouteKey,
@@ -108,7 +108,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     conversationId,
 
   })
-  const personalChat = usePersonalChat()
+  const personalChat = usePersonalChatDirectory()
   const convex = useConvex()
   const knownNativeChat = isKnownNativePersonalChat(personalChat, pathScope, conversationId)
   if (knownNativeChat && pathScope && conversationId) markConversationScopeVerified(pathScope, conversationId)

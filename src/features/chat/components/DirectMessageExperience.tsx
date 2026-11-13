@@ -405,7 +405,6 @@ export function DirectMessageExperience({
               guidedComposer={guided?.composer ?? undefined}
               surfacePlatform={transcript.surfacePlatform}
               composerProps={{
-                conversationId,
                 composer,
                 mentionCategories: vm.mentionCategories,
                 agentCommands: vm.agentCommands,
