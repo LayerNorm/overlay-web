@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
-import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
+import { usePersonalChatDirectory } from '@/components/providers/PersonalChatProvider'
 import { ScopeTag } from '@/components/layout/ScopeTag'
 import {
   ARCHIVED_CATEGORIES,
@@ -67,7 +67,7 @@ export function ArchivedSettings() {
   const workspace = useOptionalWorkspace()
   const buildWorkspaceHref = useWorkspaceHref()
   const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
-  const nativePersonal = usePersonalChat()
+  const nativePersonal = usePersonalChatDirectory()
   // Live: archives, restores and deletes made anywhere (another tab, another member) show without reloading.
   const live = useLiveArchivedItems(workspaceId)
   const legacyItems = live.items
