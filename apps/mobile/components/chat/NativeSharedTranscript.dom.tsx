@@ -130,6 +130,18 @@ interface TranscriptSelectionBookmark extends SelectionNodes<Node> {
   focusOffset: number
 }
 
+interface PendingTextSelectionHold {
+  scopeKey: string
+  root: HTMLElement
+  pointerId: number | null
+  touchId: number | null
+  wasFollowing: boolean
+  selectionObserved: boolean
+  awayIntent: boolean
+  endwardIntent: boolean
+  scrollTop: number
+}
+
 function exchangeForNode(viewport: HTMLElement, node: Node): HTMLElement | null {
   const element = node instanceof Element ? node : node.parentElement
   const exchange = element?.closest<HTMLElement>('[data-native-exchange]') ?? null
@@ -170,6 +182,22 @@ function selectionOwner(viewport: HTMLElement, node: Node) {
   const targetId = assistant?.dataset.nativeAssistantResponseId ?? ''
   const root = assistant?.querySelector<HTMLElement>('[data-slot="message"][data-align="start"]')
   return targetId && root ? { exchangeId: exchange.dataset.nativeExchange ?? '', role: 'response' as const, targetId, root } : null
+}
+
+function textSelectionRootForTarget(viewport: HTMLElement, target: EventTarget | null, point: { x: number; y: number }): HTMLElement | null {
+  const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null
+  if (!element || !viewport.contains(element)) return null
+  if (element.closest('a,button,input,textarea,select,summary,img,svg,video,audio,canvas,[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[role="menuitem"],[role="option"],[role="combobox"],[role="listbox"],[role="slider"],[role="tab"],[role="textbox"],[role="searchbox"],[contenteditable]')) return null
+  const owner = selectionOwner(viewport, element)
+  if (!owner || owner.role === 'media' || !owner.root.contains(element)) return null
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  const supportsCaretHitTest = Boolean(doc.caretPositionFromPoint || doc.caretRangeFromPoint)
+  const caretNode = doc.caretPositionFromPoint?.(point.x, point.y)?.offsetNode ?? doc.caretRangeFromPoint?.(point.x, point.y)?.startContainer
+  if (supportsCaretHitTest && (!caretNode || caretNode.nodeType !== Node.TEXT_NODE || !owner.root.contains(caretNode))) return null
+  return owner.root
 }
 
 function selectionRoot(viewport: HTMLElement, exchangeId: string, role: 'user' | 'response' | 'media', targetId: string): HTMLElement | null {
@@ -460,22 +488,82 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const [followsLatest, setFollowsLatest] = useState(false)
   const [scrollToEndRequest, setScrollToEndRequest] = useState(0)
   const selectionBookmark = useRef<TranscriptSelectionBookmark | null>(null)
+  const pendingTextSelectionHold = useRef<PendingTextSelectionHold | null>(null)
   const scopeKey = JSON.stringify([snapshot.workspaceId, snapshot.conversationId, snapshot.mountNonce])
   const readyKey = JSON.stringify([scopeKey, snapshot.focusNonce, snapshot.deliveryEpoch])
   const bindScrollToMessage = useCallback((scrollToMessage: ScrollToMessage | null) => {
     scrollToMessageRef.current = scrollToMessage
   }, [])
   const requestScrollToLatest = useCallback(() => {
+    const hold = pendingTextSelectionHold.current
+    if (hold?.scopeKey === scopeKey) hold.endwardIntent = true
     suppressFollowOnScrollRef.current = false
     followsLatestRef.current = true
     setFollowsLatest(true)
     setScrollToEndRequest((request) => request + 1)
-  }, [])
+  }, [scopeKey])
   const pauseLatestFollow = useCallback(() => {
     if (!followsLatestRef.current) return
     followsLatestRef.current = false
     setFollowsLatest(false)
   }, [])
+  const beginTextSelectionHold = useCallback((
+    target: EventTarget | null,
+    input: { pointerId?: number; touchId?: number; clientX: number; clientY: number },
+  ) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const root = textSelectionRootForTarget(viewport, target, { x: input.clientX, y: input.clientY })
+    if (!root) return
+
+    const existing = pendingTextSelectionHold.current
+    if (existing) {
+      if (existing.scopeKey !== scopeKey || existing.root !== root) return
+      if (input.pointerId !== undefined && existing.pointerId === null) existing.pointerId = input.pointerId
+      if (input.touchId !== undefined && existing.touchId === null) existing.touchId = input.touchId
+      return
+    }
+    if (!followsLatestRef.current && !isNearTranscriptBottom(viewport)) return
+
+    const selectionObserved = selectionBookmark.current !== null || hasTranscriptSelection(viewport)
+    const hold: PendingTextSelectionHold = {
+      scopeKey,
+      root,
+      pointerId: input.pointerId ?? null,
+      touchId: input.touchId ?? null,
+      wasFollowing: followsLatestRef.current,
+      selectionObserved,
+      awayIntent: false,
+      endwardIntent: false,
+      scrollTop: viewport.scrollTop,
+    }
+    pendingTextSelectionHold.current = hold
+    scrollPosition.current = viewport.scrollTop
+    pauseLatestFollow()
+  }, [pauseLatestFollow, scopeKey])
+  const finishTextSelectionHold = useCallback((input: { pointerId?: number; touchId?: number } = {}) => {
+    const hold = pendingTextSelectionHold.current
+    if (!hold) return
+    if (input.pointerId !== undefined && hold.pointerId !== input.pointerId) return
+    if (input.touchId !== undefined && hold.touchId !== input.touchId) return
+    if (input.pointerId !== undefined) hold.pointerId = null
+    if (input.touchId !== undefined) hold.touchId = null
+    if (input.pointerId === undefined && input.touchId === undefined) {
+      hold.pointerId = null
+      hold.touchId = null
+    }
+    if (hold.pointerId !== null || hold.touchId !== null) return
+    pendingTextSelectionHold.current = null
+
+    const viewport = viewportRef.current
+    if (!viewport || hold.scopeKey !== scopeKey) return
+    if (hold.selectionObserved || selectionBookmark.current || hasTranscriptSelection(viewport)) return
+    if (hold.endwardIntent && isNearTranscriptBottom(viewport)) {
+      requestScrollToLatest()
+      return
+    }
+    if (!hold.awayIntent && !hold.endwardIntent && hold.wasFollowing) requestScrollToLatest()
+  }, [requestScrollToLatest, scopeKey])
   const lifecycle = useRef({ scopeKey, focusNonce: snapshot.focusNonce, generation: 0, active: false })
   const committedScopeKey = useRef(scopeKey)
   const [selectionState, setSelectionState] = useState(() => ({
@@ -641,6 +729,14 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const rememberSelection = useCallback(() => {
     const viewport = viewportRef.current
     const selection = typeof window.getSelection === 'function' ? window.getSelection() : null
+    if (
+      viewport && selection && !selection.isCollapsed && selection.anchorNode && viewport.contains(selection.anchorNode) &&
+      selection.focusNode && viewport.contains(selection.focusNode)
+    ) {
+      const hold = pendingTextSelectionHold.current
+      if (hold?.scopeKey === scopeKey) hold.selectionObserved = true
+      pauseLatestFollow()
+    }
     if (!viewport || !selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) {
       const saved = selectionBookmark.current
       if (saved && (!saved.anchorNode.isConnected || !saved.focusNode.isConnected)) return
@@ -660,12 +756,14 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       focusExchangeId: focus.exchangeId, focusRole: focus.role, focusTargetId: focus.targetId, focusOffset,
       anchorNode: selection.anchorNode, focusNode: selection.focusNode,
     }
-    pauseLatestFollow()
-  }, [pauseLatestFollow])
+  }, [pauseLatestFollow, scopeKey])
 
   useEffect(() => {
     document.addEventListener('selectionchange', rememberSelection)
-    return () => document.removeEventListener('selectionchange', rememberSelection)
+    return () => {
+      document.removeEventListener('selectionchange', rememberSelection)
+      pendingTextSelectionHold.current = null
+    }
   }, [rememberSelection])
 
   useEffect(() => {
@@ -739,6 +837,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     if (!viewport) return
     if (committedScopeKey.current !== scopeKey) {
       committedScopeKey.current = scopeKey
+      pendingTextSelectionHold.current = null
       selectionBookmark.current = null
       scrollPosition.current = 0
       suppressFollowOnScrollRef.current = false
@@ -772,23 +871,53 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     const viewport = viewportRef.current
     if (!viewport) return
     const previousScrollTop = scrollPosition.current
-    scrollPosition.current = viewport.scrollTop
-    if (selectionBookmark.current || hasTranscriptSelection(viewport)) {
+    const hold = pendingTextSelectionHold.current
+    const selected = hasTranscriptSelection(viewport)
+    if (selected && hold?.scopeKey === scopeKey) hold.selectionObserved = true
+    if (selectionBookmark.current || selected) {
+      scrollPosition.current = viewport.scrollTop
       pauseLatestFollow()
       return
     }
+    if (hold?.scopeKey === scopeKey) {
+      if (viewport.scrollTop !== hold.scrollTop) {
+        if (!hold.awayIntent && !hold.endwardIntent) {
+          viewport.scrollTop = hold.scrollTop
+          scrollPosition.current = hold.scrollTop
+          return
+        }
+        if (viewport.scrollTop < hold.scrollTop) hold.awayIntent = true
+        else hold.endwardIntent = true
+        hold.scrollTop = viewport.scrollTop
+      }
+      scrollPosition.current = viewport.scrollTop
+      return
+    }
+    scrollPosition.current = viewport.scrollTop
     if (suppressFollowOnScrollRef.current) return
     if (isNearTranscriptBottom(viewport)) {
       if (!followsLatestRef.current) requestScrollToLatest()
     } else if (viewport.scrollTop < previousScrollTop) {
       pauseLatestFollow()
     }
-  }, [pauseLatestFollow, requestScrollToLatest])
+  }, [pauseLatestFollow, requestScrollToLatest, scopeKey])
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current
     if (!viewport) return
     suppressFollowOnScrollRef.current = false
     const selected = selectionBookmark.current !== null || hasTranscriptSelection(viewport)
+    const hold = pendingTextSelectionHold.current
+    if (hold?.scopeKey === scopeKey) {
+      if (event.deltaY < 0) hold.awayIntent = true
+      else if (event.deltaY > 0 || event.shiftKey || event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        hold.endwardIntent = true
+      }
+      if (selected) hold.selectionObserved = true
+      else {
+        if (event.deltaY < 0) pauseLatestFollow()
+        return
+      }
+    }
     const horizontal = event.shiftKey || event.deltaY === 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)
     if (horizontal) {
       if (!selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
@@ -799,11 +928,12 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       return
     }
     if (!selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
-  }, [pauseLatestFollow, requestScrollToLatest])
+  }, [pauseLatestFollow, requestScrollToLatest, scopeKey])
   const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     const touch = event.touches[0]
     touchScrollStart.current = touch ? { x: touch.clientX, y: touch.clientY, rearmed: false } : null
-  }, [])
+    if (touch) beginTextSelectionHold(event.target, { touchId: touch.identifier, clientX: touch.clientX, clientY: touch.clientY })
+  }, [beginTextSelectionHold])
   const handleTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     const start = touchScrollStart.current
     const touch = event.touches[0]
@@ -813,26 +943,53 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     const deltaY = touch.clientY - start.y
     suppressFollowOnScrollRef.current = false
     if (deltaY > 8 && Math.abs(deltaY) >= Math.abs(deltaX)) {
+      const hold = pendingTextSelectionHold.current
+      if (hold?.scopeKey === scopeKey) hold.awayIntent = true
       pauseLatestFollow()
       return
     }
     const selected = selectionBookmark.current !== null || hasTranscriptSelection(viewport)
+    const hold = pendingTextSelectionHold.current
+    if (hold?.scopeKey === scopeKey) {
+      if (selected) {
+        hold.selectionObserved = true
+        pauseLatestFollow()
+        return
+      }
+      if (deltaY < -8 && Math.abs(deltaY) >= Math.abs(deltaX)) hold.endwardIntent = true
+      return
+    }
     if (start.rearmed || selected || !(followsLatestRef.current || isNearTranscriptBottom(viewport))) return
     start.rearmed = true
     requestScrollToLatest()
-  }, [pauseLatestFollow, requestScrollToLatest])
-  const handleTouchEnd = useCallback(() => { touchScrollStart.current = null }, [])
+  }, [pauseLatestFollow, requestScrollToLatest, scopeKey])
+  const handleTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    touchScrollStart.current = null
+    const hold = pendingTextSelectionHold.current
+    if (!hold || hold.touchId === null) return
+    const ended = Array.from(event.changedTouches).some((touch) => touch.identifier === hold.touchId)
+    if (ended || event.type === 'touchcancel') finishTextSelectionHold({ touchId: hold.touchId })
+  }, [finishTextSelectionHold])
   const handleScrollKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!TRANSCRIPT_SCROLL_KEYS.has(event.key)) return
     suppressFollowOnScrollRef.current = false
+    const hold = pendingTextSelectionHold.current
     if (TRANSCRIPT_SCROLL_AWAY_KEYS.has(event.key)) {
+      if (hold?.scopeKey === scopeKey) hold.awayIntent = true
       pauseLatestFollow()
       return
     }
     const viewport = viewportRef.current
     const selected = selectionBookmark.current !== null || Boolean(viewport && hasTranscriptSelection(viewport))
+    if (hold?.scopeKey === scopeKey) {
+      if (selected) hold.selectionObserved = true
+      else {
+        hold.endwardIntent = true
+        return
+      }
+    }
     if (viewport && !selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
-  }, [pauseLatestFollow, requestScrollToLatest])
+  }, [pauseLatestFollow, requestScrollToLatest, scopeKey])
 
   const renderExchange = useCallback((exchange: ChatTranscriptExchangeView, presentation: ChatTranscriptPresentation) => {
     const mediaPresentation = snapshot.media.find((item) => item.exchangeId === exchange.id)
@@ -1043,27 +1200,50 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const dragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!event.isTrusted || !event.isPrimary) return
     pointerDrag.current = { id: event.pointerId, y: event.clientY, fired: false }
-  }, [])
+    beginTextSelectionHold(event.target, { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY })
+  }, [beginTextSelectionHold])
   const dragMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = pointerDrag.current
     if (!drag || !event.isTrusted || drag.id !== event.pointerId || drag.fired || Math.abs(event.clientY - drag.y) < 12) return
     drag.fired = true
     suppressFollowOnScrollRef.current = false
-    if (event.clientY > drag.y) pauseLatestFollow()
-    else if (event.pointerType !== 'touch') {
-      const viewport = viewportRef.current
-      const selected = selectionBookmark.current !== null || Boolean(viewport && hasTranscriptSelection(viewport))
-      if (viewport && !selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
+    const hold = pendingTextSelectionHold.current
+    const viewport = viewportRef.current
+    const selected = selectionBookmark.current !== null || Boolean(viewport && hasTranscriptSelection(viewport))
+    if (selected && hold?.scopeKey === scopeKey) hold.selectionObserved = true
+    if (event.clientY > drag.y) {
+      if (hold?.scopeKey === scopeKey) hold.awayIntent = true
+      pauseLatestFollow()
+    } else if (event.pointerType !== 'touch') {
+      if (!hold && viewport && !selected && (followsLatestRef.current || isNearTranscriptBottom(viewport))) requestScrollToLatest()
     }
     if (supported('keyboard-dismiss')) void dispatch({ kind: 'keyboard-dismiss', ...scope, intent: 'user-drag' }).catch(() => {})
-  }, [dispatch, pauseLatestFollow, requestScrollToLatest, scope, supported])
-  const dragEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => { if (pointerDrag.current?.id === event.pointerId) pointerDrag.current = null }, [])
+  }, [dispatch, pauseLatestFollow, requestScrollToLatest, scope, scopeKey, supported])
+  const dragEnd = useCallback((event: PointerEvent) => {
+    if (pointerDrag.current?.id === event.pointerId) pointerDrag.current = null
+    finishTextSelectionHold({ pointerId: event.pointerId })
+  }, [finishTextSelectionHold])
+  useEffect(() => {
+    const finishOnWindowBlur = () => {
+      pointerDrag.current = null
+      touchScrollStart.current = null
+      finishTextSelectionHold()
+    }
+    document.addEventListener('pointerup', dragEnd, true)
+    document.addEventListener('pointercancel', dragEnd, true)
+    window.addEventListener('blur', finishOnWindowBlur)
+    return () => {
+      document.removeEventListener('pointerup', dragEnd, true)
+      document.removeEventListener('pointercancel', dragEnd, true)
+      window.removeEventListener('blur', finishOnWindowBlur)
+    }
+  }, [dragEnd, finishTextSelectionHold])
 
   return (
     <MessageScrollerProvider defaultScrollPosition="start" autoScroll={followsLatest} scrollEdgeThreshold={SCROLL_EDGE_THRESHOLD}>
       <MessageScrollerScrollBridge bind={bindScrollToMessage} />
       <MessageScroller className="overlay-chat-surface relative h-full min-h-0 w-full overflow-hidden bg-(--background) text-(--foreground)" data-theme={snapshot.theme}>
-        <MessageScrollerViewport ref={viewportRef} aria-label="Conversation" onClickCapture={onClickCapture} onScroll={handleScroll} onWheel={handleWheel} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd} onKeyDown={handleScrollKeyDown} onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4">
+        <MessageScrollerViewport ref={viewportRef} aria-label="Conversation" onClickCapture={onClickCapture} onScroll={handleScroll} onWheel={handleWheel} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd} onKeyDown={handleScrollKeyDown} onPointerDown={dragStart} onPointerMove={dragMove} className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4">
           <MessageScrollerContent data-chat-transcript className="mx-auto w-full min-w-0 max-w-4xl gap-5 sm:gap-6">
             <ChatTranscript view={filteredView} actions={{ renderExchange }} presentation={{ density: 'comfortable', actionVisibility: 'always', showActions: true }} scrollItems />
             {notice ? <p className="px-2 text-xs text-(--muted)" role="status" aria-live="polite">{notice}</p> : null}
