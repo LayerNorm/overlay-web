@@ -329,7 +329,7 @@
     "eslint": "10.10.0",
     "eslint-config-next": "16.4.2",
     "js-yaml": "4.3.2",
-    "mintlify": "^4.2.816",
+    "mintlify": "^4.3.27",
     "playwright": "^1.61.1",
     "postcss": "8.5.26",
     "react-test-renderer": "19.2.8",
