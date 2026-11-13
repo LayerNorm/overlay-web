@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a Preview-only personal conversation with 120 deterministic completed messages for pagination QA, without changing the existing performance histories or starting execution.
 - Deduplicate ambient server-component session reads within each React request, while keeping explicit-request reads and refresh operations uncached. Session and authorization data are never cached across users or requests.
 - Show notes and files created by agents, plus media they explicitly publish to Files, as compact cards in conversation replies and the conversation-scoped Agent Library. Open the same file in the existing side-panel preview from either place, and identify Computer work by its path or command.
 - Publish the app theme as the page's theme colour. The Mac app now uses it so its window follows the Overlay theme rather than the macOS appearance, which removes the black outline drawn around the light theme when macOS is in Dark mode.
@@ -32,6 +33,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
+
+- Start personal-chat message subscriptions alongside summary loading instead of waiting for a second network round trip. Keep rows hidden until the current summary is authorized, and let opted-in route reads return an empty page for unavailable conversations without weakening authentication, workspace or capability checks.
 
 - Fix a cancelled ChatGPT/Codex sign-in staying in the provider list. Removing a subscription connection failed with "Subscription cleanup is pending" when a sign-in check was still running, so the connection was never deleted. That check now hands its lock back as soon as it sees the removal, and removal waits for it (at most a minute) before deleting the stored sign-in data and the connection. This changes Convex subscription mutations.
 - Let people cancel the ChatGPT/Codex sign-in dialog even when cleaning up the pending sign-in fails. Cancel used to show "Could not cancel this connection. Try again before closing." and keep the dialog open; it now closes at once and removes the pending sign-in in the background (fixes #454).
