@@ -512,6 +512,20 @@ function removeMentionChipBeforeCaret(e: KeyboardEvent<HTMLDivElement>): boolean
   return false
 }
 
+function hasCommandModifier(e: KeyboardEvent<HTMLDivElement>): boolean {
+  return e.altKey || e.ctrlKey || e.metaKey
+}
+
+/** Markdown-style list editing. Returns true when the key was handled. */
+function handleListEditingKey(e: KeyboardEvent<HTMLDivElement>, el: HTMLDivElement): boolean {
+  if (hasCommandModifier(e)) return false
+  const handled =
+    (e.key === 'Tab' && handleListTab(el, e.shiftKey)) ||
+    (e.key === 'Backspace' && handleListBackspace(el))
+  if (handled) e.preventDefault()
+  return handled
+}
+
 export function handleEditorKeyDown(
   e: KeyboardEvent<HTMLDivElement>,
   {
@@ -540,23 +554,9 @@ export function handleEditorKeyDown(
     if (handleShiftEnterInBlock(e, el)) return
   }
 
-  // Tab / Shift+Tab inside a list: indent or outdent the point, Markdown style,
-  // instead of moving focus to the next control.
-  if (e.key === 'Tab' && el && !e.altKey && !e.ctrlKey && !e.metaKey) {
-    if (handleListTab(el, e.shiftKey)) {
-      e.preventDefault()
-      return
-    }
-  }
-
-  // Backspace at the start of a point: outdent a sub-point, or turn a
-  // top-level point back into plain text (including the very first point).
-  if (e.key === 'Backspace' && el && !e.altKey && !e.ctrlKey && !e.metaKey) {
-    if (handleListBackspace(el)) {
-      e.preventDefault()
-      return
-    }
-  }
+  // Tab / Shift+Tab indents or outdents a point; Backspace at the start of a
+  // point outdents it or turns it back into plain text.
+  if (el && handleListEditingKey(e, el)) return
 
   // Backspace on empty list item / blockquote / pre: exit the block
   if (e.key === 'Backspace' && el) {
