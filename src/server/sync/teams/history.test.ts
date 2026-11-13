@@ -28,7 +28,7 @@ function mockGraph(routes: (url: string) => Response | undefined) {
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input)
     calls.push(url)
-    if (url.includes('login.microsoftonline.com')) return Response.json({ access_token: 'app-token', expires_in: 3600 })
+    if (new URL(url).hostname === 'login.microsoftonline.com') return Response.json({ access_token: 'app-token', expires_in: 3600 })
     if (url.includes('/users/')) return Response.json({ error: { code: 'Request_ResourceNotFound' } }, { status: 404 })
     return routes(url) ?? Response.json({ error: { code: 'NotFound' } }, { status: 404 })
   }) as typeof fetch
