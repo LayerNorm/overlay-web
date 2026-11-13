@@ -210,6 +210,14 @@ async function settleSharedUi() {
   await runAct(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
 }
 
+async function waitForBoundedCondition(description: string, predicate: () => boolean, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for ' + description)
+    await new Promise<void>((resolve) => setTimeout(resolve, 1))
+  }
+}
+
 async function settleInitialTranscriptLayout(page: Page) {
   await page.evaluate(() => document.fonts.ready.then(() => true))
   await page.waitForFunction(() => {
@@ -683,7 +691,9 @@ test('focus epochs cancel captured Copy, Download, and Draft callbacks while pre
 
     const nextSnapshot = snapshot(actionCase.view, { focusNonce: 'focus-2', supportedActions: actionCase.actions })
     await runAct(async () => { renderer.update(<NativeSharedTranscript snapshot={nextSnapshot} onAction={async (request) => { requests.push(request); return pending.promise }} onReady={(current) => { readyFocuses.push(current.focusNonce) }} />) })
-    await settleSharedUi()
+    await runAct(async () => {
+      await waitForBoundedCondition(`focus-2 readiness for ${actionCase.kind}`, () => readyFocuses.includes('focus-2'))
+    })
     if (actionCase.kind === 'download-text') {
       assert.equal(renderer.root.findByProps({ 'data-native-exchange': 'turn-1' }).props['data-native-response-id'], generatedView.exchanges[0]!.responses[1]!.id)
     }
@@ -693,7 +703,10 @@ test('focus epochs cancel captured Copy, Download, and Draft callbacks while pre
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     await runAct(async () => {
       document.dispatchEvent(new Event('visibilitychange'))
-      await settleSharedUi()
+      await waitForBoundedCondition(
+        `visibility-resume readiness for ${actionCase.kind}`,
+        () => readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length > readyCountOnResume,
+      )
     })
     assert.ok(readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length > readyCountOnResume)
     if (previousVisibility) Object.defineProperty(document, 'visibilityState', previousVisibility)
@@ -703,7 +716,12 @@ test('focus epochs cancel captured Copy, Download, and Draft callbacks while pre
     await runAct(async () => {
       renderer.update(<NativeSharedTranscript snapshot={deliveryRetrySnapshot} onAction={async (request) => { requests.push(request); return pending.promise }} onReady={(current) => { readyFocuses.push(current.focusNonce) }} />)
     })
-    await settleSharedUi()
+    await runAct(async () => {
+      await waitForBoundedCondition(
+        `delivery-retry readiness for ${actionCase.kind}`,
+        () => readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length > readyCountBeforeDeliveryRetry,
+      )
+    })
     assert.ok(readyFocuses.filter((focusNonce) => focusNonce === 'focus-2').length > readyCountBeforeDeliveryRetry)
     await runAct(async () => { oldCallback() })
     await settleSharedUi()

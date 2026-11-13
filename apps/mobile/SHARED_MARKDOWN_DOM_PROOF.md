@@ -10,7 +10,7 @@ The standalone synthetic transcript component is retained for its focused test a
 
 ## Native transcript tests
 
-Run `npm run test:native-transcript` for the action-controller suite and the mounted React/Chromium transcript suite. Mobile locks `tsx`, `esbuild`, and Playwright; React, React DOM, and `react-test-renderer` resolve from the pinned parent Web checkout and are version-checked by the test preload. Install Chromium locally with `npx playwright install chromium`; CI installs Chromium and its Linux dependencies.
+Run `npm run test:native-transcript` for the action-controller suite and the mounted React/Chromium transcript suite. Mounted focus-resume assertions wait with a bounded timeout for the scheduled readiness callback instead of treating one event-loop turn as completion. Mobile locks `tsx`, `esbuild`, and Playwright; React, React DOM, and `react-test-renderer` resolve from the pinned parent Web checkout and are version-checked by the test preload. Install Chromium locally with `npx playwright install chromium`; CI installs Chromium and its Linux dependencies.
 
 ## Jump-to-latest control
 
