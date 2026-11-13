@@ -2,7 +2,10 @@ import { expect, test, vi } from 'vitest'
 import type { HarnessExecutionResult } from './runner'
 vi.mock('server-only', () => ({}))
 vi.mock('./state-steps', () => ({ readHarnessState: vi.fn(), applyHarnessOperation: vi.fn() }))
-import { publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery } from './harness-transcript'
+import {
+  publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery,
+  reconcileSettledHarnessTranscriptOutcomes,
+} from './harness-transcript'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 
 test('settled public persistence excludes private reasoning and keeps sanitized tool display', () => {
@@ -60,6 +63,93 @@ test('full public persistence retains long tool errors but excludes control appr
   } as never, new Set(['get_note']))
   expect(JSON.stringify(persistence)).toContain(error)
   expect(JSON.stringify(persistence)).not.toContain('private')
+})
+
+test('reconciliation preserves a native failure envelope in the settled row and final delivery', () => {
+  const toolCall = {
+    type: 'tool-call',
+    toolCallId: 'computer-failure-call',
+    toolName: 'computer_exec',
+    input: { command: 'false' },
+  }
+  const actualError = { success: false, error: 'Computer command failed with exit code 2.' }
+  const output = {
+    overlayModelOutput: { type: 'json', value: actualError },
+    display: actualError,
+  }
+  const staleStep = {
+    stepNumber: 0,
+    text: 'Starting the command.',
+    reasoning: [],
+    content: [
+      { type: 'text', text: 'Starting the command.' },
+      toolCall,
+    ],
+    toolCalls: [toolCall],
+    toolResults: [],
+  }
+  const stalePersistence = publicHarnessStepPersistence(staleStep as never, new Set(['computer_exec']))
+  const settledTranscript = {
+    persistence: stalePersistence,
+    steps: [{
+      receiptId: 'model:0',
+      sequence: 0,
+      stepNumber: 0,
+      persistence: {
+        ...stalePersistence,
+        parts: stalePersistence.parts.map((part, index) => ({ ...part, id: `early-${index}` })),
+      },
+    }],
+    newestSequence: 0,
+  }
+  const resultStep = {
+    stepNumber: 0,
+    text: '',
+    reasoning: [],
+    content: [toolCall, { ...toolCall, type: 'tool-result', output }],
+    toolCalls: [toolCall],
+    toolResults: [{ ...toolCall, type: 'tool-result', output }],
+  }
+  const result = {
+    outcome: 'finished',
+    snapshot: {
+      runId: 'personal:workspace:conversation',
+      status: 'completed',
+      evidence: [],
+      usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 },
+    },
+    messages: [],
+    steps: [resultStep],
+    stepReceiptIds: ['model:0'],
+  } as unknown as HarnessExecutionResult
+  const activeToolNames = new Set(['computer_exec'])
+
+  const reconciled = reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, settledTranscript)
+  const persistedInvocation = reconciled.updatedSteps[0]?.persistence.parts.find(part => part.type === 'tool-invocation')
+  expect(persistedInvocation).toEqual(expect.objectContaining({
+    id: 'early-1',
+    toolInvocation: expect.objectContaining({
+      toolCallId: toolCall.toolCallId,
+      state: 'output-error',
+      toolOutput: actualError,
+    }),
+  }))
+
+  const delivery = buildPersonalHarnessDelivery(result, undefined, activeToolNames, settledTranscript)
+  expect(delivery.parts.filter(part => (
+    part.type === 'tool-invocation'
+    && (part.toolInvocation as Record<string, unknown>).toolCallId === toolCall.toolCallId
+  ))).toHaveLength(1)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({
+    type: 'tool-invocation',
+    toolInvocation: expect.objectContaining({
+      toolCallId: toolCall.toolCallId,
+      state: 'output-error',
+      toolOutput: actualError,
+    }),
+  }))
+  expect(delivery.content.match(/Starting the command\./g)).toHaveLength(1)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({ id: 'early-0' }))
 })
 
 test('failure delivery restores journal order, deduplicates matching settled steps, and keeps new live text', () => {

@@ -214,7 +214,9 @@ the missing-result fallback. Final delivery reconciles only an explicit later
 tool outcome for the same call ID and original receipt/step, updates that
 checkpoint before delivery, and preserves its text, order and part IDs. Actual
 errors and denials remain terminal; missing results stay errors or pending
-approvals. The conversation trace reads these updated durable rows.
+approvals. Native result envelopes are unwrapped in both `content` and
+`toolResults` before classification so explicit `success: false` remains an
+error. The conversation trace reads these updated durable rows.
 Cancellation never reads the live
 stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
 cancels the run, then the scheduled `settleCancelledPublicStream` keeps the

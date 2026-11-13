@@ -224,12 +224,18 @@ export function reconcileSettledHarnessTranscriptOutcomes<T extends SettledHarne
   })
   if (!origins.size) return { transcript: settledTranscript, updatedSteps: [] }
 
-  const observed = buildAssistantPersistenceFromSteps(result.steps, '', { fullValues: true })
-  const observedParts = observed.parts.filter(part => part.type === 'tool-invocation').map(part => {
-    const invocation = part.toolInvocation as Record<string, unknown>
-    if (!isPersonalChatWorkToolOutputEnvelope(invocation.toolOutput)) return part
-    return { ...part, toolInvocation: { ...invocation, toolOutput: invocation.toolOutput.display } }
-  })
+  const unwrapToolResult = <T extends { type: string }>(part: T): T => {
+    if (part.type !== 'tool-result' || !('output' in part)
+      || !isPersonalChatWorkToolOutputEnvelope(part.output)) return part
+    return { ...part, output: part.output.display }
+  }
+  const observedSteps = result.steps.map(step => ({
+    ...step,
+    content: step.content?.map(unwrapToolResult),
+    toolResults: step.toolResults.map(unwrapToolResult),
+  }))
+  const observed = buildAssistantPersistenceFromSteps(observedSteps, '', { fullValues: true })
+  const observedParts = observed.parts.filter(part => part.type === 'tool-invocation')
   const updatedSteps: HarnessTranscriptStep[] = []
   const steps = settledTranscript.steps.map(step => {
     const matches = observedParts.filter(part => {
