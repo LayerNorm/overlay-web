@@ -34,6 +34,22 @@ request selects these Computer tools; it cannot bypass Computer availability or
 approvals. Old saved browser-only grants do not automatically gain Computer
 permissions.
 
+## How tool calls appear in chat
+
+Rows describe what a call did, built from its input and result by `describeToolCall`
+(`packages/overlay-chat-core/src/tool-call-description.ts`): "Ran `npm test`", "Read
+`auth.ts:1-50`", "Searched `src` for “x”", "Edited `a.ts` +20 −6", "Created `report.mp4`".
+Only simple, unpiped `rg`/`grep`/`cat`/`sed -n`/`head`/`tail`/`ls`/`find` commands are
+summarized; everything else is "Ran" with the first line of the command. Secret-looking values
+in commands are hidden on screen only. Results that feed this:
+
+- `computer_write_file` returns `created` and `linesAdded`/`linesRemoved` (read before the write;
+  omitted when the old file is over 1 MB or unreadable).
+- `generate_image`, `generate_video` and `animate_image` return `fileId` and `url`
+  (`/api/v1/files/<id>/content`) next to `outputId`.
+- Files a turn creates (`write_file`, `create_note`, `generate_*`, `computer_publish_file`) render
+  as cards after the reply unless the reply already embeds them.
+
 ## Scope on list tools
 
 `list_notes`, `list_files`, `list_skills`, `list_automations`, and `list_tasks` take an optional `scope`: `personal` (only yours),

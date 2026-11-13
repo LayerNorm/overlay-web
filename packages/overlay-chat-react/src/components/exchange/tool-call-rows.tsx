@@ -9,12 +9,14 @@ import {
 import type { ToolGroupItem, ToolVisualBlock } from '@overlay/chat-core'
 import {
 TOOL_UI_DONE_STATES,
+describeToolCall,
 isOverlayGatedToolOutput
 } from '@overlay/chat-core'
 import { useState } from 'react'
 import { getDescriptiveToolLabel } from '../../lib/tool-labels'
 
 import { ReasoningBlock } from './reasoning-block'
+import { ToolCallDescriptionLine } from './tool-call-description-line'
 import { TraceMark } from './tool-rail'
 
 export function ToolCallRowWithReasoning({
@@ -29,17 +31,14 @@ export function ToolCallRowWithReasoning({
   const toolDone = TOOL_UI_DONE_STATES.has(block.state)
   const err = block.state === 'input-error' || block.state === 'output-error' || block.state === 'output-denied'
   const running = !toolDone && !err
-  const label = getDescriptiveToolLabel(
-    block.name,
-    block.toolInput,
-    block.state === 'output-denied'
-      ? 'denied'
-      : block.state === 'output-error' || block.state === 'input-error'
-        ? 'error'
-        : toolDone
-          ? 'complete'
-          : 'running',
-  )
+  const phase = block.state === 'output-denied'
+    ? 'denied'
+    : block.state === 'output-error' || block.state === 'input-error'
+      ? 'error'
+      : toolDone
+        ? 'complete'
+        : 'running'
+  const description = describeToolCall(block.name, block.toolInput, block.toolOutput, phase)
 
   return (
     <div className="w-full max-w-[min(100%,36rem)]">
@@ -48,7 +47,13 @@ export function ToolCallRowWithReasoning({
         className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
       >
         <TraceMark running={running} />
-        <TraceTitle className="whitespace-normal">{label}</TraceTitle>
+        {description ? (
+          <TraceTitle className="min-w-0 truncate" title={description.title}>
+            <ToolCallDescriptionLine description={description} />
+          </TraceTitle>
+        ) : (
+          <TraceTitle className="whitespace-normal">{getDescriptiveToolLabel(block.name, block.toolInput, phase)}</TraceTitle>
+        )}
       </TraceLine>
     </div>
   )

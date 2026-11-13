@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -11,6 +11,7 @@ import { DirectMessageExperience } from '@/features/chat/components/DirectMessag
 import { ChatSurfaceEmptyState } from '@/features/chat/components/ChatSurfaceEmptyState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
+import { ChatFilesProvider, useChatFilesHost, type ChatFilesHost } from '@overlay/chat-react'
 import {
   agentBelongsToCreatorScope,
   agentsForCreatorScope,
@@ -276,6 +277,21 @@ function AgentConversationWorkspaceContent() {
   const closeRightSidebar = useCallback(() => {
     setSidebarPreferences((current) => ({ ...current, open: false }))
   }, [])
+  // The previewed Library file belongs to one thread; switching threads shows the tabs again.
+  const [libraryPreview, setLibraryPreview] = useState<{ conversationId: string | null; fileId: string } | null>(null)
+  const libraryPreviewFileId = libraryPreview?.conversationId === conversationId ? libraryPreview.fileId : null
+  const setLibraryPreviewFileId = useCallback((fileId: string | null) => {
+    setLibraryPreview(fileId ? { conversationId, fileId } : null)
+  }, [conversationId])
+  const outerFilesHost = useChatFilesHost()
+  // Files opened from this thread's chat cards and tool rows preview in its Library panel, so the user stays here.
+  const filesHost = useMemo<ChatFilesHost>(() => ({
+    useFileSummaries: outerFilesHost.useFileSummaries,
+    openFile: ({ id }) => {
+      setSidebarPreferences((current) => ({ ...current, open: true, tab: 'library' }))
+      setLibraryPreviewFileId(id)
+    },
+  }), [outerFilesHost.useFileSummaries, setLibraryPreviewFileId])
   const { sidebarEditor, computerAccess, computerControl, updateComputerControl } = useAgentConversationComputer({
     activeWorkspaceId,
     agentId,
@@ -438,6 +454,8 @@ function AgentConversationWorkspaceContent() {
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
         conversationId={conversationId}
+        previewFileId={libraryPreviewFileId}
+        onPreviewFileChange={setLibraryPreviewFileId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
         onClose={closeRightSidebar}
@@ -460,6 +478,7 @@ function AgentConversationWorkspaceContent() {
     ) : null
     return (
       <>
+        <ChatFilesProvider value={filesHost}>
         <DirectMessageExperience
           key={conversationId}
           conversationId={conversationId}
@@ -483,6 +502,7 @@ function AgentConversationWorkspaceContent() {
             />
           ) : null}
         />
+        </ChatFilesProvider>
         {dialogEditor}
         {createDialog}
       </>
