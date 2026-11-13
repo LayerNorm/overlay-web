@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
 import { createHash } from 'node:crypto'
+import { createHarnessDiagnostic } from '../packages/overlay-agent-runtime/src/harness-diagnostic'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -128,6 +129,52 @@ function oneStep(id: string) {
 }
 
 describe('durable harness runs', () => {
+  test('appends diagnostic history and sanitized tool failures idempotently', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('diagnostic-history', await seedConversation(convex))
+    let state = await admit(convex, input)
+    const failure = {
+      toolCallId: 'tool-call-1',
+      toolName: 'computer_open_url',
+      phase: 'pre_dispatch' as const,
+      causeClass: 'schema_validation' as const,
+      causeCode: 'INVALID_TOOL_INPUT' as const,
+      safeSummary: 'Tool input was rejected before execution.' as const,
+      validationIssues: [{ path: ['url'], code: 'invalid_format' as const }],
+    }
+    await apply(convex, input, 'tool-failure-1', state.revision, { type: 'record_tool_failure', failure })
+    const firstDiagnostic = createHarnessDiagnostic({
+      diagnosticId: 'hd_history_first', code: 'TOOL_FAILED', stage: 'tool',
+      operationId: 'tool-call-1', occurredAt: 101,
+    })
+    state = (await apply(convex, input, 'diagnostic-first', state.revision, {
+      type: 'record_diagnostic', diagnostic: firstDiagnostic,
+    })).snapshot
+    await apply(convex, input, 'diagnostic-first', 0, { type: 'record_diagnostic', diagnostic: firstDiagnostic })
+    const secondDiagnostic = createHarnessDiagnostic({
+      diagnosticId: 'hd_history_second', code: 'TOOL_FAILED', stage: 'tool',
+      operationId: 'tool-call-2', occurredAt: 102,
+    })
+    await apply(convex, input, 'diagnostic-second', state.revision, {
+      type: 'record_diagnostic', diagnostic: secondDiagnostic,
+    })
+
+    const stored = await convex.run(async ctx => ({
+      diagnostics: await ctx.db.query('harnessDiagnosticIndex')
+        .withIndex('by_runId_diagnosticId', q => q.eq('runId', input.runId)).collect(),
+      failures: await ctx.db.query('harnessToolFailures')
+        .withIndex('by_runId_toolCallId', q => q.eq('runId', input.runId).eq('toolCallId', 'tool-call-1')).collect(),
+    }))
+    expect(stored.diagnostics.map(row => row.diagnosticId).sort()).toEqual(['hd_history_first', 'hd_history_second'])
+    expect(stored.failures).toHaveLength(1)
+    expect(stored.failures[0]).toMatchObject({
+      actorUserId: 'alice', sourceType: 'conversation', phase: 'pre_dispatch',
+      causeCode: 'INVALID_TOOL_INPUT', validationIssues: [{ path: ['url'], code: 'invalid_format' }],
+    })
+    expect(JSON.stringify(stored)).not.toContain('file:///private/mockup.html')
+    expect(JSON.stringify(stored)).not.toContain('secret-token')
+  })
+
   test('persists completed work after authorization expires without authorizing more work', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('late-completion', await seedConversation(convex), { requiresPlan: false })

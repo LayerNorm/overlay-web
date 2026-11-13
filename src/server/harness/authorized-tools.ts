@@ -61,7 +61,7 @@ export function createHarnessAuthorizedTools(
           } catch (error) {
             if (controls.has(name) || !guard) throw error
             uncertainOutcome = Object.assign(new Error('A tool operation ended without a confirmed outcome.'), {
-              code: 'HARNESS_TOOL_OUTCOME_UNKNOWN', operationId: options.toolCallId,
+              code: 'HARNESS_TOOL_OUTCOME_UNKNOWN', operationId: options.toolCallId, toolName: name,
             })
             guard.uncertain(uncertainOutcome)
             throw uncertainOutcome

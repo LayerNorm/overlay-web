@@ -51,6 +51,7 @@ import type {
   HarnessTranscriptPage,
   HarnessTranscriptPersistence,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
+import { appendHarnessDiagnosticIndex, persistHarnessToolFailure } from './diagnostic-index'
 import { ConvexError, v } from 'convex/values'
 
 const MAX_ID_LENGTH = 256
@@ -214,6 +215,29 @@ const operationValidator = v.union(
     skipReason: v.optional(v.string()),
   }),
   v.object({ type: v.literal('record_evidence'), evidence: evidenceValidator }),
+  v.object({
+    type: v.literal('record_tool_failure'),
+    failure: v.object({
+      toolCallId: v.string(),
+      toolName: v.string(),
+      phase: v.union(v.literal('pre_dispatch'), v.literal('execution')),
+      causeClass: v.union(v.literal('abort_error'), v.literal('convex_error'), v.literal('error'),
+        v.literal('range_error'), v.literal('schema_validation'), v.literal('timeout_error'),
+        v.literal('type_error'), v.literal('unknown_error'), v.literal('zod_error')),
+      causeCode: v.union(v.literal('ABORT_ERR'), v.literal('EAI_AGAIN'), v.literal('ECONNREFUSED'),
+        v.literal('ECONNRESET'), v.literal('ENOTFOUND'), v.literal('ETIMEDOUT'), v.literal('INVALID_TOOL_INPUT'),
+        v.literal('TOOL_EXECUTION_FAILED'), v.literal('ZOD_ERROR_DURING_EXECUTION')),
+      safeSummary: v.union(v.literal('Tool input was rejected before execution.'),
+        v.literal('Tool execution failed; its effect may be uncertain.')),
+      validationIssues: v.optional(v.array(v.object({
+        path: v.array(v.string()),
+        code: v.union(v.literal('custom'), v.literal('invalid_element'), v.literal('invalid_format'),
+          v.literal('invalid_input'), v.literal('invalid_key'), v.literal('invalid_type'), v.literal('invalid_union'),
+          v.literal('invalid_value'), v.literal('not_multiple_of'), v.literal('too_big'), v.literal('too_small'),
+          v.literal('unrecognized_keys')),
+      }))),
+    }),
+  }),
   v.object({
     type: v.literal('record_verification'),
     verification: v.object({
@@ -575,6 +599,23 @@ function assertBoundedOperation(operation: HarnessOperation) {
           && (!Number.isSafeInteger(operation.evidence.resource.page) || operation.evidence.resource.page < 1))
       )) throw new Error('Harness evidence resource identity exceeds its bounds.')
       break
+    case 'record_tool_failure': {
+      const failure = operation.failure
+      const preDispatch = failure.phase === 'pre_dispatch'
+      if (!failure.toolCallId.trim() || failure.toolCallId.length > MAX_ID_LENGTH
+        || !failure.toolName.trim() || failure.toolName.length > MAX_ID_LENGTH
+        || (preDispatch && (failure.causeClass !== 'schema_validation' || failure.causeCode !== 'INVALID_TOOL_INPUT'
+          || failure.safeSummary !== 'Tool input was rejected before execution.'))
+        || (!preDispatch && (failure.causeClass === 'schema_validation' || failure.causeCode === 'INVALID_TOOL_INPUT'
+          || failure.safeSummary !== 'Tool execution failed; its effect may be uncertain.'
+          || (failure.validationIssues?.length ?? 0) > 0))
+        || (failure.validationIssues?.length ?? 0) > 8
+        || failure.validationIssues?.some(issue => issue.path.length > 6
+          || issue.path.some(part => part.length > 64 || !(/^[A-Za-z][A-Za-z0-9_]*$/.test(part) || /^#[0-9]{1,9}$/.test(part) || part === '<field>')))) {
+        throw new Error('Native tool failure exceeds its safe diagnostic bounds.')
+      }
+      break
+    }
     case 'record_verification':
       if (!operation.verification.attemptId.trim() || operation.verification.attemptId.length > 256
         || !operation.verification.candidateDigest.trim() || operation.verification.candidateDigest.length > 128
@@ -1132,6 +1173,7 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     metadataJson: stableJson(metadataFromSnapshot(snapshot)),
     updatedAt: snapshot.updatedAt,
   })
+  if (snapshot.diagnostic) await appendHarnessDiagnosticIndex(ctx, run, snapshot)
   if (isTerminalStatus(snapshot.status)) {
     const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
     const artifacts = await ctx.db.query('harnessContextArtifacts')
@@ -1382,6 +1424,8 @@ async function applyReducer(
         evidenceToPersist: operation.evidence,
       }
     }
+    case 'record_tool_failure':
+      return { snapshot: current }
     case 'record_verification':
       return { snapshot: recordHarnessVerification(current, operation.verification, now) }
     case 'set_compaction':
@@ -2129,7 +2173,10 @@ export const apply = mutation({
       && operation.evidence.kind === 'tool_result'
       && metadata.status === 'cancelled'
       && !terminalAncestor
-    if (terminalRun && !isLateReceipt && !isLateToolResult) throw new Error('The harness run is terminal.')
+    const isLateToolFailure = operation.type === 'record_tool_failure'
+      && metadata.status === 'cancelled'
+      && !terminalAncestor
+    if (terminalRun && !isLateReceipt && !isLateToolResult && !isLateToolFailure) throw new Error('The harness run is terminal.')
 
     const extraEvidenceRefs = operation.type === 'transition_step' ? operation.evidenceRefs ?? [] : []
     const hydrateExistingStepRefs = operation.type === 'transition_step' && operation.evidenceRefs === undefined
@@ -2185,6 +2232,9 @@ export const apply = mutation({
       })
     }
     const next = result.snapshot
+    if (operation.type === 'record_tool_failure') {
+      await persistHarnessToolFailure(ctx, run, current, operation.failure, now)
+    }
     const changed = next.revision !== current.revision
     const becameTerminal = !isTerminalStatus(metadata.status) && isTerminalStatus(next.status)
     if (result.evidenceToPersist) {
@@ -2214,6 +2264,11 @@ export const apply = mutation({
       await persistPlan(ctx, run.runId, current.planRevision, current.plan, next, now)
       if (stableJson(current.plan) !== stableJson(next.plan)) await projectPlanToDelivery(ctx, run, next.plan, now)
       await persistChildren(ctx, run.runId, current.children, next.children)
+    }
+    const operationDiagnostic = operation.type === 'record_diagnostic' || operation.type === 'block' || operation.type === 'terminate'
+      ? operation.diagnostic : undefined
+    if (operationDiagnostic) {
+      await appendHarnessDiagnosticIndex(ctx, run, { ...next, diagnostic: operationDiagnostic }, operationDiagnostic)
     }
     if (run.deliveryAgentRunId && operation.type === 'pause_for_authorization') {
       const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)

@@ -838,6 +838,25 @@ state and usage. Unique receipts propagate through their ancestors atomically, i
 late billing reconciliation; settlement does not charge that usage again. Keep these rows
 additive and do not deploy a feature-worktree schema to shared or customer backends.
 
+Harness diagnostics use the separate `harnessDiagnosticIndex` and
+`harnessToolFailures` tables; neither is projected through `HarnessSnapshot` or
+the customer transcript. Live diagnostic and failure writes share the protected
+`harness/runs:apply` server-secret, actor/source and workflow-ownership boundary.
+The index is append-only so a later diagnostic cannot erase earlier IDs. Admin
+lookup queries only the indexed diagnostic ID and returns ambiguity on collisions;
+ordinary reads never scan runs or journals. Sanitized failure records are joined
+by run and diagnostic operation ID, while legacy entries without one report
+`causeUnavailable`. A repeated diagnostic ID keeps the workflow correlation from
+its first index row; backfill does not infer historical workflow ownership from
+the run's current metadata.
+
+`harness/diagnosticBackfill:backfill` is an internal, resumable migration for
+existing metadata or journal rows. It processes at most 100 source records per
+call, returns a continuation cursor and explicit insertion/skip/error counts,
+and is idempotent on replay. Deployment selection and invocation are documented
+in `admin-console.md`. The mutation was not run as part of this change; never
+invoke it against production from a feature worktree.
+
 ## Browser auth for reactive queries
 
 Browser queries and mutations authenticate natively: `ConvexProviderWithAuth`

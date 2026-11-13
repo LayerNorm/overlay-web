@@ -115,6 +115,44 @@ backfilled and start from the deploy date. Growth numbers come only from these
 rollups; PostHog keeps pageviews, identify and the `user.signed_up` event. Never paste real numbers from this panel
 into the repository, PRs or screenshots.
 
+## Harness diagnostics
+
+Use the operator-only `GET /api/v1/admin/harness-diagnostics?diagnosticId=hd_…`
+endpoint to look up one diagnostic ID without a run ID. It returns bounded run,
+workflow, actor/workspace/source and operation correlation, plus the matching
+tool name, call ID and safe failure classification when available. It never
+returns a Harness snapshot, transcript, tool input, raw provider error or URL.
+`admin`, `support` and `auditor` may read it; billing-only principals are
+denied. A collision is reported as ambiguous rather than selecting a run.
+
+Legacy diagnostic IDs can be indexed from run metadata and the operation journal,
+but those records did not retain native tool causes. The result therefore sets
+`causeUnavailable: true` when no separate sanitized failure record exists; a
+backfill cannot recreate the original exception or validation detail.
+
+After the diagnostic-index code and schema are deployed to an explicitly chosen
+backend, an operator with direct deployment access may run the bounded internal
+backfill once per source. Start with:
+
+```bash
+PREVIEW_DEPLOYMENT='<named-isolated-preview>'
+env CONVEX_DEPLOY_KEY= CONVEX_DEPLOYMENT_TOKEN= CONVEX_DEPLOYMENT= \
+  npx convex run --deployment "$PREVIEW_DEPLOYMENT" internal.harness.diagnosticBackfill.backfill '{"source":"metadata","cursor":null}'
+```
+
+`convex run --deployment` is the CLI's explicit deployment selector. Convex
+deploy keys otherwise take precedence over deployment selectors, so the command
+sets both ambient deploy-key variables and the ambient deployment selector to
+empty before invoking the explicit `--deployment` selector. `internal.` is the
+Convex CLI syntax for invoking an internal function. Do not replace that target
+with production. Repeat with the returned `continueCursor`
+until it is `null`, then run the same sequence with `"source":"journal"` and a
+`null` cursor. Each invocation processes at most 100 rows and reads at most
+1,000,000 bytes per page; it reports processed, inserted, already-present,
+collision, unavailable-cause, malformed and missing-run counts. Replaying a
+page is idempotent. Do not run this from a feature worktree; production
+activation requires the normal integration rollout.
+
 ## Boundary rules (enforced by ESLint)
 
 - `src/**` may not import `apps/admin/**`.

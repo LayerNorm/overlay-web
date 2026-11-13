@@ -67,6 +67,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
     apply: async (_id, operation) => {
       const now = Date.now()
       switch (operation.type) {
+        case 'record_tool_failure': break
         case 'reserve_model': current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, now); break
         case 'replace_plan': current = state.replaceHarnessPlan(current, operation.steps, now); break
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
@@ -851,7 +852,9 @@ test('approval-resume persists the authenticated execution output once for perso
 test('an approved tool exception requires reconciliation without exposing its raw error', async () => {
   const f = fixture(false)
   const execute = vi.fn(async () => { throw new Error('Approved execution failed.') })
-  model(index => index === 0 ? [call('write', 'failed-write')] : 'The approved action failed.')
+  model(index => index === 0
+    ? [call('write', 'failed-write'), call('write', 'must-not-run')]
+    : 'The approved action failed.')
   f.ports.waitForApproval = async requests => requests.map(request => ({
     approvalId: request.approvalId,
     approved: true,
@@ -1174,6 +1177,36 @@ test('schema-invalid executable tool calls continue with the SDK error result', 
   expect(waitForApproval).not.toHaveBeenCalled()
   expect(provider.doStreamCalls.length).toBeGreaterThan(1)
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('error-text')
+})
+
+test('native pre-dispatch failure envelopes continue through the authorized runner', async () => {
+  const f = fixture(false, ['computer_open_url'])
+  const sideEffect = vi.fn(async (input: { url: string }) => ({ success: true, url: input.url }))
+  const execute = vi.fn(async (input: { url: string }) => input.url.startsWith('file:')
+    ? {
+      success: false,
+      code: 'INVALID_TOOL_INPUT',
+      error: 'Browser URLs must use HTTP or HTTPS. Serve local HTML over a verified HTTP(S) origin.',
+      issues: [{ path: ['url'], code: 'custom' }],
+    }
+    : sideEffect(input))
+  const provider = model(index => index === 0
+    ? [call('computer_open_url', 'invalid-url', { url: 'file:///private/mockup.html' })]
+    : index === 1
+      ? [call('computer_open_url', 'valid-url', { url: 'https://example.test/mockup.html' })]
+      : 'The mockup opened over HTTP.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { computer_open_url: tool({ inputSchema: z.object({ url: z.string() }), execute }) },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(execute).toHaveBeenCalledTimes(2)
+  expect(sideEffect).toHaveBeenCalledOnce()
+  expect(sideEffect).toHaveBeenCalledWith({ url: 'https://example.test/mockup.html' })
+  expect(f.ports.authorizeTool).toHaveBeenCalledTimes(2)
+  expect(provider.doStreamCalls).toHaveLength(3)
 })
 
 test('confirmed safe tool failure envelopes continue without becoming approvals', async () => {

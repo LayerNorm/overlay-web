@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reject invalid native tool inputs before approval or side effects with safe corrective guidance, and add operator-only diagnostic-ID lookup backed by durable diagnostic history, sanitized tool-failure records and an unexecuted bounded legacy backfill.
 - Redesign the Work → Organization chart. Agents are now compact, borderless rows in one grouped panel under the chief of staff, joined by a single line, instead of large outlined cards with connector stubs between grid rows that looked like a chain of command (Desktop → Growth → Scripting) that does not exist.
 - Make the chat, agent-thread and Work composers identical in the Mac app and the browser by removing the desktop-only microphone and screenshot buttons. They squeezed the footer and showed a wrapping "Could not start dictation" error beside the send button; desktop dictation still works through its global shortcut.
 - Fit the Work timeline to the page width: days now stretch to fill the available space (never narrower than 7 px, and the day letters hide below 14 px), so the timeline no longer scrolls sideways or shows a horizontal scrollbar unless a very long date range genuinely cannot fit. Resize grips on a bar scale with it (at most a quarter of its width each), so even a short task can still be dragged to move it.

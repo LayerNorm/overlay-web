@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { createHash } from 'node:crypto'
+import { asSchema } from 'ai'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
@@ -14,6 +16,7 @@ import { refreshNativeHarnessAccess, type NativeHarnessAccess } from './native-a
 import { logger } from '@/server/observability/logger'
 import { applyHarnessOperation } from './state-steps'
 import { harnessToolOutputEvidence, isToolFailureOutput } from './tool-evidence'
+import type { HarnessToolFailure, HarnessToolFailureIssue } from '@overlay/agent-runtime/harness-store'
 import type { NativeHarnessToolsInput } from './native-tools'
 import type { HarnessToolCall } from './tools'
 import {
@@ -22,6 +25,96 @@ import {
 } from './native-tool-progress'
 
 type NativeToolCall = HarnessToolCall & Pick<NativeHarnessToolsInput, 'access' | 'context'>
+
+type NativeInputIssue = HarnessToolFailureIssue
+
+const SAFE_VALIDATION_CODES = new Set([
+  'custom', 'invalid_element', 'invalid_format', 'invalid_key', 'invalid_type', 'invalid_union', 'invalid_value',
+  'not_multiple_of', 'too_big', 'too_small', 'unrecognized_keys',
+])
+
+function safeValidationPath(path: unknown, schema: unknown): string[] {
+  if (!Array.isArray(path)) return []
+  const safePath: string[] = []
+  let currentSchema = schema
+  for (const part of path.slice(0, 6)) {
+    const node = unwrapInputSchema(currentSchema)
+    const arrayElement = node && typeof node === 'object'
+      ? (node as { element?: unknown; _def?: { type?: unknown } }).element
+        ?? (node as { _def?: { type?: unknown } })._def?.type
+      : undefined
+    if (typeof part === 'number' && Number.isSafeInteger(part) && part >= 0 && arrayElement && typeof arrayElement === 'object') {
+      safePath.push(`#${part}`)
+      currentSchema = arrayElement
+      continue
+    }
+    const shape = node && typeof node === 'object'
+      ? (node as { shape?: unknown; _def?: { shape?: unknown } }).shape
+        ?? (node as { _def?: { shape?: unknown } })._def?.shape
+      : undefined
+    const properties = typeof shape === 'function' ? shape() : shape
+    if (typeof part !== 'string' || !properties || typeof properties !== 'object' || !Object.hasOwn(properties, part)) {
+      safePath.push('<field>')
+      break
+    }
+    const sensitive = /(token|password|secret|authorization|credential|api.?key)/i.test(part)
+    safePath.push(!sensitive && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(part) ? part : '<field>')
+    currentSchema = (properties as Record<string, unknown>)[part]
+  }
+  return safePath
+}
+
+function unwrapInputSchema(schema: unknown): unknown {
+  let current = schema
+  for (let depth = 0; depth < 4 && current && typeof current === 'object'; depth++) {
+    const definition = (current as { _def?: { schema?: unknown; innerType?: unknown }; _zod?: { def?: { schema?: unknown; innerType?: unknown } } })._def
+      ?? (current as { _zod?: { def?: { schema?: unknown; innerType?: unknown } } })._zod?.def
+    const inner = definition?.schema ?? definition?.innerType
+    if (!inner || inner === current || typeof inner !== 'object') break
+    current = inner
+  }
+  return current
+}
+
+function safeValidationIssues(error: unknown, schema: unknown): NativeInputIssue[] {
+  const value = error && typeof error === 'object' ? error as { issues?: unknown; cause?: unknown } : undefined
+  const cause = value?.cause && typeof value.cause === 'object'
+    ? value.cause as { issues?: unknown } : undefined
+  const issues = Array.isArray(value?.issues) ? value.issues : Array.isArray(cause?.issues) ? cause.issues : []
+  return issues.slice(0, 8).map(issue => {
+    const fields = issue && typeof issue === 'object' ? issue as { path?: unknown; code?: unknown } : {}
+    const path = safeValidationPath(fields.path, schema)
+    const code = typeof fields.code === 'string' && SAFE_VALIDATION_CODES.has(fields.code)
+      ? fields.code as NativeInputIssue['code'] : 'invalid_input'
+    return { path, code }
+  })
+}
+
+function nativeToolInputFailure(toolName: string, error: unknown, schema: unknown) {
+  const issues = safeValidationIssues(error, schema)
+  const guidance = toolName === 'computer_browser' || toolName === 'computer_open_url'
+    ? 'Browser URLs must use HTTP or HTTPS. Serve local HTML over a verified HTTP(S) origin; file:// URLs are unsupported.'
+    : 'Tool input does not match the expected fields. Correct the reported fields and try again.'
+  const fields = issues.map(issue => `${issue.path.join('.') || 'input'} (${issue.code})`).join(', ')
+  return {
+    success: false as const,
+    code: 'INVALID_TOOL_INPUT',
+    error: fields ? `${guidance} Invalid fields: ${fields}.` : guidance,
+    issues,
+  }
+}
+
+async function validateNativeToolInput(
+  toolName: string,
+  definition: WorkspaceAgentToolingResult['tools'][string],
+  input: unknown,
+) {
+  const schema = asSchema(definition.inputSchema)
+  if (!schema.validate) throw new Error('NATIVE_TOOL_SCHEMA_VALIDATOR_MISSING')
+  const result = await schema.validate(input)
+  if (result.success) return { success: true as const, value: result.value }
+  return { success: false as const, value: nativeToolInputFailure(toolName, result.error, definition.inputSchema) }
+}
 
 function idempotencyKey(call: NativeToolCall): string {
   if (!call.toolCallId || call.toolCallId.length > 256) throw new FatalError('Invalid native tool call identity.')
@@ -122,8 +215,12 @@ async function safelyProjectNativeHarnessToolProgress(
   } catch (error) {
     logger.warn('[harness] native tool progress write failed', {
       runId: call.access.runId,
+      workflowRunId: call.access.workflowRunId,
+      operationId: call.toolCallId,
       toolCallId: call.toolCallId,
-      error: error instanceof Error ? error.message : String(error),
+      toolName: call.toolName,
+      failureCode: 'PROGRESS_PROJECTION_FAILED',
+      causeClass: nativeToolExecutionFailure(call, error).causeClass,
     })
   }
 }
@@ -150,25 +247,126 @@ async function executeWithNativeHarnessToolProgress<T>(
 
 export async function nativeHarnessToolNeedsApproval(call: NativeToolCall): Promise<boolean> {
   'use step'
-  return needsApproval(await freshTooling(call), call)
+  const tooling = await freshTooling(call)
+  const definition = tooling.tools[call.toolName]
+  const validation = await validateNativeToolInput(call.toolName, definition, call.input)
+  if (!validation.success) return false
+  return needsApproval(tooling, { ...call, input: validation.value })
 }
 
 export async function executeNativeHarnessTool(call: NativeToolCall, approved: boolean): Promise<unknown> {
   'use step'
   const initial = await freshTooling(call)
-  if (await needsApproval(initial, call) && !approved) throw new FatalError('This native action requires fresh approval.')
+  const initialDefinition = initial.tools[call.toolName]
+  const initialValidation = await validateNativeToolInput(call.toolName, initialDefinition, call.input)
+  if (!initialValidation.success) return await returnNativeToolInputFailure(call, initialValidation.value)
+  const initialCall = { ...call, input: initialValidation.value }
+  if (await needsApproval(initial, initialCall) && !approved) throw new FatalError('This native action requires fresh approval.')
   const current = await freshTooling(call)
-  if (await needsApproval(current, call) && !approved) throw new FatalError('This native action became approval-required before execution.')
   const definition = current.tools[call.toolName]
-  const result = await executeWithNativeHarnessToolProgress(call, () => executePersonalChatWorkToolResult({
-    execute: () => definition.execute!(call.input as never, {
-      toolCallId: call.toolCallId, messages: call.messages, context: current.toolsContext?.[call.toolName],
-      agentRunId: call.access.agentRunId, logicalStepId: call.toolCallId, idempotencyKey: idempotencyKey(call),
-    } as never),
-    input: call.input, toolCallId: call.toolCallId,
-    toModelOutput: typeof definition.toModelOutput === 'function'
-      ? async args => definition.toModelOutput!(args as never) : undefined,
-  }))
+  const currentValidation = await validateNativeToolInput(call.toolName, definition, call.input)
+  if (!currentValidation.success) return await returnNativeToolInputFailure(call, currentValidation.value)
+  const currentCall = { ...call, input: currentValidation.value }
+  if (await needsApproval(current, currentCall) && !approved) throw new FatalError('This native action became approval-required before execution.')
+  let result: unknown
+  try {
+    result = await executeWithNativeHarnessToolProgress(call, () => executePersonalChatWorkToolResult({
+      execute: () => definition.execute!(currentValidation.value as never, {
+        toolCallId: call.toolCallId, messages: call.messages, context: current.toolsContext?.[call.toolName],
+        agentRunId: call.access.agentRunId, logicalStepId: call.toolCallId, idempotencyKey: idempotencyKey(call),
+      } as never),
+      input: currentValidation.value, toolCallId: call.toolCallId,
+      toModelOutput: typeof definition.toModelOutput === 'function'
+        ? async args => definition.toModelOutput!(args as never) : undefined,
+    }))
+  } catch (error) {
+    const failure = nativeToolExecutionFailure(call, error)
+    await persistNativeToolFailure(call, failure)
+    logger.warn('[harness] native tool execution failed', {
+      runId: call.access.runId,
+      workflowRunId: call.access.workflowRunId,
+      operationId: call.toolCallId,
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      failurePhase: failure.phase,
+      causeClass: failure.causeClass,
+      causeCode: failure.causeCode,
+    })
+    throw error
+  }
+  await recordNativeToolResultEvidence(call, result)
+  return result
+}
+
+async function returnNativeToolInputFailure(call: NativeToolCall, failure: ReturnType<typeof nativeToolInputFailure>) {
+  await persistNativeToolFailure(call, {
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    phase: 'pre_dispatch',
+    causeClass: 'schema_validation',
+    causeCode: 'INVALID_TOOL_INPUT',
+    safeSummary: 'Tool input was rejected before execution.',
+    validationIssues: failure.issues,
+  })
+  logger.warn('[harness] native tool input rejected before execution', {
+    runId: call.access.runId,
+    workflowRunId: call.access.workflowRunId,
+    operationId: call.toolCallId,
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    failurePhase: 'pre_dispatch',
+    failureCode: failure.code,
+  })
+  const result = await executeWithNativeHarnessToolProgress(call, async () => failure)
+  await recordNativeToolResultEvidence(call, result)
+  return result
+}
+
+function nativeToolExecutionFailure(call: NativeToolCall, error: unknown): HarnessToolFailure {
+  const name = error instanceof Error ? error.name : ''
+  const causeClass: HarnessToolFailure['causeClass'] = name === 'AbortError' ? 'abort_error'
+    : name === 'ConvexError' ? 'convex_error'
+      : name === 'RangeError' ? 'range_error'
+        : name === 'TimeoutError' ? 'timeout_error'
+          : name === 'TypeError' ? 'type_error'
+            : name === 'ZodError' ? 'zod_error'
+              : name === 'Error' ? 'error' : 'unknown_error'
+  const rawCode = error && typeof error === 'object' && 'code' in error
+    ? (error as { code?: unknown }).code : undefined
+  const causeCode: HarnessToolFailure['causeCode'] = rawCode === 'ABORT_ERR' || rawCode === 'EAI_AGAIN'
+    || rawCode === 'ECONNREFUSED' || rawCode === 'ECONNRESET' || rawCode === 'ENOTFOUND' || rawCode === 'ETIMEDOUT'
+    ? rawCode : name === 'ZodError' ? 'ZOD_ERROR_DURING_EXECUTION' : 'TOOL_EXECUTION_FAILED'
+  return {
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    phase: 'execution',
+    causeClass,
+    causeCode,
+    safeSummary: 'Tool execution failed; its effect may be uncertain.',
+  }
+}
+
+async function persistNativeToolFailure(call: NativeToolCall, failure: HarnessToolFailure) {
+  const operationId = `tool-failure:${createHash('sha256').update(call.toolCallId).digest('hex')}`
+  try {
+    await applyHarnessOperation(call.access, operationId, { type: 'record_tool_failure', failure })
+  } catch (error) {
+    const writeFailure = nativeToolExecutionFailure(call, error)
+    logger.warn('[harness] native tool failure record write failed', {
+      runId: call.access.runId,
+      workflowRunId: call.access.workflowRunId,
+      operationId: call.toolCallId,
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      failurePhase: failure.phase,
+      failureCode: failure.causeCode,
+      writeFailureClass: writeFailure.causeClass,
+      writeFailureCode: writeFailure.causeCode,
+    })
+  }
+}
+
+async function recordNativeToolResultEvidence(call: NativeToolCall, result: unknown) {
   try {
     await applyHarnessOperation(call.access, `tool-evidence:${call.toolCallId}`, {
       type: 'record_evidence',
@@ -177,14 +375,21 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
         toolName: call.toolName,
         input: call.input,
         output: result,
-        success: true,
+        success: !isToolFailureOutput(result),
       }, Date.now()),
     })
   } catch (error) {
     // The tool already ran; a failed evidence write must not turn its result into a failure.
-    logger.warn('[harness] native tool evidence write failed', { error, runId: call.access.runId, toolName: call.toolName })
+    logger.warn('[harness] native tool evidence write failed', {
+      runId: call.access.runId,
+      workflowRunId: call.access.workflowRunId,
+      operationId: call.toolCallId,
+      toolCallId: call.toolCallId,
+      toolName: call.toolName,
+      failureCode: 'EVIDENCE_WRITE_FAILED',
+      causeClass: nativeToolExecutionFailure(call, error).causeClass,
+    })
   }
-  return result
 }
 
 executeNativeHarnessTool.maxRetries = 0

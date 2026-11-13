@@ -98,6 +98,7 @@ test('computer screenshot returns image content and computer input validates act
   }
   assert.match(browser.description, /stale_browser_ref.*no action occurred/)
   assert.match(browser.description, /fresh snapshot after page changes/)
+  assert.match(browser.description, /local HTML.*verified HTTP\(S\).*file:\/\/.*unsupported/)
   assert.equal(browser.inputSchema.safeParse({ action: 'navigate', url: 'https://example.test/' }).success, true)
   assert.equal(browser.inputSchema.safeParse({ action: 'navigate', url: 'file:///etc/passwd' }).success, false)
   assert.equal(browser.inputSchema.safeParse({ action: 'click' }).success, false)
@@ -107,6 +108,14 @@ test('computer screenshot returns image content and computer input validates act
     type: 'text',
     value: 'URL: https://example.test/\nTitle: Example',
   })
+
+  const openUrl = tools.computer_open_url as unknown as {
+    description: string
+    inputSchema: { safeParse(input: unknown): { success: boolean } }
+  }
+  assert.match(openUrl.description, /local HTML.*verified HTTP\(S\).*file:\/\/.*unsupported/)
+  assert.equal(openUrl.inputSchema.safeParse({ url: 'https://example.test/' }).success, true)
+  assert.equal(openUrl.inputSchema.safeParse({ url: 'file:///etc/passwd' }).success, false)
 })
 
 test('binary publication requires both the computer-publication and write-file grants', () => {
