@@ -440,16 +440,18 @@ function hasTranscriptSelection(viewport: HTMLElement) {
 function JumpToLatestControl({
   request,
   onJump,
+  hasTranscriptBottomGap,
 }: {
   request: number
   onJump: () => void
+  hasTranscriptBottomGap: boolean
 }) {
   const { scrollToEnd } = useMessageScroller()
   const { end } = useMessageScrollerScrollable()
   useLayoutEffect(() => {
     if (request > 0) scrollToEnd({ behavior: 'smooth' })
   }, [request, scrollToEnd])
-  if (!end) return null
+  if (!end && !hasTranscriptBottomGap) return null
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center">
       <div className="pointer-events-auto">
@@ -486,6 +488,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const scrollPosition = useRef(0)
   const followsLatestRef = useRef(false)
   const [followsLatest, setFollowsLatest] = useState(false)
+  const [hasTranscriptBottomGap, setHasTranscriptBottomGap] = useState(false)
   const [scrollToEndRequest, setScrollToEndRequest] = useState(0)
   const selectionBookmark = useRef<TranscriptSelectionBookmark | null>(null)
   const pendingTextSelectionHold = useRef<PendingTextSelectionHold | null>(null)
@@ -506,6 +509,10 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     if (!followsLatestRef.current) return
     followsLatestRef.current = false
     setFollowsLatest(false)
+  }, [])
+  const updateJumpVisibility = useCallback((viewport: HTMLElement) => {
+    const hasGap = !isNearTranscriptBottom(viewport)
+    setHasTranscriptBottomGap((current) => current === hasGap ? current : hasGap)
   }, [])
   const beginTextSelectionHold = useCallback((
     target: EventTarget | null,
@@ -769,7 +776,16 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
+    let visibilityFrame: number | null = null
+    const scheduleVisibilityUpdate = () => {
+      if (visibilityFrame !== null) cancelAnimationFrame(visibilityFrame)
+      visibilityFrame = requestAnimationFrame(() => {
+        visibilityFrame = null
+        if (viewportRef.current === viewport) updateJumpVisibility(viewport)
+      })
+    }
     const observer = new MutationObserver(() => {
+      scheduleVisibilityUpdate()
       const saved = selectionBookmark.current
       if (!saved || !selectionNeedsReconstruction(saved, (node) => node.isConnected && viewport.contains(node))) return
       const anchorRoot = selectionRoot(viewport, saved.anchorExchangeId, saved.anchorRole, saved.anchorTargetId)
@@ -781,8 +797,12 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       rememberSelection()
     })
     observer.observe(viewport, { childList: true, subtree: true, characterData: true })
-    return () => observer.disconnect()
-  }, [rememberSelection, scopeKey])
+    scheduleVisibilityUpdate()
+    return () => {
+      observer.disconnect()
+      if (visibilityFrame !== null) cancelAnimationFrame(visibilityFrame)
+    }
+  }, [rememberSelection, scopeKey, updateJumpVisibility])
 
   const filteredView = useMemo(() => {
     const query = snapshot.query.trim().toLocaleLowerCase()
@@ -843,6 +863,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
       suppressFollowOnScrollRef.current = false
       followsLatestRef.current = false
       setFollowsLatest(false)
+      setHasTranscriptBottomGap(false)
       viewport.scrollTop = 0
       return
     }
@@ -870,6 +891,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
   const handleScroll = useCallback(() => {
     const viewport = viewportRef.current
     if (!viewport) return
+    updateJumpVisibility(viewport)
     const previousScrollTop = scrollPosition.current
     const hold = pendingTextSelectionHold.current
     const selected = hasTranscriptSelection(viewport)
@@ -900,7 +922,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
     } else if (viewport.scrollTop < previousScrollTop) {
       pauseLatestFollow()
     }
-  }, [pauseLatestFollow, requestScrollToLatest, scopeKey])
+  }, [pauseLatestFollow, requestScrollToLatest, scopeKey, updateJumpVisibility])
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current
     if (!viewport) return
@@ -1249,7 +1271,7 @@ function ScopedNativeSharedTranscript({ snapshot, onAction, onReady }: Props) {
             {notice ? <p className="px-2 text-xs text-(--muted)" role="status" aria-live="polite">{notice}</p> : null}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <JumpToLatestControl request={scrollToEndRequest} onJump={requestScrollToLatest} />
+        <JumpToLatestControl request={scrollToEndRequest} onJump={requestScrollToLatest} hasTranscriptBottomGap={hasTranscriptBottomGap} />
         {sourceResponse && sourcePanel ? <div
           data-native-sources
           role="dialog"

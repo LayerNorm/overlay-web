@@ -222,6 +222,12 @@ async function settleInitialTranscriptLayout(page: Page) {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
 }
 
+async function suppressSharedScrollerResizeNotifications(page: Page) {
+  await page.addScriptTag({
+    content: "Object.defineProperty(ResizeObserver.prototype, 'observe', { configurable: true, value: function () {} })",
+  })
+}
+
 async function prepareOutsidePointerRelease(page: Page, point: { x: number; y: number }) {
   const outsideViewport = await page.evaluate(({ x, y }) => {
     document.querySelector('[data-test-outside-pointer-release]')?.remove()
@@ -2095,6 +2101,224 @@ test('mounted browser pointer text-selection hold freezes the target before sele
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24,
       )
     }, { height: selectedHeight, scrollTop: before.scrollTop, selectedText: before.selectedText })
+  } finally {
+    await browser.close()
+  }
+})
+
+test('mounted response growth keeps Jump available after a selected word is dismissed without scrolling', async () => {
+  const view = makeView()
+  const response = view.exchanges[0]!.responses[0]!
+  response.status = 'streaming'
+  let transcript = Array.from({ length: 36 }, (_, index) => 'Jump visibility history ' + index + ': preserve the active reading position.').join('\n\n')
+  transcript += '\n\nThe target glyph stood at the latest response.\n\nA trailing paragraph keeps the target away from the insertion point.'
+  response.blocks = [{ kind: 'text', text: transcript } as never]
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const css = readFileSync('assets/shared-markdown.generated.css', 'utf8')
+    await page.setContent('<style>' + css + ' html,body,#root{height:100%;margin:0} #root{height:844px;width:100%}</style><div id="root"></div>')
+    await page.addScriptTag({ content: await nativeTranscriptBrowserBundle() })
+    await page.evaluate((value) => {
+      (window as unknown as { __mountNativeTranscript: (snapshot: unknown) => void }).__mountNativeTranscript(value)
+    }, snapshot(view, { scrollIntent: { id: 'jump-growth-follow', kind: 'initial-end' } }))
+    await page.waitForFunction(() => (window as unknown as { __nativeTranscriptReady: unknown[] }).__nativeTranscriptReady.length > 0)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+    await settleInitialTranscriptLayout(page)
+
+    const target = await page.evaluate(() => {
+      const root = document.querySelector('[data-native-assistant-exchange]')
+      if (!root) throw new Error('assistant transcript not found')
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        const offset = node.data.indexOf('stood')
+        if (offset < 0) continue
+        const first = document.createRange()
+        first.setStart(node, offset)
+        first.setEnd(node, offset + 1)
+        const word = document.createRange()
+        word.setStart(node, offset)
+        word.setEnd(node, offset + 'stood'.length)
+        const firstRect = first.getBoundingClientRect()
+        return { x: firstRect.left + firstRect.width / 2, y: firstRect.top + firstRect.height / 2, endX: word.getBoundingClientRect().right - 1 }
+      }
+      throw new Error('selection glyph not found')
+    })
+    await page.mouse.move(target.x, target.y)
+    await page.mouse.down()
+    await page.mouse.move(target.endX, target.y, { steps: 6 })
+    await page.waitForFunction(() => {
+      const selection = window.getSelection()
+      return Boolean(selection && !selection.isCollapsed && selection.toString().trim() === 'stood')
+    })
+    await page.mouse.up()
+
+    const button = page.getByRole('button', { name: 'Jump to latest message' })
+    const beforeGrowth = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight }
+    })
+    transcript += '\n\nStreaming growth while selected: ' + Array.from({ length: 16 }, (_, index) => 'selected chunk ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction(({ height, top }) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollTop === top &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24 && window.getSelection()?.toString().trim() === 'stood')
+    }, { height: beforeGrowth.scrollHeight, top: beforeGrowth.scrollTop })
+    await button.waitFor({ state: 'visible' })
+
+    await page.mouse.click(target.x, target.y)
+    await page.waitForFunction(() => window.getSelection()?.isCollapsed === true)
+    const afterDismissal = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight, distanceFromBottom: viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight }
+    })
+    assert.equal(afterDismissal.scrollTop, beforeGrowth.scrollTop)
+    assert.ok(afterDismissal.distanceFromBottom > 24)
+
+    transcript += '\n\nStreaming growth after interior-tap dismissal: ' + Array.from({ length: 16 }, (_, index) => 'dismissed chunk ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction(({ height, top }) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollTop === top &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24)
+    }, { height: afterDismissal.scrollHeight, top: afterDismissal.scrollTop })
+    await button.waitFor({ state: 'visible' })
+
+    response.status = 'completed'
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForTimeout(100)
+    assert.ok(await button.isVisible())
+
+    await button.click()
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+    await button.waitFor({ state: 'hidden' })
+    const followedHeight = await page.locator('[aria-label="Conversation"]').evaluate((element) => (element as HTMLElement).scrollHeight)
+    transcript += '\n\nGrowth after Jump re-arms follow.'
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction((height) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    }, followedHeight)
+
+    await page.mouse.move(190, 420)
+    await page.mouse.wheel(0, -500)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24)
+    })
+    const away = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight }
+    })
+    transcript += '\n\nGrowth after a real scroll-away pauses follow.'
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction(({ height, top }) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollTop === top &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24)
+    }, { height: away.scrollHeight, top: away.scrollTop })
+    assert.ok(await button.isVisible())
+  } finally {
+    await browser.close()
+  }
+})
+
+test('mounted native mutation reveals Jump when the shared resize notification is missed', async () => {
+  const view = makeView()
+  const response = view.exchanges[0]!.responses[0]!
+  response.status = 'streaming'
+  let transcript = Array.from({ length: 36 }, (_, index) => 'Missed resize history ' + index + ': keep the latest response available.').join('\n\n')
+  transcript += '\n\nThe target glyph stood at the latest response.'
+  response.blocks = [{ kind: 'text', text: transcript } as never]
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const css = readFileSync('assets/shared-markdown.generated.css', 'utf8')
+    await page.setContent('<style>' + css + ' html,body,#root{height:100%;margin:0} #root{height:844px;width:100%}</style><div id="root"></div>')
+    await suppressSharedScrollerResizeNotifications(page)
+    await page.addScriptTag({ content: await nativeTranscriptBrowserBundle() })
+    await page.evaluate((value) => {
+      (window as unknown as { __mountNativeTranscript: (snapshot: unknown) => void }).__mountNativeTranscript(value)
+    }, snapshot(view, { scrollIntent: { id: 'missed-resize-follow', kind: 'initial-end' } }))
+    await page.waitForFunction(() => (window as unknown as { __nativeTranscriptReady: unknown[] }).__nativeTranscriptReady.length > 0)
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
+    })
+    await settleInitialTranscriptLayout(page)
+
+    const target = await page.evaluate(() => {
+      const root = document.querySelector('[data-native-assistant-exchange]')
+      if (!root) throw new Error('assistant transcript not found')
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        const offset = node.data.indexOf('stood')
+        if (offset < 0) continue
+        const first = document.createRange()
+        first.setStart(node, offset)
+        first.setEnd(node, offset + 1)
+        const word = document.createRange()
+        word.setStart(node, offset)
+        word.setEnd(node, offset + 'stood'.length)
+        const firstRect = first.getBoundingClientRect()
+        return { x: firstRect.left + firstRect.width / 2, y: firstRect.top + firstRect.height / 2, endX: word.getBoundingClientRect().right - 1 }
+      }
+      throw new Error('selection glyph not found')
+    })
+    await page.mouse.move(target.x, target.y)
+    await page.mouse.down()
+    await page.mouse.move(target.endX, target.y, { steps: 6 })
+    await page.waitForFunction(() => {
+      const selection = window.getSelection()
+      return Boolean(selection && !selection.isCollapsed && selection.toString().trim() === 'stood')
+    })
+    await page.mouse.up()
+
+    const button = page.getByRole('button', { name: 'Jump to latest message' })
+    const beforeGrowth = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
+      const viewport = element as HTMLElement
+      return { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight }
+    })
+    transcript += '\n\nStreaming growth with the shared resize notification suppressed: ' + Array.from({ length: 16 }, (_, index) => 'chunk ' + index).join(' ')
+    response.blocks = [{ kind: 'text', text: transcript } as never]
+    await page.evaluate((value) => {
+      (window as unknown as { __updateNativeTranscript: (snapshot: unknown) => void }).__updateNativeTranscript(value)
+    }, snapshot(view))
+    await page.waitForFunction(({ height, top }) => {
+      const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
+      return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollTop === top &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight > 24 && window.getSelection()?.toString().trim() === 'stood')
+    }, { height: beforeGrowth.scrollHeight, top: beforeGrowth.scrollTop })
+
+    const sharedScrollable = await page.locator('[data-slot="message-scroller"]').getAttribute('data-scrollable')
+    assert.equal(sharedScrollable?.split(/\s+/).includes('end') ?? false, false)
+    await button.waitFor({ state: 'visible', timeout: 2000 })
+    assert.ok(await button.isVisible())
   } finally {
     await browser.close()
   }
