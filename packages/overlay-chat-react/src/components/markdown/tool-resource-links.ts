@@ -43,3 +43,45 @@ export function resolveToolResourceHref(href: string, canonicalHrefs?: readonly 
     return undefined
   }
 }
+
+const CREATING_TOOLS = new Set(['write_file', 'create_note', 'generate_image', 'generate_video', 'animate_image', 'computer_publish_file'])
+const FILE_CONTENT_URL = /\/api\/v1\/files\/([^/?#)\s"']+)\/content/g
+
+function createdFileId(block: Extract<AssistantVisualBlock, { kind: 'tool' }>): string | undefined {
+  const output = record(block.toolOutput)
+  if (output?.success !== true || output.status === 'pending') return undefined
+  // A rewrite of an existing file is an edit, not a new file to show.
+  if (block.name === 'write_file' && typeof record(block.toolInput)?.fileId === 'string') return undefined
+  const id = output.fileId ?? output.noteId ?? output.outputId ?? record(output.artifact)?.fileId
+  return typeof id === 'string' && id ? id : undefined
+}
+
+function decodedId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Files a turn created that its text and media do not already show, in creation order. The message renders these as
+ * a card strip after its body, so a created file appears once: inline where the agent embedded it, here otherwise.
+ */
+export function collectCreatedFileIds(blocks: AssistantVisualBlock[]): string[] {
+  const shown = new Set<string>()
+  for (const block of blocks) {
+    const text = block.kind === 'text' ? block.text : block.kind === 'file' ? block.url : ''
+    for (const match of text.matchAll(FILE_CONTENT_URL)) {
+      const id = decodedId(match[1]!)
+      if (id) shown.add(id)
+    }
+  }
+  const created: string[] = []
+  for (const block of blocks) {
+    if (block.kind !== 'tool' || !CREATING_TOOLS.has(block.name) || block.state !== 'output-available') continue
+    const id = createdFileId(block)
+    if (id && !shown.has(id) && !created.includes(id)) created.push(id)
+  }
+  return created
+}

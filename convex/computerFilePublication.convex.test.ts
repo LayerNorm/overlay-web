@@ -92,7 +92,7 @@ function publicationArgs(reference: { actorUserId: string; runId: string; workfl
 }
 
 test('admitted and claimed run prepares concurrently once, then commits and replays one file and one charge', async () => {
-  const { convex, reference } = await fixture()
+  const { convex, reference, conversationId } = await fixture()
   const args = publicationArgs(reference)
   const [first, replay] = await Promise.all([
     convex.mutation(publicationMutation('prepare'), args),
@@ -115,6 +115,8 @@ test('admitted and claimed run prepares concurrently once, then commits and repl
     const files = (await ctx.db.query('files').collect()).filter(file => file.type === 'file')
     expect(files).toHaveLength(1)
     expect(files[0]?.createdByAgent).toBe(true)
+    // The published file belongs to the thread that started the run, so that thread's Library lists it.
+    expect(files[0]?.conversationId).toBe(conversationId)
     expect(await ctx.db.query('r2UploadIntents').collect()).toHaveLength(1)
     expect(await ctx.db.query('subscriptions').collect()).toContainEqual(expect.objectContaining({
       userId, overlayStorageBytesUsed: snapshot.sizeBytes,

@@ -16,6 +16,8 @@ import { normalizeGeneratedMarkdown } from './markdown/normalization'
 import { isFileContentHref, streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { resolveToolResourceHref } from './markdown/tool-resource-links'
+import { ChatMarkdownImage } from './files/ChatFileCards'
+import { fileIdFromContentHref } from './files/chat-files-context'
 import { recordRender, timeSync } from '../lib/perf-debug'
 import {
   remarkOverlayMentions,
@@ -124,6 +126,14 @@ function MarkdownMessageImpl({
       return {
         ...baseComponents,
         // Keep semantic emphasis; Streamdown's defaults render styled spans.
+        // Images render as capped thumbnails (or the card for an Overlay video/note), never full message width.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        img(props: any) {
+          const raw = typeof props.src === 'string' ? props.src : ''
+          if (!raw) return null
+          const src = resolveToolResourceHref(raw, toolResourceHrefs) ?? raw
+          return <ChatMarkdownImage src={src} alt={typeof props.alt === 'string' ? props.alt : undefined} fileId={fileIdFromContentHref(src)} />
+        },
         strong: ({ children }: { children?: ReactNode }) => <strong>{children}</strong>,
         em: ({ children }: { children?: ReactNode }) => <em>{children}</em>,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
