@@ -108,6 +108,12 @@ On an explicitly verified, isolated Preview backend, the internal `dev/performan
 
 The fixture is opt-in and idempotent. Changed content is rejected rather than overwritten. It neither modifies the measured histories nor schedules work, starts execution records, calls providers, changes roles or adjusts funds. Use the existing scoped Preview credential procedure, never an ambient shared backend or production key. A static completed fixture does not establish streaming or Workflow acceptance.
 
+### Provider-free personal pagination fixture
+
+On an explicitly verified isolated Preview backend, internal mutation `dev/performanceQa:initPagination` creates a separate personal conversation titled `Performance pagination` with 120 deterministic completed text messages. It returns `{ workspaceId, conversationId }`. Call it with `{}` for the configured Preview QA workspace, or with `{ workspaceId }` for another existing workspace whose ID is `preview-*-${PREVIEW_LOGIN_USER_ID}` and where that configured QA user is already an active human owner. The mutation never creates or repairs a workspace or membership; the workspace selector is only a scope, not authority.
+
+The fixture has a workspace-specific stable client ID and is idempotent. It writes only its conversation and messages, leaves the personal-A/B, stream and DM baselines unchanged, and fails closed if the fixture is edited, soft-deleted or has the wrong scope. It does not use message append APIs, schedule reindexing, create execution or Workflow records, call a provider/model, or change workspace roles, resources or billing. Remove it only through the configured QA owner's normal conversation controls on isolated Preview; there is no fixture cleanup mutation. Do not rerun after cleanup or after unexpected changes. This fixture enables pagination QA but is not hosted acceptance evidence.
+
 ## React Profiler traces
 
 Record these three by hand in a production build with profiling (`next build --profile`) and save the exports next to the baseline note:
