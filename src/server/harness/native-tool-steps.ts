@@ -285,7 +285,7 @@ async function recordNativeToolResultEvidence(call: NativeToolCall, result: unkn
         toolName: call.toolName,
         input: call.input,
         output: result,
-        success: !isToolFailureOutput(result),
+        success: true,
       }, Date.now()),
     })
   } catch (error) {

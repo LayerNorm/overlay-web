@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createNativeHarnessTools, type NativeHarnessToolsInput } from './native-tools'
 import { executeNativeHarnessTool } from './native-tool-steps'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
+import { harnessToolOutputEvidence } from './tool-evidence'
 import { jsonSchemaToZod } from '@/server/tools/mcp-schema-to-zod'
 
 const mocks = vi.hoisted(() => ({
@@ -187,6 +188,14 @@ test('native input rejection is model-visible before approval or execution and v
     .toEqual({ type: 'json', value: rejected })
   expect(mocks.execute).not.toHaveBeenCalled()
   expect(needsApproval).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledWith(input.access, 'tool-evidence:invalid', expect.objectContaining({
+    type: 'record_evidence',
+    evidence: expect.objectContaining({
+      id: 'tool:invalid',
+      verdict: 'failed',
+      summary: expect.stringContaining('HTTP or HTTPS'),
+    }),
+  }))
 
   const valid = await definition.execute!({ url: 'https://example.test/mockup.html' }, {
     ...options,
@@ -306,4 +315,27 @@ test('named-agent ask and post tools dispatch in process without rebuilding ordi
   expect(mocks.dispatch).toHaveBeenCalledTimes(2)
   expect(mocks.dispatch).toHaveBeenNthCalledWith(1, input.access, input.context, 'call', 'ask_agent', { agent: 'Writer', message: 'Review this' })
   expect(mocks.dispatch).toHaveBeenNthCalledWith(2, input.access, input.context, 'call', 'post_message', { agent: 'Writer', message: 'Review this' })
+})
+
+test('native failure evidence preserves returned guidance and classifies thrown failures', () => {
+  const returned = harnessToolOutputEvidence({
+    toolCallId: 'returned-failure',
+    toolName: 'computer_open_url',
+    input: { url: 'invalid' },
+    output: {
+      success: false,
+      code: 'INVALID_TOOL_INPUT',
+      error: 'URL must use HTTP or HTTPS.',
+      guidance: 'Use an HTTP or HTTPS URL.',
+    },
+    success: true,
+  }, 1)
+  expect(returned).toMatchObject({ verdict: 'failed', summary: expect.stringContaining('URL must use HTTP or HTTPS.') })
+  expect(returned.summary).toContain('Use an HTTP or HTTPS URL.')
+
+  const thrown = harnessToolOutputEvidence({
+    toolCallId: 'thrown-failure', toolName: 'computer_open_url', input: {}, output: undefined,
+    success: false, error: new Error('Tool execution failed.'),
+  }, 1)
+  expect(thrown).toMatchObject({ verdict: 'failed', summary: expect.stringContaining('Tool execution failed.') })
 })
