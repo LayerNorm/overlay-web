@@ -8,6 +8,8 @@ export type ChatFileSummary = {
   mimeType?: string
   previewText?: string
   createdAt?: number
+  /** Changes on every save, so previews know to reload the file's text. */
+  updatedAt?: number
 }
 
 export type ChatFileOpenRequest = { id: string; name?: string; kind?: string; mimeType?: string }

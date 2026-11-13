@@ -32,7 +32,7 @@ const viewerOperations = {
  * The full text of a note or text file, read like the Files page does (`fullText`, so text kept in object storage
  * is complete). Media and binary documents load from their content URL instead.
  */
-function useFileText(fileId: string, viewerName: string, enabled: boolean): string | null {
+function useFileText(fileId: string, viewerName: string, revision: number | undefined, enabled: boolean): string | null {
   const [text, setText] = useState<{ fileId: string; value: string } | null>(null)
   useEffect(() => {
     if (!enabled || !shouldFetchTextContent(viewerName)) return
@@ -46,7 +46,8 @@ function useFileText(fileId: string, viewerName: string, enabled: boolean): stri
       .then((value) => { if (!cancelled) setText({ fileId, value }) })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [enabled, fileId, viewerName])
+    // A new revision (an agent or person saved the file) reloads the text; the old text stays until it arrives.
+  }, [enabled, fileId, revision, viewerName])
   return text?.fileId === fileId ? text.value : null
 }
 
@@ -63,7 +64,7 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
   const kind = file ? chatFileKind(file) : null
   const name = file?.name ?? ''
   const viewerName = kind === 'note' ? `${name || 'Note'}.md` : name
-  const text = useFileText(fileId, viewerName, Boolean(file))
+  const text = useFileText(fileId, viewerName, file?.updatedAt, Boolean(file))
   const url = fileContentUrl(fileId)
   const content = text ?? ''
   const meta = kind === 'note' ? 'Note' : kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'File'

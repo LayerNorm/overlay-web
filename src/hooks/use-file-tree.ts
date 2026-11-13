@@ -55,7 +55,7 @@ export function useFileSummaries(ids: readonly string[]): ReadonlyMap<string, Ch
     if (!rows) return undefined
     return new Map(rows.map((row) => [String(row._id), {
       _id: String(row._id), name: row.name, kind: row.kind, mimeType: row.mimeType,
-      previewText: row.previewText, createdAt: row.createdAt,
+      previewText: row.previewText, createdAt: row.createdAt, updatedAt: row.updatedAt,
     }]))
   }, [rows])
 }
