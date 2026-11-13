@@ -5,7 +5,7 @@ import { nativeHarnessChildInput, nativeHarnessWorkflow, startNativeHarnessChild
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), notify: vi.fn(), child: vi.fn(),
-  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), repositoryGet: vi.fn() }))
+  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), repositoryGet: vi.fn(), reconcileTranscript: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -33,6 +33,7 @@ vi.mock('@/server/harness/harness-transcript', async importOriginal => ({
     persistence: { content: '', parts: [] }, steps: [], truncated: false,
     newestSequence: null, oldestSequence: null,
   })),
+  reconcileSettledHarnessTranscriptForDelivery: mocks.reconcileTranscript,
 }))
 
 const input: NativeHarnessWorkflowInput = {
@@ -57,12 +58,14 @@ beforeEach(() => {
   mocks.tools.mockReturnValue({})
   mocks.ports.mockImplementation((_execution: unknown, surface: unknown) => ({ ...surface }))
   mocks.run.mockResolvedValue({ outcome: 'finished', snapshot: { ...state, status: 'completed' }, messages: [], steps: [] })
+  mocks.reconcileTranscript.mockImplementation(async (_reference: unknown, _result: unknown, _toolNames: unknown, transcript: unknown) => transcript)
 })
 
 test('owner attaches and finalizes without supplying a writable stream', async () => {
   expect(await nativeHarnessWorkflow(input)).toEqual({ runId: 'workspace:agent', status: 'completed' })
   expect(mocks.attach).toHaveBeenCalledOnce()
   expect(mocks.finish).toHaveBeenCalledOnce()
+  expect(mocks.reconcileTranscript).toHaveBeenCalledOnce()
   expect(mocks.run.mock.calls[0][0]).not.toHaveProperty('writable')
   expect(mocks.notify).not.toHaveBeenCalled()
 })
