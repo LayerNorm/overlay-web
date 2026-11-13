@@ -1185,6 +1185,30 @@ describe('durable harness runs', () => {
         persistence: { content: 'A settled public update.' } }],
       isDone: true,
     })
+    const readReceiptStep = query('getTranscriptStepForReconciliation')
+    const receiptIdentity = {
+      actorUserId: args.actorUserId,
+      runId: args.runId,
+      workflowRunId: args.workflowRunId,
+      receiptId: args.receiptId,
+      stepNumber: args.stepNumber,
+      serverSecret: secret,
+    }
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, workflowRunId: 'stale-workflow' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, actorUserId: 'foreign-actor' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, receiptId: 'model:1' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND/)
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, stepNumber: 1 }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_CONFLICT/)
+    const current = await convex.query(readReceiptStep, receiptIdentity)
+    expect(current).toMatchObject({
+      receiptId: 'model:0', sequence: 0, stepNumber: 0,
+      persistence: { content: 'A settled public update.' },
+      fullPersistenceDigest: args.fullPersistenceDigest,
+    })
+    expect(current.fullPersistenceUrl).toEqual(expect.any(String))
   })
 })
 

@@ -125,40 +125,38 @@ export async function reconcileSettledHarnessTranscriptForDelivery(
   const state = await repository.get(reference)
   if (!state) throw new HarnessAuthorizationError()
   if (state.policy.publicProgressVersion !== 1 && state.policy.publicStreamVersion !== 1) return settledTranscript
-  const reconciled = reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, settledTranscript)
-  for (const update of reconciled.updatedSteps) {
-    const original = settledTranscript.steps.find(step => (
-      step.receiptId === update.receiptId && step.stepNumber === update.stepNumber
-    ))
-    if (!original) continue
-    const full = await readPublicTranscriptStep({
-      sequence: original.sequence,
-      persistence: original.persistence,
-      fullPersistenceUrl: original.fullPersistenceUrl,
-      fullPersistenceDigest: original.fullPersistenceDigest,
-    }, AbortSignal.timeout(120_000))
-    const fullWindow = {
-      ...settledTranscript,
-      steps: settledTranscript.steps.map(step => step === original
-        ? { ...step, persistence: full.persistence } : step),
-    }
-    const fullUpdate = reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, fullWindow)
-      .updatedSteps.find(step => step.receiptId === update.receiptId && step.stepNumber === update.stepNumber)
-    if (!fullUpdate) continue
+  const candidates = settledTranscriptOutcomeCandidates(result, activeToolNames)
+  if (!candidates.length) return settledTranscript
+  for (const candidate of candidates) {
+    const current = await repository.getTranscriptStepForReconciliation({
+      actorUserId: reference.actorUserId,
+      runId: reference.runId,
+      workflowRunId: reference.workflowRunId,
+      receiptId: candidate.receiptId,
+      stepNumber: candidate.stepNumber,
+    })
+    if (!current) continue
+    const full = await readPublicTranscriptStep(current, AbortSignal.timeout(120_000))
+    const executionGeneration = current.executionGeneration ?? state.executionGeneration ?? 0
+    const currentPersistence = reference.runId.startsWith('personal:')
+      ? withTranscriptPartIds(reference.runId, candidate.receiptId, full.persistence, executionGeneration)
+      : full.persistence
+    const reconciled = reconcileToolInvocationOutcomes(currentPersistence, { content: '', parts: candidate.parts })
+    if (!reconciled.changed) continue
     const persistence = reference.runId.startsWith('personal:')
-      ? withTranscriptPartIds(reference.runId, update.receiptId, fullUpdate.persistence, state.executionGeneration ?? 0)
-      : fullUpdate.persistence
+      ? withTranscriptPartIds(reference.runId, candidate.receiptId, reconciled.persistence, executionGeneration)
+      : reconciled.persistence
     await repository.writeTranscriptStep({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
       workflowRunId: reference.workflowRunId,
-      receiptId: update.receiptId,
-      stepNumber: update.stepNumber,
+      receiptId: candidate.receiptId,
+      stepNumber: candidate.stepNumber,
       persistence,
       reconcileToolResults: true,
     })
   }
-  return reconciled.transcript
+  return await readSettledHarnessTranscript(reference)
 }
 
 export async function readSettledHarnessTranscriptPage(
@@ -212,40 +210,16 @@ export function reconcileSettledHarnessTranscriptOutcomes<T extends SettledHarne
   activeToolNames: ReadonlySet<string>,
   settledTranscript: T,
 ): { transcript: T; updatedSteps: HarnessTranscriptStep[] } {
-  const origins = new Map<string, { receiptId: string; stepNumber: number; toolName: string }>()
-  result.steps.forEach((step, index) => {
-    const receiptId = result.stepReceiptIds?.[index]
-    if (!receiptId) return
-    for (const call of step.toolCalls) {
-      if (activeToolNames.has(call.toolName) && !origins.has(call.toolCallId)) {
-        origins.set(call.toolCallId, { receiptId, stepNumber: step.stepNumber, toolName: call.toolName })
-      }
-    }
-  })
-  if (!origins.size) return { transcript: settledTranscript, updatedSteps: [] }
-
-  const unwrapToolResult = <T extends { type: string }>(part: T): T => {
-    if (part.type !== 'tool-result' || !('output' in part)
-      || !isPersonalChatWorkToolOutputEnvelope(part.output)) return part
-    return { ...part, output: part.output.display }
-  }
-  const observedSteps = result.steps.map(step => ({
-    ...step,
-    content: step.content?.map(unwrapToolResult),
-    toolResults: step.toolResults.map(unwrapToolResult),
-  }))
-  const observed = buildAssistantPersistenceFromSteps(observedSteps, '', { fullValues: true })
-  const observedParts = observed.parts.filter(part => part.type === 'tool-invocation')
+  const candidates = settledTranscriptOutcomeCandidates(result, activeToolNames)
+  if (!candidates.length) return { transcript: settledTranscript, updatedSteps: [] }
+  const candidatesByIdentity = new Map(candidates.map(candidate => [
+    JSON.stringify([candidate.receiptId, candidate.stepNumber]), candidate,
+  ]))
   const updatedSteps: HarnessTranscriptStep[] = []
   const steps = settledTranscript.steps.map(step => {
-    const matches = observedParts.filter(part => {
-      const invocation = part.toolInvocation as Record<string, unknown>
-      const origin = origins.get(String(invocation.toolCallId))
-      return origin?.receiptId === step.receiptId && origin.stepNumber === step.stepNumber
-        && origin.toolName === invocation.toolName
-    })
-    if (!matches.length) return step
-    const reconciled = reconcileToolInvocationOutcomes(step.persistence, { content: '', parts: matches })
+    const candidate = candidatesByIdentity.get(JSON.stringify([step.receiptId, step.stepNumber]))
+    if (!candidate) return step
+    const reconciled = reconcileToolInvocationOutcomes(step.persistence, { content: '', parts: candidate.parts })
     if (!reconciled.changed) return step
     const updated = { ...step, persistence: reconciled.persistence }
     updatedSteps.push(updated)
@@ -261,6 +235,57 @@ export function reconcileSettledHarnessTranscriptOutcomes<T extends SettledHarne
     } as T,
     updatedSteps,
   }
+}
+
+type SettledTranscriptOutcomeCandidate = {
+  receiptId: string
+  stepNumber: number
+  parts: Array<Record<string, unknown>>
+}
+
+function settledTranscriptOutcomeCandidates(
+  result: HarnessExecutionResult,
+  activeToolNames: ReadonlySet<string>,
+): SettledTranscriptOutcomeCandidate[] {
+  const origins = new Map<string, { receiptId: string; stepNumber: number; toolName: string }>()
+  result.steps.forEach((step, index) => {
+    const receiptId = result.stepReceiptIds?.[index]
+    if (!receiptId) return
+    for (const call of step.toolCalls) {
+      if (activeToolNames.has(call.toolName) && !origins.has(call.toolCallId)) {
+        origins.set(call.toolCallId, { receiptId, stepNumber: step.stepNumber, toolName: call.toolName })
+      }
+    }
+  })
+  if (!origins.size) return []
+
+  const unwrapToolResult = <T extends { type: string }>(part: T): T => {
+    if (part.type !== 'tool-result' || !('output' in part)
+      || !isPersonalChatWorkToolOutputEnvelope(part.output)) return part
+    return { ...part, output: part.output.display }
+  }
+  const observedSteps = result.steps.map(step => ({
+    ...step,
+    content: step.content?.map(unwrapToolResult),
+    toolResults: step.toolResults.map(unwrapToolResult),
+  }))
+  const observed = buildAssistantPersistenceFromSteps(observedSteps, '', { fullValues: true })
+  const candidates = new Map<string, SettledTranscriptOutcomeCandidate>()
+  for (const part of observed.parts) {
+    if (part.type !== 'tool-invocation') continue
+    const invocation = part.toolInvocation as Record<string, unknown>
+    const origin = origins.get(String(invocation.toolCallId))
+    if (!origin || origin.toolName !== invocation.toolName) continue
+    const key = JSON.stringify([origin.receiptId, origin.stepNumber])
+    const candidate = candidates.get(key) ?? {
+      receiptId: origin.receiptId,
+      stepNumber: origin.stepNumber,
+      parts: [],
+    }
+    candidate.parts.push(part)
+    candidates.set(key, candidate)
+  }
+  return [...candidates.values()]
 }
 
 export function compactHarnessTranscriptPersistence(input: HarnessTranscriptPersistence): HarnessTranscriptPersistence {

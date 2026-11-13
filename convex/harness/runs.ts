@@ -51,6 +51,7 @@ import type {
   HarnessWaitRequest,
   HarnessTranscriptPage,
   HarnessTranscriptPersistence,
+  HarnessTranscriptStep,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { appendHarnessDiagnosticIndex, persistHarnessToolFailure } from './diagnosticIndex'
 import { ConvexError, v } from 'convex/values'
@@ -2120,6 +2121,58 @@ export const listTranscriptSteps = query({
       }))),
       cursor: page.continueCursor,
       isDone: page.isDone,
+    }
+  },
+})
+
+export const getTranscriptStepForReconciliation = query({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    receiptId: v.string(),
+    stepNumber: v.number(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<HarnessTranscriptStep | null> => {
+    requireHarnessServerSecret(args.serverSecret)
+    const sequenceMatch = /^model:(\d+)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !sequenceMatch || !Number.isSafeInteger(Number(sequenceMatch[1]))
+      || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0) {
+      throw new Error('Invalid harness transcript step lookup.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    }
+    const receipt = await ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (!receipt || parseJson<HarnessReceipt>(receipt.receiptJson).id !== args.receiptId) {
+      throw new Error('HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND')
+    }
+    const row = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (!row) return null
+    if (row.stepNumber !== args.stepNumber || row.sequence !== Number(sequenceMatch[1])) {
+      throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+    }
+    return {
+      receiptId: row.receiptId,
+      stepNumber: row.stepNumber,
+      sequence: row.sequence,
+      executionGeneration: row.executionGeneration ?? 0,
+      persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
+      ...(row.fullPersistenceStorageId ? {
+        fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
+        fullPersistenceDigest: row.fullPersistenceDigest,
+      } : {}),
     }
   },
 })
