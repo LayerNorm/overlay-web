@@ -2,22 +2,13 @@
 
 Status: in progress in the `codex/harness-prompt-caching` PR; not merged or deployed. Phase 1 (stable prefix), Phase 2 (Anthropic markers) and sticky Gateway routing are implemented in `src/server/harness/prompt-cache.ts`. Still open: constant tool choice for progress updates and final answers (kept as before to preserve their behaviour), the `1h` lifetime, and storing the hit rate per run (Phase 3). Main removed harness cost holds before this landed, so cache-write pricing in holds is no longer needed. The last phase's PR deletes this plan.
 
-## Measured results (standalone experiment)
+## Findings
 
-The experiment simulates a 9-call harness loop: a system prompt of about 6k tokens, 14 tools, and a tool result of about 1.2k tokens per step. It calls AI Gateway directly, the same route the harness uses. Hit rate is measured from the second call onward. Savings are relative to the same run with no caching.
-
-| Model | Today's layout | Stable prefix | Stable + Anthropic markers, constant `toolChoice` |
-| --- | --- | --- | --- |
-| Claude Haiku 5.5 | 0% hit / 0% saved | 0% / 0% | **91% / 74%** |
-| GPT‑5.4 mini | 55% / 46% | **82% / 69%** | 82% / 67% |
-| Gemini 3.8 Flash | 0% / 0% | **63% / 51%** | 63% / 51% |
-| DeepSeek V4.1 Flash | 43% / 41% | 51–74% / 48–65% | pinned upstream: **89% / 78%** |
-
-What we learned:
+`scripts/experiments/prompt-caching.mts` reproduces these against AI Gateway; the measured figures live in the PR, not here.
 - **Anthropic caches nothing without `cacheControl` markers**, even with a stable prefix.
-- **Changing `toolChoice` or the tool list breaks the cache** on every provider. Anthropic keeps only the tool block, and Gemini and DeepSeek drop to 0%. The harness does both for final answers and progress updates.
-- **The Gateway spreads open-weight models across upstreams** such as Baseten and Fireworks, and caches don't cross between them. Pinning DeepSeek to one upstream raised its hit rate from 51% to 89%.
-- **OpenAI's `promptCacheKey` added nothing** within a single run, because its implicit caching already applies.
+- **Changing `toolChoice` or the tool list breaks the cache** on every provider. The harness does both for final answers and progress updates.
+- **The Gateway spreads open-weight models across upstreams**, and caches don't cross between them, so a run should stay on one upstream.
+- **OpenAI's `promptCacheKey` adds nothing** within a single run, because its implicit caching already applies.
 
 ## Goal
 
@@ -59,7 +50,7 @@ Add one helper in `prepareModel` that sets cache markers for each provider:
 
 ## Acceptance
 
-- In a 10-step Preview run on Claude and on GPT, at least 80% of input tokens from the second step onward are cache reads.
+- In a multi-step Preview run, most input tokens on work steps after the first are cache reads.
 - Cost per run is down, with no change in run outcomes.
 - Unit tests check that the prompt prefix is byte-identical between steps, apart from the trailing working-state message.
 
