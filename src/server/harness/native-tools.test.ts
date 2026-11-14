@@ -1,7 +1,11 @@
 import { beforeEach, expect, test, vi } from 'vitest'
+import { asSchema, jsonSchema } from 'ai'
+import { z } from 'zod'
 import { createNativeHarnessTools, type NativeHarnessToolsInput } from './native-tools'
 import { executeNativeHarnessTool } from './native-tool-steps'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
+import { harnessToolOutputEvidence } from './tool-evidence'
+import { jsonSchemaToZod } from '@/server/tools/mcp-schema-to-zod'
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), build: vi.fn(), execute: vi.fn(), dispatch: vi.fn(), progress: vi.fn(), apply: vi.fn(),
@@ -36,7 +40,9 @@ const input: NativeHarnessToolsInput = {
 const options: HarnessToolExecutionOptions = { toolCallId: 'call', messages: [], context: undefined }
 const authority = { agent: { id: 'agent', principalId: 'agent-principal', name: 'Research', allowedToolIds: ['files'], permissionMode: 'ask' },
   entitlements: { tools: true }, paid: true, latestUserText: 'Read the source' }
-const tooling = (needsApproval = false) => ({ tools: { read_file: { execute: mocks.execute, needsApproval } }, toolsContext: { read_file: { fresh: true } } })
+const tooling = (needsApproval = false) => ({ tools: { read_file: {
+  execute: mocks.execute, inputSchema: z.object({}).passthrough(), needsApproval,
+} }, toolsContext: { read_file: { fresh: true } } })
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -99,7 +105,11 @@ test('a native tool step records evidence after a tool finishes during Stop', as
 test('a thrown native tool does not record result evidence', async () => {
   mocks.execute.mockRejectedValue(new Error('Tool failed.'))
   await expect(createNativeHarnessTools(input).read_file!.execute!({}, options)).rejects.toThrow('Tool failed.')
-  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledWith(input.access, expect.stringMatching(/^tool-failure:/), expect.objectContaining({
+    type: 'record_tool_failure',
+    failure: expect.objectContaining({ phase: 'execution', causeCode: 'TOOL_EXECUTION_FAILED' }),
+  }))
+  expect(mocks.apply).not.toHaveBeenCalledWith(input.access, expect.anything(), expect.objectContaining({ type: 'record_evidence' }))
 })
 
 test('revoked native authority or a removed grant prevents even an approved tool from executing', async () => {
@@ -133,7 +143,9 @@ test('MCP policy still requires approval when the individual tool flag is false'
 
 test('native tools preserve model-output envelopes and never retry an ambiguous side effect', async () => {
   const modelOutput = { type: 'content', value: [{ type: 'text', text: 'mapped screenshot' }] }
-  mocks.build.mockResolvedValue({ tools: { read_file: { execute: mocks.execute, toModelOutput: () => modelOutput } } })
+  mocks.build.mockResolvedValue({ tools: { read_file: {
+    execute: mocks.execute, inputSchema: z.object({}).passthrough(), toModelOutput: () => modelOutput,
+  } } })
   const definition = createNativeHarnessTools(input).read_file
   const result = await definition.execute!({}, options)
   expect(await definition.toModelOutput!({ toolCallId: 'call', input: {}, output: result })).toEqual(modelOutput)
@@ -143,6 +155,121 @@ test('native tools preserve model-output envelopes and never retry an ambiguous 
   expect(executeNativeHarnessTool.maxRetries).toBe(0)
 })
 
+test('native input rejection is model-visible before approval or execution and valid HTTP input still runs', async () => {
+  const needsApproval = vi.fn(async () => true)
+  const inputSchema = z.object({
+    url: z.string().url().refine(value => /^https?:\/\//i.test(value), 'URL must use HTTP or HTTPS.'),
+  })
+  mocks.build.mockResolvedValue({
+    tools: { computer_open_url: { execute: mocks.execute, inputSchema, needsApproval } },
+  })
+  const definition = createNativeHarnessTools({
+    ...input,
+    definitions: [{
+      name: 'computer_open_url',
+      description: 'Open an HTTP(S) URL.',
+      inputSchema: { type: 'object', properties: { url: { type: 'string' } } },
+      needsApproval: false,
+    }],
+  }).computer_open_url!
+  const invalid = { url: 'file:///private/mockup.html' }
+
+  expect(await definition.needsApproval!(invalid, options)).toBe(false)
+  expect(needsApproval).not.toHaveBeenCalled()
+  const rejected = await definition.execute!(invalid, { ...options, toolCallId: 'invalid' })
+  expect(rejected).toMatchObject({
+    success: false,
+    code: 'INVALID_TOOL_INPUT',
+    error: expect.stringContaining('HTTP or HTTPS'),
+    issues: [{ path: ['url'], code: 'custom' }],
+  })
+  expect(JSON.stringify(rejected)).not.toContain('file:///private/mockup.html')
+  expect(await definition.toModelOutput!({ toolCallId: 'invalid', input: invalid, output: rejected } as never))
+    .toEqual({ type: 'json', value: rejected })
+  expect(mocks.execute).not.toHaveBeenCalled()
+  expect(needsApproval).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledWith(input.access, 'tool-evidence:invalid', expect.objectContaining({
+    type: 'record_evidence',
+    evidence: expect.objectContaining({
+      id: 'tool:invalid',
+      verdict: 'failed',
+      summary: expect.stringContaining('HTTP or HTTPS'),
+    }),
+  }))
+
+  const valid = await definition.execute!({ url: 'https://example.test/mockup.html' }, {
+    ...options,
+    toolCallId: 'valid',
+    harnessApproved: true,
+  } as HarnessToolExecutionOptions)
+  expect(valid).toEqual({ ok: true })
+  expect(mocks.execute).toHaveBeenCalledOnce()
+  expect(mocks.execute).toHaveBeenCalledWith({ url: 'https://example.test/mockup.html' }, expect.anything())
+  expect(needsApproval).toHaveBeenCalledTimes(2)
+})
+
+test('JSON-Schema-only native tools fail closed when the schema has no runtime validator', async () => {
+  const needsApproval = vi.fn(async () => true)
+  const inputSchema = jsonSchema({
+    type: 'object',
+    properties: { url: { type: 'string', format: 'uri' } },
+    required: ['url'],
+    additionalProperties: false,
+  })
+  mocks.build.mockResolvedValue({ tools: { computer_open_url: { execute: mocks.execute, inputSchema, needsApproval } } })
+  const definition = createNativeHarnessTools({
+    ...input,
+    definitions: [{ name: 'computer_open_url', description: 'Open a URL.', inputSchema: {}, needsApproval: false }],
+  }).computer_open_url!
+  const invalid = { url: 'not a URI' }
+
+  await expect(definition.needsApproval!(invalid, options)).rejects.toThrow('NATIVE_TOOL_SCHEMA_VALIDATOR_MISSING')
+  await expect(definition.execute!(invalid, { ...options, toolCallId: 'json-schema-invalid' }))
+    .rejects.toThrow('NATIVE_TOOL_SCHEMA_VALIDATOR_MISSING')
+  expect(needsApproval).not.toHaveBeenCalled()
+  expect(mocks.execute).not.toHaveBeenCalled()
+})
+
+test('MCP JSON schemas are converted to runtime validators before native dispatch', async () => {
+  const inputSchema = jsonSchemaToZod({
+    type: 'object',
+    properties: { resourceId: { type: 'string', minLength: 1 } },
+    required: ['resourceId'],
+    additionalProperties: false,
+  })
+  expect((await asSchema(inputSchema).validate!({ resourceId: 'doc-1' })).success).toBe(true)
+  mocks.build.mockResolvedValue({ tools: { read_file: { execute: mocks.execute, inputSchema } } })
+  const definition = createNativeHarnessTools(input).read_file!
+
+  expect(await definition.needsApproval!({ resourceId: 'doc-1' }, options)).toBe(false)
+  await expect(definition.execute!({ resourceId: 'doc-1' }, options)).resolves.toEqual({ ok: true })
+  expect(mocks.execute).toHaveBeenCalledOnce()
+})
+
+test('native schema validator bugs do not become user input failures', async () => {
+  const schemaError = new Error('schema implementation bug')
+  const inputSchema = jsonSchema({ type: 'object' }, { validate: () => { throw schemaError } })
+  mocks.build.mockResolvedValue({ tools: { read_file: { execute: mocks.execute, inputSchema } } })
+  const definition = createNativeHarnessTools(input).read_file!
+
+  await expect(definition.execute!({}, options)).rejects.toBe(schemaError)
+  expect(mocks.execute).not.toHaveBeenCalled()
+})
+
+test('validation paths expose only declared non-sensitive schema fields', async () => {
+  const inputSchema = z.object({ metadata: z.record(z.string(), z.number()) })
+  mocks.build.mockResolvedValue({ tools: { read_file: { execute: mocks.execute, inputSchema } } })
+  const definition = createNativeHarnessTools(input).read_file!
+  const rejected = await definition.execute!({ metadata: { token: 'secret-value' } }, {
+    ...options, toolCallId: 'dynamic-secret-key',
+  })
+
+  expect(rejected).toMatchObject({ issues: [{ path: ['metadata', '<field>'], code: 'invalid_type' }] })
+  expect(JSON.stringify(rejected)).not.toContain('token')
+  expect(JSON.stringify(rejected)).not.toContain('secret-value')
+  expect(mocks.execute).not.toHaveBeenCalled()
+})
+
 test('presentation progress failures do not change the tool result or re-execute it', async () => {
   mocks.progress.mockRejectedValue(new Error('progress write unavailable'))
   const definition = createNativeHarnessTools(input).read_file
@@ -150,7 +277,19 @@ test('presentation progress failures do not change the tool result or re-execute
   expect(mocks.execute).toHaveBeenCalledOnce()
   expect(mocks.progress).toHaveBeenCalledTimes(2)
   expect(mocks.warn).toHaveBeenCalledWith('[harness] native tool progress write failed', expect.objectContaining({
-    runId: input.access.runId, toolCallId: 'call', error: 'progress write unavailable',
+    runId: input.access.runId, toolCallId: 'call', failureCode: 'PROGRESS_PROJECTION_FAILED',
+  }))
+})
+
+test('progress projection failure preserves the original executed tool failure', async () => {
+  const originalError = new Error('original execution failure')
+  mocks.execute.mockRejectedValue(originalError)
+  mocks.progress.mockRejectedValue(new Error('progress write unavailable'))
+  const definition = createNativeHarnessTools(input).read_file
+  await expect(definition.execute!({}, options)).rejects.toBe(originalError)
+  expect(mocks.apply).toHaveBeenCalledWith(input.access, expect.stringMatching(/^tool-failure:/), expect.objectContaining({
+    type: 'record_tool_failure',
+    failure: expect.objectContaining({ phase: 'execution', causeCode: 'TOOL_EXECUTION_FAILED' }),
   }))
 })
 
@@ -176,4 +315,27 @@ test('named-agent ask and post tools dispatch in process without rebuilding ordi
   expect(mocks.dispatch).toHaveBeenCalledTimes(2)
   expect(mocks.dispatch).toHaveBeenNthCalledWith(1, input.access, input.context, 'call', 'ask_agent', { agent: 'Writer', message: 'Review this' })
   expect(mocks.dispatch).toHaveBeenNthCalledWith(2, input.access, input.context, 'call', 'post_message', { agent: 'Writer', message: 'Review this' })
+})
+
+test('native failure evidence preserves returned guidance and classifies thrown failures', () => {
+  const returned = harnessToolOutputEvidence({
+    toolCallId: 'returned-failure',
+    toolName: 'computer_open_url',
+    input: { url: 'invalid' },
+    output: {
+      success: false,
+      code: 'INVALID_TOOL_INPUT',
+      error: 'URL must use HTTP or HTTPS.',
+      guidance: 'Use an HTTP or HTTPS URL.',
+    },
+    success: true,
+  }, 1)
+  expect(returned).toMatchObject({ verdict: 'failed', summary: expect.stringContaining('URL must use HTTP or HTTPS.') })
+  expect(returned.summary).toContain('Use an HTTP or HTTPS URL.')
+
+  const thrown = harnessToolOutputEvidence({
+    toolCallId: 'thrown-failure', toolName: 'computer_open_url', input: {}, output: undefined,
+    success: false, error: new Error('Tool execution failed.'),
+  }, 1)
+  expect(thrown).toMatchObject({ verdict: 'failed', summary: expect.stringContaining('Tool execution failed.') })
 })

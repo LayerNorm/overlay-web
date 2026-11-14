@@ -467,6 +467,11 @@ do not write tool progress into the parent's room.
 Native tool steps persist tool results before returning, allowing a
 tool that finishes during Stop to retain its evidence; the workflow event hook
 skips evidence already recorded by the step.
+Finalization reconciles later structured results into a matching provisional
+transcript invocation before building the assistant delivery. It updates only
+the original call's receipt/step row, preserves settled text and part identity,
+and does not turn real errors, denials or unresolved calls into success; the
+conversation trace reads the reconciled journal.
 Plans are optional for every run. The model makes one when a task is long and
 needs structure, and a step is done when the model marks it done. Plan changes
 on a root run are copied to its delivery run (`plan`) and assistant message
@@ -837,6 +842,25 @@ deduplicated in the same transaction as usage aggregation. Child runs have indep
 state and usage. Unique receipts propagate through their ancestors atomically, including
 late billing reconciliation; settlement does not charge that usage again. Keep these rows
 additive and do not deploy a feature-worktree schema to shared or customer backends.
+
+Harness diagnostics use the separate `harnessDiagnosticIndex` and
+`harnessToolFailures` tables; neither is projected through `HarnessSnapshot` or
+the customer transcript. Live diagnostic and failure writes share the protected
+`harness/runs:apply` server-secret, actor/source and workflow-ownership boundary.
+The index is append-only so a later diagnostic cannot erase earlier IDs. Admin
+lookup queries only the indexed diagnostic ID and returns ambiguity on collisions;
+ordinary reads never scan runs or journals. Sanitized failure records are joined
+by run and diagnostic operation ID, while legacy entries without one report
+`causeUnavailable`. A repeated diagnostic ID keeps the workflow correlation from
+its first index row; backfill does not infer historical workflow ownership from
+the run's current metadata.
+
+`harness/diagnosticBackfill:backfill` is an internal, resumable migration for
+existing metadata or journal rows. It processes at most 100 source records per
+call, returns a continuation cursor and explicit insertion/skip/error counts,
+and is idempotent on replay. Deployment selection and invocation are documented
+in `admin-console.md`. The mutation was not run as part of this change; never
+invoke it against production from a feature worktree.
 
 ## Browser auth for reactive queries
 

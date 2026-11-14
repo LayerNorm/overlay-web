@@ -537,6 +537,17 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         diagnosticId: stableHarnessDiagnosticId(failed.runId, operationId, failed.revision),
         code: 'TOOL_OUTCOME_UNKNOWN', stage: 'tool', operationId, occurredAt: Date.now(),
       })
+      // eslint-disable-next-line no-console
+      console.warn('[harness] tool outcome requires reconciliation', {
+        runId: failed.runId,
+        workflowRunId: failed.workflowRunId,
+        operationId,
+        diagnosticId: diagnostic.diagnosticId,
+        toolCallId: operationId,
+        toolName: (uncertainToolOutcome as Error & { toolName?: string }).toolName,
+        failurePhase: 'execution',
+        causeCode: 'HARNESS_TOOL_OUTCOME_UNKNOWN',
+      })
       await ports.apply(`uncertain-tool:${operationId}`, { type: 'terminate', status: 'failed',
         reason: diagnostic.safeMessage, diagnostic })
     }
