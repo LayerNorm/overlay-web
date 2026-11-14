@@ -2,6 +2,7 @@
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import { Reply, RotateCw, Trash2 } from 'lucide-react'
+import { useMessageEntrance } from './message-entrance'
 import type { GenerationResult } from '@overlay/chat-core'
 import type {
   AttachmentPreview,
@@ -58,10 +59,11 @@ export function MediaExchange({
   const modelId = modelIds[0] ?? ''
   const result = results[0]
   const stillGenerating = !result || result.status === 'generating'
+  const entranceClass = useMessageEntrance(stillGenerating)
 
   return (
     <div
-      className={`group/exchange flex flex-col gap-3 message-appear transition-all duration-300 ease-out ${
+      className={`group/exchange flex flex-col gap-3 ${entranceClass} transition-[opacity,translate] duration-200 ease-out ${
         isExiting ? 'pointer-events-none -translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
       }`}
       data-exchange-idx={exchangeIndex}
@@ -207,7 +209,7 @@ function TranscriptIconAction({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-all hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-90 active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
+      className={unstyledButton(`rounded-md p-1.5 text-(--muted) transition-[background-color,color,scale] hover:bg-(--surface-subtle) hover:text-(--foreground) active:scale-[0.97] active:bg-(--border) disabled:cursor-not-allowed disabled:opacity-30`)}
       aria-label={label}
     >
       {children}

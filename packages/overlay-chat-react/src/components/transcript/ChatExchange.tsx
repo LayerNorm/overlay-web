@@ -3,6 +3,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
+import { useMessageEntrance } from './message-entrance'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
   appendInterruptionNotice,
@@ -13,6 +14,7 @@ import {
   INTERRUPTED_RESPONSE_NOTICE,
   isUsageExhaustedError,
   planAssistantWorkCollapse,
+  summarizeTurnDiff,
 } from '@overlay/chat-core'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
@@ -33,7 +35,8 @@ import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoa
 import { UserMessageActions } from './UserMessageActions'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 import { useChatExchangeSources } from './chat-exchange-sources'
-import { collectToolResourceHrefs } from '../markdown/tool-resource-links'
+import { collectCreatedFileIds, collectToolResourceHrefs } from '../markdown/tool-resource-links'
+import { ChatFileCardStrip } from '../files/ChatFileCards'
 import {
   AssistantSegmentItem,
   assistantSegmentKey,
@@ -161,6 +164,8 @@ export function ChatExchange({
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const lastTextBlockIndex = findLastTextBlockIndex(assistantVisualBlocks)
     const toolResourceHrefs = useMemo(() => collectToolResourceHrefs(assistantVisualBlocks), [assistantVisualBlocks])
+    const createdFileIds = useMemo(() => collectCreatedFileIds(assistantVisualBlocks), [assistantVisualBlocks])
+    const workDiff = useMemo(() => summarizeTurnDiff(assistantVisualBlocks), [assistantVisualBlocks])
     const { assistantSegments, toolChainFlags } = useExchangeSegments(assistantVisualBlocks)
     const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
       assistantPlainText,
@@ -201,9 +206,10 @@ export function ChatExchange({
       responseSettled &&
       (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     const densityClass = presentation?.density === 'compact' ? 'gap-1' : 'gap-2'
+    const entranceClass = useMessageEntrance(isStreaming || responseInProgress)
     return (
       <div
-        className={`group/exchange relative flex flex-col ${densityClass} message-appear transition-all duration-300 ease-out ${
+        className={`group/exchange relative flex flex-col ${densityClass} ${entranceClass} transition-[opacity,translate] duration-200 ease-out ${
           isExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
         }`}
         style={presentation?.maxContentWidth && presentation.maxContentWidth !== '56rem'
@@ -229,6 +235,8 @@ export function ChatExchange({
         />
 
         <ChatExchangeAssistantBody
+          createdFileIds={createdFileIds}
+          workDiff={workDiff}
           collapsePlan={collapsePlan}
           workedMs={workedMs}
           workExpanded={workExpanded}
@@ -272,6 +280,8 @@ export function ChatExchange({
 }
 
 type ChatExchangeAssistantBodyProps = {
+  createdFileIds: string[]
+  workDiff: { added: number; removed: number } | null
   workDetails?: import('react').ReactNode
   collapsePlan: ReturnType<typeof useCollapsePlan>['collapsePlan']
   workedMs: number | null
@@ -312,6 +322,8 @@ type ChatExchangeAssistantBodyProps = {
 }
 
 function ChatExchangeAssistantBody({
+  createdFileIds,
+  workDiff,
   workDetails,
   collapsePlan,
   workedMs,
@@ -360,6 +372,7 @@ function ChatExchangeAssistantBody({
             toolCallCount={collapsePlan.collapsedToolCallCount}
             expanded={workExpanded}
             onToggle={() => setWorkExpanded((v) => !v)}
+            diff={workDiff}
           />
         )}
         {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
@@ -377,6 +390,8 @@ function ChatExchangeAssistantBody({
             />
           )
         })}
+
+        {createdFileIds.length ? <ChatFileCardStrip fileIds={createdFileIds} /> : null}
 
         {plan?.length && !planSettled ? <RunPlan steps={plan} phase={planPhase} /> : null}
 

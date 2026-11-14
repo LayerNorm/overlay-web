@@ -56,9 +56,20 @@ test('recovery does not navigate after the user leaves the page', async (t) => {
 })
 
 test('protected server pages defer the sign-in redirect until browser recovery settles', () => {
-  for (const route of ['files', 'notes', 'tools', 'activity', 'archived', 'integrations', 'x/[...slug]']) {
+  for (const route of ['files', 'archived', 'integrations', 'x/[...slug]']) {
     const source = readFileSync(new URL(`../${route}/page.tsx`, import.meta.url), 'utf8')
     assert.match(source, /if \(!session\) return <AppRouteSessionRecovery \/>/, route)
     assert.doesNotMatch(source, /redirect\('\/app\/chat\?signin=nav'\)/, route)
+  }
+})
+
+test('client-session pages fall back to the same browser recovery when the shell has no user', () => {
+  const client = readFileSync(new URL('./ClientSessionRoutes.tsx', import.meta.url), 'utf8')
+  assert.match(client, /isLoading \? fallback : <AppRouteSessionRecovery \/>/)
+  assert.doesNotMatch(client, /redirect\(/)
+  for (const [route, component] of [['notes', 'NotesRouteClient'], ['tools', 'ToolsRouteClient'], ['activity', 'ActivityRouteClient']]) {
+    const source = readFileSync(new URL(`../${route}/page.tsx`, import.meta.url), 'utf8')
+    assert.match(source, new RegExp(`<${component} />`), route)
+    assert.doesNotMatch(source, /redirect\(/, route)
   }
 })

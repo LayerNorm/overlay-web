@@ -13,6 +13,7 @@ import type {
   HarnessWaitRequest,
   HarnessTranscriptPage,
   HarnessTranscriptPersistence,
+  HarnessTranscriptStep,
 } from '@overlay/agent-runtime/harness-store'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessArtifactMetadata } from './artifact-context'
@@ -173,6 +174,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
     receiptId: string
     stepNumber: number
     persistence: HarnessTranscriptPersistence
+    reconcileToolResults?: boolean
   }): Promise<{ persisted: boolean }> {
     const identity = { actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId,
       receiptId: input.receiptId, serverSecret: this.serverSecret }
@@ -217,6 +219,18 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
     if (!page) throw new Error('Harness transcript read returned no page.')
     return page
+  }
+
+  async getTranscriptStepForReconciliation(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    receiptId: string
+    stepNumber: number
+  }): Promise<HarnessTranscriptStep | null> {
+    return await convex.query<HarnessTranscriptStep | null>('harness/runs:getTranscriptStepForReconciliation', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
   }
 
   async submitWaitReply(input: {

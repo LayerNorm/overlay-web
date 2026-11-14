@@ -1062,7 +1062,6 @@ export default defineSchema({
     // instructions, tools, and environment through its thread.
     agentId: v.optional(v.string()),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
-    schedulerWorkflowRunId: v.optional(v.string()),
     // Legacy automation fields kept so existing production rows continue to validate.
     conversationId: v.optional(v.id('conversations')),
     failureStreak: v.optional(v.number()),
@@ -1102,7 +1101,6 @@ export default defineSchema({
     .index('by_agentId', ['agentId'])
     .index('by_conversationId_deletedAt', ['conversationId', 'deletedAt'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
-    .index('by_schedulerWorkflowRunId', ['schedulerWorkflowRunId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
@@ -3182,6 +3180,51 @@ export default defineSchema({
     appliedRevision: v.number(),
     createdAt: v.number(),
   }).index('by_runId_operationId', ['runId', 'operationId']),
+
+  harnessDiagnosticIndex: defineTable({
+    diagnosticId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.optional(v.string()),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    sourceType: v.union(v.literal('conversation'), v.literal('note'), v.literal('unknown')),
+    sourceId: v.optional(v.string()),
+    operationId: v.optional(v.string()),
+    code: v.string(),
+    stage: v.string(),
+    retryability: v.string(),
+    safeMessage: v.string(),
+    nextAction: v.string(),
+    occurredAt: v.number(),
+    indexedAt: v.number(),
+  }).index('by_diagnosticId', ['diagnosticId'])
+    .index('by_runId_diagnosticId', ['runId', 'diagnosticId']),
+
+  harnessToolFailures: defineTable({
+    runId: v.string(),
+    toolCallId: v.string(),
+    workflowRunId: v.optional(v.string()),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    sourceType: v.union(v.literal('conversation'), v.literal('note'), v.literal('unknown')),
+    sourceId: v.optional(v.string()),
+    toolName: v.string(),
+    phase: v.union(v.literal('pre_dispatch'), v.literal('execution')),
+    causeClass: v.union(v.literal('abort_error'), v.literal('convex_error'), v.literal('error'),
+      v.literal('range_error'), v.literal('schema_validation'), v.literal('timeout_error'),
+      v.literal('type_error'), v.literal('unknown_error'), v.literal('zod_error')),
+    causeCode: v.union(v.literal('ABORT_ERR'), v.literal('EAI_AGAIN'), v.literal('ECONNREFUSED'),
+      v.literal('ECONNRESET'), v.literal('ENOTFOUND'), v.literal('ETIMEDOUT'), v.literal('INVALID_TOOL_INPUT'),
+      v.literal('TOOL_EXECUTION_FAILED'), v.literal('ZOD_ERROR_DURING_EXECUTION')),
+    safeSummary: v.union(v.literal('Tool input was rejected before execution.'),
+      v.literal('Tool execution failed; its effect may be uncertain.')),
+    validationIssues: v.optional(v.array(v.object({ path: v.array(v.string()), code: v.union(
+      v.literal('custom'), v.literal('invalid_element'), v.literal('invalid_format'), v.literal('invalid_input'),
+      v.literal('invalid_key'), v.literal('invalid_type'), v.literal('invalid_union'), v.literal('invalid_value'),
+      v.literal('not_multiple_of'), v.literal('too_big'), v.literal('too_small'), v.literal('unrecognized_keys'),
+    ) }))),
+    createdAt: v.number(),
+  }).index('by_runId_toolCallId', ['runId', 'toolCallId']),
 
   harnessCheckpoints: defineTable({
     runId: v.string(),

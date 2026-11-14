@@ -1,8 +1,8 @@
 # Agent threads: recency, parallel work, and completion
 
-Status: Design proposal; production implementation has not started.
+Status: Partial implementation. Implicit Agents landing now selects the latest eligible thread by `lastModified`; timestamp-writer audit and the remaining concurrency, computer-isolation, and Activity proposals are still pending.
 
-Design proposal for review. No production application behavior has been changed.
+Sections 2 and beyond remain design proposals.
 
 ## Recommended experience
 
@@ -14,7 +14,7 @@ Design proposal for review. No production application behavior has been changed.
 
 ## Mockup
 
-Open `mockups/agent-thread-activity.html` directly. It is a self-contained, interactive prototype built with Overlay's actual DoubleSidebar component, production double-sidebar styles, and shared Button, Textarea, Toaster, and OverlayMark components. The surrounding shell follows the existing icon rail plus contextual panel layout, not a newly designed sidebar.
+The original standalone prototype for this plan has been replaced by `mockups/overlay-app.html`, which renders the shipped agent threads, activity lines and right panel from production components (Git history keeps the old prototype).
 
 - The initial view has two working threads, one unseen completed result, and an already-read result.
 - **Simulate completion** finishes a background task first, changes its sidebar status, moves it to the top, and shows a completion toast.
@@ -31,8 +31,8 @@ This is simulated state, not a running agent or computer. Other shell navigation
 
 | Finding | Existing implementation | Consequence |
 | --- | --- | --- |
-| Opening an agent explicitly selects the oldest thread | `convex/agents/agentThreads.ts`, `resolveMainThread` sorts ascending `createdAt`; `listThreadsByServer` uses the same rule for `isMain` | Update both definitions, not just the sidebar |
-| The visible list already sorts newest activity first | `listThreadsByServer` returns descending `lastModified` | Opening and listing currently disagree |
+| Implicit Agents landing selects the latest eligible activity | `AgentConversationWorkspace` uses `agents/threads:resolveLatestActivity`, which reuses the caller-filtered thread list and orders by descending `lastModified` | Explicit conversation URLs remain authoritative; the landing now matches visible activity order |
+| Main-thread resolution and `isMain` remain oldest-first | `resolveMain` and the `isMain` marker use ascending `createdAt` | The existing main-thread contract is deliberately separate from implicit landing selection |
 | Nested thread rows lack execution indicators | `src/components/layout/AppSidebarAgentThreads.tsx` | Add realtime execution/read metadata to the existing rows |
 | Connected-agent admission has concurrency gates | `convex/agents/connectedAgents.ts`, including `CONNECTED_AGENT_POLICY_LIMIT:concurrent_runs` and `CONNECTED_AGENT_POLICY_LIMIT:managed_environment_concurrency` | Do not just remove all limits; distinguish workspace admission from runtime isolation |
 | Computers are bound to owners | `src/server/computers/ComputerService.ts`, one computer per `(ownerType, ownerId)` | Temporary task computers need a distinct binding and authorization, not replacement of the primary |
@@ -43,8 +43,8 @@ This is simulated state, not a running agent or computer. Other shell navigation
 
 ## 1. Resolve the most recently active thread
 
-- Use descending `lastModified` initially, matching the existing list, with deterministic descending creation time and ID tie-breakers. Exclude threads archived for the caller and inaccessible/deleted threads. Preserve the existing create-if-none behavior.
-- Apply one shared ordering rule to resolution and `isMain`. Update the outdated contract comment in `packages/overlay-workspace-contracts/src/types.ts` and audit callers of `resolveMainThread`, including onboarding, for assumptions that “main” means a permanent oldest thread.
+- Use descending `lastModified` for implicit Agents landing, matching the existing list, with deterministic descending creation time and ID tie-breakers. The resolver reuses caller-specific access/archive filtering and preserves legacy-DM adoption and create-if-none behavior.
+- Keep `resolveMain` and `isMain` oldest-first for their existing consumers. This implementation intentionally does not unify the main-thread marker with landing order.
 - Audit timestamp writers. Sending a task, receiving substantive output, and settling a task should count as activity. Opening a thread, read receipts, and heartbeats should not move it. If `lastModified` also includes administrative edits, introduce `lastActivityAt` with a backward-compatible fallback and incremental backfill rather than silently changing every consumer of `lastModified`.
 - Reorder on meaningful activity, not every streamed token. Explicit thread URLs and an already-open thread remain stable.
 

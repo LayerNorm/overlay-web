@@ -1,25 +1,13 @@
 import { Suspense } from 'react'
-
-export const instant = false
-import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
-import { getOverlaySession } from '@/server/auth/session'
+import { ChatRouteClient } from '../_components/ClientSessionRoutes'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
-async function ChatRouteContent() {
-  const session = await getOverlaySession()
-  const userId = session?.user.id ?? null
-  const firstName = session?.user.firstName ?? undefined
-  return (
-    <ChatSuspenseBoundary
-      userId={userId}
-      firstName={firstName}
-    />
-  )
-}
 
+// No server I/O: the signed-in user comes from the app shell's AuthProvider,
+// so client navigations to chat render immediately.
 export default function ChatPage() {
   return (
     <Suspense fallback={<ChatRouteSkeleton />}>
-      <ChatRouteContent />
+      <ChatRouteClient />
     </Suspense>
   )
 }

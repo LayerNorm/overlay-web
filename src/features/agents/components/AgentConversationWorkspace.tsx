@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -11,6 +11,7 @@ import { DirectMessageExperience } from '@/features/chat/components/DirectMessag
 import { ChatSurfaceEmptyState } from '@/features/chat/components/ChatSurfaceEmptyState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
+import { ChatFilesProvider, useChatFilesHost, type ChatFilesHost } from '@overlay/chat-react'
 import {
   agentBelongsToCreatorScope,
   agentsForCreatorScope,
@@ -42,6 +43,7 @@ import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
+import { captureNavigationIntent } from '@/shared/app/navigation-intent'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -92,7 +94,7 @@ function useAgentWorkspaceActions(args: {
             surface: 'agents',
             scope: 'personal',
             buildHref,
-            resolveMainThread,
+            resolveAgentThread: resolveMainThread,
             push: (href) => router.push(href),
           })
           if (conversationId && activeWorkspaceId && !agent.instructions.trim()) {
@@ -154,7 +156,7 @@ function useAgentAutoOpen(args: {
     onResolvingChange, onError,
   } = args
   const attemptedAgentRef = useRef<string | null>(null)
-  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
+  const resolveLatestActivity = useMutation(api.agents.threads.resolveLatestActivity)
 
   useEffect(() => {
     attemptedAgentRef.current = null
@@ -171,6 +173,7 @@ function useAgentAutoOpen(args: {
     onResolvingChange(true)
     onError(null)
     let cancelled = false
+    const intentIsCurrent = captureNavigationIntent(`${window.location.pathname}${window.location.search}${window.location.hash}`)
     void (async () => {
       try {
         await startAgentChat({
@@ -180,17 +183,17 @@ function useAgentAutoOpen(args: {
           surface: 'agents',
           scope,
           buildHref,
-          resolveMainThread,
-          push: (href) => { if (!cancelled) router.replace(href) },
+          resolveAgentThread: resolveLatestActivity,
+          push: (href) => { if (!cancelled && intentIsCurrent()) router.replace(href) },
         })
       } catch (chatError) {
-        if (!cancelled) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
+        if (!cancelled && intentIsCurrent()) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
       } finally {
         if (!cancelled) onResolvingChange(false)
       }
     })()
     return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
-  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveMainThread, router, onResolvingChange, onError])
+  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveLatestActivity, router, onResolvingChange, onError])
 }
 
 function requestedAgentScope(
@@ -274,6 +277,21 @@ function AgentConversationWorkspaceContent() {
   const closeRightSidebar = useCallback(() => {
     setSidebarPreferences((current) => ({ ...current, open: false }))
   }, [])
+  // The previewed Library file belongs to one thread; switching threads shows the tabs again.
+  const [libraryPreview, setLibraryPreview] = useState<{ conversationId: string | null; fileId: string } | null>(null)
+  const libraryPreviewFileId = libraryPreview?.conversationId === conversationId ? libraryPreview.fileId : null
+  const setLibraryPreviewFileId = useCallback((fileId: string | null) => {
+    setLibraryPreview(fileId ? { conversationId, fileId } : null)
+  }, [conversationId])
+  const outerFilesHost = useChatFilesHost()
+  // Files opened from this thread's chat cards and tool rows preview in its Library panel, so the user stays here.
+  const filesHost = useMemo<ChatFilesHost>(() => ({
+    useFileSummaries: outerFilesHost.useFileSummaries,
+    openFile: ({ id }) => {
+      setSidebarPreferences((current) => ({ ...current, open: true, tab: 'library' }))
+      setLibraryPreviewFileId(id)
+    },
+  }), [outerFilesHost.useFileSummaries, setLibraryPreviewFileId])
   const { sidebarEditor, computerAccess, computerControl, updateComputerControl } = useAgentConversationComputer({
     activeWorkspaceId,
     agentId,
@@ -436,6 +454,8 @@ function AgentConversationWorkspaceContent() {
     const agentSidebar = agentId && sidebarPreferences.open ? (
       <AgentRightSidebar
         conversationId={conversationId}
+        previewFileId={libraryPreviewFileId}
+        onPreviewFileChange={setLibraryPreviewFileId}
         activeTab={sidebarPreferences.tab}
         onTabChange={updateSidebarTab}
         onClose={closeRightSidebar}
@@ -458,6 +478,7 @@ function AgentConversationWorkspaceContent() {
     ) : null
     return (
       <>
+        <ChatFilesProvider value={filesHost}>
         <DirectMessageExperience
           key={conversationId}
           conversationId={conversationId}
@@ -481,6 +502,7 @@ function AgentConversationWorkspaceContent() {
             />
           ) : null}
         />
+        </ChatFilesProvider>
         {dialogEditor}
         {createDialog}
       </>

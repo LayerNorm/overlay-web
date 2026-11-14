@@ -148,9 +148,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/automations/[id]/approve`
 - `GET /api/v1/automations/[id]/events`
 - `POST /api/v1/automations/[id]/run`
-- `POST /api/v1/automations/[id]/start-scheduler`
 - `GET /api/v1/automations/[id]/stream`
-- `PATCH, POST /api/v1/automations/execute`
 - `DELETE, GET, PATCH, POST /api/v1/automations`
 - `POST /api/v1/automations/run`
 - `POST /api/v1/automations/test`

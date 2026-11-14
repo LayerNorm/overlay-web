@@ -14,6 +14,14 @@ Web-first releases keep the old summary-gated request shape until the existing l
 
 The personal-chat hook requests `getSummary` and the first `getMessages` page together for a well-formed route ID. `getMessages` accepts optional `unavailableAsEmpty: true` for this route bootstrap: authenticated, capable workspace members receive an empty exhausted page for an inaccessible/deleted/non-personal conversation. Authentication, workspace membership and capability failures still reject, and callers omitting the option retain strict rejection. The hook does not expose rows, execution or stream subscriptions until the live summary matches the current conversation and workspace. Parallel loading is independent of the still-planned bounded transcript prefetch/cache.
 
+### Directory rendering and agent navigation
+
+Chat sidebar, archived indexes and route-scope probes consume `usePersonalChatDirectory`, not the transcript/execution context. Keep active/archived list values stable on stream-only updates, and publish genuine list, selection, access and command changes. Disabled and error-boundary paths must provide the same directory context contract.
+
+Agent sidebar navigation uses the existing no-thread agent route when its live bundle has no eligible thread; the destination owns main-thread resolution and retry. Late results must not override a newer navigation intent.
+
+In the current DoubleSidebar and UnifiedSidebar, DM/channel headers collapse their independent lists and individual room rows navigate directly with an ID. The legacy `buildChatPanelNav` room lookup is not a visible room-selection flow in these shells. Keep that compatibility path unchanged rather than adding destination-resolution machinery or new controls to justify a speculative optimization.
+
 This harness measures the existing behavior, not a fix. A remote convergence
 failure must remain a failing sample. Do not change an assertion to make the
 baseline pass. CN-02 through CN-05 migrate auth, authorization, personal lists
@@ -200,6 +208,15 @@ agent-thread reply, which then showed tool rows and only the latest sentence.
 The browser places live stream text before the trailing tool rows that native tool
 progress stores for the running call (they have no part `id`; settled transcript
 parts do), so a sentence stays ahead of the tool it starts.
+
+Model-step checkpoints can precede native tool execution and temporarily contain
+the missing-result fallback. Final delivery reconciles only an explicit later
+tool outcome for the same call ID and original receipt/step, updates that
+checkpoint before delivery, and preserves its text, order and part IDs. Actual
+errors and denials remain terminal; missing results stay errors or pending
+approvals. Native result envelopes are unwrapped in both `content` and
+`toolResults` before classification so explicit `success: false` remains an
+error. The conversation trace reads these updated durable rows.
 Cancellation never reads the live
 stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
 cancels the run, then the scheduled `settleCancelledPublicStream` keeps the

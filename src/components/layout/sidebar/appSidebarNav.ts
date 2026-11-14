@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 import type { OverlayNavigationItem, OverlaySidebarAction } from '@overlay/app-core'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 import {
   NEW_CHANNEL_EVENT,
@@ -395,6 +396,7 @@ function pushNavDestination(
   },
 ) {
   const destination = ctx.destination(href)
+  beginNavigationIntent(destination)
   ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
   ctx.router.push(destination)
 }

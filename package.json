@@ -245,7 +245,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/otel": "^2.1.3",
     "@vercel/speed-insights": "^2.0.0",
-    "@workflow/world-postgres": "5.0.5",
+    "@workflow/world-postgres": "5.2.0",
     "@workflow/serde": "4.1.0",
     "@ai-sdk/provider": "4.0.10",
     "@workos-inc/authkit-nextjs": "^2.14.0",
@@ -307,9 +307,9 @@
     "stripe": "^20.3.1",
     "tailwind-merge": "^3.7.0",
     "tw-animate-css": "^1.4.0",
-    "undici": "7.30.1",
+    "undici": "7.30.2",
     "viem": "^2.57.7",
-    "workflow": "5.2.3",
+    "workflow": "5.5.0",
     "zod": "^4.6.7",
     "@overlay/desktop-bridge": "file:packages/overlay-desktop-bridge"
   },
@@ -323,7 +323,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
-    "@workflow/vitest": "5.0.6",
+    "@workflow/vitest": "5.0.9",
     "ajv": "^8.20.0",
     "convex-test": "^0.0.54",
     "eslint": "10.10.0",
@@ -362,12 +362,13 @@
     "nanoid@>=4 <6": "5.1.16",
     "socket.io-parser": "4.2.7",
     "zod@>=4": "$zod",
+    "@ai-sdk/provider-utils": "5.0.40",
     "ws@>=7.0.0 <7.5.11": "7.5.11",
     "@workflow/world-local": {
-      "undici": "7.30.1"
+      "undici": "7.30.2"
     },
     "@workflow/world-vercel": {
-      "undici": "7.30.1"
+      "undici": "7.30.2"
     },
     "glob@13.0.6": {
       "brace-expansion": "5.0.12"

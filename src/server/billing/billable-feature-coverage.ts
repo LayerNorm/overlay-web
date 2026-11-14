@@ -95,7 +95,7 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
   {
     category: 'automations_scheduled_and_api',
     enforcement: [
-      'src/server/agent/run-act-turn.ts#automationId',
+      'src/server/automations/automation-turn-runner.ts#turnBillingKeys',
       'src/server/billing/automation-workflow-billing.ts#AUTOMATION_WORKFLOW_STEP_PROVIDER_COST_USD',
       'src/server/app-api/bff-context.ts#getBillingProgrammaticSubjectId',
       'src/server/app-api/v1/conversations/act/ActTurnOrchestrationService.ts',

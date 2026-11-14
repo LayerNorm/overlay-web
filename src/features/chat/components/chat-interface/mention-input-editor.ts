@@ -24,6 +24,7 @@ import {
   exitBlockToParagraph,
   type MentionInputFormatCommand,
 } from './mention-input-dom'
+import { handleListBackspace, handleListTab } from './composer-list-editing'
 
 export interface MentionInputHandle {
   focus: () => void
@@ -511,6 +512,20 @@ function removeMentionChipBeforeCaret(e: KeyboardEvent<HTMLDivElement>): boolean
   return false
 }
 
+function hasCommandModifier(e: KeyboardEvent<HTMLDivElement>): boolean {
+  return e.altKey || e.ctrlKey || e.metaKey
+}
+
+/** Markdown-style list editing. Returns true when the key was handled. */
+function handleListEditingKey(e: KeyboardEvent<HTMLDivElement>, el: HTMLDivElement): boolean {
+  if (hasCommandModifier(e)) return false
+  const handled =
+    (e.key === 'Tab' && handleListTab(el, e.shiftKey)) ||
+    (e.key === 'Backspace' && handleListBackspace(el))
+  if (handled) e.preventDefault()
+  return handled
+}
+
 export function handleEditorKeyDown(
   e: KeyboardEvent<HTMLDivElement>,
   {
@@ -538,6 +553,10 @@ export function handleEditorKeyDown(
   if (e.key === 'Enter' && e.shiftKey && el) {
     if (handleShiftEnterInBlock(e, el)) return
   }
+
+  // Tab / Shift+Tab indents or outdents a point; Backspace at the start of a
+  // point outdents it or turns it back into plain text.
+  if (el && handleListEditingKey(e, el)) return
 
   // Backspace on empty list item / blockquote / pre: exit the block
   if (e.key === 'Backspace' && el) {

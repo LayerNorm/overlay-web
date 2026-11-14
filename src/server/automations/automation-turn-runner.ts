@@ -8,7 +8,7 @@ import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { convertToModelMessages, generateText } from '@/server/ai/sdk'
-import { getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
+import { assertUserCanUseByokModel, getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
 import { summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -198,17 +198,12 @@ async function readAutomationConversationSource(
   })
   if (!automation || automation.deletedAt) throw new AutomationTurnError('Automation is no longer available.', 409)
   if (!input.originWorkflowRunId) throw new AutomationTurnError('Automation workflow identity is required.', 409)
-  const run = input.runId
-    ? await overlayContext.appData.repositories.automations.getRunForExecution({ runId: input.runId })
-    : null
-  if (input.runId) {
-    if (!run || run.run.automationId !== input.automationId || run.run.userId !== input.userId
-      || run.run.workflowRunId !== input.originWorkflowRunId
-      || !['queued', 'running'].includes(run.run.status)) {
-      throw new AutomationTurnError('Automation run ownership changed.', 409)
-    }
-  } else if (automation.schedulerWorkflowRunId !== input.originWorkflowRunId || automation.enabled !== true) {
-    throw new AutomationTurnError('Automation scheduler ownership changed.', 409)
+  if (!input.runId) throw new AutomationTurnError('Automation run identity is required.', 409)
+  const run = await overlayContext.appData.repositories.automations.getRunForExecution({ runId: input.runId })
+  if (!run || run.run.automationId !== input.automationId || run.run.userId !== input.userId
+    || run.run.workflowRunId !== input.originWorkflowRunId
+    || !['queued', 'running'].includes(run.run.status)) {
+    throw new AutomationTurnError('Automation run ownership changed.', 409)
   }
   const ownedConversationId = automation.conversationId
     && automation.conversationId !== automation.sourceConversationId
@@ -418,6 +413,24 @@ function narrowTurnAgentGrant(
   return { agentGrant, allowedToolIds }
 }
 
+/** A BYOK model the user can no longer use is a terminal refusal, not a retryable fault. */
+export async function assertAutomationByokModel(
+  modelId: string,
+  userId: string,
+  workspaceId: string,
+  check: typeof assertUserCanUseByokModel = assertUserCanUseByokModel,
+): Promise<void> {
+  try {
+    await check(modelId, userId, workspaceId)
+  } catch (error) {
+    throw new AutomationTurnError(
+      `Model ${modelId} is not available: ${error instanceof Error ? error.message : 'connection unavailable'}`,
+      403,
+      { error: 'model_not_allowed' },
+    )
+  }
+}
+
 export async function prepareAutomationAgentTurn(
   input: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
 ): Promise<AutomationAgentTurnPlan> {
@@ -453,7 +466,12 @@ export async function prepareAutomationAgentTurn(
     }),
     resolveAuthorizedModelIds({ entitlements: runtimeEntitlements }),
   ])
-  if (!authorizedModelIds.chat.has(effectiveModelId)) {
+  // A bring-your-own-key model is authorized by the user's own provider
+  // connection, as in chat and the harness refresh; the server catalog only
+  // governs hosted models.
+  if (isByokModelId(effectiveModelId)) {
+    await assertAutomationByokModel(effectiveModelId, userId, billingWorkspaceId)
+  } else if (!authorizedModelIds.chat.has(effectiveModelId)) {
     throw new AutomationTurnError(
       `Model ${effectiveModelId} is not allowed by the server model policy.`,
       403,
@@ -681,8 +699,10 @@ export async function prepareAutomationAgentTurn(
     accountAllowedConnectorIds,
     accountAllowedToolIds: surfaceAllowedToolIds,
     accessToken: undefined,
-    agentId: surface?.agentId,
-    agentPrincipalId: surface?.agentPrincipalId,
+    // An agent-bound automation runs as its agent (memory, computer,
+    // attribution), exactly as the harness re-derives on every step.
+    agentId: surface?.agentId ?? automationAgentId,
+    agentPrincipalId: surface?.agentPrincipalId ?? automationAgent?.principalId,
     automationExecution: true,
     ...(!surface ? { automationId: input.automationId } : {}),
     computerApprovalContext: 'automation',
@@ -693,9 +713,11 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // The agent remembers as itself on surface turns, so what it learns from
-    // platform threads accrues to the agent, not the creator's memory.
-    memoryOwnerId: surface ? agentMemoryOwnerId(surface.agentId) : undefined,
+    // The agent remembers as itself on surface turns and agent-bound
+    // automations, so what it learns accrues to the agent, not the creator.
+    memoryOwnerId: surface
+      ? agentMemoryOwnerId(surface.agentId)
+      : automationAgentId ? agentMemoryOwnerId(automationAgentId) : undefined,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,
     preloadTasks: toolPreloadTasks,

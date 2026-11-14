@@ -43,3 +43,15 @@ reduced-motion mode disables the dot animation.
 Work task status and priority live in an anchored settings popover. Their values
 remain in the composer draft when the popover closes and reset only after successful
 submission. Opening the menu must not change the composer height.
+
+## Sidebar agent rows
+
+- Clicking an agent row only expands or collapses its threads; it never
+  navigates or selects a thread. Opening happens from a thread row.
+- Opening a thread (or creating one) records the agent as most recently used
+  and re-sorts the list in the same click, so the agent and its threads move up
+  directly below the pinned chief of staff. `useFlipReorder` animates the move
+  (260 ms, disabled with reduced motion).
+- The row subtitle shows only in-progress counts (working, ready, needs you,
+  failed). Agents with nothing in progress show just their name; there is no
+  "No active tasks" placeholder.
