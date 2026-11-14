@@ -58,11 +58,10 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 
 8. `/app` layout — `src/app/app/layout.tsx` — `AppLayoutContent` already wrapped
    in `<Suspense>`. Removed opt-out. All `/app/*` child routes benefit.
-9. `/app/chat` — `src/app/app/chat/page.tsx` — Moved `getOverlaySession()` and
-   `searchParams` inside existing `<Suspense>`. Current code still exports
-   `instant = false`; the earlier conversion does not establish that this
-   route currently passes instant-navigation validation. Retain the opt-out
-   until an optimized build and authenticated navigation validate its removal.
+9. `/app/chat` — `src/app/app/chat/page.tsx` — No server I/O. The page renders
+   `ChatRouteClient`, which reads the signed-in user from the shell's
+   `AuthProvider` instead of calling `getOverlaySession()` per navigation.
+   `instant = false` removed; confirm with the optimized PR Preview build.
 10. `/app/home` — `src/app/app/home/page.tsx` — Pure compat redirect to `/home`. Removed opt-out.
 11. `/app/pricing` — `src/app/app/pricing/page.tsx` — Pure compat redirect to `/pricing`. Removed opt-out.
 12. `/app/manifesto` — `src/app/app/manifesto/page.tsx` — Pure compat redirect to `/manifesto`. Removed opt-out.
@@ -217,8 +216,7 @@ with the specific reason.
 ## Historical migration summary
 
 These counts describe the migration batches, not an assertion about today's
-route declarations. In particular, `/app/chat` currently retains its opt-out
-as noted above. Check the current source and optimized-build evidence before
+route declarations. Check the current source and optimized-build evidence before
 using this historical inventory to claim instant-navigation coverage.
 
 | Category | Count | Status |
@@ -260,3 +258,17 @@ The existing app-shell Suspense boundary also contains the client-only desktop
 panel query check in OnboardingShell. `surface=panel` changes chat/notes chrome
 only after bridge negotiation; it adds no route opt-out or server cookie branch.
 Plain browsers retain the ordinary shell for the same URL.
+
+## Client-session routes
+
+`/app/chat`, `/app/automations`, `/app/activity`, `/app/notes` and `/app/tools`
+render from `src/app/app/_components/ClientSessionRoutes.tsx`. The app shell
+already resolves the session once and hydrates `AuthProvider`, so these pages
+read the user synchronously from `useAuth()` and never block a client
+navigation on a server session read. A missing session renders
+`AppRouteSessionRecovery`, the same recovery the server gate used. Prefer this
+pattern for new signed-in routes that only need the user id.
+
+Agent thread switches inside the agents surface use `window.history.pushState`
+(Next's native history integration updates `useSearchParams`), so changing
+`?agent=`/`?id=` never triggers an RSC round trip or a route loading state.
