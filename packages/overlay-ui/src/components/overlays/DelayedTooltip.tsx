@@ -124,6 +124,9 @@ export function DelayedTooltip({
             pointerInsideRef.current = false
             window.clearTimeout(openTimerRef.current)
           }}
+          // Using the control cancels a tooltip still waiting to open. Radix does not
+          // report a close while the controlled tooltip is already closed.
+          onPointerDownCapture={() => window.clearTimeout(openTimerRef.current)}
           onFocusCapture={(event) => {
             if (event.target instanceof HTMLElement) {
               focusedElementRef.current = event.target

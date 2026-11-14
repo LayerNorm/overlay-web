@@ -41,7 +41,9 @@ export function PanelResizeHandle({
     if (!active) return
     drag.current = null
     cancelFrame()
-    if (active.next !== active.width) onResize(active.next)
+    // Always flush the final width: a pending frame may have been cancelled after an
+    // intermediate width was already committed.
+    onResize(active.next)
     onResizingChange(false)
     // React applies the committed width synchronously for this discrete event; drop
     // the preview width on the next frame so the panel never flashes back.
