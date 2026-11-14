@@ -159,6 +159,19 @@ type MemoryBody = {
 }
 
 /**
+ * Only memory fields reach the memory service. Tool calls also carry caller
+ * fields (userId, accessToken, automationId for billing), and Convex rejects
+ * any field its validator does not name, which made every automation's
+ * save_memory fail.
+ */
+export function memoryFields(body: MemoryBody & Record<string, unknown>): Omit<MemoryBody, 'memoryOwnerId'> {
+  const { actor, clientId, content, conversationId, importance, memoryId, messageId, noteId, source, tags, turnId, type } = body
+  return Object.fromEntries(Object.entries({
+    actor, clientId, content, conversationId, importance, memoryId, messageId, noteId, source, tags, turnId, type,
+  }).filter(([, value]) => value !== undefined)) as Omit<MemoryBody, 'memoryOwnerId'>
+}
+
+/**
  * Semantic-duplicate check for tool writes (save_memory / save_memory_batch,
  * which POST with source 'chat'). Vector-searches the owner's memory chunks;
  * a hit in this workspace means the fact is already remembered — return the
@@ -207,7 +220,7 @@ async function findSemanticDuplicate(
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as MemoryBody
-    const { memoryOwnerId: _memoryOwnerId, ...memoryBody } = body
+    const memoryBody = memoryFields(body)
     const owner = await resolveMemoryOwner(context, body.memoryOwnerId)
     if ((memoryBody.source ?? 'chat') === 'chat' && memoryBody.content?.trim()) {
       const existing = await findSemanticDuplicate(context, owner.userId, memoryBody.content)
@@ -245,7 +258,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as MemoryBody
     if (!body.memoryId?.trim()) return NextResponse.json({ error: 'memoryId and content required' }, { status: 400 })
-    const { memoryOwnerId: _memoryOwnerId, ...memoryBody } = body
+    const memoryBody = memoryFields(body)
     const owner = await resolveMemoryOwner(context, body.memoryOwnerId)
     const memory = await getOverlayServerContext().memoryService.update({
       ...memoryBody,
