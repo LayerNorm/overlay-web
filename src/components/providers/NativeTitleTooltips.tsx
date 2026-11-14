@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { isTooltipWarm, markTooltipClosed, markTooltipOpened, TOOLTIP_OPEN_DELAY_MS } from '@overlay/ui/overlays'
 
-type Tip = { text: string; x: number; y: number; below: boolean }
-
-const OPEN_DELAY_MS = 450
+type Tip = { text: string; x: number; y: number; below: boolean; instant: boolean }
 const EDGE_PX = 8
 
 function adoptTitle(el: HTMLElement) {
@@ -27,9 +26,12 @@ export function NativeTitleTooltips() {
   useEffect(() => {
     let timer: number | undefined
     let current: HTMLElement | null = null
+    let showing = false
     const hide = () => {
       window.clearTimeout(timer)
       current = null
+      if (showing) markTooltipClosed()
+      showing = false
       setTip(null)
     }
     const onOver = (event: PointerEvent) => {
@@ -44,12 +46,18 @@ export function NativeTitleTooltips() {
       const text = target.dataset.tooltip
       if (!text) return
       current = target
-      timer = window.setTimeout(() => {
+      const show = () => {
         if (current !== target || !target.isConnected) return
         const rect = target.getBoundingClientRect()
         const below = rect.top < 40
-        setTip({ text, x: rect.left + rect.width / 2, y: below ? rect.bottom + 6 : rect.top - 6, below })
-      }, OPEN_DELAY_MS)
+        const instant = isTooltipWarm()
+        if (!showing) markTooltipOpened()
+        showing = true
+        setTip({ text, x: rect.left + rect.width / 2, y: below ? rect.bottom + 6 : rect.top - 6, below, instant })
+      }
+      // Only the first tooltip waits; moving on to a neighbour shows it at once.
+      if (isTooltipWarm()) show()
+      else timer = window.setTimeout(show, TOOLTIP_OPEN_DELAY_MS)
     }
     const hideEvents = ['pointerdown', 'keydown', 'scroll', 'blur'] as const
     document.addEventListener('pointerover', onOver, true)
@@ -57,6 +65,7 @@ export function NativeTitleTooltips() {
     for (const type of hideEvents) window.addEventListener(type, hide, true)
     return () => {
       window.clearTimeout(timer)
+      if (showing) markTooltipClosed()
       document.removeEventListener('pointerover', onOver, true)
       document.documentElement.removeEventListener('pointerleave', hide)
       for (const type of hideEvents) window.removeEventListener(type, hide, true)
@@ -68,7 +77,7 @@ export function NativeTitleTooltips() {
   return createPortal(
     <div
       role="tooltip"
-      className="pointer-events-none fixed z-10100 w-max max-w-[min(calc(100vw-16px),20rem)] rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-center text-[11px] font-medium leading-snug text-(--muted) shadow-xs animate-in fade-in-0 zoom-in-95"
+      className={`pointer-events-none fixed z-10100 w-max max-w-[min(calc(100vw-16px),20rem)] rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-center text-[11px] font-medium leading-snug text-(--muted) shadow-xs ${tip.instant ? '' : 'overlay-fade-in'}`}
       style={{
         left: Math.min(Math.max(tip.x, EDGE_PX), maxLeft),
         top: tip.y,
