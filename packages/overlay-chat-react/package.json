@@ -36,7 +36,7 @@
     "@overlay/modules-react": "file:../overlay-modules-react",
     "@overlay/ui": "file:../overlay-ui",
     "@streamdown/math": "^1.0.3",
-    "katex": "^0.16.11",
+    "katex": "^0.19.1",
     "lucide-react": "^0.575.0",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
