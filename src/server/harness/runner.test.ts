@@ -7,13 +7,18 @@ import { z } from 'zod'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts, HarnessRunnerCheckpoint } from './ports'
 import { buildHarnessStepInstructions } from './context'
+import { createHarnessTools } from './tools'
 import { getLanguageModel } from '@/server/ai/model-runtime'
+import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, runOverlayHarness } from './runner'
+import { publicHarnessStepPersistence } from './harness-transcript'
+import { buildNativeHarnessDelivery } from './native-tool-metrics'
 import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { harnessModelResponseFailure } from './model-usage'
 import { HarnessWaitRollover } from './waits'
+import { joinStepTranscripts } from '@/shared/chat/step-text-join'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -67,6 +72,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
     apply: async (_id, operation) => {
       const now = Date.now()
       switch (operation.type) {
+        case 'record_tool_failure': break
         case 'reserve_model': current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, now); break
         case 'replace_plan': current = state.replaceHarnessPlan(current, operation.steps, now); break
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
@@ -848,10 +854,214 @@ test('approval-resume persists the authenticated execution output once for perso
   expect(provider.doStreamCalls.length).toBe(2)
 })
 
+test('computer results replace early missing-result entries after approval resume', async () => {
+  const f = fixture(false, ['computer_exec', 'computer_terminal'])
+  const execOutput = { success: true, exitCode: 0, stdout: 'ok' }
+  const terminalOutput = { success: true, action: 'started', sessionId: 'terminal-1' }
+  const modelOutput = vi.fn(({ output }: { output: unknown }) => ({ type: 'json' as const, value: output as never }))
+  const outputs = new Map([
+    ['computer_exec', execOutput],
+    ['computer_terminal', terminalOutput],
+  ])
+  const execute = vi.fn(async (call: { toolName: string; toolCallId: string; input: unknown }, approved: boolean) => {
+    expect(approved).toBe(true)
+    return await executePersonalChatWorkToolResult({
+      execute: async () => outputs.get(call.toolName),
+      input: call.input,
+      toolCallId: call.toolCallId,
+      toModelOutput: modelOutput,
+    })
+  })
+  const toolCalls = [
+    call('computer_exec', 'computer-exec-result-1', { command: 'printf ok' }),
+    call('computer_terminal', 'computer-terminal-result', { action: 'start', command: 'python3 -m http.server' }),
+    call('computer_exec', 'computer-exec-result-2', { command: 'printf done' }),
+  ]
+  const provider = model(index => toolCalls[index] ? [toolCalls[index]!] : 'Both computer operations completed.')
+  f.ports.waitForApproval = async requests => requests.map(request => ({
+    approvalId: request.approvalId,
+    approved: true,
+  }))
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: createHarnessTools([
+      {
+        name: 'computer_exec',
+        inputSchema: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+        needsApproval: true,
+      },
+      {
+        name: 'computer_terminal',
+        inputSchema: {
+          type: 'object', properties: { action: { type: 'string', enum: ['start'] }, command: { type: 'string' } },
+          required: ['action', 'command'],
+        },
+        needsApproval: true,
+      },
+    ], {
+      needsApproval: async () => true,
+      execute,
+    }),
+  }, f.ports)
+
+  expect(execute).toHaveBeenCalledTimes(3)
+  expect(modelOutput).toHaveBeenCalledTimes(3)
+  const results = result.steps.flatMap(step => step.content ?? []).filter(part => part.type === 'tool-result')
+  expect(results).toContainEqual(expect.objectContaining({
+    toolCallId: 'computer-exec-result-1',
+    output: { overlayModelOutput: { type: 'json', value: execOutput }, display: execOutput },
+  }))
+  expect(results).toContainEqual(expect.objectContaining({
+    toolCallId: 'computer-terminal-result',
+    output: { overlayModelOutput: { type: 'json', value: terminalOutput }, display: terminalOutput },
+  }))
+  expect(results).toContainEqual(expect.objectContaining({
+    toolCallId: 'computer-exec-result-2',
+    output: { overlayModelOutput: { type: 'json', value: execOutput }, display: execOutput },
+  }))
+
+  const delivery = buildPersonalHarnessDelivery(result)
+  for (const [toolCallId, toolOutput] of [
+    ['computer-exec-result-1', execOutput],
+    ['computer-terminal-result', terminalOutput],
+    ['computer-exec-result-2', execOutput],
+  ]) {
+    expect(delivery.parts).toContainEqual(expect.objectContaining({
+      type: 'tool-invocation',
+      toolInvocation: expect.objectContaining({ toolCallId, state: 'output-available', toolOutput }),
+    }))
+  }
+  expect(delivery.metrics.toolSuccessCount).toBe(3)
+  expect(provider.doStreamCalls).toHaveLength(4)
+
+  const activeToolNames = new Set(['computer_exec', 'computer_terminal'])
+  const settledSteps = result.steps.flatMap((step, index) => {
+    const receiptId = result.stepReceiptIds?.[index]
+    if (!receiptId || !step.toolCalls.length) return []
+    const earlyText = `Computer step ${index + 1} started.`
+    const beforeExecution = {
+      ...step,
+      text: earlyText,
+      content: [
+        { type: 'text', text: earlyText },
+        ...(step.content?.filter(part => part.type !== 'tool-result' && part.type !== 'tool-error') ?? []),
+      ],
+      toolResults: [],
+    }
+    const source = publicHarnessStepPersistence(beforeExecution, activeToolNames)
+    const persistence = {
+      ...source,
+      parts: source.parts.map((part, partIndex) => ({ ...part, id: `early-${index}-${partIndex}` })),
+    }
+    return [{ receiptId, stepNumber: step.stepNumber, sequence: Number(receiptId.slice('model:'.length)), persistence }]
+  })
+  const joined = joinStepTranscripts(settledSteps.map(step => step.persistence))
+  const settledTranscript = {
+    persistence: joined,
+    steps: settledSteps,
+    newestSequence: settledSteps.at(-1)?.sequence ?? null,
+  }
+  for (const step of settledSteps) {
+    expect(step.persistence.parts).toContainEqual(expect.objectContaining({
+      type: 'tool-invocation',
+      toolInvocation: expect.objectContaining({ state: 'output-error' }),
+    }))
+  }
+
+  const resumedDelivery = buildNativeHarnessDelivery(result, activeToolNames, settledTranscript)
+  for (const [toolCallId, toolOutput] of [
+    ['computer-exec-result-1', execOutput],
+    ['computer-terminal-result', terminalOutput],
+    ['computer-exec-result-2', execOutput],
+  ]) {
+    expect(resumedDelivery.parts).toContainEqual(expect.objectContaining({
+      type: 'tool-invocation',
+      toolInvocation: expect.objectContaining({ toolCallId, state: 'output-available', toolOutput }),
+    }))
+    expect(resumedDelivery.parts.filter(part => (
+      part.type === 'tool-invocation'
+      && (part.toolInvocation as Record<string, unknown>).toolCallId === toolCallId
+    ))).toHaveLength(1)
+  }
+  for (let index = 0; index < settledSteps.length; index++) {
+    const earlyText = `Computer step ${index + 1} started.`
+    expect(resumedDelivery.content.match(new RegExp(earlyText, 'g'))).toHaveLength(1)
+    expect(resumedDelivery.parts).toContainEqual(expect.objectContaining({ id: `early-${index}-0` }))
+  }
+})
+
+test('computer result after approval workflow rollover reconciles the original receipt without replay', async () => {
+  const f = fixture(false, ['computer_exec'], { executionPolicyVersion: 2 })
+  const output = { success: true, exitCode: 0, stdout: 'resumed' }
+  const modelOutput = ({ output }: { output: unknown }) => ({ type: 'json' as const, value: output as never })
+  const execute = vi.fn(async (toolCall: { toolCallId: string; input: unknown }, approved: boolean) => {
+    expect(approved).toBe(true)
+    return await executePersonalChatWorkToolResult({
+      execute: async () => output,
+      input: toolCall.input,
+      toolCallId: toolCall.toolCallId,
+      toModelOutput: modelOutput,
+    })
+  })
+  const tools = createHarnessTools([{
+    name: 'computer_exec',
+    inputSchema: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+    needsApproval: true,
+  }], { needsApproval: async () => true, execute })
+  const activeToolNames = new Set(['computer_exec'])
+  model(index => index === 0
+    ? [call('computer_exec', 'resumed-computer-call', { command: 'printf resumed' })]
+    : 'The command completed.')
+  f.ports.waitForApproval = async () => { throw new HarnessWaitRollover() }
+  const first = await runOverlayHarness({ ...input, tools }, f.ports)
+  expect(first.outcome).toBe('continued')
+  expect(execute).not.toHaveBeenCalled()
+
+  const earlySteps = first.steps.flatMap((step, index) => {
+    const receiptId = first.stepReceiptIds?.[index]
+    if (!receiptId || !step.toolCalls.length) return []
+    const persistence = publicHarnessStepPersistence({
+      ...step,
+      text: 'Waiting for computer approval.',
+      content: [{ type: 'text', text: 'Waiting for computer approval.' }, ...(step.content ?? [])],
+    }, activeToolNames)
+    return [{ receiptId, sequence: Number(receiptId.slice('model:'.length)), stepNumber: step.stepNumber, persistence }]
+  })
+  const earlyTranscript = {
+    steps: earlySteps,
+    persistence: joinStepTranscripts(earlySteps.map(step => step.persistence)),
+    newestSequence: Math.max(...earlySteps.map(step => step.sequence)),
+  }
+  f.setOwner('successor', 1)
+  f.ports.waitForApproval = async requests => requests.map(request => ({
+    approvalId: request.approvalId, approved: true,
+  }))
+  model(() => 'The command completed.')
+  const resumed = await runOverlayHarness({
+    ...input, continuation: f.checkpoints[0], tools,
+  }, f.ports)
+  expect(execute).toHaveBeenCalledOnce()
+  const delivery = buildNativeHarnessDelivery(resumed, activeToolNames, earlyTranscript)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({
+    type: 'tool-invocation',
+    toolInvocation: expect.objectContaining({
+      toolCallId: 'resumed-computer-call', state: 'output-available', toolOutput: output,
+    }),
+  }))
+  expect(delivery.content.match(/Waiting for computer approval\./g)).toHaveLength(1)
+  expect(delivery.parts.filter(part => (
+    part.type === 'tool-invocation'
+    && (part.toolInvocation as Record<string, unknown>).toolCallId === 'resumed-computer-call'
+  ))).toHaveLength(1)
+})
+
 test('an approved tool exception requires reconciliation without exposing its raw error', async () => {
   const f = fixture(false)
   const execute = vi.fn(async () => { throw new Error('Approved execution failed.') })
-  model(index => index === 0 ? [call('write', 'failed-write')] : 'The approved action failed.')
+  model(index => index === 0
+    ? [call('write', 'failed-write'), call('write', 'must-not-run')]
+    : 'The approved action failed.')
   f.ports.waitForApproval = async requests => requests.map(request => ({
     approvalId: request.approvalId,
     approved: true,
@@ -1174,6 +1384,36 @@ test('schema-invalid executable tool calls continue with the SDK error result', 
   expect(waitForApproval).not.toHaveBeenCalled()
   expect(provider.doStreamCalls.length).toBeGreaterThan(1)
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('error-text')
+})
+
+test('native pre-dispatch failure envelopes continue through the authorized runner', async () => {
+  const f = fixture(false, ['computer_open_url'])
+  const sideEffect = vi.fn(async (input: { url: string }) => ({ success: true, url: input.url }))
+  const execute = vi.fn(async (input: { url: string }) => input.url.startsWith('file:')
+    ? {
+      success: false,
+      code: 'INVALID_TOOL_INPUT',
+      error: 'Browser URLs must use HTTP or HTTPS. Serve local HTML over a verified HTTP(S) origin.',
+      issues: [{ path: ['url'], code: 'custom' }],
+    }
+    : sideEffect(input))
+  const provider = model(index => index === 0
+    ? [call('computer_open_url', 'invalid-url', { url: 'file:///private/mockup.html' })]
+    : index === 1
+      ? [call('computer_open_url', 'valid-url', { url: 'https://example.test/mockup.html' })]
+      : 'The mockup opened over HTTP.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { computer_open_url: tool({ inputSchema: z.object({ url: z.string() }), execute }) },
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(execute).toHaveBeenCalledTimes(2)
+  expect(sideEffect).toHaveBeenCalledOnce()
+  expect(sideEffect).toHaveBeenCalledWith({ url: 'https://example.test/mockup.html' })
+  expect(f.ports.authorizeTool).toHaveBeenCalledTimes(2)
+  expect(provider.doStreamCalls).toHaveLength(3)
 })
 
 test('confirmed safe tool failure envelopes continue without becoming approvals', async () => {

@@ -3,7 +3,7 @@ import test from 'node:test'
 import type { StepResult, ToolSet } from 'ai'
 import { buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConvex } from './persist-assistant-turn'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
-import { MAX_PERSISTED_TOOL_ERROR_CHARS } from './tool-outcomes'
+import { MAX_PERSISTED_TOOL_ERROR_CHARS, reconcileToolInvocationOutcomes } from './tool-outcomes'
 
 test('long transcript compaction preserves the latest answer and is repeatable', () => {
   const tools = Array.from({ length: 100 }, (_, index) => ({
@@ -315,6 +315,87 @@ test('unfinished local calls fail while provider calls and pending approvals kee
   assert.equal(invocations[2]?.state, 'input-available')
   assert.equal(invocations[2]?.approvalId, 'approval-1')
   assert.equal(invocations[2]?.approvalStatus, 'requested')
+})
+
+test('tool outcome reconciliation upgrades only provisional outcomes and preserves settled parts', () => {
+  const fallback = { success: false, error: 'The tool call ended without an execution result.' }
+  const settled = {
+    content: 'Starting the computer task.',
+    parts: [
+      { id: 'text-id', type: 'text', text: 'Starting the computer task.' },
+      { id: 'call-id', type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-error',
+        toolInput: { command: 'printf ok' }, toolOutput: fallback,
+      } },
+    ],
+  }
+  const observed = {
+    content: 'A duplicate narrative must not replace settled text.',
+    parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-available',
+      toolInput: { command: 'different input' }, toolOutput: { success: true, stdout: 'ok' },
+    } }],
+  }
+  const reconciled = reconcileToolInvocationOutcomes(settled, observed)
+  assert.equal(reconciled.changed, true)
+  assert.equal(reconciled.persistence.content, settled.content)
+  assert.deepEqual(reconciled.persistence.parts.map(part => part.id), ['text-id', 'call-id'])
+  assert.equal(reconciled.persistence.parts.length, settled.parts.length)
+  assert.deepEqual(reconciled.persistence.parts[1]?.toolInvocation, {
+    toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-available',
+    toolInput: { command: 'printf ok' }, toolOutput: { success: true, stdout: 'ok' },
+  })
+})
+
+test('tool outcome reconciliation keeps real errors, denials and missing or pending outcomes unchanged', () => {
+  const success = { content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+    toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-available', toolOutput: { success: true },
+  } }] }
+  const preserved = [
+    { state: 'output-error', toolOutput: { success: false, error: 'The command failed.' } },
+    { state: 'output-denied', toolOutput: { success: false, error: 'The approval was denied.' }, approvalStatus: 'denied' },
+  ]
+  for (const invocation of preserved) {
+    const early = { content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'call-1', toolName: 'computer_exec', ...invocation,
+    } }] }
+    const result = reconcileToolInvocationOutcomes(early, success)
+    assert.equal(result.changed, false)
+    assert.deepEqual(result.persistence, early)
+  }
+  const pending = { content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+    toolCallId: 'call-1', toolName: 'computer_exec', state: 'input-available',
+    approvalStatus: 'requested', approvalId: 'approval-1',
+  } }] }
+  const pendingWithoutResult = reconcileToolInvocationOutcomes(pending, pending)
+  assert.equal(pendingWithoutResult.changed, false)
+  assert.deepEqual(pendingWithoutResult.persistence, pending)
+  assert.equal(reconcileToolInvocationOutcomes(pending, success).changed, true)
+  const missing = { content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+    toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-error',
+    toolOutput: { success: false, error: 'The tool call ended without an execution result.' },
+  } }] }
+  const stillMissing = reconcileToolInvocationOutcomes(missing, missing)
+  assert.equal(stillMissing.changed, false)
+  assert.equal((stillMissing.persistence.parts[0]?.toolInvocation as { state: string }).state, 'output-error')
+  const actualError = reconcileToolInvocationOutcomes(missing, {
+    content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-error',
+      toolOutput: { success: false, error: 'Command exited with status 2.' },
+    } }],
+  })
+  assert.equal((actualError.persistence.parts[0]?.toolInvocation as { state: string }).state, 'output-error')
+  assert.deepEqual(
+    (actualError.persistence.parts[0]?.toolInvocation as { toolOutput: unknown }).toolOutput,
+    { success: false, error: 'Command exited with status 2.' },
+  )
+  const denied = reconcileToolInvocationOutcomes(missing, {
+    content: '', parts: [{ type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'call-1', toolName: 'computer_exec', state: 'output-denied',
+      approvalStatus: 'denied', toolOutput: { success: false, error: 'Denied.' },
+    } }],
+  })
+  assert.equal((denied.persistence.parts[0]?.toolInvocation as { state: string }).state, 'output-denied')
 })
 
 test('persisted tool error text stays within its size bound', () => {

@@ -14,7 +14,9 @@ import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/perso
 import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
-import { readHarnessTranscriptForDelivery } from '@/server/harness/harness-transcript'
+import {
+  readHarnessTranscriptForDelivery, reconcileSettledHarnessTranscriptForDelivery,
+} from '@/server/harness/harness-transcript'
 import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
 import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
@@ -150,7 +152,10 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   if (currentProjection) return currentProjection
   if (owns) {
     const journal = await readHarnessTranscriptForDelivery(access, result)
-    const delivery = buildNativeHarnessDelivery(result, activeToolNames, journal)
+    const reconciledJournal = journal
+      ? await reconcileSettledHarnessTranscriptForDelivery(access, result, activeToolNames, journal)
+      : undefined
+    const delivery = buildNativeHarnessDelivery(result, activeToolNames, reconciledJournal)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)

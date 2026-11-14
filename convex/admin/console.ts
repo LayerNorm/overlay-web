@@ -26,9 +26,59 @@ const adminRole = v.union(
 )
 
 const READ: readonly AdministrativeRole[] = ['admin', 'auditor', 'billing_admin', 'support']
+const DIAGNOSTIC_READ: readonly AdministrativeRole[] = ['admin', 'auditor', 'support']
 const WRITE: readonly AdministrativeRole[] = ['admin']
 const AUDIT_READ: readonly AdministrativeRole[] = ['admin', 'auditor']
 const USER_DIRECTORY: readonly AdministrativeRole[] = ['admin', 'billing_admin', 'support']
+
+export const lookupHarnessDiagnostic = query({
+  args: { serverSecret: v.string(), diagnosticId: v.string() },
+  handler: async (ctx, args) => {
+    requireAdminSecret(args.serverSecret)
+    await requireOperator(ctx, DIAGNOSTIC_READ)
+    if (!args.diagnosticId.trim() || args.diagnosticId.length > 128) throw new Error('Invalid diagnostic ID.')
+    const matches = await ctx.db.query('harnessDiagnosticIndex')
+      .withIndex('by_diagnosticId', q => q.eq('diagnosticId', args.diagnosticId))
+      .take(2)
+    if (matches.length > 1) return { found: false, ambiguous: true, diagnosticId: args.diagnosticId, causeUnavailable: true }
+    const diagnostic = matches[0]
+    if (!diagnostic) return { found: false, ambiguous: false, diagnosticId: args.diagnosticId, causeUnavailable: true }
+    const failures = diagnostic.operationId
+      ? await ctx.db.query('harnessToolFailures')
+        .withIndex('by_runId_toolCallId', q => q.eq('runId', diagnostic.runId).eq('toolCallId', diagnostic.operationId!))
+        .take(2)
+      : []
+    const failure = failures.length === 1 ? failures[0] : undefined
+    return {
+      found: true,
+      ambiguous: false,
+      diagnosticId: diagnostic.diagnosticId,
+      runId: diagnostic.runId,
+      workflowRunId: diagnostic.workflowRunId,
+      actorUserId: diagnostic.actorUserId,
+      workspaceId: diagnostic.workspaceId,
+      sourceType: diagnostic.sourceType,
+      sourceId: diagnostic.sourceId,
+      operationId: diagnostic.operationId,
+      code: diagnostic.code,
+      stage: diagnostic.stage,
+      retryability: diagnostic.retryability,
+      safeMessage: diagnostic.safeMessage,
+      nextAction: diagnostic.nextAction,
+      occurredAt: diagnostic.occurredAt,
+      causeUnavailable: !failure,
+      toolFailure: failure ? {
+        toolCallId: failure.toolCallId,
+        toolName: failure.toolName,
+        phase: failure.phase,
+        causeClass: failure.causeClass,
+        causeCode: failure.causeCode,
+        safeSummary: failure.safeSummary,
+        validationIssues: failure.validationIssues,
+      } : null,
+    }
+  },
+})
 
 type AuditInput = {
   action: string

@@ -29,3 +29,24 @@ test('missing or inaccessible traces are not exposed', async () => {
   expect((await GET(request, context)).status).toBe(404)
   expect((await GET(new NextRequest('https://example.test/api/v1/conversations/trace'), context)).status).toBe(400)
 })
+
+test('trace streams reconciled tool outcomes from the durable transcript query', async () => {
+  mocks.query.mockResolvedValue({
+    steps: [{
+      sequence: 0,
+      persistence: { content: 'Starting the command.', parts: [
+        { type: 'text', text: 'Starting the command.' },
+        { type: 'tool-invocation', toolInvocation: {
+          toolCallId: 'computer-call', toolName: 'computer_exec', state: 'output-available',
+          toolOutput: { success: true, stdout: 'ok' },
+        } },
+      ] },
+    }],
+    nextSequence: null,
+  })
+  const response = await GET(new NextRequest('https://example.test/api/v1/conversations/trace?messageId=message'), context)
+  const trace = await response.text()
+  expect(trace).toContain('"state":"output-available"')
+  expect(trace).toContain('Starting the command.')
+  expect(trace).not.toContain('The tool call ended without an execution result.')
+})
