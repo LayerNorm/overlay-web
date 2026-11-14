@@ -112,7 +112,13 @@ failure output and the explicit safety confirmation for runs that need inspectio
 
 Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
 widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
-and Home/End bounds; the owning shell supplies and stores the width.
+and Home/End bounds; the owning shell supplies and stores the width. Drags update
+at most once per animation frame. Shells whose only resized element is the
+handle's parent (the double and unified sidebars) pass `livePreview`: the drag
+writes the width straight onto that element and `onResize` runs once on release,
+so the sidebar's React tree does not re-render while dragging. Sidebar collapse
+snaps; do not animate an in-flow panel's `width`, which re-lays-out the whole
+main column every frame.
 
 The agent conversation sidebar uses the app sidebar surface and one scroll
 container below its fixed hero and tabs. Its editable fields autosave after an
@@ -200,6 +206,8 @@ The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
 70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
 Descriptions cap at 45% of their row so long agent instructions cannot hide
 the result title or overflow the mobile palette.
+`CommandDialog` opens and closes with no animation (content and backdrop):
+it is opened by keyboard many times a day, so motion there only reads as lag.
 Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper
 regressions with deterministic search fixtures, macOS/Windows shortcuts,
 long/grouped lists, CSS presets and mobile sizing. Current-head authenticated
@@ -212,7 +220,12 @@ its child. Container and Fragment children describe the actual focused control
 while open; existing `aria-describedby` tokens are preserved and the tooltip's
 ID is removed on blur, close or unmount. Wrappers add no Tab stop. Radix owns
 positioning, the portal and Escape dismissal. Fine-pointer hover opens after
-450 ms; touch/coarse input suppresses tooltips, including capability changes
+300 ms (`TOOLTIP_OPEN_DELAY_MS`); while any tooltip is open, or for 500 ms
+after one closes, the next opens at once with no entrance animation. That
+warm-up lives in `tooltip-warmth.ts` and is shared with the global `title`
+tooltips (`NativeTitleTooltips`), so moving along a toolbar never waits twice.
+Tooltips scale from the Radix transform origin and close without an exit
+animation. Touch/coarse input suppresses tooltips, including capability changes
 while mounted. Run `node scripts/qa/tooltip-interactions.mjs` for rendered
 association, cleanup, pointer and media-query checks in installed Chrome.
 
@@ -229,6 +242,11 @@ optional `trigger` for native expanded state, keyboard opening and focus return;
 action menus opt into `kind="menu"` and supply a trigger. `MenuItem` preserves
 button props and callbacks, using Radix item semantics only inside that action
 menu. Standalone `MenuSurface` remains visual, with no implied role.
+
+Floating layers enter with `overlay-pop-in`, which grows from
+`--radix-popper-transform-origin` and moves away from the trigger based on
+`data-side`. A hand-rolled menu placed above its trigger (`bottom-full`) sets
+`data-side="top"` so it rises instead of dropping.
 
 Both primitives portal at z-10090, consume Overlay CSS vars directly, use a 6px
 anchor gap and 8px collision padding, and constrain height to the available

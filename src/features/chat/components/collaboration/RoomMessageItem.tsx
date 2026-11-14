@@ -29,7 +29,7 @@ import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
@@ -512,11 +512,12 @@ function DeletedRoomMessage({ rootProps, mine, personalChatStyle, highlightClass
   highlightClass: string
   message: RoomMessageView
 }) {
+  const entranceClass = useMessageEntrance(isRecentMessage(message.createdAt))
   if (mine) {
     return (
       <div
         {...rootProps}
-        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
+        className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 ${entranceClass} transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
       >
         <div className="relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%]">
           <UserMessageBubble className="ml-auto max-w-full" contentClassName="whitespace-normal">
@@ -808,10 +809,11 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
   onRetrySend: () => void
 }) {
   const { message, personalChatStyle } = content
+  const entranceClass = useMessageEntrance(isRecentMessage(message.createdAt))
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 justify-end gap-2.5 rounded-lg px-1 py-1 ${entranceClass} transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
     >
       <div className={`relative flex min-w-0 max-w-[min(92%,36rem)] flex-col items-end gap-1 sm:max-w-[75%] ${content.editing ? 'w-full' : ''}`}>
         {!personalChatStyle && toolbar}
@@ -854,10 +856,11 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
   onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const { message, personalChatStyle } = content
+  const entranceClass = useMessageEntrance(isRecentMessage(message.createdAt))
   return (
     <div
       {...rootProps}
-      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 message-appear transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
+      className={`group/exchange relative -mx-1 flex scroll-mt-6 gap-2.5 rounded-lg px-1 py-1 ${entranceClass} transition-colors ${personalChatStyle ? '' : 'hover:bg-(--surface-subtle)'} ${highlightClass}`}
     >
       <RoomMessageAvatar message={message} />
       <div className="relative min-w-0 flex-1">
@@ -1318,6 +1321,7 @@ function EmojiPickerButton({
         <div
           role="dialog"
           aria-label="Pick a reaction"
+          data-side="top"
           className={`overlay-pop-in absolute bottom-full z-30 mb-1.5 w-64 rounded-xl bg-(--surface-elevated) p-2 shadow-lg ${
             alignEnd ? 'right-0' : 'left-0'
           }`}

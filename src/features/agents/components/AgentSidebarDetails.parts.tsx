@@ -83,7 +83,7 @@ export function AgentSidebarTools({ editor }: { editor: Controller }) {
 
   return (
     <div className="rounded-[10px] bg-(--surface-subtle) p-1">
-      <TooltipProvider delayDuration={350}>
+      <TooltipProvider>
         {toolGroups.map((group) => {
           const Icon = toolIcons[group.id] ?? Wrench
           return (

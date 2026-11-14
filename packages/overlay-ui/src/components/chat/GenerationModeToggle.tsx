@@ -184,7 +184,7 @@ export function CollapsibleGenerationMode({
         <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div className="overlay-pop-in absolute bottom-full left-0 z-50 mb-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+        <div data-side="top" className="overlay-pop-in absolute bottom-full left-0 z-50 mb-1.5 rounded-xl border border-(--border) bg-(--surface-elevated) p-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
           <GenerationModeToggle
             mode={mode}
             onChange={(next) => {
