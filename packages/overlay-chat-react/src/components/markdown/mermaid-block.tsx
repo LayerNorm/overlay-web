@@ -77,7 +77,8 @@ function useMermaidDiagram(source: string, enabled: boolean, ref: RefObject<HTML
         next = { status: 'error', error: shortMermaidError(error, source) }
       }
       rememberDiagram(source, key, next)
-      if (!cancelled) setState(next)
+      // A later theme change may have asked for another palette while this one rendered.
+      if (!cancelled && renderedKey === key) setState(next)
     }
 
     void draw()
