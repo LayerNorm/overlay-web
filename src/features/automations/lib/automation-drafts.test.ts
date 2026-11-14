@@ -385,6 +385,22 @@ test('recognizes a daily automation as explicit recurrence', () => {
   assert.equal(draft.missingFields.includes('Confirm schedule frequency'), false)
 })
 
+test('recognizes daily cadence before or after an explicit UTC time', () => {
+  const dailyBeforeTime = buildAutomationDraftFromTurn({
+    userText: 'Every day at 01:00 UTC, no integrations. Write OK.',
+    assistantText: 'Write OK.',
+  })
+  const dailyAfterTime = buildAutomationDraftFromTurn({
+    userText: 'At 01:00 UTC daily without integrations, write OK.',
+    assistantText: 'Write OK.',
+  })
+
+  assert.deepEqual(dailyBeforeTime.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
+  assert.equal(dailyBeforeTime.missingFields.includes('Confirm schedule frequency'), false)
+  assert.deepEqual(dailyAfterTime.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
+  assert.equal(dailyAfterTime.missingFields.includes('Confirm schedule frequency'), false)
+})
+
 test('does not treat a weekday connector as executable workflow', () => {
   const scheduleOnly = buildAutomationDraftFromTurn({
     userText: 'Every Monday and Wednesday at 01:00 UTC, write OK, without integrations.',
