@@ -29,7 +29,7 @@ test('startAgentChat stores initial instructions before navigation', async (t) =
     agentPrincipalId: 'agent-principal-1',
     initialMessage: '  Follow these instructions  ',
     surface: 'agents',
-    resolveMainThread: async () => ({ conversationId: 'conversation-new-agent', title: 'New thread' }),
+    resolveAgentThread: async () => ({ conversationId: 'conversation-new-agent', title: 'New thread' }),
     push: () => {
       pendingAtNavigation = values.get('overlay:pending-collaboration-message')
     },
