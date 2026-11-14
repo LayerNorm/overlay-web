@@ -26,8 +26,6 @@ spacing, or surrounding chrome incidentally. Compare rendered desktop and narrow
 layouts in both themes against the canonical mockup and the current production
 components before sharing.
 
-[double-sidebar-bordered-mockup.html](double-sidebar-bordered-mockup.html)
-remains a supporting reference for the framed main/right-panel arrangement.
 Floating detail panels use the elevated semantic surface as a fallback when
 rendered outside the sidebar's scoped shell variables, so they stay opaque in
 both themes.
@@ -35,16 +33,20 @@ both themes.
 Production components and styles are the source of truth; the standalone
 mockup's simulated task behavior is not a production contract.
 
-## Other retained previews
+## What else lives here
 
-Brand, landing, pricing, account, onboarding, diagnostic, and isolated component
-previews are not workspace-shell references. Their content may still be useful,
-but any illustrative workspace chrome inside them is historical and must not
-be copied. Use the approved shell when presenting those features in a workspace.
+Mockups for shipped features are deleted once they land; Git history keeps
+them. Besides the canonical workspace mockup, this folder holds only:
 
-The incompatible single-sidebar, wide-navigation, and earlier unframed-shell
-workspace mockups have been removed. They remain recoverable in Git history,
-not as active design examples.
+- `paid-first.html` (built by `build-paid-first.mjs`): the approved onboarding
+  design for the in-progress `PAID_FIRST_EXECUTION_PLAN.md`. Delete it when
+  that plan completes.
+- Brand source: `build-aligned-brand.py` generates `aligned-brand.*`,
+  `overlay-brand-approved/` and the production `ApprovedBrand.tsx`;
+  `export-brand-pngs.cjs` exports the raster assets. These are production
+  source, not mockups.
+
+Add new mockups here and remove them when their feature ships.
 
 ## Rebuild the canonical preview
 

@@ -6,8 +6,7 @@ description: "Isolated PR previews and native Git production releases."
 The current release contract is [Development Workflow](./Development%20Workflow.md)
 and [Release Workflow](./release-workflow.md). This page records the
 operational checks. The former staging project, branch, and subdomain are not
-part of the release path. Historical staging drills are preserved in
-`internal/plans/release-workflow-evidence/` and git history.
+part of the release path. Historical staging drills are preserved in git history.
 
 ## PR preview
 
