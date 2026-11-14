@@ -451,7 +451,8 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_automation')) {
     tools.create_automation = tool({
       description:
-        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first.',
+        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first. ' +
+        'Runs do not read this conversation, so make the instructions self-contained: include every fact, preference, account, link, and decision from this conversation that a run needs.',
       inputSchema: z.object({
         name: z.string().min(1),
         description: z.string().min(1),
@@ -1007,7 +1008,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_publish_file') && shouldExposeTool('write_file')) {
       tools.computer_publish_file = tool({
         description:
-          'Publish a binary file from the bound Computer into Overlay Files. Returns a relative downloadUrl; use it unchanged in a Markdown link when reporting the result, not just file or artifact IDs. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
+          'Publish a binary file from the bound Computer into Overlay Files. Returns a relative downloadUrl. The chat shows each published file as a card on its own; to place an image or video in your reply, embed it as ![name](downloadUrl), and link other files as [name](downloadUrl), unchanged, never just file or artifact IDs. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
         inputSchema: z.object({
           sourcePath: z.string().min(1).max(4096).describe('Absolute path of the finished binary on the Computer'),
           name: z.string().min(1).max(255).describe('Basename to use in Overlay Files'),
@@ -1042,6 +1043,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description:
         'Open a URL in the browser on the bound computer’s graphical desktop, ' +
         'so signed-in sessions and web apps the user has set up there can be used. ' +
+        'Serve local HTML over a verified HTTP(S) origin; file:// URLs are unsupported. ' +
         'The user can watch the desktop live via Open desktop.',
       inputSchema: z.object({
         url: computerBrowserUrlSchema.describe('The HTTP or HTTPS URL to open in the computer’s browser'),
@@ -1115,6 +1117,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
           'Typing, focus and navigation can replace page elements. Take a fresh snapshot after page changes and before reusing refs. ' +
           'If stale_browser_ref is returned, no action occurred: take a new snapshot and choose the current target, never retry the expired ref or guess a replacement. ' +
+          'Serve local HTML over a verified HTTP(S) origin; file:// URLs are unsupported. ' +
           'For a potentially consequential click, call click with confirm: true so the user can approve it. ' +
           'Use computer_screenshot and computer_input for non-browser apps or controls absent from a fresh snapshot. The user sees the same browser in Open desktop.',
         inputSchema: computerBrowserSchema,

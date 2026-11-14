@@ -10,6 +10,7 @@ import BackgroundPollManager from '@/components/providers/BackgroundPollManager'
 import { NavigationProgressProvider, NavigationProgressBar } from '@/components/providers/navigation-progress'
 import { GuestGateProvider } from '@/components/providers/GuestGateProvider'
 import { CapabilitiesProvider } from '@/components/providers/CapabilitiesProvider'
+import { ChatFilesHostProvider } from '@/components/providers/ChatFilesHostProvider'
 import { AuthorizationProvider } from '@/components/providers/AuthorizationProvider'
 import { AuthorizationRouteGuard } from '@/components/providers/AuthorizationRouteGuard'
 import { AppClientProviders, GatewayModelCatalogPrefetch } from '@/components/providers/AppClientProviders'
@@ -90,7 +91,7 @@ async function AppShellContent({
                         <OnboardingShell sidebar={<AppShellSidebar />}>
                           <Suspense fallback={<AppMainFallback />}>
                             <WorkspaceScopedContentBoundary fallback={<WorkspaceSwitchFallback />}>
-                              <AppBreadcrumbProvider><AuthorizationRouteGuard>{children}</AuthorizationRouteGuard></AppBreadcrumbProvider>
+                              <AppBreadcrumbProvider><AuthorizationRouteGuard><ChatFilesHostProvider>{children}</ChatFilesHostProvider></AuthorizationRouteGuard></AppBreadcrumbProvider>
                             </WorkspaceScopedContentBoundary>
                           </Suspense>
                         </OnboardingShell>

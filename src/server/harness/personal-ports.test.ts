@@ -11,6 +11,7 @@ import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { createHarnessModelPorts } from './model-ports'
 import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
+import { isHarnessStateMessage, withoutHarnessStateMessages } from './prompt-cache'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
   model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(),
@@ -356,7 +357,9 @@ test.each([
 ])('%s uses the settled-summary fallback when history fits', async (_label, summaryText) => {
   const { model, originalMessages, prepare, result } = await prepareModelWithSummary(summaryText, 'model:summary-quality-rejected')
 
-  expect(result.messages).toHaveLength(originalMessages.length)
+  // Full history plus the single trailing working-state message.
+  expect(withoutHarnessStateMessages(result.messages)).toHaveLength(originalMessages.length)
+  expect(isHarnessStateMessage(result.messages.at(-1)!)).toBe(true)
   expect(current.modelReservation).toBeUndefined()
   expect(current.latestReceipt?.id).toMatch(/^summary:model:summary-quality-rejected:/)
   expect(current.latestReceipt?.rejectionReason).toBeUndefined()
@@ -393,7 +396,9 @@ test('a failed summary falls back to uncompacted history when it fits the real m
 
   const responseRequest = prepare.mock.calls.find(([request]) => request.purpose === 'response')?.[0]
   expect(responseRequest?.options.maxOutputTokens).toBe(12_000)
-  expect(result.messages).toHaveLength(originalMessages.length)
+  // Full history plus the single trailing working-state message.
+  expect(withoutHarnessStateMessages(result.messages)).toHaveLength(originalMessages.length)
+  expect(isHarnessStateMessage(result.messages.at(-1)!)).toBe(true)
   expect(result.settings?.maxOutputTokens).toBe(12_000)
   expect(model.doStreamCalls).toHaveLength(2)
   expect(current.modelReservation).toBeUndefined()

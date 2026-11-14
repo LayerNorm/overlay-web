@@ -425,7 +425,13 @@ byte transfer.
   optimistically to every cached tree. Create, delete, uploads, ingestion, text saves and note
   saves stay on the server: they place large text in object storage, clean up objects, and
   canonicalize and sanitize note Markdown.
-- `files/browse:forConversation` is a thread's live Library (the agent drive panel).
+- `files/browse:forConversation` is a thread's live Library (the agent drive panel), newest
+  created first. Every agent creation path writes the file's `conversationId`: `write_file`,
+  `create_note`, generated images and videos, `computer_publish_file` (from the harness run's
+  source thread) and connected-agent drive uploads.
+- `files/browse:summariesByIds` returns card metadata for the files a chat message shows, under the
+  same read rules as `get`. Unreadable, deleted and malformed ids are left out, so a card never
+  renders for a file the viewer lost access to (`useFileSummaries`).
 - `knowledge/memoryBrowse:list` is the live Memories list with the server's rules: owner-only
   memories reach only their author, attribution covers active members and agents the viewer can
   see, and an owner filter accepts a member or agent principal. Memory writes stay on
@@ -607,9 +613,9 @@ The bridge reads ascending SDK pages of at most 100 events without input/result 
 
 Clients subscribe through `automations/workflowEvents:watchWorkflowStepEvents` or `watchAutomationRunStepEvents`; both enforce the parent automation's current access. The member-authorized SSE endpoint remains a fallback. Projection failures produce sanitized diagnostics and retain the cursor for retry. The source event ID and correlation indexes supplement the existing workflow/user/automation timestamp indexes.
 
-### Legacy cron removal
+### Automation scheduling
 
-The legacy automation scheduler cron (`automation_scheduler_legacy`) has been removed. Durable automations are now always enabled and use the sleep()-based workflow (`workflows/automation-schedule.ts`) for scheduling. The `OVERLAY_FEATURE_DURABLE_AUTOMATIONS` feature flag has been removed.
+Convex owns automation scheduling: the `automations/automationRunner:runMinuteTick` cron claims due runs and calls `POST /api/v1/automations/run`, which starts the durable `automationRunWorkflow` (`src/server/workflows/automation-run.ts`). Manual runs start the same workflow from `POST /api/v1/automations/{id}/run`. Every run has an `automationRuns` row first; its turn ID is always `automationRunTurnId(runId)` (`src/shared/automations/run-identity.ts`) and Convex rejects any other. The per-automation sleep() scheduler workflow, `schedulerWorkflowRunId`, the `start-scheduler` route and the `/api/v1/automations/execute` callback were removed.
 
 ## Workspace Handles
 

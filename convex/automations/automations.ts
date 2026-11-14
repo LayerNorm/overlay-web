@@ -13,6 +13,7 @@ import {
   DEFAULT_SCHEDULE as SHARED_DEFAULT_SCHEDULE,
   MIN_INTERVAL_MINUTES as SHARED_MIN_INTERVAL_MINUTES,
 } from '../../src/shared/automations/schedule'
+import { automationRunTurnId } from '../../src/shared/automations/run-identity'
 
 const automationSchedule = v.object({
   kind: v.union(
@@ -588,6 +589,9 @@ export const markManualRunStarted = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    if (args.turnId !== automationRunTurnId(args.runId)) {
+      throw new Error('Automation run turn ID must be derived from its run')
+    }
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) return null
     if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
@@ -826,25 +830,6 @@ export const updateRunWorkflowRunIdByServer = mutation({
   },
 })
 
-export const updateSchedulerWorkflowRunIdByServer = mutation({
-  args: {
-    automationId: v.id('automations'),
-    serverSecret: v.string(),
-    schedulerWorkflowRunId: v.union(v.string(), v.null()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const automation = await ctx.db.get(args.automationId)
-    if (!automation) return null
-    await ctx.db.patch(args.automationId, {
-      schedulerWorkflowRunId: args.schedulerWorkflowRunId ?? undefined,
-      updatedAt: Date.now(),
-    })
-    return null
-  },
-})
-
 async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automations'>, now: number) {
   const queued = await ctx.db
     .query('automationRuns')
@@ -1025,11 +1010,11 @@ export const getRunForExecutionByServer = query({
   },
 })
 
+// The scheduler only claims the run. The run workflow binds the thread and
+// stamps the turn ID (automationRunTurnId) when it starts, as for manual runs.
 export const markRunStarted = internalMutation({
   args: {
     runId: v.id('automationRuns'),
-    conversationId: v.optional(v.id('conversations')),
-    turnId: v.string(),
     now: v.number(),
   },
   returns: v.null(),
@@ -1039,8 +1024,6 @@ export const markRunStarted = internalMutation({
     await ctx.db.patch(args.runId, {
       status: 'running',
       startedAt: args.now,
-      conversationId: args.conversationId,
-      turnId: args.turnId,
       updatedAt: args.now,
     })
     return null

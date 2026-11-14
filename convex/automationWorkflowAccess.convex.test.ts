@@ -22,7 +22,7 @@ async function fixture() {
     }
     const automationId = await ctx.db.insert('automations', { workspaceId: 'workspace-a', userId: 'owner',
       name: 'Private test', instructions: 'Test', enabled: false, scope: 'personal',
-      schedulerWorkflowRunId: 'legacy-scheduler', createdAt: 1, updatedAt: 1 })
+      createdAt: 1, updatedAt: 1 })
     const runId = await ctx.db.insert('automationRuns', { automationId, userId: 'owner',
       status: 'completed', workflowRunId: 'workflow-a', scheduledFor: 1, createdAt: 1 })
     return { automationId, runId }
@@ -51,13 +51,11 @@ test('workflow reads use the parent resource scope and current workspace members
   expect(await t.query(canRead, { ...args, userId: 'member' })).toBe(false)
 })
 
-test('legacy schedulers are bound to their parent; unknown and deleted workflows fail closed', async () => {
+test('only run-owned workflows are readable; unknown and deleted workflows fail closed', async () => {
   const { t, automationId } = await fixture()
   const args = { serverSecret: secret, userId: 'owner', workspaceId: 'workspace-a' }
-  expect(await t.query(canRead, { ...args, workflowRunId: 'legacy-scheduler' })).toBe(true)
+  expect(await t.query(canRead, { ...args, workflowRunId: 'workflow-a' })).toBe(true)
   expect(await t.query(canRead, { ...args, workflowRunId: 'unknown' })).toBe(false)
   await t.run(ctx => ctx.db.patch(automationId, { deletedAt: 2 }))
-  for (const workflowRunId of ['legacy-scheduler', 'workflow-a']) {
-    expect(await t.query(canRead, { ...args, workflowRunId })).toBe(false)
-  }
+  expect(await t.query(canRead, { ...args, workflowRunId: 'workflow-a' })).toBe(false)
 })

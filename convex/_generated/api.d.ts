@@ -104,6 +104,8 @@ import type * as files_storageAdmin from "../files/storageAdmin.js";
 import type * as harness_artifactMetadata from "../harness/artifactMetadata.js";
 import type * as harness_artifacts from "../harness/artifacts.js";
 import type * as harness_continuations from "../harness/continuations.js";
+import type * as harness_diagnosticBackfill from "../harness/diagnosticBackfill.js";
+import type * as harness_diagnosticIndex from "../harness/diagnosticIndex.js";
 import type * as harness_nativeDelivery from "../harness/nativeDelivery.js";
 import type * as harness_resourceValidators from "../harness/resourceValidators.js";
 import type * as harness_runs from "../harness/runs.js";
@@ -318,6 +320,8 @@ declare const fullApi: ApiFromModules<{
   "harness/artifactMetadata": typeof harness_artifactMetadata;
   "harness/artifacts": typeof harness_artifacts;
   "harness/continuations": typeof harness_continuations;
+  "harness/diagnosticBackfill": typeof harness_diagnosticBackfill;
+  "harness/diagnosticIndex": typeof harness_diagnosticIndex;
   "harness/nativeDelivery": typeof harness_nativeDelivery;
   "harness/resourceValidators": typeof harness_resourceValidators;
   "harness/runs": typeof harness_runs;

@@ -142,7 +142,30 @@ export const forConversation = query({
     })
     return rows
       .filter((row) => !row.deletedAt && row.type === 'file')
-      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .sort((a, b) => b.createdAt - a.createdAt)
       .map(browserFileSummary)
+  },
+})
+
+/** Most file cards one message can ask about at once. */
+const SUMMARY_IDS_LIMIT = 50
+
+/**
+ * Metadata for the files a chat message shows as cards, in the order asked. Ids the viewer cannot read, deleted files
+ * and malformed ids are left out, so a card never renders for a file the member lost access to.
+ */
+export const summariesByIds = query({
+  args: { workspaceId: v.string(), ids: v.array(v.string()) },
+  handler: async (ctx, { workspaceId, ids }) => {
+    const viewer = await viewerOrNull(ctx, workspaceId)
+    if (!viewer) return null
+    const unique = [...new Set(ids)].slice(0, SUMMARY_IDS_LIMIT)
+    const rows = await Promise.all(unique.map(async (id) => {
+      const fileId = ctx.db.normalizeId('files', id)
+      if (!fileId) return null
+      const row = await getReadableRow(ctx, { row: await ctx.db.get(fileId), userId: viewer.userId, workspaceId })
+      return row && !row.deletedAt && row.type === 'file' ? browserFileSummary(row) : null
+    }))
+    return rows.filter((row) => row !== null)
   },
 })

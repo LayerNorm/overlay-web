@@ -42,6 +42,9 @@ export type PersonalChatWorkToolingContext = {
   latestUserText?: string
   mediaToolIntent?: 'image' | 'video' | null
   memoryOwnerId?: string
+  /** The agent an automation runs as; set only from the automation's current agent. */
+  agentId?: string
+  agentPrincipalId?: string
   memoryEnabled: boolean
   /** Conversation-mode hint for tool gating; automation turns leave it unset. */
   mode?: 'chat' | 'automate'
