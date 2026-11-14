@@ -28,9 +28,27 @@ const MIN_DIAGRAM_SCALE = 0.75
 
 const THEME_ATTRIBUTES = ['data-theme', 'data-theme-preset', 'style', 'class']
 
+/**
+ * Finished renders by source. Streamdown remounts blocks when a reply settles;
+ * reusing the result keeps the diagram on screen instead of flashing the code.
+ */
+const renderedDiagrams = new Map<string, { paletteKey: string; state: MermaidDiagramState }>()
+const RENDER_CACHE_LIMIT = 50
+
+function rememberDiagram(source: string, paletteKey: string, state: MermaidDiagramState) {
+  renderedDiagrams.delete(source)
+  renderedDiagrams.set(source, { paletteKey, state })
+  if (renderedDiagrams.size > RENDER_CACHE_LIMIT) {
+    const oldest = renderedDiagrams.keys().next().value
+    if (oldest !== undefined) renderedDiagrams.delete(oldest)
+  }
+}
+
 /** Renders `source` once `enabled`, and again whenever the app theme changes. */
 function useMermaidDiagram(source: string, enabled: boolean, ref: RefObject<HTMLDivElement | null>) {
-  const [state, setState] = useState<MermaidDiagramState>({ status: 'pending' })
+  const [state, setState] = useState<MermaidDiagramState>(
+    () => (enabled ? renderedDiagrams.get(source)?.state : undefined) ?? { status: 'pending' },
+  )
 
   useEffect(() => {
     const element = ref.current
@@ -46,12 +64,20 @@ function useMermaidDiagram(source: string, enabled: boolean, ref: RefObject<HTML
       const key = mermaidPaletteKey(palette)
       if (key === renderedKey) return
       renderedKey = key
+      const hit = renderedDiagrams.get(source)
+      if (hit?.paletteKey === key) {
+        setState(hit.state)
+        return
+      }
+      let next: MermaidDiagramState
       try {
         const result = await renderMermaidDiagram(source, palette)
-        if (!cancelled) setState({ status: 'ready', svg: result.svg, width: result.width })
+        next = { status: 'ready', svg: result.svg, width: result.width }
       } catch (error) {
-        if (!cancelled) setState({ status: 'error', error: shortMermaidError(error, source) })
+        next = { status: 'error', error: shortMermaidError(error, source) }
       }
+      rememberDiagram(source, key, next)
+      if (!cancelled) setState(next)
     }
 
     void draw()
