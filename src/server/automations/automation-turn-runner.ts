@@ -198,17 +198,12 @@ async function readAutomationConversationSource(
   })
   if (!automation || automation.deletedAt) throw new AutomationTurnError('Automation is no longer available.', 409)
   if (!input.originWorkflowRunId) throw new AutomationTurnError('Automation workflow identity is required.', 409)
-  const run = input.runId
-    ? await overlayContext.appData.repositories.automations.getRunForExecution({ runId: input.runId })
-    : null
-  if (input.runId) {
-    if (!run || run.run.automationId !== input.automationId || run.run.userId !== input.userId
-      || run.run.workflowRunId !== input.originWorkflowRunId
-      || !['queued', 'running'].includes(run.run.status)) {
-      throw new AutomationTurnError('Automation run ownership changed.', 409)
-    }
-  } else if (automation.schedulerWorkflowRunId !== input.originWorkflowRunId || automation.enabled !== true) {
-    throw new AutomationTurnError('Automation scheduler ownership changed.', 409)
+  if (!input.runId) throw new AutomationTurnError('Automation run identity is required.', 409)
+  const run = await overlayContext.appData.repositories.automations.getRunForExecution({ runId: input.runId })
+  if (!run || run.run.automationId !== input.automationId || run.run.userId !== input.userId
+    || run.run.workflowRunId !== input.originWorkflowRunId
+    || !['queued', 'running'].includes(run.run.status)) {
+    throw new AutomationTurnError('Automation run ownership changed.', 409)
   }
   const ownedConversationId = automation.conversationId
     && automation.conversationId !== automation.sourceConversationId
@@ -681,8 +676,10 @@ export async function prepareAutomationAgentTurn(
     accountAllowedConnectorIds,
     accountAllowedToolIds: surfaceAllowedToolIds,
     accessToken: undefined,
-    agentId: surface?.agentId,
-    agentPrincipalId: surface?.agentPrincipalId,
+    // An agent-bound automation runs as its agent (memory, computer,
+    // attribution), exactly as the harness re-derives on every step.
+    agentId: surface?.agentId ?? automationAgentId,
+    agentPrincipalId: surface?.agentPrincipalId ?? automationAgent?.principalId,
     automationExecution: true,
     ...(!surface ? { automationId: input.automationId } : {}),
     computerApprovalContext: 'automation',
@@ -693,9 +690,11 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // The agent remembers as itself on surface turns, so what it learns from
-    // platform threads accrues to the agent, not the creator's memory.
-    memoryOwnerId: surface ? agentMemoryOwnerId(surface.agentId) : undefined,
+    // The agent remembers as itself on surface turns and agent-bound
+    // automations, so what it learns accrues to the agent, not the creator.
+    memoryOwnerId: surface
+      ? agentMemoryOwnerId(surface.agentId)
+      : automationAgentId ? agentMemoryOwnerId(automationAgentId) : undefined,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,
     preloadTasks: toolPreloadTasks,

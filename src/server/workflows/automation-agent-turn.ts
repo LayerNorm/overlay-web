@@ -12,6 +12,7 @@ import {
   type AutomationAgentTurnPlan,
 } from '@/server/automations/automation-turn-runner'
 import { assertAutomationAdmissionSource } from '@/server/harness/automation-access'
+import { automationRunTurnId } from '@/shared/automations/run-identity'
 import {
   admitAutomationHarnessStep,
   admitAutomationSourceStep,
@@ -46,7 +47,6 @@ async function prepareTurnStep(
         runId: input.runId,
         conversationId: input.conversationId,
         workspaceId: input.workspaceId,
-        turnId: input.turnId,
       })
     }
     return await prepareAutomationAgentTurn(input)
@@ -117,10 +117,7 @@ async function prepareAutomationTurn(
   let source: PreparedAutomationTurn['source'] | undefined
   let turnInput: PreparedAutomationTurn['turnInput']
   let plan: AutomationAgentTurnPlan | undefined
-  const canonicalInput: AutomationAgentTurnInput = {
-    ...input,
-    turnId: input.runId ? `automation-run:${input.runId}` : input.turnId,
-  }
+  const canonicalInput: AutomationAgentTurnInput = { ...input, turnId: automationRunTurnId(input.runId!) }
   try {
     source = await admitAutomationSourceStep({
       ...canonicalInput, actorUserId: input.userId, originWorkflowRunId: workflowRunId,
@@ -279,6 +276,7 @@ export async function runAutomationAgentTurn(
   if (input.surface) throw new FatalError('Surface turns must use the surface workflow.')
   const { workflowRunId } = getWorkflowMetadata()
   if (!input.automationId) throw new FatalError('Automation identity is required.')
+  if (!input.runId) throw new FatalError('Automation run identity is required.')
   const prepared = await prepareAutomationTurn(input, workflowRunId)
   const claim = await claimAutomationHarnessTurn(
     input, workflowRunId, prepared.source, prepared.turnInput, prepared.plan,
