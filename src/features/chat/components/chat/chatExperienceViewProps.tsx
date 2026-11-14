@@ -292,8 +292,9 @@ export function buildChatExperienceViewProps(
               mentionCategories: c.mentionCategories,
               contextUsage: latestContextUsage(c.actChat.messages),
             },
+            queue: c.composerQueueControls,
             actions: {
-              onStop: c.stopActiveChat,
+              onStop: c.stopResponseAndPauseQueue,
               onSend: c.effectiveHandleSend,
               onEmptySuggestion: c.handleEmptySuggestion,
               onAutomateSuggestion: c.handleAutomateSuggestion,

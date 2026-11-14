@@ -8,6 +8,7 @@ import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
 import type { RemoteAgentCommand } from './collaboration/room-message-view'
+import type { ChatComposerQueueControls } from './ChatComposerQueue'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
 export type ChatComposerEmptyState = { showCenteredEmptyChat: boolean; greetingLine: string; belowEmptyComposer?: ReactNode }
@@ -73,11 +74,13 @@ export type ChatComposerProps = {
   runtime: ChatComposerRuntime; inputState: ChatComposerInputState; toolState: ChatComposerToolState
   modeState: ChatComposerModeState; actions: ChatComposerActions
   surface?: ChatComposerSurface
+  /** Queue and steer while a response runs. Composers without it keep plain send. */
+  queue?: ChatComposerQueueControls
 }
 export type ComposerViewProps = { mode: 'chat' | 'automate' }
   & ChatComposerEmptyState & ChatComposerAttachmentState & ChatComposerRuntime & ChatComposerInputState
   & ChatComposerToolState & ChatComposerModeState & ChatComposerActions
-  & ChatComposerSurface
+  & ChatComposerSurface & { queue?: ChatComposerQueueControls }
 
 export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps {
   return {
@@ -90,5 +93,6 @@ export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps
     ...props.modeState,
     ...props.actions,
     ...props.surface,
+    queue: props.queue,
   }
 }
