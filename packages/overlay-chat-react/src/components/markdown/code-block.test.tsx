@@ -4,7 +4,7 @@ import { isValidElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CodeBlockCopyButton } from '@overlay/ui/ai'
 import { createBaseMdComponents } from './renderers'
-import { MERMAID_FALLBACK_NOTE, MermaidCodeBlockView } from './mermaid-block'
+import { MERMAID_FALLBACK_NOTE, MermaidCodeBlockView, mountDiagramSvg } from './mermaid-block'
 import { shortMermaidError } from './mermaid-render'
 
 const md = createBaseMdComponents()
@@ -128,4 +128,28 @@ test('mermaid parse errors shorten to one line', () => {
   assert.equal(shortMermaidError(openSubgraph, 'flowchart TD\n  subgraph X\n  A --> B'), 'Line 4: subgraph is never closed')
   assert.equal(shortMermaidError(new Error('No diagram type detected matching given configuration for text: hello')), 'Unknown diagram type')
   assert.equal(shortMermaidError(undefined), 'Unknown diagram error')
+})
+
+test('diagram SVG and its <style> never land in the page DOM, only in an open shadow root', () => {
+  const svg = '<svg viewBox="0 0 400 100"><style>body{background:red}.evil{fill:#f00}</style><g class="evil"></g></svg>'
+  const html = renderToStaticMarkup(mermaidView({ diagram: { status: 'ready', svg, width: 400 } }))
+  assert.match(html, /data-slot="code-block-diagram-svg"/)
+  assert.doesNotMatch(html, /<style|<svg viewBox="0 0 400 100"|background:red/)
+
+  const root = { innerHTML: '' }
+  const calls: unknown[] = []
+  const host = {
+    shadowRoot: null as typeof root | null,
+    innerHTML: '',
+    attachShadow(init: unknown) {
+      calls.push(init)
+      this.shadowRoot = root
+      return root
+    },
+  }
+  mountDiagramSvg(host as never, svg)
+  mountDiagramSvg(host as never, svg)
+  assert.deepEqual(calls, [{ mode: 'open' }], 'attaches one shadow root and reuses it')
+  assert.ok(root.innerHTML.endsWith(svg))
+  assert.equal(host.innerHTML, '', 'nothing is written to the host light DOM')
 })

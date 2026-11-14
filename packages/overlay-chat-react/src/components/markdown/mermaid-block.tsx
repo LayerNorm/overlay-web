@@ -11,7 +11,7 @@ import {
   useHighlightedCode,
 } from '@overlay/ui/ai'
 import { Info } from 'lucide-react'
-import { useEffect, useRef, useState, type Ref, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react'
 import { useIsCodeFenceIncomplete } from 'streamdown'
 
 export type MermaidDiagramState =
@@ -126,13 +126,33 @@ function ViewToggle({ view, onViewChange }: { view: MermaidView; onViewChange: (
   )
 }
 
+/** Base styles inside the diagram's shadow root; nothing here or in the SVG reaches the page. */
+const SHADOW_BASE_CSS = ':host{display:block}svg{display:block;width:100%;height:auto;max-width:100%}'
+
+type ShadowHost = Pick<HTMLElement, 'shadowRoot' | 'attachShadow'>
+
+/**
+ * Puts the sanitized Mermaid SVG in an open shadow root on `host`. The SVG carries
+ * a `<style>` built from model-written `classDef`/`style` lines; scoping it to the
+ * shadow root keeps those rules from restyling the rest of the app.
+ */
+export function mountDiagramSvg(host: ShadowHost, svg: string): ShadowRoot {
+  const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' })
+  root.innerHTML = `<style>${SHADOW_BASE_CSS}</style>${svg}`
+  return root
+}
+
 function DiagramSvg({ svg, width }: { svg: string; width: number | null }) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (hostRef.current) mountDiagramSvg(hostRef.current, svg)
+  }, [svg])
   return (
     <div
-      className="mx-auto w-full [&>svg]:block [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-full"
+      ref={hostRef}
+      data-slot="code-block-diagram-svg"
+      className="mx-auto w-full"
       style={width ? { maxWidth: width, minWidth: Math.round(width * MIN_DIAGRAM_SCALE) } : undefined}
-      // Mermaid output is rendered with securityLevel 'strict' and sanitized again with DOMPurify.
-      dangerouslySetInnerHTML={{ __html: svg }}
     />
   )
 }
