@@ -329,7 +329,7 @@ export default function AppSidebar({
           }}
           onSearch={() => s.openGlobalSearch(null)}
           account={desktopAccountSlot}
-          className={classicLayout ? 'hidden md:flex' : `hidden h-full transition-[width,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className={classicLayout ? 'hidden md:flex' : `hidden h-full md:flex ${s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           {panelChildren}
         </SelectedSidebar>
