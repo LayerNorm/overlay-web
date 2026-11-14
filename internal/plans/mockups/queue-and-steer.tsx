@@ -24,12 +24,11 @@ const REPLIES = [
   'Done. I drafted the follow-up and left it in Drafts for you to review before it goes out.',
 ]
 
-function useStream() {
+function useStream(onDone: React.MutableRefObject<() => void>) {
   const [msgs, setMsgs] = React.useState<Msg[]>([])
   const [streaming, setStreaming] = React.useState(false)
   const timer = React.useRef<number | null>(null)
   const replyIndex = React.useRef(0)
-  const onDone = React.useRef<() => void>(() => undefined)
   const stopTimer = () => { if (timer.current) window.clearInterval(timer.current); timer.current = null }
   const respond = React.useCallback(() => {
     stopTimer()
@@ -43,11 +42,11 @@ function useStream() {
       setMsgs(m => m.map(x => x.id === id ? { ...x, text: words.slice(0, i).join(' ') } : x))
       if (i >= words.length) { stopTimer(); setStreaming(false); onDone.current() }
     }, 140)
-  }, [])
+  }, [onDone])
   const interrupt = () => { stopTimer(); setMsgs(m => m.map((x, i) => i === m.length - 1 && x.role === 'assistant' ? { ...x, interrupted: true } : x)); setStreaming(false) }
   const reset = (prompt: string) => { stopTimer(); replyIndex.current = 0; setMsgs([{ id: 1, role: 'user', text: prompt }]); window.setTimeout(respond, 300) }
   React.useEffect(() => stopTimer, [])
-  return { msgs, setMsgs, streaming, respond, interrupt, reset, onDone }
+  return { msgs, setMsgs, streaming, respond, interrupt, reset }
 }
 
 function QueueTray({ items, onSteer, onEdit, onRemove }: { items: Queued[]; onSteer(q: Queued): void; onEdit(q: Queued): void; onRemove(q: Queued): void }) {
@@ -99,20 +98,22 @@ function App() {
   const [scope, setScope] = React.useState<'personal' | 'workspace'>('personal')
   const [draft, setDraft] = React.useState('')
   const [queue, setQueue] = React.useState<Queued[]>([])
-  const s = useStream()
+  const onDone = React.useRef<() => void>(() => undefined)
+  const s = useStream(onDone)
   const copy = SURFACES[surface]
-  const queueRef = React.useRef(queue); queueRef.current = queue
+  const queueRef = React.useRef(queue)
+  React.useEffect(() => { queueRef.current = queue }, [queue])
   const scroller = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light' }, [dark])
   React.useEffect(() => { s.reset(copy.prompt); setQueue([]); setDraft('') }, [surface])
   React.useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight }) }, [s.msgs, queue])
-  s.onDone.current = () => {
+  React.useEffect(() => { onDone.current = () => {
     const [next, ...rest] = queueRef.current
     if (!next) return
     setQueue(rest)
     s.setMsgs(m => [...m, { id: next.id, role: 'user', text: next.text, queued: true }])
     window.setTimeout(s.respond, 350)
-  }
+  } })
   const send = () => { s.setMsgs(m => [...m, { id: Date.now(), role: 'user', text: draft.trim() }]); setDraft(''); window.setTimeout(s.respond, 300) }
   const enqueue = () => { setQueue(q => [...q, { id: Date.now(), text: draft.trim() }]); setDraft('') }
   const steer = (text: string) => { s.interrupt(); s.setMsgs(m => [...m, { id: Date.now(), role: 'user', text, steered: true }]); window.setTimeout(s.respond, 250) }
