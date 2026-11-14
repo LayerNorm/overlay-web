@@ -309,6 +309,32 @@ test('distinguishes linear prose from Linear integration actions', () => {
   assert.ok(sendToLinear.missingFields.includes('Resolve conflicting integration instructions'))
 })
 
+test('recognizes bare Linear references at clause boundaries', () => {
+  const bareUse = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, no integrations. Use Linear.',
+    assistantText: 'Use Linear.',
+  })
+  const issuesInLinear = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, no integrations. Summarize issues in Linear.',
+    assistantText: 'Summarize issues in Linear.',
+  })
+
+  assert.ok(bareUse.missingFields.includes('Resolve conflicting integration instructions'))
+  assert.equal(bareUse.instructions, '1. Clarify whether the workflow should use an integration')
+  assert.ok(issuesInLinear.missingFields.includes('Resolve conflicting integration instructions'))
+  assert.equal(issuesInLinear.instructions, '1. Clarify whether the workflow should use an integration')
+})
+
+test('does not extend a Linear destination into a following math noun', () => {
+  const draft = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, send results to linear equations, no integrations.',
+    assistantText: 'Send results to linear equations.',
+  })
+
+  assert.equal(draft.instructions, '1. Send results to linear equations.')
+  assert.equal(draft.missingFields.includes('Resolve conflicting integration instructions'), false)
+})
+
 test('does not treat weekday and time-only assistant summaries as workflow', () => {
   const scheduleOnly = buildAutomationDraftFromTurn({
     userText: 'Every Monday at 01:00 UTC, write OK, without integrations.',
