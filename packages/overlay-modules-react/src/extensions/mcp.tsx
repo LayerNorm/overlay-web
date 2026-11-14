@@ -14,21 +14,19 @@ AlertCircle,
 Check,
 Link2,
 Loader2,
-Plus,
 Server,
-Wrench,
 Zap
 } from 'lucide-react'
-import { useState,type MouseEvent,type ReactNode } from 'react'
-import { Badge, Button, Input, Tabs, TabsTriggerList as TabsList, TabsTrigger, TabsContent } from '@overlay/ui'
+import { useState, type ReactNode } from 'react'
+import { Button, Input, Tabs, TabsTriggerList as TabsList, TabsTrigger, TabsContent } from '@overlay/ui'
 
-import { DeleteExtensionButton, ExtensionCard, ExtensionDialog, Field, FieldSelect } from './shared'
-import { AppScreenBody } from '../shell'
+import { DeleteExtensionButton, ExtensionDialog, Field, FieldSelect } from './shared'
 
 export type McpDialogMutationOutcome = boolean | void | McpMutationResult
 
 export interface McpServerDialogProps {
-  state: { mode: 'create' | 'edit'; server?: McpServerSummary }
+  /** `preset` fills a new server from the catalog. */
+  state: { mode: 'create' | 'edit'; server?: McpServerSummary; preset?: Partial<McpServerFormValues> }
   onClose: () => void
   onSave: (values: McpServerFormValues) => Promise<McpDialogMutationOutcome>
   onDelete: (server: McpServerSummary) => Promise<McpDialogMutationOutcome>
@@ -394,7 +392,7 @@ export function McpServerDialog({
   const initial = state.server
   const baseScopeLabel = initial?.archivedAt !== undefined ? 'Archived' : (initial?.scope ?? 'personal') === 'workspace' ? 'Shared with the workspace' : 'Only you'
   const scopeLabel = readOnly ? `${baseScopeLabel} · View only` : baseScopeLabel
-  const [values, setValues] = useState<McpServerFormValues>(() => mcpServerToFormValues(initial))
+  const [values, setValues] = useState<McpServerFormValues>(() => ({ ...mcpServerToFormValues(initial), ...state.preset }))
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -470,74 +468,4 @@ export function McpServerDialog({
       <McpDialogBanners testResult={testResult} isOAuth={isOAuth} mutationError={mutationError} onSwitchToOAuth={() => update('authType', 'oauth')} />
     </ExtensionDialog>
   )
-}
-
-export interface McpServersPanelProps {
-  loading: boolean
-  servers: readonly McpServerSummary[]
-  filteredServers: readonly McpServerSummary[]
-  /** Omitted when the person may not create here (the empty state then offers no button). */
-  onCreate?: () => void
-  onEdit: (server: McpServerSummary) => void
-  onToggle: (server: McpServerSummary, event: MouseEvent) => void
-}
-
-export function McpServersPanel({ loading, servers, filteredServers, onCreate, onEdit }: McpServersPanelProps) {
-  if (loading) {
-    return (
-      <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center">
-        <Loader2 size={20} className="animate-spin text-(--muted)" />
-      </AppScreenBody>
-    )
-  }
-
-  if (servers.length === 0) {
-    return (
-      <AppScreenBody padding="none" maxWidth="none" className="flex h-full flex-col items-center justify-center gap-4 px-6">
-        <Server size={40} strokeWidth={1} className="text-(--muted-light)" />
-        <div className="space-y-1 text-center">
-          <p className="text-sm font-medium text-(--foreground)">No MCP servers configured</p>
-          <p className="text-xs text-(--muted-light)">Add remote MCP servers to extend the AI agent with custom tools</p>
-        </div>
-        {onCreate ? <Button variant="secondary" size="md" type="button" onClick={onCreate}><Plus size={14} />Add Server</Button> : null}
-      </AppScreenBody>
-    )
-  }
-
-  return (
-    <AppScreenBody padding="none" maxWidth="none" className="h-full">
-      <div className="mx-auto max-w-6xl px-6 py-6">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {filteredServers.map((server) => (
-            <McpServerCard key={server._id} server={server} onEdit={onEdit} />
-          ))}
-        </div>
-      </div>
-    </AppScreenBody>
-  )
-}
-
-function McpServerCard({ server, onEdit }: { server: McpServerSummary; onEdit: (server: McpServerSummary) => void }) {
-  const error = Boolean(server.toolCatalogError) || server.oauthStatus === 'needs_reauth'
-  const connected = server.authType === 'oauth' && server.oauthStatus === 'connected'
-  const status = !server.enabled ? 'Inactive' : error ? 'Connection error' : connected ? 'Connected' : server.authType === 'oauth' ? 'Not connected' : 'Active'
-  let host = server.url
-  try { host = new URL(server.url).hostname } catch { /* Keep invalid saved URLs visible for correction. */ }
-
-  return <ExtensionCard
-    icon={<Server size={20} strokeWidth={1.6} />}
-    title={server.name || 'Untitled'}
-    description={server.description || server.url}
-    status={status}
-    statusTone={!server.enabled ? 'muted' : error ? 'error' : connected ? 'connected' : server.authType === 'oauth' ? 'muted' : 'active'}
-    metadata={<>
-      <Wrench size={14} /><span>{server.toolCatalogCount === undefined ? 'Tools not discovered' : `${server.toolCatalogCount} tools`}</span>
-      <Badge variant="muted">{server.transport === 'sse' ? 'SSE' : 'HTTP'}</Badge>
-      {server.authType !== 'none' ? <Badge variant="muted">{server.authType === 'oauth' ? 'OAuth' : 'Authenticated'}</Badge> : null}
-    </>}
-    detail={host}
-    onEdit={() => onEdit(server)}
-  >
-    {server.toolCatalogError ? <p className="line-clamp-2 text-xs text-red-500" title={server.toolCatalogError}>Tools unavailable: {server.toolCatalogError}</p> : null}
-  </ExtensionCard>
 }

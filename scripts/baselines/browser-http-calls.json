@@ -210,8 +210,7 @@
     "src/features/integrations/components/IntegrationsView.tsx"
   ],
   "integrations.getResponse": [
-    "src/components/mentions/mention-search.ts",
-    "src/features/integrations/components/IntegrationsDialog.tsx"
+    "src/components/mentions/mention-search.ts"
   ],
   "mcpAccess.authorize": [
     "src/app/oauth/authorize/AuthorizeClient.tsx"

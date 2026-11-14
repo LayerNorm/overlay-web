@@ -1,232 +1,55 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
-import type {
-ConnectorCatalogItem
-} from '@overlay/app-core'
-import {
-Loader2,
-Plus
-} from 'lucide-react'
-import { useState, type ReactNode } from 'react'
-import { HeaderSearch, ListRow, Button } from '@overlay/ui/primitives'
-import { AppScreenBody, AppScreenHeader } from '../shell'
 
-export interface ExtensionPageHeaderProps {
-  title: string
-  searchQuery: string
-  searchPlaceholder: string
-  searchTitle: string
-  action?: ReactNode
-  /** Subview tabs (Skills, MCPs, Connectors, Apps) supplied by the app shell. */
-  tabs?: ReactNode
-  onSearchQueryChange: (query: string) => void
-}
+import type { ConnectorCatalogItem } from '@overlay/app-core'
+import { Loader2 } from 'lucide-react'
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@overlay/ui'
+import { ExtensionCatalogLogoTile } from './catalog-page'
 
-export function ExtensionPageHeader({
-  title,
-  searchQuery,
-  searchPlaceholder,
-  searchTitle,
-  action,
-  tabs,
-  onSearchQueryChange,
-}: ExtensionPageHeaderProps) {
-  return (
-    <AppScreenHeader
-      title={title}
-      search={
-        <HeaderSearch
-          value={searchQuery}
-          onChange={onSearchQueryChange}
-          label={searchTitle}
-          placeholder={searchPlaceholder}
-        />
-      }
-      actions={action}
-      tabs={tabs}
-    />
-  )
-}
-
-export interface IntegrationLogoProps {
+export interface ConnectorDetailsDialogProps {
+  connector: ConnectorCatalogItem
   logoUrl?: string | null
-  name: string
-  size?: number
+  /** The logo is black on transparent and is inverted in the dark theme. */
+  logoInvertInDark?: boolean
+  connected: boolean
+  busy?: boolean
+  /** "Workspace account" or "Your account": whose account the connection uses. */
+  accountLabel: string
+  onClose: () => void
+  onConnect: () => void
+  onDisconnect: () => void
 }
 
-export function IntegrationLogo({ logoUrl, name, size = 28 }: IntegrationLogoProps) {
-  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null)
-  const hasError = !logoUrl || failedLogoUrl === logoUrl
-
+/** What a connector does and whether it is connected, with the one action that changes that. */
+export function ConnectorDetailsDialog({ connector, logoUrl, logoInvertInDark, connected, busy, accountLabel, onClose, onConnect, onDisconnect }: ConnectorDetailsDialogProps) {
+  const managedExternally = connected && connector.capabilities?.supportsDisconnect === false
+  const connectLabel = connector.capabilities?.connectionSetup === 'provider-console' ? 'Configure' : 'Connect'
   return (
-    <span
-      className="inline-flex shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-elevated)"
-      style={{ width: size, height: size }}
-    >
-      {logoUrl && !hasError ? (
-        <img
-          src={logoUrl}
-          alt={name}
-          width={size - 10}
-          height={size - 10}
-          className="object-contain"
-          onError={() => setFailedLogoUrl(logoUrl)}
-        />
-      ) : (
-        <span className="text-xs font-bold text-(--foreground)">{name.charAt(0).toUpperCase()}</span>
-      )}
-    </span>
-  )
-}
-
-export interface IntegrationsPanelProps {
-  loading: boolean
-  loadingFallback: ReactNode
-  connectedRows: readonly ConnectorCatalogItem[]
-  availableRows: readonly ConnectorCatalogItem[]
-  connectedVisible: number
-  availableVisible: number
-  connectingSlug?: string | null
-  error?: string | null
-  logoUrls?: Readonly<Record<string, string | null>>
-  onClearError: () => void
-  onConnectToggle: (integration: ConnectorCatalogItem) => void
-  onShowMoreConnected: () => void
-  onShowMoreAvailable: () => void
-  onOpenCatalog: () => void
-}
-
-export function IntegrationsPanel({
-  loading,
-  loadingFallback,
-  connectedRows,
-  availableRows,
-  connectedVisible,
-  availableVisible,
-  connectingSlug,
-  error,
-  logoUrls,
-  onClearError,
-  onConnectToggle,
-  onShowMoreConnected,
-  onShowMoreAvailable,
-  onOpenCatalog,
-}: IntegrationsPanelProps) {
-  const connectedShown = connectedRows.slice(0, connectedVisible)
-  const availableShown = availableRows.slice(0, availableVisible)
-
-  return (
-    <AppScreenBody padding="none" maxWidth="none" className="h-full">
-      {loading ? (
-        loadingFallback
-      ) : (
-        <div className="mx-auto max-w-2xl space-y-8 px-6 py-6">
-          {error ? (
-            <div className="flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              <span>{error}</span>
-              <Button variant="ghost" type="button" aria-label="Dismiss error" onClick={onClearError} className={unstyledButton("ml-2 text-red-400 hover:text-red-300")}>✕</Button>
-            </div>
-          ) : null}
-
-          {connectedRows.length > 0 ? (
-            <div>
-              <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">Connected</p>
-              <div className="space-y-1">
-                {connectedShown.map((integration) => (
-                  <IntegrationRow
-                    key={integration.providerKey}
-                    integration={integration}
-                    logoUrl={logoUrls?.[integration.providerKey] ?? integration.logoUrl}
-                    isConnected
-                    isConnecting={connectingSlug === integration.providerKey}
-                    onAction={onConnectToggle}
-                  />
-                ))}
-              </div>
-              {connectedVisible < connectedRows.length ? (
-                <ShowMoreButton onClick={onShowMoreConnected} />
-              ) : null}
-            </div>
-          ) : null}
-
-          <div>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-(--muted-light)">Available</p>
-              <Button variant="secondary" size="sm"
-                type="button"
-                onClick={onOpenCatalog}
-                title="Browse all integrations"
-              >
-                <Plus size={12} />
-                Add
-              </Button>
-            </div>
-            <div className="space-y-1">
-              {availableShown.map((integration) => (
-                <IntegrationRow
-                  key={integration.providerKey}
-                  integration={integration}
-                  logoUrl={logoUrls?.[integration.providerKey] ?? integration.logoUrl}
-                  isConnected={false}
-                  isConnecting={connectingSlug === integration.providerKey}
-                  onAction={onConnectToggle}
-                />
-              ))}
-            </div>
-            {availableVisible < availableRows.length ? (
-              <ShowMoreButton onClick={onShowMoreAvailable} />
-            ) : null}
+    <Dialog open onOpenChange={open => { if (!open) onClose() }}>
+      <DialogContent className="flex w-[min(480px,calc(100vw-2rem))] flex-col gap-0 p-0">
+        <DialogHeader className="items-start justify-start gap-3 px-6 pt-6 pr-12 pb-5">
+          <ExtensionCatalogLogoTile name={connector.name} logo={{ kind: 'image', src: logoUrl ?? connector.logoUrl, invertInDark: logoInvertInDark }} />
+          <div className="min-w-0">
+            <DialogTitle className="text-lg">{connector.name}</DialogTitle>
+            <DialogDescription className="mt-1 line-clamp-3 text-sm">{connector.description || 'Lets your agents use this app.'}</DialogDescription>
           </div>
-        </div>
-      )}
-    </AppScreenBody>
-  )
-}
-
-function ShowMoreButton({ onClick }: { onClick: () => void }) {
-  return (
-    <Button variant="secondary" size="sm" className="mt-3 w-full"
-      type="button"
-      onClick={onClick}
-    >
-      Show more
-    </Button>
-  )
-}
-
-function IntegrationRow({
-  integration,
-  logoUrl,
-  isConnected,
-  isConnecting,
-  onAction,
-}: {
-  integration: ConnectorCatalogItem
-  logoUrl?: string | null
-  isConnected: boolean
-  isConnecting: boolean
-  onAction: (integration: ConnectorCatalogItem) => void
-}) {
-  const actionUnavailable = isConnected && integration.capabilities?.supportsDisconnect === false
-  const actionLabel = isConnected
-    ? actionUnavailable ? 'Managed externally' : 'Disconnect'
-    : integration.capabilities?.connectionSetup === 'provider-console' ? 'Configure' : 'Connect'
-  return (
-    <ListRow
-      leading={<IntegrationLogo logoUrl={logoUrl} name={integration.name} />}
-      title={integration.name}
-      description={integration.description}
-      trailing={
-        <Button variant="secondary" size="sm"
-          type="button"
-          onClick={() => onAction(integration)}
-          disabled={isConnecting || actionUnavailable}
-        >
-          {isConnecting ? (
-            <Loader2 size={11} className="animate-spin" />
-          ) : actionLabel}
-        </Button>
-      }
-    />
+        </DialogHeader>
+        <dl className="mx-6 mb-6 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+          <dt className="text-(--muted)">Status</dt><dd>{connected ? 'Connected' : 'Not connected'}</dd>
+          <dt className="text-(--muted)">Account</dt><dd>{accountLabel}</dd>
+        </dl>
+        <DialogFooter className="m-0 justify-end gap-2 px-6 pb-6">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          {connected ? (
+            <Button variant="secondary" disabled={busy || managedExternally} onClick={onDisconnect}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : null}{managedExternally ? 'Managed externally' : 'Disconnect'}
+            </Button>
+          ) : (
+            <Button variant="primary" disabled={busy} onClick={onConnect}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : null}{connectLabel}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
