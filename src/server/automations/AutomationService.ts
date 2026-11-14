@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
+import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 import type {
   AutomationForUpdateNote,
   AutomationRepository,
@@ -50,6 +51,7 @@ export type AutomationServiceDeps = {
   ) => Promise<{ runId: string }>
   clock?: AutomationServiceClock
   entitlementPolicy: AutomationEntitlementPolicy
+  lifecycleEvents?: () => LifecycleEventPublisher
   repository: AutomationRepository
   requireExecution?: typeof requireWorkspaceExecution
 }
@@ -683,7 +685,40 @@ export class AutomationService {
     userId: string
   }): Promise<boolean> {
     if (!this.deps.repository.settleManualRun) throw new Error('Owner-fenced automation settlement is unavailable.')
-    return await this.deps.repository.settleManualRun(args)
+    const settled = await this.deps.repository.settleManualRun(args)
+    if (settled && (args.status === 'completed' || args.status === 'failed')) {
+      await this.publishRunOutcome(args.runId, args.status)
+    }
+    return settled
+  }
+
+  /**
+   * The one place a run's outcome becomes a lifecycle event (failure email,
+   * audit, metrics). Every run settles through settleRun, so scheduled runs,
+   * Run now and /test all report. Best effort: the run is already settled.
+   */
+  private async publishRunOutcome(runId: string, status: 'completed' | 'failed'): Promise<void> {
+    const publisher = this.deps.lifecycleEvents?.()
+    if (!publisher) return
+    try {
+      const payload = await this.deps.repository.getRunForExecution({ runId })
+      if (!payload) return
+      const { run, automation } = payload
+      const automationName = automation.name || automation.title
+      await publisher.publish({
+        attributes: {
+          execution: run.triggerSource === 'manual' ? 'manual' : 'scheduled',
+          ...(automationName ? { automationName } : {}),
+          ...(status === 'failed' ? { failureClass: 'unknown' as const } : {}),
+        },
+        idempotencyKey: `${status === 'completed' ? 'automation.succeeded' : 'automation.failed'}:${runId}`,
+        name: status === 'completed' ? 'automation.succeeded' : 'automation.failed',
+        resource: { automationId: automation._id, id: runId, type: 'automation_run' },
+        userId: run.userId,
+      })
+    } catch (error) {
+      logger.warn('[automations] run outcome lifecycle event failed', { runId, error })
+    }
   }
 
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {

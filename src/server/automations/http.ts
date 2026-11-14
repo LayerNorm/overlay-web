@@ -32,6 +32,7 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
 export const automationService = new AutomationService({
   automationWorkflowStarter: (input) => start(automationRunWorkflow, [input]),
   entitlementPolicy,
+  lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
   repository: new ConvexAutomationRepository(),
 })
 

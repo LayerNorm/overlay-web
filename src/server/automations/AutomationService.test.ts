@@ -7,6 +7,8 @@ import {
 } from './AutomationEntitlementPolicy'
 import type { AutomationRepository } from './AutomationRepository'
 import { WorkspaceExecutionError, requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
+import { LifecycleEventPublisher, LIFECYCLE_EVENT_TOPIC } from '@/server/lifecycle-events'
+import type { EventBus } from '@overlay/app-core'
 import type { AutomationRunWorkflowInput } from '@/server/workflows/automation-run'
 
 test('owner-fenced settlement retains the repository instance for its server credentials', async () => {
@@ -759,4 +761,70 @@ test('AutomationService.updateAutomation refuses a save from an older version be
   )
   assert.equal(repository.updatedAutomations.length, 0)
   assert.equal(repository.updateNotes.length, 0)
+})
+
+// ---------------------------------------------------------------------------
+// Run outcome lifecycle events (failure email, audit, metrics)
+// ---------------------------------------------------------------------------
+
+class CapturingEventBus implements EventBus {
+  readonly events: Array<{ payload: unknown; topic: string }> = []
+  async publish(topic: string, payload: unknown): Promise<void> { this.events.push({ topic, payload }) }
+  subscribe(): () => void { return () => {} }
+}
+
+function settlingService(settled: boolean, triggerSource?: string) {
+  const eventBus = new CapturingEventBus()
+  const repository = createRepository({
+    async settleManualRun() { return settled },
+    async getRunForExecution() {
+      return {
+        run: { _id: 'run_1', userId: 'user_1', status: 'failed', scheduledFor: 1, ...(triggerSource ? { triggerSource } : {}) },
+        automation: { _id: 'automation_1', userId: 'user_1', name: 'Daily digest', instructions: 'secret instructions' },
+      } as never
+    },
+  })
+  const service = new AutomationService({
+    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
+    repository,
+    lifecycleEvents: () => new LifecycleEventPublisher({ eventBus }),
+  })
+  const settle = (status: 'completed' | 'failed' | 'cancelled' | 'skipped') => service.settleRun({
+    runId: 'run_1', userId: 'user_1', expectedWorkflowRunId: 'workflow', expectedStatus: 'running', status,
+  })
+  const published = () => eventBus.events.filter(e => e.topic === LIFECYCLE_EVENT_TOPIC).map(e => {
+    const p = e.payload as { name: string; attributes: unknown; resource: unknown; idempotencyKey: string }
+    return { name: p.name, attributes: p.attributes, resource: p.resource, idempotencyKey: p.idempotencyKey }
+  })
+  return { settle, published }
+}
+
+test('a failed run publishes automation.failed once settled, without automation content', async () => {
+  const { settle, published } = settlingService(true)
+  assert.equal(await settle('failed'), true)
+  assert.deepEqual(published(), [{
+    name: 'automation.failed',
+    attributes: { execution: 'scheduled', automationName: 'Daily digest', failureClass: 'unknown' },
+    resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
+    idempotencyKey: 'automation.failed:run_1',
+  }])
+  assert.ok(!JSON.stringify(published()).includes('secret instructions'))
+})
+
+test('a completed manual run publishes automation.succeeded', async () => {
+  const { settle, published } = settlingService(true, 'manual')
+  await settle('completed')
+  assert.deepEqual(published().map(e => [e.name, e.attributes]), [
+    ['automation.succeeded', { execution: 'manual', automationName: 'Daily digest' }],
+  ])
+})
+
+test('no event when settlement lost its owner fence, or for cancelled and skipped runs', async () => {
+  const lost = settlingService(false)
+  assert.equal(await lost.settle('failed'), false)
+  assert.deepEqual(lost.published(), [])
+  const other = settlingService(true)
+  await other.settle('cancelled')
+  await other.settle('skipped')
+  assert.deepEqual(other.published(), [])
 })
