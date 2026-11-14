@@ -141,12 +141,20 @@ function containsWeekday(text: string): boolean {
   return /\b(?:sundays?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?)\b/i.test(text)
 }
 
+function containsDailyCadence(text: string): boolean {
+  return (
+    /\bevery day\b/i.test(text) ||
+    /\bdaily(?=\s*(?:at|and|or|starting|from)\b|[,.!?;:]|$)/i.test(text) ||
+    /\b(?:run|runs|repeat|repeats|schedule|scheduled|execute|executes)\s+(?:it\s+)?daily\b/i.test(text)
+  )
+}
+
 function parseCadence(text: string): ParsedValue<ScheduleCadence> {
   const intervalMatches = [...text.matchAll(/\bevery\s+(\d+)\s+minutes?\b/gi)]
   const hourly = /\b(?:hourly|every hour)\b/i.test(text)
   const monthly = /\bmonthly\b|\b(?:every|each)\s+month\b/i.test(text)
   const weekly = /\bweekly\b|\bevery week\b/i.test(text) || containsWeekday(text)
-  const daily = /\bdaily\b|\bevery day\b/i.test(text)
+  const daily = containsDailyCadence(text)
   const unsupported = /\b(?:quarterly|every quarter|annual(?:ly)?|yearly|every year|every\s+\d+\s+(?:hours?|days?|weeks?|months?)|every other\s+(?:day|week|month)|biweekly|fortnightly)\b/i.test(text)
   const kinds = [
     ...(hourly || intervalMatches.length > 0 ? ['interval'] : []),

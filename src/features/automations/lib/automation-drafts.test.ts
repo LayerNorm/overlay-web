@@ -246,3 +246,25 @@ test('requests clarification instead of transforming user text or keeping a sche
     assert.equal(draft.confidence, 'low')
   }
 })
+
+test('distinguishes a daily report task from daily recurrence and retains true cadence conflicts', () => {
+  const weeklyReport = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC summarize the daily report. No integrations.',
+    assistantText: 'Summarize the report.',
+  })
+  const daily = buildAutomationDraftFromTurn({
+    userText: 'Run daily at 01:00 UTC, summarize the report. No integrations.',
+    assistantText: 'Summarize the report.',
+  })
+  const conflicting = buildAutomationDraftFromTurn({
+    userText: 'Run daily and every Monday at 01:00 UTC, summarize the report. No integrations.',
+    assistantText: 'Summarize the report.',
+  })
+
+  assert.deepEqual(weeklyReport.schedule, { kind: 'weekly', dayOfWeekUTC: 1, hourUTC: 1, minuteUTC: 0 })
+  assert.equal(weeklyReport.missingFields.includes('Confirm schedule frequency'), false)
+  assert.deepEqual(daily.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
+  assert.equal(daily.missingFields.includes('Confirm schedule frequency'), false)
+  assert.ok(conflicting.missingFields.includes('Confirm schedule frequency'))
+  assert.equal(conflicting.confidence, 'low')
+})
