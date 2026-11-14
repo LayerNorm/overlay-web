@@ -24,6 +24,7 @@ import type {
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
+import type { JsonRenderActions } from '../JsonRenderCard'
 import { UserMessageBubble } from '../UserMessageBubble'
 import { Message, MessageContent } from '@overlay/ui/ai'
 import { isRunPlanSettled, RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
@@ -68,7 +69,7 @@ export interface ChatExchangeProps {
   responseSources?: readonly ChatTranscriptSourceView[]
   isStreaming: boolean
   isTextStreaming: boolean
-  /** Persisted turn time (assistant row createdAt→updatedAt); falls back to the live measure. */
+  /** Persisted turn time; the live measure is used when no persisted duration is available. */
   workedDurationMs?: number | null
   /** The steps the agent is working through, shown at the bottom of the response. */
   plan?: readonly RunPlanStep[]
@@ -105,6 +106,7 @@ export interface ChatExchangeProps {
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiJsonRenderActions?: JsonRenderActions
   generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
   presentation?: Partial<ChatTranscriptPresentation>
@@ -157,7 +159,7 @@ export function ChatExchange({
   responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
-  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation, onWorkExpandedChange, workDetails,
+  generatedUiConnectorActions, generatedUiJsonRenderActions, generatedUiReadOnly, onGeneratedUiChange, presentation, onWorkExpandedChange, workDetails,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -174,8 +176,7 @@ export function ChatExchange({
     })
     const { loadingPresentation, responseSettled } = resolveLoadingPresentation(status, responseInProgress, assistantVisualBlocks)
 
-    // Turn duration: the persisted createdAt→updatedAt span wins when present;
-    // live turns still measure on the streaming→settled edge.
+    // Persisted duration wins when present; live turns measure on the streaming→settled edge.
     const workedMs = useWorkedMs(isStreaming, workedDurationMs)
 
     const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming || !responseSettled, !interrupted && !errorMessage)
@@ -196,6 +197,7 @@ export function ChatExchange({
       onCreateAutomationDraft,
       onOpenAttachmentPreview,
       generatedUiConnectorActions,
+      generatedUiJsonRenderActions,
       generatedUiReadOnly,
       onGeneratedUiChange,
     }

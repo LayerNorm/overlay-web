@@ -9,6 +9,7 @@ import { createConversationUiState } from '@overlay/chat-core'
 import { createDirectChatTransport } from '@/shared/chat/direct-chat-transport'
 import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 import { buildActStreamIdempotencyKey } from '@/shared/api/act-idempotency'
+import { removeTransientGeneratedUiPreviews } from './generated-ui-mutation'
 
 // Coalesce streamed message-state updates to ~15fps (66ms). The underlying Chat store
 // still receives every token immediately; this only throttles how often `useChat`
@@ -56,14 +57,24 @@ function createConversationRuntime(
       transport: transport(),
     }),
   ]
+  let actChat: Chat<UIMessage> | undefined
+  const clearPreviews = () => {
+    if (!actChat) return
+    const messages = actChat.messages as UIMessage[]
+    const next = removeTransientGeneratedUiPreviews(messages)
+    if (next !== messages) actChat.messages = next as never
+  }
 
   return {
     askChats,
-    actChat: new Chat({
+    actChat: actChat = new Chat({
       id: `${chatId}:act`,
       transport: transport(),
+      onError: clearPreviews,
       onFinish: ({ messages }) => {
-        askChats[0].messages = [...messages] as UIMessage[]
+        const settled = removeTransientGeneratedUiPreviews(messages as UIMessage[])
+        if (actChat && settled !== messages) actChat.messages = settled as never
+        askChats[0].messages = [...settled] as UIMessage[]
       },
     }),
     hydrated: false,
@@ -124,6 +135,12 @@ export function useChatRuntimes(activeChatId: string | null) {
     chat0Ref.current = chat0
     actChatRef.current = actChat
   })
+  useEffect(() => {
+    if (actChat.status !== 'ready' && actChat.status !== 'error') return
+    const messages = activeRuntime.actChat.messages as UIMessage[]
+    const next = removeTransientGeneratedUiPreviews(messages)
+    if (next !== messages) activeRuntime.actChat.messages = next as never
+  }, [activeRuntime, actChat.status])
   const chatInstances = useMemo(() => [chat0], [chat0])
 
   return {

@@ -4,7 +4,72 @@ import { asSchema, type ToolSet } from 'ai'
 import { DRIVER_VERSION, type SandboxInstance } from '@overlay/sandbox-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildOverlayToolSet } from './build'
-import { executeComputerActionWithApproval, executeComputerActionWithTakeover } from './overlay-executes'
+import { executeComputerActionWithApproval, executeComputerActionWithTakeover, executeRenderUi } from './overlay-executes'
+
+const renderSpec = { root: 'root', elements: { root: { type: 'Text', props: { text: 'Weekly summary' } } } }
+const renderOptions = { userId: 'user-test', serverSecret: 'secret-test', baseUrl: 'http://localhost:3000' }
+
+test('render_ui normalizes raw execute inputs, validates and returns a deterministic serialized card', async () => {
+  const result = await executeRenderUi(renderOptions, { summary: '  Weekly summary  ', title: '  Report  ', spec: renderSpec })
+  assert.equal(result.success, true)
+  if (!result.success) return
+  assert.deepEqual(result.generatedUi, { version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Weekly summary', title: 'Report', specJson: JSON.stringify(renderSpec) })
+  assert.equal((await executeRenderUi(renderOptions, { summary: 'Weekly summary', title: 'Report', spec: renderSpec })).id, result.id)
+  const untitled = await executeRenderUi(renderOptions, { summary: 'Summary', title: ' ', spec: renderSpec })
+  assert.ok(untitled.success && !('title' in untitled.generatedUi))
+})
+
+test('render_ui compiles final tool-argument specStream and requires exactly one representation', async () => {
+  const lines = [
+    { op: 'add', path: '/root', value: 'view' },
+    { op: 'add', path: '/elements/view', value: { type: 'Stack', props: {}, children: [] } },
+    { op: 'add', path: '/elements/title', value: { type: 'Text', props: { text: 'Weekly summary' } } },
+    { op: 'replace', path: '/elements/view/children', value: ['title'] },
+  ]
+  const specStream = lines.map(line => JSON.stringify(line)).join('\n')
+  const finalSpec = { root: 'view', elements: { view: { type: 'Stack', props: {}, children: ['title'] }, title: { type: 'Text', props: { text: 'Weekly summary' } } } }
+  const inputSchema = buildOverlayToolSet({ ...renderOptions, allowedToolIds: [] }).render_ui!.inputSchema as { safeParse(input: unknown): { success: boolean } }
+  assert.equal(inputSchema.safeParse({ summary: 'Summary', spec: renderSpec, specStream }).success, false)
+  assert.equal(inputSchema.safeParse({ summary: 'Summary' }).success, false)
+  assert.equal(inputSchema.safeParse({ summary: 'Summary', specStream }).success, true)
+  const output = await executeRenderUi(renderOptions, { summary: 'Summary', specStream })
+  assert.equal(output.success, true)
+  if (output.success) {
+    assert.deepEqual(JSON.parse(output.generatedUi.specJson), finalSpec)
+    assert.equal('specStream' in output.generatedUi, false)
+  }
+  assert.equal((await executeRenderUi(renderOptions, { summary: 'Summary', specStream: `${specStream}\n{` })).success, false)
+})
+
+test('render_ui rejects invalid raw payloads with bounded repair details', async () => {
+  for (const input of [null, {}, { summary: ' ', spec: renderSpec }, { summary: 'x'.repeat(1001), spec: renderSpec },
+    { summary: 'Summary', title: 123, spec: renderSpec }, { summary: 'Summary', title: 'x'.repeat(121), spec: renderSpec },
+    { summary: 'Summary', spec: { root: 'root', elements: { root: { type: 'Unknown', props: {} } } } },
+    { summary: 'Summary', spec: { root: 'root', elements: { root: { type: 'Link', props: { label: 'Unsafe', url: 'http://example.com' } } } } },
+  ]) {
+    const result = await executeRenderUi(renderOptions, input)
+    assert.equal(result.success, false)
+    if (result.success) continue
+    assert.equal(result.code, 'tool_validation_failure')
+    assert.ok(result.error && result.hint)
+    assert.ok(result.issues.length > 0 && result.issues.length <= 12)
+    assert.ok(!('generatedUi' in result))
+  }
+})
+
+test('personal, native and automation builders expose render_ui with a permissive object schema', async () => {
+  for (const surface of [{}, { agentId: 'agent', sharedRoom: true }, { automationId: 'automation' }]) {
+    const tools = buildOverlayToolSet({ ...renderOptions, ...surface, allowedToolIds: [] })
+    assert.ok(tools.present_generated_ui && tools.render_ui)
+    const schema = await asSchema(tools.render_ui.inputSchema).jsonSchema as { type: string; properties: { spec: { type: string; additionalProperties: boolean } } }
+    assert.equal(schema.type, 'object')
+    assert.equal(schema.properties.spec.type, 'object')
+    assert.equal(schema.properties.spec.additionalProperties, true)
+    const execute = tools.render_ui.execute as unknown as (input: unknown) => Promise<{ success: boolean }>
+    assert.equal((await execute({ summary: 'Summary', spec: {} })).success, false)
+    assert.equal((await execute({ summary: 'Summary', spec: renderSpec })).success, true)
+  }
+})
 
 function buildTestTools() {
   return buildOverlayToolSet({

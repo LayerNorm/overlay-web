@@ -1,9 +1,55 @@
 import { safeHttpUrl } from './sources'
+import { createJsonRenderSpecStreamCompiler, GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from './generative-ui'
 
 export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
+export const GENERATED_UI_TOOL_IDS: ReadonlySet<string> = new Set(['present_generated_ui', 'render_ui'])
 
-export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire'
+export function mergeJsonRenderState(current: GeneratedJsonRenderData, next: GeneratedJsonRenderData): GeneratedJsonRenderData {
+  if (current.specJson !== next.specJson || current.summary !== next.summary || current.title !== next.title
+    || current.catalogVersion !== next.catalogVersion) throw new Error('Generated UI content cannot be changed')
+  if (current.submittedAt !== undefined) {
+    if (current.stateJson === next.stateJson && current.submittedAt === next.submittedAt) return current
+    throw new Error('This form has already been submitted')
+  }
+  if (next.stateJson !== undefined) {
+    if (new TextEncoder().encode(next.stateJson).byteLength > 65_536) throw new Error('Form state is too large')
+    const state: unknown = JSON.parse(next.stateJson)
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Invalid form state')
+  }
+  if (next.submittedAt !== undefined && (!Number.isFinite(next.submittedAt) || next.submittedAt < 0)) throw new Error('Invalid submission time')
+  return { ...current, stateJson: next.stateJson, submittedAt: next.submittedAt }
+}
+
+export function generatedUiDeliveryText(content: string, parts?: readonly unknown[]): string {
+  const cards = (parts ?? []).filter(isGeneratedUiPart).filter(part => part.data.kind === 'json_render')
+  if (!cards.length) return content
+  const rendered = (parts ?? []).flatMap(part => {
+    if (isGeneratedUiPart(part) && part.data.kind === 'json_render') {
+      const { title, summary } = part.data
+      const heading = title ? `**${title.replace(/[\\*_`<>]/g, '\\$&')}**\n` : ''
+      return [`${heading}${summary}`]
+    }
+    if (isGeneratedUiPart(part)) return [generatedUiDataToPlainText(part.data)]
+    const text = part as { type?: string; text?: unknown }
+    return text?.type === 'text' && typeof text.text === 'string' ? [text.text] : []
+  })
+  return rendered.join('\n\n')
+}
+
+export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire' | 'json_render'
+
+export type GeneratedJsonRenderData = {
+  version: typeof GENERATED_UI_VERSION
+  kind: 'json_render'
+  catalogVersion: number
+  summary: string
+  title?: string
+  specJson: string
+  streaming?: boolean
+  stateJson?: string
+  submittedAt?: number
+}
 
 export type GeneratedQuestionnaireData = {
   version: typeof GENERATED_UI_VERSION
@@ -51,6 +97,7 @@ export type GeneratedConnectorData = {
 }
 
 export type GeneratedUiData =
+  | GeneratedJsonRenderData
   | GeneratedTextDraftData
   | GeneratedEmailDraftData
   | GeneratedConnectorData
@@ -179,10 +226,28 @@ function normalizeConnector(record: Record<string, unknown>): GeneratedConnector
   }
 }
 
+function normalizeJsonRender(record: Record<string, unknown>): GeneratedJsonRenderData | null {
+  if (typeof record.catalogVersion !== 'number' || !Number.isFinite(record.catalogVersion)
+    || typeof record.summary !== 'string' || !record.summary.trim()
+    || typeof record.specJson !== 'string' || !record.specJson.trim()
+    || (record.title !== undefined && typeof record.title !== 'string')
+    || (record.stateJson !== undefined && typeof record.stateJson !== 'string')
+    || (record.submittedAt !== undefined && (typeof record.submittedAt !== 'number' || !Number.isFinite(record.submittedAt)))) return null
+  return {
+    version: GENERATED_UI_VERSION, kind: 'json_render', catalogVersion: record.catalogVersion,
+    summary: record.summary, specJson: record.specJson,
+    ...(record.streaming === true ? { streaming: true } : {}),
+    ...(record.title !== undefined ? { title: record.title as string } : {}),
+    ...(record.stateJson !== undefined ? { stateJson: record.stateJson as string } : {}),
+    ...(record.submittedAt !== undefined ? { submittedAt: record.submittedAt as number } : {}),
+  }
+}
+
 export function normalizeGeneratedUiData(value: unknown): GeneratedUiData | null {
   const record = asRecord(value)
   if (!record || record.version !== GENERATED_UI_VERSION) return null
   switch (record.kind) {
+    case 'json_render': return normalizeJsonRender(record)
     case 'questionnaire': return normalizeQuestionnaire(record)
     case 'draft.text': return normalizeTextDraft(record)
     case 'draft.email': return normalizeEmailDraft(record)
@@ -303,7 +368,23 @@ export function isGeneratedUiPart(value: unknown): value is GeneratedUiPart {
   return isGeneratedUiData(record.data)
 }
 
+export function normalizeGeneratedUiPart(value: unknown): GeneratedUiPart | null {
+  const record = asRecord(value)
+  if (!record) return null
+  const persisted = record.type === 'data' && record.dataType === GENERATED_UI_DATA_TYPE
+  const sdkKeyed = record.type === `data-${GENERATED_UI_DATA_TYPE}`
+    && (record.dataType === undefined || record.dataType === GENERATED_UI_DATA_TYPE)
+  const id = nonEmptyString(record.id)
+  const data = normalizeGeneratedUiData(record.data)
+  if ((!persisted && !sdkKeyed) || !id || !data) return null
+  return {
+    type: 'data', id, dataType: GENERATED_UI_DATA_TYPE, data,
+    ...(record.transient === true || (data.kind === 'json_render' && data.streaming === true) ? { transient: true } : {}),
+  }
+}
+
 export function generatedUiDataToPlainText(data: GeneratedUiData): string {
+  if (data.kind === 'json_render') return data.summary
   if (data.kind === 'questionnaire') return [data.prompt, ...data.choices.map((choice) => choice.label)].join('\n')
   if (data.kind === 'draft.text') {
     return [data.title, data.body].filter(Boolean).join('\n\n')
@@ -369,7 +450,42 @@ export function buildStreamingGeneratedUiPart(id: string, value: unknown): Gener
     }
   }
 
+  if (Object.hasOwn(record, 'spec') === Object.hasOwn(record, 'specStream')) return null
+  if (typeof record.specStream === 'string') return buildStreamingJsonRenderPart(partId, record)
   return null
+}
+
+function sanitizeJsonRenderPreview(partial: Record<string, unknown>) {
+  if (typeof partial.root !== 'string' || !partial.elements || typeof partial.elements !== 'object' || Array.isArray(partial.elements)) return null
+  const state = partial.state === undefined ? {} : { state: partial.state }
+  const elements = { ...(partial.elements as Record<string, Record<string, unknown>>) }
+  for (const [key, rawElement] of Object.entries(elements)) {
+    const element = JSON.parse(JSON.stringify(rawElement)) as Record<string, unknown>
+    elements[key] = element
+    if (!element || typeof element.type !== 'string' || !element.props || typeof element.props !== 'object') { delete elements[key]; continue }
+    const candidate = validateJsonRenderSpec({ root: key, elements: { [key]: { ...element, children: [] } }, ...state })
+    if (!candidate.ok) delete elements[key]
+  }
+  for (const element of Object.values(elements)) {
+    if (Array.isArray(element.children)) element.children = element.children.filter(child => typeof child === 'string' && Object.hasOwn(elements, child))
+  }
+  const validated = validateJsonRenderSpec({ root: partial.root, elements, ...state })
+  return validated.ok ? validated : null
+}
+
+function buildStreamingJsonRenderPart(partId: string, record: Record<string, unknown>): GeneratedUiPart | null {
+  try {
+    const compiler = createJsonRenderSpecStreamCompiler()
+    compiler.push(record.specStream as string)
+    const validated = sanitizeJsonRenderPreview(compiler.getResult())
+    if (!validated) return null
+    const summary = typeof record.summary === 'string' && record.summary.trim() ? record.summary.trim().slice(0, 1000) : 'Building view'
+    const title = typeof record.title === 'string' && record.title.trim() ? record.title.trim().slice(0, 120) : undefined
+    return { type: 'data', id: partId, dataType: GENERATED_UI_DATA_TYPE, transient: true, data: {
+      version: GENERATED_UI_VERSION, kind: 'json_render', catalogVersion: GENERATIVE_UI_CATALOG_VERSION, summary,
+      ...(title ? { title } : {}), specJson: JSON.stringify(validated.spec), streaming: true,
+    } }
+  } catch { return null }
 }
 
 export function buildGeneratedUiPart(id: string, data: unknown): GeneratedUiPart | null {

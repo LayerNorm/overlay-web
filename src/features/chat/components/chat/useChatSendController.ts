@@ -30,6 +30,7 @@ import type {
 import {
   buildSubmittedComposerSnapshot,
   getSendValidationError,
+  resolveComposerSubmission,
   PENDING_FIRST_CHAT_ID,
   type CompleteSession,
   type ReplyContext,
@@ -365,15 +366,18 @@ export function useChatSendController({
     completeSession(chatId, active)
   }, [completeSession, createNewChat, pendingFirstSendRef, tryActivatePendingFirstSend])
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (textOverride?: string) => {
     if (nativeThreadReadOnly) return
     if (!userId && !authUser) {
       try { sessionStorage.setItem('overlay:guest-draft', inputRef.current) } catch { /* ignore */ }
       requireAuth('send')
       return
     }
-    const replyCtxSnapshot = replyContext
-    const submittedInput = inputRef.current
+    const composerInput = inputRef.current
+    const submission = resolveComposerSubmission({ text: composerInput, attachedImages, pendingChatDocuments, mentions, replyContext, effectiveGenType }, textOverride)
+    const replyCtxSnapshot = submission.replyContext
+    const submittedInput = submission.text
+    const submittedGenType = submission.effectiveGenType
     const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
@@ -381,9 +385,9 @@ export function useChatSendController({
       activeChatTitle,
       selectedImageModels,
       selectedVideoModels,
-      attachedImages,
-      pendingChatDocuments,
-      mentions,
+      attachedImages: submission.attachedImages,
+      pendingChatDocuments: submission.pendingChatDocuments,
+      mentions: submission.mentions,
       isTemporaryChat,
       mode,
       selectedToolIds,
@@ -391,6 +395,7 @@ export function useChatSendController({
       text: submittedInput.trim(),
     })
     const clearSubmittedComposer = () => {
+      if (textOverride !== undefined) return
       textareaRef.current?.clear()
       setInput('')
       setMentions([])
@@ -402,7 +407,7 @@ export function useChatSendController({
     }
     if (isActiveLoading) return
 
-    const sendValidationError = getSendValidationError(snapshot, effectiveGenType)
+    const sendValidationError = getSendValidationError(snapshot, submittedGenType)
     if (sendValidationError === 'uploading-documents') {
       setAttachmentError('Wait for documents to finish indexing.')
       return
@@ -441,7 +446,7 @@ export function useChatSendController({
       return !isCurrentSendScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
-      || inputRef.current !== submittedInput
+      || inputRef.current !== composerInput
       || latestComposerStateRef.current !== submittedComposerState
     }
     if (!writable || sendIntentChanged()) return
@@ -462,6 +467,7 @@ export function useChatSendController({
       if (!isCurrentSendScope() || activeChatIdRef.current !== originalChatId) return
       setIsOptimisticLoading(false)
       setComposerNotice('Could not save your message. Retry to send it.')
+      if (textOverride !== undefined) return
       const currentComposer = latestComposerStateRef.current
       if (
         inputRef.current === ''
@@ -478,7 +484,7 @@ export function useChatSendController({
       }
     }
 
-    if (effectiveGenType === 'image' || effectiveGenType === 'video') {
+    if (submittedGenType === 'image' || submittedGenType === 'video') {
       clearSubmittedComposer()
       try {
         await sendMediaTurn({
@@ -487,7 +493,7 @@ export function useChatSendController({
           applyUiStateToView,
           completeSession,
           createNewChat,
-          effectiveGenType,
+          effectiveGenType: submittedGenType,
           emptyRuntime: emptyRuntimeRef.current,
           ensureConversationRuntime,
           isSendBlocked,
@@ -561,8 +567,10 @@ export function useChatSendController({
         startSession,
         updateRuntimeUiState,
       })
+      return isCurrentSendScope()
     } catch {
       restoreFailedSubmission()
+      return false
     }
   }, [
     addAssistantNote,

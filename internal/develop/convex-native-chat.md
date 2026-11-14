@@ -3,6 +3,31 @@ title: "Convex-native personal chat"
 description: "Reproducible realtime baselines, retained consumers, and migration security requirements."
 ---
 
+## Generated UI persistence
+
+The message-part unions in `convex/schema.ts`, `convex/chat/conversations.ts`, and
+`@overlay/app-core` accept `json_render` alongside the existing typed cards.
+Its `specJson` and optional `stateJson` are serialized strings so `$state` and
+`$bindState` keys never reach Convex object-field validation. Preserve these strings
+and `catalogVersion`, `summary`, `title`, and `submittedAt` during normalization and
+updates. Existing persisted cards need no migration.
+
+`@overlay/chat-core/generative-ui` owns the isomorphic v1 catalog, prompt helper,
+and validation boundary. Only HTTPS links/actions and HTTPS or exact workspace
+file-content image URLs are valid. `render_ui` now validates raw input before
+returning a serialized generated-UI payload; successful results persist and recover
+through the same ordered part pipeline as typed cards. Both tools are conversation-local
+and withheld from external and connected-agent MCP clients. The catalog prompt is
+appended after the stable harness prefix only when the tool is admitted.
+`GeneratedUiCard` lazily loads the validated json-render registry. Copy/link actions
+work locally; send/submit use the existing conversation or thread send path. State
+saves after 700 ms and flushes on unmount via the existing generated-UI mutations.
+`updateMessageUiPart` grants active room members access only to existing json-render
+state, while native personal chats use `personal.setGeneratedUi`. Both enforce
+immutable specs, bounded JSON object state and immutable submitted cards. Existing
+draft-card ownership is unchanged. Read-only, archived and external threads disable
+editing. Slack and automation delivery project title/summary only, never form state.
+
 Workflow stream transport behavior and provider-free regression coverage are
 documented in [Convex and Vercel Workflow](./convex-workflow.md#workflow-stream-transport).
 
@@ -182,13 +207,21 @@ policy suppresses file metadata without suppressing text history.
 
 ### Unified durable public streaming
 
-New root Harness runs may carry immutable `publicStreamVersion: 1` when their
-workspace ID is an exact entry in the server-only
-`OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` comma-separated allowlist. Empty is
+New root Harness runs may carry immutable `publicStreamVersion: 1` when
+`render_ui` is among their admitted tools, or when their workspace ID is an
+exact entry in the server-only `OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS`
+comma-separated allowlist. The `render_ui` rule is limited to roots that admit
+that tool; other roots still require an exact allowlist entry. Empty is
 disabled; `*` is not a wildcard. Personal, workspace-agent and automation
-admissions use the same policy helper. Existing roots keep the publishing path
-recorded in their admission policy when the environment changes; removing an ID
-stops future enrollment but does not switch an in-flight run.
+admissions use the same policy helper. Existing roots retain the publishing
+path recorded in their admission policy, regardless of later tool or
+environment changes.
+
+To roll back automatic `render_ui` enrollment, remove its predicate from
+`selectPublicStreamVersion` while retaining any desired exact-workspace
+allowlist enrollment. This affects new roots only: do not rewrite existing
+policies or switch an in-flight run; let enrolled streams drain on their
+recorded protocol.
 
 The versioned path publishes filtered response text from the executor's secure
 model boundary. It does not publish reasoning, child/summary/verification output
@@ -196,6 +229,21 @@ or raw tool payloads. Convex active output is provisional and distinct from
 settled transcript checkpoints. Active rows are limited to one stream per root;
 each segment is at most 8 KiB UTF-8 and visible text is capped at 160,000
 UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
+An active stream may also carry up to four bounded, typed `render_ui` preview
+snapshots in `previewJson` (128 KiB total), keyed by tool-call identity, preview
+sequence, ordering position and text offset. Snapshots contain only validated
+`specJson`, title, summary and the read-only building state; provider deltas and
+raw tool arguments are not stored. Appends and reads use the same receipt,
+execution-generation, model-reservation, delivery-owner and replay fencing as
+text. Personal SSE and native room projections render these snapshots
+transiently; terminal tool results, checkpoints and cancellation retire them.
+Final successful tool output remains the only persistent authority, and
+external workflow/Slack delivery stays summary-only.
+The separate monotonic `revision` orders visible snapshots without changing
+text's `sequence` protocol: a preview-only snapshot may have text sequence `-1`,
+while accepted preview changes/clears and text writes advance the revision.
+Identical retries do not advance it, and retained preview tombstones reject
+stale updates after a clear until the invocation is retired.
 Settling a transcript step atomically writes its checkpoint identity
 `(runId, generation, receiptId, invocation)` and retires that invocation's
 active segments. Every enrolled chat kind must settle through this projection

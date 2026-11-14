@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { isUnifiedStreamingWorkspaceEnabled, personalHarnessPolicy } from './personal-admission-policy'
 
-beforeEach(() => vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', ''))
-afterEach(() => vi.unstubAllEnvs())
-
 const input = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['write', 'read', 'read'],
   modelId: 'fixture/model', paid: true, createdAt: 1_000 }
+
+beforeEach(() => vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', ''))
+afterEach(() => vi.unstubAllEnvs())
 
 test('every admission uses v2 with no per-task spending limit; only Overlay-funded paid runs use the workspace budget', () => {
   expect(personalHarnessPolicy(input)).toEqual({ actorUserId: 'user', workspaceId: 'workspace',
@@ -24,19 +24,22 @@ test('free accounts and BYOK cannot authorize Overlay-funded model spend', () =>
   expect(personalHarnessPolicy({ ...input, modelId: 'byok/key/model' }).spendingMode).toBe('external')
 })
 
-test('unified stream enrollment is exact and immutable for an admitted root', () => {
-  expect(isUnifiedStreamingWorkspaceEnabled('workspace', ' workspace-2, workspace ')).toBe(true)
+test('render_ui roots enroll without the workspace allowlist; other roots require it', () => {
+  expect(personalHarnessPolicy({ ...input, allowedToolIds: ['render_ui'] }).publicStreamVersion).toBe(1)
+  expect(personalHarnessPolicy({ ...input, allowedToolIds: ['read'] }).publicStreamVersion).toBeUndefined()
+
+  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', 'workspace-2, workspace')
+  expect(personalHarnessPolicy({ ...input, allowedToolIds: ['read'] }).publicStreamVersion).toBe(1)
   expect(isUnifiedStreamingWorkspaceEnabled('work', 'workspace')).toBe(false)
   expect(isUnifiedStreamingWorkspaceEnabled('workspace', '*')).toBe(false)
-  expect(isUnifiedStreamingWorkspaceEnabled('workspace', '')).toBe(false)
+})
 
-  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', 'workspace')
-  const enrolled = personalHarnessPolicy(input)
-  expect(enrolled.publicStreamVersion).toBe(1)
+test('existing root policy is immutable across tool and allowlist changes', () => {
+  const enrolled = personalHarnessPolicy({ ...input, allowedToolIds: ['render_ui'] })
+  expect(personalHarnessPolicy({ ...input, allowedToolIds: ['read'], existingPolicy: enrolled }).publicStreamVersion).toBe(1)
 
-  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', '')
-  expect(personalHarnessPolicy({ ...input, existingPolicy: enrolled }).publicStreamVersion).toBe(1)
-  expect(personalHarnessPolicy({ ...input, existingPolicy: personalHarnessPolicy(input) }).publicStreamVersion).toBeUndefined()
+  const unversioned = { ...personalHarnessPolicy({ ...input, allowedToolIds: ['read'] }), publicStreamVersion: undefined }
+  expect(personalHarnessPolicy({ ...input, allowedToolIds: ['render_ui'], existingPolicy: unversioned }).publicStreamVersion).toBeUndefined()
 })
 
 test('invalid budgets fail closed', () => {

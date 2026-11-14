@@ -25,9 +25,27 @@ export function computerCapabilityNote(availableTools: ReadonlySet<string>): str
 }
 
 export function generatedUiNote(availableTools: ReadonlySet<string>): string {
-  return availableTools.has('present_generated_ui')
-    ? '\n\nGenerated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable prose (essay, memo, statement, proposal) or an email. Use kind "draft.text" for general prose drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Generated UI is prose-only: never place source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or any other machine-readable code in present_generated_ui. Every code artifact you write must be returned in a fenced Markdown code block with an appropriate language tag. Inline code is only for short identifiers or commands, never a complete code artifact. Do not duplicate the full generated draft in normal prose after calling the tool, and do not use emoji or pointing-hand callouts around connector cards.'
-    : '\n\nReturn code artifacts in fenced Markdown code blocks with an appropriate language tag. No generated-UI tool is available; provide drafts directly in your response instead of claiming to create a card.'
+  const hasDraftCards = availableTools.has('present_generated_ui')
+  const hasStructuredViews = availableTools.has('render_ui')
+  const guidance: string[] = []
+
+  if (hasDraftCards) {
+    guidance.push('Generated UI cards: use the present_generated_ui tool instead of plain markdown when the user asks you to draft substantial editable prose (essay, memo, statement, proposal), an email or a conversational questionnaire. Use kind "draft.text" for general prose drafts and kind "draft.email" for email drafts. For connector authorization prompts, use kind "connector.connect" when you have the connection URL or need a clean connection card. Generated UI is prose-only: never place source code, HTML, CSS, JavaScript, JSON, SQL, shell commands, configuration, or any other machine-readable code in present_generated_ui.')
+  }
+  if (hasStructuredViews) {
+    guidance.push('For structured comparisons, results, dashboards and multi-value forms, use render_ui, not prose drafts or short answers. Pass its spec as a tool argument, never inline JSON or model-authored HTML in assistant text.')
+  }
+
+  guidance.push('Every code artifact you write must be returned in a fenced Markdown code block with an appropriate language tag.')
+  if (hasDraftCards || hasStructuredViews) {
+    guidance.push('Inline code is only for short identifiers or commands, never a complete code artifact.')
+    guidance.push('Do not use emojis or em or en dashes in generated copy.')
+    if (hasDraftCards) guidance.push('Do not duplicate the full generated draft in normal prose after calling the tool, and do not use emoji or pointing-hand callouts around connector cards.')
+    if (hasStructuredViews) guidance.push('Do not duplicate a generated view in prose after calling render_ui.')
+  } else {
+    guidance.push('No generated-UI tool is available; provide drafts directly in your response instead of claiming to create a card.')
+  }
+  return '\n\n' + guidance.join(' ')
 }
 
 export function knowledgeNote(params: {

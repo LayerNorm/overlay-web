@@ -164,6 +164,7 @@ export type LiveConversationMessage = {
   status?: 'generating' | 'completed' | 'error'
   createdAt?: number
   updatedAt?: number
+  completedAt?: number
 }
 
 export interface GenerationResult {

@@ -483,6 +483,7 @@ export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemote
     agentPlan: message.agentPlan,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt ?? message.createdAt,
+    completedAt: message.completedAt,
     eventSequence: message.eventSequence,
     editedAt: message.editedAt,
     editHistory: message.editHistory,

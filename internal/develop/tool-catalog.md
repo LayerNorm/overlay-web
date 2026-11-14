@@ -18,7 +18,44 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
 | Agents (editing) | `create_agent`, `update_agent` |
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
-| Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
+| Chat only | `present_generated_ui` (typed drafts, connection cards and questionnaires), `render_ui` (validated catalog-based comparisons, dashboards and forms) |
+
+Both generated-UI tools are conversation-local additions in the shared tool
+builder, not capability-group grants or new toggles. Personal, native and automation
+harnesses describe and reconstruct them through the same pipeline. Run policy and
+`authorized-tools` still enforce execution; MCP adapters withhold both tools via
+`GENERATED_UI_TOOL_IDS` from `@overlay/chat-core/generated-ui`.
+
+`render_ui` takes `{ title?, summary, spec }` or `{ title?, summary, specStream }`.
+Exactly one representation is allowed. `specStream` is bounded newline-delimited
+JSON patches inside the tool argument, never assistant prose; only add/replace
+operations within `/root`, `/elements` and `/state` are accepted. Final compilation
+reuses the shared catalog validator and persists the same `specJson` shape as legacy
+calls. Summary is trimmed and required
+(1000 characters maximum); title is optional (120 characters). The executor validates
+the catalog spec and returns a durable `json_render` part, never model-authored HTML.
+Unknown component props are stripped; type, binding, action, URL and size checks stay
+strict. Container children misplaced in props are moved beside props only when the
+references are unambiguous. Initial form state lives in `spec.state`; controls use
+`$bindState` on `value` or `checked`, and submit reads that state automatically.
+Failed generated-UI calls remain visible as error activity. The model must correct
+the listed issues and retry, or plainly report that no view was displayed; it must
+not claim display without a successful tool result. The admitted catalog prompt
+includes a complete bound bug report form example.
+Copy and HTTPS link actions run locally. Follow-up messages use the existing send
+path in the card's conversation or thread. Bound state saves after 700 ms and flushes
+on unmount. Submission first persists final state and a submission marker, then sends
+readable label/value lines; duplicate submits are blocked and reloaded cards stay locked.
+If sending fails after the marker is saved, the card remains locked and asks the person
+to send their response from the composer, avoiding an automatic duplicate send.
+Only json-render state gets member-post authorization in writable workspace threads;
+room card saves use native Convex identity through `collaboration/rooms:updateMessageUiPart`
+and the same immutable-content and bounded-state merge helper as personal card saves.
+Members cannot replace a spec, change draft cards, or edit submitted state. Slack and
+automation reply-text projections use bold titles and summaries, not specs or state.
+There is no assistant-reply email transport currently; lifecycle emails contain event
+notifications, not agent output. Future reply-email consumers should use
+`generatedUiDeliveryText` from `@overlay/chat-core/generated-ui`.
 
 Not tool ids but granted as capabilities:
 
@@ -89,8 +126,8 @@ purpose, but there is no per-message opt-in yet.
 | --- | --- |
 | **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Computer. |
-| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` and `present_generated_ui`. Tools that need approval show an approval card. |
-| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
+| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*`, `present_generated_ui` and `render_ui`. Tools that need approval show an approval card. |
+| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, `render_ui`, computer tools, and `post_message`. |
 
 ## Native agent permissions
 

@@ -12,6 +12,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
 import { requireConversationAccess } from '../collaboration/directMessages'
+import { mergeJsonRenderState } from '../../packages/overlay-chat-core/src/generated-ui'
 import { cancelHarnessDelivery } from '../harness/runs'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
@@ -32,6 +33,16 @@ const generatedUiVariant = v.object({
 })
 
 export const generatedUiData = v.union(
+  v.object({
+    version: v.literal(1),
+    kind: v.literal('json_render'),
+    catalogVersion: v.number(),
+    summary: v.string(),
+    title: v.optional(v.string()),
+    specJson: v.string(),
+    stateJson: v.optional(v.string()),
+    submittedAt: v.optional(v.number()),
+  }),
   v.object({
     version: v.literal(1),
     kind: v.literal('draft.text'),
@@ -903,6 +914,7 @@ export const addMessage = mutation({
       ...(args.importedAuthorEmail ? { importedAuthorEmail: args.importedAuthorEmail } : {}),
       ...(args.importedAuthorStatus ? { importedAuthorStatus: args.importedAuthorStatus } : {}),
       status: 'completed' as const,
+      ...(args.role === 'assistant' ? { completedAt: match?.completedAt ?? now } : {}),
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
       ...(match?.role === 'user' && match.nativeSubmittedAt !== undefined ? {
@@ -1161,6 +1173,7 @@ export const completeAgentRun = mutation({
         routedModelId: args.routedModelId,
         tokens: args.tokens,
         status: 'completed',
+        completedAt: now,
         updatedAt: now,
       })
       await cleanupTerminalPublicStreams(ctx, message._id)
@@ -1494,6 +1507,7 @@ export const cancelAgentRuns = mutation({
             { type: 'text', text: sentinel.trimStart() },
           ],
           status: 'completed',
+          completedAt: now,
           updatedAt: now,
         }))
       } else if (message?.parts?.some((part) =>
@@ -1594,6 +1608,7 @@ export const settleCancelledPublicStream = internalMutation({
           receiptId: retained.receiptId, invocation: retained.invocation,
         } } : {}),
         status: 'completed',
+        completedAt: args.cancelledAt,
         updatedAt: args.cancelledAt,
       })
     }
@@ -1618,36 +1633,54 @@ export const updateMessageUiPart = mutation({
       serverSecret: args.serverSecret,
     })
     const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation || conversation.userId !== args.userId || conversation.deletedAt) {
+    if (!conversation || conversation.deletedAt) {
       throw new Error('Unauthorized')
     }
     const message = await ctx.db.get(args.messageId)
     if (
       !message ||
       message.conversationId !== args.conversationId ||
-      message.userId !== args.userId ||
-      message.role !== 'assistant'
+      message.role !== 'assistant' || message.deletedAt
     ) {
       throw new Error('Message not found')
     }
-    await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
     const parts = Array.isArray(message.parts) ? message.parts : []
+    const target = parts.find(part => isGeneratedUiPart(part) && part.id === args.partId)
+    if (target && isGeneratedUiPart(target) && target.data.kind === 'json_render' && args.data.kind !== 'json_render') throw new Error('Generated UI content cannot be changed')
+    const sharedJsonRender = (conversation.conversationType ?? 'personal') !== 'personal'
+      && target && isGeneratedUiPart(target) && target.data.kind === 'json_render' && args.data.kind === 'json_render'
+    if (sharedJsonRender) {
+      if (!conversation.workspaceId || conversation.externalPlatform) throw new Error('Unauthorized')
+      const access = await requireConversationAccess(ctx, { actorUserId: args.userId, conversationId: args.conversationId,
+        workspaceId: conversation.workspaceId, accessToken: args.accessToken, serverSecret: args.serverSecret })
+      if (access.participant?.archivedAt) throw new Error('Unauthorized')
+    } else if (conversation.userId !== args.userId || message.userId !== args.userId) throw new Error('Unauthorized')
+    await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
     let changed = false
     const nextParts = parts.map((part) => {
       if (isGeneratedUiPart(part) && part.id === args.partId) {
         changed = true
         return {
           ...part,
-          data: args.data,
+          data: part.data.kind === 'json_render' && args.data.kind === 'json_render'
+            ? mergeJsonRenderState(part.data, args.data) : args.data,
         }
       }
       return part
     })
     if (!changed) throw new Error('Generated UI part not found')
     const now = Date.now()
+    const completionRun = message.completedAt === undefined
+      ? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id))
+        .first()
+      : null
+    const completedAt = message.completedAt ?? completionRun?.completedAt
+      ?? (message.status === 'completed' ? message.updatedAt : undefined)
     await ctx.db.patch(args.messageId, {
       parts: nextParts,
       updatedAt: now,
+      ...(completedAt !== undefined ? { completedAt } : {}),
     })
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     return { success: true }
@@ -1963,6 +1996,7 @@ export const addMessages = mutation({
         updatedAt: now,
         status: 'completed' as const,
         ...row,
+        ...(row.role === 'assistant' ? { completedAt: match?.completedAt ?? now } : {}),
       }
       const id = match
         ? (await ctx.db.patch(match._id, payload), match._id)

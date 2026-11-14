@@ -17,6 +17,7 @@ import type {
   ToolVisualBlock,
 } from './types'
 import {
+  GENERATED_UI_TOOL_IDS,
   buildGeneratedUiPart,
   generatedUiDataToPlainText,
   isGeneratedUiPart,
@@ -308,13 +309,14 @@ export function resolveActAssistant<
 }
 
 export function generatedUiPartFromToolBlock(block: ToolVisualBlock) {
-  if (block.name !== 'present_generated_ui') return null
+  if (!GENERATED_UI_TOOL_IDS.has(block.name)) return null
   const output = block.toolOutput && typeof block.toolOutput === 'object'
     ? (block.toolOutput as Record<string, unknown>)
     : null
   if (!output || output.success !== true) return null
-  const id =
-    typeof output.id === 'string' && output.id.trim()
+  const id = block.name === 'render_ui'
+    ? block.key
+    : typeof output.id === 'string' && output.id.trim()
       ? output.id.trim()
       : block.key
   return buildGeneratedUiPart(id, output.generatedUi)

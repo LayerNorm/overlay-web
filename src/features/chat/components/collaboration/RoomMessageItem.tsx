@@ -113,6 +113,7 @@ export type RoomMessageView = {
 }
 
 export type RoomMessageItemProps = {
+  generatedUiJsonRenderActions?: import('@overlay/chat-react').AssistantVisualBlocksProps['generatedUiJsonRenderActions']
   readOnly?: boolean
   remoteStatus?: ReactNode
   /** Hides reactions, edit, pin and the other message actions (guided onboarding). */
@@ -310,6 +311,7 @@ export function RoomMessageItem({
   personalChatStyle = false,
   remoteStatus,
   hideToolbar = false,
+  generatedUiJsonRenderActions,
 }: RoomMessageItemProps) {
   recordRender('RoomMessageItem')
   const { mine } = message
@@ -422,6 +424,7 @@ export function RoomMessageItem({
       pinned={pinned}
       onControlRemoteQueue={onControlRemoteQueue}
       onResolveRemoteRequest={onResolveRemoteRequest}
+      generatedUiJsonRenderActions={generatedUiJsonRenderActions}
     />
   )
 }
@@ -726,7 +729,8 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
+function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus, generatedUiJsonRenderActions }: {
+  generatedUiJsonRenderActions?: RoomMessageItemProps['generatedUiJsonRenderActions']
   remoteStatus?: ReactNode
   message: RoomMessageView
   readOnly: boolean
@@ -775,6 +779,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
+        generatedUiJsonRenderActions={generatedUiJsonRenderActions}
       />
       {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
       {/* The avatar beside the name shows activity; no second indicator under the reply. */}
@@ -841,7 +846,8 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
   )
 }
 
-function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAgent, timeLabel, grouped, pinned, onControlRemoteQueue, onResolveRemoteRequest }: {
+function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAgent, timeLabel, grouped, pinned, onControlRemoteQueue, onResolveRemoteRequest, generatedUiJsonRenderActions }: {
+  generatedUiJsonRenderActions?: RoomMessageItemProps['generatedUiJsonRenderActions']
   rootProps: RoomMessageRootProps
   highlightClass: string
   toolbar: ReactNode
@@ -879,6 +885,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
             onControlRemoteQueue={onControlRemoteQueue}
             onResolveRemoteRequest={onResolveRemoteRequest}
+            generatedUiJsonRenderActions={generatedUiJsonRenderActions}
           />
         ) : (
           <HumanMessageText message={message} />

@@ -10,6 +10,7 @@ import { createMcpApprovalGate } from './mcp-approval-gate'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 import type { AgentMcpExecutionAuthority } from '@/shared/agents/agent-mcp-authority'
+import { GENERATED_UI_TOOL_IDS } from '@overlay/chat-core/generated-ui'
 
 /**
  * Overlay workspace tools for agents that connect over MCP (`/api/agent-mcp`).
@@ -25,7 +26,7 @@ import type { AgentMcpExecutionAuthority } from '@/shared/agents/agent-mcp-autho
  */
 export const HARNESS_WITHHELD_TOOL_IDS: ReadonlySet<string> = new Set([
   ...COMPUTER_TOOL_IDS,
-  'present_generated_ui',
+  ...GENERATED_UI_TOOL_IDS,
 ])
 
 export const MCP_APPROVAL_REFUSAL =

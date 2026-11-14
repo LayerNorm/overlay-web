@@ -4,7 +4,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { generatedUiData } from './conversations'
-import { normalizeGeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
+import { mergeJsonRenderState, normalizeGeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
 import { nativePersonalChatScope, requireNativePersonalChat, requireNativeWorkspace } from '../lib/nativeViewer'
 import { recordConversationEvent } from '../collaboration/events'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
@@ -434,12 +434,25 @@ export const setGeneratedUi = mutation({
       if (part.type !== 'data' || !('id' in part) || part.id !== args.partId
         || !('dataType' in part) || part.dataType !== 'overlay.generated_ui') return part
       changed = true
-      return { ...part, data: args.data }
+      const current = normalizeGeneratedUiData(part.data)
+      if (current?.kind === 'json_render' && data.kind !== 'json_render') throw new Error('Generated UI content cannot be changed')
+      return { ...part, data: current?.kind === 'json_render' && data.kind === 'json_render' ? mergeJsonRenderState(current, data) : args.data }
     })
     if (!changed) throw new Error('GENERATED_UI_NOT_FOUND')
     await admitWrite(ctx, access.userId)
     const now = Date.now()
-    await ctx.db.patch(args.messageId, { parts, updatedAt: now })
+    const completionRun = message.completedAt === undefined
+      ? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id))
+        .first()
+      : null
+    const completedAt = message.completedAt ?? completionRun?.completedAt
+      ?? (message.status === 'completed' ? message.updatedAt : undefined)
+    await ctx.db.patch(args.messageId, {
+      parts,
+      updatedAt: now,
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    })
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     return null
   },

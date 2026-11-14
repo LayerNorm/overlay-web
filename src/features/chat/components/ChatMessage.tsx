@@ -19,6 +19,7 @@ import type {
   ChatTranscriptPresentation,
 } from '@overlay/chat-react'
 import { appendInterruptionNotice, INTERRUPTED_RESPONSE_NOTICE, normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
+import { getAssistantWorkDurationMs } from '@/shared/chat/assistant-work-duration'
 import {
   assistantBlocksToPlainText,
   errorLabel,
@@ -214,13 +215,8 @@ function resolveExchangeResponse(props: TextChatMessageProps, selection: StreamS
   const responseMessageId = responseMsg && typeof (responseMsg as { id?: unknown }).id === 'string'
     ? (responseMsg as { id: string }).id
     : null
-  // Persisted turn time: the assistant row is written with status 'generating'
-  // at turn start and patched through settle, so createdAt→updatedAt spans it.
-  const responseTimestamps = responseMsg as { createdAt?: number; updatedAt?: number } | null
-  const workedDurationMs = responseTimestamps?.updatedAt && responseTimestamps.createdAt
-    && responseTimestamps.updatedAt > responseTimestamps.createdAt
-    ? responseTimestamps.updatedAt - responseTimestamps.createdAt
-    : null
+  const responseTimestamps = responseMsg as { createdAt?: number; updatedAt?: number; completedAt?: number } | null
+  const workedDurationMs = responseTimestamps ? getAssistantWorkDurationMs(responseTimestamps) : null
   return { isLatest, responseMsg, responseText, persistedStatus, responseParts, responseMessageId, workedDurationMs }
 }
 

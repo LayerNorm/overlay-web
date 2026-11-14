@@ -9,6 +9,57 @@ const mutation = (path: string) => makeFunctionReference<'mutation'>(path)
 const query = (path: string) => makeFunctionReference<'query'>(path)
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
+const jsonView = { version: 1 as const, kind: 'json_render' as const, catalogVersion: 1, summary: 'Bug report',
+  specJson: '{"root":"title","elements":{"title":{"type":"Input","props":{"label":"Title"}}}}' }
+
+async function jsonRoomFixture(conversationType: 'dm' | 'channel' = 'channel') {
+  const t = convexTest(schema, modules)
+  const ids = await t.run(async ctx => {
+    const now = Date.now()
+    for (const userId of ['member', 'outsider']) {
+      await ctx.db.insert('workspacePrincipals', { principalId: userId, workspaceId: 'ws', type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: userId, workspaceId: 'ws', principalId: userId, role: 'member', status: 'active', joinedAt: now, updatedAt: now })
+    }
+    const conversationId = await ctx.db.insert('conversations', { userId: 'owner', workspaceId: 'ws', conversationType,
+      title: 'Agent thread', lastMode: 'act', actModelId: 'model', askModelIds: [], createdAt: now, updatedAt: now, lastModified: now })
+    const participantId = await ctx.db.insert('conversationParticipants', { conversationId, workspaceId: 'ws', principalId: 'member', principalType: 'human',
+      role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now })
+    const messageId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'owner', role: 'assistant', authorKind: 'agent', authorPrincipalId: 'agent',
+      turnId: 'agent-turn', mode: 'act', content: 'Here is a form', contentType: 'text', createdAt: now, parts: [
+        { type: 'data', dataType: 'overlay.generated_ui', id: 'view', data: jsonView },
+        { type: 'data', dataType: 'overlay.generated_ui', id: 'draft', data: { version: 1, kind: 'draft.text', body: 'Draft' } },
+      ] })
+    return { conversationId, participantId, messageId }
+  })
+  return { t, ...ids, args: { conversationId: ids.conversationId, messageId: ids.messageId, userId: 'member', serverSecret: secret, partId: 'view', data: { ...jsonView, stateJson: '{"title":"A bug"}' } } }
+}
+
+test('posting members can edit and submit only json-render parts in agent DMs and room threads', async () => {
+  for (const type of ['dm', 'channel'] as const) {
+    const { t, args, messageId } = await jsonRoomFixture(type)
+    await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), args)).resolves.toEqual({ success: true })
+    const stored = await t.run(ctx => ctx.db.get(messageId))
+    expect(stored?.parts?.[0]).toMatchObject({ data: { ...jsonView, stateJson: '{"title":"A bug"}' } })
+    const submitted = { ...args, data: { ...args.data, submittedAt: 42 } }
+    await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), submitted)).resolves.toEqual({ success: true })
+    await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), args)).rejects.toThrow('already been submitted')
+    await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), submitted)).resolves.toEqual({ success: true })
+    await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), { ...args, partId: 'draft', data: { version: 1, kind: 'draft.text', body: 'Changed' } })).rejects.toThrow('Unauthorized')
+  }
+})
+
+test('json-render edits reject outsiders, removed and archived participants, cross-message access and spec changes', async () => {
+  const { t, args, participantId } = await jsonRoomFixture()
+  await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), { ...args, userId: 'outsider' })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), { ...args, data: { ...args.data, specJson: '{}' } })).rejects.toThrow('content cannot be changed')
+  const other = await t.run(ctx => ctx.db.insert('conversations', { userId: 'owner', title: 'Other', lastMode: 'act', actModelId: 'model', askModelIds: [], createdAt: 1, updatedAt: 1, lastModified: 1 }))
+  await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), { ...args, conversationId: other })).rejects.toThrow('Message not found')
+  await t.run(ctx => ctx.db.patch(participantId, { archivedAt: Date.now() }))
+  await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), args)).rejects.toThrow('Unauthorized')
+  await t.run(ctx => ctx.db.patch(participantId, { archivedAt: undefined, status: 'removed' }))
+  await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+})
+
 async function personalFixture() {
   const t = convexTest(schema, modules)
   const ids = await t.run(async ctx => {
@@ -76,6 +127,14 @@ test('tracked retired personal threads reject writes but keep history and projec
     conversationId, userId: 'other', workspaceId: 'workspace', serverSecret: secret,
   })).rejects.toThrow('Unauthorized')
   expect(userMessageId).toBeDefined()
+})
+
+test('json-render forms in retired personal threads remain read-only', async () => {
+  const { t, conversationId, run } = await personalFixture()
+  await t.run(ctx => ctx.db.patch(run.assistantMessageId, { parts: [{ type: 'data', dataType: 'overlay.generated_ui', id: 'view', data: jsonView }] }))
+  await expect(t.mutation(mutation('chat/conversations:updateMessageUiPart'), {
+    conversationId, messageId: run.assistantMessageId, userId: 'owner', serverSecret: secret, partId: 'view', data: { ...jsonView, stateJson: '{}' },
+  })).rejects.toThrow('native_runner_retired')
 })
 
 test('current native and remote-only history remains writable', async () => {

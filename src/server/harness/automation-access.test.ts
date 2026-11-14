@@ -97,6 +97,16 @@ test('post-wait refresh rejects cancelled runs and intersects a revoked agent gr
   await expect(refreshAutomationHarnessSource(access, context)).rejects.toBeInstanceOf(FatalError)
 })
 
+test('generated UI remains a conversation-local tool on owner and bound-agent automation turns', async () => {
+  const context = { accountAllowedToolIds: ['read_file'], accountAllowedConnectorIds: [], integrationToolIds: [], turnId: 'automation-run:run' }
+  const grant = await refreshAutomationHarnessSource(access, context as never)
+  expect(grant.withheldToolIds).not.toContain('present_generated_ui')
+  expect(grant.withheldToolIds).not.toContain('render_ui')
+  mocks.run.mockResolvedValueOnce({ automation: { ...automation, agentId: undefined }, run })
+  const owner = await refreshAutomationHarnessSource(access, context as never)
+  expect(owner.withheldToolIds).not.toContain('render_ui')
+})
+
 test('the refreshed grant names the connected-app router tools exactly as admission did', async () => {
   const context = {
     accountAllowedToolIds: ['read_file'],

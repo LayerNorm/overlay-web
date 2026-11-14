@@ -6,11 +6,12 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { GET } from './route'
 
 vi.mock('server-only', () => ({}))
-const mocks = vi.hoisted(() => ({ messages: vi.fn() }))
+const mocks = vi.hoisted(() => ({ messages: vi.fn(), personalMessages: vi.fn(), getConversationById: vi.fn() }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ appData: { repositories: {
   conversations: {
-    getConversationById: async () => ({ conversationType: 'group' }),
+    getConversationById: mocks.getConversationById,
     getNativeThreadCompatibility: async () => ({ status: 'writable', readOnly: false }),
+    getConversationMessages: mocks.personalMessages,
   },
   conversationCollaboration: { listMessages: mocks.messages },
 } } }) }))
@@ -30,6 +31,7 @@ test('room history retains human document markers alongside structured image par
   const content = 'Read these attachments\n\n[Indexed documents: brief.txt]'
   const parts = [{ type: 'text', text: 'Read these attachments' },
     { type: 'file', url: 'https://example.test/image.png', mediaType: 'image/png', fileName: 'image.png' }]
+  mocks.getConversationById.mockResolvedValue({ conversationType: 'group' })
   mocks.messages.mockResolvedValue([
     { _id: 'human', turnId: 'turn', role: 'user', authorKind: 'human', content, parts, createdAt: 1 },
     { _id: 'assistant', role: 'assistant', authorKind: 'agent', content: 'Legacy assistant content',
@@ -43,4 +45,22 @@ test('room history retains human document markers alongside structured image par
   expect(result.messages[0].parts).toEqual(parts)
   expect(result.messages[1].content).toBeUndefined()
   expect(result.messages[1].parts).toEqual([{ type: 'text', text: 'Structured answer' }])
+})
+
+test('personal conversation history includes assistant completion timestamps', async () => {
+  const completedAt = 58_208
+  const updatedAt = 114_242
+  mocks.getConversationById.mockResolvedValue({ conversationType: 'personal' })
+  mocks.personalMessages.mockResolvedValue([{
+    _id: 'assistant', turnId: 'turn', role: 'assistant', mode: 'act', contentType: 'text',
+    content: 'Saved response', status: 'completed', createdAt: 1_000, updatedAt, completedAt,
+    parts: [{ type: 'text', text: 'Saved response' }],
+  }])
+  const response = await GET(
+    new NextRequest('https://example.test/api/v1/conversations?conversationId=personal&messages=true'),
+    context,
+  )
+  expect(response.status).toBe(200)
+  const result = await response.json()
+  expect(result.messages[0]).toMatchObject({ id: 'assistant', createdAt: 1_000, updatedAt, completedAt })
 })

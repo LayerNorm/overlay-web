@@ -1,5 +1,6 @@
 import type { Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
+import type { ActivePublicStreamPreview } from '@/shared/chat/public-stream-projection'
 
 const TRUNCATION_MARKER = '[Additional output omitted]'
 
@@ -107,11 +108,27 @@ export async function readActivePublicStreams(
     } else if (conversation.userId !== run.actorUserId || message.userId !== run.actorUserId
       || message.authorKind === 'agent' || message.authorPrincipalId !== undefined) continue
     const { text, truncated } = await readStreamContent(ctx, stream)
-    if (!text && !truncated) continue
+    let previews: ActivePublicStreamPreview[] = []
+    if (metadata.status === 'running') {
+      try {
+        const parsed: unknown = stream.previewJson ? JSON.parse(stream.previewJson) : []
+        previews = Array.isArray(parsed) ? parsed.filter((item): item is ActivePublicStreamPreview => {
+          if (!item || typeof item !== 'object') return false
+          const value = item as Record<string, unknown>
+          const data = value.data
+          return typeof value.toolCallId === 'string' && Number.isSafeInteger(value.order)
+            && Number.isSafeInteger(value.sequence) && Number.isSafeInteger(value.textOffset)
+            && Boolean(data && typeof data === 'object' && (data as Record<string, unknown>).kind === 'json_render'
+              && (data as Record<string, unknown>).streaming === true)
+        }) : []
+      } catch { continue }
+    }
     output.push({
       assistantMessageId, runId: stream.runId, executionGeneration: stream.executionGeneration,
-      receiptId: stream.receiptId, invocation: stream.invocation, sequence: stream.nextSequence - 1, text,
+      receiptId: stream.receiptId, invocation: stream.invocation, sequence: stream.nextSequence - 1,
+      revision: stream.revision ?? stream.nextSequence, text,
       truncatedMarker: truncated ? TRUNCATION_MARKER : undefined,
+      ...(previews.length ? { previews } : {}),
       ...(await continuesSettledOutput(ctx, stream) ? { continuesPrevious: true as const } : {}),
     })
   }

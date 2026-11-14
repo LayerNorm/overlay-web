@@ -1568,6 +1568,16 @@ export default defineSchema({
             data: v.union(
               v.object({
                 version: v.literal(1),
+                kind: v.literal('json_render'),
+                catalogVersion: v.number(),
+                summary: v.string(),
+                title: v.optional(v.string()),
+                specJson: v.string(),
+                stateJson: v.optional(v.string()),
+                submittedAt: v.optional(v.number()),
+              }),
+              v.object({
+                version: v.literal(1),
                 kind: v.literal('draft.text'),
                 title: v.optional(v.string()),
                 body: v.string(),
@@ -1708,6 +1718,7 @@ export default defineSchema({
       v.literal('error'),
     )),
     updatedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
     clientNonce: v.optional(v.string()),
     editedAt: v.optional(v.number()),
     editHistory: v.optional(v.array(v.object({
@@ -3104,6 +3115,8 @@ export default defineSchema({
     nextSequence: v.number(),
     lastSequence: v.number(),
     lastText: v.string(),
+    revision: v.optional(v.number()),
+    previewJson: v.optional(v.string()),
     nextSegmentIndex: v.number(),
     visibleCharacters: v.number(),
     truncated: v.boolean(),

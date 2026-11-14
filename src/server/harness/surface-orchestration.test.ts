@@ -203,6 +203,16 @@ beforeEach(() => {
   mocks.postMessage.mockResolvedValue({ posted: true })
 })
 
+test('Slack completion delivers generated UI summaries instead of specs or form state', async () => {
+  mocks.getMessages.mockResolvedValue([{ _id: 'assistant', content: 'Lead', parts: [
+    { type: 'text', text: 'Lead' }, { type: 'data', dataType: 'overlay.generated_ui', id: 'card', data: {
+      version: 1, kind: 'json_render', catalogVersion: 1, title: 'Report', summary: '42 tasks', specJson: '{}', stateJson: '{"private":"value"}',
+    } },
+  ] }])
+  await surfaceAgentTurnWorkflow(input)
+  expect(mocks.postMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'Lead\n\n**Report**\n42 tasks' }))
+})
+
 test('surface turn directly invokes native workflow under the immutable root owner and delivers persisted result', async () => {
   const result = await surfaceAgentTurnWorkflow(input)
   expect(result).toEqual({ status: 'completed', deliveryStatus: 'posted' })

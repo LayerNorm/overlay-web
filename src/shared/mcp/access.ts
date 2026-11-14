@@ -7,6 +7,7 @@
  * workspace allows, never widen it.
  */
 import { AGENT_TOOL_GROUPS, normalizeAgentToolGrant, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
+import { GENERATED_UI_TOOL_IDS } from '@overlay/chat-core/generated-ui'
 
 export const MCP_ACCESS_LEVELS = ['read', 'write', 'full'] as const
 export type McpAccessLevel = (typeof MCP_ACCESS_LEVELS)[number]
@@ -37,7 +38,7 @@ const WRITE_GROUP_IDS = ['memory', 'knowledge', 'files', 'notes', 'skills', 'web
 
 /** Never offered to an outside app: it has its own machine, and these need an Overlay conversation to act on. */
 export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
-  'present_generated_ui',
+  ...GENERATED_UI_TOOL_IDS,
   'draft_skill_from_chat',
   'draft_automation_from_chat',
   // Changing agents would let an outside app rewrite what Overlay's own agents may do.

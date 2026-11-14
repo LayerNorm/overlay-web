@@ -1,5 +1,6 @@
 'use client'
 
+import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 
 import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
@@ -336,7 +337,12 @@ function buildRoomMessageItemProps({
 }) {
   return {
     message: view,
-    readOnly: ctx.isReadOnlyMessage?.(message.id),
+    readOnly: ctx.isReadOnlyMessage?.(message.id) || !ctx.participants.some(participant => participant.principalId === ctx.currentPrincipalId && participant.status === 'active' && !participant.archivedAt),
+    generatedUiJsonRenderActions: { onDataChange: (partId: string, data: GeneratedUiData) => ctx.saveGeneratedUiPart(message.id, partId, data),
+    onSendMessage: async (text: string) => {
+      const result = await ctx.sendMessage(text, { threadRootMessageId: message.threadRootMessageId ?? (ctx.conversationType === 'channel' ? message.id : undefined) })
+      if (!result.accepted) throw new Error('Message was not sent')
+    } },
     reactions: ctx.reactions
       .filter((reaction) => reaction.messageId === message.id && reaction.count > 0)
       .map((reaction) => ({

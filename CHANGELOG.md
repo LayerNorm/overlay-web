@@ -29,6 +29,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Scrolling a DM or channel marks it read once per transcript state instead of sending a read mutation on every scroll event, which re-rendered every loaded message. New messages, a different room, returning to the tab and jumping to latest still mark read.
 - Reuse the room-message time formatter instead of rebuilding locale formatting state for every row render in long DMs and channels. Keep the existing time labels and invalid-date fallback.
 - Redesign Settings → Desktop in the Mac app: clear Dictation, Local models, Floating panels, Agent host and About sections; shortcuts shown as key caps you click to re-record; one Open button per panel with docking in a menu; an Agent host row with its status and start controls together instead of a divided form; and a laptop icon for Desktop in the settings sidebar instead of the generic gear.
+- Add bounded timeline, comparison, diagram and typed-vector components to generated UI, strict JSONL `specStream` final compilation, and transient read-only previews from streamed `render_ui` arguments through durable personal and native chat streams. Incremental rendering depends on argument deltas surfaced by the selected adapter; validated final output remains authoritative.
+- Enable live generated-UI streams for new roots only when they admit `render_ui`, while retaining the workspace allowlist for other roots. Replace successful previews with validated final data at the same transcript anchor and append only missing streamed text.
+- Refuse new transcript steps after a harness run or ancestor is cancelled, while preserving previously committed generated-UI parts and idempotent replays. Terminal SSE still drains committed steps; a read resolving after local request abort is discarded.
+- Render Vector accent text with the theme foreground in light and dark themes while preserving accent shape paint.
+
+- Chats, agent threads and automation conversations can show interactive comparisons, dashboards and forms. Form edits are saved, and submitting posts a readable response and locks the card.
+  - The validated `render_ui` catalog uses lazy-loaded shared components, bounded serialized state, admission-gated prompts and summary fallbacks for non-React delivery. Generated-UI tools remain withheld from MCP clients; existing draft permissions are unchanged.
+  - Generated forms tolerate unused component props and unambiguous misplaced child references. Failed generated views leave visible error activity; models receive explicit retry guidance and a complete bound-form example before claiming a view is displayed.
+  - Failed bound forms keep their error rows after a successful retry. Tool snapshots encode reserved JSON keys for Convex storage while full journal files retain the original input.
+  - Chat Markdown exports include native assistant replies and generated-view titles and summaries, never serialized UI specs or bound form values.
+  - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation save paths keep their existing authorization and immutable-content protections.
+  - Keep completed response work durations stable when generated-form state is edited or submitted by persisting completion time separately from modification time; older messages fall back to their original run completion when available.
 
 - Make invited onboarding workspace-aware and wait for live billing before showing the conversation. Paid workspaces skip subscription offers; free-workspace members can ask owners and admins to subscribe or open Work with their first task safely saved as a draft.
 
@@ -42,7 +54,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Record last-observed GitHub pull-request associations from successful, server-authorized agent tool results and include them in authenticated workspace-thread projections.
 
 - Align agent-thread progress icons beneath the agent avatar and remove curved indentation. Show linked GitHub pull requests only in sidebar threads, with lifecycle icons and last-observed details from successful integration actions. Keep response loading dots beneath the agent name only until the first displayed token. Start new agent exchanges near the viewport top without removing scrollable history. Center Help with the other rail controls and move Work task settings into a popover that does not expand the composer.
-
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.

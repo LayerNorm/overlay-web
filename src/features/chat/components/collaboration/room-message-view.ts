@@ -5,6 +5,7 @@ import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import { NATIVE_AGENT_INPUT_PART, readNativeAgentInput } from '@/shared/agents/native-agent-input'
 import { readNativeAgentError } from '@/shared/agents/native-agent-error'
+import { getAssistantWorkDurationMs } from '@/shared/chat/assistant-work-duration'
 
 function nativeInputRequest(message: RoomMessageRecord): RoomMessageView['nativeInput'] {
   if (message.authorKind !== 'agent' || message.status !== 'generating') return undefined
@@ -118,6 +119,7 @@ export type RoomMessageRecord = {
   agentPlan?: RoomMessageView['plan']
   createdAt: number
   updatedAt?: number
+  completedAt?: number
   eventSequence?: number
   editedAt?: number
   editHistory?: Array<{ content: string; editedAt: number }>
@@ -348,11 +350,7 @@ export function toRoomMessageView({
     remoteRequest: remoteRequest(message.parts),
     remoteRun,
     remoteDrive: remoteDriveStatus(message.parts),
-    // Assistant rows are inserted with status 'generating' at turn start and
-    // patched through settle, so createdAt→updatedAt brackets the run.
-    workedDurationMs: isAgent && message.updatedAt && message.updatedAt > message.createdAt
-      ? message.updatedAt - message.createdAt
-      : undefined,
+    workedDurationMs: isAgent ? getAssistantWorkDurationMs(message) ?? undefined : undefined,
     streaming: streaming || message.status === 'generating',
   }
 }

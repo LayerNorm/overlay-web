@@ -20,6 +20,7 @@ import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
+import type { PublicStreamPreviewUpdate } from '@/shared/chat/public-stream-projection'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../convex/_generated/api'
 import { deploymentEnv } from '@/server/env/deployment-env'
@@ -132,6 +133,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
     modelId: string
     sequence: number
     text: string
+    preview?: PublicStreamPreviewUpdate
   }): Promise<{ accepted: boolean; duplicate: boolean; truncated: boolean }> {
     const result = await convex.mutation<{ accepted: boolean; duplicate: boolean; truncated: boolean }>(
       'harness/runs:appendPublicStream',

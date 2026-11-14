@@ -2,6 +2,23 @@ import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { ConversationRuntime } from '../chat-interface/types'
 
+export function removeTransientGeneratedUiPreviews(messages: UIMessage[]): UIMessage[] {
+  let changed = false
+  const next = messages.map(message => {
+    if (message.role !== 'assistant' || !message.parts?.length) return message
+    const parts = (message.parts as Array<Record<string, unknown>>).filter(part => {
+      const data = part.data && typeof part.data === 'object' ? part.data as Record<string, unknown> : null
+      const generatedUiPart = part.type === 'data-overlay.generated_ui'
+        || part.type === 'data' && part.dataType === 'overlay.generated_ui'
+      return !(generatedUiPart && (data?.streaming === true || data?.kind === 'preview-cleared'))
+    })
+    if (parts.length === message.parts.length) return message
+    changed = true
+    return { ...message, parts } as UIMessage
+  })
+  return changed ? next : messages
+}
+
 type Update = {
   conversationId: string | null
   persist: (args: { conversationId: string; messageId: string; partId: string; data: GeneratedUiData }) => Promise<void>

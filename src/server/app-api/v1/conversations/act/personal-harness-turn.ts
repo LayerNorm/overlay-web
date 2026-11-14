@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { createModelCallToUIChunkTransform } from '@ai-sdk/workflow'
+import { GENERATED_UI_TOOL_IDS, buildGeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import type { ToolSet } from 'ai'
 import { after, NextResponse } from 'next/server'
 import type { AgentRun } from '@/shared/agents/agent-run'
@@ -51,7 +52,26 @@ type PublicStreamReadState = NonNullable<
 type PublicStreamTranscriptStep = PublicStreamReadState['transcriptSteps'][number]
 type PublicStreamSnapshot = NonNullable<PublicStreamReadState['snapshot']>
 type PublicStreamController = ReadableStreamDefaultController<UIMessageChunk>
-type PublicStreamCursor = { partId: string; offset: number }
+type PublicStreamCursor = {
+  partId: string
+  basePartId: string
+  offset: number
+  segment: number
+  activeText: string
+  previews: Map<string, number>
+  settledPreviews: Set<string>
+}
+
+function clearStreamPreview(controller: PublicStreamController, toolCallId: string) {
+  controller.enqueue({ type: 'data-overlay.generated_ui', id: toolCallId, data: { kind: 'preview-cleared' } } as unknown as UIMessageChunk)
+}
+
+function finalGeneratedUiPart(part: Record<string, unknown>) {
+  if (part.type !== 'data' || part.dataType !== 'overlay.generated_ui' || typeof part.id !== 'string') return null
+  const generatedUiPart = buildGeneratedUiPart(part.id, part.data)
+  if (!generatedUiPart || generatedUiPart.data.kind === 'json_render' && generatedUiPart.data.streaming === true) return null
+  return generatedUiPart
+}
 
 function emitUnavailableStream(controller: PublicStreamController): void {
   controller.enqueue({ type: 'error', errorText: 'The durable stream is unavailable.' })
@@ -72,10 +92,20 @@ function emitTranscriptPart(
     controller.enqueue({ type: 'text-end', id })
     return
   }
+  const generatedUiPart = finalGeneratedUiPart(part)
+  if (generatedUiPart) {
+    controller.enqueue({
+      type: 'data-overlay.generated_ui',
+      id: generatedUiPart.id,
+      data: generatedUiPart.data,
+    } as unknown as UIMessageChunk)
+    return
+  }
   if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return
   const tool = part.toolInvocation as Record<string, unknown>
   if (typeof tool.toolCallId !== 'string' || typeof tool.toolName !== 'string') return
   const toolCallId = tool.toolCallId
+  if (tool.state === 'output-error' || tool.state === 'output-denied') clearStreamPreview(controller, toolCallId)
   controller.enqueue({
     type: 'tool-input-available',
     toolCallId,
@@ -84,6 +114,14 @@ function emitTranscriptPart(
     dynamic: true,
   })
   if (tool.state === 'output-available') {
+    const output = tool.toolOutput && typeof tool.toolOutput === 'object'
+      ? tool.toolOutput as Record<string, unknown> : null
+    if (GENERATED_UI_TOOL_IDS.has(tool.toolName) && output?.success === true) {
+      const finalPart = buildGeneratedUiPart(toolCallId, output.generatedUi)
+      if (finalPart && !(finalPart.data.kind === 'json_render' && finalPart.data.streaming === true)) {
+        controller.enqueue({ type: 'data-overlay.generated_ui', id: toolCallId, data: finalPart.data } as unknown as UIMessageChunk)
+      }
+    }
     controller.enqueue({ type: 'tool-output-available', toolCallId, output: tool.toolOutput, dynamic: true })
   } else if (tool.state === 'output-error') {
     controller.enqueue({ type: 'tool-output-error', toolCallId, errorText: 'The tool failed.', dynamic: true })
@@ -96,17 +134,55 @@ function emitTranscriptStep(
   controller: PublicStreamController,
   runId: string,
   step: PublicStreamTranscriptStep,
-  partId: string,
+  cursor: PublicStreamCursor,
 ): PublicStreamCursor {
+  const matchingPreviewSuccess = Boolean(cursor.partId
+    && cursor.basePartId === transcriptPartIdentity(runId, step.receiptId, 0, step.executionGeneration)
+    && step.persistence.parts.some(part => {
+      const generatedUiPart = finalGeneratedUiPart(part)
+      if (generatedUiPart) return cursor.previews.has(generatedUiPart.id)
+      if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') return false
+      const tool = part.toolInvocation as Record<string, unknown>
+      return tool.state === 'output-available' && typeof tool.toolCallId === 'string'
+        && cursor.previews.has(tool.toolCallId)
+    }))
+  const hasTextPart = step.persistence.parts.some(part => part.type === 'text')
+  const persistedPartsText = step.persistence.parts.filter(part => part.type === 'text').map(part => part.text).join('')
+  const persistedText = hasTextPart && persistedPartsText === step.persistence.content
+    ? persistedPartsText
+    : step.persistence.content
+  const extendsActiveText = persistedText.startsWith(cursor.activeText)
+  const matchesAfterTrailingWhitespaceTrim = persistedText.trimEnd() === cursor.activeText.trimEnd()
+  const canAppendText = cursor.offset === cursor.activeText.length
+    && (extendsActiveText || matchesAfterTrailingWhitespaceTrim)
+  const preservePreviewStep = matchingPreviewSuccess && canAppendText
+  const appendedText = preservePreviewStep && extendsActiveText ? persistedText.slice(cursor.activeText.length) : ''
+  const partId = cursor.partId
   if (partId) {
+    if (appendedText) controller.enqueue({ type: 'text-delta', id: partId, delta: appendedText })
     controller.enqueue({ type: 'text-end', id: partId })
-    controller.enqueue({ type: 'reset-step' })
+    if (!preservePreviewStep) controller.enqueue({ type: 'reset-step' })
   }
-  controller.enqueue({ type: 'start-step' })
+  if (!preservePreviewStep) controller.enqueue({ type: 'start-step' })
   const parts = step.persistence.parts.some(part => part.type === 'text')
     ? step.persistence.parts
     : [...step.persistence.parts, { type: 'text', text: step.persistence.content }]
-  for (const [index, part] of parts.entries()) emitTranscriptPart(controller, runId, step, part, index)
+  for (const [index, part] of parts.entries()) {
+    if (preservePreviewStep && part.type === 'text') continue
+    emitTranscriptPart(controller, runId, step, part, index)
+    if (part.type === 'tool-invocation' && part.toolInvocation && typeof part.toolInvocation === 'object') {
+      const tool = part.toolInvocation as Record<string, unknown>
+      if (typeof tool.toolCallId === 'string' && ['output-available', 'output-error', 'output-denied'].includes(String(tool.state))) {
+        cursor.settledPreviews.add(tool.toolCallId)
+        cursor.previews.delete(tool.toolCallId)
+      }
+    }
+    const generatedUiPart = finalGeneratedUiPart(part)
+    if (generatedUiPart) {
+      cursor.settledPreviews.add(generatedUiPart.id)
+      cursor.previews.delete(generatedUiPart.id)
+    }
+  }
   controller.enqueue({
     type: 'data-harness-transcript-step',
     id: `${runId}:${step.sequence}`,
@@ -117,10 +193,9 @@ function emitTranscriptStep(
       sequence: step.sequence,
       parts: step.persistence.parts,
     },
-    transient: true,
   } as unknown as UIMessageChunk)
   controller.enqueue({ type: 'finish-step' })
-  return { partId: '', offset: 0 }
+  return { ...cursor, partId: '', basePartId: '', offset: 0, segment: 0, activeText: '' }
 }
 
 function emitActiveSnapshot(
@@ -131,23 +206,51 @@ function emitActiveSnapshot(
   const nextPartId = transcriptPartIdentity(
     snapshot.runId, snapshot.receiptId, 0, snapshot.executionGeneration,
   )
-  let { partId, offset } = cursor
-  if (nextPartId !== partId) {
+  let { partId, basePartId, offset, segment } = cursor
+  if (nextPartId !== basePartId) {
     if (partId) {
       controller.enqueue({ type: 'text-end', id: partId })
       controller.enqueue({ type: 'finish-step' })
     }
+    basePartId = nextPartId
     partId = nextPartId
     offset = 0
+    segment = 0
     controller.enqueue({ type: 'start-step' })
     controller.enqueue({ type: 'text-start', id: partId })
   }
   const text = [snapshot.text, snapshot.truncatedMarker].filter(Boolean).join('\n\n')
+  const visiblePreviews = (snapshot.previews ?? []).filter(preview => preview.data !== undefined)
+    .sort((a, b) => a.textOffset - b.textOffset || a.order - b.order)
+  const currentPreviews = new Set(visiblePreviews.filter(preview => !cursor.settledPreviews.has(preview.toolCallId)).map(preview => preview.toolCallId))
+  for (const toolCallId of cursor.previews.keys()) if (!currentPreviews.has(toolCallId)) {
+    clearStreamPreview(controller, toolCallId)
+    cursor.previews.delete(toolCallId)
+  }
+  for (const preview of visiblePreviews) {
+    if (cursor.settledPreviews.has(preview.toolCallId)) continue
+    const isNewPreview = !cursor.previews.has(preview.toolCallId)
+    if (cursor.previews.get(preview.toolCallId) === preview.sequence) continue
+    const previewOffset = Math.min(text.length, Math.max(offset, preview.textOffset))
+    if (previewOffset > offset) {
+      controller.enqueue({ type: 'text-delta', id: partId, delta: text.slice(offset, previewOffset) })
+      offset = previewOffset
+    }
+    if (isNewPreview && partId) controller.enqueue({ type: 'text-end', id: partId })
+    controller.enqueue({ type: 'data-overlay.generated_ui', id: preview.toolCallId, data: preview.data! } as unknown as UIMessageChunk)
+    cursor.previews.set(preview.toolCallId, preview.sequence)
+    if (isNewPreview) {
+      segment++
+      partId = `${basePartId}:text:${segment}`
+      controller.enqueue({ type: 'text-start', id: partId })
+    }
+  }
   if (text.length > offset) {
     controller.enqueue({ type: 'text-delta', id: partId, delta: text.slice(offset) })
     offset = text.length
   }
-  return { partId, offset }
+  return { partId, basePartId, offset, segment, activeText: text,
+    previews: cursor.previews, settledPreviews: cursor.settledPreviews }
 }
 
 function emitTerminalStream(
@@ -155,8 +258,10 @@ function emitTerminalStream(
   runId: string,
   state: PublicStreamReadState,
   sourceCitations: SourceCitationMap,
-  partId: string,
+  cursor: PublicStreamCursor,
 ): void {
+  for (const toolCallId of cursor.previews.keys()) clearStreamPreview(controller, toolCallId)
+  const partId = cursor.partId
   if (partId) {
     controller.enqueue({ type: 'text-end', id: partId })
     controller.enqueue({ type: 'finish-step' })
@@ -192,19 +297,21 @@ async function pollPersistedPublicStream(input: {
   isStopped: () => boolean
 }): Promise<void> {
   let afterSequence = -1
-  let cursor: PublicStreamCursor = { partId: '', offset: 0 }
+  let cursor: PublicStreamCursor = { partId: '', basePartId: '', offset: 0, segment: 0,
+    activeText: '', previews: new Map(), settledPreviews: new Set() }
   while (!input.isStopped() && !input.signal?.aborted) {
     const state = await input.repository.readPublicStreamState({
       actorUserId: input.actorUserId,
       runId: input.runId,
       afterSequence,
     })
+    if (input.isStopped() || input.signal?.aborted) return
     if (!state) {
       emitUnavailableStream(input.controller)
       return
     }
     for (const step of state.transcriptSteps) {
-      cursor = emitTranscriptStep(input.controller, input.runId, step, cursor.partId)
+      cursor = emitTranscriptStep(input.controller, input.runId, step, cursor)
       afterSequence = step.sequence
     }
     if (state.nextSequence !== null) {
@@ -213,7 +320,7 @@ async function pollPersistedPublicStream(input: {
     }
     if (state.snapshot) cursor = emitActiveSnapshot(input.controller, state.snapshot, cursor)
     if (isTerminalPublicStreamStatus(state.status)) {
-      emitTerminalStream(input.controller, input.runId, state, input.sourceCitations, cursor.partId)
+      emitTerminalStream(input.controller, input.runId, state, input.sourceCitations, cursor)
       input.controller.close()
       return
     }

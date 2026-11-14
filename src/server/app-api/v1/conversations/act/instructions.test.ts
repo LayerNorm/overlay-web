@@ -53,6 +53,18 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   assert.match(instructions, /MATH_RULES\n\nTABLE_RULES$/)
 })
 
+test('generated UI guidance follows the tools admitted for the turn', () => {
+  const structuredOnly = buildInstructions({ availableToolIds: ['render_ui'] })
+  assert.match(structuredOnly, /use render_ui/)
+  assert.doesNotMatch(structuredOnly, /No generated-UI tool is available/)
+  assert.doesNotMatch(structuredOnly, /present_generated_ui/)
+  assert.match(structuredOnly, /Every code artifact you write must be returned in a fenced Markdown code block with an appropriate language tag/)
+
+  const draftCardsOnly = buildInstructions({ availableToolIds: ['present_generated_ui'] })
+  assert.match(draftCardsOnly, /present_generated_ui/)
+  assert.doesNotMatch(draftCardsOnly, /render_ui/)
+})
+
 test('buildActAgentInstructions preserves execution and document-context guidance', () => {
   const automationExecution = buildInstructions({
     automationExecution: true,
@@ -78,6 +90,7 @@ test('buildActAgentInstructions does not advertise tools when none are registere
   assert.match(instructions, /No callable tools are registered for this turn/)
   assert.match(instructions, /No knowledge or memory tools are callable in this turn/)
   assert.doesNotMatch(instructions, /You also have an computer_browser tool/)
+  assert.doesNotMatch(instructions, /present_generated_ui|render_ui/)
   assert.doesNotMatch(instructions, /PAID_REALITY/)
 })
 

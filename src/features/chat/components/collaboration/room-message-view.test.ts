@@ -115,6 +115,22 @@ test('agent messages derive workedDurationMs from createdAt→updatedAt', () => 
   assert.equal(view.workedDurationMs, 43_000)
 })
 
+test('native generated form edits and submits keep duration pinned to completion', () => {
+  const completedAt = 58_208
+  const edited = toRoomMessageView({
+    message: record({ createdAt: 1_000, completedAt, updatedAt: 114_242 }),
+    currentPrincipalId: 'me',
+    authorName: 'Agent',
+  })
+  const submitted = toRoomMessageView({
+    message: record({ createdAt: 1_000, completedAt, updatedAt: 179_442 }),
+    currentPrincipalId: 'me',
+    authorName: 'Agent',
+  })
+  assert.equal(edited.workedDurationMs, 57_208)
+  assert.equal(submitted.workedDurationMs, 57_208)
+})
+
 test('workedDurationMs is absent without a later updatedAt or for human messages', () => {
   assert.equal(
     toRoomMessageView({

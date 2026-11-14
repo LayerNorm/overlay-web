@@ -29,6 +29,16 @@ export type ConversationMessagePart =
       data:
         | {
             version: 1
+            kind: 'json_render'
+            catalogVersion: number
+            summary: string
+            title?: string
+            specJson: string
+            stateJson?: string
+            submittedAt?: number
+          }
+        | {
+            version: 1
             kind: 'draft.text'
             title?: string
             body: string
@@ -83,6 +93,7 @@ export interface ConversationMessage {
   role: 'user' | 'assistant'
   parts: ConversationMessagePart[]
   model?: string
+  completedAt?: number
   replyToTurnId?: string
   replySnippet?: string
   routedModelId?: string

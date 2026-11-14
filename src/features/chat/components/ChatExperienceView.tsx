@@ -131,7 +131,7 @@ export function ChatExperienceView({
               <AutomationEditorPanel {...automationEditorProps} />
             )}
 
-            {messageListProps && <ChatMessageList {...messageListProps} />}
+            {messageListProps && <ChatMessageList {...messageListProps} runtime={{ ...messageListProps.runtime, readOnly: Boolean(readOnlyFooter) || messageListProps.runtime.readOnly }} />}
             {composerProps && (readOnlyFooter ?? (
               // Sending stays blocked while checking; replacing the composer would only make it flicker.
               nativeThreadSafety.readOnly && nativeThreadSafety.status !== 'checking' ? (

@@ -15,6 +15,19 @@ const input: PersonalHarnessToolsInput = {
 const options = { toolCallId: 'call', messages: [] }
 beforeEach(() => { vi.resetAllMocks(); mocks.refresh.mockResolvedValue({ ...input.context, paid: false }); mocks.execute.mockResolvedValue({ ok: true }) })
 
+test('render_ui is exposed on personal and automation turns and uses fresh authorization', async () => {
+  for (const automationExecution of [false, true]) {
+    const tools = createPersonalHarnessTools({ ...input, context: { ...input.context, automationExecution }, definitions: [
+      { name: 'render_ui', inputSchema: { type: 'object', properties: {} }, needsApproval: false },
+    ] })
+    expect(tools.render_ui).toBeDefined()
+    await tools.render_ui.execute!({ summary: 'Summary', spec: {} }, options)
+    expect(mocks.execute).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ context: expect.objectContaining({ toolName: 'render_ui' }) }))
+    mocks.refresh.mockRejectedValueOnce(new Error('revoked'))
+    await expect(tools.render_ui.execute!({}, options)).rejects.toThrow('revoked')
+  }
+})
+
 test('rechecks authorization for both approval and execution and namespaces child effects', async () => {
   const definition = createPersonalHarnessTools(input).read_file
   mocks.approval.mockResolvedValue(true)

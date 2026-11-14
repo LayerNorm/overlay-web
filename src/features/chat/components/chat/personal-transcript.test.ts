@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { HydratedRemoteMessage } from '../../../../../convex/lib/remoteMessageText'
+import { getAssistantWorkDurationMs } from '@/shared/chat/assistant-work-duration'
 import { createPersonalMessageProjector, personalMessageToUi, projectPersonalTranscript, type PersonalPendingTurn } from './personal-transcript'
 
 function message(id: string, turnId: string, role: 'user' | 'assistant', extra: Partial<HydratedRemoteMessage> = {}): HydratedRemoteMessage {
@@ -24,6 +25,29 @@ test('stream-only projections preserve unchanged live messages without retaining
   assert.deepEqual(deleted.parts, [{ type: 'text', text: 'Message deleted' }])
   assert.equal(projectPersonalTranscript([], [], project).messages.length, 0)
   assert.notEqual(createPersonalMessageProjector()(earlier), before.messages[0])
+})
+
+test('personal transcript preserves work duration across generated form edits and submit', () => {
+  const completion = 58_208
+  const part = {
+    type: 'data', id: 'form', dataType: 'overlay.generated_ui',
+    data: { version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Form', specJson: '{}', stateJson: '{}' },
+  }
+  const completed = message('assistant', 'turn', 'assistant', {
+    createdAt: 1_000, updatedAt: completion, completedAt: completion, status: 'completed',
+    parts: [part] as HydratedRemoteMessage['parts'],
+  })
+  const edited = personalMessageToUi({ ...completed, updatedAt: 114_242, parts: [
+    { ...part, data: { ...part.data, stateJson: JSON.stringify({ name: 'Ada' }) } },
+  ] as HydratedRemoteMessage['parts'] })
+  const submitted = personalMessageToUi({ ...completed, updatedAt: 179_442, parts: [
+    { ...part, data: { ...part.data, stateJson: JSON.stringify({ name: 'Ada' }), submittedAt: 179_400 } },
+  ] as HydratedRemoteMessage['parts'] })
+
+  assert.equal(edited.completedAt, completion)
+  assert.equal(submitted.completedAt, completion)
+  assert.equal(getAssistantWorkDurationMs(edited), 57_208)
+  assert.equal(getAssistantWorkDurationMs(submitted), 57_208)
 })
 
 test('native run sequence wins over stale timestamps and terminal snapshots win over progress', () => {

@@ -26,6 +26,7 @@ export type PersonalTranscriptMessage = UIMessage & {
   variantIndex?: number
   createdAt: number
   updatedAt?: number
+  completedAt?: number
   status?: 'generating' | 'completed' | 'error'
   persistedId?: string
   nativeRunId?: string
@@ -84,6 +85,7 @@ export function personalMessageToUi(message: HydratedRemoteMessage): PersonalTra
     variantIndex: message.variantIndex ?? 0,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
+    completedAt: message.completedAt,
     contentType: message.contentType,
     deletedAt: message.deletedAt,
     status: message.status,

@@ -666,14 +666,20 @@ export function useChatExperienceController({
   ), [runtimesRef])
 
   const handleGeneratedUiChange = useCallback(async (messageId: string, partId: string, data: GeneratedUiData) => {
-    if (nativeThreadSafety.readOnly) return
-    const targetChatId = isTemporaryChatRef.current ? TEMPORARY_CHAT_ID : activeChatIdRef.current
-    const runtime = isTemporaryChatRef.current
+    if (nativeThreadSafety.readOnly) {
+      if (data.kind === 'json_render') throw new Error('This conversation is read-only')
+      return
+    }
+    const targetChatId = isTemporaryChat ? TEMPORARY_CHAT_ID : activeChatId
+    const runtime = isTemporaryChat
       ? emptyRuntimeRef.current
       : targetChatId
         ? runtimesRef.current.get(targetChatId)
         : null
-    if (!runtime) return
+    if (!runtime) {
+      if (data.kind === 'json_render') throw new Error('This conversation is unavailable')
+      return
+    }
 
     let changed = false
     try {
@@ -687,6 +693,7 @@ export function useChatExperienceController({
       })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save draft edits.')
+      if (data.kind === 'json_render') throw error
       return
     }
     if (changed) {
@@ -697,7 +704,7 @@ export function useChatExperienceController({
       forceLiveSyncRender((value) => value + 1)
     }
 
-  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isTemporaryChatRef, nativePersonal.setGeneratedUi, nativeThreadSafety.readOnly, runtimesRef])
+  }, [activeChatId, isTemporaryChat, actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isTemporaryChatRef, nativePersonal.setGeneratedUi, nativeThreadSafety.readOnly, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = nativeChatHydrated(nativePersonalSendEnabled, nativePersonal.transcript.status,
@@ -1336,6 +1343,7 @@ export function useChatExperienceController({
     handleContinue,
     stopActiveChat,
     handleGeneratedUiChange,
+    sendGeneratedUiMessage: async (text: string) => { if (!await handleSend(text)) throw new Error('Message was not sent') },
     requireAuth,
     shellPanelInputs: {
       attachmentPreview,

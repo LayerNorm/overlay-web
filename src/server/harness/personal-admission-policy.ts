@@ -8,9 +8,10 @@ const DAY_MS = 24 * 60 * 60 * 1_000
 function selectPublicStreamVersion(
   existingPolicy: HarnessPolicy | null | undefined,
   workspaceId: string,
+  allowedToolIds: string[],
 ): 1 | undefined {
   if (existingPolicy) return existingPolicy.publicStreamVersion === 1 ? 1 : undefined
-  return isUnifiedStreamingWorkspaceEnabled(workspaceId) ? 1 : undefined
+  return allowedToolIds.includes('render_ui') || isUnifiedStreamingWorkspaceEnabled(workspaceId) ? 1 : undefined
 }
 
 export function isUnifiedStreamingWorkspaceEnabled(
@@ -40,7 +41,7 @@ export function personalHarnessPolicy(input: {
     throw new Error('Invalid personal harness budget.')
   }
   const byok = isByokModelId(input.modelId)
-  const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy, input.workspaceId)
+  const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy, input.workspaceId, input.allowedToolIds)
   return {
     publicProgressVersion: 1,
     ...(publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),

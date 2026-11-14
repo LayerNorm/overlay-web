@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { startNativeHarnessTurn } from './native-turn-start'
 
 const mocks = vi.hoisted(() => ({
@@ -48,10 +48,12 @@ const run = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', '')
   mocks.surface.mockResolvedValue(null)
   mocks.admit.mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
   mocks.startWorkflow.mockResolvedValue({})
 })
+afterEach(() => vi.unstubAllEnvs())
 
 test('read-only native tool sets remain plan-optional and start with the built input', async () => {
   const admit = vi.fn().mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
@@ -78,7 +80,30 @@ test('read-only native tool sets remain plan-optional and start with the built i
     source: { conversationId: 'room' },
     deliveryAgentRunId: 'agent-run',
   })
+  expect((admit.mock.calls[0]![0] as { policy: { publicStreamVersion?: number } }).policy.publicStreamVersion).toBeUndefined()
   expect(startWorkflow).toHaveBeenCalledWith(mocks.workflow, [workflowInput])
+})
+
+test('native turns with render_ui enroll for progressive previews without the workspace allowlist', async () => {
+  const admit = vi.fn().mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
+  await startNativeHarnessTurn({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'agent-run', memoryEnabled: true,
+  }, {
+    buildInput: async () => ({
+      ...workflowInput,
+      definitions: [...workflowInput.definitions, { name: 'render_ui', inputSchema: { type: 'object', properties: {} } }],
+    }) as never,
+    getAgentRun: async () => run as never,
+    getPaid: async () => true,
+    repository: { admit } as never,
+    startWorkflow: vi.fn(),
+  })
+  expect(admit).toHaveBeenCalledWith(expect.objectContaining({
+    policy: expect.objectContaining({
+      allowedToolIds: expect.arrayContaining(['render_ui']),
+      publicStreamVersion: 1,
+    }),
+  }))
 })
 
 test('does not force a plan when the native tool set includes a write-capable tool', async () => {
