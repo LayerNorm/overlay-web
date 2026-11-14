@@ -1,5 +1,6 @@
 import { MessageScrollerItem } from '@overlay/ui/ai'
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
+import { ExchangeEntranceContext } from './message-entrance'
 import type { ChatTranscriptExchangeView, ChatTranscriptView } from '@overlay/chat-core'
 import { recordRender } from '../../lib/perf-debug'
 
@@ -76,6 +77,9 @@ export interface ChatTranscriptProps {
   scrollItems?: boolean
 }
 
+interface TranscriptRowSet { ids: Set<string>; lastId: string | null }
+interface TranscriptRows extends TranscriptRowSet { key: string; previous: TranscriptRowSet | null }
+
 export function ChatTranscript({
   view,
   actions,
@@ -86,6 +90,22 @@ export function ChatTranscript({
   const resolvedPresentation = presentation
     ? { ...DEFAULT_CHAT_TRANSCRIPT_PRESENTATION, ...presentation }
     : DEFAULT_CHAT_TRANSCRIPT_PRESENTATION
+
+  // An exchange is new (and plays its entrance) only when it is appended after
+  // the previous last row: history loaded on open, earlier pages prepended above
+  // and a switch to another conversation all mount without animation.
+  const ids = view.exchanges.map((exchange) => exchange.id)
+  const idsKey = ids.join('\n')
+  const [rows, setRows] = useState<TranscriptRows>(() => ({ key: idsKey, ids: new Set(ids), lastId: ids.at(-1) ?? null, previous: null }))
+  const current = { ids: new Set(ids), lastId: ids.at(-1) ?? null }
+  if (rows.key !== idsKey) setRows({ key: idsKey, ...current, previous: { ids: rows.ids, lastId: rows.lastId } })
+  const previous = rows.key === idsKey ? rows.previous : { ids: rows.ids, lastId: rows.lastId }
+  const previousLastIndex = previous?.lastId ? ids.indexOf(previous.lastId) : -1
+  const isAppended = (index: number, id: string) => Boolean(
+    previous
+    && !previous.ids.has(id)
+    && (previous.lastId === null || (previousLastIndex >= 0 && index > previousLastIndex)),
+  )
 
   // Slack/room-style day dividers between personal-chat exchanges when the
   // user turn carries a createdAt. Missing timestamps skip the divider.
@@ -112,7 +132,9 @@ export function ChatTranscript({
             <span className="h-px flex-1 bg-(--border)" />
           </div>
         ) : null}
-        {actions.renderExchange(exchange, resolvedPresentation)}
+        <ExchangeEntranceContext.Provider value={isAppended(index, exchange.id)}>
+          {actions.renderExchange(exchange, resolvedPresentation)}
+        </ExchangeEntranceContext.Provider>
       </Row>
     )
   })
