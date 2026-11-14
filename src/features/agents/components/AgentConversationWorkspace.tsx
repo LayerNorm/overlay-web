@@ -94,7 +94,7 @@ function useAgentWorkspaceActions(args: {
             surface: 'agents',
             scope: 'personal',
             buildHref,
-            resolveMainThread,
+            resolveAgentThread: resolveMainThread,
             push: (href) => router.push(href),
           })
           if (conversationId && activeWorkspaceId && !agent.instructions.trim()) {
@@ -156,7 +156,7 @@ function useAgentAutoOpen(args: {
     onResolvingChange, onError,
   } = args
   const attemptedAgentRef = useRef<string | null>(null)
-  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
+  const resolveLatestActivity = useMutation(api.agents.threads.resolveLatestActivity)
 
   useEffect(() => {
     attemptedAgentRef.current = null
@@ -183,7 +183,7 @@ function useAgentAutoOpen(args: {
           surface: 'agents',
           scope,
           buildHref,
-          resolveMainThread,
+          resolveAgentThread: resolveLatestActivity,
           push: (href) => { if (!cancelled && intentIsCurrent()) router.replace(href) },
         })
       } catch (chatError) {
@@ -193,7 +193,7 @@ function useAgentAutoOpen(args: {
       }
     })()
     return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
-  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveMainThread, router, onResolvingChange, onError])
+  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveLatestActivity, router, onResolvingChange, onError])
 }
 
 function requestedAgentScope(

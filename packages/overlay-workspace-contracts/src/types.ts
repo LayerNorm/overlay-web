@@ -721,7 +721,7 @@ export type WorkspaceAgentThread = {
   createdAt: number
   archivedAt?: number
   pullRequests?: WorkspaceThreadPullRequest[]
-  /** The main thread is the oldest thread the caller has not archived; the agent opens into it. */
+  /** True for the oldest thread the caller has not archived (the main-thread designation). */
   isMain: boolean
 }
 

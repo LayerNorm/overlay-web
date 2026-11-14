@@ -1,4 +1,5 @@
 export * from './catalog'
+export * from './catalog-page'
 export * from './coming-soon'
 export * from './integrations'
 export * from './mcp'

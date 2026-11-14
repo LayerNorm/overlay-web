@@ -10,6 +10,7 @@ import {
   listAgentAutomations,
   listAgentThreads,
   listArchivedAgentThreads,
+  resolveLatestActivityAgentThread,
   resolveMainAgentThread,
   setAgentThreadArchived,
 } from './agentThreads'
@@ -81,6 +82,15 @@ export const resolveMain = mutation({
   handler: async (ctx, args) => {
     const { viewer } = await visibleAgent(ctx, args)
     return await resolveMainAgentThread(ctx, { ...args, userId: viewer.userId })
+  },
+})
+
+/** Opens the latest-activity accessible thread for implicit Agents entry, with main-thread fallback. */
+export const resolveLatestActivity = mutation({
+  args: agentArgs,
+  handler: async (ctx, args) => {
+    const { viewer } = await visibleAgent(ctx, args)
+    return await resolveLatestActivityAgentThread(ctx, { ...args, userId: viewer.userId })
   },
 })
 
