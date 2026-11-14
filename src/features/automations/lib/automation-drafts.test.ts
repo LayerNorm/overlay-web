@@ -291,3 +291,22 @@ test('distinguishes linear prose from Linear integration actions', () => {
   assert.equal(conflict.instructions, '1. Clarify whether the workflow should use an integration')
   assert.deepEqual(integration.detectedIntegrations, ['Linear'])
 })
+
+test('does not treat weekday and time-only assistant summaries as workflow', () => {
+  const scheduleOnly = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, write OK, without integrations.',
+    assistantText: 'Every Monday at 01:00 UTC.',
+  })
+  const workflowAndSchedule = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, without integrations.',
+    assistantText: 'Summarize the daily report every Monday at 01:00 UTC.',
+  })
+
+  assert.deepEqual(scheduleOnly.schedule, { kind: 'weekly', dayOfWeekUTC: 1, hourUTC: 1, minuteUTC: 0 })
+  assert.equal(scheduleOnly.instructions, '1. Clarify what this automation should do')
+  assert.ok(scheduleOnly.missingFields.includes('Clarify automation instructions'))
+  assert.equal(scheduleOnly.confidence, 'low')
+  assert.equal(workflowAndSchedule.instructions, '1. Summarize the daily report every Monday at 01:00 UTC.')
+  assert.equal(workflowAndSchedule.missingFields.length, 0)
+  assert.equal(workflowAndSchedule.confidence, 'high')
+})

@@ -104,7 +104,7 @@ function buildPointerSteps(input: { userText: string; assistantText?: string }, 
 
 function hasClearWorkflow(lines: string[]): boolean {
   const remaining = lines.join(' ')
-    .replace(/\b(?:a|an|the|this|automation|workflow|schedule|scheduled|daily|weekly|monthly|quarterly|yearly|annually|hourly|every|each|day|week|month|first|second|third|last|on|at|of|for|that|is|runs?|will|utc|integration|integrations|required|needed|none|no|not|do|does|need|needs)\b/gi, ' ')
+    .replace(/\b(?:sundays?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|a|an|the|this|automation|workflow|schedule|scheduled|daily|weekly|monthly|quarterly|yearly|annually|hourly|every|each|day|week|month|first|second|third|last|on|at|of|for|that|is|runs?|will|utc|integration|integrations|required|needed|none|no|not|do|does|need|needs)\b/gi, ' ')
     .replace(/\d+/g, ' ')
     .replace(/[^a-z0-9]/gi, ' ')
     .trim()
