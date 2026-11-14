@@ -1,12 +1,19 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { cn } from '../../utils/cn'
 
-/** The edge names its physical position on the panel, not the panel's side of the screen. */
+/**
+ * The edge names its physical position on the panel, not the panel's side of the screen.
+ *
+ * Dragging updates at most once per animation frame. With `livePreview`, the drag
+ * writes the width straight onto the panel (the handle's parent element) and calls
+ * `onResize` once on release, so the panel's React tree does not re-render on every
+ * frame of the drag. Only use it when the parent's own width is all that has to change.
+ */
 export function PanelResizeHandle({
   width, onResize, onResizingChange, edge = 'left', minWidth = 260, maxWidth = 720,
-  label = 'Resize side panel', placement = 'inset', className,
+  label = 'Resize side panel', placement = 'inset', livePreview = false, className,
 }: {
   width: number
   onResize: (width: number) => void
@@ -16,14 +23,32 @@ export function PanelResizeHandle({
   minWidth?: number
   maxWidth?: number
   label?: string
+  livePreview?: boolean
   className?: string
 }) {
-  const drag = useRef<{ x: number; width: number } | null>(null)
+  const drag = useRef<{ x: number; width: number; next: number; panel: HTMLElement | null } | null>(null)
+  const frame = useRef<number | null>(null)
   const direction = edge === 'right' ? 1 : -1
-  const resize = (next: number) => onResize(Math.min(maxWidth, Math.max(minWidth, next)))
+  const clamp = (next: number) => Math.min(maxWidth, Math.max(minWidth, next))
+  const resize = (next: number) => onResize(clamp(next))
+  const cancelFrame = () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current)
+    frame.current = null
+  }
+  useEffect(() => cancelFrame, [])
   const finish = () => {
+    const active = drag.current
+    if (!active) return
     drag.current = null
+    cancelFrame()
+    if (active.next !== active.width) onResize(active.next)
     onResizingChange(false)
+    // React applies the committed width synchronously for this discrete event; drop
+    // the preview width on the next frame so the panel never flashes back.
+    if (active.panel) {
+      const panel = active.panel
+      requestAnimationFrame(() => { panel.style.width = '' })
+    }
   }
   return (
     <div
@@ -45,12 +70,27 @@ export function PanelResizeHandle({
         if (event.button !== 0) return
         event.preventDefault()
         event.currentTarget.focus()
-        drag.current = { x: event.clientX, width }
+        drag.current = {
+          x: event.clientX,
+          width,
+          next: width,
+          panel: livePreview ? event.currentTarget.parentElement : null,
+        }
         event.currentTarget.setPointerCapture(event.pointerId)
         onResizingChange(true)
       }}
       onPointerMove={(event) => {
-        if (drag.current) resize(drag.current.width + direction * (event.clientX - drag.current.x))
+        const active = drag.current
+        if (!active) return
+        active.next = clamp(active.width + direction * (event.clientX - active.x))
+        if (frame.current !== null) return
+        frame.current = requestAnimationFrame(() => {
+          frame.current = null
+          const current = drag.current
+          if (!current) return
+          if (current.panel) current.panel.style.width = `${current.next}px`
+          else onResize(current.next)
+        })
       }}
       onPointerUp={(event) => {
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)

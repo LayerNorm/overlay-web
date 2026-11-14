@@ -195,11 +195,11 @@
 @keyframes overlayPopIn {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(-4px);
+    transform: scale(0.96) translate(var(--overlay-pop-x, 0), var(--overlay-pop-y, -4px));
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1) translate(0, 0);
   }
 }
 
@@ -218,9 +218,26 @@
   animation: overlayFadeIn var(--overlay-duration-fast) var(--overlay-ease) both;
 }
 
+/* Floating menus grow out of their trigger: Radix poppers publish the origin, and
+   hand-rolled menus that open upward mark themselves with data-side="top". */
 .overlay-pop-in {
   animation: overlayPopIn var(--overlay-duration-fast) var(--overlay-ease) both;
-  transform-origin: top;
+  transform-origin: var(--radix-popper-transform-origin, top);
+}
+
+.overlay-pop-in[data-side='top'] {
+  --overlay-pop-y: 4px;
+  transform-origin: var(--radix-popper-transform-origin, bottom);
+}
+
+.overlay-pop-in[data-side='left'] {
+  --overlay-pop-x: 4px;
+  --overlay-pop-y: 0;
+}
+
+.overlay-pop-in[data-side='right'] {
+  --overlay-pop-x: -4px;
+  --overlay-pop-y: 0;
 }
 
 .overlay-dialog-in {

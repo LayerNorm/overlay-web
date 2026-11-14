@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Fragment, isValidElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { cn } from '../../utils/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
+import { isTooltipWarm, markTooltipClosed, markTooltipOpened, TOOLTIP_OPEN_DELAY_MS } from './tooltip-warmth'
 
 const HOVER_QUERY = '(hover: hover) and (pointer: fine)'
 
@@ -38,25 +39,54 @@ export function DelayedTooltip({
 }) {
   const [descriptionId, setDescriptionId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [instant, setInstant] = useState(false)
   const [focusedElement, setFocusedElement] = useState<HTMLElement | null>(null)
   const focusedElementRef = useRef<HTMLElement | null>(null)
   const pointerInsideRef = useRef(false)
+  const openTimerRef = useRef<number | undefined>(undefined)
+  const openRef = useRef(false)
+  const commitOpen = useCallback((nextOpen: boolean, skipAnimation = false) => {
+    window.clearTimeout(openTimerRef.current)
+    if (openRef.current === nextOpen) return
+    openRef.current = nextOpen
+    if (nextOpen) markTooltipOpened()
+    else markTooltipClosed()
+    setInstant(skipAnimation)
+    setOpen(nextOpen)
+  }, [])
+  // Radix runs with no delay; the shared warm-up decides when to show, so only the
+  // first tooltip in a toolbar waits and its neighbours appear instantly.
   const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      commitOpen(false)
+      return
+    }
+    const fromPointer = pointerInsideRef.current
     if (
-      nextOpen
-      && !pointerInsideRef.current
+      !fromPointer
       && focusedElementRef.current
       && !focusedElementRef.current.matches(':focus-visible')
     ) return
-    setOpen(nextOpen)
+    if (!fromPointer || isTooltipWarm()) {
+      commitOpen(true, isTooltipWarm())
+      return
+    }
+    window.clearTimeout(openTimerRef.current)
+    openTimerRef.current = window.setTimeout(() => {
+      if (pointerInsideRef.current) commitOpen(true, isTooltipWarm())
+    }, TOOLTIP_OPEN_DELAY_MS)
+  }, [commitOpen])
+  useEffect(() => () => {
+    window.clearTimeout(openTimerRef.current)
+    if (openRef.current) markTooltipClosed()
   }, [])
   const captureTooltipContent = useCallback((element: HTMLDivElement | null) => {
     setDescriptionId(element?.id ?? null)
   }, [])
   const subscribe = useCallback((onChange: () => void) => subscribeHoverTooltip(() => {
-    if (!supportsHoverTooltip()) setOpen(false)
+    if (!supportsHoverTooltip()) commitOpen(false)
     onChange()
-  }), [])
+  }), [commitOpen])
   // Server snapshot is always `false`, so SSR and the first client render
   // agree (avoids hydration mismatch); the real check runs after mount.
   const hoverable = useSyncExternalStore(
@@ -83,7 +113,7 @@ export function DelayedTooltip({
     return <span className={cn('relative inline-flex', className)}>{children}</span>
   }
   return (
-    <TooltipProvider delayDuration={450}>
+    <TooltipProvider delayDuration={0}>
       <Tooltip open={open} onOpenChange={handleOpenChange}>
         <span
           className={cn('relative inline-flex', className)}
@@ -92,6 +122,7 @@ export function DelayedTooltip({
           }}
           onPointerLeave={() => {
             pointerInsideRef.current = false
+            window.clearTimeout(openTimerRef.current)
           }}
           onFocusCapture={(event) => {
             if (event.target instanceof HTMLElement) {
@@ -108,7 +139,7 @@ export function DelayedTooltip({
             {isValidElement(children) && children.type !== Fragment ? children : <span>{children}</span>}
           </TooltipTrigger>
         </span>
-        <TooltipContent ref={captureTooltipContent} side={side} className="pointer-events-none">
+        <TooltipContent ref={captureTooltipContent} side={side} className={cn('pointer-events-none', instant && 'animate-none!')}>
           {label}
         </TooltipContent>
       </Tooltip>

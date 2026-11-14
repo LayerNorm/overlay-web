@@ -34,8 +34,10 @@ function CommandDialog({
         showCloseButton={false}
         aria-describedby={undefined}
         {...contentProps}
+        // A palette is opened by keyboard many times a day, so it appears and disappears instantly.
+        overlayClassName={cn(contentProps?.overlayClassName, 'animate-none!')}
         className={cn(
-          'flex max-h-[70vh] w-[calc(100%-2rem)] max-w-xl flex-col gap-0 overflow-hidden rounded-2xl p-0 top-[12vh] translate-y-0',
+          'flex max-h-[70vh] w-[calc(100%-2rem)] max-w-xl flex-col gap-0 overflow-hidden rounded-2xl p-0 top-[12vh] translate-y-0 animate-none!',
           contentProps?.className,
         )}
       >
