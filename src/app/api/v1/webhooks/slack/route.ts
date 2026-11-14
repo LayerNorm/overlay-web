@@ -9,6 +9,8 @@ import {
   verifySlackRequestSignature,
 } from '@/server/surfaces/slack-lifecycle'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import { handleSlackSyncEvent } from '@/server/sync/slack/inbound'
+import { normalizeSlackSyncEvent } from '@/server/sync/slack/normalize'
 
 let handlersRegistered = false
 
@@ -21,6 +23,7 @@ let handlersRegistered = false
  * `app_uninstalled` and `tokens_revoked` aren't dispatched by the Chat SDK,
  * so the route handles them itself: parse the envelope, verify Slack's
  * signature on the raw body, then mark the matching connection non-active.
+ * Message and reaction events also feed Slack channel sync (src/server/sync).
  */
 export async function POST(request: Request) {
   if (!slackConfigured()) {
@@ -67,6 +70,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Slack lifecycle handling failed' }, { status: 500 })
     }
     return NextResponse.json({ ok: true })
+  }
+
+  // Channel sync reads the same events. It only acts on linked channels and runs
+  // after the response, so agent routing and Slack's ack window are unchanged.
+  if (
+    normalizeSlackSyncEvent(body)
+    && verifySlackRequestSignature({
+      headers: request.headers,
+      body,
+      signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
+    })
+  ) {
+    after(async () => { await handleSlackSyncEvent(body) })
   }
 
   return await chat.webhooks.slack(request, {
