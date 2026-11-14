@@ -335,6 +335,27 @@ test('does not extend a Linear destination into a following math noun', () => {
   assert.equal(draft.missingFields.includes('Resolve conflicting integration instructions'), false)
 })
 
+test('recognizes Linear as the target of a query action', () => {
+  const mathSearch = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, no integrations. Search linear equations for a root.',
+    assistantText: 'Search linear equations for a root.',
+  })
+  const queryActions = ['Search', 'Query', 'Check']
+
+  assert.equal(mathSearch.instructions, '1. Search linear equations for a root.')
+  assert.equal(mathSearch.missingFields.includes('Resolve conflicting integration instructions'), false)
+  for (const action of queryActions) {
+    const workflow = `${action} Linear for overdue issues.`
+    const draft = buildAutomationDraftFromTurn({
+      userText: `Every Monday at 01:00 UTC, no integrations. ${workflow}`,
+      assistantText: workflow,
+    })
+
+    assert.ok(draft.missingFields.includes('Resolve conflicting integration instructions'))
+    assert.equal(draft.instructions, '1. Clarify whether the workflow should use an integration')
+  }
+})
+
 test('does not treat weekday and time-only assistant summaries as workflow', () => {
   const scheduleOnly = buildAutomationDraftFromTurn({
     userText: 'Every Monday at 01:00 UTC, write OK, without integrations.',

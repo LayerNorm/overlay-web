@@ -119,6 +119,7 @@ function mentionsLinearIntegration(text: string): boolean {
   return (
     /\blinear\s+(?:issues?|tasks?|projects?|teams?|workspaces?|cycles?|tickets?|comments?|boards?)\b/i.test(text) ||
     /\b(?:use|using)\s+linear\s+(?:to|for)\s+(?:create|open|update|add|search|find|send|post|sync|assign|move|track|manage)\b/i.test(text) ||
+    /(?:^|[.!?;,:]\s*)[a-z][a-z'-]*\s+linear\s+for\s+[a-z]/i.test(text) ||
     /\b(?:use|using|via|through|in|to|from|with|except|including|only)\s+linear(?=\s*(?:[.!?;,:]|$))/i.test(text)
   )
 }
