@@ -139,14 +139,20 @@ export function groupExtensionCatalog<Item>(
   return sections
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length
+  while (end > 0 && value[end - 1] === '/') end -= 1
+  return value.slice(0, end)
+}
+
 /** Compares MCP server URLs ignoring case of the host, a trailing slash and surrounding space. */
 export function normalizeMcpServerUrl(url: string): string {
   const trimmed = url.trim()
   try {
     const parsed = new URL(trimmed)
-    return `${parsed.protocol}//${parsed.host.toLowerCase()}${parsed.pathname.replace(/\/+$/, '')}${parsed.search}`
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${trimTrailingSlashes(parsed.pathname)}${parsed.search}`
   } catch {
-    return trimmed.replace(/\/+$/, '').toLowerCase()
+    return trimTrailingSlashes(trimmed).toLowerCase()
   }
 }
 

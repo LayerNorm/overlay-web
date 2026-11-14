@@ -33,14 +33,24 @@ const TEMPLATE_ICONS: Record<SkillTemplateIcon, LucideIcon> = {
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
 const canEdit = (skill: SkillSummary) => (skill as { canEdit?: boolean }).canEdit !== false
 
-/** Reads a dropped-in SKILL.md: optional `name`/`description` front matter, the rest is the instructions. */
+/** Reads an uploaded SKILL.md: optional `name`/`description` front matter, the rest is the instructions. */
 function parseSkillMarkdown(text: string, fileName: string): Partial<SkillFormValues> {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text)
-  const field = (key: string) => match?.[1].match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1].trim().replace(/^["']|["']$/g, '')
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const fields: Record<string, string> = {}
+  let body = lines
+  const end = lines[0]?.trim() === '---' ? lines.findIndex((line, index) => index > 0 && line.trim() === '---') : -1
+  if (end > 0) {
+    for (const line of lines.slice(1, end)) {
+      const colon = line.indexOf(':')
+      if (colon > 0) fields[line.slice(0, colon).trim()] = line.slice(colon + 1).trim().replace(/^["']|["']$/g, '')
+    }
+    body = lines.slice(end + 1)
+  }
+  const fallbackName = fileName.replace(/\.md$/i, '')
   return {
-    name: field('name') || fileName.replace(/\.md$/i, '').replace(/^SKILL$/i, '') || '',
-    description: field('description') ?? '',
-    instructions: (match ? text.slice(match[0].length) : text).trim(),
+    name: fields.name || (fallbackName.toUpperCase() === 'SKILL' ? '' : fallbackName),
+    description: fields.description ?? '',
+    instructions: body.join('\n').trim(),
   }
 }
 
