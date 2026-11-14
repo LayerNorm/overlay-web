@@ -6,7 +6,7 @@ import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { savePendingCollaborationMessage } from '@/shared/chat/pending-collaboration-message'
 
-/** Opens (or creates) the agent's main thread, then navigates to it. Resolves the conversation id (null when it cannot be determined). */
+/** Resolves an agent thread with the supplied policy, then navigates to it. */
 export async function startAgentChat(args: {
   workspaceId: string | null
   agentId?: string
@@ -16,18 +16,16 @@ export async function startAgentChat(args: {
   surface?: 'agents' | 'chat'
   scope?: PanelScope
   buildHref?: (workspaceId: string | null, href: string, scope?: PanelScope) => string
-  /** Required with `agentId`: the native `agents/threads:resolveMain` mutation. */
-  resolveMainThread?: (args: { workspaceId: string; agentId: string }) => Promise<{ conversationId: string; title: string }>
+  /** Required with `agentId`: the mutation that selects a thread for this entry path. */
+  resolveAgentThread?: (args: { workspaceId: string; agentId: string }) => Promise<{ conversationId: string; title: string }>
   push(href: string): void
 }): Promise<string | null> {
   const surface = args.surface ?? 'chat'
 
   if (!args.workspaceId) return null
-  // Agents open into their main thread. The resolver adopts the legacy DM
-  // when one exists, so pre-thread history is never lost.
-  if (args.agentId && !args.resolveMainThread) throw new Error('Agent threads are unavailable')
+  if (args.agentId && !args.resolveAgentThread) throw new Error('Agent threads are unavailable')
   const thread = args.agentId
-    ? await args.resolveMainThread!({ workspaceId: args.workspaceId, agentId: args.agentId })
+    ? await args.resolveAgentThread!({ workspaceId: args.workspaceId, agentId: args.agentId })
     : null
   const conversationId = thread?.conversationId
     ?? (await overlayAppClient.conversations.createWorkspaceDirectMessage(args.workspaceId, {
