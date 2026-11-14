@@ -6,6 +6,37 @@ import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { savePendingCollaborationMessage } from '@/shared/chat/pending-collaboration-message'
 
+type AgentThreadArgs = { workspaceId: string; agentId: string }
+type AgentThreadResolution = { conversationId: string; title: string }
+type AgentThreadResolver = (args: AgentThreadArgs) => Promise<AgentThreadResolution>
+
+function isMissingConvexFunction(error: unknown, functionPath: string): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const prefix = /(?:Could not find (?:public )?function for|No function found for)\s+/i.exec(message)
+  if (!prefix) return false
+  const requested = message.slice(prefix.index + prefix[0].length).trimStart()
+  const quote = requested[0]
+  if (quote === "'" || quote === '"') {
+    const end = requested.indexOf(quote, 1)
+    return end > 0 && requested.slice(1, end) === functionPath
+  }
+  const path = /^\S+/.exec(requested)?.[0]
+  return path === functionPath || path === `${functionPath}.`
+}
+
+export async function resolveLatestActivityWithMainFallback(
+  args: AgentThreadArgs,
+  resolveLatestActivity: AgentThreadResolver,
+  resolveMain: AgentThreadResolver,
+): Promise<AgentThreadResolution> {
+  try {
+    return await resolveLatestActivity(args)
+  } catch (error) {
+    if (!isMissingConvexFunction(error, 'agents/threads:resolveLatestActivity')) throw error
+    return await resolveMain(args)
+  }
+}
+
 /** Resolves an agent thread with the supplied policy, then navigates to it. */
 export async function startAgentChat(args: {
   workspaceId: string | null
@@ -17,7 +48,7 @@ export async function startAgentChat(args: {
   scope?: PanelScope
   buildHref?: (workspaceId: string | null, href: string, scope?: PanelScope) => string
   /** Required with `agentId`: the mutation that selects a thread for this entry path. */
-  resolveAgentThread?: (args: { workspaceId: string; agentId: string }) => Promise<{ conversationId: string; title: string }>
+  resolveAgentThread?: AgentThreadResolver
   push(href: string): void
 }): Promise<string | null> {
   const surface = args.surface ?? 'chat'
