@@ -104,7 +104,7 @@ function buildPointerSteps(input: { userText: string; assistantText?: string }, 
 
 function hasClearWorkflow(lines: string[]): boolean {
   const remaining = lines.join(' ')
-    .replace(/\b(?:sundays?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|a|an|the|this|automation|workflow|schedule|scheduled|daily|weekly|monthly|quarterly|yearly|annually|hourly|every|each|day|week|month|first|second|third|last|on|at|of|for|that|is|runs?|will|utc|integration|integrations|required|needed|none|no|not|do|does|need|needs)\b/gi, ' ')
+    .replace(/\b(?:sundays?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|and|or|a|an|the|this|automation|workflow|schedule|scheduled|daily|weekly|monthly|quarterly|yearly|annually|hourly|every|each|day|week|month|first|second|third|last|on|at|of|for|that|is|runs?|will|utc|integration|integrations|required|needed|none|no|not|do|does|need|needs)\b/gi, ' ')
     .replace(/\d+/g, ' ')
     .replace(/[^a-z0-9]/gi, ' ')
     .trim()
@@ -117,8 +117,9 @@ function hasExplicitNoIntegrations(text: string): boolean {
 
 function mentionsLinearIntegration(text: string): boolean {
   return (
-    /\b(?:use|using|via|through|in|to|from|with|except|including|only)\s+linear\b/i.test(text) ||
-    /\blinear\s+(?:issues?|tasks?|projects?|teams?|workspaces?|cycles?|tickets?|comments?|boards?)\b/i.test(text)
+    /\blinear\s+(?:issues?|tasks?|projects?|teams?|workspaces?|cycles?|tickets?|comments?|boards?)\b/i.test(text) ||
+    /\b(?:use|using)\s+linear\s+(?:to|for)\s+(?:create|open|update|add|search|find|send|post|sync|assign|move|track|manage)\b/i.test(text) ||
+    /\b(?:send|post|sync|forward|route|upload|share|push|assign|move|link)\b[^.!?;]{0,60}\bto\s+linear\b/i.test(text)
   )
 }
 
@@ -153,7 +154,7 @@ function containsWeekday(text: string): boolean {
 function containsDailyCadence(text: string): boolean {
   return (
     /\bevery day\b/i.test(text) ||
-    /\bdaily(?=\s*(?:at|and|or|starting|from)\b|[,.!?;:]|$)/i.test(text) ||
+    /\bdaily(?=\s*(?:at|and|or|starting|from|automations?|schedules?|workflows?)\b|[,.!?;:]|$)/i.test(text) ||
     /\b(?:run|runs|repeat|repeats|schedule|scheduled|execute|executes)\s+(?:it\s+)?daily\b/i.test(text)
   )
 }

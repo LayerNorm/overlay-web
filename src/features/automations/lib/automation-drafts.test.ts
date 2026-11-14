@@ -274,22 +274,39 @@ test('distinguishes linear prose from Linear integration actions', () => {
     userText: 'Every Monday at 01:00 UTC, write a linear equation, no integrations.',
     assistantText: 'Write a linear equation.',
   })
+  const algebra = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, use linear algebra, no integrations.',
+    assistantText: 'Use linear algebra.',
+  })
+  const equations = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, work with linear equations, no integrations.',
+    assistantText: 'Work with linear equations.',
+  })
   const conflict = buildAutomationDraftFromTurn({
     userText: 'Every Monday at 01:00 UTC, no integrations. Create a Linear issue.',
     assistantText: 'Create a Linear issue.',
   })
   const integration = buildAutomationDraftFromTurn({
-    userText: 'Every Monday at 01:00 UTC, use Linear to create an issue.',
-    assistantText: 'Use Linear to create an issue.',
+    userText: 'Every Monday at 01:00 UTC, use linear to create an issue.',
+    assistantText: 'Use linear to create an issue.',
+  })
+  const sendToLinear = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, no integrations. Send to Linear.',
+    assistantText: 'Send to Linear.',
   })
 
   assert.deepEqual(equation.detectedIntegrations, [])
   assert.equal(equation.instructions, '1. Write a linear equation.')
   assert.equal(equation.missingFields.includes('Resolve conflicting integration instructions'), false)
+  assert.equal(algebra.instructions, '1. Use linear algebra.')
+  assert.equal(algebra.missingFields.includes('Resolve conflicting integration instructions'), false)
+  assert.equal(equations.instructions, '1. Work with linear equations.')
+  assert.equal(equations.missingFields.includes('Resolve conflicting integration instructions'), false)
   assert.deepEqual(conflict.detectedIntegrations, [])
   assert.ok(conflict.missingFields.includes('Resolve conflicting integration instructions'))
   assert.equal(conflict.instructions, '1. Clarify whether the workflow should use an integration')
   assert.deepEqual(integration.detectedIntegrations, ['Linear'])
+  assert.ok(sendToLinear.missingFields.includes('Resolve conflicting integration instructions'))
 })
 
 test('does not treat weekday and time-only assistant summaries as workflow', () => {
@@ -309,4 +326,29 @@ test('does not treat weekday and time-only assistant summaries as workflow', () 
   assert.equal(workflowAndSchedule.instructions, '1. Summarize the daily report every Monday at 01:00 UTC.')
   assert.equal(workflowAndSchedule.missingFields.length, 0)
   assert.equal(workflowAndSchedule.confidence, 'high')
+})
+
+test('recognizes a daily automation as explicit recurrence', () => {
+  const draft = buildAutomationDraftFromTurn({
+    userText: 'Set up a daily automation at 01:00 UTC to summarize the report. No integrations.',
+    assistantText: 'Summarize the report.',
+  })
+
+  assert.deepEqual(draft.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
+  assert.equal(draft.missingFields.includes('Confirm schedule frequency'), false)
+})
+
+test('does not treat a weekday connector as executable workflow', () => {
+  const scheduleOnly = buildAutomationDraftFromTurn({
+    userText: 'Every Monday and Wednesday at 01:00 UTC, write OK, without integrations.',
+    assistantText: 'Every Monday and Wednesday at 01:00 UTC.',
+  })
+  const actualWorkflow = buildAutomationDraftFromTurn({
+    userText: 'Every Monday and Wednesday at 01:00 UTC, without integrations.',
+    assistantText: 'Summarize the daily report every Monday and Wednesday at 01:00 UTC.',
+  })
+
+  assert.equal(scheduleOnly.instructions, '1. Clarify what this automation should do')
+  assert.ok(scheduleOnly.missingFields.includes('Clarify automation instructions'))
+  assert.equal(actualWorkflow.instructions, '1. Summarize the daily report every Monday and Wednesday at 01:00 UTC.')
 })
