@@ -170,19 +170,23 @@ function blockNodeToMarkdown(node: Node): string {
   if (/^H[1-3]$/.test(element.tagName)) return `${'#'.repeat(Number(element.tagName.slice(1)))} ${content}`
   if (element.tagName === 'PRE') return `\`\`\`\n${element.textContent ?? ''}\n\`\`\``
   if (element.tagName === 'BLOCKQUOTE') return content.split('\n').map((line) => `> ${line}`).join('\n')
-  if (element.tagName === 'UL' || element.tagName === 'OL') return listToMarkdown(element, 0)
+  if (element.tagName === 'UL' || element.tagName === 'OL') return listToMarkdown(element, '')
   return content
 }
 
-/** Serializes a list, writing sub-points (nested <ul>/<ol>) indented by three spaces per level. */
-function listToMarkdown(list: HTMLElement, depth: number): string {
-  const indent = '   '.repeat(depth)
+/**
+ * Serializes a list. Sub-points (nested <ul>/<ol>) are indented to the content
+ * column of their parent point, so `10. parent` nests its children under four
+ * spaces and `- parent` under two, as CommonMark requires.
+ */
+function listToMarkdown(list: HTMLElement, indent: string): string {
   const lines: string[] = []
   let index = 0
+  let childIndent = `${indent}   `
   for (const item of Array.from(list.children)) {
     if (item.tagName === 'UL' || item.tagName === 'OL') {
       // Stray nested list directly under a list (legacy browser output).
-      lines.push(listToMarkdown(item as HTMLElement, depth + 1))
+      lines.push(listToMarkdown(item as HTMLElement, childIndent))
       continue
     }
     const own: Node[] = []
@@ -192,9 +196,11 @@ function listToMarkdown(list: HTMLElement, depth: number): string {
       else own.push(child)
     }
     index += 1
+    const marker = list.tagName === 'OL' ? `${index}.` : '-'
+    childIndent = indent + ' '.repeat(marker.length + 1)
     const itemText = own.map(inlineNodeToMarkdown).join('').replace(/\n+$/, '')
-    lines.push(`${indent}${list.tagName === 'OL' ? `${index}.` : '-'} ${itemText}`)
-    for (const child of nested) lines.push(listToMarkdown(child, depth + 1))
+    lines.push(`${indent}${marker} ${itemText}`)
+    for (const child of nested) lines.push(listToMarkdown(child, childIndent))
   }
   return lines.join('\n')
 }
