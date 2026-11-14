@@ -1499,7 +1499,7 @@ test('a recovered stream failure does not persist its partial invocation message
 
   const result = await runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)
 
-  expect(recover).toHaveBeenCalledExactlyOnceWith('model:0')
+  expect(recover).toHaveBeenCalledExactlyOnceWith('model:0', expect.objectContaining({ message: expect.any(String) }))
   expect(provider.doStreamCalls).toHaveLength(2)
   expect(result.snapshot.resultSummary).toBe('Recovered final answer.')
   expect(JSON.stringify({ messages: result.messages, steps: result.steps })).not.toContain('Partial failed invocation.')
@@ -1553,7 +1553,7 @@ test('model recovery preserves completed tool results and settled steps before t
     tools: { write: tool({ inputSchema: z.object({}), execute }) },
   }, f.ports)
 
-  expect(recover).toHaveBeenCalledExactlyOnceWith('model:1')
+  expect(recover).toHaveBeenCalledExactlyOnceWith('model:1', expect.objectContaining({ message: 'stream interruption after a completed tool' }))
   const resumedPrompt = JSON.stringify(provider.doStreamCalls[2]?.prompt)
   expect(resumedPrompt).toContain('completed-write')
   expect(resumedPrompt).toContain('existing-job-123')

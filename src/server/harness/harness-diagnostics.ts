@@ -41,6 +41,58 @@ const providerRequestFailures = [
   'The model provider rejected the request because it was too large.',
 ]
 
+/**
+ * Provider recorded on the zero-usage receipt of a model call that ended before
+ * the provider reported usage (the stream dropped, timed out or omitted usage).
+ */
+export const INTERRUPTED_MODEL_CALL_PROVIDER = 'interrupted'
+
+function interruptedModelCallIsLatest(snapshot: HarnessSnapshot): boolean {
+  const receipt = snapshot.latestReceipt
+  return receipt?.provider === INTERRUPTED_MODEL_CALL_PROVIDER && snapshot.modelRecovery?.receiptId === receipt.id
+}
+
+/**
+ * Classifies a model call failure from the provider error alone: HTTP status,
+ * timeout names, or the authored descriptions that survive durable transport.
+ * Returns UNKNOWN when the error says nothing about the provider.
+ */
+function harnessProviderFailureCode(error: unknown): HarnessDiagnosticCode {
+  if (APICallError.isInstance(error) && typeof error.statusCode === 'number') {
+    const status = error.statusCode
+    if (status === 408) return 'PROVIDER_TIMEOUT'
+    if (status === 429) return 'PROVIDER_RATE_LIMIT'
+    if (status >= 500) return 'PROVIDER_UNAVAILABLE'
+    if ([401, 402, 403].includes(status)) return 'PROVIDER_ACCOUNT'
+    if (status >= 400) return 'PROVIDER_REQUEST_INVALID'
+  }
+  const name = readErrorField(error, 'name')
+  const errorCode = readErrorField(error, 'code')
+  if (name === 'TimeoutError' || name === 'APITimeoutError' || errorCode === 'ETIMEDOUT' || errorCode === 'ECONNABORTED') {
+    return 'PROVIDER_TIMEOUT'
+  }
+  // Durable Workflow transport strips SDK prototypes. Match authored descriptions
+  // and stable SDK names, never expose a raw provider message or nested payload.
+  const seen = new Set<object>()
+  let current = error
+  for (let depth = 0; depth < 4 && current && typeof current === 'object' && !seen.has(current); depth++) {
+    seen.add(current)
+    const currentName = readErrorField(current, 'name')
+    const description = currentName === 'HarnessModelFailure'
+      ? readErrorField(current, 'message') : describeAISDKFailure(current)
+    if (typeof description === 'string') {
+      if (description === PROVIDER_CONTENT_FILTER_REASON) return 'PROVIDER_REJECTED'
+      if (description.startsWith('The model provider rate limit or quota was exceeded.')) return 'PROVIDER_RATE_LIMIT'
+      if (description.startsWith('The model provider encountered a server error.')) return 'PROVIDER_UNAVAILABLE'
+      if (description.startsWith('The model provider request timed out.')) return 'PROVIDER_TIMEOUT'
+      if (providerAccountFailures.some(prefix => description.startsWith(prefix))) return 'PROVIDER_ACCOUNT'
+      if (providerRequestFailures.some(prefix => description.startsWith(prefix))) return 'PROVIDER_REQUEST_INVALID'
+    }
+    current = readErrorField(current, 'cause')
+  }
+  return 'UNKNOWN'
+}
+
 export function harnessDiagnosticForFailure(
   runId: string,
   snapshot: HarnessSnapshot,
@@ -53,10 +105,8 @@ export function harnessDiagnosticForFailure(
   }
   const message = error instanceof Error ? error.message : ''
   const value = error && typeof error === 'object' ? error as {
-    name?: unknown
     code?: unknown
     operationId?: unknown
-    statusCode?: unknown
   } : {}
   let code: HarnessDiagnosticCode = 'UNKNOWN'
   let operationId = typeof value.operationId === 'string'
@@ -70,10 +120,6 @@ export function harnessDiagnosticForFailure(
   } else if (error instanceof HarnessPersistenceError || value.code === 'HARNESS_PERSISTENCE_FAILED') {
     code = 'PERSISTENCE_FAILED'
     stage = 'persistence'
-  } else if (snapshot.modelReservation?.dispatch) {
-    code = 'MODEL_OUTCOME_UNKNOWN'
-    stage = 'model'
-    operationId = snapshot.modelReservation.id
   } else if (error instanceof HarnessAuthorizationError || value.code === 'HARNESS_AUTHORIZATION_REVOKED'
     || ['HARNESS_EXECUTION_NOT_OWNED', 'Harness request is not owned by an active execution.', 'HARNESS_RUN_NOT_FOUND', 'CONVERSATION_ACCESS_DENIED',
     'NOTE_ACCESS_DENIED', 'HARNESS_DELIVERY_ACCESS_DENIED', 'Native harness execution is no longer authorized.',
@@ -94,46 +140,23 @@ export function harnessDiagnosticForFailure(
     'Invalid personal delivery run.', 'Personal delivery ownership changed.', 'Invalid native fallback authority.',
     'Native delivery ownership changed.'].includes(message)) {
     code = 'AUTHORIZATION_REVOKED'
-  } else if (APICallError.isInstance(error) && typeof value.statusCode === 'number') {
-    if (value.statusCode === 408) code = 'PROVIDER_TIMEOUT'
-    else if (value.statusCode === 429) code = 'PROVIDER_RATE_LIMIT'
-    else if (value.statusCode >= 500) code = 'PROVIDER_UNAVAILABLE'
-    else if ([401, 402, 403].includes(value.statusCode)) code = 'PROVIDER_ACCOUNT'
-    else if (value.statusCode >= 400) code = 'PROVIDER_REQUEST_INVALID'
-  } else if (stage === 'model' && snapshot.latestReceipt?.costMicros === 0
+  } else if (stage === 'model' && !snapshot.modelReservation?.dispatch && snapshot.latestReceipt?.costMicros === 0
     && ['route_capacity', 'route_unavailable', 'route_interrupted'].includes(snapshot.latestReceipt.rejectionReason ?? '')) {
     if (snapshot.latestReceipt.rejectionReason === 'route_capacity') code = 'PROVIDER_RATE_LIMIT'
     else if (snapshot.latestReceipt.rejectionReason === 'route_unavailable') code = 'PROVIDER_UNAVAILABLE'
     else if (snapshot.latestReceipt.rejectionReason === 'route_interrupted') code = 'PROVIDER_TIMEOUT'
-  } else if (value.name === 'TimeoutError' || value.name === 'APITimeoutError'
-    || value.code === 'ETIMEDOUT' || value.code === 'ECONNABORTED') {
-    code = 'PROVIDER_TIMEOUT'
   } else if (stage === 'tool' && value.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN') {
     code = 'TOOL_OUTCOME_UNKNOWN'
   } else if (stage === 'tool' && snapshot.evidence.some(item => item.kind === 'tool_result' && item.verdict === 'failed')) {
     code = 'TOOL_FAILED'
   }
-  // Durable Workflow transport strips SDK prototypes. Match authored descriptions
-  // and stable SDK names, never expose a raw provider message or nested payload.
-  if (code === 'UNKNOWN') {
-    const seen = new Set<object>()
-    let current = error
-    for (let depth = 0; depth < 4 && current && typeof current === 'object' && !seen.has(current); depth++) {
-      seen.add(current)
-      const name = readErrorField(current, 'name')
-      const description = name === 'HarnessModelFailure'
-        ? readErrorField(current, 'message') : describeAISDKFailure(current)
-      if (typeof description === 'string') {
-        if (description === PROVIDER_CONTENT_FILTER_REASON) code = 'PROVIDER_REJECTED'
-        else if (description.startsWith('The model provider rate limit or quota was exceeded.')) code = 'PROVIDER_RATE_LIMIT'
-        else if (description.startsWith('The model provider encountered a server error.')) code = 'PROVIDER_UNAVAILABLE'
-        else if (description.startsWith('The model provider request timed out.')) code = 'PROVIDER_TIMEOUT'
-        else if (providerAccountFailures.some(prefix => description.startsWith(prefix))) code = 'PROVIDER_ACCOUNT'
-        else if (providerRequestFailures.some(prefix => description.startsWith(prefix))) code = 'PROVIDER_REQUEST_INVALID'
-      }
-      if (code !== 'UNKNOWN') break
-      current = readErrorField(current, 'cause')
-    }
+  // The real cause wins. A call that ended without usage is only reported as such
+  // when nothing more specific is known about the failure.
+  if (code === 'UNKNOWN') code = harnessProviderFailureCode(error)
+  if (code === 'UNKNOWN' && (snapshot.modelReservation?.dispatch || interruptedModelCallIsLatest(snapshot))) {
+    code = 'MODEL_OUTCOME_UNKNOWN'
+    stage = 'model'
+    if (snapshot.modelReservation?.dispatch) operationId = snapshot.modelReservation.id
   }
   const occurredAt = Date.now()
   const revision = snapshot.revision
@@ -149,4 +172,17 @@ export function harnessDiagnosticTerminalError(diagnostic: HarnessDiagnostic) {
     retryable: diagnostic.retryability === 'automatic' || diagnostic.retryability === 'user_action',
     diagnostic: publicDiagnostic,
   }
+}
+
+/** One searchable line per failed run. Carries no prompt, output, credential or raw provider text. */
+export function logHarnessFailure(runId: string, diagnostic: HarnessDiagnostic, error: unknown): void {
+  const name = readErrorField(error, 'name')
+  // eslint-disable-next-line no-console
+  console.warn('[harness] run failed', {
+    runId,
+    diagnosticId: diagnostic.diagnosticId,
+    code: diagnostic.code,
+    stage: diagnostic.stage,
+    errorName: typeof name === 'string' ? name.slice(0, 64) : typeof error,
+  })
 }
