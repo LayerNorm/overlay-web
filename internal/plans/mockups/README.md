@@ -3,40 +3,62 @@
 New mockups always go in this folder, without asking. Use the gitignored root
 `artifacts/` folder only when the owner explicitly asks for it.
 
-## Approved workspace structure
+## The canonical app mockup
 
-Use [agent-thread-activity.html](agent-thread-activity.html) as the canonical
-workspace mockup. Its [React source](agent-thread-activity.tsx) imports the
-production `DoubleSidebar` component, and its stylesheet imports
-`src/app/double-sidebar.css`. Do not recreate the workspace shell from scratch.
+[overlay-app.html](overlay-app.html) is the whole web app in one file. It is not
+a redrawing: [overlay-app/](overlay-app/) bundles the real production provider
+tree, `AppShellSidebar`, the curved/framed main surface, the right details panel
+and every route page, and replaces only the backend. Convex queries and the
+app's own `/api` routes answer from fixtures in `overlay-app/fixtures/`, so the
+file opens straight from disk with sample data and makes no network requests.
 
-Workspace mockups must strictly preserve:
+Open it and use the app's own navigation. Every surface is reachable:
 
-- The 60px primary icon rail and resizable contextual sidebar (272px by default).
-- The contextual title, search/add actions, and Personal/Workspace scope control.
-- Agents and expandable nested threads inside that sidebar, never in tabs or a
-  horizontal strip above the conversation.
-- The production breadcrumb/header, framed main surface, transcript/composer
-  proportions, semantic light/dark tokens, typography, and Overlay UI primitives.
-- Existing docked detail-panel framing when that panel is shown.
-- Sidebar/drawer navigation at narrow widths, not stacked resource tabs.
+- Work: list, board, timeline, organization and the task detail panel.
+- Agents: agent threads with tool, reasoning and PR rows, the right panel
+  (Details, Library, Computer), and the agent editor (`#/app/agents/new`).
+- Chats: personal AI chats, workspace chats, channels and direct messages.
+- Activity, Notes (with the editor), Files, Automations, Extensions/Connectors.
+- Account and every Settings section (`#/app/settings?section=memories` and so on).
 
-Only change the feature being proposed. Do not redesign navigation, branding,
-spacing, or surrounding chrome incidentally. Compare rendered desktop and narrow
-layouts in both themes against the canonical mockup and the current production
-components before sharing.
+The app path lives in the hash, for example
+`overlay-app.html#/w/northwind/workspace/work?view=board`. Add `?theme=dark`
+before the hash for dark mode, or use the app's theme toggle. Narrow windows get
+the production mobile drawer.
 
-Floating detail panels use the elevated semantic surface as a fallback when
-rendered outside the sidebar's scoped shell variables, so they stay opaque in
-both themes.
+### Making a feature mockup
 
-Production components and styles are the source of truth; the standalone
-mockup's simulated task behavior is not a production contract.
+Start from the canonical mockup instead of drawing the shell. Either change the
+production component on a branch and rebuild, or add the proposed component to
+`overlay-app/routes.tsx` and the data it needs to `overlay-app/fixtures/`. Only
+change the feature being proposed; navigation, sidebar, breadcrumbs, framing,
+spacing, typography and light/dark tokens come from production and must stay
+untouched. Compare desktop and narrow layouts in both themes before sharing.
+
+### Rebuild
+
+```sh
+node internal/plans/mockups/overlay-app/build.mjs
+```
+
+Rebuild after production UI changes so the mockup keeps matching the app.
+`MOCKUP_MINIFY=0` keeps the output readable and `MOCKUP_DEV=1` uses React's
+development build for readable errors. A query or route without a fixture logs
+`[mockup] no fixture for …` in the browser console; add it to `fixtures/`.
+
+How it works: `build.mjs` bundles `entry.tsx` with esbuild, compiles
+`src/app/globals.css` with Tailwind, and inlines public assets as data URLs.
+`shims/` stand in for `next/navigation`, `next/link`, `next/dynamic`,
+`next/image` and `convex/react`, keep the app URL in the hash, and redirect
+direct `window.location` reads to it.
+
+Production components and styles are the source of truth; the fixture data and
+simulated mutations are not a production contract.
 
 ## What else lives here
 
 Mockups for shipped features are deleted once they land; Git history keeps
-them. Besides the canonical workspace mockup, this folder holds only:
+them. Besides the canonical app mockup, this folder holds only:
 
 - `paid-first.html` (built by `build-paid-first.mjs`): the approved onboarding
   design for the in-progress `PAID_FIRST_EXECUTION_PLAN.md`. Delete it when
@@ -47,15 +69,3 @@ them. Besides the canonical workspace mockup, this folder holds only:
   source, not mockups.
 
 Add new mockups here and remove them when their feature ships.
-
-## Rebuild the canonical preview
-
-With the repository's React, Radix, Lucide, Sonner, esbuild, PostCSS and Tailwind
-dependencies installed:
-
-```sh
-node internal/plans/mockups/build-agent-thread-activity.cjs
-```
-
-The output is a self-contained HTML file. Open it directly in a browser; it
-does not require authentication, live services, or production mutations.
