@@ -155,8 +155,7 @@ function containsWeekday(text: string): boolean {
 function containsDailyCadence(text: string): boolean {
   return (
     /\bevery day\b/i.test(text) ||
-    /\b\d{1,2}:\d{2}\s+utc[,:]?\s+daily\b/i.test(text) ||
-    /\bdaily(?=\s*(?:at|and|or|starting|from|automations?|schedules?|workflows?)\b|[,.!?;:]|$)/i.test(text) ||
+    /\bdaily(?=\s*(?:(?:at|and|or|starting|from|automations?|schedules?|workflows?)\b|(?:no|without)\s+(?:any\s+)?(?:external\s+)?integrations?\b|[,.!?;:]|$))/i.test(text) ||
     /\b(?:run|runs|repeat|repeats|schedule|scheduled|execute|executes)\s+(?:it\s+)?daily\b/i.test(text)
   )
 }

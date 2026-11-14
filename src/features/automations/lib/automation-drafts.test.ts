@@ -394,11 +394,32 @@ test('recognizes daily cadence before or after an explicit UTC time', () => {
     userText: 'At 01:00 UTC daily without integrations, write OK.',
     assistantText: 'Write OK.',
   })
+  const dailyAfterColon = buildAutomationDraftFromTurn({
+    userText: 'At 01:00 UTC: daily without integrations, write OK.',
+    assistantText: 'Write OK.',
+  })
 
   assert.deepEqual(dailyBeforeTime.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
   assert.equal(dailyBeforeTime.missingFields.includes('Confirm schedule frequency'), false)
   assert.deepEqual(dailyAfterTime.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
   assert.equal(dailyAfterTime.missingFields.includes('Confirm schedule frequency'), false)
+  assert.deepEqual(dailyAfterColon.schedule, { kind: 'daily', hourUTC: 1, minuteUTC: 0 })
+  assert.equal(dailyAfterColon.missingFields.includes('Confirm schedule frequency'), false)
+})
+
+test('keeps daily report task phrases from overriding weekly cadence', () => {
+  const reportPhrases = [
+    'Every Monday at 01:00 UTC: daily report summary. No integrations.',
+    'Every Monday at 01:00 UTC, daily report summary. No integrations.',
+    'Every Monday at 01:00 UTC daily report summary. No integrations.',
+  ]
+
+  for (const userText of reportPhrases) {
+    const draft = buildAutomationDraftFromTurn({ userText, assistantText: 'Summarize the report.' })
+
+    assert.deepEqual(draft.schedule, { kind: 'weekly', dayOfWeekUTC: 1, hourUTC: 1, minuteUTC: 0 })
+    assert.equal(draft.missingFields.includes('Confirm schedule frequency'), false)
+  }
 })
 
 test('does not treat a weekday connector as executable workflow', () => {
