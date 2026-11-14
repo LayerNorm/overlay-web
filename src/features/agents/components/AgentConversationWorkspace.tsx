@@ -31,7 +31,7 @@ import {
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
-import { resolveLatestActivityWithMainFallback, sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
+import { sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
 import { useAgentConversationComputer } from './use-agent-conversation-computer'
 import { useAgentThreadScope } from '../lib/use-agent-thread-scope'
@@ -157,7 +157,6 @@ function useAgentAutoOpen(args: {
   } = args
   const attemptedAgentRef = useRef<string | null>(null)
   const resolveLatestActivity = useMutation(api.agents.threads.resolveLatestActivity)
-  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
 
   useEffect(() => {
     attemptedAgentRef.current = null
@@ -184,8 +183,7 @@ function useAgentAutoOpen(args: {
           surface: 'agents',
           scope,
           buildHref,
-          resolveAgentThread: (resolveArgs) =>
-            resolveLatestActivityWithMainFallback(resolveArgs, resolveLatestActivity, resolveMainThread),
+          resolveAgentThread: resolveLatestActivity,
           push: (href) => { if (!cancelled && intentIsCurrent()) router.replace(href) },
         })
       } catch (chatError) {
@@ -195,7 +193,7 @@ function useAgentAutoOpen(args: {
       }
     })()
     return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
-  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveLatestActivity, resolveMainThread, router, onResolvingChange, onError])
+  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveLatestActivity, router, onResolvingChange, onError])
 }
 
 function requestedAgentScope(
