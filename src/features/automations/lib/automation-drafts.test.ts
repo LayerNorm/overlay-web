@@ -422,6 +422,38 @@ test('keeps daily report task phrases from overriding weekly cadence', () => {
   }
 })
 
+test('does not replace an unclassified user daily request with an assistant cadence', () => {
+  const draft = buildAutomationDraftFromTurn({
+    userText: 'At 01:00 UTC daily write OK. No integrations.',
+    assistantText: 'Monthly day 1 at 01:00 UTC.',
+  })
+
+  assert.notEqual(draft.schedule.kind, 'monthly')
+  assert.ok(draft.missingFields.includes('Confirm schedule frequency'))
+  assert.equal(draft.confidence, 'low')
+})
+
+test('requests confirmation for ambiguous daily task wording', () => {
+  const draft = buildAutomationDraftFromTurn({
+    userText: 'At 01:00 UTC: daily report summary. No integrations.',
+    assistantText: 'Monthly day 1 at 01:00 UTC.',
+  })
+
+  assert.notEqual(draft.schedule.kind, 'monthly')
+  assert.ok(draft.missingFields.includes('Confirm schedule frequency'))
+  assert.equal(draft.confidence, 'low')
+})
+
+test('uses the assistant cadence when the user did not specify one', () => {
+  const draft = buildAutomationDraftFromTurn({
+    userText: 'At 01:00 UTC, write OK. No integrations.',
+    assistantText: 'Monthly day 1 at 01:00 UTC.',
+  })
+
+  assert.deepEqual(draft.schedule, { kind: 'monthly', dayOfMonthUTC: 1, hourUTC: 1, minuteUTC: 0 })
+  assert.equal(draft.missingFields.includes('Confirm schedule frequency'), false)
+})
+
 test('does not treat a weekday connector as executable workflow', () => {
   const scheduleOnly = buildAutomationDraftFromTurn({
     userText: 'Every Monday and Wednesday at 01:00 UTC, write OK, without integrations.',

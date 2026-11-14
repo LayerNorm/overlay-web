@@ -175,7 +175,11 @@ function parseCadence(text: string): ParsedValue<ScheduleCadence> {
   ]
 
   if (unsupported) return { status: 'invalid', missingField: 'Confirm supported schedule frequency' }
-  if (kinds.length === 0) return { status: 'absent' }
+  if (kinds.length === 0) {
+    return /\bdaily\b/i.test(text)
+      ? { status: 'invalid', missingField: 'Confirm schedule frequency' }
+      : { status: 'absent' }
+  }
   if (kinds.length > 1) return { status: 'invalid', missingField: 'Confirm schedule frequency' }
   if (kinds[0] === 'interval') {
     const values = [
