@@ -49,3 +49,15 @@ composer shows Stop and supports queue and steer (see "Queue and steer while a
 response runs" in `interface-design.md`). Steering stops each generating
 reply, including one that appears after the request, then sends the message.
 Side-thread replies do not count as running for the main composer.
+
+## Sidebar agent rows
+
+- Clicking an agent row only expands or collapses its threads; it never
+  navigates or selects a thread. Opening happens from a thread row.
+- Opening a thread (or creating one) records the agent as most recently used
+  and re-sorts the list in the same click, so the agent and its threads move up
+  directly below the pinned chief of staff. `useFlipReorder` animates the move
+  (260 ms, disabled with reduced motion).
+- The row subtitle shows only in-progress counts (working, ready, needs you,
+  failed). Agents with nothing in progress show just their name; there is no
+  "No active tasks" placeholder.

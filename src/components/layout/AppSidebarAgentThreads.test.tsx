@@ -133,12 +133,13 @@ test('thread pull requests expose lifecycle icons without stealing the thread ac
   assert.doesNotMatch(html, /aria-label="Delete thread"/)
 })
 
-test('agent subtitles retain working and ready counts and preserve the chief fallback', () => {
+test('agent subtitles show only in-progress counts and nothing for an idle agent', () => {
   const activity = (['working', 'working', 'ready', 'needs_input'] as ThreadActivityStatus[])
     .map((status, i) => ({ conversationId: String(i), status }))
   const html = renderToStaticMarkup(<AgentActivitySummary activity={activity} />)
   assert.match(html, /2 working/)
   assert.match(html, /1 ready/)
   assert.match(html, /1 needs you/)
-  assert.match(renderToStaticMarkup(<AgentActivitySummary activity={[]} fallback="Dev · You" />), /Dev · You/)
+  assert.equal(renderToStaticMarkup(<AgentActivitySummary activity={[]} />), '')
+  assert.equal(renderToStaticMarkup(<AgentActivitySummary />), '')
 })
