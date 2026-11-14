@@ -1,6 +1,5 @@
-/* Marketing home page: a static scroll in one framed column (approved mockup:
-   internal/plans/mockups/landing-static-mockup-v2.html). Everything is scoped
-   under .sl; the dark palette follows the landing theme toggle. */
+/* Marketing home page: a static scroll in one framed column. Everything is
+   scoped under .sl; the dark palette follows the landing theme toggle. */
 .sl {
   --sl-bg: #ffffff; --sl-panel: #f7f7f7; --sl-panel-2: #f1f1f1; --sl-card: #ffffff;
   --sl-line: #ebebeb; --sl-line-2: #e2e2e2; --sl-text: #171717; --sl-muted: #737373; --sl-faint: #a3a3a3;

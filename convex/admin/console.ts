@@ -9,7 +9,7 @@ import {
 import { growthCountFields } from '../lib/growthSchema'
 import { addDays } from '../platform/growth'
 
-// Stage 2 operator surface (docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md).
+// Stage 2 operator surface (internal/develop/admin-console.md).
 // Every function requires ADMIN_API_SECRET plus the caller's WorkOS identity
 // resolving to an active administrativePrincipals row — the web app's
 // INTERNAL_API_SECRET cannot call any of these. Each write records its own

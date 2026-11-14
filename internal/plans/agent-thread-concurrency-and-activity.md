@@ -14,7 +14,7 @@ Design proposal for review. No production application behavior has been changed.
 
 ## Mockup
 
-Open `mockups/agent-thread-activity.html` directly. It is a self-contained, interactive prototype built with Overlay's actual DoubleSidebar component, production double-sidebar styles, and shared Button, Textarea, Toaster, and OverlayMark components. The surrounding shell follows the existing icon rail plus contextual panel layout, not a newly designed sidebar.
+The original standalone prototype for this plan has been replaced by `mockups/overlay-app.html`, which renders the shipped agent threads, activity lines and right panel from production components (Git history keeps the old prototype).
 
 - The initial view has two working threads, one unseen completed result, and an already-read result.
 - **Simulate completion** finishes a background task first, changes its sidebar status, moves it to the top, and shows a completion toast.
