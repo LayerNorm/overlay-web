@@ -30,7 +30,7 @@ export const STEP_NAMES = {
 /** Map a workflow step name to the graph node kinds it affects.
  *
  * The Workflow SDK emits step names with a path prefix like
- * `step//./workflows/automation-schedule//executeAutomationRun`,
+ * `step//./src/server/workflows/automation-run//<stepName>`,
  * so we match by suffix/contains rather than exact equality.
  */
 function nodeKindsForStep(stepName: string): string[] {

@@ -1062,7 +1062,6 @@ export default defineSchema({
     // instructions, tools, and environment through its thread.
     agentId: v.optional(v.string()),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
-    schedulerWorkflowRunId: v.optional(v.string()),
     // Legacy automation fields kept so existing production rows continue to validate.
     conversationId: v.optional(v.id('conversations')),
     failureStreak: v.optional(v.number()),
@@ -1102,7 +1101,6 @@ export default defineSchema({
     .index('by_agentId', ['agentId'])
     .index('by_conversationId_deletedAt', ['conversationId', 'deletedAt'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
-    .index('by_schedulerWorkflowRunId', ['schedulerWorkflowRunId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
