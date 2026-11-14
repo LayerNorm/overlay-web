@@ -12,9 +12,8 @@ import {
   useState,
 } from 'react'
 import {
-  DEFAULT_CONNECTOR_CATALOG,
+  CONNECTOR_CATEGORIES,
   connectorFromIntegrationSummary,
-  filterConnectorCatalog,
   getAvailableConnectorRows,
   getConnectedConnectorRows,
   integrationRegistryToConnectorCatalog,
@@ -24,21 +23,22 @@ import {
   type ConnectorCatalogItem,
   type IntegrationSearchResponse,
 } from '@overlay/app-core'
-import { AppScreenShell } from '@overlay/modules-react/shell'
-import { ExtensionPageHeader, IntegrationsPanel } from '@overlay/modules-react/extensions'
-import { IntegrationListSkeleton } from '@overlay/ui/feedback'
+import { groupExtensionCatalog } from '@overlay/app-core/extensions'
+import { ConnectorDetailsDialog, ExtensionCatalogPage, type ExtensionCatalogEntry } from '@overlay/modules-react/extensions'
+import { toast } from '@overlay/ui/primitives'
+import { Plug, Server, Settings, Unplug } from 'lucide-react'
 import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
-import { IntegrationsDialog } from '@/features/integrations/components/IntegrationsDialog'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { ExtensionsScreen } from '@/components/layout/extensions/ExtensionsScreen'
+import { useExtensionsRoute } from '@/hooks/use-extensions-route'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import overlayAppConfig from '@/overlay.config'
 
-const LIST_PAGE_SIZE = 8
+const SEARCH_DEBOUNCE_MS = 300
 
 type IntegrationsInitialData = {
   connected?: ConnectedIntegrationsResponse | null
@@ -93,11 +93,11 @@ export default function IntegrationsView({
   const [logos, setLogos] = useState<Record<string, string | null>>(() => initialState.logos)
   const [isLoading, setIsLoading] = useState(!hasInitialData)
   const [connecting, setConnecting] = useState<string | null>(null)
-  const [connectError, setConnectError] = useState<string | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [connectedVisible, setConnectedVisible] = useState(LIST_PAGE_SIZE)
-  const [availableVisible, setAvailableVisible] = useState(LIST_PAGE_SIZE)
+  const [details, setDetails] = useState<ConnectorCatalogItem | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const route = useExtensionsRoute()
+  const { capabilities } = useOverlayCapabilities()
   // In Workspace, the same connectors link to the workspace's own accounts (shared by every member), not the person's.
   const workspaceScope = usePanelScope() === 'workspace'
   const accountScope = workspaceScope ? ('workspace' as const) : undefined
@@ -179,7 +179,6 @@ export default function IntegrationsView({
   useEffect(() => {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onFocus is a stable useEffectEvent
   }, [])
 
   useEffect(() => {
@@ -201,155 +200,149 @@ export default function IntegrationsView({
     }
   }, [loadConnected, loadCatalog])
 
-  async function handleConnect(integration: ConnectorCatalogItem) {
-    if (connecting) return
-    if (connected.has(integration.providerKey) && integration.capabilities?.supportsDisconnect === false) return
-    setConnectError(null)
-    setConnecting(integration.providerKey)
-
-    let oauthTab: Window | null = null
-    if (!connected.has(integration.providerKey)) {
-      oauthTab = window.open('about:blank', '_blank')
-    }
-
-    try {
-      if (connected.has(integration.providerKey)) {
-        const res = await overlayAppClient.integrations.disconnectResponse(integration.providerKey, undefined, accountScope)
-        if (res.ok) {
-          setConnected((prev) => {
-            const next = new Set(prev)
-            next.delete(integration.providerKey)
-            return next
-          })
-          notifyIntegrationsChanged()
-        } else {
-          const data = await res.json().catch(() => ({}))
-          setConnectError(data.error || 'Failed to disconnect')
-        }
-      } else {
-        const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(accountScope ? { scope: accountScope } : {}) })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          oauthTab?.close()
-          setConnectError(data.error || 'Failed to connect')
-        } else if (safeHttpUrl(data.redirectUrl)) {
-          const redirectUrl = safeHttpUrl(data.redirectUrl)!
-          if (oauthTab) oauthTab.location.href = redirectUrl
-          else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-        } else {
-          oauthTab?.close()
-          setConnectError('No connection setup URL was returned')
-        }
+  // Search reaches the provider's whole catalog, not only the first page loaded above.
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (!q) return
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      try {
+        const data = await overlayAppClient.integrations.get<IntegrationSearchResponse>({ action: 'search', q, limit: 24, ...(workspaceScope ? { view: 'workspace' as const } : {}) })
+        if (cancelled) return
+        const items = (Array.isArray(data.items) ? data.items : []).map((item) => connectorFromIntegrationSummary(item))
+        setCatalogItems((prev) => mergeConnectorCatalogEntries(prev, items))
+        rememberLogos(items)
+      } catch {
+        // The loaded catalog still filters locally.
+      } finally {
+        if (!cancelled) setSearching(false)
       }
+    }, SEARCH_DEBOUNCE_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [searchQuery, workspaceScope, rememberLogos])
+
+  const isConnected = useCallback((item: ConnectorCatalogItem) => connected.has(item.providerKey) || connected.has(item.slug), [connected])
+
+  async function connect(integration: ConnectorCatalogItem) {
+    if (connecting) return
+    setConnecting(integration.providerKey)
+    // Opened before any await so the browser treats the provider page as user-initiated, not a blocked popup.
+    const oauthTab = window.open('about:blank', '_blank')
+    try {
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(accountScope ? { scope: accountScope } : {}) })
+      const data = await res.json().catch(() => ({}))
+      const redirectUrl = res.ok ? safeHttpUrl(data.redirectUrl) : null
+      if (redirectUrl) {
+        if (oauthTab) oauthTab.location.href = redirectUrl
+        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
+        return
+      }
+      oauthTab?.close()
+      if (!res.ok) toast.error(data.error || `Could not connect ${integration.name}`)
+      else if (data.connectionId) {
+        setConnected((prev) => new Set([...prev, integration.providerKey]))
+        notifyIntegrationsChanged()
+        toast.success(`${integration.name} connected`)
+      } else toast.error('No connection setup URL was returned')
     } catch {
       oauthTab?.close()
-      setConnectError('Connection failed')
+      toast.error(`Could not connect ${integration.name}`)
     } finally {
       setConnecting(null)
     }
   }
 
-  const dialogConnect = useCallback(async (slug: string) => {
-    const oauthTab = window.open('about:blank', '_blank')
+  async function disconnect(integration: ConnectorCatalogItem) {
+    if (connecting || integration.capabilities?.supportsDisconnect === false) return
+    setConnecting(integration.providerKey)
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: slug, ...(accountScope ? { scope: accountScope } : {}) })
-      const data = await res.json().catch(() => ({}))
+      const res = await overlayAppClient.integrations.disconnectResponse(integration.providerKey, undefined, accountScope)
       if (!res.ok) {
-        oauthTab?.close()
-        throw new Error(data.error || 'Failed to initiate connection')
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || `Could not disconnect ${integration.name}`)
+        return
       }
-      const redirectUrl = safeHttpUrl(data.redirectUrl)
-      if (redirectUrl) {
-        if (oauthTab) oauthTab.location.href = redirectUrl
-        else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-      } else if (data.connectionId) {
-        oauthTab?.close()
-        setConnected((prev) => new Set([...prev, slug]))
-        notifyIntegrationsChanged()
-      } else {
-        oauthTab?.close()
-        throw new Error('No connection setup URL returned')
-      }
-    } catch (err) {
-      oauthTab?.close()
-      throw err
+      setConnected((prev) => {
+        const next = new Set(prev)
+        next.delete(integration.providerKey)
+        next.delete(integration.slug)
+        return next
+      })
+      notifyIntegrationsChanged()
+      toast(`${integration.name} disconnected`)
+    } catch {
+      toast.error(`Could not disconnect ${integration.name}`)
+    } finally {
+      setConnecting(null)
     }
-  }, [accountScope])
-
-  const dialogDisconnect = useCallback(async (slug: string) => {
-    const res = await overlayAppClient.integrations.disconnectResponse(slug, undefined, accountScope)
-    if (!res.ok) throw new Error('Failed to disconnect')
-    setConnected((prev) => {
-      const next = new Set(prev)
-      next.delete(slug)
-      return next
-    })
-    notifyIntegrationsChanged()
-  }, [accountScope])
+  }
 
   const connectedRows = useMemo(() => getConnectedConnectorRows(connected, catalogItems), [connected, catalogItems])
-  const availableList = useMemo(() => getAvailableConnectorRows(connected, catalogItems, DEFAULT_CONNECTOR_CATALOG), [connected, catalogItems])
+  const availableRows = useMemo(() => getAvailableConnectorRows(connected, catalogItems), [connected, catalogItems])
 
-  const [prevConnectedSize, setPrevConnectedSize] = useState(connected.size)
-  if (prevConnectedSize !== connected.size) {
-    setPrevConnectedSize(connected.size)
-    setConnectedVisible(LIST_PAGE_SIZE)
+  const toEntry = (item: ConnectorCatalogItem): ExtensionCatalogEntry => {
+    const linked = isConnected(item)
+    const managed = item.capabilities?.supportsDisconnect === false
+    return {
+      id: item.providerKey,
+      name: item.name,
+      description: item.description,
+      logo: { kind: 'image', src: logos[item.providerKey] ?? item.logoUrl },
+      busy: connecting === item.providerKey,
+      onOpen: () => setDetails(item),
+      onAdd: linked ? undefined : () => void connect(item),
+      menu: linked ? [
+        { label: 'Settings', icon: Settings, onSelect: () => setDetails(item) },
+        { label: managed ? 'Managed externally' : 'Disconnect', icon: Unplug, disabled: managed, onSelect: () => void disconnect(item) },
+      ] : undefined,
+    }
   }
 
-  const [prevAvailableLength, setPrevAvailableLength] = useState(
-    availableList.length,
-  )
-  if (prevAvailableLength !== availableList.length) {
-    setPrevAvailableLength(availableList.length)
-    setAvailableVisible(LIST_PAGE_SIZE)
-  }
-
-  const filteredConnectedRows = useMemo(
-    () => filterConnectorCatalog(connectedRows, searchQuery),
-    [connectedRows, searchQuery],
-  )
-  const filteredAvailableList = useMemo(
-    () => filterConnectorCatalog(availableList, searchQuery),
-    [availableList, searchQuery],
-  )
+  const browse = groupExtensionCatalog([...connectedRows, ...availableRows], CONNECTOR_CATEGORIES, (item) => item.slug)
+    .map((section) => ({ ...section, items: section.items.map(toEntry) }))
+  const yours = [{ id: 'connected', title: 'Connected', items: connectedRows.map(toEntry) }]
+  const openSection = route.category ? browse.find((section) => section.id === route.category) : undefined
+  const detailsConnected = details ? isConnected(details) : false
 
   return (
-    <AppScreenShell
-      header={
-        <ExtensionPageHeader
-          title={workspaceScope ? 'Workspace connectors' : 'Connectors'}
-          tabs={<PageSubviewTabs />}
-          searchQuery={searchQuery}
-          searchPlaceholder="Search integrations…"
-          searchTitle="Search integrations"
-          onSearchQueryChange={setSearchQuery}
-        />
-      }
-    >
-      <IntegrationsPanel
+    <ExtensionsScreen title="Connectors" sectionTitle={openSection?.title} overviewHref={route.overviewHref}>
+      <ExtensionCatalogPage
+        title="Connectors"
+        subtitle="Let Overlay and your agents work across the apps you use."
+        noun="connectors"
+        icon={Plug}
+        yoursLabel={workspaceScope ? 'Workspace' : 'Yours'}
         loading={isLoading}
-        loadingFallback={<IntegrationListSkeleton rows={10} />}
-        connectedRows={filteredConnectedRows}
-        availableRows={filteredAvailableList}
-        connectedVisible={connectedVisible}
-        availableVisible={availableVisible}
-        connectingSlug={connecting}
-        error={connectError}
-        logoUrls={logos}
-        onClearError={() => setConnectError(null)}
-        onConnectToggle={(integration) => void handleConnect(integration)}
-        onShowMoreConnected={() => setConnectedVisible((n) => n + LIST_PAGE_SIZE)}
-        onShowMoreAvailable={() => setAvailableVisible((n) => n + LIST_PAGE_SIZE)}
-        onOpenCatalog={() => setIsDialogOpen(true)}
+        browse={browse}
+        yours={yours}
+        yoursEmpty={{ title: 'No connectors yet', body: workspaceScope ? 'Connectors the workspace connects will appear here.' : 'Connectors you connect will appear here.' }}
+        addOptions={capabilities.mcpServers ? [{ id: 'mcp', label: 'Custom MCP server', icon: Server, onSelect: () => route.openView('mcps', { add: true }) }] : undefined}
+        category={route.category}
+        onCategoryChange={route.openCategory}
+        onQueryChange={(query) => {
+          setSearchQuery(query)
+          setSearching(Boolean(query.trim()))
+        }}
+        searching={searching}
+        noResults={capabilities.mcpServers
+          ? { body: 'Check the spelling, or connect any tool through an MCP server.', action: { label: 'Browse MCPs', onSelect: () => route.openView('mcps') } }
+          : { body: 'Check the spelling and try again.' }}
       />
-
-      <IntegrationsDialog
-        connectedSlugs={connected}
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        onConnect={dialogConnect}
-        onDisconnect={dialogDisconnect}
-      />
-    </AppScreenShell>
+      {details ? (
+        <ConnectorDetailsDialog
+          connector={details}
+          logoUrl={logos[details.providerKey] ?? details.logoUrl}
+          connected={detailsConnected}
+          busy={connecting === details.providerKey}
+          accountLabel={workspaceScope ? 'The workspace’s account, shared with members' : 'Your account'}
+          onClose={() => setDetails(null)}
+          onConnect={() => void connect(details)}
+          onDisconnect={() => void disconnect(details)}
+        />
+      ) : null}
+    </ExtensionsScreen>
   )
 }
