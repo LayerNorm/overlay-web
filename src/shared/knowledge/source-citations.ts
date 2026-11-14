@@ -1,4 +1,11 @@
+import { collectWebSourcesFromBlocks, type AssistantVisualBlock } from '@overlay/chat-core'
 import type { SourceCitationMap } from './ask-knowledge-types'
+
+export function shouldLinkifyKnowledgeSourceCitations(
+  blocks: readonly AssistantVisualBlock[],
+): boolean {
+  return collectWebSourcesFromBlocks([...blocks]).length === 0
+}
 
 /**
  * Link source numbers on a Sources line to their durable Overlay destination.

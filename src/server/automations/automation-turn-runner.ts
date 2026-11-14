@@ -8,7 +8,7 @@ import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import { OVERLAY_TOOL_IDS } from '@overlay/tools-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { convertToModelMessages, generateText } from '@/server/ai/sdk'
-import { getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
+import { assertUserCanUseByokModel, getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
 import { summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -413,6 +413,24 @@ function narrowTurnAgentGrant(
   return { agentGrant, allowedToolIds }
 }
 
+/** A BYOK model the user can no longer use is a terminal refusal, not a retryable fault. */
+export async function assertAutomationByokModel(
+  modelId: string,
+  userId: string,
+  workspaceId: string,
+  check: typeof assertUserCanUseByokModel = assertUserCanUseByokModel,
+): Promise<void> {
+  try {
+    await check(modelId, userId, workspaceId)
+  } catch (error) {
+    throw new AutomationTurnError(
+      `Model ${modelId} is not available: ${error instanceof Error ? error.message : 'connection unavailable'}`,
+      403,
+      { error: 'model_not_allowed' },
+    )
+  }
+}
+
 export async function prepareAutomationAgentTurn(
   input: AutomationAgentTurnInput & { conversationId: string; workspaceId: string },
 ): Promise<AutomationAgentTurnPlan> {
@@ -448,7 +466,12 @@ export async function prepareAutomationAgentTurn(
     }),
     resolveAuthorizedModelIds({ entitlements: runtimeEntitlements }),
   ])
-  if (!authorizedModelIds.chat.has(effectiveModelId)) {
+  // A bring-your-own-key model is authorized by the user's own provider
+  // connection, as in chat and the harness refresh; the server catalog only
+  // governs hosted models.
+  if (isByokModelId(effectiveModelId)) {
+    await assertAutomationByokModel(effectiveModelId, userId, billingWorkspaceId)
+  } else if (!authorizedModelIds.chat.has(effectiveModelId)) {
     throw new AutomationTurnError(
       `Model ${effectiveModelId} is not allowed by the server model policy.`,
       403,
