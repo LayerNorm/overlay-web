@@ -11,7 +11,7 @@ import {
 
 /** A catalog image (with an optional dark-theme variant) or a Lucide glyph. Without one the tile shows the name's initial. */
 export type ExtensionCatalogLogo =
-  | { kind: 'image'; src?: string | null; darkSrc?: string | null }
+  | { kind: 'image'; src?: string | null; darkSrc?: string | null; invertInDark?: boolean }
   | { kind: 'icon'; icon: LucideIcon }
 
 export interface ExtensionCatalogMenuItem {
@@ -84,9 +84,10 @@ export function ExtensionCatalogLogoTile({ name, logo }: { name: string; logo?: 
     return <span aria-hidden className={cn(tile, 'bg-(--shell-fill,var(--surface-subtle)) text-base font-semibold text-(--foreground)')}>{name.trim().charAt(0).toUpperCase() || '?'}</span>
   }
   const darkSrc = logo?.kind === 'image' ? logo.darkSrc : null
+  const invert = logo?.kind === 'image' && logo.invertInDark
   return (
     <span aria-hidden className={cn(tile, 'border border-(--border) bg-white dark:bg-(--shell-panel,var(--surface-elevated))')}>
-      <img src={src} alt="" width={22} height={22} className={cn('size-[22px] object-contain', darkSrc ? 'dark:hidden' : null)} onError={() => setFailed(src)} />
+      <img src={src} alt="" width={22} height={22} className={cn('size-[22px] object-contain', darkSrc ? 'dark:hidden' : null, invert ? 'dark:invert' : null)} onError={() => setFailed(src)} />
       {darkSrc ? <img src={darkSrc} alt="" width={22} height={22} className="hidden size-[22px] object-contain dark:block" /> : null}
     </span>
   )

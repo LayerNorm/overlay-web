@@ -175,7 +175,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     id: catalog?.id ?? server._id,
     name: server.name || catalog?.name || 'Untitled',
     description: server.description || catalog?.description || serverHost(server.url),
-    logo: { kind: 'image', src: catalog?.logoUrl, darkSrc: catalog?.logoDarkUrl },
+    logo: { kind: 'image', src: catalog?.logoUrl, darkSrc: catalog?.logoDarkUrl, invertInDark: catalog?.logoInvertInDark },
     status: serverStatus(server),
     onOpen: () => setDialog({ mode: 'edit', server }),
     menu: readOnlyIds.has(server._id)
@@ -196,7 +196,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       id: catalog.id,
       name: catalog.name,
       description: catalog.description,
-      logo: { kind: 'image', src: catalog.logoUrl, darkSrc: catalog.logoDarkUrl },
+      logo: { kind: 'image', src: catalog.logoUrl, darkSrc: catalog.logoDarkUrl, invertInDark: catalog.logoInvertInDark },
       onOpen: open,
       onAdd: canAdd ? open : undefined,
     }

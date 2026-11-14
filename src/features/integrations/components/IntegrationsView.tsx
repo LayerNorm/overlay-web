@@ -13,6 +13,7 @@ import {
 } from 'react'
 import {
   CONNECTOR_CATEGORIES,
+  MONOCHROME_CONNECTOR_LOGOS,
   connectorFromIntegrationSummary,
   getAvailableConnectorRows,
   getConnectedConnectorRows,
@@ -39,6 +40,11 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import overlayAppConfig from '@/overlay.config'
 
 const SEARCH_DEBOUNCE_MS = 300
+
+/** A server error worth showing as is: short plain text, not a raw provider payload. */
+function readableError(error: unknown): string | null {
+  return typeof error === 'string' && error.length <= 160 && !error.includes('{') ? error : null
+}
 
 type IntegrationsInitialData = {
   connected?: ConnectedIntegrationsResponse | null
@@ -241,7 +247,7 @@ export default function IntegrationsView({
         return
       }
       oauthTab?.close()
-      if (!res.ok) toast.error(data.error || `Could not connect ${integration.name}`)
+      if (!res.ok) toast.error(readableError(data.error) ?? `Could not connect ${integration.name}`)
       else if (data.connectionId) {
         setConnected((prev) => new Set([...prev, integration.providerKey]))
         notifyIntegrationsChanged()
@@ -262,7 +268,7 @@ export default function IntegrationsView({
       const res = await overlayAppClient.integrations.disconnectResponse(integration.providerKey, undefined, accountScope)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        toast.error(data.error || `Could not disconnect ${integration.name}`)
+        toast.error(readableError(data.error) ?? `Could not disconnect ${integration.name}`)
         return
       }
       setConnected((prev) => {
@@ -290,7 +296,7 @@ export default function IntegrationsView({
       id: item.providerKey,
       name: item.name,
       description: item.description,
-      logo: { kind: 'image', src: logos[item.providerKey] ?? item.logoUrl },
+      logo: { kind: 'image', src: logos[item.providerKey] ?? item.logoUrl, invertInDark: MONOCHROME_CONNECTOR_LOGOS.has(item.slug) },
       busy: connecting === item.providerKey,
       onOpen: () => setDetails(item),
       onAdd: linked ? undefined : () => void connect(item),
@@ -335,6 +341,7 @@ export default function IntegrationsView({
         <ConnectorDetailsDialog
           connector={details}
           logoUrl={logos[details.providerKey] ?? details.logoUrl}
+          logoInvertInDark={MONOCHROME_CONNECTOR_LOGOS.has(details.slug)}
           connected={detailsConnected}
           busy={connecting === details.providerKey}
           accountLabel={workspaceScope ? 'The workspace’s account, shared with members' : 'Your account'}

@@ -21,11 +21,14 @@ export const EXTENSION_CATALOG_ALL_SECTION_ID = 'all'
 export const CONNECTOR_CATEGORIES: readonly ExtensionCatalogCategory[] = [
   { id: 'popular', title: 'Popular', keys: ['gmail', 'googlecalendar', 'github', 'slack', 'notion', 'linear', 'googledrive', 'outlook'] },
   { id: 'new', title: 'New & Noteworthy', keys: ['granola', 'attio', 'sentry', 'figma', 'calendly', 'zoom'] },
-  { id: 'sales', title: 'Sales & CRM', keys: ['hubspot', 'salesforce', 'affinity', 'apollo', 'pipedrive', 'close', 'attio'] },
+  { id: 'sales', title: 'Sales & CRM', keys: ['hubspot', 'salesforce', 'affinity', 'apollo', 'pipedrive', 'close'] },
   { id: 'business', title: 'Small Business', keys: ['stripe', 'quickbooks', 'shopify', 'dropbox', 'xero', 'square'] },
   { id: 'projects', title: 'Project Management', keys: ['asana', 'jira', 'airtable', 'clickup', 'monday', 'trello'] },
   { id: 'developer', title: 'Developer Tools', keys: ['github', 'gitlab', 'sentry', 'linear', 'vercel', 'supabase'] },
 ]
+
+/** Connector logos drawn in black on transparent; the dark theme shows them inverted so they stay visible. */
+export const MONOCHROME_CONNECTOR_LOGOS: ReadonlySet<string> = new Set(['github', 'attio', 'twitter', 'vercel', 'openai', 'medium', 'threads', 'cal'])
 
 /** A well-known remote MCP server. Adding one opens the normal Add server dialog filled in with these values. */
 export interface McpCatalogEntry {
@@ -37,6 +40,8 @@ export interface McpCatalogEntry {
   authType: McpAuthType
   logoUrl?: string
   logoDarkUrl?: string
+  /** The logo is black on transparent and is inverted in the dark theme. */
+  logoInvertInDark?: boolean
 }
 
 const LOGO = '/assets/svg/landing'
@@ -44,7 +49,7 @@ const LOGO = '/assets/svg/landing'
 export const MCP_CATALOG: readonly McpCatalogEntry[] = [
   { id: 'github', name: 'GitHub', description: 'Repositories, issues and pull requests', url: 'https://api.githubcopilot.com/mcp/', transport: 'streamable-http', authType: 'oauth', logoUrl: `${LOGO}/github.svg`, logoDarkUrl: `${LOGO}/github_dark.svg` },
   { id: 'linear', name: 'Linear', description: 'Issues, projects and cycles', url: 'https://mcp.linear.app/mcp', transport: 'streamable-http', authType: 'oauth', logoUrl: `${LOGO}/linear.svg` },
-  { id: 'sentry', name: 'Sentry', description: 'Debug production errors', url: 'https://mcp.sentry.dev/mcp', transport: 'streamable-http', authType: 'oauth', logoUrl: `${LOGO}/sentry.svg` },
+  { id: 'sentry', name: 'Sentry', description: 'Debug production errors', url: 'https://mcp.sentry.dev/mcp', transport: 'streamable-http', authType: 'oauth', logoUrl: `${LOGO}/sentry.svg`, logoInvertInDark: true },
   { id: 'notion', name: 'Notion', description: 'Search and edit workspace pages', url: 'https://mcp.notion.com/mcp', transport: 'streamable-http', authType: 'oauth', logoUrl: `${LOGO}/notion.svg` },
   { id: 'context7', name: 'Context7', description: 'Up-to-date library documentation', url: 'https://mcp.context7.com/mcp', transport: 'streamable-http', authType: 'none' },
   { id: 'deepwiki', name: 'DeepWiki', description: 'Ask questions about public repositories', url: 'https://mcp.deepwiki.com/mcp', transport: 'streamable-http', authType: 'none' },
@@ -56,7 +61,7 @@ export const MCP_CATALOG: readonly McpCatalogEntry[] = [
 
 export const MCP_CATEGORIES: readonly ExtensionCatalogCategory[] = [
   { id: 'popular', title: 'Popular', keys: ['github', 'linear', 'sentry', 'notion', 'context7', 'deepwiki'] },
-  { id: 'developer', title: 'Developer Tools', keys: ['github', 'vercel', 'supabase', 'sentry', 'context7', 'huggingface'] },
+  { id: 'developer', title: 'Developer Tools', keys: ['github', 'vercel', 'supabase', 'stripe', 'sentry', 'context7', 'huggingface'] },
 ]
 
 /** Lucide glyph names the React layer maps to icons; app-core stays free of UI imports. */
