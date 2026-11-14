@@ -1140,9 +1140,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/automations/[id]/approve', reason: 'Automation approval action; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/events', reason: 'Automation event stream; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/run', reason: 'Automation run trigger; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/automations/[id]/start-scheduler', reason: 'Automation scheduler control; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/stream', reason: 'Automation run stream; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/automations/execute', reason: 'Automation execution; boundary definition pending. Protected by workspace authorization.' },
   // Conversation collaboration routes pending full boundary definitions.
   { routePath: '/api/v1/conversations/[conversationId]/participants', reason: 'Conversation participant management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/[conversationId]/reports', reason: 'Conversation report submission; boundary definition pending. Protected by workspace authorization.' },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildApprovalToken, generateTurnId } from './automation-schedule'
+import { automationApprovalToken as buildApprovalToken, automationRunTurnId } from './run-identity'
 
 test('buildApprovalToken produces deterministic token for same inputs', () => {
   const token1 = buildApprovalToken('auto_001', 1700000000000)
@@ -27,9 +27,8 @@ test('buildApprovalToken includes automation ID and timestamp', () => {
   assert.ok(token.startsWith('automation-approval:'))
 })
 
-test('scheduled turns get distinct identities while run-backed turns are stable', async () => {
-  const first = await generateTurnId({ automationId: 'auto_001' })
-  const second = await generateTurnId({ automationId: 'auto_001' })
-  assert.notEqual(first, second)
-  assert.equal(await generateTurnId({ automationId: 'auto_001', runId: 'run_001' }), 'automation-run:run_001')
+test('an automation run has exactly one turn ID, derived from its run ID', () => {
+  assert.equal(automationRunTurnId('run_001'), 'automation-run:run_001')
+  assert.equal(automationRunTurnId('run_001'), automationRunTurnId('run_001'))
+  assert.notEqual(automationRunTurnId('run_001'), automationRunTurnId('run_002'))
 })

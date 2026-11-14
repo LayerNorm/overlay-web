@@ -2,7 +2,6 @@ import { fetchAppCallback } from '../lib/appCallback'
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import { internalAction } from '../_generated/server'
-import type { Id } from '../_generated/dataModel'
 
 const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
 const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
@@ -151,16 +150,10 @@ export const runAutomation = internalAction({
       })
       return null
     }
-    const turnId = `automation-${args.runId}-${now}`
-    // Runs always target the automation-owned thread. sourceConversationId is
-    // provenance only and is never an execution target.
-    const existingConversationId = automation.conversationId as
-      | Id<'conversations'>
-      | undefined
+    // The scheduler only claims the run. The run workflow binds the
+    // automation-owned thread and the turn ID, as it does for manual runs.
     await ctx.runMutation(internal.automations.automations.markRunStarted, {
       runId: args.runId,
-      conversationId: existingConversationId,
-      turnId,
       now,
     })
 
@@ -191,19 +184,8 @@ export const runAutomation = internalAction({
         throw new Error(text || `Automation runner returned ${response.status}`)
       }
 
-      const result = await response.json().catch(() => ({})) as {
-        conversationId?: Id<'conversations'>
-        durable?: boolean
-      }
-      // Durable dispatches settle run status inside the workflow's own steps —
-      // marking completed here would finish the run while the turn still runs.
-      if (!result.durable) {
-        await ctx.runMutation(internal.automations.automations.markRunCompleted, {
-          runId: args.runId,
-          conversationId: result.conversationId ?? existingConversationId,
-          now: Date.now(),
-        })
-      }
+      // The run workflow settles the run itself; success here only means the
+      // workflow started.
     } catch (error) {
       await ctx.runMutation(internal.automations.automations.markRunFailed, {
         runId: args.runId,

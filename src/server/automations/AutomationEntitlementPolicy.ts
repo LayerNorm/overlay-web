@@ -13,6 +13,8 @@ export interface AutomationEntitlementPolicy {
   assertCanEnable(args: {
     enabledCount: number
     userId: string
+    /** The workspace the automation is enabled in; its plan decides. */
+    workspaceId?: string
   }): Promise<void>
 }
 
@@ -25,16 +27,16 @@ function assertEnabledLimit(enabledCount: number): void {
 }
 
 export class UnlimitedAutomationEntitlementPolicy implements AutomationEntitlementPolicy {
-  async assertCanEnable(args: { enabledCount: number; userId: string }): Promise<void> {
+  async assertCanEnable(args: { enabledCount: number; userId: string; workspaceId?: string }): Promise<void> {
     assertEnabledLimit(args.enabledCount)
   }
 }
 
 export class PaidPlanAutomationEntitlementPolicy implements AutomationEntitlementPolicy {
-  constructor(private readonly getPlanKind: (userId: string) => Promise<'free' | 'paid'>) {}
+  constructor(private readonly getPlanKind: (userId: string, workspaceId?: string) => Promise<'free' | 'paid'>) {}
 
-  async assertCanEnable(args: { enabledCount: number; userId: string }): Promise<void> {
-    if (await this.getPlanKind(args.userId) !== 'paid') {
+  async assertCanEnable(args: { enabledCount: number; userId: string; workspaceId?: string }): Promise<void> {
+    if (await this.getPlanKind(args.userId, args.workspaceId) !== 'paid') {
       throw new AutomationEntitlementError('Enabled automations require a paid plan.')
     }
     assertEnabledLimit(args.enabledCount)
@@ -47,12 +49,12 @@ export class ConfiguredAutomationEntitlementPolicy implements AutomationEntitlem
 
   constructor(private readonly deps: {
     billingDisabled(): boolean
-    getPlanKind(userId: string): Promise<'free' | 'paid'>
+    getPlanKind(userId: string, workspaceId?: string): Promise<'free' | 'paid'>
   }) {
     this.paid = new PaidPlanAutomationEntitlementPolicy(deps.getPlanKind)
   }
 
-  async assertCanEnable(args: { enabledCount: number; userId: string }): Promise<void> {
+  async assertCanEnable(args: { enabledCount: number; userId: string; workspaceId?: string }): Promise<void> {
     const policy = this.deps.billingDisabled() ? this.unlimited : this.paid
     await policy.assertCanEnable(args)
   }

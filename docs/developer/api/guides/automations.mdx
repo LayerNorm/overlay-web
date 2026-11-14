@@ -10,11 +10,13 @@ GET /api/v1/automations
 POST /api/v1/automations
 PATCH /api/v1/automations
 DELETE /api/v1/automations
+POST /api/v1/automations/{id}/run
 POST /api/v1/automations/test
-POST /api/v1/automations/run
 ```
 
-Use `test` for draft validation before saving or scheduling. Use `run` for an explicit execution of an existing automation.
+`POST /api/v1/automations/{id}/run` runs a saved automation once now. `POST /api/v1/automations/test` does the same for `{ "automationId": "..." }`. Both return the durable run (`runId`, `workflowRunId`) right away and do not wait for the reply. The run's progress and result appear in the automation's own thread and its run history. Scheduled runs use the same execution path. `POST /api/v1/automations/run` is an internal callback for the scheduler, not a public route.
+
+An automation that belongs to an agent runs as that agent: it uses the agent's instructions, tools, approval mode, memory and computer.
 
 When automations are disabled by runtime capabilities, UI should hide automation surfaces and server routes should return a deterministic disabled-capability response.
 
