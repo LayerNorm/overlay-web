@@ -268,3 +268,26 @@ test('distinguishes a daily report task from daily recurrence and retains true c
   assert.ok(conflicting.missingFields.includes('Confirm schedule frequency'))
   assert.equal(conflicting.confidence, 'low')
 })
+
+test('distinguishes linear prose from Linear integration actions', () => {
+  const equation = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, write a linear equation, no integrations.',
+    assistantText: 'Write a linear equation.',
+  })
+  const conflict = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, no integrations. Create a Linear issue.',
+    assistantText: 'Create a Linear issue.',
+  })
+  const integration = buildAutomationDraftFromTurn({
+    userText: 'Every Monday at 01:00 UTC, use Linear to create an issue.',
+    assistantText: 'Use Linear to create an issue.',
+  })
+
+  assert.deepEqual(equation.detectedIntegrations, [])
+  assert.equal(equation.instructions, '1. Write a linear equation.')
+  assert.equal(equation.missingFields.includes('Resolve conflicting integration instructions'), false)
+  assert.deepEqual(conflict.detectedIntegrations, [])
+  assert.ok(conflict.missingFields.includes('Resolve conflicting integration instructions'))
+  assert.equal(conflict.instructions, '1. Clarify whether the workflow should use an integration')
+  assert.deepEqual(integration.detectedIntegrations, ['Linear'])
+})

@@ -115,9 +115,18 @@ function hasExplicitNoIntegrations(text: string): boolean {
   return /\b(?:no|without)\s+(?:any\s+)?(?:external\s+)?integrations?\b/i.test(text)
 }
 
+function mentionsLinearIntegration(text: string): boolean {
+  return (
+    /\b(?:use|using|via|through|in|to|from|with|except|including|only)\s+linear\b/i.test(text) ||
+    /\blinear\s+(?:issues?|tasks?|projects?|teams?|workspaces?|cycles?|tickets?|comments?|boards?)\b/i.test(text)
+  )
+}
+
 function detectIntegrations(text: string): string[] {
   const normalized = text.toLowerCase()
-  return KNOWN_INTEGRATIONS.filter((name) => normalized.includes(name.toLowerCase()))
+  return KNOWN_INTEGRATIONS.filter((name) =>
+    name === 'Linear' ? mentionsLinearIntegration(text) : normalized.includes(name.toLowerCase()),
+  )
 }
 
 type ParsedValue<T> =
