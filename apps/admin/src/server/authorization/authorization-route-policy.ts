@@ -560,20 +560,12 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/automations/test', methods: {
     POST: resource('automation', 'execute', {}, 'automations.use'),
   } },
-  { path: '/api/v1/automations/execute', methods: {
-    POST: capability('automations.use'),
-    PATCH: capability('automations.use'),
-  } },
   {
     path: '/api/v1/automations/:id/run',
     methods: { POST: capability('automations.use') },
   },
   {
     path: '/api/v1/automations/:id/approve',
-    methods: { POST: capability('automations.use') },
-  },
-  {
-    path: '/api/v1/automations/:id/start-scheduler',
     methods: { POST: capability('automations.use') },
   },
   {

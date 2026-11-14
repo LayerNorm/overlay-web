@@ -443,7 +443,8 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_automation')) {
     tools.create_automation = tool({
       description:
-        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first.',
+        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first. ' +
+        'Runs do not read this conversation, so make the instructions self-contained: include every fact, preference, account, link, and decision from this conversation that a run needs.',
       inputSchema: z.object({
         name: z.string().min(1),
         description: z.string().min(1),

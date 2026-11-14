@@ -613,9 +613,9 @@ The bridge reads ascending SDK pages of at most 100 events without input/result 
 
 Clients subscribe through `automations/workflowEvents:watchWorkflowStepEvents` or `watchAutomationRunStepEvents`; both enforce the parent automation's current access. The member-authorized SSE endpoint remains a fallback. Projection failures produce sanitized diagnostics and retain the cursor for retry. The source event ID and correlation indexes supplement the existing workflow/user/automation timestamp indexes.
 
-### Legacy cron removal
+### Automation scheduling
 
-The legacy automation scheduler cron (`automation_scheduler_legacy`) has been removed. Durable automations are now always enabled and use the sleep()-based workflow (`workflows/automation-schedule.ts`) for scheduling. The `OVERLAY_FEATURE_DURABLE_AUTOMATIONS` feature flag has been removed.
+Convex owns automation scheduling: the `automations/automationRunner:runMinuteTick` cron claims due runs and calls `POST /api/v1/automations/run`, which starts the durable `automationRunWorkflow` (`src/server/workflows/automation-run.ts`). Manual runs start the same workflow from `POST /api/v1/automations/{id}/run`. Every run has an `automationRuns` row first; its turn ID is always `automationRunTurnId(runId)` (`src/shared/automations/run-identity.ts`) and Convex rejects any other. The per-automation sleep() scheduler workflow, `schedulerWorkflowRunId`, the `start-scheduler` route and the `/api/v1/automations/execute` callback were removed.
 
 ## Workspace Handles
 
