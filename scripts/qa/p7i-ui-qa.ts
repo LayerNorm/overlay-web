@@ -57,9 +57,11 @@ try {
   assert.equal('authConfig' in (created ?? {}), false)
 
   await page.goto(`${baseUrl}/app/tools?view=skills`, { waitUntil: 'domcontentloaded' })
+  await page.getByRole('tab', { name: 'Yours' }).click()
   await page.getByText(`P7i QA skill ${suffix}`).waitFor()
   const secondTab = await context.newPage()
   await secondTab.goto(`${baseUrl}/app/tools?view=mcps`, { waitUntil: 'domcontentloaded' })
+  await secondTab.getByRole('tab', { name: 'Yours' }).click()
   await secondTab.getByText(`P7i QA MCP ${suffix}`).waitFor()
   await secondTab.close()
 

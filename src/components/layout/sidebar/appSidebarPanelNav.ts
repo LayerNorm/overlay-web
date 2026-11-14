@@ -166,6 +166,8 @@ function buildToolsPanelNav({
 
       params.set('view', nextView)
       params.delete('scope')
+      // The open catalog section and one-shot add/open requests belong to the page being left.
+      for (const key of ['category', 'add', 'id']) params.delete(key)
       const legacyHref = `/app/tools?${params.toString()}`
       const scopedHref = activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, legacyHref, nextScope)

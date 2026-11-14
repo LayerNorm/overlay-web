@@ -63,6 +63,10 @@ them. Besides the canonical app mockup, this folder holds only:
 - `paid-first.html` (built by `build-paid-first.mjs`): the approved onboarding
   design for the in-progress `PAID_FIRST_EXECUTION_PLAN.md`. Delete it when
   that plan completes.
+- `extensions-catalog.html` (built by `build-chat-and-extensions-mockups.cjs
+  extensions-catalog`): the approved Extensions catalog design that
+  `ExtensionCatalogPage` implements. Delete it once the redesign is accepted
+  in production.
 - Brand source: `build-aligned-brand.py` generates `aligned-brand.*`,
   `overlay-brand-approved/` and the production `ApprovedBrand.tsx`;
   `export-brand-pngs.cjs` exports the raster assets. These are production

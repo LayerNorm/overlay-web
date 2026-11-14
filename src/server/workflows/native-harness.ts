@@ -17,7 +17,7 @@ import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import {
   readHarnessTranscriptForDelivery, reconcileSettledHarnessTranscriptForDelivery,
 } from '@/server/harness/harness-transcript'
-import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import { harnessDiagnosticForFailure, logHarnessFailure } from '@/server/harness/harness-diagnostics'
 import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
@@ -141,6 +141,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       }
     }
     const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, (error as { code?: string })?.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model')
+    logHarnessFailure(access.runId, diagnostic, error)
     const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
     const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
     const snapshot = isTerminalHarnessStatus(state.status) ? state

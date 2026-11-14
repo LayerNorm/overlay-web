@@ -181,18 +181,19 @@ test('native failure with empty streamed content preserves reconstructed answer 
 })
 
 test.each(['MODEL_OUTCOME_UNKNOWN', 'TOOL_OUTCOME_UNKNOWN', 'UNKNOWN'] as const)(
-  'empty native failure uses safe %s guidance rather than inviting another send', async (code) => {
+  'empty native %s failure shows the diagnostic once, as the structured error', async (code) => {
     const diagnostic = createHarnessDiagnostic({
       diagnosticId: 'diagnostic', code, stage: 'model', occurredAt: 1,
     })
     mocks.get.mockResolvedValue({ ...state, status: 'failed', diagnostic })
     await finishNativeHarnessDelivery(access, { ...delivery, content: '', parts: [] }, { memoryEnabled: false })
-    expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
-      content: harnessDiagnosticMessage(diagnostic),
-    }))
-    expect(mocks.failMessage.mock.calls[0][0].content).not.toContain('try sending it again')
+    expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({ content: '', parts: [] }))
     expect(mocks.fail).toHaveBeenCalledWith(expect.objectContaining({
-      error: expect.objectContaining({ retryable: false, message: harnessDiagnosticMessage(diagnostic) }),
+      error: expect.objectContaining({
+        retryable: code === 'MODEL_OUTCOME_UNKNOWN',
+        message: harnessDiagnosticMessage(diagnostic),
+        diagnostic: expect.objectContaining({ code }),
+      }),
     }))
     expect(mocks.agent).not.toHaveBeenCalled()
   },
