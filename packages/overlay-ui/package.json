@@ -21,7 +21,8 @@
     "./feedback": "./src/feedback.ts",
     "./overlays": "./src/overlays.ts",
     "./chat": "./src/chat.ts",
-    "./ai": "./src/ai.ts"
+    "./ai": "./src/ai.ts",
+    "./platform-actions": "./src/platform-actions.tsx"
   },
   "peerDependencies": {
     "lucide-react": "^0.575.0",

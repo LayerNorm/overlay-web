@@ -6,6 +6,7 @@ import { cn } from '../../utils/cn'
 
 import { Button } from './button'
 import { Check, Copy } from 'lucide-react'
+import { usePlatformActions } from '../../platform-actions'
 
 const codeBlockVariants = cva(
   "group/code-block relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl text-sm has-[>[data-slot=code-block-content]:focus-visible]:ring-3 has-[>[data-slot=code-block-content]:focus-visible]:ring-(--foreground)/15 data-[size=sm]:rounded-xl data-[size=sm]:text-xs",
@@ -93,6 +94,7 @@ function CodeBlockCopyButton({
   ...props
 }: React.ComponentProps<typeof Button> & { value: string }) {
   const [copied, setCopied] = React.useState(false)
+  const { copyText } = usePlatformActions()
 
   React.useEffect(() => {
     if (!copied) {
@@ -116,11 +118,9 @@ function CodeBlockCopyButton({
           className
         )}
         onClick={(event) => {
+          if (props.disabled) return
           onClick?.(event)
-          navigator.clipboard
-            .writeText(value)
-            .then(() => setCopied(true))
-            .catch(() => {})
+          void copyText(value).then(() => setCopied(true)).catch(() => {})
         }}
         {...props}
       >
