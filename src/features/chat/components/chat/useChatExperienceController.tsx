@@ -26,6 +26,7 @@ import {
   useChatSendController,
 } from './useChatSendController'
 import { useChatStopController } from './useChatStopController'
+import { useComposerQueue, useComposerQueueControls } from './useComposerQueue'
 import { useChatTitleController } from './useChatTitleController'
 import { resolveAgentRunNotice, type AgentRunNoticePrevious } from './agent-run-notice'
 import { useChatRuntimes } from './useChatRuntimes'
@@ -906,7 +907,7 @@ export function useChatExperienceController({
 
   const { requireAuth } = useGuestGate()
 
-  const { handleSend } = useChatSendController({
+  const { handleSend, sendQueuedMessage } = useChatSendController({
     nativeThreadReadOnly: nativeThreadSafety.readOnly,
     ensureWritable: nativeThreadSafety.ensureWritable,
     isCurrentScope: nativeThreadSafety.isCurrentScope,
@@ -1129,6 +1130,38 @@ export function useChatExperienceController({
     },
   })
 
+  const responseRunning = isActiveLoading || isOptimisticLoading
+  const composerQueue = useComposerQueue({
+    scope: runConversationId && !isTemporaryChat ? { workspaceId: activeWorkspaceId, conversationId: runConversationId } : null,
+    running: responseRunning,
+    send: sendQueuedMessage,
+    stop: stopActiveChat,
+  })
+  const composerQueueControls = useComposerQueueControls({
+    queue: composerQueue,
+    running: responseRunning,
+    readDraft: () => ({ text: inputRef.current, mentions }),
+    clearDraft: () => {
+      textareaRef.current?.clear()
+      setInput('')
+      setMentions([])
+    },
+    loadDraft: (draft) => {
+      setInput(draft.text)
+      setMentions(draft.mentions)
+      textareaRef.current?.focus()
+    },
+    blockedReason: () => attachedImages.length > 0 || pendingChatDocuments.length > 0 || replyContext
+      || personMentions.length > 0 || effectiveGenType
+      ? 'Only text messages can wait in the queue. Send this one when the response finishes.'
+      : null,
+    notify: setComposerNotice,
+  })
+  const stopResponseAndPauseQueue = useCallback(() => {
+    composerQueue.pause()
+    return stopActiveChat()
+  }, [composerQueue, stopActiveChat])
+
   const startNewNativeThread = useCallback(async () => {
     if (!nativeThreadSafety.readOnly) {
       resetToBlankChatSurface({ temporary: false })
@@ -1335,6 +1368,8 @@ export function useChatExperienceController({
     handleRetryExchange,
     handleContinue,
     stopActiveChat,
+    stopResponseAndPauseQueue,
+    composerQueueControls,
     handleGeneratedUiChange,
     requireAuth,
     shellPanelInputs: {

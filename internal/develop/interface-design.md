@@ -650,6 +650,36 @@ A native terminal detail shares its command's call key. Both live tool groups an
 While a turn continues, an attached terminal detail follows its command's resolved state even if the retained attachment still says running. Match by call key regardless of part order; unrelated running commands and standalone terminal details remain live.
 The liveness status uses only the first command line, capped at 96 Unicode code points. Full command bodies remain in collapsed tool details so a long script cannot crowd out the answer, deadline or recovery state.
 
+## Queue and steer while a response runs
+
+Every chat, agent-thread and automation-thread composer passes `queue` controls
+to the shared `ChatComposer`. While a response runs, Enter queues the draft and
+Cmd/Ctrl+Enter steers. The submit button becomes a queue button (`ListEnd`)
+when the draft has text and stays Stop when it is empty. A small "↵ queue · ⌘↵ steer"
+hint sits in the footer. Queued messages render in `ComposerQueueTray` directly
+above the composer, with Steer now (Send now when idle), Edit and Remove on
+each row. Edit is disabled while the composer has text, so it never overwrites
+a draft.
+
+`useComposerQueue` owns the behavior. It sends the first queued message only
+after the response settles. It then waits for the next response to start (or 2
+seconds) before sending another, so one message goes per response. Steer puts the
+message first and calls the surface's existing Stop. The partial reply is kept
+with the usual interruption notice, and the message sends as soon as the run is
+terminal. A manual Stop pauses the queue until the person starts another response.
+A message the send path refuses (billing, read-only, validation) goes back to the
+front and pauses the queue rather than retrying.
+
+Queues are per conversation in `localStorage` (`overlay.queue.v1:<workspace>:<conversation>`).
+They follow a new chat to its id and are cleared with the workspace's drafts.
+Temporary chats keep theirs in memory. Only text and mentions can be queued.
+Attachments, quoted replies, person mentions in personal chats and image/video
+modes show a notice and stay in the composer.
+
+Steering does not use the AI SDK's `experimental_createSteering`. Runs execute in
+the durable Workflow harness, and SDK steering cannot yet reach that loop from
+another request.
+
 ## Provider models and connection cards
 
 Agent creation and editing share the chat model picker, with workspace entitlements

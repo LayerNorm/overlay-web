@@ -68,6 +68,7 @@ import {
   captureRoomScrollAnchor,
   createRoomScrollIntent,
   holdRoomScrollAnchor,
+  isRoomAgentResponding,
   mergeRoomMessages,
   remoteAgentCommands,
   roomMessageDomId, scrollRoomMessageIntoView,
@@ -90,6 +91,8 @@ import {
   type NativeThreadSafetyStatus,
 } from '@/shared/chat/native-thread-safety'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
+import { useComposerQueue, useComposerQueueControls } from './chat/useComposerQueue'
+import type { QueuedMessage } from '@/shared/chat/conversation-queue'
 import { roomScrollReadKey } from './room-scroll-read-key'
 import { createHandoffConversation } from './chat/chat-send-create'
 
@@ -1522,6 +1525,109 @@ export function useRoomComposer({
   }
 }
 
+/**
+ * Queue and steer for an agent room's main composer. A response counts as
+ * running while an agent reply in the main transcript is pending or generating;
+ * steering stops those replies, including one that appears after the request.
+ */
+export function useRoomComposerQueue({
+  activeWorkspaceId,
+  conversationId,
+  composer,
+  sendMessage,
+  mentions,
+  setMentions,
+  messages,
+  agentResponding,
+  stopAgentResponse,
+  disabled,
+}: {
+  activeWorkspaceId: string | null | undefined
+  conversationId: string
+  composer: ReturnType<typeof useRoomComposer>
+  sendMessage: SendMessage
+  mentions: MentionItem[]
+  setMentions: Dispatch<SetStateAction<MentionItem[]>>
+  messages: OptimisticMessage[]
+  agentResponding: string | null
+  stopAgentResponse: (messageId: string) => Promise<void>
+  disabled: boolean
+}) {
+  const mainMessages = messages.filter((message) => !message.threadRootMessageId)
+  const running = !disabled && isRoomAgentResponding(mainMessages, agentResponding)
+  const generatingKey = mainMessages
+    .filter((message) => message.authorKind === 'agent' && message.status === 'generating' && !message.id.startsWith('optimistic_'))
+    .map((message) => message.id)
+    .join(',')
+  const [stopRequested, setStopRequested] = useState(false)
+  const [wasRunning, setWasRunning] = useState(running)
+  if (wasRunning !== running) {
+    setWasRunning(running)
+    if (!running && stopRequested) setStopRequested(false)
+  }
+  const stoppedIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!stopRequested) return
+    for (const messageId of generatingKey ? generatingKey.split(',') : []) {
+      if (stoppedIdsRef.current.has(messageId)) continue
+      stoppedIdsRef.current.add(messageId)
+      void stopAgentResponse(messageId)
+    }
+  }, [generatingKey, stopAgentResponse, stopRequested])
+
+  const sendQueued = useCallback(async (item: QueuedMessage) => {
+    const turnId = `human_${crypto.randomUUID()}`
+    const payload = buildTextTurnPayload({
+      text: item.text,
+      attachedImages: [],
+      pendingChatDocuments: [],
+      mentions: item.mentions,
+      replyContext: null,
+      turnId,
+    })
+    const result = await sendMessage(item.text, {
+      existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
+      parts: payload.partsForModel,
+      attachmentNames: [],
+    })
+    return result.accepted
+  }, [sendMessage])
+
+  const queue = useComposerQueue({
+    scope: disabled ? null : { workspaceId: activeWorkspaceId, conversationId },
+    running,
+    send: sendQueued,
+    stop: () => setStopRequested(true),
+  })
+  const controls = useComposerQueueControls({
+    queue,
+    running,
+    readDraft: () => ({ text: composer.inputRef.current ?? composer.input, mentions }),
+    clearDraft: () => {
+      composer.setInput('')
+      composer.composerRef.current?.clear()
+      setMentions([])
+      clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+    },
+    loadDraft: (draft) => {
+      composer.setInput(draft.text)
+      composer.composerRef.current?.setPlainText(draft.text)
+      setMentions(draft.mentions)
+      writeDraft({ workspaceId: activeWorkspaceId, conversationId }, draft.text)
+      composer.composerRef.current?.focus()
+    },
+    blockedReason: () => composer.attachedImages.length > 0 || composer.pendingChatDocuments.length > 0 || composer.replyContext
+      ? 'Only text messages can wait in the queue. Send this one when the response finishes.'
+      : null,
+    notify: composer.setAttachmentError,
+  })
+  const stop = useCallback(() => {
+    queue.pause()
+    setStopRequested(true)
+  }, [queue])
+  return { controls, running, stop }
+}
+
 export function useRemoteAgentControls({
   activeWorkspaceId,
   conversationId,
@@ -2260,6 +2366,18 @@ export function useDirectMessageRoom({
     setMessages: transcript.setMessages,
     setAttachmentError: composer.setAttachmentError,
   })
+  const composerQueue = useRoomComposerQueue({
+    activeWorkspaceId,
+    conversationId,
+    composer,
+    sendMessage,
+    mentions,
+    setMentions,
+    messages: transcript.messages,
+    agentResponding,
+    stopAgentResponse: remoteControls.stopAgentResponse,
+    disabled: Boolean(transcript.surfacePlatform) || nativeThreadSafety.readOnly,
+  })
   const isReadOnlyMessage = (messageId: string) => {
     const message = transcript.messages.find((row) => row.id === messageId)
     return !canSendToThread(message?.threadRootMessageId ?? messageId)
@@ -2424,6 +2542,7 @@ export function useDirectMessageRoom({
     vm,
     sendMessage,
     composer,
+    composerQueue,
     remoteControls,
     actions,
     navigation,

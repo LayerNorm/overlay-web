@@ -6,6 +6,8 @@
  * never propagates into the shell.
  */
 
+import { QUEUE_STORAGE_PREFIX } from './conversation-queue'
+
 const PREFIX = 'overlay.draft.v1'
 const MAX_DRAFT_LENGTH = 20_000
 
@@ -50,16 +52,16 @@ export function clearDraft(scope: DraftScope): void {
   writeDraft(scope, '')
 }
 
-/** Drops every draft for a workspace, used when membership is revoked. */
+/** Drops every draft and queued message for a workspace, used when membership is revoked. */
 export function clearWorkspaceDrafts(workspaceId: string): void {
   const storage = safeStorage()
   if (!storage) return
   try {
-    const prefix = `${PREFIX}:${workspaceId}:`
+    const prefixes = [PREFIX, QUEUE_STORAGE_PREFIX].map(prefix => `${prefix}:${workspaceId}:`)
     const keys: string[] = []
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index)
-      if (key?.startsWith(prefix)) keys.push(key)
+      if (key && prefixes.some(prefix => key.startsWith(prefix))) keys.push(key)
     }
     for (const key of keys) storage.removeItem(key)
   } catch {

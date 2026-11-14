@@ -43,3 +43,9 @@ reduced-motion mode disables the dot animation.
 Work task status and priority live in an anchored settings popover. Their values
 remain in the composer draft when the popover closes and reset only after successful
 submission. Opening the menu must not change the composer height.
+
+While an agent reply in the main transcript is pending or generating, the room
+composer shows Stop and supports queue and steer (see "Queue and steer while a
+response runs" in `interface-design.md`). Steering stops each generating
+reply, including one that appears after the request, then sends the message.
+Side-thread replies do not count as running for the main composer.
