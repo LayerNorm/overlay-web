@@ -1,9 +1,142 @@
 import { expect, test, vi } from 'vitest'
 import type { HarnessExecutionResult } from './runner'
+import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
+
+const transcriptMocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  getTranscriptStepForReconciliation: vi.fn(),
+  writeTranscriptStep: vi.fn(),
+  listTranscriptSteps: vi.fn(),
+  readPublicTranscriptStep: vi.fn(),
+}))
+
 vi.mock('server-only', () => ({}))
 vi.mock('./state-steps', () => ({ readHarnessState: vi.fn(), applyHarnessOperation: vi.fn() }))
-import { publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery } from './harness-transcript'
+vi.mock('./ConvexHarnessRepository', () => ({
+  ConvexHarnessRepository: class {
+    get = transcriptMocks.get
+    getTranscriptStepForReconciliation = transcriptMocks.getTranscriptStepForReconciliation
+    writeTranscriptStep = transcriptMocks.writeTranscriptStep
+    listTranscriptSteps = transcriptMocks.listTranscriptSteps
+  },
+}))
+vi.mock('./public-transcript', () => ({ readPublicTranscriptStep: transcriptMocks.readPublicTranscriptStep }))
+import {
+  publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery,
+  reconcileSettledHarnessTranscriptForDelivery, reconcileSettledHarnessTranscriptOutcomes,
+} from './harness-transcript'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
+
+type TestPersistence = { content: string; parts: Array<Record<string, unknown>> }
+type TestTranscriptStep = {
+  receiptId: string
+  stepNumber: number
+  sequence: number
+  executionGeneration: number
+  persistence: TestPersistence
+  fullPersistenceUrl: string
+  fullPersistenceDigest: string
+}
+
+function transcriptStep(receiptId: string, stepNumber: number, sequence: number, persistence: TestPersistence) {
+  const fullPersistenceUrl = `https://storage.test/${receiptId}/initial`
+  return {
+    row: {
+      receiptId, stepNumber, sequence, executionGeneration: 0,
+      persistence: compactTranscriptSnapshot(persistence as never) as TestPersistence,
+      fullPersistenceUrl,
+      fullPersistenceDigest: `digest:${receiptId}:initial`,
+    } satisfies TestTranscriptStep,
+    fullPersistenceUrl,
+    fullPersistence: structuredClone(persistence),
+  }
+}
+
+function installTranscriptStore(
+  initial: Array<{ row: TestTranscriptStep; fullPersistence: TestPersistence }>,
+  options: { loseAckAfterCommitWrite?: number } = {},
+) {
+  for (const mock of Object.values(transcriptMocks)) mock.mockReset()
+  const rows = initial.map(item => structuredClone(item.row))
+  const blobs = new Map(initial.map(item => [item.row.fullPersistenceUrl, structuredClone(item.fullPersistence)]))
+  const writes: Array<{ receiptId: string; stepNumber: number; persistence: TestPersistence }> = []
+  const readUrls: string[] = []
+  transcriptMocks.get.mockResolvedValue({
+    policy: { publicProgressVersion: 1, publicStreamVersion: 0 }, executionGeneration: 0,
+  })
+  transcriptMocks.getTranscriptStepForReconciliation.mockImplementation(async (input: {
+    receiptId: string; stepNumber: number
+  }) => {
+    const row = rows.find(candidate => candidate.receiptId === input.receiptId
+      && candidate.stepNumber === input.stepNumber)
+    return row ? structuredClone(row) : null
+  })
+  transcriptMocks.listTranscriptSteps.mockImplementation(async (input: { cursor: string | null }) => {
+    const pageNumber = input.cursor === null ? 0 : Number(input.cursor)
+    const newestFirst = [...rows].sort((left, right) => right.sequence - left.sequence)
+    const steps = newestFirst.slice(pageNumber * 25, pageNumber * 25 + 25)
+    const isDone = (pageNumber + 1) * 25 >= newestFirst.length
+    return { steps: structuredClone(steps), cursor: String(pageNumber + 1), isDone }
+  })
+  transcriptMocks.readPublicTranscriptStep.mockImplementation(async (step: { fullPersistenceUrl?: string | null }) => {
+    const url = step.fullPersistenceUrl ?? ''
+    readUrls.push(url)
+    const persistence = blobs.get(url)
+    if (!persistence) throw new Error('Full transcript payload could not be read.')
+    return { persistence: structuredClone(persistence), legacy: false }
+  })
+  transcriptMocks.writeTranscriptStep.mockImplementation(async (input: {
+    receiptId: string; stepNumber: number; persistence: TestPersistence
+  }) => {
+    writes.push(structuredClone(input))
+    const row = rows.find(candidate => candidate.receiptId === input.receiptId
+      && candidate.stepNumber === input.stepNumber)
+    if (!row) throw new Error('Transcript row not found.')
+    const nextUrl = `https://storage.test/${input.receiptId}/${writes.length}`
+    blobs.delete(row.fullPersistenceUrl)
+    blobs.set(nextUrl, structuredClone(input.persistence))
+    Object.assign(row, {
+      persistence: compactTranscriptSnapshot(input.persistence as never) as TestPersistence,
+      fullPersistenceUrl: nextUrl,
+      fullPersistenceDigest: `digest:${input.receiptId}:${writes.length}`,
+    })
+    if (writes.length === options.loseAckAfterCommitWrite) throw new Error('Transcript write acknowledgement lost.')
+    return { persisted: true }
+  })
+  return { rows, blobs, writes, readUrls }
+}
+
+function missingOutcomePart(toolCallId: string, toolName: string, id = `part:${toolCallId}`) {
+  return {
+    id,
+    type: 'tool-invocation',
+    toolInvocation: {
+      toolCallId,
+      toolName,
+      state: 'output-error',
+      toolInput: { command: 'printf ok' },
+      toolOutput: { success: false, error: 'The tool call ended without an execution result.' },
+    },
+  }
+}
+
+function resultWithToolCalls(calls: Array<{
+  receiptId: string; stepNumber: number; toolCallId: string; toolName: string; output: unknown
+}>): HarnessExecutionResult {
+  const steps = calls.map(call => {
+    const toolCall = { type: 'tool-call', toolCallId: call.toolCallId, toolName: call.toolName, input: { command: 'printf ok' } }
+    const toolResult = { ...toolCall, type: 'tool-result', output: call.output }
+    return { stepNumber: call.stepNumber, text: '', reasoning: [], content: [toolCall, toolResult],
+      toolCalls: [toolCall], toolResults: [toolResult] }
+  })
+  return {
+    outcome: 'finished',
+    snapshot: { runId: 'run', status: 'completed', evidence: [], usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 } },
+    messages: [],
+    steps,
+    stepReceiptIds: calls.map(call => call.receiptId),
+  } as unknown as HarnessExecutionResult
+}
 
 test('settled public persistence excludes private reasoning and keeps sanitized tool display', () => {
   const persistence = publicHarnessStepPersistence({
@@ -60,6 +193,241 @@ test('full public persistence retains long tool errors but excludes control appr
   } as never, new Set(['get_note']))
   expect(JSON.stringify(persistence)).toContain(error)
   expect(JSON.stringify(persistence)).not.toContain('private')
+})
+
+test('reconciliation preserves a native failure envelope in the settled row and final delivery', () => {
+  const toolCall = {
+    type: 'tool-call',
+    toolCallId: 'computer-failure-call',
+    toolName: 'computer_exec',
+    input: { command: 'false' },
+  }
+  const actualError = { success: false, error: 'Computer command failed with exit code 2.' }
+  const output = {
+    overlayModelOutput: { type: 'json', value: actualError },
+    display: actualError,
+  }
+  const staleStep = {
+    stepNumber: 0,
+    text: 'Starting the command.',
+    reasoning: [],
+    content: [
+      { type: 'text', text: 'Starting the command.' },
+      toolCall,
+    ],
+    toolCalls: [toolCall],
+    toolResults: [],
+  }
+  const stalePersistence = publicHarnessStepPersistence(staleStep as never, new Set(['computer_exec']))
+  const settledTranscript = {
+    persistence: stalePersistence,
+    steps: [{
+      receiptId: 'model:0',
+      sequence: 0,
+      stepNumber: 0,
+      persistence: {
+        ...stalePersistence,
+        parts: stalePersistence.parts.map((part, index) => ({ ...part, id: `early-${index}` })),
+      },
+    }],
+    newestSequence: 0,
+  }
+  const resultStep = {
+    stepNumber: 0,
+    text: '',
+    reasoning: [],
+    content: [toolCall, { ...toolCall, type: 'tool-result', output }],
+    toolCalls: [toolCall],
+    toolResults: [{ ...toolCall, type: 'tool-result', output }],
+  }
+  const result = {
+    outcome: 'finished',
+    snapshot: {
+      runId: 'personal:workspace:conversation',
+      status: 'completed',
+      evidence: [],
+      usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 },
+    },
+    messages: [],
+    steps: [resultStep],
+    stepReceiptIds: ['model:0'],
+  } as unknown as HarnessExecutionResult
+  const activeToolNames = new Set(['computer_exec'])
+
+  const reconciled = reconcileSettledHarnessTranscriptOutcomes(result, activeToolNames, settledTranscript)
+  const persistedInvocation = reconciled.updatedSteps[0]?.persistence.parts.find(part => part.type === 'tool-invocation')
+  expect(persistedInvocation).toEqual(expect.objectContaining({
+    id: 'early-1',
+    toolInvocation: expect.objectContaining({
+      toolCallId: toolCall.toolCallId,
+      state: 'output-error',
+      toolOutput: actualError,
+    }),
+  }))
+
+  const delivery = buildPersonalHarnessDelivery(result, undefined, activeToolNames, settledTranscript)
+  expect(delivery.parts.filter(part => (
+    part.type === 'tool-invocation'
+    && (part.toolInvocation as Record<string, unknown>).toolCallId === toolCall.toolCallId
+  ))).toHaveLength(1)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({
+    type: 'tool-invocation',
+    toolInvocation: expect.objectContaining({
+      toolCallId: toolCall.toolCallId,
+      state: 'output-error',
+      toolOutput: actualError,
+    }),
+  }))
+  expect(delivery.content.match(/Starting the command\./g)).toHaveLength(1)
+  expect(delivery.parts).toContainEqual(expect.objectContaining({ id: 'early-0' }))
+})
+
+test('retries reconciliation from the current full row after a committed write loses its acknowledgement', async () => {
+  const callId = 'retry-failure-call'
+  const persistence = {
+    content: 'Starting the command.',
+    parts: [
+      { id: 'retry-text', type: 'text', text: 'Starting the command.' },
+      missingOutcomePart(callId, 'computer_exec', 'retry-invocation'),
+    ],
+  }
+  const stored = transcriptStep('model:0', 0, 0, persistence)
+  const store = installTranscriptStore([stored], { loseAckAfterCommitWrite: 1 })
+  const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
+  const staleWindow = {
+    persistence,
+    steps: [stored.row],
+    truncated: false,
+    newestSequence: 0,
+    oldestSequence: 0,
+  }
+  const result = resultWithToolCalls([{
+    receiptId: 'model:0', stepNumber: 0, toolCallId: callId, toolName: 'computer_exec',
+    output: { success: false, error: 'Computer command failed with exit code 2.' },
+  }])
+
+  await expect(reconcileSettledHarnessTranscriptForDelivery(
+    reference, result, new Set(['computer_exec']), staleWindow,
+  )).rejects.toThrow('Transcript write acknowledgement lost.')
+  expect(store.blobs.has(stored.fullPersistenceUrl)).toBe(false)
+
+  const retried = await reconcileSettledHarnessTranscriptForDelivery(
+    reference, result, new Set(['computer_exec']), staleWindow,
+  )
+  const invocation = retried.persistence.parts.find(part => part.type === 'tool-invocation')!
+    .toolInvocation as Record<string, unknown>
+  expect(invocation).toMatchObject({
+    toolCallId: callId,
+    state: 'output-error',
+    toolOutput: { success: false, error: 'Computer command failed with exit code 2.' },
+  })
+  expect(retried.persistence.content.match(/Starting the command\./g)).toHaveLength(1)
+  expect(retried.persistence.parts.map(part => part.id)).toEqual(['retry-text', 'retry-invocation'])
+  expect(JSON.stringify(retried.persistence)).not.toContain('https://storage.test/')
+  expect(store.writes).toHaveLength(1)
+  expect(store.readUrls).toEqual([stored.fullPersistenceUrl, 'https://storage.test/model:0/1'])
+
+  const replayed = await reconcileSettledHarnessTranscriptForDelivery(
+    reference, result, new Set(['computer_exec']), staleWindow,
+  )
+  expect(replayed.persistence).toEqual(retried.persistence)
+  expect(store.writes).toHaveLength(1)
+  expect(store.rows).toHaveLength(1)
+})
+
+test('reconciles a tool omitted from the compact preview through its full receipt row', async () => {
+  const callId = 'omitted-preview-call'
+  const fullPersistence = {
+    content: 'The visible answer stays compact.',
+    parts: [
+      missingOutcomePart(callId, 'computer_exec', 'omitted-invocation'),
+      ...Array.from({ length: 80 }, (_, index) => ({ type: 'text', id: `visible-${index}`, text: `Visible update ${index}.` })),
+    ],
+  }
+  const stored = transcriptStep('model:0', 0, 0, fullPersistence)
+  expect(stored.row.persistence.parts.some(part => (
+    part.type === 'tool-invocation' && (part.toolInvocation as Record<string, unknown>).toolCallId === callId
+  ))).toBe(false)
+  expect(stored.row.persistence.parts.some(part => typeof part.storageOmittedParts === 'number')).toBe(true)
+  const store = installTranscriptStore([stored])
+  const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
+  const before = await readSettledHarnessTranscript(reference)
+  const result = resultWithToolCalls([{
+    receiptId: 'model:0', stepNumber: 0, toolCallId: callId, toolName: 'computer_exec',
+    output: { success: true, stdout: 'completed after the compact preview was written' },
+  }])
+
+  const after = await reconcileSettledHarnessTranscriptForDelivery(reference, result, new Set(['computer_exec']), before)
+  const durableRow = store.rows[0]!
+  const full = store.blobs.get(durableRow.fullPersistenceUrl)!
+  const reconciled = full.parts.find(part => (
+    part.type === 'tool-invocation' && (part.toolInvocation as Record<string, unknown>).toolCallId === callId
+  ))!.toolInvocation as Record<string, unknown>
+
+  expect(reconciled).toMatchObject({ toolCallId: callId, state: 'output-available',
+    toolOutput: { success: true, stdout: 'completed after the compact preview was written' } })
+  expect(after.persistence).toEqual(before.persistence)
+  expect(after.steps).toHaveLength(1)
+  expect(after.steps[0]!.persistence.parts.some(part => (
+    part.type === 'tool-invocation' && (part.toolInvocation as Record<string, unknown>).toolCallId === callId
+  ))).toBe(false)
+  expect(store.writes).toHaveLength(1)
+  expect(JSON.stringify(after.persistence)).not.toContain('https://storage.test/')
+})
+
+test('reconciles partial multi-row writes idempotently without replacing a real failure', async () => {
+  const calls = [
+    { receiptId: 'model:0', stepNumber: 0, toolCallId: 'partial-success', toolName: 'computer_exec', output: { success: true, stdout: 'ok' } },
+    { receiptId: 'model:1', stepNumber: 1, toolCallId: 'partial-error', toolName: 'computer_exec', output: { success: false, error: 'Observed command failure.' } },
+    { receiptId: 'model:2', stepNumber: 2, toolCallId: 'real-error', toolName: 'computer_exec', output: { success: true, stdout: 'must not replace the recorded failure' } },
+  ]
+  const rows = calls.map((call, index) => {
+    const existing = call.toolCallId === 'real-error'
+      ? {
+        id: `part:${call.toolCallId}`, type: 'tool-invocation',
+        toolInvocation: { toolCallId: call.toolCallId, toolName: call.toolName, state: 'output-error',
+          toolOutput: { success: false, error: 'Trustworthy earlier failure.' } },
+      }
+      : missingOutcomePart(call.toolCallId, call.toolName)
+    return transcriptStep(call.receiptId, call.stepNumber, index, {
+      content: `Progress ${call.receiptId}.`,
+      parts: [{ id: `text:${call.receiptId}`, type: 'text', text: `Progress ${call.receiptId}.` }, existing],
+    })
+  })
+  const store = installTranscriptStore(rows, { loseAckAfterCommitWrite: 2 })
+  const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
+  const staleWindow = {
+    persistence: { content: rows.map(item => item.fullPersistence.content).join(''),
+      parts: rows.flatMap(item => item.fullPersistence.parts) },
+    steps: rows.map(item => item.row),
+    truncated: false,
+    newestSequence: 2,
+    oldestSequence: 0,
+  }
+  const result = resultWithToolCalls(calls)
+
+  await expect(reconcileSettledHarnessTranscriptForDelivery(
+    reference, result, new Set(['computer_exec']), staleWindow,
+  )).rejects.toThrow('Transcript write acknowledgement lost.')
+  expect(store.writes.map(write => write.receiptId)).toEqual(['model:0', 'model:1'])
+  expect(store.blobs.has(rows[0]!.fullPersistenceUrl)).toBe(false)
+  expect(store.blobs.has(rows[1]!.fullPersistenceUrl)).toBe(false)
+
+  const retried = await reconcileSettledHarnessTranscriptForDelivery(
+    reference, result, new Set(['computer_exec']), staleWindow,
+  )
+  const byCallId = new Map(retried.persistence.parts.filter(part => part.type === 'tool-invocation').map(part => {
+    const invocation = part.toolInvocation as Record<string, unknown>
+    return [invocation.toolCallId, invocation]
+  }))
+  expect(byCallId.get('partial-success')).toMatchObject({ state: 'output-available', toolOutput: { stdout: 'ok' } })
+  expect(byCallId.get('partial-error')).toMatchObject({ state: 'output-error',
+    toolOutput: { success: false, error: 'Observed command failure.' } })
+  expect(byCallId.get('real-error')).toMatchObject({ state: 'output-error',
+    toolOutput: { success: false, error: 'Trustworthy earlier failure.' } })
+  expect(retried.persistence.content.match(/Progress model:\d\./g)).toHaveLength(3)
+  expect(store.writes).toHaveLength(2)
+  expect(store.rows).toHaveLength(3)
 })
 
 test('failure delivery restores journal order, deduplicates matching settled steps, and keeps new live text', () => {

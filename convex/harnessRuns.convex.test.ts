@@ -3,6 +3,8 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
 import { createHash } from 'node:crypto'
+import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
+import { createHarnessDiagnostic } from '../packages/overlay-agent-runtime/src/harness-diagnostic'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -128,6 +130,52 @@ function oneStep(id: string) {
 }
 
 describe('durable harness runs', () => {
+  test('appends diagnostic history and sanitized tool failures idempotently', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('diagnostic-history', await seedConversation(convex))
+    let state = await admit(convex, input)
+    const failure = {
+      toolCallId: 'tool-call-1',
+      toolName: 'computer_open_url',
+      phase: 'pre_dispatch' as const,
+      causeClass: 'schema_validation' as const,
+      causeCode: 'INVALID_TOOL_INPUT' as const,
+      safeSummary: 'Tool input was rejected before execution.' as const,
+      validationIssues: [{ path: ['url'], code: 'invalid_format' as const }],
+    }
+    await apply(convex, input, 'tool-failure-1', state.revision, { type: 'record_tool_failure', failure })
+    const firstDiagnostic = createHarnessDiagnostic({
+      diagnosticId: 'hd_history_first', code: 'TOOL_FAILED', stage: 'tool',
+      operationId: 'tool-call-1', occurredAt: 101,
+    })
+    state = (await apply(convex, input, 'diagnostic-first', state.revision, {
+      type: 'record_diagnostic', diagnostic: firstDiagnostic,
+    })).snapshot
+    await apply(convex, input, 'diagnostic-first', 0, { type: 'record_diagnostic', diagnostic: firstDiagnostic })
+    const secondDiagnostic = createHarnessDiagnostic({
+      diagnosticId: 'hd_history_second', code: 'TOOL_FAILED', stage: 'tool',
+      operationId: 'tool-call-2', occurredAt: 102,
+    })
+    await apply(convex, input, 'diagnostic-second', state.revision, {
+      type: 'record_diagnostic', diagnostic: secondDiagnostic,
+    })
+
+    const stored = await convex.run(async ctx => ({
+      diagnostics: await ctx.db.query('harnessDiagnosticIndex')
+        .withIndex('by_runId_diagnosticId', q => q.eq('runId', input.runId)).collect(),
+      failures: await ctx.db.query('harnessToolFailures')
+        .withIndex('by_runId_toolCallId', q => q.eq('runId', input.runId).eq('toolCallId', 'tool-call-1')).collect(),
+    }))
+    expect(stored.diagnostics.map(row => row.diagnosticId).sort()).toEqual(['hd_history_first', 'hd_history_second'])
+    expect(stored.failures).toHaveLength(1)
+    expect(stored.failures[0]).toMatchObject({
+      actorUserId: 'alice', sourceType: 'conversation', phase: 'pre_dispatch',
+      causeCode: 'INVALID_TOOL_INPUT', validationIssues: [{ path: ['url'], code: 'invalid_format' }],
+    })
+    expect(JSON.stringify(stored)).not.toContain('file:///private/mockup.html')
+    expect(JSON.stringify(stored)).not.toContain('secret-token')
+  })
+
   test('persists completed work after authorization expires without authorizing more work', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('late-completion', await seedConversation(convex), { requiresPlan: false })
@@ -1137,7 +1185,98 @@ describe('durable harness runs', () => {
         persistence: { content: 'A settled public update.' } }],
       isDone: true,
     })
+    const readReceiptStep = query('getTranscriptStepForReconciliation')
+    const receiptIdentity = {
+      actorUserId: args.actorUserId,
+      runId: args.runId,
+      workflowRunId: args.workflowRunId,
+      receiptId: args.receiptId,
+      stepNumber: args.stepNumber,
+      serverSecret: secret,
+    }
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, workflowRunId: 'stale-workflow' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, actorUserId: 'foreign-actor' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, receiptId: 'model:1' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND/)
+    await expect(convex.query(readReceiptStep, { ...receiptIdentity, stepNumber: 1 }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_CONFLICT/)
+    const current = await convex.query(readReceiptStep, receiptIdentity)
+    expect(current).toMatchObject({
+      receiptId: 'model:0', sequence: 0, stepNumber: 0,
+      persistence: { content: 'A settled public update.' },
+      fullPersistenceDigest: args.fullPersistenceDigest,
+    })
+    expect(current.fullPersistenceUrl).toEqual(expect.any(String))
   })
+})
+
+test('reconciles a provisional tool result in the durable transcript row', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('transcript-outcome-finalize', await seedConversation(convex))
+  let state = await admit(convex, input)
+  state = (await apply(convex, input, 'claim-outcome', state.revision, {
+    type: 'claim_execution', workflowRunId: 'workflow-outcome',
+  })).snapshot
+  state = (await apply(convex, input, 'reserve-outcome', state.revision, {
+    type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+  })).snapshot
+  await apply(convex, input, 'settle-outcome', state.revision, {
+    type: 'record_receipt', receipt: {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1,
+    },
+  })
+  const early = {
+    content: 'Starting the command.',
+    parts: [
+      { id: 'text-id', type: 'text', text: 'Starting the command.' },
+      { id: 'call-id', type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'computer-call', toolName: 'computer_exec', state: 'output-error',
+        toolInput: { command: 'printf ok' },
+        toolOutput: { success: false, error: 'The tool call ended without an execution result.' },
+      } },
+    ],
+  }
+  const observed = { content: 'Ignore this duplicate text.', parts: [{
+    type: 'tool-invocation', toolInvocation: {
+      toolCallId: 'computer-call', toolName: 'computer_exec', state: 'output-available',
+      toolOutput: { success: true, stdout: 'ok' },
+    },
+  }] }
+  const reconciled = reconcileToolInvocationOutcomes(early, observed).persistence
+  const store = async (value: unknown) => {
+    const json = JSON.stringify(value)
+    return { id: await convex.run(ctx => ctx.storage.store(new Blob([json]))), digest: createHash('sha256').update(json).digest('hex') }
+  }
+  const initialStorage = await store(early)
+  const args = {
+    actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'workflow-outcome',
+    receiptId: 'model:0', stepNumber: 0, persistence: early,
+    fullPersistenceStorageId: initialStorage.id, fullPersistenceDigest: initialStorage.digest, serverSecret: secret,
+  }
+  const write = mutation('writeTranscriptStep')
+  expect(await convex.mutation(write, args)).toEqual({ persisted: true })
+  const updatedStorage = await store(reconciled)
+  expect(await convex.mutation(write, {
+    ...args, persistence: reconciled, fullPersistenceStorageId: updatedStorage.id,
+    fullPersistenceDigest: updatedStorage.digest, reconcileToolResults: true,
+  })).toEqual({ persisted: true })
+
+  const rows = await convex.run(ctx => ctx.db.query('harnessTranscriptSteps')
+    .withIndex('by_runId_receiptId', q => q.eq('runId', input.runId).eq('receiptId', 'model:0')).collect())
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toMatchObject({ sequence: 0, stepNumber: 0, persistenceJson: expect.any(String) })
+  expect(rows[0]!.fullPersistenceStorageId).toBe(updatedStorage.id)
+  expect(await convex.run(ctx => ctx.db.system.get(initialStorage.id))).toBeNull()
+  const page = await convex.query(query('listTranscriptSteps'), {
+    actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'workflow-outcome',
+    paginationOpts: { cursor: null, numItems: 25 }, serverSecret: secret,
+  })
+  expect(page.steps).toHaveLength(1)
+  expect(page.steps[0]!.persistence).toEqual(reconciled)
+  expect(page.steps[0]!.fullPersistenceDigest).toBe(updatedStorage.digest)
 })
 
 test('message trace retrieval enforces conversation access and reads every page in sequence', async () => {
