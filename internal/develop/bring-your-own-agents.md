@@ -464,8 +464,7 @@ hosted acceptance before Phase 5 is complete.
 
 ## Transport diagnostics
 
-A run that seems stuck needs evidence from both sides. Decisions (see
-`internal/plans/RELIABLE_CONNECTED_AGENTS_PLAN.md`, Phase 0):
+A run that seems stuck needs evidence from both sides. Decisions:
 
 - **Request ids.** The poll, events, ack and heartbeat routes return `x-overlay-request-id`. Host warnings for a
   failed request include it (`[request …]`), so a host log line matches the server log for the same request.
