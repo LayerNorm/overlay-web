@@ -17,6 +17,7 @@ import type {
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
 import { useMarkdownConnectorActions } from './connector-actions-context'
+import { MermaidCodeBlock } from './mermaid-block'
 
 export type MarkdownCodeBlockActions = {
   onOpenAttachmentPreview?: (
@@ -114,6 +115,10 @@ export function ConnectServiceCard({ serviceName, href }: { serviceName: string;
   )
 }
 
+function isMermaidLanguage(language: string): boolean {
+  return language.trim().toLowerCase() === 'mermaid'
+}
+
 function isHtmlLanguage(language: string): boolean {
   return /^(html?|xhtml)$/i.test(language.trim())
 }
@@ -174,8 +179,20 @@ function HighlightedCode({ code, language }: { code: string; language: string })
   )
 }
 
-// Fenced code: Shiki highlighting, copy, and HTML render controls.
+// Fenced code: Shiki highlighting, copy, HTML render controls, and Mermaid diagrams.
 function CodeBlock({
+  language,
+  children,
+  onOpenAttachmentPreview,
+}: {
+  language: string
+  children: string
+} & MarkdownCodeBlockActions) {
+  if (isMermaidLanguage(language)) return <MermaidCodeBlock source={children} />
+  return <SourceCodeBlock language={language} onOpenAttachmentPreview={onOpenAttachmentPreview}>{children}</SourceCodeBlock>
+}
+
+function SourceCodeBlock({
   language,
   children,
   onOpenAttachmentPreview,
