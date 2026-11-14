@@ -53,6 +53,20 @@ import { getBlockedSendNotice } from './chat-composer-blocking'
 
 export { TEMPORARY_CHAT_ID, PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
+type SubmittedDraft = {
+  text: string
+  attachedImages: AttachedImage[]
+  pendingChatDocuments: PendingChatDocument[]
+  mentions: MentionItem[]
+  replyContext: ReplyContext
+}
+
+/** A queued message carries only its own text and mentions; the live draft belongs to what the person is typing now. */
+function submittedDraft(queued: QueuedMessage | undefined, live: SubmittedDraft): SubmittedDraft {
+  if (!queued) return live
+  return { text: queued.text, attachedImages: [], pendingChatDocuments: [], mentions: queued.mentions, replyContext: null }
+}
+
 export function useChatSendController({
   ensureWritable,
   isCurrentScope,
@@ -373,10 +387,9 @@ export function useChatSendController({
       requireAuth('send')
       return false
     }
-    // A queued message carries only its own text and mentions; the composer's
-    // current draft belongs to whatever the person is typing now.
-    const replyCtxSnapshot = queued ? null : replyContext
-    const submittedInput = queued ? queued.text : inputRef.current
+    const draft = submittedDraft(queued, { text: inputRef.current, attachedImages, pendingChatDocuments, mentions, replyContext })
+    const replyCtxSnapshot = draft.replyContext
+    const submittedInput = draft.text
     const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
@@ -384,9 +397,9 @@ export function useChatSendController({
       activeChatTitle,
       selectedImageModels,
       selectedVideoModels,
-      attachedImages: queued ? [] : attachedImages,
-      pendingChatDocuments: queued ? [] : pendingChatDocuments,
-      mentions: queued ? queued.mentions : mentions,
+      attachedImages: draft.attachedImages,
+      pendingChatDocuments: draft.pendingChatDocuments,
+      mentions: draft.mentions,
       isTemporaryChat,
       mode,
       selectedToolIds,
@@ -442,12 +455,15 @@ export function useChatSendController({
     }
     const isCurrentSendScope = () => isCurrentScope()
       && (!nativePersonalEnabled || sendIntentGeneration.current === sendIntentId)
+    function liveDraftChanged() {
+      if (queued) return false
+      return inputRef.current !== submittedInput || latestComposerStateRef.current !== submittedComposerState
+    }
     function sendIntentChanged() {
       return !isCurrentSendScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
-      || (!queued && inputRef.current !== submittedInput)
-      || (!queued && latestComposerStateRef.current !== submittedComposerState)
+      || liveDraftChanged()
     }
     if (!writable || sendIntentChanged()) return false
 
