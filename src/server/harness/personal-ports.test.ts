@@ -8,7 +8,7 @@ import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { admitPersonalHarnessExecution, createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
-import { createHarnessModelPorts } from './model-ports'
+import { createHarnessModelPorts, MAX_INTERRUPTED_MODEL_RETRIES } from './model-ports'
 import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
 import { isHarnessStateMessage, withoutHarnessStateMessages } from './prompt-cache'
@@ -105,13 +105,17 @@ test('shared model preparation delegates surface authority without requiring per
   expect(mocks.refresh).not.toHaveBeenCalled()
 })
 
-test('an ambiguous provider error retains its hold and never tries another model', async () => {
+test('an interrupted provider call settles at zero, retries the same model and stops at the retry limit', async () => {
   const failed = new MockLanguageModelV4({ doStream: async () => { throw new Error('Network timeout') } })
   mocks.model.mockResolvedValue(failed)
   const ports = createPersonalHarnessExecutionPorts({ access, context }, surface)
   await expect(runOverlayHarness(execution, ports)).rejects.toThrow('Network timeout')
-  expect(mocks.model).toHaveBeenCalledOnce()
-  expect(current.modelReservation?.dispatch?.modelId).toBe('fixture/model')
+  expect(mocks.model).toHaveBeenCalledTimes(MAX_INTERRUPTED_MODEL_RETRIES + 1)
+  expect(mocks.authorize.mock.calls.every(([reference]) => reference.modelId === 'fixture/model')).toBe(true)
+  expect(mocks.settle).not.toHaveBeenCalled()
+  expect(current.modelReservation).toBeUndefined()
+  expect(current.latestReceipt).toMatchObject({ provider: 'interrupted', costMicros: 0, responseFailure: 'provider_error' })
+  expect(current.usage.costMicros).toBe(0)
 })
 
 test('Kimi K3 reasoning is prepared for the selected model', async () => {
