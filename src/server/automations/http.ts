@@ -7,7 +7,7 @@ import { AutomationService, AutomationServiceError } from './AutomationService'
 import { ConfiguredAutomationEntitlementPolicy } from './AutomationEntitlementPolicy'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { start } from 'workflow/api'
-import { automationScheduleWorkflow } from '@/server/workflows/automation-schedule'
+import { automationRunWorkflow } from '@/server/workflows/automation-run'
 
 const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
   billingDisabled: () => {
@@ -22,9 +22,8 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
 })
 
 export const automationService = new AutomationService({
-  automationWorkflowStarter: (input) => start(automationScheduleWorkflow, [input]),
+  automationWorkflowStarter: (input) => start(automationRunWorkflow, [input]),
   entitlementPolicy,
-  lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
   repository: new ConvexAutomationRepository(),
 })
 

@@ -30,9 +30,16 @@ type PersonalContext = Omit<PersonalChatWorkToolingContext, 'entitlements' | 'pa
 type HarnessState = NonNullable<Awaited<ReturnType<ConvexHarnessRepository['get']>>>
 type ServerContext = ReturnType<typeof getOverlayServerContext>
 
+// Agent identity (memory owner, agent, agent principal) is never taken from a
+// supplied context: automation steps derive it from the automation's current
+// agent (buildExecutionContext), and personal turns have none.
+function hasNoSuppliedAgentIdentity(context: PersonalContext): boolean {
+  return !context.memoryOwnerId && !context.agentId && !context.agentPrincipalId
+}
+
 function hasValidPersonalContext(context: PersonalContext): boolean {
   return !context.automationExecution && !context.automationId && !context.automationRunId
-    && context.approvalMode !== 'auto' && !context.memoryOwnerId
+    && context.approvalMode !== 'auto' && hasNoSuppliedAgentIdentity(context)
 }
 
 function hasValidAutomationContext(
@@ -43,7 +50,7 @@ function hasValidAutomationContext(
     && context.automationId === authority.automationId
     && context.automationRunId === authority.automationRunId
     && context.billingProgrammaticSubjectId === `automation:${authority.automationId}`
-    && !context.memoryOwnerId
+    && hasNoSuppliedAgentIdentity(context)
 }
 
 function assertSuppliedContext(access: PersonalHarnessAccess, context: PersonalContext): void {
@@ -236,7 +243,7 @@ function buildExecutionContext(
   accountAllowedToolIds: string[],
   accountAllowedConnectorIds: string[],
   gate: Awaited<ReturnType<typeof actEntitlementService.gateModelPolicy>>,
-  sourceGrant?: { approvalMode: 'ask' | 'auto'; allowedToolIds: string[]; allowedConnectorIds: string[] },
+  sourceGrant?: Awaited<ReturnType<typeof refreshAutomationHarnessSource>>,
 ): PersonalHarnessExecutionContext {
   const allowedTools = (context.accountAllowedToolIds ?? [])
     .filter(id => accountAllowedToolIds.includes(id))
@@ -268,7 +275,10 @@ function buildExecutionContext(
     ...(access.authentication.type === 'automation'
       ? { automationExecution: true, automationId: access.authentication.automationId,
         automationRunId: access.authentication.automationRunId,
-        approvalMode: sourceGrant?.approvalMode ?? 'ask' }
+        approvalMode: sourceGrant?.approvalMode ?? 'ask',
+        // An agent-bound automation acts as its agent: the agent's memory,
+        // identity and computer, read fresh from the automation every step.
+        ...(sourceGrant?.agent ?? {}) }
       : { approvalMode: 'ask' as const }),
   }
 }

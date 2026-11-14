@@ -67,10 +67,6 @@ export interface AutomationRepository {
     userId: string
     workspaceId?: string
   }): Promise<AutomationForUpdateNote | null>
-  getAutomationRunTarget(args: {
-    automationId: string
-    userId: string
-  }): Promise<AutomationRunTarget | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
   attachOwnedConversation(args: {
@@ -158,9 +154,5 @@ export interface AutomationRepository {
   updateRunWorkflowRunId?(args: {
     runId: string
     workflowRunId: string
-  }): Promise<void>
-  updateSchedulerWorkflowRunId?(args: {
-    automationId: string
-    schedulerWorkflowRunId: string | null
   }): Promise<void>
 }

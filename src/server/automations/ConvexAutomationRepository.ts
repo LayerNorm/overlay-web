@@ -7,7 +7,6 @@ import type {
   AutomationExecutionPayload,
   AutomationForUpdateNote,
   AutomationRepository,
-  AutomationRunTarget,
   CreateAutomationInput,
   UpdateAutomationInput,
 } from './AutomationRepository'
@@ -48,17 +47,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
     userId: string
   }): Promise<AutomationForUpdateNote | null> {
     return await convex.query<AutomationForUpdateNote | null>('automations/automations:get', {
-      ...args,
-      automationId: args.automationId as Id<'automations'>,
-      serverSecret: this.serverSecret,
-    })
-  }
-
-  async getAutomationRunTarget(args: {
-    automationId: string
-    userId: string
-  }): Promise<AutomationRunTarget | null> {
-    return await convex.query<AutomationRunTarget | null>('automations/automations:get', {
       ...args,
       automationId: args.automationId as Id<'automations'>,
       serverSecret: this.serverSecret,
@@ -280,17 +268,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
       runId: args.runId as Id<'automationRuns'>,
       serverSecret: this.serverSecret,
       workflowRunId: args.workflowRunId,
-    }, { throwOnError: true })
-  }
-
-  async updateSchedulerWorkflowRunId(args: {
-    automationId: string
-    schedulerWorkflowRunId: string | null
-  }): Promise<void> {
-    await convex.mutation('automations/automations:updateSchedulerWorkflowRunIdByServer', {
-      automationId: args.automationId as Id<'automations'>,
-      serverSecret: this.serverSecret,
-      schedulerWorkflowRunId: args.schedulerWorkflowRunId,
     }, { throwOnError: true })
   }
 }
