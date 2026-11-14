@@ -1,51 +1,24 @@
 import React, { useEffect } from 'react'
-import { View, ActivityIndicator, Linking } from 'react-native'
-import { Stack, router } from 'expo-router'
+import { View, ActivityIndicator, Alert } from 'react-native'
+import { Stack, useGlobalSearchParams } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
+import { DrawerProvider } from '../contexts/DrawerContext'
+import { AppShell } from '../components/shell/AppShell'
+import { SessionGate } from '../components/shell/SessionGate'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
-import { AppSessionProvider } from '../contexts/AppSessionContext'
-import { WorkspaceProvider } from '../contexts/WorkspaceContext'
+import { AppSessionProvider, useAppSession } from '../contexts/AppSessionContext'
+import { WorkspaceProvider, useWorkspace } from '../contexts/WorkspaceContext'
+import { activateLinkWorkspace } from '../lib/incomingLinks'
+import { ConvexAuthProvider, useNativeDataReady } from '../contexts/ConvexAuthProvider'
+import { SettingsLiveBridge } from '../components/settings/SettingsLiveBridge'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 import { useNotificationWatcher } from '../hooks/useNotificationWatcher'
-import { openNotificationDestination } from '../lib/notificationRouting'
-import {
-  addNotificationResponseListener,
-  initNotificationHandler,
-  preparePushRegistration,
-} from '../services/notificationsService'
+import { initNotificationHandler } from '../services/notificationsService'
 
 initNotificationHandler()
-
-function handleDeepLink(url: string | null | undefined): void {
-  if (!url) return
-  // Dictate URLs from the keyboard land users on the Voice page so they can
-  // toggle background recording on. We pass autoEnable=1 so the page flips
-  // the switch automatically.
-  if (url.startsWith('overlay://dictate')) {
-    router.push('/(tabs)/voice?autoEnable=1')
-  }
-  // Workspace invitation links: overlay://invitations/<id> or a pasted web
-  // invite path (.../app/invitations/<id> or .../invite/<id>).
-  const inviteMatch = url.match(/invitations?\/([A-Za-z0-9_-]+)/i)
-  if (inviteMatch) {
-    router.push(`/invitations/${inviteMatch[1]}`)
-  }
-  // MCP OAuth callback: the auth session normally intercepts this itself, but a
-  // cold-start deep link should still land the user back on Extensions → MCPs.
-  if (url.startsWith('overlay://auth/mcp-callback')) {
-    router.push('/(tabs)/tools')
-  }
-}
-
-function useDictateDeepLink(): void {
-  useEffect(() => {
-    void Linking.getInitialURL().then(handleDeepLink)
-    const sub = Linking.addEventListener('url', (event) => handleDeepLink(event.url))
-    return () => sub.remove()
-  }, [])
-}
 
 function useVoiceAuthSync(): void {
   // Mirror the WorkOS access token + userId into the App Group on launch and
@@ -70,43 +43,33 @@ function useVoiceAuthSync(): void {
   }, [])
 }
 
+function SessionScreenLayout({ children }: { children: React.ReactNode }) {
+  return <SessionGate>{children}</SessionGate>
+}
+
 function RootLayoutNav(): React.ReactElement {
   const { isDark } = useTheme()
-  const { isAuthenticated, user } = useAuth()
-  useDictateDeepLink()
-  useVoiceAuthSync()
-  // Foreground banners for newly arrived unread notifications while server
-  // push remains deferred (§9.3).
-  useNotificationWatcher(isAuthenticated)
-
-  // Push registration groundwork: capture + persist the token locally so the
-  // deferred server token store only needs the upload call when it lands.
+  const { isAuthenticated } = useAuth()
+  const { isInitialized } = useAppSession()
+  const ready = useNativeDataReady()
+  const { workspaceId } = useGlobalSearchParams<{ workspaceId?: string }>()
+  const { activeWorkspaceId, isLoading, switchWorkspace } = useWorkspace()
   useEffect(() => {
-    if (!isAuthenticated || !user?.id) return
-    void preparePushRegistration(user.id).catch(() => undefined)
-  }, [isAuthenticated, user?.id])
-
-  // Banner taps route to the same destination as the Activity feed row.
-  useEffect(() => {
-    const sub = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as {
-        kind?: string
-        conversationId?: string
-        threadRootMessageId?: string
-      }
-      if (data?.kind !== 'workspace-notification' || !data.conversationId) return
-      void openNotificationDestination(router, {
-        conversationId: data.conversationId,
-        threadRootMessageId: data.threadRootMessageId,
-      })
+    if (!ready || !isAuthenticated || !isInitialized || isLoading) return
+    let current = true
+    void activateLinkWorkspace(workspaceId, activeWorkspaceId, switchWorkspace).catch(() => {
+      if (current) Alert.alert('Could not open workspace', 'Check your connection and workspace access.')
     })
-    return () => sub.remove()
-  }, [])
-
+    return () => { current = false }
+  }, [workspaceId, activeWorkspaceId, isLoading, isAuthenticated, isInitialized, switchWorkspace, ready])
+  useVoiceAuthSync()
+  useNotificationWatcher(isAuthenticated && isInitialized)
+  usePushNotifications(isInitialized)
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
+        screenLayout={SessionScreenLayout}
         screenOptions={{
           headerShown: false,
           headerTransparent: true,
@@ -138,7 +101,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="chat/[id]"
           options={{
-            headerShown: true,
+            headerShown: false,
             title: '',
             presentation: 'card',
             animation: 'slide_from_right',
@@ -186,14 +149,6 @@ function RootLayoutNav(): React.ReactElement {
           }}
         />
         <Stack.Screen
-          name="knowledge-base/[id]"
-          options={{
-            headerShown: false,
-            presentation: 'card',
-            animation: 'slide_from_right',
-          }}
-        />
-        <Stack.Screen
           name="search"
           options={{
             presentation: 'card',
@@ -215,6 +170,12 @@ function RootLayoutNav(): React.ReactElement {
 export default function RootLayout(): React.ReactElement {
   const [fontsLoaded] = useFonts({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Geist: require('@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    GeistMedium: require('@expo-google-fonts/geist/500Medium/Geist_500Medium.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    GeistSemibold: require('@expo-google-fonts/geist/600SemiBold/Geist_600SemiBold.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     LibreBaskerville: require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Regular.ttf'),
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     'LibreBaskerville-Italic': require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Italic.ttf'),
@@ -234,11 +195,18 @@ export default function RootLayout(): React.ReactElement {
     <SafeAreaProvider>
       <AuthProvider>
         <ThemeProvider>
-          <AppSessionProvider>
-            <WorkspaceProvider>
-              <RootLayoutNav />
-            </WorkspaceProvider>
-          </AppSessionProvider>
+          <ConvexAuthProvider>
+            <AppSessionProvider>
+              <SettingsLiveBridge />
+              <WorkspaceProvider>
+                <DrawerProvider>
+                  <AppShell>
+                    <RootLayoutNav />
+                  </AppShell>
+                </DrawerProvider>
+              </WorkspaceProvider>
+            </AppSessionProvider>
+          </ConvexAuthProvider>
         </ThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>

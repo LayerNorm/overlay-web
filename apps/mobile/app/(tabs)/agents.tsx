@@ -1,5 +1,5 @@
 import React from 'react'
-import { AgentsScreen as AgentsScreenView } from '../../components/agents/AgentsScreen'
+import { AgentDirectoryScreen as AgentsScreenView } from '../../components/agents/AgentThreadScreen'
 
 export default function AgentsScreen(): React.ReactElement {
   return <AgentsScreenView />

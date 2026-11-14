@@ -1,7 +1,5 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
-  Image,
   Linking,
   ScrollView,
   StyleSheet,
@@ -10,14 +8,7 @@ import {
   View,
 } from 'react-native'
 import { Image as ExpoImage } from 'expo-image'
-import Animated, {
-  FadeIn,
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated'
+import Animated, { FadeIn } from 'react-native-reanimated'
 import { EnrichedMarkdownText } from 'react-native-enriched-markdown'
 import type { MarkdownStyle as EnrichedMarkdownStyle } from 'react-native-enriched-markdown'
 import { Feather } from '@expo/vector-icons'
@@ -33,10 +24,12 @@ import type { Message, ToolInvocationSummary } from '../../services/chatTypes'
 import type { Theme } from '../../constants/theme'
 import { spacing, fontSize, borderRadius } from '../../constants/theme'
 import { GeneratedUiCard } from './GeneratedUiCard'
+import { ResponseMark } from './ResponseMark'
+import { completeMarkdown } from '../../lib/agentThread'
+import { completePersonalBlocks } from '../../lib/personalStream'
 
 type MarkdownStyle = EnrichedMarkdownStyle
 
-const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 const DONE_STATES = new Set(['output-available', 'output-error', 'output-denied'])
 
@@ -55,7 +48,7 @@ function extractThinkContent(text: string): { cleanText: string; reasoning: stri
       reasoning += inner
       return ''
     })
-    .trim()
+    .trimStart()
   return { cleanText, reasoning }
 }
 
@@ -175,44 +168,6 @@ function getSourceHostname(url: string): string {
 
 // ─── Shimmer animation ────────────────────────────────────────────────────────
 
-function useShimmerStyle() {
-  const opacity = useSharedValue(0.5)
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/immutability
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 700 }),
-        withTiming(0.3, { duration: 700 }),
-      ),
-      -1,
-      false,
-    )
-  }, [opacity])
-  return useAnimatedStyle(() => ({ opacity: opacity.value }))
-}
-
-// ─── Streaming cursor (pulsing overlay logo) ──────────────────────────────────
-
-function StreamingCursor() {
-  const opacity = useSharedValue(1)
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/immutability
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.1, { duration: 420 }),
-        withTiming(1, { duration: 420 }),
-      ),
-      -1,
-      false,
-    )
-  }, [opacity])
-  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
-  return (
-    <Animated.View style={[styles.cursor, animStyle]}>
-      <Image source={OVERLAY_LOGO} style={styles.cursorImage} resizeMode="contain" alt="Overlay loading indicator" />
-    </Animated.View>
-  )
-}
 
 // ─── Reasoning block ──────────────────────────────────────────────────────────
 
@@ -226,36 +181,15 @@ function ReasoningBlock({
   theme: Theme
 }) {
   const [expanded, setExpanded] = useState(false)
-  const shimmerStyle = useShimmerStyle()
   const hasText = text.trim().length > 0
-  const showContent = (isStreaming && hasText) || (!isStreaming && expanded && hasText)
+  const showContent = expanded && hasText
 
   return (
     <View style={styles.toolRow}>
-      <View style={styles.logoCol}>
-        <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" alt="Overlay" />
-      </View>
       <View style={styles.toolContent}>
         <View style={styles.toolHeaderRow}>
-          {isStreaming ? (
-            <Animated.View style={shimmerStyle}>
-              <Text style={[styles.toolLabel, { color: theme.textSecondary }]}>Thinking…</Text>
-            </Animated.View>
-          ) : (
-            <Text style={[styles.toolLabel, { color: theme.textSecondary }]}>Thought</Text>
-          )}
-          {!isStreaming && hasText ? (
-            <TouchableOpacity
-              onPress={() => setExpanded((v) => !v)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Feather
-                name={expanded ? 'chevron-up' : 'chevron-down'}
-                size={13}
-                color={theme.textSecondary}
-              />
-            </TouchableOpacity>
-          ) : null}
+          <Text style={[styles.toolLabel, { color: theme.textSecondary }]}>Reasoning</Text>
+          {hasText ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Toggle reasoning" onPress={() => setExpanded(value => !value)}><Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={theme.textSecondary} /></TouchableOpacity> : null}
         </View>
         {showContent ? (
           <ScrollView
@@ -264,7 +198,7 @@ function ReasoningBlock({
             showsVerticalScrollIndicator={false}
           >
             <Text style={[styles.reasoningText, { color: theme.textSecondary }]}>
-              {text.trim()}
+              {completeMarkdown(text, isStreaming).trim()}
             </Text>
           </ScrollView>
         ) : null}
@@ -276,31 +210,13 @@ function ReasoningBlock({
 // ─── Tool call row ────────────────────────────────────────────────────────────
 
 function ToolCallRow({ tool, theme }: { tool: ToolInvocationSummary; theme: Theme }) {
-  const isDone = DONE_STATES.has(tool.state ?? '')
   const isError = tool.state === 'output-error' || tool.state === 'output-denied'
-  const shimmerStyle = useShimmerStyle()
   const label = getToolLabel(tool.toolName)
 
   return (
     <View style={styles.toolRow}>
-      <View style={styles.logoCol}>
-        <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" alt="Overlay" />
-      </View>
       <View style={styles.toolContent}>
-        {isDone || isError ? (
-          <Text
-            style={[styles.toolLabel, { color: isError ? '#EF4444' : theme.textSecondary }]}
-            numberOfLines={1}
-          >
-            {label}
-          </Text>
-        ) : (
-          <Animated.View style={shimmerStyle}>
-            <Text style={[styles.toolLabel, { color: theme.textSecondary }]} numberOfLines={1}>
-              {label}
-            </Text>
-          </Animated.View>
-        )}
+        <Text style={[styles.toolLabel, { color: isError ? theme.danger : theme.textSecondary }]} numberOfLines={1}>{label}</Text>
       </View>
     </View>
   )
@@ -373,9 +289,6 @@ function ToolGroupBlock({
         onPress={() => setExpanded((v) => !v)}
         activeOpacity={0.82}
       >
-        <View style={styles.logoCol}>
-          <Image source={OVERLAY_LOGO} style={styles.toolLogo} resizeMode="contain" alt="Overlay" />
-        </View>
         <View style={styles.toolContent}>
           <View style={styles.toolHeaderRow}>
             <Text
@@ -588,21 +501,6 @@ function AssistantSegmentView({
         </View>
       )
     }
-    case 'browser':
-      return (
-        <View style={{ marginTop: 8, marginBottom: 8 }}>
-          <ToolCallRow
-            tool={{
-              toolCallId: segment.block.key,
-              toolName: segment.block.name,
-              state: segment.block.state,
-              toolInput: segment.block.toolInput,
-              toolOutput: segment.block.toolOutput,
-            }}
-            theme={theme}
-          />
-        </View>
-      )
     case 'file':
       return (
         <View style={{ marginTop: 8 }}>
@@ -697,7 +595,6 @@ const StableMd = React.memo(
   function StableMd({
     text,
     style,
-    streaming,
   }: {
     text: string
     style: MarkdownStyle
@@ -709,7 +606,7 @@ const StableMd = React.memo(
         markdownStyle={style}
         flavor="github"
         md4cFlags={{ latexMath: true }}
-        streamingAnimation={streaming}
+        streamingAnimation={false}
         selectable
       />
     )
@@ -763,6 +660,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   )
 
   const isLoading = message.responses?.some((r) => r.isLoading) ?? false
+  const completeContent = completeMarkdown(displayContent, isLoading)
   const reasoningText = (message.reasoning || '') + extractedReasoning
   const hasReasoning = !isUser && !!reasoningText.trim()
   const toolInvocations: ToolInvocationSummary[] = !isUser ? (message.toolInvocations || []) : []
@@ -779,11 +677,11 @@ export const MessageBubble = React.memo(function MessageBubble({
     () => ({
       paragraph: {
         color: theme.text,
-        fontSize: 17,
-        lineHeight: 26,
-        fontFamily: 'LibreBaskerville',
+        fontSize: 14,
+        lineHeight: 24,
+        fontFamily: 'Geist',
         marginTop: 0,
-        marginBottom: 8,
+        marginBottom: 16,
       },
       h1: {
         color: theme.text,
@@ -791,7 +689,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontWeight: '700',
         marginTop: 16,
         marginBottom: 8,
-        fontFamily: 'LibreBaskerville',
+        fontFamily: 'Geist',
       },
       h2: {
         color: theme.text,
@@ -799,15 +697,15 @@ export const MessageBubble = React.memo(function MessageBubble({
         fontWeight: '600',
         marginTop: 12,
         marginBottom: 6,
-        fontFamily: 'LibreBaskerville',
+        fontFamily: 'Geist',
       },
       h3: {
         color: theme.text,
-        fontSize: 17,
+        fontSize: 14,
         fontWeight: '600',
         marginTop: 10,
         marginBottom: 4,
-        fontFamily: 'LibreBaskerville',
+        fontFamily: 'Geist',
       },
       h4: {
         color: theme.text,
@@ -853,11 +751,11 @@ export const MessageBubble = React.memo(function MessageBubble({
       em: { fontStyle: 'italic' },
       list: {
         color: theme.text,
-        fontSize: 17,
-        lineHeight: 26,
+        fontSize: 14,
+        lineHeight: 24,
         bulletColor: theme.text,
         markerColor: theme.text,
-        fontFamily: 'LibreBaskerville',
+        fontFamily: 'Geist',
       },
       blockquote: {
         backgroundColor: theme.surfaceMuted,
@@ -866,7 +764,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         marginTop: 8,
         marginBottom: 8,
         color: theme.text,
-        fontFamily: 'LibreBaskerville',
+        fontFamily: 'Geist',
       },
       table: {
         borderColor: theme.border,
@@ -942,16 +840,14 @@ export const MessageBubble = React.memo(function MessageBubble({
   }
 
   // ── Assistant bubble ─────────────────────────────────────────────────────────
-  const showInitialCursor =
-    isLoading && !displayContent && !hasReasoning && toolInvocations.length === 0
   const isReasoningStreaming = isLoading && !displayContent
   const responseError = message.responses?.find((r) => r.error)?.error
 
   // Persisted messages carry the normalized transcript render model — same
   // blocks/segments the web transcript uses. Streamed messages fall back to the
   // incremental path until the post-send reload lands.
-  if (message.blocks && !isLoading) {
-    const segments = buildAssistantVisualSegments(message.blocks)
+  if (message.blocks?.length) {
+    const segments = buildAssistantVisualSegments(completePersonalBlocks(message.blocks, isLoading && !message.blocksAreComplete))
     const allSources = [
       ...webSources,
       ...transcriptSourcesToWebSources(message.transcriptSources),
@@ -977,6 +873,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         {allSources.length > 0 ? (
           <SourcesSection sources={allSources} theme={theme} />
         ) : null}
+        {isLoading ? <ResponseMark color={theme.foreground} /> : null}
 
         {responseError ? (
           <View style={[styles.errorBar, { backgroundColor: theme.surfaceSubtle, borderColor: '#fca5a5' }]}>
@@ -987,7 +884,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           </View>
         ) : null}
 
-        {displayContent ? (
+        {!isLoading && displayContent ? (
           <View style={[styles.actions, { marginTop: 12 }]}>
             <Text style={[styles.metaLabel, { color: theme.textDisabled }]}>
               {message.responses?.[0]?.modelName || 'Overlay'}
@@ -1034,24 +931,10 @@ export const MessageBubble = React.memo(function MessageBubble({
       ) : null}
 
       {/* Text content */}
-      {showInitialCursor ? (
-        <View style={[styles.initialCursor, { marginTop: 8 }]}>
-          <StreamingCursor />
-        </View>
-      ) : displayContent ? (
-        <View style={{ marginTop: 8 }}>
-          <StableMd
-            text={normalizeDisplayText(displayContent)}
-            style={markdownStyles}
-            streaming={isLoading}
-          />
-          {isLoading ? (
-            <View style={styles.streamingLine}>
-              <StreamingCursor />
-            </View>
-          ) : null}
-        </View>
+      {completeContent ? (
+        <View style={{ marginTop: 8 }}><StableMd text={normalizeDisplayText(completeContent)} style={markdownStyles} streaming={false} /></View>
       ) : null}
+      {isLoading ? <ResponseMark color={theme.foreground} /> : null}
 
       {/* Sources (collapsed by default) */}
       {!isLoading && webSources.length > 0 ? (
@@ -1108,8 +991,8 @@ export const MessageBubble = React.memo(function MessageBubble({
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 6,
-    paddingHorizontal: spacing.md,
+    marginVertical: 10,
+    paddingHorizontal: 24,
   },
   userContainer: {
     alignItems: 'flex-end',
@@ -1127,7 +1010,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   userText: {
-    fontSize: 15,
+    fontSize: 14,
+    fontFamily: 'Geist',
     lineHeight: 23,
   },
   attachmentTag: {

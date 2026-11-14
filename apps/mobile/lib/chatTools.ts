@@ -24,12 +24,6 @@ export const CHAT_TOOL_OPTIONS: readonly ChatToolOption[] = [
     featherIcon: 'globe',
   },
   {
-    id: 'browser',
-    label: 'Browser Use',
-    description: 'Drive a real browser',
-    featherIcon: 'mouse-pointer',
-  },
-  {
     id: 'sandbox',
     label: 'Sandbox',
     description: 'Run code or commands',
@@ -44,7 +38,6 @@ export function isChatToolEnabled(
 ): boolean {
   if (!capabilities) return false
   if (toolId === 'web_search') return Boolean(capabilities.webSearch)
-  if (toolId === 'browser') return Boolean(capabilities.browserUse)
   if (toolId === 'sandbox') return Boolean(capabilities.sandboxes)
   if (toolId === 'memory') return Boolean(capabilities.memory && capabilities.vectorSearch)
   return true

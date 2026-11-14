@@ -1,8 +1,8 @@
 import React from 'react'
 import { useLocalSearchParams } from 'expo-router'
-import { NoteEditor } from '../../components/notes/NoteEditor'
+import { ResourceDocumentScreen } from '../../components/knowledge/ResourceScreens'
 
 export default function NoteRoute(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
-  return <NoteEditor noteId={id} />
+  return <ResourceDocumentScreen key={id} id={id} />
 }

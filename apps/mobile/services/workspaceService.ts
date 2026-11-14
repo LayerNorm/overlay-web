@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { mobileOverlayAppClient } from './overlayClient'
 import { setRequestWorkspaceId } from './appApi'
+import { api, queryConvex, subscribeConvex } from './convexClient'
 
 const ACTIVE_WORKSPACE_STORAGE_KEY = 'overlay_mobile_active_workspace_id'
 
@@ -42,11 +43,15 @@ export async function fetchWorkspaces(): Promise<{
   workspaces: WorkspaceSummary[]
   activeWorkspaceId: string
 }> {
-  const response = await mobileOverlayAppClient.workspaces.list()
+  const response = await queryConvex(api.collaboration.directory.workspaces, {})
   return {
-    workspaces: response.workspaces ?? [],
-    activeWorkspaceId: response.activeWorkspaceId ?? '',
+    workspaces: response?.workspaces ?? [],
+    activeWorkspaceId: response?.activeWorkspaceId ?? '',
   }
+}
+
+export function subscribeWorkspaces(onValue: (value: { workspaces: WorkspaceSummary[]; activeWorkspaceId: string }) => void) {
+  return subscribeConvex(api.collaboration.directory.workspaces, {}, value => onValue({ workspaces: value?.workspaces ?? [], activeWorkspaceId: value?.activeWorkspaceId ?? '' }))
 }
 
 /**

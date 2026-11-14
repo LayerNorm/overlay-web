@@ -7,7 +7,6 @@ export const MENTION_TYPE_META: Record<
   { label: string; featherIcon: React.ComponentProps<typeof Feather>['name'] }
 > = {
   file: { label: 'Files', featherIcon: 'file-text' },
-  knowledge: { label: 'Knowledge', featherIcon: 'book-open' },
   connector: { label: 'Apps', featherIcon: 'grid' },
   automation: { label: 'Automations', featherIcon: 'zap' },
   skill: { label: 'Skills', featherIcon: 'star' },
@@ -27,7 +26,7 @@ export function groupMentions(items: ChatMentionItem[]): Array<{
   label: string
   items: ChatMentionItem[]
 }> {
-  const order: ChatMentionType[] = ['file', 'chat', 'knowledge', 'automation', 'skill', 'mcp', 'connector', 'agent', 'person']
+  const order: ChatMentionType[] = ['file', 'chat', 'automation', 'skill', 'mcp', 'connector', 'agent', 'person']
   const byType = new Map<ChatMentionType, ChatMentionItem[]>()
   for (const item of items) {
     const list = byType.get(item.type) ?? []

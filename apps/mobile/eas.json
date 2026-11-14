@@ -7,19 +7,32 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
+      "env": {
+        "EXPO_NO_BUNDLE_SPLITTING": "1"
+      },
       "ios": {
         "simulator": false
       }
     },
     "preview": {
+      "environment": "preview",
+      "autoIncrement": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_NO_BUNDLE_SPLITTING": "1"
+      },
       "ios": {
         "enterpriseProvisioning": "adhoc"
       }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "node": "22.13.0",
+      "env": {
+        "EXPO_NO_BUNDLE_SPLITTING": "1"
+      },
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2",
         "resourceClass": "m-medium"

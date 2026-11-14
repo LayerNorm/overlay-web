@@ -5,6 +5,40 @@ phase; each lists the current mobile behavior and what owner input would change.
 
 ## Remaining work
 
+### Web-only at launch (decided 2026-11-10, build on mobile later)
+
+Launch scope: sign in to existing workspaces only, Convex-native data, no
+purchasing in the app. These web surfaces are intentionally missing from the
+mobile launch and stay reachable on getoverlay.io.
+
+- [ ] **In-app purchases** (Apple IAP / Google Play Billing) funding the same
+  workspace credits, plus mobile sign-up and paid-first onboarding. Add only
+  if mobile becomes an acquisition channel.
+- [ ] **Computers desktop viewer**: live desktop, takeover and control. Mobile
+  shows status only and links to web.
+- [ ] **Extensions host** and extension cards (feature-flagged on web).
+- [ ] **Admin and governance**: workspace governance metrics, policies editor,
+  audit export, roles.
+- [ ] **Slack import** and Slack surface bindings setup.
+- [ ] **Webhooks** management.
+- [ ] **MCP server setup and OAuth** (adding, testing and authorizing MCP
+  servers). Mobile uses already connected servers only.
+- [ ] **Agent machine enrollment beyond copy-a-command**: environment roots,
+  credentials, full environment settings.
+- [ ] **Billing management**: checkout, top-ups, auto top-up, portal. Mobile
+  billing is read-only.
+
+
+### Phase 0 retirement notes
+
+Projects and Knowledge Bases are obsolete and removed. Historical items below
+about their screens, sharing, mentions, or project scoping are no longer planned.
+Phase 1 restores collaboration notifications, reactions, pins, presence, saved
+messages, follows, message editing/deletion, workspace search, mentions, personal
+chats and the workspace directory through native Convex. Do not restore the retired
+HTTP endpoints. Notification preferences stay hidden until a member-facing native
+function exists. See PHASE1_HTTP_INVENTORY.md for Phase 2 screen-data work and QA.
+
 ### Deferred web-side changes (plan §9 — owner approval required)
 
 These need `overlay-landing` edits and were explicitly held out of every
@@ -325,7 +359,7 @@ mobile phase. Mobile groundwork for each is already committed.
   `/(tabs)/chat`. `overlay://invitations/<id>` and pasted web invite paths
   deep-link there via `handleDeepLink`.
 
-## Phase 5 — Knowledge bases & files depth
+## Phase 5 — Knowledge bases (OBSOLETE) & files depth
 
 ### 33. KB sharing uses the dedicated grants model, not unified /shares
 - `KnowledgeBaseScreen` mounts `KbShareSheet` (user/group/role principals,
@@ -337,7 +371,7 @@ mobile phase. Mobile groundwork for each is already committed.
 - KB share icon is always visible (authz surface, not workspace-gated);
   single-tenant deployments get an empty directory, matching web.
 
-### 34. KnowledgeBaseScreen — `knowledge_base` → `/knowledge-base/[id]`
+### 34. OBSOLETE: KnowledgeBaseScreen — `knowledge_base` → `/knowledge-base/[id]`
 - Sources tab: include/exclude checkbox + long-press toggle, tap → source
   detail sheet (extraction preview via `diagnostics?sourceId=`, re-fetch
   for external kinds, retry for failed, remove). "Add source" offers file
@@ -373,7 +407,7 @@ mobile phase. Mobile groundwork for each is already committed.
   the real list payload — if the server does send share state, thread it
   through to pre-fill.
 
-### 36. Outputs + projects depth
+### 36. Outputs + projects depth (Projects OBSOLETE)
 - Output detail: share icon → ShareSheet with `resource: null` — public
   link only (`outputs` PATCH), grant sections hidden for null resources.
 - Project detail `…` actions sheet replaces the icon cluster: Share,
@@ -533,3 +567,20 @@ mobile phase. Mobile groundwork for each is already committed.
   A native rebuild (expo prebuild / EAS) is required before the entitlement
   and Android channel exist in a binary — dev-client smoke tests covered
   the JS layer only.
+
+### Personal Chat transcript host integration
+
+- Populated personal Chat now maps its full exchange history through
+  `toNativeChatTranscriptView` and mounts `NativePersonalChatTranscript`;
+  the native header, composer, pickers, generation controls, approvals,
+  loading/empty/offline states, drawer, and navigation remain native.
+- Data operations are scoped to the committed user/workspace/route epochs;
+  UI callbacks and asynchronous writes validate their current operation.
+  Draft Skill Save uses `createSkill`; automation Draft Save uses a scoped
+  text-only preset path and preserves unrelated composer state.
+- Unsupported transcript Delete/Branch/Regenerate/Continue/generated-UI
+  writes remain unavailable. Protected/local binary-media previews and
+  unsupported attachment download paths remain honest unavailable states.
+- Full-app visual/native QA, unsupported transcript controls/media adapters,
+  export/reachability checks, and release validation remain pending; no live
+  QA or export was performed in this integration step.

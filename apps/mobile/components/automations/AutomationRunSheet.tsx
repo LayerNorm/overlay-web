@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -12,14 +12,16 @@ import { Feather } from '@expo/vector-icons'
 import type { AutomationRunEvent, AutomationRunSummary } from '@overlay/app-core'
 import { formatAutomationRunError } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
+import { useAuth } from '../../contexts/AuthContext'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { BottomSheet, StatusPill } from '../ui/AppChrome'
 import {
   approveAutomationRun,
   cancelAutomationRun,
-  getAutomationRunStatus,
+  subscribeAutomationRuns,
   retryAutomationRun,
-  streamAutomationRunEvents,
+  subscribeWorkflowSteps,
 } from '../../services/automationsService'
 
 const TERMINAL = new Set(['completed', 'succeeded', 'failed', 'cancelled', 'skipped', 'dead_letter'])
@@ -65,78 +67,43 @@ export function AutomationRunSheet({
   onChanged: () => void
 }): React.ReactElement {
   const { theme } = useTheme()
+  const { session } = useAuth()
+  const { activeWorkspaceId } = useWorkspace()
   const [liveStatus, setLiveStatus] = useState<string | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [events, setEvents] = useState<AutomationRunEvent[]>([])
   const [streamFailed, setStreamFailed] = useState(false)
   const [acting, setActing] = useState<'cancel' | 'retry' | 'approve' | 'deny' | null>(null)
-  const cancelStream = useRef(false)
 
   const workflowRunId = run?.workflowRunId
+  const runId = run?._id
+  const initialConversationId = run?.conversationId
+  const userId = session?.user.id
+  const accessToken = session?.accessToken
   const status = liveStatus ?? run?.status
   const isTerminal = TERMINAL.has(status ?? '')
 
   useEffect(() => {
-    if (!visible || !run) return
+    if (!visible || !runId || !activeWorkspaceId) return
     setLiveStatus(null)
     setStatusError(null)
-    setConversationId(run.conversationId ?? null)
+    setConversationId(initialConversationId ?? null)
     setEvents([])
     setStreamFailed(false)
-    cancelStream.current = false
-
-    if (!workflowRunId) return
-
-    let cancelled = false
-    cancelStream.current = false
-
-    const pollStatus = async () => {
-      try {
-        const snapshot = await getAutomationRunStatus(workflowRunId)
-        if (cancelled) return
-        setLiveStatus(snapshot.status)
-        setStatusError(snapshot.error ?? null)
-        if (snapshot.result?.conversationId) setConversationId(snapshot.result.conversationId)
-      } catch {
-        // Status polling is best-effort — the run row still shows its last status.
-      }
-    }
-
-    void pollStatus()
-    const pollTimer = setInterval(() => {
-      if (!cancelled) void pollStatus()
-    }, 3000)
-
-    const consume = async () => {
-      try {
-        for await (const message of streamAutomationRunEvents(workflowRunId)) {
-          if (cancelled || cancelStream.current) return
-          if (message.type === 'event') {
-            setEvents((prev) => {
-              if (prev.some((existing) => existing.eventId === message.event.eventId)) return prev
-              return [...prev, message.event].slice(-200)
-            })
-          } else if (message.type === 'terminal') {
-            setLiveStatus(message.runStatus)
-            return
-          } else if (message.type === 'error') {
-            setStreamFailed(true)
-            return
-          }
-        }
-      } catch {
-        if (!cancelled) setStreamFailed(true)
-      }
-    }
-    void consume()
-
-    return () => {
-      cancelled = true
-      cancelStream.current = true
-      clearInterval(pollTimer)
-    }
-  }, [visible, run, workflowRunId])
+    let active = true
+    const stops: Array<() => void> = []
+    const fail = () => { if (active) setStreamFailed(true) }
+    try {
+      stops.push(subscribeAutomationRuns(activeWorkspaceId, automationId, rows => {
+        if (!active) return
+        const snapshot = rows.find(row => row._id === runId)
+        if (snapshot) { setLiveStatus(snapshot.status); setStatusError(snapshot.error ?? null); setConversationId(snapshot.conversationId ?? null) }
+      }, fail))
+      if (workflowRunId && userId && accessToken) stops.push(subscribeWorkflowSteps({ workflowRunId, userId, accessToken }, rows => { if (active) setEvents(rows) }, fail))
+    } catch { fail() }
+    return () => { active = false; stops.forEach(stop => stop()) }
+  }, [visible, runId, initialConversationId, automationId, workflowRunId, activeWorkspaceId, userId, accessToken])
 
   const act = useCallback(async (kind: 'cancel' | 'retry' | 'approve' | 'deny') => {
     if (!run) return
@@ -254,7 +221,7 @@ export function AutomationRunSheet({
               <ScrollView style={styles.eventsList} nestedScrollEnabled>
                 {events.length === 0 ? (
                   <Text style={[styles.eventsEmpty, { color: theme.textSecondary }]}>
-                    {streamFailed ? 'Live event stream unavailable.' : 'Waiting for workflow events…'}
+                    {streamFailed ? 'Live step events unavailable.' : 'No step events yet. Status updates live.'}
                   </Text>
                 ) : (
                   events.map((event) => (

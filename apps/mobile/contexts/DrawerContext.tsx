@@ -1,10 +1,18 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import { Keyboard, useWindowDimensions } from 'react-native'
+import { usePathname } from 'expo-router'
+import {
+  shellPanelForPathname,
+  transitionShellPanelSelection,
+  type ShellPanel,
+} from '../lib/shellNavigation'
 
 interface DrawerContextValue {
   drawerVisible: boolean
   openDrawer: () => void
   closeDrawer: () => void
+  shellPanel: ShellPanel
+  selectShellPanel: (panel: ShellPanel) => void
   /**
    * Wide-layout mode (iPad / large tablet): the sidebar renders permanently
    * alongside the content instead of as an overlay drawer. Menu buttons and
@@ -24,6 +32,8 @@ const DrawerContext = createContext<DrawerContextValue>({
   drawerVisible: false,
   openDrawer: () => {},
   closeDrawer: () => {},
+  shellPanel: 'agents',
+  selectShellPanel: () => {},
   isSidebarPermanent: false,
   searchNonce: 0,
   requestSearch: () => {},
@@ -43,6 +53,20 @@ export function DrawerProvider({ children }: { children: React.ReactNode }): Rea
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [searchNonce, setSearchNonce] = useState(0)
   const isSidebarPermanent = useIsSidebarPermanent()
+  const pathname = usePathname()
+  const [panelSelection, setPanelSelection] = useState(() => ({
+    pathname,
+    panel: shellPanelForPathname(pathname) ?? 'agents',
+  }))
+  const currentPanelSelection = transitionShellPanelSelection(panelSelection, pathname)
+  if (currentPanelSelection !== panelSelection) setPanelSelection(currentPanelSelection)
+
+  const selectShellPanel = useCallback(
+    (panel: ShellPanel) => {
+      setPanelSelection({ pathname, panel })
+    },
+    [pathname],
+  )
 
   const openDrawer = useCallback(() => {
     if (isSidebarPermanent) return
@@ -64,6 +88,8 @@ export function DrawerProvider({ children }: { children: React.ReactNode }): Rea
         drawerVisible,
         openDrawer,
         closeDrawer,
+        shellPanel: currentPanelSelection.panel,
+        selectShellPanel,
         isSidebarPermanent,
         searchNonce,
         requestSearch,

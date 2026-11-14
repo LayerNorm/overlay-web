@@ -1,4 +1,5 @@
 import { appJson } from './appApi'
+import { readProviders } from './settingsNativeService'
 
 /**
  * BYOK provider connections (`/api/v1/providers/connections*`).
@@ -166,15 +167,10 @@ export function discoveredModelsOf(connection: ProviderConnection): DiscoveredPr
   }
 }
 
-interface ProviderConnectionListResponse {
-  data: ProviderConnection[]
-  hasMore: boolean
-  total: number
-}
-
 export async function listProviderConnections(): Promise<ProviderConnection[]> {
-  const response = await appJson<ProviderConnectionListResponse>('/api/v1/providers/connections')
-  return response.data ?? []
+  const rows = await readProviders()
+  if (!rows) throw new Error('Provider connections are unavailable in this workspace.')
+  return rows.filter(row => row.authKind !== 'subscription').map(row => ({ ...row, status: row.status === 'pending' ? 'untested' as const : row.status }))
 }
 
 export async function createProviderConnection(input: {

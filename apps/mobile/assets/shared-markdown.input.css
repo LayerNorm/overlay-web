@@ -1,0 +1,139 @@
+@import "__overlay_chat_theme__";
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+
+@source "../components/chat/SharedMarkdownRenderer.dom.tsx";
+@source "../components/chat/NativeSharedTranscript.dom.tsx";
+@source "../../packages/overlay-chat-react/src/**/*.{ts,tsx}";
+@source "../../packages/overlay-ui/src/**/*.{ts,tsx}";
+@source "../../node_modules/streamdown/dist/*.js";
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist, ui-sans-serif), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-serif: var(--font-serif-family), var(--font-sans);
+}
+
+@font-face {
+  font-family: "Overlay Geist DOM";
+  src: url("../node_modules/@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Overlay Geist DOM";
+  src: url("../node_modules/@expo-google-fonts/geist/500Medium/Geist_500Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Overlay Geist DOM";
+  src: url("../node_modules/@expo-google-fonts/geist/600SemiBold/Geist_600SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Libre Baskerville";
+  src: url("../assets/fonts/libre-baskerville/static/LibreBaskerville-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Libre Baskerville";
+  src: url("../assets/fonts/libre-baskerville/static/LibreBaskerville-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Libre Baskerville";
+  src: url("../assets/fonts/libre-baskerville/static/LibreBaskerville-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-geist: "Overlay Geist DOM";
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+.shared-markdown-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shared-markdown-notice {
+  position: sticky;
+  bottom: 0.5rem;
+  align-self: center;
+  margin: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface-elevated);
+  padding: 0.375rem 0.75rem;
+  color: var(--foreground);
+  font-size: 0.75rem;
+}
+
+.shared-markdown-empty {
+  color: var(--muted);
+}
+
+[data-native-copy-disabled="true"] [aria-label^="Copy"] {
+  display: none;
+}
+
+[data-native-download-disabled="true"] [aria-label="Download"],
+[data-native-reply-disabled="true"] [aria-label="Reply"] {
+  display: none;
+}
+
+[data-native-prompt-exchange="true"] [data-slot="message"][data-align="start"] {
+  display: none;
+}

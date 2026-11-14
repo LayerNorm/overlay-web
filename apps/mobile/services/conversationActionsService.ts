@@ -1,7 +1,9 @@
 import type { AgentRunResource } from '@overlay/api-client'
-import { appJson, appRequest, appXhrStreamSse } from './appApi'
+import { appRequest, appXhrStreamSse } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
-import { updateChatTitle } from './chatStorage'
+import { setPersonalChatArchived, updateChatTitle } from './chatStorage'
+import { api, convexWorkspaceId, queryConvex, type Id } from './convexClient'
+import { updateRoomParticipantState } from './collaborationService'
 import type { ChatMentionItem } from './chatTypes'
 
 // ---------------------------------------------------------------------------
@@ -17,16 +19,17 @@ export async function archiveConversation(
   conversationId: string,
   scope: ConversationLifecycleScope = 'self',
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.updateParticipantState(conversationId, {
-    archived: true,
-    archiveScope: scope,
-  })
+  if (scope !== 'self') throw new Error('Archiving for everyone is not available on mobile.')
+  const args = { workspaceId: convexWorkspaceId(), conversationId: conversationId as Id<'conversations'> }
+  const room = await queryConvex(api.collaboration.rooms.scope, args)
+  if (room) await updateRoomParticipantState(conversationId, { archived: true })
+  else await setPersonalChatArchived(conversationId, true)
 }
 
 export async function unarchiveConversation(conversationId: string): Promise<void> {
-  await mobileOverlayAppClient.conversations.updateParticipantState(conversationId, {
-    archived: false,
-  })
+  const room = await queryConvex(api.collaboration.rooms.scope, { workspaceId: convexWorkspaceId(), conversationId: conversationId as Id<'conversations'> })
+  if (room) await updateRoomParticipantState(conversationId, { archived: false })
+  else await setPersonalChatArchived(conversationId, false)
 }
 
 export async function deleteConversation(
@@ -82,8 +85,12 @@ export async function submitRunApproval(input: {
   agentRunId: string
   token: string
   approved: boolean
-}): Promise<void> {
-  await mobileOverlayAppClient.conversations.submitRunApproval(input)
+}, options: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<void> {
+  if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
+  await mobileOverlayAppClient.conversations.submitRunApproval(input, {
+    signal: options.signal,
+    headers: options.workspaceId ? { 'x-overlay-workspace-id': options.workspaceId } : undefined,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -98,57 +105,20 @@ export async function fetchChatSuggestions(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Mention search — `GET /api/v1/mention-search?q=` returns top-K per category.
-// Response shape mirrors `searchMentions` in web `mention-search.ts`.
+// Mention suggestions are deferred until native subscriptions are available.
 // ---------------------------------------------------------------------------
 
-interface MentionSearchResponse {
-  conversations?: Array<{ _id: string; title: string }>
-  files?: Array<{ _id: string; name?: string; kind?: string; mimeType?: string }>
-  notes?: Array<{ _id: string; title?: string }>
-  automations?: Array<{ _id: string; name?: string; description?: string }>
-  skills?: Array<{ _id: string; name: string; description?: string }>
-  mcpServers?: Array<{ _id: string; name: string; description?: string }>
-}
 
 export async function searchMentions(query: string): Promise<ChatMentionItem[]> {
-  const trimmed = query.trim()
-  if (!trimmed) return []
-  const data = await appJson<MentionSearchResponse>('/api/v1/mention-search', {
-    query: { q: trimmed },
-  }).catch(() => null)
-  if (!data) return []
-
-  const items: ChatMentionItem[] = []
-  for (const file of data.files ?? []) {
-    items.push({
-      type: 'file',
-      id: file._id,
-      name: file.name || 'Untitled',
-      description: file.kind || file.mimeType || 'file',
-    })
-  }
-  for (const note of data.notes ?? []) {
-    items.push({ type: 'file', id: note._id, name: note.title || 'Untitled', description: 'note' })
-  }
-  for (const chat of data.conversations ?? []) {
-    items.push({ type: 'chat', id: chat._id, name: chat.title || 'Chat', description: 'chat' })
-  }
-  for (const automation of data.automations ?? []) {
-    items.push({
-      type: 'automation',
-      id: automation._id,
-      name: automation.name || 'Automation',
-      description: automation.description || 'automation',
-    })
-  }
-  for (const skill of data.skills ?? []) {
-    items.push({ type: 'skill', id: skill._id, name: skill.name, description: skill.description })
-  }
-  for (const mcp of data.mcpServers ?? []) {
-    items.push({ type: 'mcp', id: mcp._id, name: mcp.name, description: mcp.description })
-  }
-  return items
+  const result = await queryConvex(api.search.browse.mentions, { workspaceId: convexWorkspaceId(), query })
+  if (!result) return []
+  return [
+    ...result.chats.map(row => ({ type: 'chat' as const, id: row.id, name: row.title })),
+    ...result.files.map(row => ({ type: 'file' as const, id: row.id, name: row.name })),
+    ...result.automations.map(row => ({ type: 'automation' as const, ...row, name: row.name || 'Automation' })),
+    ...result.skills.map(row => ({ type: 'skill' as const, ...row, name: row.name || 'Skill' })),
+    ...result.mcpServers.map(row => ({ type: 'mcp' as const, ...row, name: row.name || 'MCP server' })),
+  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -169,9 +139,13 @@ export async function generateImage(input: {
   temporaryChat?: boolean
   turnId: string
   imageUrl?: string
+  workspaceId?: string
+  signal?: AbortSignal
 }): Promise<GeneratedMediaResult> {
+  if (!input.turnId.trim()) throw new Error('A turn ID is required for image generation.')
   const res = await appRequest('/api/v1/generate-image', {
     method: 'POST',
+    headers: { 'Idempotency-Key': `image:${input.turnId}` },
     json: {
       prompt: input.prompt,
       modelId: input.modelId,
@@ -181,6 +155,8 @@ export async function generateImage(input: {
     },
     // Generations can run minutes; `0` disables the default 10s request timeout.
     timeoutMs: 0,
+    workspaceId: input.workspaceId,
+    signal: input.signal,
   })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string; error?: string }
@@ -204,11 +180,15 @@ export async function generateVideo(input: {
   temporaryChat?: boolean
   turnId: string
   imageUrl?: string
+  workspaceId?: string
+  signal?: AbortSignal
 }): Promise<GeneratedMediaResult> {
+  if (!input.turnId.trim()) throw new Error('A turn ID is required for video generation.')
   let final: GeneratedMediaResult | null = null
   let failure: string | null = null
   for await (const evt of appXhrStreamSse<VideoStreamEvent>('/api/v1/generate-video', {
     method: 'POST',
+    headers: { 'Idempotency-Key': `video:${input.turnId}` },
     json: {
       prompt: input.prompt,
       modelId: input.modelId,
@@ -217,6 +197,8 @@ export async function generateVideo(input: {
       videoSubMode: input.imageUrl ? 'image-to-video' : 'text-to-video',
       ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
     },
+    workspaceId: input.workspaceId,
+    signal: input.signal,
   })) {
     if (evt.type === 'completed') {
       final = { url: evt.url, modelUsed: evt.modelUsed, outputId: evt.outputId }

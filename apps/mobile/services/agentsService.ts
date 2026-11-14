@@ -1,13 +1,4 @@
-/**
- * Agents service facade — wraps the typed `mobileOverlayAppClient` agents,
- * agent-environments, bindings, and computers surfaces plus the DM +
- * greeting calls needed for chat-with-agent.
- *
- * Every call takes the active workspace id explicitly; the typed client maps
- * it onto `x-overlay-workspace-id`. An empty string is acceptable — the
- * server resolves the user's stored active workspace when no usable header
- * is present (see `resolveActiveWorkspace`).
- */
+/** Convex reads and web HTTP commands for workspace agents. */
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type {
   AgentBinding,
@@ -21,6 +12,15 @@ import type {
 } from '@overlay/workspace-contracts'
 import { appJson } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
+import { api, queryConvex } from './convexClient'
+import { AGENT_ENVIRONMENT_KINDS, AGENT_ENVIRONMENT_STATUSES, AGENT_PROTOCOL_ADAPTERS } from '@overlay/workspace-contracts'
+import { normalizeCreatureShape } from '../lib/agentCreature'
+
+function enumValue<const T extends readonly string[]>(values: T, value: string): T[number] {
+  const result = values.find(candidate => candidate === value)
+  if (!result) throw new Error('This agent configuration is not supported on mobile.')
+  return result
+}
 
 export type { AgentEnvironmentResource }
 export type AgentDirectoryItem = WorkspaceAgentDirectoryItem
@@ -31,15 +31,18 @@ export type AgentEnvironmentItem = AgentEnvironmentResource
 // ---------------------------------------------------------------------------
 
 export async function listAgents(workspaceId: string): Promise<WorkspaceAgentListResponse> {
-  return mobileOverlayAppClient.agents.list(workspaceId)
+  const result = await queryConvex(api.agents.directory.list, { workspaceId })
+  if (!result) throw new Error('Agents are unavailable in this workspace.')
+  return { ...result, agents: result.agents.map(agent => ({ ...agent, avatarShape: normalizeCreatureShape(agent.avatarShape) })) }
 }
 
 export async function getAgent(
   workspaceId: string,
   agentId: string,
-): Promise<WorkspaceAgentDirectoryItem> {
-  const { agent } = await mobileOverlayAppClient.agents.get(workspaceId, agentId)
-  return agent
+): Promise<WorkspaceAgentDirectoryItem & { canEdit: boolean }> {
+  const agent = await queryConvex(api.agents.directory.get, { workspaceId, agentId })
+  if (!agent) throw new Error('Agent is unavailable in this workspace.')
+  return { ...agent, avatarShape: normalizeCreatureShape(agent.avatarShape) }
 }
 
 export async function createAgent(
@@ -70,8 +73,8 @@ export async function archiveAgent(workspaceId: string, agentId: string): Promis
 export async function listAgentEnvironments(
   workspaceId: string,
 ): Promise<AgentEnvironmentResource[]> {
-  const { environments } = await mobileOverlayAppClient.agentEnvironments.list(workspaceId)
-  return environments
+  const rows = await queryConvex(api.agents.environmentsBrowse.list, { workspaceId }) ?? []
+  return rows.map(row => ({ ...row, kind: enumValue(AGENT_ENVIRONMENT_KINDS, row.kind), status: enumValue(AGENT_ENVIRONMENT_STATUSES, row.status) }))
 }
 
 export type AgentEnrollmentSession = {
@@ -89,17 +92,6 @@ export async function createAgentEnrollment(
     workspaceId,
     adapterId ? { adapterId } : undefined,
   )
-}
-
-export async function createManagedEnvironment(
-  workspaceId: string,
-  adapterId?: 'codex' | 'claude-code',
-): Promise<AgentEnvironmentResource> {
-  const { environment } = await mobileOverlayAppClient.agentEnvironments.createManaged(
-    workspaceId,
-    adapterId ? { adapterId } : undefined,
-  )
-  return environment
 }
 
 export async function approveAgentEnvironment(
@@ -143,8 +135,8 @@ export async function listAgentBindings(
   workspaceId: string,
   agentId?: string,
 ): Promise<AgentBinding[]> {
-  const { bindings } = await mobileOverlayAppClient.agentEnvironments.listBindings(workspaceId, agentId)
-  return bindings
+  const rows = await queryConvex(api.agents.environmentsBrowse.bindings, { workspaceId, ...(agentId ? { agentId } : {}) }) ?? []
+  return rows.map(row => ({ ...row, protocolAdapter: enumValue(AGENT_PROTOCOL_ADAPTERS, row.protocolAdapter) }))
 }
 
 export async function upsertAgentBinding(
@@ -164,8 +156,7 @@ export async function disableAgentBindings(workspaceId: string, agentId: string)
 // ---------------------------------------------------------------------------
 
 export async function listAgentComputers(workspaceId: string): Promise<Computer[]> {
-  const { computers } = await mobileOverlayAppClient.computers.list(workspaceId)
-  return computers
+  return await queryConvex(api.computers.browse.list, { workspaceId }) ?? []
 }
 
 export async function provisionAgentComputer(

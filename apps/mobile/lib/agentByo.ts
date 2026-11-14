@@ -12,6 +12,7 @@ import type {
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentHarness,
   WorkspaceAgentVisibility,
+  WorkspaceAgentUpdateInput,
 } from '@overlay/workspace-contracts'
 import { toolIdsForEnabledGroups } from './agentToolGroups'
 
@@ -25,11 +26,6 @@ export const BUILT_IN_BYO_HARNESSES = [
     id: 'claude-code',
     label: 'Claude Code',
     description: 'Run Anthropic Claude Code through the Agent Client Protocol.',
-  },
-  {
-    id: 'hermes',
-    label: 'Hermes',
-    description: 'Run Hermes 0.20.6 or newer through its official Agent Client Protocol server.',
   },
 ] as const satisfies ReadonlyArray<{
   id: BuiltInUserOwnedAcpAdapterId
@@ -55,7 +51,7 @@ export type AcpAdapterCapability = {
 export function acpAdaptersForEnvironment(environment: AgentEnvironmentResource): AcpAdapterCapability[] {
   if (!Array.isArray(environment.capabilities.adapters)) return []
   return (environment.capabilities.adapters as Array<Record<string, unknown>>).flatMap((adapter) => (
-    adapter.protocol === 'acp' && typeof adapter.id === 'string'
+    adapter.protocol === 'acp' && (adapter.id === 'codex' || adapter.id === 'claude-code')
       ? [{
           id: adapter.id,
           label: typeof adapter.displayName === 'string' ? adapter.displayName : adapter.id,
@@ -111,7 +107,7 @@ export function generatedByoInstructions(harnessLabel: string) {
 export function isDefaultMasterAgent(
   agent: { isDefault?: boolean; name: string } | null | undefined,
 ): boolean {
-  return Boolean(agent && (agent.isDefault || agent.name.toLowerCase() === 'overlay'))
+  return Boolean(agent?.isDefault)
 }
 
 /** Builds the agent create/update payload from editor state (overlay + BYO shapes). */
@@ -140,6 +136,15 @@ export function buildWorkspaceAgentInput(args: {
     allowedToolIds: byo ? [] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
   }
+}
+
+export function buildWorkspaceAgentUpdateInput(
+  input: WorkspaceAgentCreateInput,
+  initialAvatarColor: string,
+): WorkspaceAgentUpdateInput {
+  const patch: WorkspaceAgentUpdateInput = { ...input }
+  if (patch.avatarColor === initialAvatarColor) delete patch.avatarColor
+  return patch
 }
 
 /** Mirrors the editor's save gating: identity plus either overlay behavior or a valid BYO binding. */

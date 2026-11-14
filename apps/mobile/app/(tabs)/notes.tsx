@@ -1,6 +1,8 @@
 import React from 'react'
 import { NotesEditorScreen } from '../../components/notes/NotesEditorScreen'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 
 export default function NotesTabScreen(): React.ReactElement {
-  return <NotesEditorScreen />
+  const { activeWorkspaceId } = useWorkspace()
+  return <NotesEditorScreen key={activeWorkspaceId} />
 }

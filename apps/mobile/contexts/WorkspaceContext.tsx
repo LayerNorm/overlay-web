@@ -9,11 +9,13 @@ import React, {
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { useAuth } from './AuthContext'
 import { useAppSession } from './AppSessionContext'
+import { useNativeDataReady } from './ConvexAuthProvider'
 import { setRequestWorkspaceId } from '../services/appApi'
 import {
   activateWorkspace,
   applyWorkspaceLocally,
   fetchWorkspaces,
+  subscribeWorkspaces,
   isPersonalWorkspace,
   loadPersistedWorkspaceId,
 } from '../services/workspaceService'
@@ -24,11 +26,7 @@ type WorkspaceContextValue = {
   /** Effective workspace id scopes requests via x-overlay-workspace-id. */
   activeWorkspaceId: string | null
   activeWorkspace: WorkspaceSummary | null
-  /**
-   * Workspaces/multi-tenant capability from bootstrap. When false the
-   * provider skips the workspaces request entirely — single-tenant installs
-   * behave exactly as before.
-   */
+  /** Native membership reads are required even for single-workspace accounts. */
   workspacesEnabled: boolean
   isLoading: boolean
   isSwitching: boolean
@@ -58,16 +56,15 @@ export function WorkspaceProvider({
   children: React.ReactNode
 }): React.ReactElement {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
-  const { capabilities, isLoading: sessionLoading, refresh: refreshSession } = useAppSession()
+  const nativeReady = useNativeDataReady()
+  const { isLoading: sessionLoading, isInitialized, error: bootstrapError, refresh: refreshSession } = useAppSession()
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isSwitching, setIsSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Until bootstrap lands we can't know whether multi-tenant is enabled;
-  // once it does, `multiTenant` gates the workspaces request.
-  const workspacesEnabled = sessionLoading || capabilities.multiTenant
+  const workspacesEnabled = true
 
   const applyActiveWorkspace = useCallback((workspaceId: string | null) => {
     setActiveWorkspaceId(workspaceId)
@@ -75,7 +72,11 @@ export function WorkspaceProvider({
   }, [])
 
   const refresh = useCallback(async () => {
-    if (!isAuthenticated || !workspacesEnabled) {
+    if (!isAuthenticated || !workspacesEnabled || !nativeReady) {
+      return
+    }
+    if (!isInitialized) {
+      await refreshSession({ forceRefresh: true })
       return
     }
     setIsLoading(true)
@@ -91,7 +92,17 @@ export function WorkspaceProvider({
     } finally {
       setIsLoading(false)
     }
-  }, [applyActiveWorkspace, isAuthenticated, workspacesEnabled])
+  }, [applyActiveWorkspace, isAuthenticated, workspacesEnabled, nativeReady, isInitialized, refreshSession])
+
+  useEffect(() => {
+    if (!nativeReady || !workspacesEnabled || !isInitialized) return
+    return subscribeWorkspaces(({ workspaces: list, activeWorkspaceId: serverActiveId }) => {
+      setWorkspaces(list)
+      setIsLoading(false)
+      setError(null)
+      applyActiveWorkspace(resolveActiveWorkspaceId(list, serverActiveId))
+    })
+  }, [nativeReady, workspacesEnabled, applyActiveWorkspace, isInitialized])
 
   // Warm-start: apply the persisted selection so requests issued before the
   // workspaces fetch completes still carry the right scope. Skipped once the
@@ -124,12 +135,13 @@ export function WorkspaceProvider({
     }
     if (!isAuthenticated) {
       setWorkspaces([])
+      setIsLoading(true)
       setActiveWorkspaceId(null)
       setError(null)
       applyWorkspaceLocally(null)
       return
     }
-    if (sessionLoading) {
+    if (sessionLoading || !isInitialized) {
       return
     }
     if (!workspacesEnabled) {
@@ -144,6 +156,7 @@ export function WorkspaceProvider({
     isAuthenticated,
     refresh,
     sessionLoading,
+    isInitialized,
     workspacesEnabled,
   ])
 
@@ -155,12 +168,12 @@ export function WorkspaceProvider({
       setIsSwitching(true)
       setError(null)
       const previous = activeWorkspaceId
-      applyActiveWorkspace(workspaceId)
       try {
         await activateWorkspace(workspaceId)
         // Entitlements/bootstrap are workspace-scoped (billing payer) — pull
         // fresh session data so plan gates reflect the new workspace.
         await refreshSession({ forceRefresh: true })
+        applyActiveWorkspace(workspaceId)
       } catch (nextError) {
         applyActiveWorkspace(previous)
         setError(nextError instanceof Error ? nextError.message : 'Failed to switch workspace')
@@ -196,9 +209,9 @@ export function WorkspaceProvider({
       activeWorkspaceId,
       activeWorkspace: workspaces.find((w) => w.id === activeWorkspaceId) ?? null,
       workspacesEnabled,
-      isLoading,
+      isLoading: isLoading && !bootstrapError,
       isSwitching,
-      error,
+      error: error ?? bootstrapError,
       switchWorkspace,
       createWorkspace,
       refresh,
@@ -210,6 +223,7 @@ export function WorkspaceProvider({
       isLoading,
       isSwitching,
       error,
+      bootstrapError,
       switchWorkspace,
       createWorkspace,
       refresh,

@@ -1,8 +1,8 @@
 import React from 'react'
 import { useLocalSearchParams } from 'expo-router'
-import { RoomScreen } from '../../components/chat/RoomScreen'
+import { AgentDirectMessageRoute } from '../../components/agents/AgentThreadScreen'
 
 export default function DirectMessageRoute(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
-  return <RoomScreen conversationId={id} conversationType="dm" />
+  return <AgentDirectMessageRoute conversationId={id} />
 }

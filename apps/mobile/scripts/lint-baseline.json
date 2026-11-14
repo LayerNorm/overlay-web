@@ -1,0 +1,31 @@
+[
+  {
+    "path": "components/chat/DrawerSidebar.tsx",
+    "sha256": "309d14b1b0c8f5d70a650c6e9424ca29e9ca04301d72f282e0b41449436769f6",
+    "rules": {
+      "react-hooks/set-state-in-effect": 2
+    }
+  },
+  {
+    "path": "components/settings/ProvidersSection.tsx",
+    "sha256": "69febe55b6c76fddd299829bda5eb6c3be3f80e98084d47c8f881150982239ce",
+    "rules": {
+      "react/no-children-prop": 1,
+      "react/no-unescaped-entities": 1
+    }
+  },
+  {
+    "path": "components/settings/WebhooksSection.tsx",
+    "sha256": "b62cd45fe81edec1e209c3888e9ea7c79ed221ac7db104d1facb722e0fd99520",
+    "rules": {
+      "react/no-children-prop": 1
+    }
+  },
+  {
+    "path": "contexts/ConvexAuthProvider.tsx",
+    "sha256": "90e55d4b6ab6a27942ad2f1afcdd702de34d31c24b25043e29205c4509ef7b42",
+    "rules": {
+      "react-hooks/refs": 2
+    }
+  }
+]

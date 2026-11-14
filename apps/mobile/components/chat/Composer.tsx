@@ -20,7 +20,7 @@ import {
   isMemoryToggleAvailable,
 } from '../../lib/chatTools'
 import { groupMentions, mentionIcon, mentionToRequestBody } from '../../lib/chatMentions'
-import { BottomSheet, SearchField, SegmentedControl } from '../ui/AppChrome'
+import { BottomSheet, SegmentedControl } from '../ui/AppChrome'
 import { GlassSurface } from '../ui/GlassSurface'
 import { ListRow, Section } from '../ui/primitives'
 
@@ -50,6 +50,8 @@ interface ComposerProps {
   isSending: boolean
   sendDisabled?: boolean
   placeholder?: string
+  modelLabel?: string
+  onModel?: () => void
   isTemporary?: boolean
 
   // Attachments
@@ -92,8 +94,7 @@ interface ComposerProps {
   inputRef?: React.RefObject<TextInput | null>
 
   // ── Room (collaboration) variant ──────────────────────────────────────────
-  /** Custom mention search — rooms pass participant lookup instead of the
-   *  global `/mention-search` endpoint. Defaults to `searchMentions`. */
+  /** Rooms provide participant lookup; global mentions return in Phase 1. */
   mentionProvider?: (query: string) => Promise<ChatMentionItem[]>
   /**
    * `'chip'` (default) turns a picked mention into a removable chip and strips
@@ -122,6 +123,8 @@ export function Composer(props: ComposerProps): React.ReactElement {
     isSending,
     sendDisabled,
     placeholder,
+    modelLabel,
+    onModel,
     isTemporary,
     imageBase64,
     onClearImage,
@@ -167,14 +170,13 @@ export function Composer(props: ComposerProps): React.ReactElement {
 
   useEffect(() => {
     if (mentionQuery === null) {
-      setMentionResults([])
-      setMentionSearching(false)
-      return
+      const reset = setTimeout(() => { setMentionResults([]); setMentionSearching(false) }, 0)
+      return () => { clearTimeout(reset); mentionSeq.current++ }
     }
     const seq = ++mentionSeq.current
-    setMentionSearching(true)
     const provider = mentionProvider ?? searchMentions
     const handle = setTimeout(() => {
+      setMentionSearching(true)
       void provider(mentionQuery || ' ')
         .then((items) => {
           if (seq !== mentionSeq.current) return
@@ -187,7 +189,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
           setMentionSearching(false)
         })
     }, 220)
-    return () => clearTimeout(handle)
+    return () => { clearTimeout(handle); mentionSeq.current++ }
   }, [mentionQuery, mentions, mentionProvider])
 
   const handleSelectMention = useCallback(
@@ -397,7 +399,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
         interactive
         style={[
           styles.composerBox,
-          { backgroundColor: theme.glassBg, borderColor: composerFocused ? theme.border : theme.glassBorder },
+          { backgroundColor: theme.surface, borderColor: composerFocused ? theme.border : theme.border },
         ]}
       >
         <TextInput
@@ -408,7 +410,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
           onBlur={() => setComposerFocused(false)}
           placeholder={
             placeholder ??
-            (isTemporary ? 'Temporary chat — nothing is saved' : 'Chat with Overlay')
+            (isTemporary ? 'Temporary chat — nothing is saved' : 'Ask anything…')
           }
           placeholderTextColor={theme.textDisabled}
           multiline
@@ -429,6 +431,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
                 <Feather name="plus" size={22} color={theme.textSecondary} />
               </TouchableOpacity>
             </GlassSurface>
+            {onModel ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose model" onPress={onModel} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 5, minHeight: 36 }}><Text numberOfLines={1} style={{ color: theme.textSecondary, fontSize: 12, fontFamily: 'Geist', maxWidth: 130 }}>{modelLabel ?? 'Auto'}</Text><Feather name="chevron-down" size={13} color={theme.textSecondary} /></TouchableOpacity> : null}
 
             {showToolsButton ? (
               <TouchableOpacity
@@ -460,7 +463,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
             <TouchableOpacity
               activeOpacity={0.82}
               onPress={() => onChangeInput(`${inputValue}@`)}
-              style={[styles.toolsButton, { backgroundColor: theme.surfaceSubtle }]}
+              style={[styles.toolsButton, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}
               accessibilityRole="button"
               accessibilityLabel="Insert mention"
             >
@@ -469,7 +472,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
           </View>
 
           <View style={styles.composerRightActions}>
-            <GlassSurface interactive style={[styles.sendButton, { backgroundColor: theme.foreground }]}>
+            <GlassSurface interactive style={[styles.sendButton, { backgroundColor: isSending || canSend ? theme.buttonBg : theme.surfaceSubtle }]}>
               <TouchableOpacity
                 onPress={() => {
                   if (isSending) {
@@ -487,9 +490,9 @@ export function Composer(props: ComposerProps): React.ReactElement {
                 accessibilityState={{ disabled: !isSending && !canSend }}
               >
                 {isSending ? (
-                  <Feather name="square" size={14} color={theme.background} />
+                  <Feather name="square" size={14} color={theme.buttonPrimaryText} />
                 ) : (
-                  <Feather name="arrow-up" size={18} color={theme.background} />
+                  <Feather name="arrow-up" size={18} color={canSend ? theme.buttonPrimaryText : theme.muted} />
                 )}
               </TouchableOpacity>
             </GlassSurface>
@@ -811,12 +814,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: borderRadius.xl,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   composerInput: {
-    fontSize: 16,
+    fontFamily: 'Geist',
+    fontSize: 14,
     lineHeight: 22,
+    minHeight: 48,
     maxHeight: 140,
     paddingTop: 6,
     paddingBottom: 6,

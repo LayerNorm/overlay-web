@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import {
@@ -23,6 +24,7 @@ import {
   type VideoModel,
 } from '@overlay/app-core'
 import { useAuth } from './AuthContext'
+import { isWorkspaceSetupRequired } from '../services/workspaceSetup'
 import {
   clearBootstrapCache,
   getAppBootstrap,
@@ -34,6 +36,7 @@ import {
   loadCachedUiSettings,
   persistUiSettings,
   updateUiSettings,
+  subscribeUiSettings,
 } from '../services/settingsService'
 
 type AppSessionContextValue = {
@@ -56,6 +59,8 @@ type AppSessionContextValue = {
   isFeatureEnabled: (flagId: OverlayFeatureFlagId) => boolean
   defaults?: AppBootstrapDefaults
   isLoading: boolean
+  isInitialized: boolean
+  workspaceSetupRequired: boolean
   isRefreshing: boolean
   error: string | null
   refresh: (options?: { forceRefresh?: boolean }) => Promise<void>
@@ -65,7 +70,6 @@ type AppSessionContextValue = {
 const DEFAULT_FEATURE_FLAGS: AppFeatureFlags = {
   canUseVoiceTranscription: true,
   canUseKnowledge: true,
-  canUseProjects: true,
   canUseAutomations: true,
   canUseExtensions: true,
 }
@@ -93,8 +97,12 @@ export function AppSessionProvider({
     getCachedBootstrap()?.uiSettings ?? DEFAULT_UI_SETTINGS,
   )
   const [hasLoadedCachedSettings, setHasLoadedCachedSettings] = useState(false)
+  useEffect(() => subscribeUiSettings(setUiSettings), [])
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [initializedUserId, setInitializedUserId] = useState<string | null>(null)
+  const refreshGeneration = useRef(0)
   const [error, setError] = useState<string | null>(null)
+  const [workspaceSetupRequired, setWorkspaceSetupRequired] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -132,20 +140,27 @@ export function AppSessionProvider({
       }
 
       setIsRefreshing(true)
+      setInitializedUserId(null)
       setError(null)
+      setWorkspaceSetupRequired(false)
+      const generation = ++refreshGeneration.current
 
       try {
         const next = await getAppBootstrap({
-          forceRefresh: options.forceRefresh,
+          forceRefresh: options.forceRefresh ?? true,
         })
+        if (generation !== refreshGeneration.current) return
         await applyBootstrap(next)
+        if (generation === refreshGeneration.current) setInitializedUserId(authUser?.id ?? null)
       } catch (nextError) {
-        setError(nextError instanceof Error ? nextError.message : 'Failed to load app session')
+        if (generation === refreshGeneration.current) setWorkspaceSetupRequired(isWorkspaceSetupRequired(nextError))
+        if (generation === refreshGeneration.current)
+          setError(nextError instanceof Error ? nextError.message : 'Failed to load app session')
       } finally {
-        setIsRefreshing(false)
+        if (generation === refreshGeneration.current) setIsRefreshing(false)
       }
     },
-    [applyBootstrap, isAuthenticated],
+    [applyBootstrap, authUser?.id, isAuthenticated],
   )
 
   useEffect(() => {
@@ -154,13 +169,16 @@ export function AppSessionProvider({
     }
 
     if (!isAuthenticated) {
+      setWorkspaceSetupRequired(false)
+      setInitializedUserId(null)
       setError(null)
       void clearBootstrapCache()
       void applyBootstrap(null)
       return
     }
 
-    void refresh({ forceRefresh: false })
+    void refresh({ forceRefresh: true })
+    return () => { refreshGeneration.current++ }
   }, [applyBootstrap, authLoading, isAuthenticated, refresh])
 
   const handleUpdateSettings = useCallback(
@@ -226,11 +244,14 @@ export function AppSessionProvider({
       isLoading:
         authLoading || !hasLoadedCachedSettings || (isAuthenticated && !bootstrap && isRefreshing),
       isRefreshing,
+      isInitialized: isAuthenticated && initializedUserId === authUser?.id,
+      workspaceSetupRequired,
       error,
       refresh,
       updateSettings: handleUpdateSettings,
     }),
     [
+      workspaceSetupRequired,
       authLoading,
       authUser,
       bootstrap,
@@ -241,6 +262,7 @@ export function AppSessionProvider({
       isAuthenticated,
       isFeatureEnabled,
       isRefreshing,
+      initializedUserId,
       refresh,
       uiSettings,
     ],

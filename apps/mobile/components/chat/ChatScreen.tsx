@@ -1,12 +1,9 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
-  Image,
   Keyboard,
-  PanResponder,
+  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
@@ -15,10 +12,9 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
-import * as Clipboard from 'expo-clipboard'
-import { hapticImpact, hapticNotify } from '../../lib/haptics'
+import { hapticImpact } from '../../lib/haptics'
 import * as ImagePicker from 'expo-image-picker'
 import type { ChatModel } from '../../services/chatTypes'
 import {
@@ -36,140 +32,89 @@ import {
   loadChat,
   loadChatsMeta,
   saveChat,
+  subscribeChats,
+  subscribePersonalChat,
+  setPersonalChatRead,
   setLastOpenedChatId,
 } from '../../services/chatStorage'
-import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
+import { chatStream, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
 import {
-  fetchChatSuggestions,
-  fetchCurrentRun,
   generateImage,
   generateVideo,
   submitRunApproval,
 } from '../../services/conversationActionsService'
 import { mentionToRequestBody } from '../../lib/chatMentions'
-import type { AgentRunResource } from '@overlay/api-client'
+import { submitPersonalTurn, watchPersonalExecution, type PersonalRun, type PersonalTurn } from '../../services/personalChatService'
+import { getRequestWorkspaceId } from '../../services/appApi'
+import { useFavoriteModels } from '../../hooks/useFavoriteModels'
+import { useAndroidKeyboardVisible } from '../../hooks/useAndroidKeyboardVisible'
+import { resolveAutoModel, sortChatModels } from '../../lib/chatModels'
+import { getComposerBottomInset } from '../../lib/keyboardLayout'
+import { ModelPicker } from './ModelPicker'
+import { ChatHeader, ChatSheet, EmptyPersonalChat } from './ChatViews'
+import { appendPersonalBlock } from '../../lib/personalStream'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
-import { MessageBubble } from './MessageBubble'
+import { NativePersonalChatTranscript, type NativeTranscriptScope, type NativeTranscriptScrollIntent, type TrustedReplyTarget } from './NativePersonalChatTranscript'
+import { toNativeChatTranscriptView, type NativeChatTranscriptRuntime } from '../../lib/toNativeChatTranscriptView'
 import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
 import { ChatActionsSheet } from './ChatActionsSheet'
-import { DraftReviewSheet } from './DraftReviewSheet'
 import { createSkill } from '../../services/integrationsService'
-import type { DraftModalState } from '@overlay/chat-core'
+import type { AssistantVisualBlock, DraftModalState } from '@overlay/chat-core'
 import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
-import {
-  BottomSheet,
-  MainScreenHeader,
-  TopBarIconButton,
-} from '../ui/AppChrome'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { FloatingSearchBar } from '../ui/FloatingSearchBar'
-import { AUTH_BASE_URL } from '../../services/appConfig'
+import { ListRow, Section } from '../ui/primitives'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import * as DocumentPicker from 'expo-document-picker'
 
-const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
-
-// Provider logo mapping (PNG so React Native Image can render them)
-const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
-  openai: require('../../assets/model-logos/openai.png'),
-  anthropic: require('../../assets/model-logos/anthropic.png'),
-  xai: require('../../assets/model-logos/xai.png'),
-  deepseek: require('../../assets/model-logos/deepseek.png'),
-  groq: require('../../assets/model-logos/groq.png'),
-  nvidia: require('../../assets/model-logos/nvidia.png'),
-  openrouter: require('../../assets/model-logos/openrouter.png'),
-  meta: require('../../assets/model-logos/meta.png'),
-  mistral: require('../../assets/model-logos/mistral.png'),
-  google: require('../../assets/model-logos/google.png'),
-  minimax: require('../../assets/model-logos/minimax-color.png'),
-  moonshotai: require('../../assets/model-logos/moonshot.png'),
-  zai: require('../../assets/model-logos/zai-actual.png'),
-  alibaba: require('../../assets/model-logos/qwen.png'),
-}
-
-function getProviderLogo(provider: string): ReturnType<typeof require> | null {
-  if (provider.toLowerCase() === 'google') {
-    return PROVIDER_LOGOS.google
-  }
-  return PROVIDER_LOGOS[provider.toLowerCase()] ?? null
-}
-
-function sanitizeModelProvider(model: ChatModel): ChatModel {
-  const id = model.id.toLowerCase()
-  let provider = model.provider
-  if (id.includes('anthropic') || id.includes('claude')) provider = 'anthropic'
-  else if (id.includes('openai') || id.includes('gpt')) provider = 'openai'
-  else if (id.includes('gemini') || id.includes('google')) provider = 'google'
-  else if (id.includes('grok')) provider = 'xai'
-  else if (id.includes('deepseek')) provider = 'deepseek'
-  else if (id.includes('meta') || id.includes('llama')) provider = 'meta'
-  else if (id.includes('mistral')) provider = 'mistral'
-  else if (id.includes('groq')) provider = 'groq'
-  else if (id.includes('nvidia') || id.includes('nemotron')) provider = 'nvidia'
-  else if (id.includes('kimi')) provider = 'moonshotai'
-  else if (id.includes('minimax')) provider = 'minimax'
-  else if (id.includes('glm')) provider = 'zai'
-  else if (id.includes('qwen')) provider = 'alibaba'
-  return { ...model, provider }
-}
-
-async function applyLocalModelMetrics(models: ChatModel[]): Promise<ChatModel[]> {
-  const localModels = await getAvailableModels()
-  const localById = new Map(localModels.map((model) => [model.id, model]))
-  return models.map((model) => {
-    const local = localById.get(model.id)
-    if (!local) return sanitizeModelProvider(model)
-    return sanitizeModelProvider({
-      ...model,
-      intelligence: local.intelligence,
-      cost: local.cost,
-      speedTier: local.speedTier,
-      pricePer1mTokens: local.pricePer1mTokens,
-      medianOutputTokensPerSecond: local.medianOutputTokensPerSecond,
-    })
+function partialPartsFromBlocks(blocks: readonly AssistantVisualBlock[] | undefined, content: string): Array<Record<string, unknown>> {
+  const parts = (blocks ?? []).flatMap((block): Array<Record<string, unknown>> => {
+    switch (block.kind) {
+      case 'text': return [{ type: 'text', text: block.text, storageOmittedParts: 0 }]
+      case 'reasoning': return [{ type: 'reasoning', text: block.text }]
+      case 'tool': return [{ type: 'tool-invocation', id: block.key, toolInvocation: {
+        toolCallId: block.key, toolName: block.name, state: block.state,
+        toolInput: block.toolInput, toolOutput: block.toolOutput,
+      } }]
+      case 'file': return [{ type: 'file', url: block.url, ...(block.mediaType ? { mediaType: block.mediaType } : {}) }]
+      case 'source': return [{
+        type: 'source', id: block.sourceId, text: block.title ?? block.sourceId,
+        ...(block.url ? { url: block.url } : {}),
+        ...(block.mediaType ? { mediaType: block.mediaType } : {}),
+        ...(block.filename ? { fileName: block.filename } : {}),
+      }]
+      case 'generated-ui': return [{ ...block.part }]
+    }
   })
+  if (content && !parts.some(part => part.type === 'text')) parts.unshift({ type: 'text', text: content, storageOmittedParts: 0 })
+  return parts
 }
 
-function createSyntheticModel(modelId?: string | null): ChatModel | null {
-  if (!modelId) {
-    return null
-  }
-
-  let provider = 'openrouter'
-  if (modelId.includes('deepseek')) provider = 'deepseek'
-  else if (modelId.includes('kimi')) provider = 'moonshotai'
-  else if (modelId.includes('minimax')) provider = 'minimax'
-  else if (modelId.includes('glm')) provider = 'zai'
-  else if (modelId.includes('qwen')) provider = 'alibaba'
-  else if (modelId.includes('anthropic') || modelId.includes('claude')) provider = 'anthropic'
-  else if (modelId.includes('openai') || modelId.includes('gpt')) provider = 'openai'
-  else if (modelId.includes('gemini') || modelId.includes('google')) provider = 'google'
-  else if (modelId.includes('grok')) provider = 'xai'
-  else if (modelId.includes('meta') || modelId.includes('llama')) provider = 'meta'
-  else if (modelId.includes('mistral')) provider = 'mistral'
-  else if (modelId.includes('groq')) provider = 'groq'
-  else if (modelId.includes('nvidia') || modelId.includes('nemotron')) provider = 'nvidia'
-
+export function buildStopPartialPayload(message: Message | undefined, modelId?: string) {
+  const response = modelId ? message?.responses?.findLast(candidate => candidate.modelId === modelId) : undefined
+  const content = response ? response.content : message?.content ?? ''
+  const blocks = response ? response.blocks : message?.blocks
+  const parts = partialPartsFromBlocks(blocks, content)
   return {
-    id: modelId,
-    name: modelId === DEFAULT_CHAT_MODEL_ID ? 'Free: Kimi K2 Thinking' : modelId,
-    provider,
-    intelligence: 3,
-    cost: 0,
-    speedTier: 2,
-    supportsVision: true,
-    supportsReasoning: true,
-    supportsSearch: true,
+    ...(content ? { partialContent: content } : {}),
+    ...(parts.length ? { partialParts: parts } : {}),
   }
 }
 
 
-function createDraftChat(modelId?: string, projectId?: string): Chat {
+async function orderedChatModels(models: ChatModel[]): Promise<ChatModel[]> {
+  return sortChatModels(models)
+}
+
+
+function createDraftChat(modelId?: string): Chat {
   const now = Date.now()
   return {
     id: generateChatId(),
@@ -181,7 +126,6 @@ function createDraftChat(modelId?: string, projectId?: string): Chat {
     actModelId: modelId,
     modelId,
     messages: [],
-    projectId,
   }
 }
 
@@ -232,9 +176,9 @@ function applyStreamChunk(
   selectedModel: ChatModel,
   chunk: StreamChunk,
 ): Message[] {
+  if (chunk.type === 'error') chunk = { ...chunk, content: 'This response could not be completed.' }
   return messages.map((message) => {
     if (message.id !== assistantId) return message
-
     const response = message.responses?.[0] || {
       modelId: selectedModel.id,
       modelName: selectedModel.name,
@@ -242,6 +186,10 @@ function applyStreamChunk(
       content: '',
       isLoading: true,
     }
+    const blocks = chunk.type === 'error'
+      ? (response.blocks ?? message.blocks ?? [])
+      : appendPersonalBlock(response.blocks ?? message.blocks ?? [], chunk)
+    message = { ...message, blocks, responses: [{ ...response, blocks }] }
 
     if (chunk.type === 'text') {
       const content = `${message.content}${chunk.content}`
@@ -251,6 +199,7 @@ function applyStreamChunk(
         responses: [
           {
             ...response,
+            blocks,
             content,
             isLoading: true,
           },
@@ -283,13 +232,16 @@ function applyStreamChunk(
     }
 
     if (chunk.type === 'error') {
-      const content = message.content || `Error: ${chunk.content}`
+      const content = message.content || ''
       return {
         ...message,
         content,
+        isStreaming: false,
+        status: 'error',
         responses: [
           {
             ...response,
+            blocks,
             content,
             isLoading: false,
             error: chunk.content,
@@ -301,9 +253,12 @@ function applyStreamChunk(
     if (chunk.type === 'finish' || chunk.type === 'done') {
       return {
         ...message,
+        isStreaming: false,
+        status: 'completed',
         responses: [
           {
             ...response,
+            blocks,
             content: message.content,
             isLoading: false,
           },
@@ -325,21 +280,6 @@ function buildApiMessages(messages: Message[]) {
   }))
 }
 
-function getModelDescription(model: ChatModel): string {
-  if (model.cost === 0) return 'Fast and free'
-  if (model.intelligence >= 50) return 'Most capable for ambitious work'
-  if (model.intelligence >= 40) return 'Powerful and versatile'
-  if (model.speedTier >= 3 && model.cost <= 1) return 'Fast & efficient'
-  if (model.intelligence <= 15) return 'Fastest for quick answers'
-  return 'Efficient for everyday tasks'
-}
-
-function getTimeGreeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'morning'
-  if (hour < 17) return 'afternoon'
-  return 'evening'
-}
 
 function getNextTitle(currentTitle: string, inputValue: string): string {
   if (currentTitle === 'New Chat' && inputValue.trim()) {
@@ -349,23 +289,55 @@ function getNextTitle(currentTitle: string, inputValue: string): string {
   return currentTitle
 }
 
-export function ChatScreen({
+function userSafeTransportError(_error: unknown, fallback: string): string {
+  return fallback
+}
+
+function conversationStopLockKey(workspaceId: string | null, conversationId: string): string {
+  return JSON.stringify([workspaceId, conversationId])
+}
+
+type OwnedDraftPromotion = {
+  workspaceId: string | null
+  sourceRouteKind: 'detail'
+  sourceRouteId: string
+  clientId: string
+  conversationId: string
+}
+
+function ownedPromotionMatchesChat(promotion: OwnedDraftPromotion, chat: Chat | null): boolean {
+  if (!chat || chat.id !== promotion.conversationId) return false
+  return typeof chat.clientId !== 'string' || chat.clientId === promotion.clientId
+}
+
+let lastOpenedWriteQueue: Promise<void> = Promise.resolve()
+export function ChatScreen(props: { conversationId?: string; newChatIntent?: string; routeKind: 'tab' | 'detail' }): React.ReactElement {
+  const { activeWorkspaceId } = useWorkspace()
+  const { user } = useAuth()
+  return <ChatScreenOwner key={`${user?.id ?? 'signed-out'}:${activeWorkspaceId ?? 'no-workspace'}`} {...props} />
+}
+
+function ChatScreenOwner({
   conversationId,
-  projectId,
-  projectName,
+  newChatIntent,
   routeKind,
 }: {
   conversationId?: string
-  projectId?: string
-  projectName?: string
+  newChatIntent?: string
   routeKind: 'tab' | 'detail'
 }): React.ReactElement {
   const router = useRouter()
+  const navigation = useNavigation<{ setParams: (params: { id?: string; newChatIntent?: string | undefined }) => void }>()
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels, imageModels, videoModels, uiSettings, capabilities } = useAppSession()
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth()
+  const { favoriteIds, toggleFavorite } = useFavoriteModels(user?.id)
+  const [autoSelected, setAutoSelected] = useState(true)
+  const nativeReady = useNativeDataReady()
+  const { activeWorkspaceId } = useWorkspace()
   const insets = useSafeAreaInsets()
+  const keyboardVisible = useAndroidKeyboardVisible()
 
   const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState('New Chat')
@@ -373,17 +345,14 @@ export function ChatScreen({
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<ChatModel | null>(null)
   const [availableModels, setAvailableModels] = useState<ChatModel[]>([])
-  const [activeModality, setActiveModality] = useState<'text' | 'image' | 'video'>('text')
   const [isLoading, setIsLoading] = useState(true)
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [history, setHistory] = useState<ChatMeta[]>([])
   const [modelPickerVisible, setModelPickerVisible] = useState(false)
   const [upgradeVisible, setUpgradeVisible] = useState(false)
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
-  const [expandedModelId, setExpandedModelId] = useState<string | null>(null)
 
   // ── Phase 2 composer state ────────────────────────────────────────────────
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
@@ -396,69 +365,330 @@ export function ChatScreen({
   const [generationKind, setGenerationKind] = useState<'image' | 'video' | null>(null)
   const [selectedImageModelId, setSelectedImageModelId] = useState<string | null>(null)
   const [selectedVideoModelId, setSelectedVideoModelId] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [currentRun, setCurrentRun] = useState<AgentRunResource | null>(null)
+  const [execution, setExecution] = useState<{ workspaceId: string; run: PersonalRun } | null>(null)
+  const currentRun = execution?.workspaceId === activeWorkspaceId && execution.run?.conversationId === activeChatId &&
+    (routeKind !== 'detail' || conversationId === activeChatId) ? execution.run : null
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
   const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const [showingCachedCopy, setShowingCachedCopy] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
-  const flatListRef = useRef<FlatList<Message>>(null)
   const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
-  const hasAutoScrolledRef = useRef(false)
-  const handleSendRef = useRef<() => Promise<void>>(async () => {})
-  const [draftModal, setDraftModal] = useState<DraftModalState | null>(null)
-  const [draftSaving, setDraftSaving] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-
-  const visibleMessages = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return messages
-    return messages.filter((m) => {
-      const text = typeof m.content === 'string' ? m.content.toLowerCase() : ''
-      return text.includes(q)
-    })
-  }, [messages, searchQuery])
-
-  // PanResponder to dismiss keyboard on downward swipe — attached to the whole screen
-  // Uses onMoveShouldSetPanResponder so it never blocks taps or typing
-  const swipeDownPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 20 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.5,
-      onPanResponderGrant: () => {},
-      onPanResponderMove: () => {},
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 40) {
-          textInputRef.current?.blur()
-        }
-      },
-    }),
-    [],
-  )
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const show = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardHeight(e.endCoordinates.height)
-    })
-    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0))
-    return () => {
-      show.remove()
-      hide.remove()
+  const sendLockTurnIdRef = useRef<string | null>(null)
+  const activeDataSendRef = useRef<{ turnId: string; workspaceId: string; conversationId: string; modelId: string; cancel: () => void } | null>(null)
+  const sendLockOwnerRef = useRef<{ turnId: string; workspaceId: string; conversationId: string; modelId: string; cancel: () => void } | null>(null)
+  const conversationStopLocksRef = useRef(new Map<string, number>())
+  const stopLockSequenceRef = useRef(0)
+  const composerRevisionRef = useRef(0)
+  const approvalFlightRef = useRef<string | null>(null)
+  const mountedRef = useRef(true)
+  const ownerEpochRef = useRef(0)
+  const dataEpochRef = useRef(0)
+  const focusEpochRef = useRef(0)
+  const isFocusedRef = useRef(false)
+  const operationControllersRef = useRef(new Map<string, { controller: AbortController; interactive: boolean }>() )
+  const committedWorkspaceRef = useRef(activeWorkspaceId)
+  const committedSessionRef = useRef({ userId: user?.id ?? null, workspaceId: activeWorkspaceId, ready: nativeReady })
+  const routeIdentityRef = useRef({ workspaceId: activeWorkspaceId, routeKind, conversationId })
+  const committedMessagesRef = useRef(messages)
+  const committedAuthorityRef = useRef(false)
+  const nativeDraftSaveRef = useRef<((state: DraftModalState, scope: NativeTranscriptScope) => Promise<void>) | null>(null)
+  const initializedRouteKeyRef = useRef<string | null>(null)
+  const completedRouteKeyRef = useRef<string | null>(null)
+  const readinessResumeRouteRef = useRef<string | null>(null)
+  const ownedDraftPromotionRef = useRef<OwnedDraftPromotion | null>(null)
+  const invalidateOperations = useCallback((interactiveOnly = false) => {
+    for (const [name, operation] of operationControllersRef.current) {
+      if (!interactiveOnly || operation.interactive) {
+        operation.controller.abort()
+        operationControllersRef.current.delete(name)
+      }
     }
   }, [])
+  const clearConversationScope = useCallback(() => {
+    abortRef.current = true
+    pendingTurn.current = null
+    hasAutoScrolledRef.current = false
+    chatRef.current = null
+    setActiveChatId(null)
+    setMessages([])
+    setChatTitle('New chat')
+    setShowingCachedCopy(false)
+    setIsSending(false)
+    sendLockTurnIdRef.current = null
+    activeDataSendRef.current = null
+    sendLockOwnerRef.current = null
+    approvalFlightRef.current = null
+    setApprovalSubmitting(false)
+    setInputValue('')
+    setImageBase64(null)
+    setPendingDocuments([])
+    setMentions([])
+    setReplyContext(null)
+    setAttachmentError(null)
+    setExecution(null)
+    setGenerationKind(null)
+  }, [])
+  const beginOperation = useCallback((name: string, chatId: string | null = chatRef.current?.id ?? null, interactive = true) => {
+    operationControllersRef.current.get(name)?.controller.abort()
+    const controller = new AbortController()
+    const operationRecord = { controller, interactive }
+    operationControllersRef.current.set(name, operationRecord)
+    const ownerEpoch = ownerEpochRef.current
+    const dataEpoch = dataEpochRef.current
+    const focusEpoch = focusEpochRef.current
+    let finished = false
+    const workspaceId = committedWorkspaceRef.current
+    const allowedChatIds = new Set(chatId ? [chatId] : [])
+    const isCurrent = () => !finished && mountedRef.current && !controller.signal.aborted && ownerEpochRef.current === ownerEpoch &&
+      dataEpochRef.current === dataEpoch && committedWorkspaceRef.current === workspaceId &&
+      Boolean(workspaceId) && committedSessionRef.current.ready &&
+      committedSessionRef.current.userId === (user?.id ?? null) &&
+      committedSessionRef.current.workspaceId === workspaceId && getRequestWorkspaceId() === workspaceId &&
+      (!interactive || (isFocusedRef.current && focusEpochRef.current === focusEpoch)) &&
+      (!chatId || allowedChatIds.has(chatRef.current?.id ?? ''))
+    return {
+      workspaceId,
+      signal: controller.signal,
+      isCurrent,
+      adoptConversation: (id: string) => allowedChatIds.add(id),
+      finish: () => {
+        finished = true
+        if (operationControllersRef.current.get(name) === operationRecord) operationControllersRef.current.delete(name)
+      },
+      cancel: () => {
+        finished = true
+        controller.abort()
+        if (operationControllersRef.current.get(name) === operationRecord) operationControllersRef.current.delete(name)
+      },
+    }
+  }, [user?.id])
+  const chatActionsOperationRef = useRef<ReturnType<typeof beginOperation> | null>(null)
+  const persistLastOpenedChat = useCallback((chatId: string, workspaceId: string) => {
+    const ownerEpoch = ownerEpochRef.current
+    const dataEpoch = dataEpochRef.current
+    const focusEpoch = focusEpochRef.current
+    const write = lastOpenedWriteQueue.catch(() => {}).then(async () => {
+      const promotion = ownedDraftPromotionRef.current
+      const route = routeIdentityRef.current
+      const routeOwnsChat = route.routeKind === 'tab' || route.conversationId === chatId || (
+        promotion?.workspaceId === workspaceId &&
+        promotion.sourceRouteKind === route.routeKind &&
+        promotion.sourceRouteId === route.conversationId &&
+        promotion.conversationId === chatId &&
+        ownedPromotionMatchesChat(promotion, chatRef.current)
+      )
+      if (!mountedRef.current || ownerEpochRef.current !== ownerEpoch || dataEpochRef.current !== dataEpoch ||
+        focusEpochRef.current !== focusEpoch || !isFocusedRef.current || committedWorkspaceRef.current !== workspaceId ||
+        getRequestWorkspaceId() !== workspaceId || chatRef.current?.id !== chatId || !routeOwnsChat) return
+      await setLastOpenedChatId(chatId, workspaceId).catch(() => {})
+    })
+    lastOpenedWriteQueue = write
+  }, [])
+  useLayoutEffect(() => {
+    const previous = routeIdentityRef.current
+    const previousSession = committedSessionRef.current
+    const promotion = ownedDraftPromotionRef.current
+    const ownDraftPromotion = promotion?.workspaceId === activeWorkspaceId &&
+      promotion.sourceRouteKind === previous.routeKind && promotion.sourceRouteId === previous.conversationId &&
+      promotion.sourceRouteKind === routeKind && promotion.conversationId === conversationId &&
+      ownedPromotionMatchesChat(promotion, chatRef.current)
+    const scopeChanged = previous.workspaceId !== activeWorkspaceId || previous.routeKind !== routeKind ||
+      (previous.conversationId !== conversationId && !ownDraftPromotion)
+    committedWorkspaceRef.current = activeWorkspaceId
+    committedSessionRef.current = { userId: user?.id ?? null, workspaceId: activeWorkspaceId, ready: nativeReady }
+    routeIdentityRef.current = { workspaceId: activeWorkspaceId, routeKind, conversationId }
+    const sessionChanged = previousSession.userId !== (user?.id ?? null) ||
+      previousSession.workspaceId !== activeWorkspaceId || (previousSession.ready && !nativeReady)
+    const readinessLost = previousSession.ready && !nativeReady && !scopeChanged &&
+      previousSession.userId === (user?.id ?? null)
+    if (readinessLost) {
+      readinessResumeRouteRef.current = [previous.workspaceId, previous.routeKind, previous.conversationId ?? 'tab-root'].join(':')
+    } else if (scopeChanged || sessionChanged) {
+      readinessResumeRouteRef.current = null
+    }
+    if (scopeChanged || sessionChanged) {
+      if (!ownDraftPromotion || sessionChanged) {
+        initializedRouteKeyRef.current = null
+        completedRouteKeyRef.current = null
+        ownedDraftPromotionRef.current = null
+      }
+      dataEpochRef.current += 1
+      invalidateOperations()
+      if (readinessLost) {
+        abortRef.current = true
+        pendingTurn.current = null
+        hasAutoScrolledRef.current = false
+        chatRef.current = null
+        setActiveChatId(null)
+        setMessages([])
+        setExecution(null)
+        setIsSending(false)
+        sendLockTurnIdRef.current = null
+        activeDataSendRef.current = null
+        sendLockOwnerRef.current = null
+        approvalFlightRef.current = null
+        setApprovalSubmitting(false)
+        setPendingDocuments(current => current.filter(document => document.status !== 'uploading'))
+        setAttachmentError(null)
+      } else {
+        clearConversationScope()
+      }
+      setModelPickerVisible(false)
+      setActionsChat(null)
+      setOptionsOpen(false)
+      setIsLoading(true)
+    }
+  }, [activeWorkspaceId, clearConversationScope, conversationId, invalidateOperations, nativeReady, routeKind, user?.id])
+  useLayoutEffect(() => {
+    committedMessagesRef.current = messages
+  }, [messages])
+  useLayoutEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      ownerEpochRef.current += 1
+      invalidateOperations()
+    }
+  }, [invalidateOperations])
+  useFocusEffect(useCallback(() => {
+    isFocusedRef.current = true
+    focusEpochRef.current += 1
+    const activeChat = chatRef.current
+    const workspaceId = committedWorkspaceRef.current
+    if (activeChat && workspaceId && !activeChat.id.startsWith('chat-')) {
+      persistLastOpenedChat(activeChat.id, workspaceId)
+    }
+    return () => {
+      isFocusedRef.current = false
+      focusEpochRef.current += 1
+      invalidateOperations(true)
+      setModelPickerVisible(false)
+      setActionsChat(null)
+      setOptionsOpen(false)
+      setApprovalSubmitting(false)
+      approvalFlightRef.current = null
+      setPendingDocuments(current => current.filter(document => document.status !== 'uploading'))
+    }
+  }, [invalidateOperations, persistLastOpenedChat]))
+  const pendingTurn = useRef<{ conversationId: string; signature: string; turnId: string; userMessageId?: string } | null>(null)
+  const presetRetryRef = useRef<{ signature: string; turnId: string; userMessageId: string } | null>(null)
+  const hasAutoScrolledRef = useRef(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
-  /** Lift composer above keyboard (KAV fails with edge‑to‑edge / some Android IME stacks). */
-  const composerFooterInset = Math.max(insets.bottom, spacing.md)
-  const composerBottomPadding =
-    keyboardHeight > 0 ? keyboardHeight + spacing.sm : composerFooterInset
-  /** Keeps latest messages reachable above the lifted composer area. */
-  const messageBottomPadding =
-    keyboardHeight > 0 ? keyboardHeight + 160 + spacing.md : spacing.md
+  const [transcriptScrollIntent, setTranscriptScrollIntent] = useState<NativeTranscriptScrollIntent | null>(null)
+  const transcriptIntentId = useRef(0)
+  const requestTranscriptEnd = useCallback((kind: 'initial-end' | 'submission' = 'submission') => {
+    transcriptIntentId.current += 1
+    if (kind === 'submission') hasAutoScrolledRef.current = true
+    setTranscriptScrollIntent({ id: `chat-scroll-${transcriptIntentId.current}`, kind })
+  }, [])
+  const runtimeTurnId = currentRun?.turnId
+  const runtimeStatus = currentRun?.status
+  const runtimeError = runtimeStatus === 'failed' ? 'This response could not be completed.' : undefined
+  const transcriptRuntime = useMemo(() => {
+    if (runtimeTurnId && runtimeStatus) {
+      const status: NativeChatTranscriptRuntime['status'] = runtimeStatus === 'queued' ? 'submitted'
+        : runtimeStatus === 'running' || runtimeStatus.startsWith('waiting_for_') ? 'streaming'
+          : runtimeStatus === 'completed' ? 'completed'
+            : runtimeStatus === 'failed' ? 'failed' : 'cancelled'
+      return {
+        activeTurnId: runtimeTurnId,
+        status,
+        interrupted: runtimeStatus === 'cancelled',
+        ...(runtimeError ? { error: runtimeError } : {}),
+      }
+    }
+    const activeMessage = [...messages].reverse().find((message) => message.responses?.some((response) => response.isLoading))
+    return activeMessage?.turnId ? { activeTurnId: activeMessage.turnId, status: 'streaming' as const } : undefined
+  }, [messages, runtimeError, runtimeStatus, runtimeTurnId])
+  const transcriptView = useMemo(() => toNativeChatTranscriptView(messages, transcriptRuntime), [messages, transcriptRuntime])
+  const referencedModelKey = useMemo(() => [...new Set(transcriptView.exchanges.flatMap((exchange) => [
+    exchange.selectedModelId,
+    ...exchange.responses.map((response) => response.modelId),
+    ...(exchange.media?.results.map(result => result.modelUsed) ?? []),
+  ].filter((id): id is string => Boolean(id))))].sort().join('\u0000'), [transcriptView])
+  const publicModelLabels = useMemo(() => {
+    const referencedIds = new Set(referencedModelKey ? referencedModelKey.split('\u0000') : [])
+    const modelCatalog = [...availableModels, ...imageModels, ...videoModels]
+    const uniqueModels = [...new Map(modelCatalog.map(model => [model.id, model])).values()]
+    return uniqueModels.filter((model) => referencedIds.has(model.id)).slice(0, 100).flatMap((model) => {
+      const id = model.id.slice(0, 128)
+      const name = model.name.slice(0, 128)
+      return id && name ? [{ id, name }] : []
+    })
+  }, [availableModels, imageModels, referencedModelKey, videoModels])
+  const ownedPromotion = ownedDraftPromotionRef.current
+  const routeMatchesCurrentChat = routeKind !== 'detail' || conversationId === activeChatId ||
+    (conversationId === 'new' && Boolean(activeChatId?.startsWith('chat-') && chatRef.current?.id === activeChatId)) ||
+    Boolean(
+      ownedPromotion?.workspaceId === activeWorkspaceId &&
+      ownedPromotion.sourceRouteKind === routeKind &&
+      ownedPromotion.sourceRouteId === conversationId &&
+      ownedPromotion.conversationId === activeChatId &&
+      ownedPromotionMatchesChat(ownedPromotion, chatRef.current),
+    )
+  const transcriptAuthorityActive = Boolean(
+    nativeReady && activeWorkspaceId && getRequestWorkspaceId() === activeWorkspaceId && activeChatId && routeMatchesCurrentChat,
+  )
+  useLayoutEffect(() => {
+    committedAuthorityRef.current = transcriptAuthorityActive
+  }, [transcriptAuthorityActive])
+  const isTranscriptScopeCurrent = useCallback((scope: NativeTranscriptScope) =>
+    scope.isCurrent() && committedAuthorityRef.current && scope.workspaceId === committedWorkspaceRef.current &&
+    scope.conversationId === chatRef.current?.id && getRequestWorkspaceId() === committedWorkspaceRef.current,
+  [])
+  const handleTranscriptReply = useCallback((target: TrustedReplyTarget, scope: NativeTranscriptScope) => {
+    if (!isTranscriptScopeCurrent(scope)) return
+    const currentMessages = committedMessagesRef.current
+    let text: string | undefined
+    if (target.target.kind === 'user') {
+      const userId = target.target.userId
+      text = currentMessages.find((message) => message.id === userId)?.content
+    } else if (target.target.kind === 'response') {
+      const currentExchange = toNativeChatTranscriptView(currentMessages).exchanges
+        .find((exchange) => exchange.turnId === target.exchange.turnId)
+      const responseId = target.target.responseId
+      const currentResponse = currentExchange?.responses.find((response) => response.id === responseId)
+      text = currentResponse?.blocks.map((block) => block.kind === 'text' ? block.text : '').join('')
+    } else {
+      const turnId = target.exchange.turnId
+      text = currentMessages.find((message) => message.role === 'user' && message.turnId === turnId)?.content
+    }
+    if (!text?.trim() || !isTranscriptScopeCurrent(scope)) return
+    const replyText = target.target.kind === 'media' ? text : text.trim()
+    composerRevisionRef.current += 1
+    setReplyContext({
+      snippet: target.target.kind === 'media' ? replyText.slice(0, 120) : (replyText.length > 160 ? `${replyText.slice(0, 160)}…` : replyText),
+      bodyForModel: target.target.kind === 'media' && target.mediaResult
+        ? `[Prior ${target.mediaResult.type} generation request]\n${replyText.slice(0, 12000)}`
+        : replyText.slice(0, 16000),
+      replyToTurnId: target.exchange.turnId,
+    })
+    textInputRef.current?.focus()
+  }, [isTranscriptScopeCurrent])
+  const handleTranscriptJump = useCallback((parentExchangeId: string, scope: NativeTranscriptScope) => {
+    if (!isTranscriptScopeCurrent(scope)) return
+    setSearchQuery('')
+    transcriptIntentId.current += 1
+    setTranscriptScrollIntent({ id: `chat-reply-${transcriptIntentId.current}`, kind: 'reply', exchangeId: parentExchangeId })
+  }, [isTranscriptScopeCurrent])
+  const handleNativeSaveDraft = useCallback((state: DraftModalState, scope: NativeTranscriptScope) => {
+    const save = nativeDraftSaveRef.current
+    if (!save || !isTranscriptScopeCurrent(scope)) return Promise.reject(new Error('This draft is no longer current.'))
+    return save(state, scope)
+  }, [isTranscriptScopeCurrent])
+
+  const composerFooterInset = getComposerBottomInset(
+    keyboardVisible,
+    insets.bottom,
+    spacing.md,
+    spacing.sm,
+    // KAV overrides the container paddingBottom; preserve the closed Android gutter here.
+    Platform.OS === 'android' ? spacing.sm : 0,
+  )
 
   const handleOpenDrawer = useCallback(() => {
     textInputRef.current?.blur()
@@ -467,49 +697,75 @@ export function ChatScreen({
   }, [openDrawer])
 
   const refreshHistory = useCallback(async () => {
-    const nextHistory = await loadChatsMeta(projectId).catch(() => null)
-    if (nextHistory) {
-      setHistory(nextHistory)
+    const operation = beginOperation('history-refresh', null, false)
+    try {
+      const nextHistory = await loadChatsMeta(operation.workspaceId ?? undefined).catch(() => null)
+      if (!operation.isCurrent()) return []
+      if (nextHistory) setHistory(nextHistory)
+      return nextHistory ?? []
+    } finally {
+      operation.finish()
     }
-    return nextHistory ?? []
-  }, [projectId])
+  }, [beginOperation])
 
   const syncConversationMeta = useCallback(
-    async (overrides: Partial<Chat> = {}) => {
-      if (!chatRef.current) return
+    async (overrides: Partial<Chat> = {}, existingOperation?: ReturnType<typeof beginOperation>) => {
+      const currentChat = chatRef.current
+      if (!currentChat) return
+      const operation = existingOperation ?? beginOperation(`metadata:${currentChat.id}`, currentChat.id)
+      if (!operation.isCurrent()) {
+        if (!existingOperation) operation.finish()
+        return
+      }
 
-      const resolvedModelId = overrides.modelId || selectedModel?.id || chatRef.current.modelId
+      const resolvedModelId = overrides.modelId || selectedModel?.id || currentChat.modelId
       const nextChat: Chat = {
-        ...chatRef.current,
+        ...currentChat,
         ...overrides,
-        title: overrides.title ?? chatRef.current.title,
+        title: overrides.title ?? currentChat.title,
         updatedAt: Date.now(),
         modelId: resolvedModelId,
-        askModelIds: resolvedModelId ? [resolvedModelId] : chatRef.current.askModelIds,
-        actModelId: resolvedModelId || chatRef.current.actModelId,
+        askModelIds: resolvedModelId ? [resolvedModelId] : currentChat.askModelIds,
+        actModelId: resolvedModelId || currentChat.actModelId,
         lastMode: 'act',
       }
 
       chatRef.current = nextChat
       setChatTitle(nextChat.title)
-      // Always persist — previously we skipped saveChat for drafts (not yet
-      // in history), which meant chats disappeared from the sidebar even
-      // after the first user message.
-      await saveChat(nextChat).catch(() => {})
-      await refreshHistory()
+      try {
+        if (nextChat.id.startsWith('chat-') && !nextChat.clientId) return
+        await saveChat(nextChat, operation.workspaceId ?? undefined).catch(() => {})
+        if (!operation.isCurrent()) return
+        await refreshHistory()
+      } finally {
+        if (!existingOperation) operation.finish()
+      }
     },
-    [refreshHistory, selectedModel?.id],
+    [beginOperation, refreshHistory, selectedModel?.id],
   )
 
   const hydrateConversation = useCallback(
-    async (chatId: string, models: ChatModel[], options: { switching?: boolean } = {}) => {
+    async (chatId: string, models: ChatModel[], options: { switching?: boolean; preserveComposer?: boolean; operation?: ReturnType<typeof beginOperation> } = {}) => {
+      const operation = options.operation ?? beginOperation(`hydrate:${chatId}`, null)
+      const ownsOperation = !options.operation
+      if (!operation.isCurrent()) {
+        if (ownsOperation) operation.finish()
+        return false
+      }
+      if (chatId.startsWith('chat-')) {
+        if (operation.isCurrent() && routeKind === 'detail') router.replace('/chat/new')
+        if (ownsOperation) operation.finish()
+        return false
+      }
       if (options.switching) {
         setIsSwitchingChat(true)
       }
 
       try {
-        const chat = await loadChat(chatId)
+        const chat = await loadChat(chatId, operation.workspaceId ?? undefined)
+        if (!operation.isCurrent()) return false
         if (!chat) {
+          if (routeKind === 'detail') router.replace('/chat/new')
           return false
         }
 
@@ -517,48 +773,64 @@ export function ChatScreen({
         // agent-DM route landing on /chat/[id] redirects instead of rendering
         // a multiplayer room as a personal chat.
         if (chat.conversationType === 'dm' || chat.conversationType === 'channel') {
+          if (!operation.isCurrent()) return false
           const pathname = chat.conversationType === 'dm' ? '/dm/[id]' : '/channel/[id]'
           router.replace({ pathname, params: { id: chat.id } })
           return false
         }
 
+        if (!operation.isCurrent()) return false
         chatRef.current = chat
         setActiveChatId(chat.id)
         setChatTitle(chat.title)
         hasAutoScrolledRef.current = false
         setMessages(chat.messages)
         setShowingCachedCopy(chat.restoredFromCache === true)
-        setInputValue('')
-        setImageBase64(null)
-        setPendingDocuments([])
-        setAttachmentError(null)
-        setMentions([])
-        setReplyContext(null)
-        setGenerationKind(null)
-        setCurrentRun(null)
-        await setLastOpenedChatId(chat.id)
+        if (!options.preserveComposer) {
+          setInputValue('')
+          setImageBase64(null)
+          setPendingDocuments([])
+          setAttachmentError(null)
+          setMentions([])
+          setReplyContext(null)
+          setGenerationKind(null)
+        }
+        setExecution(null)
+        if (!operation.isCurrent()) return false
+        if (operation.workspaceId && isFocusedRef.current) persistLastOpenedChat(chat.id, operation.workspaceId)
 
         const preferredModelId = chat.actModelId || chat.askModelIds?.[0] || chat.modelId
         const nextSelected =
           models.find((model) => model.id === preferredModelId) ||
-          createSyntheticModel(preferredModelId) ||
           models[0] ||
           null
         setSelectedModel(nextSelected)
+        setAutoSelected(false)
         return true
       } finally {
-        if (options.switching) {
+        if (options.switching && operation.isCurrent()) {
           setIsSwitchingChat(false)
         }
+        if (ownsOperation) operation.finish()
       }
     },
-    [router],
+    [beginOperation, persistLastOpenedChat, routeKind, router],
   )
 
   const createConversation = useCallback(
-    async (models: ChatModel[], options: { replaceRoute?: boolean } = {}) => {
+    async (models: ChatModel[], options: { replaceRoute?: boolean; preserveComposer?: boolean; operation?: ReturnType<typeof beginOperation> } = {}) => {
+      const operation = options.operation ?? beginOperation('create-conversation', null)
+      const ownsOperation = !options.operation
+      if (!operation.isCurrent()) {
+        if (ownsOperation) operation.finish()
+        return null
+      }
       const isFreeTier = entitlements?.tier === 'free'
-      const preferredId = uiSettings.defaultActModelId || await getLastSelectedModelId().catch(() => null)
+      const preferredId = uiSettings.defaultActModelId || await getLastSelectedModelId(operation.workspaceId ?? undefined).catch(() => null)
+      if (!operation.isCurrent()) {
+        if (ownsOperation) operation.finish()
+        return null
+      }
       const preferredModel = preferredId ? models.find((m) => m.id === preferredId) : undefined
       const modelId = preferredModel && !(isFreeTier && preferredModel.cost > 0)
         ? preferredModel.id
@@ -569,61 +841,107 @@ export function ChatScreen({
       // Create a client-side draft only. The server-side conversation is
       // created lazily on the first user message (via chatStream), so
       // merely navigating to the Chat tab never produces an empty chat.
-      const created: Chat = createDraftChat(modelId, projectId)
+      const created: Chat = createDraftChat(modelId)
 
+      if (!operation.isCurrent()) {
+        if (ownsOperation) operation.finish()
+        return null
+      }
       chatRef.current = created
       setActiveChatId(created.id)
       setChatTitle(created.title)
       setMessages([])
       setShowingCachedCopy(false)
-      setMentions([])
-      setReplyContext(null)
-      setPendingDocuments([])
-      setAttachmentError(null)
-      setGenerationKind(null)
-      setCurrentRun(null)
+      if (!options.preserveComposer) {
+        setMentions([])
+        setReplyContext(null)
+        setPendingDocuments([])
+        setAttachmentError(null)
+        setGenerationKind(null)
+      }
+      setExecution(null)
+      setAutoSelected(true)
       setSelectedModel(
         models.find((model) => model.id === created.modelId) ||
-          createSyntheticModel(created.modelId) ||
           models[0] ||
           null,
       )
-      setInputValue('')
-      setImageBase64(null)
-      await setLastOpenedChatId(created.id)
-
-      if (options.replaceRoute) {
-        router.replace({
-          pathname: '/chat/[id]',
-          params: {
-            id: created.id,
-            ...(projectId ? { projectId } : {}),
-            ...(projectName ? { projectName } : {}),
-          },
-        })
+      if (!options.preserveComposer) {
+        setInputValue('')
+        setImageBase64(null)
       }
-
+      if (ownsOperation) operation.finish()
       return created
     },
-    [entitlements?.tier, projectId, projectName, router, uiSettings.defaultActModelId],
+    [beginOperation, entitlements?.tier, uiSettings.defaultActModelId],
   )
 
+  const previousWorkspaceId = useRef(activeWorkspaceId)
   useEffect(() => {
-    let isMounted = true
+    if (previousWorkspaceId.current === activeWorkspaceId) return
+    previousWorkspaceId.current = activeWorkspaceId
+    chatRef.current = null
+    setActiveChatId(null)
+    setMessages([])
+    setChatTitle('New chat')
+    abortRef.current = true
+    pendingTurn.current = null
+    setExecution(null)
+    setIsSending(false)
+    setInputValue('')
+    setImageBase64(null)
+    setPendingDocuments([])
+    setMentions([])
+    setReplyContext(null)
+    setAttachmentError(null)
+  }, [activeWorkspaceId])
 
-    // Guard: skip re-initialization if we already have an active chat session.
-    if (chatRef.current !== null && !conversationId) {
+  const startsNewChat = routeKind === 'tab' && Boolean(newChatIntent)
+  const handledNewChatIntentRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!startsNewChat || !newChatIntent) {
+      handledNewChatIntentRef.current = null
       return
     }
+    if (handledNewChatIntentRef.current === newChatIntent) return
+    handledNewChatIntentRef.current = newChatIntent
+    dataEpochRef.current += 1
+    invalidateOperations()
+    clearConversationScope()
+  }, [clearConversationScope, invalidateOperations, newChatIntent, startsNewChat])
+
+  useEffect(() => {
+    if (!nativeReady || !activeWorkspaceId) {
+      initializedRouteKeyRef.current = null
+      completedRouteKeyRef.current = null
+      return
+    }
+    const baseRouteKey = `${activeWorkspaceId}:${routeKind}:${conversationId ?? 'tab-root'}`
+    const routeKey = startsNewChat ? `${baseRouteKey}:new-chat:${newChatIntent}` : baseRouteKey
+    const ownedPromotion = ownedDraftPromotionRef.current
+    const promotionCaughtUp = ownedPromotion?.workspaceId === activeWorkspaceId &&
+      ownedPromotion.sourceRouteKind === routeKind && ownedPromotion.conversationId === conversationId &&
+      ownedPromotionMatchesChat(ownedPromotion, chatRef.current)
+    if (promotionCaughtUp) {
+      ownedDraftPromotionRef.current = null
+      initializedRouteKeyRef.current = routeKey
+      completedRouteKeyRef.current = routeKey
+      return
+    }
+    if (completedRouteKeyRef.current === routeKey || initializedRouteKeyRef.current === routeKey) return
+    initializedRouteKeyRef.current = routeKey
+    const preserveComposer = readinessResumeRouteRef.current === routeKey
+    if (ownedPromotion) ownedDraftPromotionRef.current = null
+    const operation = beginOperation('initialize-route', null, false)
 
     async function resolveModels(): Promise<ChatModel[]> {
-      if (chatModels.length > 0) return applyLocalModelMetrics(chatModels)
+      if (chatModels.length > 0) return orderedChatModels(chatModels)
       return getAvailableModels()
     }
 
     async function resolvePreferredModel(models: ChatModel[]): Promise<ChatModel | null> {
       const isFreeTier = entitlements?.tier === 'free'
-      const persistedId = uiSettings.defaultActModelId || await getLastSelectedModelId().catch(() => null)
+      const persistedId = uiSettings.defaultActModelId || await getLastSelectedModelId(operation.workspaceId ?? undefined).catch(() => null)
       if (persistedId) {
         const match = models.find((m) => m.id === persistedId)
         // For free tier, don't restore a previously selected premium model
@@ -641,70 +959,99 @@ export function ChatScreen({
 
       try {
         const models = await resolveModels()
-        if (!isMounted) return
+        if (!operation.isCurrent()) return
 
         setAvailableModels(models)
         const preferred = await resolvePreferredModel(models)
-        if (isMounted) setSelectedModel(preferred)
+        if (!operation.isCurrent()) return
+        setSelectedModel(preferred)
 
         if (conversationId === 'new') {
-          await createConversation(models, { replaceRoute: routeKind === 'detail' })
+          await createConversation(models, { operation, preserveComposer })
+          if (operation.isCurrent() && preserveComposer) readinessResumeRouteRef.current = null
           return
         }
 
         if (conversationId) {
-          await hydrateConversation(conversationId, models)
+          const didHydrate = await hydrateConversation(conversationId, models, { operation, preserveComposer })
+          if (didHydrate && operation.isCurrent() && preserveComposer) readinessResumeRouteRef.current = null
           return
         }
 
-        const lastOpenedChatId = await getLastOpenedChatId()
-        if (lastOpenedChatId) {
-          const didHydrate = await hydrateConversation(lastOpenedChatId, models).catch(() => false)
+        if (startsNewChat) {
+          await createConversation(models, { operation, preserveComposer })
+          if (operation.isCurrent() && preserveComposer) readinessResumeRouteRef.current = null
+          return
+        }
+
+        const lastOpenedChatId = await getLastOpenedChatId(operation.workspaceId ?? undefined)
+        if (!operation.isCurrent()) return
+        if (lastOpenedChatId && !lastOpenedChatId.startsWith('chat-')) {
+          const didHydrate = await hydrateConversation(lastOpenedChatId, models, { operation, preserveComposer }).catch(() => false)
           if (didHydrate) {
+            if (operation.isCurrent() && preserveComposer) readinessResumeRouteRef.current = null
             return
           }
         }
 
-        await createConversation(models)
+        await createConversation(models, { operation, preserveComposer })
+        if (operation.isCurrent() && preserveComposer) readinessResumeRouteRef.current = null
       } catch {
-        if (isMounted) {
+        if (operation.isCurrent()) {
+          if (routeKind === 'detail' && conversationId && conversationId !== 'new') {
+            router.replace('/chat/new')
+            return
+          }
           const models = await resolveModels().catch(() => [])
+          if (!operation.isCurrent()) return
           const preferred = await resolvePreferredModel(models)
-          const draft = createDraftChat(preferred?.id ?? models[0]?.id, projectId)
-          chatRef.current = draft
-          setActiveChatId(draft.id)
-          setChatTitle(draft.title)
-          setMessages([])
-          setSelectedModel(preferred ?? models[0] ?? createSyntheticModel(draft.modelId))
+          if (!operation.isCurrent()) return
+          await createConversation(models, { operation, preserveComposer })
+          if (preferred && operation.isCurrent()) setSelectedModel(preferred)
         }
       } finally {
-        if (isMounted) {
+        if (operation.isCurrent()) {
+          completedRouteKeyRef.current = startsNewChat ? baseRouteKey : routeKey
+          if (startsNewChat) navigation.setParams({ newChatIntent: undefined })
           setIsLoading(false)
         }
+        operation.finish()
       }
     }
 
     void initialize()
-
     return () => {
-      isMounted = false
+      if (completedRouteKeyRef.current !== routeKey && initializedRouteKeyRef.current === routeKey) {
+        initializedRouteKeyRef.current = null
+      }
+      operation.cancel()
     }
   }, [
+    nativeReady,
+    activeWorkspaceId,
     chatModels,
     conversationId,
     createConversation,
+    clearConversationScope,
     entitlements?.tier,
     hydrateConversation,
-    projectId,
+    invalidateOperations,
+    navigation,
+    newChatIntent,
     routeKind,
+    startsNewChat,
+    router,
     uiSettings.defaultActModelId,
+    beginOperation,
   ])
 
   useEffect(() => {
     let isMounted = true
     if (chatModels.length > 0) {
-      void applyLocalModelMetrics(chatModels).then((models) => {
-        if (isMounted) setAvailableModels(models)
+      void orderedChatModels(chatModels).then((models) => {
+        if (!isMounted || !mountedRef.current) return
+        setAvailableModels(models)
+        setSelectedModel((current) => current ? models.find((model) => model.id === current.id) ?? current : current)
       })
     }
     return () => {
@@ -736,59 +1083,90 @@ export function ChatScreen({
     }
   }, [drawerVisible, refreshHistory])
 
-  // Poll the conversation list while this screen is focused for near-real-time
-  // sync with the web app and other devices.
-  useFocusEffect(
-    useCallback(() => {
-      let intervalId: ReturnType<typeof setInterval> | null = null
+  useEffect(() => {
+    setHistory([])
+    if (!nativeReady || !activeWorkspaceId) return
+    let active = true
+    const ownerEpoch = ownerEpochRef.current
+    const workspaceId = activeWorkspaceId
+    const stop = subscribeChats('personal', (chats) => {
+      if (!active || !mountedRef.current || ownerEpochRef.current !== ownerEpoch ||
+        committedWorkspaceRef.current !== workspaceId || getRequestWorkspaceId() !== workspaceId) return
+      setHistory(chats)
+    }, workspaceId)
+    return () => { active = false; stop() }
+  }, [nativeReady, activeWorkspaceId])
 
-      void refreshHistory().catch(() => {})
-      intervalId = setInterval(() => {
-        void refreshHistory().catch(() => {})
-      }, 15000)
-
-      return () => {
-        if (intervalId) clearInterval(intervalId)
+  useEffect(() => {
+    if (!nativeReady || !activeWorkspaceId || !activeChatId || !/^[0-9a-z]{20,40}$/.test(activeChatId) ||
+      isTemporary || isSending || !routeMatchesCurrentChat) return
+    let active = true
+    const dataEpoch = dataEpochRef.current
+    const workspaceId = activeWorkspaceId
+    let lastReadMessageId: string | undefined
+    const stop = subscribePersonalChat(activeChatId, chat => {
+      if (!active || !mountedRef.current || dataEpochRef.current !== dataEpoch ||
+        committedWorkspaceRef.current !== workspaceId || getRequestWorkspaceId() !== workspaceId ||
+        chatRef.current?.id !== activeChatId || !routeMatchesCurrentChat) return
+      if (!chat) {
+        chatRef.current = null
+        setMessages([])
+        return
       }
-    }, [refreshHistory]),
-  )
+      chatRef.current = chat
+      setChatTitle(chat.title)
+      setMessages(chat.messages)
+      setShowingCachedCopy(false)
+      const lastMessageId = chat.messages.at(-1)?.id
+      if (lastMessageId && lastReadMessageId !== lastMessageId) {
+        lastReadMessageId = lastMessageId
+        const readOperation = beginOperation(`read-marker:${chat.id}`, chat.id, false)
+        if (!readOperation.isCurrent()) {
+          readOperation.finish()
+          return
+        }
+        void setPersonalChatRead(chat.id, false, lastMessageId, workspaceId, readOperation.signal)
+          .catch(() => undefined)
+          .finally(() => readOperation.finish())
+      }
+    }, workspaceId)
+    return () => { active = false; stop() }
+  }, [beginOperation, nativeReady, activeWorkspaceId, activeChatId, isTemporary, isSending, routeMatchesCurrentChat])
 
-  // ── Agent run lifecycle ───────────────────────────────────────────────────
-  // The server runs each act turn as an AgentRunResource; `currentRun` is the
-  // source of truth for queued/running/waiting_for_approval/failed state.
-  // Poll fast while a run is active, slow otherwise (web uses a Convex
-  // subscription + adaptive REST fallback; mobile polls REST only — Phase 3
-  // may add realtime).
   useEffect(() => {
-    if (!activeChatId || isTemporary) {
-      setCurrentRun(null)
-      return
-    }
-    let cancelled = false
-    const poll = async () => {
-      const run = await fetchCurrentRun(activeChatId).catch(() => null)
-      if (!cancelled) setCurrentRun(run)
-    }
-    void poll()
-    const active = currentRun && ['queued', 'running', 'waiting_for_approval'].includes(currentRun.status)
-    const interval = setInterval(() => void poll(), isSending || active ? 2_000 : 15_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [activeChatId, isTemporary, isSending, currentRun?.status])
-
-  // ── Empty-chat suggestions — `/api/v1/chat-suggestions` (4 prompts/day) ────
-  useEffect(() => {
-    if (messages.length === 0 && isAuthenticated && !isTemporary) {
-      void fetchChatSuggestions().then(setSuggestions)
-    }
-  }, [messages.length, isAuthenticated, isTemporary])
+    if (!nativeReady || !activeWorkspaceId || !activeChatId || !/^[0-9a-z]{20,40}$/.test(activeChatId) ||
+      isTemporary || !routeMatchesCurrentChat) return
+    let active = true
+    const workspaceId = activeWorkspaceId
+    const dataEpoch = dataEpochRef.current
+    try {
+      const stop = watchPersonalExecution(workspaceId, activeChatId, run => {
+        if (active && mountedRef.current && dataEpochRef.current === dataEpoch &&
+          committedWorkspaceRef.current === workspaceId && getRequestWorkspaceId() === workspaceId &&
+          chatRef.current?.id === activeChatId && routeMatchesCurrentChat) setExecution({ workspaceId, run })
+      }, error => {
+        if (active && mountedRef.current && dataEpochRef.current === dataEpoch &&
+          committedWorkspaceRef.current === workspaceId && getRequestWorkspaceId() === workspaceId &&
+          chatRef.current?.id === activeChatId && routeMatchesCurrentChat) setAttachmentError(userSafeTransportError(error, 'The conversation status could not be refreshed.'))
+      })
+      return () => { active = false; stop() }
+    } catch (error) { void Promise.resolve().then(() => { if (active && dataEpochRef.current === dataEpoch && committedWorkspaceRef.current === workspaceId && getRequestWorkspaceId() === workspaceId) setAttachmentError(userSafeTransportError(error, 'The conversation status could not be refreshed.')) }) }
+    return () => { active = false }
+  }, [nativeReady, activeWorkspaceId, activeChatId, isTemporary, routeMatchesCurrentChat])
 
   const handleSubmitApproval = useCallback(
     async (approved: boolean) => {
       const run = currentRun
-      if (!activeChatId || !run?.approval || run.status !== 'waiting_for_approval') return
+      if (!activeChatId || !routeMatchesCurrentChat || !run?.approval || run.status !== 'waiting_for_approval') return
+      const flightKey = `${activeChatId}:${run.id}:${run.approval.token}`
+      if (approvalFlightRef.current === flightKey) return
+      approvalFlightRef.current = flightKey
+      const operation = beginOperation(`approval:${activeChatId}:${run.id}`, activeChatId)
+      if (!operation.isCurrent()) {
+        approvalFlightRef.current = null
+        operation.finish()
+        return
+      }
       setApprovalSubmitting(true)
       try {
         await submitRunApproval({
@@ -796,139 +1174,283 @@ export function ChatScreen({
           agentRunId: run.id,
           token: run.approval.token,
           approved,
-        })
-        const next = await fetchCurrentRun(activeChatId).catch(() => null)
-        setCurrentRun(next)
-      } catch (error) {
-        Alert.alert('Could not submit approval', error instanceof Error ? error.message : 'Try again.')
+        }, { workspaceId: operation.workspaceId ?? undefined, signal: operation.signal })
+      } catch {
+        if (operation.isCurrent()) Alert.alert('Could not submit approval', 'Please try again.')
       } finally {
-        setApprovalSubmitting(false)
+        if (operation.isCurrent()) setApprovalSubmitting(false)
+        if (approvalFlightRef.current === flightKey) approvalFlightRef.current = null
+        operation.finish()
       }
     },
-    [activeChatId, currentRun],
+    [activeChatId, beginOperation, currentRun, routeMatchesCurrentChat],
   )
 
   const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      flatListRef.current?.scrollToEnd({ animated: true })
-    })
-  }, [])
+    requestTranscriptEnd('submission')
+  }, [requestTranscriptEnd])
+  useEffect(() => {
+    if (hasAutoScrolledRef.current || isLoading || !transcriptAuthorityActive || messages.length === 0) return
+    hasAutoScrolledRef.current = true
+    requestTranscriptEnd('initial-end')
+  }, [activeChatId, isLoading, messages.length, requestTranscriptEnd, transcriptAuthorityActive])
 
   const openConversation = useCallback(
     async (chatId: string) => {
+      if (chatId === activeChatId) return
       if (routeKind === 'detail') {
+        const operation = beginOperation(`navigate-chat:${chatId}`, activeChatId)
+        if (!operation.isCurrent()) { operation.finish(); return }
         router.replace({
           pathname: '/chat/[id]',
           params: {
             id: chatId,
-            ...(projectId ? { projectId } : {}),
-            ...(projectName ? { projectName } : {}),
           },
         })
+        operation.finish()
         return
       }
 
-      abortRef.current = true
-      await hydrateConversation(chatId, availableModels, { switching: true })
+      dataEpochRef.current += 1
+      invalidateOperations()
+      clearConversationScope()
+      setIsLoading(true)
+      setIsSwitchingChat(true)
+      const operation = beginOperation(`open-chat:${chatId}`, null)
+      try {
+        await hydrateConversation(chatId, availableModels, { switching: true, operation })
+      } finally {
+        if (operation.isCurrent()) setIsLoading(false)
+        operation.finish()
+      }
     },
-    [availableModels, hydrateConversation, projectId, projectName, routeKind, router],
+    [activeChatId, availableModels, beginOperation, clearConversationScope, hydrateConversation, invalidateOperations, routeKind, router],
   )
 
   const startFreshConversation = useCallback(async () => {
-    if (routeKind === 'detail') {
+    if (routeKind === 'detail' && conversationId !== 'new') {
+      const operation = beginOperation('navigate-new-chat', activeChatId)
+      if (!operation.isCurrent()) { operation.finish(); return }
       router.replace({
         pathname: '/chat/[id]',
         params: {
           id: 'new',
-          ...(projectId ? { projectId } : {}),
-          ...(projectName ? { projectName } : {}),
         },
       })
+      operation.finish()
       return
     }
 
-    await createConversation(availableModels)
-  }, [availableModels, createConversation, projectId, projectName, routeKind, router])
+    dataEpochRef.current += 1
+    invalidateOperations()
+    clearConversationScope()
+    const operation = beginOperation('create-fresh-chat', null)
+    try {
+      await createConversation(availableModels, { operation })
+    } finally {
+      if (operation.isCurrent()) setIsLoading(false)
+      operation.finish()
+    }
+  }, [activeChatId, availableModels, beginOperation, clearConversationScope, conversationId, createConversation, invalidateOperations, routeKind, router])
+
+  const adoptServerConversation = useCallback(async (
+    chat: Chat,
+    serverId: string,
+    operation: ReturnType<typeof beginOperation>,
+  ): Promise<Chat> => {
+    if (!serverId || serverId.startsWith('chat-')) throw new Error('Chat changed. Reopen it to send.')
+    if (chat.id.startsWith('chat-')) {
+      if (!operation.isCurrent() || chatRef.current?.id !== chat.id) throw new Error('Chat changed. Reopen it to send.')
+      const next: Chat = { ...chat, id: serverId, clientId: chat.clientId ?? chat.id }
+      operation.adoptConversation(serverId)
+      const activeSend = activeDataSendRef.current
+      if (activeSend?.cancel === operation.cancel && activeSend.conversationId === chat.id) activeSend.conversationId = serverId
+      const route = routeIdentityRef.current
+      const ownsDetailDraftRoute = route.routeKind === 'detail' && route.conversationId === 'new'
+      ownedDraftPromotionRef.current = ownsDetailDraftRoute ? {
+        workspaceId: operation.workspaceId,
+        sourceRouteKind: 'detail',
+        sourceRouteId: 'new',
+        clientId: next.clientId ?? chat.id,
+        conversationId: serverId,
+      } : null
+      chatRef.current = next
+      setActiveChatId(serverId)
+      if (pendingTurn.current?.turnId) pendingTurn.current.conversationId = serverId
+      if (!operation.isCurrent() || chatRef.current?.id !== serverId) throw new Error('Chat changed. Reopen it to send.')
+      if (ownsDetailDraftRoute) navigation.setParams({ id: serverId })
+      if (operation.workspaceId && isFocusedRef.current) persistLastOpenedChat(serverId, operation.workspaceId)
+      return next
+    }
+    if (chat.id !== serverId) throw new Error('Chat changed. Reopen it to send.')
+    return chat
+  }, [navigation, persistLastOpenedChat])
 
   // Draft chats are client-side only until the first send. Mirrors web's
   // PENDING_FIRST_CHAT_ID flow: POST /conversations with the draft's id as
   // clientId so the act turn (which also carries `conversationClientId`)
   // lands on the same server row, then adopt the real conversation id.
   const ensureServerConversation = useCallback(
-    async (chat: Chat): Promise<Chat> => {
+    async (chat: Chat, operation: ReturnType<typeof beginOperation>, modelId?: string): Promise<Chat> => {
+      if (!operation.isCurrent()) throw new Error('Chat changed. Reopen it to send.')
       if (!chat.id.startsWith('chat-') || chat.clientId) return chat
-      const created = await createNewChat(selectedModel?.id ?? chat.modelId, {
+      const created = await createNewChat(modelId ?? chat.actModelId ?? chat.modelId, {
         clientId: chat.id,
-        projectId: chat.projectId,
         title: chat.title,
+        workspaceId: operation.workspaceId ?? undefined,
+        signal: operation.signal,
       })
-      const next: Chat = { ...chat, id: created.id, clientId: created.clientId ?? chat.id }
-      chatRef.current = next
-      setActiveChatId(next.id)
-      await saveChat(next).catch(() => {})
-      await setLastOpenedChatId(next.id).catch(() => {})
-      return next
+      if (!operation.isCurrent() || chatRef.current?.id !== chat.id) throw new Error('Chat changed. Reopen it to send.')
+      return adoptServerConversation(chat, created.id, operation)
     },
-    [selectedModel?.id],
+    [adoptServerConversation],
   )
 
   const handleStopGeneration = useCallback(async () => {
-    abortRef.current = true
-    setIsSending(false)
     const activeChat = chatRef.current
-    const messageId = [...messages]
-      .reverse()
-      .find((message) => message.role === 'assistant' && message.responses?.some((response) => response.isLoading))
-      ?.id
     if (!activeChat?.id) return
-    try {
-      await stopConversation(activeChat.id, messageId)
-    } catch {
-      // Local abort still stops the mobile stream if the server already finished.
+    const workspaceId = committedWorkspaceRef.current
+    const activeSend = activeDataSendRef.current
+    const activeTurnId = activeSend?.workspaceId === workspaceId && activeSend.conversationId === activeChat.id
+      ? activeSend.turnId
+      : pendingTurn.current?.conversationId === activeChat.id ? pendingTurn.current.turnId : null
+    const run = currentRun?.conversationId === activeChat.id && currentRun.turnId === activeTurnId ? currentRun : null
+    const assistantMessageId = run?.assistantMessageId
+    const messageId = assistantMessageId && /^[a-z0-9]{20,40}$/i.test(assistantMessageId) ? assistantMessageId : undefined
+    const activeSendOwnsChat = activeSend?.workspaceId === workspaceId && activeSend.conversationId === activeChat.id
+    const turnMessages = activeTurnId === null ? [] : committedMessagesRef.current.filter(message =>
+      message.role === 'assistant' && message.turnId === activeTurnId,
+    )
+    const partialMessage = (activeSendOwnsChat
+      ? committedMessagesRef.current.find(message => message.role === 'assistant' && message.id === activeSend.turnId)
+      : undefined) ?? (messageId
+        ? committedMessagesRef.current.find(message => message.role === 'assistant' && message.id === messageId)
+        : turnMessages.length === 1 ? turnMessages[0] : undefined)
+    const partialModelId = activeSendOwnsChat ? activeSend.modelId : partialMessage?.selectedModelId
+    const partialPayload = buildStopPartialPayload(partialMessage, partialModelId)
+    if (activeSend && activeSend.workspaceId === workspaceId && activeSend.conversationId === activeChat.id) {
+      activeSend.cancel()
+      if (activeDataSendRef.current === activeSend) activeDataSendRef.current = null
+      if (sendLockOwnerRef.current === activeSend) {
+        sendLockOwnerRef.current = null
+        sendLockTurnIdRef.current = null
+      }
     }
-  }, [messages])
+    abortRef.current = true
+    pendingTurn.current = null
+    setIsSending(false)
+    setMessages(current => current.map(message => {
+      if (activeTurnId && message.turnId !== activeTurnId && message.id !== messageId) return message
+      const interrupted = message.isStreaming || message.responses?.some(response => response.isLoading) === true
+      return {
+        ...message,
+        isStreaming: false,
+        status: interrupted ? 'interrupted' : message.status,
+        responses: message.responses?.map(response => ({
+          ...response,
+          isLoading: false,
+          status: response.isLoading ? 'interrupted' : response.status,
+        })),
+      }
+    }))
+
+    const shouldStopServerConversation = Boolean(workspaceId && !isTemporary && !activeChat.id.startsWith('chat-'))
+    if (!shouldStopServerConversation || !workspaceId) return
+    const stopLockKey = conversationStopLockKey(workspaceId, activeChat.id)
+    if (conversationStopLocksRef.current.has(stopLockKey)) return
+    const stopLockToken = ++stopLockSequenceRef.current
+    if (!messageId) conversationStopLocksRef.current.set(stopLockKey, stopLockToken)
+    const operation = beginOperation(`stop-generation:${stopLockKey}`, activeChat.id, false)
+    try {
+      if (!operation.isCurrent()) return
+      await stopConversation(activeChat.id, messageId, {
+        workspaceId,
+        signal: operation.signal,
+        ...partialPayload,
+      })
+      if (operation.isCurrent()) {
+        setMessages(current => current.map(message => {
+          if (activeTurnId && message.turnId !== activeTurnId && message.id !== messageId) return message
+          return { ...message, responses: message.responses?.map(response => ({ ...response, isLoading: false })) }
+        }))
+      }
+    } catch {
+      if (operation.isCurrent() && (!activeDataSendRef.current || activeDataSendRef.current.turnId === activeTurnId)) {
+        setAttachmentError('Could not stop. The response may still be running.')
+      }
+    } finally {
+      if (!messageId && conversationStopLocksRef.current.get(stopLockKey) === stopLockToken) conversationStopLocksRef.current.delete(stopLockKey)
+      operation.finish()
+    }
+  }, [beginOperation, currentRun, isTemporary])
 
   const pickImage = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Photo Library Access Needed', 'Please allow photo access in Settings to attach images.')
-      return
+    const operation = beginOperation('image-picker')
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (!operation.isCurrent()) return
+      if (status !== 'granted') {
+        Alert.alert('Photo Library Access Needed', 'Please allow photo access in Settings to attach images.')
+        return
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        base64: true,
+        quality: 0.7,
+      })
+      if (!operation.isCurrent()) return
+      if (!result.canceled && result.assets[0]?.base64) {
+        const mimeType = result.assets[0].mimeType || 'image/jpeg'
+        composerRevisionRef.current += 1
+        setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
+      }
+    } finally {
+      operation.finish()
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      base64: true,
-      quality: 0.7,
-    })
-
-    if (!result.canceled && result.assets[0].base64) {
-      const mimeType = result.assets[0].mimeType || 'image/jpeg'
-      setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
-    }
-  }, [])
+  }, [beginOperation])
 
   const pickImageFromCamera = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Camera access needed', 'Please allow camera access in Settings.')
+    const operation = beginOperation('image-picker')
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+      if (!operation.isCurrent()) return
+      if (status !== 'granted') {
+        Alert.alert('Camera access needed', 'Please allow camera access in Settings.')
+        return
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        base64: true,
+        quality: 0.7,
+      })
+      if (!operation.isCurrent()) return
+      if (!result.canceled && result.assets[0]?.base64) {
+        const mimeType = result.assets[0].mimeType || 'image/jpeg'
+        composerRevisionRef.current += 1
+        setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
+      }
+    } finally {
+      operation.finish()
+    }
+  }, [beginOperation])
+
+  const queueDocumentUpload = useCallback(async (uri: string, name: string, mimeType: string, pickerOperation?: ReturnType<typeof beginOperation>) => {
+    if (pickerOperation && !pickerOperation.isCurrent()) return
+    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const operation = beginOperation(`document-upload:${clientId}`)
+    if (!operation.isCurrent()) {
+      operation.finish()
       return
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      base64: true,
-      quality: 0.7,
-    })
-    if (!result.canceled && result.assets[0].base64) {
-      const mimeType = result.assets[0].mimeType || 'image/jpeg'
-      setImageBase64(`data:${mimeType};base64,${result.assets[0].base64}`)
-    }
-  }, [])
-
-  const queueDocumentUpload = useCallback(async (uri: string, name: string, mimeType: string) => {
-    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    composerRevisionRef.current += 1
     setAttachmentError(null)
     setPendingDocuments((prev) => [...prev, { clientId, name, fileIds: [], status: 'uploading' }])
     try {
-      const result = await uploadDocument(uri, name, mimeType)
+      const result = await uploadDocument(uri, name, mimeType, {
+        workspaceId: operation.workspaceId ?? undefined,
+        signal: operation.signal,
+      })
+      if (!operation.isCurrent()) return
       setPendingDocuments((prev) =>
         prev.map((d) =>
           d.clientId === clientId
@@ -937,43 +1459,60 @@ export function ChatScreen({
         ),
       )
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not index file'
+      if (!operation.isCurrent()) return
+      const msg = userSafeTransportError(err, 'Could not index file')
       setPendingDocuments((prev) =>
         prev.map((d) => (d.clientId === clientId ? { ...d, status: 'error', error: msg } : d)),
       )
+    } finally {
+      operation.finish()
     }
-  }, [])
+  }, [beginOperation])
 
   const pickFile = useCallback(async () => {
-    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true })
-    if (result.canceled) return
-    const asset = result.assets[0]
-    const mimeType = asset.mimeType ?? 'application/octet-stream'
-    if (mimeType.startsWith('image/')) {
-      void queueDocumentUpload(asset.uri, asset.name, mimeType)
-    } else {
-      void queueDocumentUpload(asset.uri, asset.name, mimeType)
+    const operation = beginOperation('document-picker', chatRef.current?.id ?? null, false)
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true })
+      if (!operation.isCurrent() || result.canceled) return
+      const asset = result.assets[0]
+      if (!asset) return
+      const mimeType = asset.mimeType ?? 'application/octet-stream'
+      await queueDocumentUpload(asset.uri, asset.name, mimeType, operation)
+    } finally {
+      operation.finish()
     }
-  }, [queueDocumentUpload])
+  }, [beginOperation, queueDocumentUpload])
 
   const handleModelSelect = useCallback(
     async (model: ChatModel) => {
+      const operation = beginOperation('text-model-selection')
+      if (!operation.isCurrent()) {
+        operation.finish()
+        return
+      }
       setSelectedModel(model)
       setModelPickerVisible(false)
-      await setLastSelectedModelId(model.id).catch(() => {})
-      await syncConversationMeta({
-        modelId: model.id,
-        askModelIds: [model.id],
-        actModelId: model.id,
-      })
+      try {
+        await setLastSelectedModelId(model.id, operation.workspaceId ?? undefined).catch(() => {})
+        if (!operation.isCurrent()) return
+        await syncConversationMeta({
+          modelId: model.id,
+          askModelIds: [model.id],
+          actModelId: model.id,
+        }, operation)
+      } finally {
+        operation.finish()
+      }
     },
-    [syncConversationMeta],
+    [beginOperation, syncConversationMeta],
   )
 
   const handleMediaSend = useCallback(
     async (kind: 'image' | 'video') => {
+      if (sendLockTurnIdRef.current) return
       const activeChat = chatRef.current
-      if (!activeChat || isSending) return
+      if (activeChat && conversationStopLocksRef.current.has(conversationStopLockKey(committedWorkspaceRef.current, activeChat.id))) return
+      if (!activeChat || isSending || messages.some(message => message.responses?.some(response => response.isLoading))) return
       const modelId = kind === 'image'
         ? (selectedImageModelId ?? imageModels[0]?.id)
         : (selectedVideoModelId ?? videoModels[0]?.id)
@@ -983,26 +1522,48 @@ export function ChatScreen({
       }
       if (!inputValue.trim() && !imageBase64) return
 
+      const operation = beginOperation('media-send', activeChat.id, false)
+      const mediaWorkspaceId = operation.workspaceId
+      if (!operation.isCurrent() || !mediaWorkspaceId || mediaWorkspaceId !== getRequestWorkspaceId()) {
+        operation.finish()
+        return
+      }
+      const capturedInput = inputValue
+      const capturedImage = imageBase64
+      const capturedReply = replyContext
+
       hapticImpact()
       Keyboard.dismiss()
       setIsSending(true)
       setAttachmentError(null)
 
-      const turnId = generateMessageId()
-      const promptText = replyContext?.bodyForModel
-        ? `${inputValue.trim()}\n\n---\n[User is replying in thread to prior content]\n${replyContext.bodyForModel}`
-        : inputValue.trim()
+      const signature = JSON.stringify([mediaWorkspaceId, kind, modelId, capturedInput, capturedImage, capturedReply])
+      const retryTurn = pendingTurn.current?.conversationId === activeChat.id && pendingTurn.current.signature === signature
+        ? pendingTurn.current
+        : null
+      const turnId = retryTurn?.turnId ?? generateMessageId()
+      const userMessageId = retryTurn?.userMessageId ?? generateMessageId()
+      sendLockTurnIdRef.current = turnId
+      pendingTurn.current = { conversationId: activeChat.id, signature, turnId, userMessageId }
+      const sendOwner = { turnId, workspaceId: mediaWorkspaceId, conversationId: activeChat.id, modelId, cancel: operation.cancel }
+      activeDataSendRef.current = sendOwner
+      sendLockOwnerRef.current = sendOwner
+      const promptText = capturedReply?.bodyForModel
+        ? `${capturedInput.trim()}\n\n---\n[User is replying in thread to prior content]\n${capturedReply.bodyForModel}`
+        : capturedInput.trim()
       const userMessage: Message = {
-        id: generateMessageId(),
+        id: userMessageId,
+        turnId,
         role: 'user',
-        content: inputValue.trim(),
+        content: capturedInput.trim(),
         timestamp: Date.now(),
-        imageData: imageBase64 || undefined,
+        imageData: capturedImage || undefined,
+        contentType: kind,
         mode: 'act',
-        replyToTurnId: replyContext?.replyToTurnId,
-        replySnippet: replyContext?.snippet,
+        replyToTurnId: capturedReply?.replyToTurnId,
+        replySnippet: capturedReply?.snippet,
       }
-      const assistantId = generateMessageId()
+      const assistantId = turnId
       const generating: Message = {
         id: assistantId,
         turnId,
@@ -1020,7 +1581,8 @@ export function ChatScreen({
         ],
         mode: 'act',
       }
-      setMessages((current) => [...current, userMessage, generating])
+      setMessages((current) => [...current.filter(message => message.turnId !== turnId), userMessage, generating])
+      const clearedComposerRevision = ++composerRevisionRef.current
       setInputValue('')
       setImageBase64(null)
       setReplyContext(null)
@@ -1030,12 +1592,33 @@ export function ChatScreen({
       // Generation endpoints need a real conversationId — create the server
       // row for drafts first (same pending-first-send flow as text sends).
       let sendChat = activeChat
-      if (!isTemporary) {
-        sendChat = await ensureServerConversation(activeChat).catch(() => activeChat)
-      }
-      const sendConversationId = sendChat.id.startsWith('chat-') ? undefined : sendChat.id
-
+      let generationFailed = false
       try {
+        if (!isTemporary) {
+          try {
+            sendChat = await ensureServerConversation(activeChat, operation, modelId)
+          } catch (error) {
+            if (!operation.isCurrent()) throw error
+          }
+        }
+        let sendConversationId = sendChat.id.startsWith('chat-') ? undefined : sendChat.id
+        if (!operation.isCurrent() || chatRef.current?.id !== sendChat.id) return
+        if (pendingTurn.current?.turnId === turnId) pendingTurn.current.conversationId = sendChat.id
+        if (!isTemporary) {
+          const result = await submitPersonalTurn({
+            conversationId: sendConversationId as PersonalTurn['conversationId'],
+            clientId: sendConversationId ? undefined : sendChat.id,
+            turnId, modelId, mode: 'act', contentType: kind,
+            parts: [...(capturedImage ? [{ type: 'file' as const, url: capturedImage, mediaType: capturedImage.match(/^data:([^;]+);/)?.[1] ?? 'image/jpeg' }] : []), { type: 'text', text: capturedInput.trim() }],
+            replyToTurnId: capturedReply?.replyToTurnId,
+            replySnippet: capturedReply?.snippet,
+          }, mediaWorkspaceId, operation.signal)
+          if (!operation.isCurrent()) return
+          sendChat = await adoptServerConversation(sendChat, result.conversationId, operation)
+          sendConversationId = sendChat.id
+          if (!operation.isCurrent()) return
+        }
+        if (!operation.isCurrent() || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== turnId) return
         const result = kind === 'image'
           ? await generateImage({
               prompt: promptText,
@@ -1043,7 +1626,9 @@ export function ChatScreen({
               conversationId: isTemporary ? undefined : sendConversationId,
               temporaryChat: isTemporary || undefined,
               turnId,
-              imageUrl: imageBase64 ?? undefined,
+              imageUrl: capturedImage ?? undefined,
+              workspaceId: mediaWorkspaceId,
+              signal: operation.signal,
             })
           : await generateVideo({
               prompt: promptText,
@@ -1051,32 +1636,55 @@ export function ChatScreen({
               conversationId: isTemporary ? undefined : sendConversationId,
               temporaryChat: isTemporary || undefined,
               turnId,
-              imageUrl: imageBase64 ?? undefined,
+              imageUrl: capturedImage ?? undefined,
+              workspaceId: mediaWorkspaceId,
+              signal: operation.signal,
             })
-        setMessages((current) =>
-          current.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  generatedFiles: [
-                    ...(m.generatedFiles ?? []),
-                    {
-                      url: result.url ?? '',
-                      mediaType: kind === 'image' ? 'image/png' : 'video/mp4',
-                    },
-                  ],
-                  responses: [{ ...m.responses![0], isLoading: false }],
-                }
-              : m,
-          ),
-        )
+          if (!operation.isCurrent() || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== turnId) return
+          setMessages((current) =>
+            current.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    ...(result.url ? { generatedFiles: [...(m.generatedFiles ?? []), { url: result.url, mediaType: kind === 'image' ? 'image/png' : 'video/mp4' }] } : {}),
+                    ...(result.outputId ? { outputs: [...(m.outputs ?? []).filter((output) => output._id !== result.outputId), {
+                      _id: result.outputId, type: kind, status: 'completed', prompt: promptText, modelId,
+                      ...(result.url ? { url: result.url } : {}), createdAt: Date.now(), turnId,
+                    }] } : {}),
+                    status: 'completed',
+                    responses: [{ ...m.responses![0], isLoading: false }],
+                  }
+                : m,
+            ),
+          )
+        if (!isTemporary) {
+          const refreshed = await loadChat(sendChat.id, mediaWorkspaceId).catch(() => null)
+          if (!operation.isCurrent() || pendingTurn.current?.turnId !== turnId) return
+          if (refreshed && chatRef.current?.id === sendChat.id) {
+            chatRef.current = refreshed
+            setChatTitle(refreshed.title)
+            setMessages(refreshed.messages)
+            setShowingCachedCopy(refreshed.restoredFromCache === true)
+          }
+          if (operation.isCurrent()) await refreshHistory().catch(() => {})
+        }
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Generation failed'
+        if (!operation.isCurrent() || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== turnId) return
+        if (composerRevisionRef.current === clearedComposerRevision) {
+          composerRevisionRef.current += 1
+          setGenerationKind(kind)
+          setInputValue(capturedInput)
+          setImageBase64(capturedImage)
+          setReplyContext(capturedReply)
+        }
+        generationFailed = true
+        const message = userSafeTransportError(error, `${kind === 'image' ? 'Image' : 'Video'} generation failed. Please try again.`)
         setMessages((current) =>
           current.map((m) =>
             m.id === assistantId
               ? {
                   ...m,
+                  status: 'error',
                   responses: [
                     {
                       ...(m.responses?.[0] ?? {
@@ -1095,24 +1703,23 @@ export function ChatScreen({
           ),
         )
       } finally {
-        setIsSending(false)
-      }
-
-      if (!isTemporary) {
-        const refreshed = await loadChat(sendChat.id)
-        if (refreshed) {
-          chatRef.current = refreshed
-          setChatTitle(refreshed.title)
-          setMessages(refreshed.messages)
-          setShowingCachedCopy(refreshed.restoredFromCache === true)
+        if (!generationFailed && pendingTurn.current?.turnId === turnId) pendingTurn.current = null
+        if (sendLockOwnerRef.current === sendOwner) {
+          sendLockOwnerRef.current = null
+          sendLockTurnIdRef.current = null
+          if (operation.isCurrent()) setIsSending(false)
         }
-        await refreshHistory()
+        if (activeDataSendRef.current === sendOwner) activeDataSendRef.current = null
+        operation.finish()
       }
     },
     [
       ensureServerConversation,
+      adoptServerConversation,
+      beginOperation,
       imageBase64,
       imageModels,
+      messages,
       inputValue,
       isSending,
       isTemporary,
@@ -1120,7 +1727,6 @@ export function ChatScreen({
       replyContext,
       scrollToBottom,
       selectedImageModelId,
-      selectedModel,
       selectedVideoModelId,
       videoModels,
     ],
@@ -1134,45 +1740,10 @@ export function ChatScreen({
 
   const handleSelectGeneration = useCallback(
     (kind: 'image' | 'video' | null, modelId: string | null) => {
+      composerRevisionRef.current += 1
       setGenerationKind(kind)
       if (kind === 'image' && modelId) setSelectedImageModelId(modelId)
       if (kind === 'video' && modelId) setSelectedVideoModelId(modelId)
-    },
-    [],
-  )
-
-  const handleMessageLongPress = useCallback(
-    (message: Message) => {
-      hapticImpact()
-      const text = message.content?.trim() ?? ''
-      const canReply = text.length > 0
-      Alert.alert(message.role === 'user' ? 'Your message' : 'Message', undefined, [
-        {
-          text: 'Copy',
-          onPress: () => {
-            void Clipboard.setStringAsync(text)
-            hapticNotify()
-          },
-        },
-        ...(canReply
-          ? [
-              {
-                text: 'Reply',
-                onPress: () => {
-                  // Mirrors web `beginReplyToAssistantText`: snippet ≤160 chars
-                  // for the bar, full text (≤16k) goes to the model.
-                  setReplyContext({
-                    snippet: text.length > 160 ? `${text.slice(0, 160)}…` : text,
-                    bodyForModel: text.slice(0, 16000),
-                    ...(message.turnId ? { replyToTurnId: message.turnId } : {}),
-                  })
-                  textInputRef.current?.focus()
-                },
-              },
-            ]
-          : []),
-        { text: 'Cancel', style: 'cancel' as const },
-      ])
     },
     [],
   )
@@ -1182,10 +1753,12 @@ export function ChatScreen({
       router.push('/auth-flow?force=true')
       return
     }
+    if (sendLockTurnIdRef.current) return
 
     const activeChat = chatRef.current
+    if (activeChat && conversationStopLocksRef.current.has(conversationStopLockKey(committedWorkspaceRef.current, activeChat.id))) return
     const hasReadyDocs = pendingDocuments.some((d) => d.status === 'ready')
-    if ((!inputValue.trim() && !imageBase64 && !hasReadyDocs) || !selectedModel || !activeChat || isSending) {
+    if ((!inputValue.trim() && !imageBase64 && !hasReadyDocs) || !activeChat || isSending || messages.some(message => message.responses?.some(response => response.isLoading))) {
       return
     }
 
@@ -1202,6 +1775,36 @@ export function ChatScreen({
       await handleMediaSend(generationKind)
       return
     }
+    if (!selectedModel) { setAttachmentError('No text model is available on this account.'); return }
+
+      const operation = beginOperation('chat-send', activeChat.id, false)
+    const workspaceAtSend = operation.workspaceId
+    if (!operation.isCurrent() || !workspaceAtSend || workspaceAtSend !== getRequestWorkspaceId()) {
+      operation.finish()
+      return
+    }
+    const capturedInput = inputValue
+    const capturedImage = imageBase64
+    const readyDocs = pendingDocuments.filter((d) => d.status === 'ready')
+    const indexedAttachments: IndexedAttachment[] = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
+    const indexedFileNames = readyDocs.map((d) => d.name)
+    const sentMentions = mentions
+    const sentReply = replyContext
+    const sentRequestMode = requestMode
+    const sentToolIds = selectedToolIds.length ? [...selectedToolIds] : undefined
+    const sentMemoryEnabled = isTemporary ? false : memoryEnabled
+    const sentModel = selectedModel
+
+    const signature = JSON.stringify([workspaceAtSend, capturedInput, capturedImage, sentModel.id, sentRequestMode, indexedAttachments, sentMentions, sentReply])
+    const assistantId = pendingTurn.current?.conversationId === activeChat.id && pendingTurn.current.signature === signature
+      ? pendingTurn.current.turnId
+      : generateMessageId()
+    sendLockTurnIdRef.current = assistantId
+    abortRef.current = false
+    pendingTurn.current = { conversationId: activeChat.id, signature, turnId: assistantId }
+    const sendOwner = { turnId: assistantId, workspaceId: workspaceAtSend, conversationId: activeChat.id, modelId: sentModel.id, cancel: operation.cancel }
+    activeDataSendRef.current = sendOwner
+    sendLockOwnerRef.current = sendOwner
 
     hapticImpact()
     textInputRef.current?.blur()
@@ -1210,10 +1813,6 @@ export function ChatScreen({
     setIsSending(true)
     setAttachmentError(null)
 
-    const readyDocs = pendingDocuments.filter((d) => d.status === 'ready')
-    const indexedAttachments: IndexedAttachment[] = readyDocs.map((d) => ({ name: d.name, fileIds: d.fileIds }))
-    const indexedFileNames = readyDocs.map((d) => d.name)
-
     let fileContext = ''
     if (indexedFileNames.length > 0) {
       fileContext = `\n\n[Indexed documents: ${indexedFileNames.join(', ')}]`
@@ -1221,19 +1820,21 @@ export function ChatScreen({
 
     const userMessage: Message = {
       id: generateMessageId(),
+      turnId: assistantId,
       role: 'user',
-      content: inputValue.trim() + fileContext,
+      content: capturedInput.trim() + fileContext,
       timestamp: Date.now(),
-      imageData: imageBase64 || undefined,
+      imageData: capturedImage || undefined,
       mode: 'act',
-      replyToTurnId: replyContext?.replyToTurnId,
-      replySnippet: replyContext?.snippet,
-      mentions: mentions.length > 0 ? mentions : undefined,
+      replyToTurnId: sentReply?.replyToTurnId,
+      replySnippet: sentReply?.snippet,
+      mentions: sentMentions.length > 0 ? sentMentions : undefined,
+      indexedDocuments: indexedFileNames.length ? indexedFileNames : undefined,
+      indexedAttachments: indexedAttachments.length ? indexedAttachments : undefined,
     }
 
-    const nextTitle = getNextTitle(chatTitle, inputValue.trim() || indexedFileNames[0] || '')
-    const userMessageList = [...messages, userMessage]
-    const assistantId = generateMessageId()
+    const nextTitle = getNextTitle(chatTitle, capturedInput.trim() || indexedFileNames[0] || '')
+    const userMessageList = [...messages.filter(message => message.turnId !== assistantId), userMessage]
     const placeholderAssistant: Message = {
       id: assistantId,
       turnId: assistantId,
@@ -1243,9 +1844,9 @@ export function ChatScreen({
       selectedModelId: selectedModel.id,
       responses: [
         {
-          modelId: selectedModel.id,
-          modelName: selectedModel.name,
-          provider: selectedModel.provider,
+          modelId: sentModel.id,
+          modelName: sentModel.name,
+          provider: sentModel.provider,
           content: '',
           isLoading: true,
         },
@@ -1255,8 +1856,7 @@ export function ChatScreen({
     }
 
     setMessages([...userMessageList, placeholderAssistant])
-    const sentMentions = mentions
-    const sentReply = replyContext
+    const clearedComposerRevision = ++composerRevisionRef.current
     setInputValue('')
     setImageBase64(null)
     setPendingDocuments([])
@@ -1268,79 +1868,125 @@ export function ChatScreen({
     // Draft chats get a server row here (web's pending-first-send flow):
     // POST /conversations with the draft id as clientId; on failure the act
     // body still carries `conversationClientId` so the turn creates it lazily.
-    let sendChat = activeChat
-    if (!isTemporary) {
-      sendChat = await ensureServerConversation(activeChat).catch(() => activeChat)
-      try {
-        await syncConversationMeta({
-          title: nextTitle,
-          modelId: selectedModel.id,
-          askModelIds: [selectedModel.id],
-          actModelId: selectedModel.id,
-          lastMode: 'act',
-        })
-      } catch {
-        // ignore sync errors
-      }
-    }
-    const stillDraft = sendChat.id.startsWith('chat-')
+    let failed = false
     scrollToBottom()
 
-    const knowledgeMentions = sentMentions.filter((m) => m.type === 'knowledge')
     try {
-      console.log('[ChatScreen] send: conversationId=%s modelId=%s baseUrl=%s temp=%s', sendChat.id, selectedModel.id, AUTH_BASE_URL, isTemporary)
-      for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
+      let sendChat = activeChat
+      if (!isTemporary) {
+        try {
+          sendChat = await ensureServerConversation(activeChat, operation, sentModel.id)
+        } catch (error) {
+          if (!operation.isCurrent()) throw error
+        }
+        if (!operation.isCurrent() || chatRef.current?.id !== sendChat.id) return
+        if (!sendChat.id.startsWith('chat-')) {
+          await syncConversationMeta({
+            title: nextTitle,
+            modelId: sentModel.id,
+            askModelIds: [sentModel.id],
+            actModelId: sentModel.id,
+            lastMode: 'act',
+          }, operation).catch(() => {})
+          if (!operation.isCurrent()) return
+        }
+      }
+      const stillDraft = sendChat.id.startsWith('chat-')
+      if (pendingTurn.current?.turnId === assistantId) pendingTurn.current.conversationId = sendChat.id
+
+      for await (const chunk of chatStream(sentModel.id, buildApiMessages(userMessageList), {
+        workspaceId: workspaceAtSend ?? undefined,
         conversationId: isTemporary || stillDraft ? undefined : sendChat.id,
         conversationClientId: isTemporary || !stillDraft ? undefined : sendChat.id,
-        projectId: isTemporary ? undefined : projectId,
         turnId: assistantId,
         temporaryChat: isTemporary || undefined,
-        requestMode,
-        requestedToolIds: selectedToolIds.length > 0 ? selectedToolIds : undefined,
-        memoryEnabled: isTemporary ? false : memoryEnabled,
+        requestMode: sentRequestMode,
+        requestedToolIds: sentToolIds,
+        memoryEnabled: sentMemoryEnabled,
         mentions: sentMentions.length > 0 ? sentMentions.map(mentionToRequestBody) : undefined,
-        knowledgeBaseIds: knowledgeMentions.length > 0 ? knowledgeMentions.map((m) => m.id) : undefined,
         replyContextForModel: sentReply?.bodyForModel,
         indexedFileNames: indexedFileNames.length > 0 ? indexedFileNames : undefined,
         indexedAttachments: indexedAttachments.length > 0 ? indexedAttachments : undefined,
+        signal: operation.signal,
       })) {
-        if (abortRef.current) break
-        setMessages((current) => applyStreamChunk(current, assistantId, selectedModel, chunk))
+        if (!operation.isCurrent() || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== assistantId) break
+        if (chunk.type === 'start' && chunk.metadata && typeof chunk.metadata === 'object' && 'conversationId' in chunk.metadata && typeof chunk.metadata.conversationId === 'string') {
+          const serverId = chunk.metadata.conversationId
+          if (sendChat.id.startsWith('chat-')) {
+            sendChat = await adoptServerConversation(sendChat, serverId, operation)
+            if (!operation.isCurrent()) break
+          } else if (serverId !== sendChat.id) {
+            throw new Error('Chat changed. Reopen it to send.')
+          }
+        }
+        const scopedChunk = chunk.type === 'error'
+          ? { ...chunk, content: userSafeTransportError(new Error(chunk.content), 'Could not send. Please try again.') }
+          : chunk
+        if (scopedChunk.type === 'error') failed = true
+        setMessages((current) => applyStreamChunk(current, assistantId, sentModel, scopedChunk))
+      }
+      if (!operation.isCurrent() || pendingTurn.current?.turnId !== assistantId) return
+      if (failed) {
+        if (composerRevisionRef.current === clearedComposerRevision) {
+          composerRevisionRef.current += 1
+          setInputValue(capturedInput)
+          setImageBase64(capturedImage)
+          setPendingDocuments(readyDocs)
+          setMentions(sentMentions)
+          setReplyContext(sentReply)
+        }
+        setAttachmentError('Could not send. Your draft is ready to retry.')
+        return
+      }
+      pendingTurn.current = null
+
+      if (!isTemporary) {
+        const refreshed = await loadChat(sendChat.id, workspaceAtSend).catch(() => null)
+        if (!operation.isCurrent()) return
+        if (refreshed && !pendingTurn.current && chatRef.current?.id === sendChat.id) {
+          chatRef.current = refreshed
+          setChatTitle(refreshed.title)
+          setMessages(refreshed.messages)
+          setShowingCachedCopy(refreshed.restoredFromCache === true)
+        } else {
+          setMessages((current) => applyStreamChunk(current, assistantId, sentModel, { type: 'done', content: '' }))
+        }
+        if (operation.isCurrent()) await refreshHistory()
+      } else {
+        setMessages((current) => applyStreamChunk(current, assistantId, sentModel, { type: 'done', content: '' }))
       }
     } catch (error) {
-      console.error('[ChatScreen] send failed:', error)
+      if (!operation.isCurrent()) return
+      failed = true
       setMessages((current) =>
-        applyStreamChunk(current, assistantId, selectedModel, {
+        applyStreamChunk(current, assistantId, sentModel, {
           type: 'error',
-          content: String(error),
+          content: userSafeTransportError(error, 'Could not send. Please try again.'),
         }),
       )
-    } finally {
-      setIsSending(false)
-    }
-
-    if (!isTemporary) {
-      const refreshed = await loadChat(sendChat.id)
-      if (refreshed) {
-        chatRef.current = refreshed
-        setChatTitle(refreshed.title)
-        setMessages(refreshed.messages)
-        setShowingCachedCopy(refreshed.restoredFromCache === true)
-      } else {
-        setMessages((current) =>
-          applyStreamChunk(current, assistantId, selectedModel, { type: 'done', content: '' }),
-        )
+      if (composerRevisionRef.current === clearedComposerRevision) {
+        composerRevisionRef.current += 1
+        setInputValue(capturedInput)
+        setImageBase64(capturedImage)
+        setPendingDocuments(readyDocs)
+        setMentions(sentMentions)
+        setReplyContext(sentReply)
       }
-
-      await refreshHistory()
-    } else {
-      setMessages((current) =>
-        applyStreamChunk(current, assistantId, selectedModel, { type: 'done', content: '' }),
-      )
+      setAttachmentError('Could not send. Your draft is ready to retry.')
+    } finally {
+      if (sendLockOwnerRef.current === sendOwner) {
+        sendLockOwnerRef.current = null
+        sendLockTurnIdRef.current = null
+        if (operation.isCurrent()) setIsSending(false)
+      }
+      if (activeDataSendRef.current === sendOwner) activeDataSendRef.current = null
+      operation.finish()
     }
   }, [
+    beginOperation,
     chatTitle,
     ensureServerConversation,
+    adoptServerConversation,
     generationKind,
     handleMediaSend,
     imageBase64,
@@ -1353,7 +1999,6 @@ export function ChatScreen({
     mentions,
     messages,
     pendingDocuments,
-    projectId,
     refreshHistory,
     replyContext,
     requestMode,
@@ -1364,40 +2009,152 @@ export function ChatScreen({
     syncConversationMeta,
   ])
 
-  // Latest-send ref so draft quick actions can fire a message without reading a
-  // stale `inputValue` closure — same setInput-then-send flow as the web.
-  handleSendRef.current = handleSend
+  const sendPresetMessage = useCallback(async (text: string, scope: NativeTranscriptScope, saveOperation: ReturnType<typeof beginOperation>) => {
+    if (!isTranscriptScopeCurrent(scope) || !saveOperation.isCurrent()) throw new Error('This draft is no longer current.')
+    if (sendLockTurnIdRef.current || isSending) throw new Error('A message is already being sent.')
+    const chat = chatRef.current
+    const model = selectedModel
+    const workspaceId = saveOperation.workspaceId
+    if (!chat || !model || !workspaceId || getRequestWorkspaceId() !== workspaceId) throw new Error('This chat is no longer available.')
+    if (conversationStopLocksRef.current.has(conversationStopLockKey(workspaceId, chat.id))) throw new Error('A message is already being stopped.')
 
-  const sendPresetMessage = useCallback((text: string) => {
-    setInputValue(text)
-    setTimeout(() => { void handleSendRef.current() }, 0)
-  }, [])
-
-  const handleSaveDraft = useCallback(async (state: DraftModalState) => {
-    setDraftSaving(true)
-    try {
-      if (state.kind === 'skill') {
-        await createSkill({
-          name: state.draft.name,
-          description: state.draft.description,
-          instructions: state.draft.instructions,
-          enabled: true,
-          ...(projectId ? { projectId } : {}),
-        })
-        setDraftModal(null)
-        Alert.alert('Skill saved', `${state.draft.name} is now available in Extensions.`)
-      } else {
-        // Web parity: the "Create automation" CTA sends the instruction back
-        // into chat — the agent owns automation creation and can follow up.
-        setDraftModal(null)
-        sendPresetMessage('Create automation')
-      }
-    } catch (error) {
-      Alert.alert('Could not save draft', error instanceof Error ? error.message : 'Try again.')
-    } finally {
-      setDraftSaving(false)
+    const signature = JSON.stringify([workspaceId, chat.id, model.id, text])
+    const retry = presetRetryRef.current?.signature === signature ? presetRetryRef.current : null
+    const turnId = retry?.turnId ?? generateMessageId()
+    const userMessage: Message = { id: retry?.userMessageId ?? generateMessageId(), turnId, role: 'user', content: text, timestamp: Date.now(), mode: 'act' }
+    const assistant: Message = {
+      id: turnId, turnId, role: 'assistant', content: '', timestamp: Date.now(), selectedModelId: model.id,
+      responses: [{ modelId: model.id, modelName: model.name, provider: model.provider, content: '', isLoading: true }],
+      mode: 'act', isStreaming: true,
     }
-  }, [projectId, sendPresetMessage])
+    const requestMessages = [...messages.filter(message => message.turnId !== turnId), userMessage]
+    const dataOperation = beginOperation('preset-send', chat.id, false)
+    if (!dataOperation.isCurrent()) {
+      dataOperation.finish()
+      throw new Error('This chat is no longer available.')
+    }
+    const sendOwner = { turnId, workspaceId, conversationId: chat.id, modelId: model.id, cancel: dataOperation.cancel }
+    activeDataSendRef.current = sendOwner
+    sendLockOwnerRef.current = sendOwner
+    const handoff = new Promise<void>((resolve, reject) => {
+      let handedOff = false
+      let streamFinished = false
+      const work = (async () => {
+        let sendChat = chat
+        sendLockTurnIdRef.current = turnId
+        presetRetryRef.current = { signature, turnId, userMessageId: userMessage.id }
+        pendingTurn.current = { conversationId: chat.id, signature, turnId }
+        setIsSending(true)
+        setMessages(current => [...current.filter(message => message.turnId !== turnId), userMessage, assistant])
+        requestTranscriptEnd('submission')
+        try {
+          for await (const chunk of chatStream(model.id, buildApiMessages(requestMessages), {
+            workspaceId,
+            conversationId: isTemporary || chat.id.startsWith('chat-') ? undefined : chat.id,
+            conversationClientId: isTemporary || !chat.id.startsWith('chat-') ? undefined : chat.id,
+            turnId,
+            temporaryChat: isTemporary || undefined,
+            requestMode: 'chat',
+            memoryEnabled: isTemporary ? false : memoryEnabled,
+            signal: dataOperation.signal,
+          })) {
+            if (!dataOperation.isCurrent() || chatRef.current?.id !== sendChat.id) throw new Error('This chat is no longer current.')
+            if (!handedOff && (!scope.isCurrent() || !saveOperation.isCurrent())) throw new Error('This draft is no longer current.')
+            if (chunk.type === 'start' && chunk.metadata && typeof chunk.metadata === 'object' && 'conversationId' in chunk.metadata && typeof chunk.metadata.conversationId === 'string') {
+              const serverId = chunk.metadata.conversationId
+              if (chat.id.startsWith('chat-')) {
+                sendChat = await adoptServerConversation(chat, serverId, dataOperation)
+                await saveChat(sendChat, workspaceId)
+                if (!dataOperation.isCurrent()) throw new Error('This chat is no longer current.')
+              } else if (serverId !== sendChat.id) {
+                throw new Error('Chat changed. Reopen it to send.')
+              }
+            }
+            const scopedChunk = chunk.type === 'error'
+              ? { ...chunk, content: userSafeTransportError(new Error(chunk.content), 'Could not send. Please try again.') }
+              : chunk
+            setMessages(current => applyStreamChunk(current, turnId, model, scopedChunk))
+            if (scopedChunk.type === 'error') throw new Error(scopedChunk.content)
+            if (!handedOff && (chunk.type === 'start' || isTemporary)) {
+              handedOff = true
+              resolve()
+            }
+          }
+          streamFinished = true
+          if (!handedOff) { handedOff = true; resolve() }
+          if (!dataOperation.isCurrent()) return
+          setMessages(current => applyStreamChunk(current, turnId, model, { type: 'done', content: '' }))
+          presetRetryRef.current = null
+          pendingTurn.current = null
+          if (!isTemporary) {
+            const refreshed = await loadChat(sendChat.id, workspaceId).catch(() => null)
+            if (dataOperation.isCurrent() && refreshed && chatRef.current?.id === sendChat.id) {
+              chatRef.current = refreshed
+              setChatTitle(refreshed.title)
+              setMessages(refreshed.messages)
+              setShowingCachedCopy(refreshed.restoredFromCache === true)
+            }
+          }
+        } catch (error) {
+          const safeError = userSafeTransportError(error, 'Could not send. Please retry.')
+          if (!streamFinished && dataOperation.isCurrent()) {
+            setMessages(current => applyStreamChunk(current, turnId, model, { type: 'error', content: safeError }))
+          }
+          if (!handedOff) { handedOff = true; reject(new Error(safeError)) }
+        } finally {
+          if (sendLockOwnerRef.current === sendOwner) {
+            sendLockOwnerRef.current = null
+            sendLockTurnIdRef.current = null
+            if (dataOperation.isCurrent()) setIsSending(false)
+          }
+          if (activeDataSendRef.current === sendOwner) activeDataSendRef.current = null
+          dataOperation.finish()
+        }
+      })()
+      void work
+    })
+    await handoff
+  }, [adoptServerConversation, beginOperation, isSending, isTemporary, isTranscriptScopeCurrent, memoryEnabled, messages, requestTranscriptEnd, selectedModel])
+
+  const handleSaveDraft = useCallback(async (state: DraftModalState, scope: NativeTranscriptScope) => {
+    if (!isTranscriptScopeCurrent(scope)) throw new Error('This draft is no longer current.')
+    const chat = chatRef.current
+    const operation = beginOperation(`draft-save:${scope.mountNonce}`, chat?.id ?? null)
+    try {
+      if (!operation.isCurrent() || !isTranscriptScopeCurrent(scope)) throw new Error('This draft is no longer current.')
+      if (state.kind === 'skill') {
+        await createSkill({ name: state.draft.name, description: state.draft.description, instructions: state.draft.instructions, enabled: true }, {
+          workspaceId: operation.workspaceId ?? undefined,
+          signal: operation.signal,
+        })
+        if (!operation.isCurrent() || !isTranscriptScopeCurrent(scope)) throw new Error('This draft is no longer current.')
+        return
+      }
+      const schedule = state.draft.schedule.kind === 'interval'
+        ? `Every ${state.draft.schedule.intervalMinutes} minutes`
+        : state.draft.schedule.kind === 'daily'
+          ? `Daily at ${String(state.draft.schedule.hourUTC).padStart(2, '0')}:${String(state.draft.schedule.minuteUTC).padStart(2, '0')} UTC`
+          : state.draft.schedule.kind === 'weekly'
+            ? `Weekly on day ${state.draft.schedule.dayOfWeekUTC} at ${String(state.draft.schedule.hourUTC).padStart(2, '0')}:${String(state.draft.schedule.minuteUTC).padStart(2, '0')} UTC`
+            : `Monthly on day ${state.draft.schedule.dayOfMonthUTC} at ${String(state.draft.schedule.hourUTC).padStart(2, '0')}:${String(state.draft.schedule.minuteUTC).padStart(2, '0')} UTC`
+      const preset = [
+        `Create an automation from this approved draft: ${state.draft.name}`,
+        state.draft.description ? `Description: ${state.draft.description}` : '',
+        `Instructions:\n${state.draft.instructions}`,
+        `Schedule: ${schedule}`,
+        `Time zone: ${state.draft.timezone || 'UTC'}`,
+        state.draft.detectedIntegrations.length ? `Integrations: ${state.draft.detectedIntegrations.join(', ')}` : '',
+        state.draft.missingFields.length ? `Still to confirm: ${state.draft.missingFields.join(', ')}` : '',
+      ].filter(Boolean).join('\n\n')
+      await sendPresetMessage(preset, scope, operation)
+    } finally {
+      operation.finish()
+    }
+  }, [beginOperation, isTranscriptScopeCurrent, sendPresetMessage])
+
+  useLayoutEffect(() => {
+    nativeDraftSaveRef.current = handleSaveDraft
+  }, [handleSaveDraft])
 
   const sortedModels = useMemo(() => availableModels, [availableModels])
 
@@ -1405,7 +2162,10 @@ export function ChatScreen({
   // premium model. Auto-opening it on every free-tier session is removed for
   // App Store compliance and to avoid a confusing initial popup.
 
-  if (isLoading) {
+  const renderedActionChatId = actionsChat?.id
+  const renderedActionOperation = actionsChat ? chatActionsOperationRef.current : null
+
+  if (isLoading || startsNewChat) {
     return (
       <View style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
         <ActivityIndicator color={theme.textSecondary} size="large" />
@@ -1441,81 +2201,12 @@ export function ChatScreen({
       }
     >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
-          <MainScreenHeader
-            theme={theme}
-            isDark={isDark}
-            topInset={insets.top}
-            blurHeight={insets.top + 60}
-            leftSlot={
-              routeKind !== 'detail' ? (
-                <TopBarIconButton theme={theme} icon="menu" onPress={handleOpenDrawer} />
-              ) : (
-                <View style={{ width: 44 }} />
-              )
-            }
-            centerSlot={
-              <View style={styles.centerSlotRow}>
-                <TouchableOpacity
-                  activeOpacity={0.82}
-                  onPress={() => setModelPickerVisible(true)}
-                  style={styles.floatingModelPill}
-                >
-                  {isSwitchingChat ? (
-                    <ActivityIndicator size="small" color={theme.textSecondary} />
-                  ) : null}
-                  <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
-                    {selectedModel?.name ?? 'Select model'}
-                  </Text>
-                  <Feather name="chevron-down" size={14} color={theme.textSecondary} />
-                </TouchableOpacity>
-                {isTemporary ? (
-                  <View style={[styles.tempBadge, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-                    <Feather name="eye-off" size={10} color={theme.textSecondary} />
-                    <Text style={[styles.tempBadgeText, { color: theme.textSecondary }]}>Temp</Text>
-                  </View>
-                ) : null}
-              </View>
-            }
-            rightSlot={
-              <View style={styles.rightSlotRow}>
-                <TopBarIconButton
-                  theme={theme}
-                  icon={isTemporary ? 'eye-off' : 'eye'}
-                  onPress={() => {
-                    setIsTemporary((current) => !current)
-                    hapticImpact()
-                  }}
-                />
-                <TopBarIconButton
-                  theme={theme}
-                  icon="more-horizontal"
-                  onPress={() => {
-                    const current = chatRef.current
-                    if (!current) return
-                    setActionsChat({
-                      id: current.id,
-                      title: chatTitle,
-                      createdAt: current.createdAt,
-                      updatedAt: current.updatedAt,
-                      lastMode: current.lastMode,
-                      askModelIds: current.askModelIds,
-                      actModelId: current.actModelId,
-                      clientId: current.clientId,
-                      conversationType: current.conversationType,
-                    })
-                  }}
-                />
-                <TopBarIconButton
-                  theme={theme}
-                  icon="plus"
-                  onPress={() => {
-                    void startFreshConversation()
-                  }}
-                />
-              </View>
-            }
-          />
+        <KeyboardAvoidingView
+          style={styles.screenPadding}
+          behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
+          enabled={Platform.OS !== 'android' || keyboardVisible}
+        >
+          <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 
           <View style={styles.threadSurface}>
             {showingCachedCopy ? (
@@ -1525,7 +2216,6 @@ export function ChatScreen({
                   {
                     backgroundColor: theme.surfaceElevated,
                     borderColor: theme.border,
-                    marginTop: insets.top + 64,
                   },
                 ]}
                 accessibilityRole="text"
@@ -1538,63 +2228,24 @@ export function ChatScreen({
               </View>
             ) : null}
             {messages.length === 0 ? (
-              <View style={styles.emptySurface}>
-                <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" alt="Overlay logo" />
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                  {'How can I help you this ' + getTimeGreeting() + '?'}
-                </Text>
-                {suggestions.length > 0 && !isTemporary ? (
-                  <View style={styles.suggestionsWrap}>
-                    {suggestions.map((prompt) => (
-                      <TouchableOpacity
-                        key={prompt}
-                        activeOpacity={0.75}
-                        style={[styles.suggestionChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-                        onPress={() => {
-                          setInputValue(prompt)
-                          textInputRef.current?.focus()
-                        }}
-                      >
-                        <Text style={[styles.suggestionChipText, { color: theme.text }]} numberOfLines={2}>
-                          {prompt}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
+              <EmptyPersonalChat theme={theme} onSuggest={text => { composerRevisionRef.current += 1; setInputValue(text); textInputRef.current?.focus() }} />
             ) : (
-              <FlatList
-                ref={flatListRef}
-                data={visibleMessages}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <MessageBubble
-                    message={item}
-                    theme={theme}
-                    onLongPress={handleMessageLongPress}
-                    onOpenDraft={setDraftModal}
-                    onQuickSend={sendPresetMessage}
-                    onCopy={async (content) => {
-                      await Clipboard.setStringAsync(content)
-                      hapticNotify()
-                    }}
-                  />
-                )}
-                contentContainerStyle={[styles.messageList, { paddingTop: insets.top + 70, paddingBottom: messageBottomPadding }]}
-                showsVerticalScrollIndicator={false}
-                keyboardDismissMode="on-drag"
-                onContentSizeChange={() => {
-                  if (!hasAutoScrolledRef.current) {
-                    hasAutoScrolledRef.current = true
-                    scrollToBottom()
-                  }
-                }}
+              <NativePersonalChatTranscript
+                view={transcriptView}
+                workspaceId={activeWorkspaceId}
+                conversationId={activeChatId ?? 'new'}
+                query={searchQuery}
+                scrollIntent={transcriptScrollIntent}
+                authorityActive={transcriptAuthorityActive}
+                publicModelLabels={publicModelLabels}
+                onReply={handleTranscriptReply}
+                onJumpToReply={handleTranscriptJump}
+                onSaveDraft={handleNativeSaveDraft}
               />
             )}
           </View>
 
-          <View style={[styles.composerSurface, { paddingBottom: composerBottomPadding }]}>
+          <View style={[styles.composerSurface, { paddingBottom: composerFooterInset }, !transcriptAuthorityActive && { display: 'none' }]}>
             {currentRun?.status === 'waiting_for_approval' && currentRun.approval ? (
               <View style={[styles.approvalCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
                 <View style={styles.approvalHeader}>
@@ -1646,35 +2297,36 @@ export function ChatScreen({
             ) : null}
             <Composer
               theme={theme}
+              modelLabel={generationKind === 'image' ? imageModels.find(model => model.id === selectedImageModelId)?.name ?? 'Image' : generationKind === 'video' ? videoModels.find(model => model.id === selectedVideoModelId)?.name ?? 'Video' : autoSelected ? 'Auto' : selectedModel?.name}
+              onModel={() => setModelPickerVisible(true)}
               inputValue={inputValue}
-              onChangeInput={setInputValue}
+              onChangeInput={(value) => { composerRevisionRef.current += 1; setInputValue(value) }}
               onSend={() => void handleSend()}
               onStop={() => void handleStopGeneration()}
-              isSending={isSending}
+              isSending={isSending || messages.some(message => message.responses?.some(response => response.isLoading))}
               isTemporary={isTemporary}
               capabilities={capabilities}
               imageBase64={imageBase64}
-              onClearImage={() => setImageBase64(null)}
+              onClearImage={() => { composerRevisionRef.current += 1; setImageBase64(null) }}
               onPickImage={() => {
-                setActiveModality('image')
                 void pickImage()
               }}
               onPickCamera={() => void pickImageFromCamera()}
               onPickFile={() => void pickFile()}
               pendingDocuments={pendingDocuments}
-              onRemoveDocument={(clientId) => setPendingDocuments((prev) => prev.filter((d) => d.clientId !== clientId))}
+              onRemoveDocument={(clientId) => { composerRevisionRef.current += 1; setPendingDocuments((prev) => prev.filter((d) => d.clientId !== clientId)) }}
               attachmentError={attachmentError}
               mentions={mentions}
-              onAddMention={(item) => setMentions((current) => [...current, item])}
+              onAddMention={(item) => { composerRevisionRef.current += 1; setMentions((current) => [...current, item]) }}
               onRemoveMention={(item) =>
-                setMentions((current) =>
+                (composerRevisionRef.current += 1, setMentions((current) =>
                   current.filter((m) => !(m.id === item.id && m.type === item.type)),
-                )
+                ))
               }
               requestMode={requestMode}
-              onChangeRequestMode={setRequestMode}
+              onChangeRequestMode={(mode) => { composerRevisionRef.current += 1; setRequestMode(mode) }}
               replyContext={replyContext}
-              onClearReply={() => setReplyContext(null)}
+              onClearReply={() => { composerRevisionRef.current += 1; setReplyContext(null) }}
               generationKind={generationKind}
               selectedImageModelId={selectedImageModelId}
               selectedVideoModelId={selectedVideoModelId}
@@ -1682,143 +2334,40 @@ export function ChatScreen({
               videoModels={videoModels}
               onSelectGeneration={handleSelectGeneration}
               selectedToolIds={selectedToolIds}
-              onToggleTool={handleToggleTool}
+              onToggleTool={(id) => { composerRevisionRef.current += 1; handleToggleTool(id) }}
               memoryEnabled={memoryEnabled}
               onToggleMemory={() => setMemoryEnabled((v) => !v)}
               inputRef={textInputRef}
             />
           </View>
-        </View>
+        </KeyboardAvoidingView>
 
-      <BottomSheet
-        theme={theme}
-        visible={modelPickerVisible}
-        onClose={() => {
-          setModelPickerVisible(false)
-          setExpandedModelId(null)
-        }}
-        title="Choose model"
-      >
-        <View style={styles.modelList}>
-          {sortedModels.map((model, index) => {
-            const isSelected = selectedModel?.id === model.id
-            const isLast = index === sortedModels.length - 1
-            const isFreeTier = entitlements?.tier === 'free'
-            const isPremium = model.cost > 0
-            const isLocked = isFreeTier && isPremium
-            const isExpanded = expandedModelId === model.id
-            return (
-              <React.Fragment key={model.id}>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (isLocked) {
-                      setModelPickerVisible(false)
-                      setUpgradeVisible(true)
-                      return
-                    }
-                    void handleModelSelect(model)
-                  }}
-                  activeOpacity={isLocked ? 0.4 : 0.7}
-                  style={[styles.modelRow, isLocked && styles.modelRowLocked]}
-                >
-                  <View style={styles.modelRowLeft}>
-                    {getProviderLogo(model.provider) ? (
-                      <View style={[styles.logoContainer, isLocked && styles.lockedOpacity]}>
-                        <Image
-                          source={getProviderLogo(model.provider)}
-                          style={styles.providerLogo}
-                          resizeMode="contain"
-                          alt={`${model.provider} logo`}
-                        />
-                      </View>
-                    ) : (
-                      <View style={[styles.logoContainer, { backgroundColor: theme.surfaceElevated }, isLocked && styles.lockedOpacity]}>
-                        <Text style={[styles.providerInitial, { color: theme.textSecondary }]}>
-                          {model.provider.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={[styles.modelRowContent, isLocked && styles.lockedOpacity]}>
-                      <Text style={[styles.modelRowTitle, { color: theme.text }]}>
-                        {model.name}
-                      </Text>
-                      <Text style={[styles.modelRowDesc, { color: theme.textSecondary }]}>
-                        {isLocked ? 'Upgrade to unlock' : getModelDescription(model)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.modelRowRight}>
-                    {isLocked ? (
-                      <Feather name="lock" size={14} color={theme.mutedLight} />
-                    ) : isSelected ? (
-                      <Feather name="check" size={18} color={theme.text} />
-                    ) : null}
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={(e) => {
-                        e.stopPropagation()
-                        setExpandedModelId(isExpanded ? null : model.id)
-                      }}
-                      style={styles.chevronButton}
-                    >
-                      <Feather
-                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={16}
-                        color={theme.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-                {isExpanded && (
-                  <View style={[styles.metricsContainer, { backgroundColor: theme.surfaceSubtle }]}>
-                    <View style={styles.metricRow}>
-                      <View style={styles.metricLabelGroup}>
-                        <Feather name="activity" size={13} color={theme.textSecondary} />
-                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-                          Intelligence
-                        </Text>
-                      </View>
-                      <Text style={[styles.metricValue, { color: theme.text }]}>
-                        {Math.round(model.intelligence)}
-                      </Text>
-                    </View>
-                    <View style={styles.metricRow}>
-                      <View style={styles.metricLabelGroup}>
-                        <Feather name="dollar-sign" size={13} color={theme.textSecondary} />
-                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-                          Cost
-                        </Text>
-                      </View>
-                      <Text style={[styles.metricValue, { color: theme.text }]}>
-                        {model.cost === 0 ? 'Free' : `$${(model.pricePer1mTokens ?? model.cost).toFixed(2)}/M`}
-                      </Text>
-                    </View>
-                    <View style={styles.metricRow}>
-                      <View style={styles.metricLabelGroup}>
-                        <Feather name="zap" size={13} color={theme.textSecondary} />
-                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-                          Speed
-                        </Text>
-                      </View>
-                      <Text style={[styles.metricValue, { color: theme.text }]}>
-                        {model.medianOutputTokensPerSecond ? `${Math.round(model.medianOutputTokensPerSecond)} t/s` : 'N/A'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-                {!isLast && (
-                  <View style={[styles.modelSeparator, { backgroundColor: theme.border }]} />
-                )}
-              </React.Fragment>
-            )
-          })}
-          <View style={styles.attributionContainer}>
-            <Text style={[styles.attributionText, { color: theme.textSecondary }]}>
-              Intelligence data via Artificial Analysis
-            </Text>
-          </View>
-        </View>
-      </BottomSheet>
+      <ChatSheet theme={theme} visible={modelPickerVisible} onClose={() => setModelPickerVisible(false)} modelPicker title="Choose a model">
+        <ModelPicker theme={theme} models={sortedModels} imageModels={imageModels} videoModels={videoModels} selectedId={generationKind === 'image' ? selectedImageModelId ?? undefined : generationKind === 'video' ? selectedVideoModelId ?? undefined : selectedModel?.id} favoriteIds={favoriteIds} onFavorite={toggleFavorite} autoSelected={autoSelected} mode={generationKind ?? 'text'} isLocked={model => entitlements?.tier === 'free' && (model.cost ?? 0) > 0} onAuto={() => {
+          const model = resolveAutoModel(availableModels.filter(model => entitlements?.tier !== 'free' || model.cost === 0), uiSettings.defaultActModelId)
+          if (!model) { setModelPickerVisible(false); setAttachmentError('No text model is available on this account.'); return }
+          if (model) { setGenerationKind(null); setAutoSelected(true); void handleModelSelect(model).catch(error => setAttachmentError(userSafeTransportError(error, 'Could not select this model.'))) }
+        }} onSelect={(mode, id) => {
+          if (mode !== 'text') { handleSelectGeneration(mode, id); setModelPickerVisible(false); return }
+          const model = availableModels.find(model => model.id === id)
+          if (!model) return
+          if (entitlements?.tier === 'free' && model.cost > 0) { setModelPickerVisible(false); setUpgradeVisible(true); return }
+          setAutoSelected(false); setGenerationKind(null); void handleModelSelect(model).catch(error => setAttachmentError(userSafeTransportError(error, 'Could not select this model.')))
+        }} />
+      </ChatSheet>
+
+      <ChatSheet theme={theme} visible={optionsOpen} onClose={() => setOptionsOpen(false)} title="Chat options">
+        <Section theme={theme}>
+          <ListRow theme={theme} icon="shield" title="Temporary chat" subtitle={isTemporary ? 'On. Nothing from this chat is saved.' : 'Off'} onPress={isSending || messages.some(message => message.responses?.some(response => response.isLoading)) ? undefined : () => { setIsTemporary(value => !value); setOptionsOpen(false) }} />
+          {history.some(chat => chat.id === activeChatId) ? <ListRow theme={theme} icon="more-horizontal" title="Conversation actions" onPress={() => {
+            const target = history.find(chat => chat.id === activeChatId) ?? null
+            chatActionsOperationRef.current?.finish()
+            chatActionsOperationRef.current = target ? beginOperation(`chat-actions:${target.id}`, activeChatId) : null
+            setOptionsOpen(false)
+            setActionsChat(target)
+          }} /> : null}
+        </Section>
+      </ChatSheet>
 
       <UpgradePrompt
         visible={upgradeVisible}
@@ -1826,32 +2375,42 @@ export function ChatScreen({
         onClose={() => setUpgradeVisible(false)}
       />
 
-      <DraftReviewSheet
-        state={draftModal}
-        saving={draftSaving}
-        onClose={() => setDraftModal(null)}
-        onSave={(state) => { void handleSaveDraft(state) }}
-      />
-
       <ChatActionsSheet
         theme={theme}
         visible={actionsChat !== null}
         chat={actionsChat}
-        onClose={() => setActionsChat(null)}
+        onClose={() => {
+          const operation = renderedActionOperation
+          if (!operation || chatActionsOperationRef.current !== operation) return
+          operation.finish()
+          chatActionsOperationRef.current = null
+          setActionsChat(null)
+        }}
         onChanged={() => {
-          const chatId = actionsChat?.id
+          const chatId = renderedActionChatId
+          const operation = renderedActionOperation
+          if (!operation || chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
           void refreshHistory().then((next) => {
+            if (chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
             const updated = chatId ? next.find((c) => c.id === chatId) : null
-            if (updated?.title) {
+            if (updated?.title && chatRef.current?.id === chatId) {
               setChatTitle(updated.title)
               if (chatRef.current) chatRef.current = { ...chatRef.current, title: updated.title }
             }
-          }).catch(() => {})
+          }).catch(() => {}).finally(() => operation.finish())
         }}
         onDeleted={() => {
+          const operation = renderedActionOperation
+          if (!operation || chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
+          operation.finish()
+          chatActionsOperationRef.current = null
           void startFreshConversation()
         }}
         onArchived={() => {
+          const operation = renderedActionOperation
+          if (!operation || chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
+          operation.finish()
+          chatActionsOperationRef.current = null
           void startFreshConversation()
         }}
       />
@@ -1900,6 +2459,7 @@ const styles = StyleSheet.create({
   },
   threadSurface: {
     flex: 1,
+    minHeight: 0,
     overflow: 'hidden',
   },
   emptySurface: {

@@ -180,7 +180,7 @@ export function MemoriesList({
   }
 
   function openMemory(memory: MemoryRow) {
-    router.push(`/knowledge/memory/${encodeURIComponent(memory.memoryId)}`)
+    router.push(`/files/memory/${encodeURIComponent(memory.memoryId)}`)
   }
 
   const listHeader = (

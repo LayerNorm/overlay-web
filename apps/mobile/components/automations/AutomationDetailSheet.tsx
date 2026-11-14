@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createIdempotencyKey } from '@overlay/api-client'
 import {
   ActivityIndicator,
   Alert,
@@ -13,10 +14,10 @@ import {
   formatAutomationRunError,
   getAutomationConversationId,
   type AutomationRunSummary,
-  type AutomationSchedule,
   type AutomationSummary,
 } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
+import { getRequestWorkspaceId } from '../../services/appApi'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { BottomSheet, StatusPill } from '../ui/AppChrome'
 import {
@@ -26,13 +27,7 @@ import {
   type AutomationRunTrigger,
 } from '../../services/automationsService'
 
-export function formatSchedule(schedule?: AutomationSchedule): string {
-  if (!schedule) return 'Unscheduled'
-  if (schedule.kind === 'interval') return `Every ${schedule.intervalMinutes ?? 60} min`
-  if (schedule.kind === 'daily') return `Daily at ${String(schedule.hourUTC ?? 9).padStart(2, '0')}:${String(schedule.minuteUTC ?? 0).padStart(2, '0')} UTC`
-  if (schedule.kind === 'weekly') return `Weekly, day ${schedule.dayOfWeekUTC ?? 1}`
-  return `Monthly, day ${schedule.dayOfMonthUTC ?? 1}`
-}
+import { formatSchedule } from '../../lib/automationSchedule'
 
 function runTone(status: string | undefined): 'default' | 'active' | 'danger' {
   if (!status) return 'default'
@@ -63,6 +58,7 @@ export function AutomationDetailSheet({
   const [runs, setRuns] = useState<AutomationRunSummary[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
   const [running, setRunning] = useState(false)
+  const runRequest = useRef<{ scope: string; key: string } | null>(null)
   const [testing, setTesting] = useState(false)
 
   const loadRuns = useCallback(async () => {
@@ -86,11 +82,15 @@ export function AutomationDetailSheet({
     if (!automation) return
     setRunning(true)
     try {
-      const result = await runAutomationNow(automation._id)
+      const scope = JSON.stringify([getRequestWorkspaceId(), automation._id])
+      if (runRequest.current?.scope !== scope) runRequest.current = { scope, key: createIdempotencyKey() }
+      const key = runRequest.current.key
+      const result = await runAutomationNow(automation._id, key)
       if (result.ok === false || result.error) {
         Alert.alert('Could not start run', result.error || result.message || 'Try again.')
         return
       }
+      if (runRequest.current?.key === key) runRequest.current = null
       onTriggerResult?.(result)
       await loadRuns()
       if (result.approvalRequired) {

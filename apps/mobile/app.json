@@ -21,15 +21,52 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.layernorm.overlay-mobile",
-      "buildNumber": "1.0.0.1",
+      "buildNumber": "1",
       "associatedDomains": [
         "applinks:www.getoverlay.io"
       ],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Attach photos you take to your conversations.",
+        "NSPhotoLibraryUsageDescription": "Choose photos to attach to your conversations.",
+        "NSMicrophoneUsageDescription": "Record voice notes and dictate messages."
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyCollectedDataTypes": [],
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "C617.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "E174.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          }
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "development"
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.layernorm.overlay_mobile",
       "versionCode": 1,
       "adaptiveIcon": {
@@ -44,18 +81,83 @@
             {
               "scheme": "https",
               "host": "www.getoverlay.io",
-              "pathPrefix": "/auth/native/callback"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        },
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
+              "path": "/work"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/agents"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/chat"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/files"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/automations"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/settings"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/activity"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/search"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/app/work"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/app/agents"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/app/chat"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/app/files"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/app/automations"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/app/settings"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "path": "/auth/native/callback"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/auth/native/callback/"
+            },
             {
               "scheme": "https",
               "host": "www.getoverlay.io",
@@ -70,6 +172,91 @@
               "scheme": "https",
               "host": "www.getoverlay.io",
               "pathPrefix": "/app/invitations/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/work/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/agent/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/agents/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/dm/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/chat/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/channel/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/thread/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/files/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/note/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/automations/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/settings/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/work/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/agents/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/chat/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/files/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/automations/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.getoverlay.io",
+              "pathPrefix": "/app/settings/"
             }
           ],
           "category": [
@@ -97,6 +284,14 @@
           "color": "#0a0a0a",
           "defaultChannel": "default",
           "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose photos to attach to your conversations.",
+          "cameraPermission": "Attach photos you take to your conversations.",
+          "microphonePermission": "Record voice notes and dictate messages."
         }
       ]
     ],

@@ -4,6 +4,7 @@ import {
   type AppSettings,
 } from '@overlay/app-core'
 import { appJson } from './appApi'
+import { readNativeSettings } from './settingsNativeService'
 
 const SETTINGS_CACHE_KEY = 'overlay-ui-settings'
 
@@ -25,7 +26,8 @@ export function subscribeUiSettings(listener: UiSettingsListener): () => void {
 }
 
 export async function getUiSettings(): Promise<AppSettings> {
-  const settings = await appJson<AppSettings>('/api/v1/settings')
+  const settings = await readNativeSettings()
+  if (!settings) throw new Error('Settings are unavailable. Sign in again.')
   await AsyncStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings))
   notifyUiSettings(settings)
   return settings

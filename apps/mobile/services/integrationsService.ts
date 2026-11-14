@@ -28,10 +28,8 @@ export async function searchIntegrations(query = ''): Promise<{
   )
 }
 
-export async function listSkills(projectId?: string): Promise<SkillSummary[]> {
-  return appJson<SkillSummary[]>('/api/v1/skills', {
-    query: { projectId: projectId || undefined },
-  })
+export async function listSkills(): Promise<SkillSummary[]> {
+  return appJson<SkillSummary[]>('/api/v1/skills')
 }
 
 export async function connectIntegration(toolkit: string): Promise<{
@@ -57,11 +55,11 @@ export async function createSkill(input: {
   description: string
   instructions: string
   enabled?: boolean
-  projectId?: string
-}): Promise<{ id: string }> {
+}, requestOptions: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/skills', {
     method: 'POST',
     json: input,
+    ...requestOptions,
   })
 }
 

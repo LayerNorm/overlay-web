@@ -32,11 +32,13 @@ function confidenceLabel(value: 'low' | 'medium' | 'high'): string {
 export function DraftReviewSheet({
   state,
   saving,
+  saveError,
   onClose,
   onSave,
 }: {
   state: DraftModalState | null
   saving: boolean
+  saveError?: string
   onClose: () => void
   /** Skill → skills.create; automation → send "Create automation" (web parity —
    *  the chat agent owns automation creation so it can ask follow-ups). */
@@ -100,6 +102,7 @@ export function DraftReviewSheet({
             <Text style={[styles.reason, { color: theme.textSecondary }]}>
               {confidenceLabel(draft.confidence)} · {draft.reason}
             </Text>
+            {saveError ? <Text accessibilityRole="alert" style={styles.saveError}>{saveError}</Text> : null}
           </ScrollView>
 
           <TouchableOpacity
@@ -149,6 +152,7 @@ const styles = StyleSheet.create({
   missingTitle: { color: '#EF4444', fontSize: fontSize.sm, fontWeight: '700' },
   missingItem: { color: '#EF4444', fontSize: fontSize.sm },
   reason: { fontSize: 11, lineHeight: 16, marginTop: spacing.sm },
+  saveError: { color: '#EF4444', fontSize: fontSize.sm },
   primaryButton: { minHeight: 46, borderRadius: borderRadius.full, alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { fontSize: fontSize.md, fontWeight: '700' },
 })
