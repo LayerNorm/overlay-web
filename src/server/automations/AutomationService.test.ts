@@ -478,6 +478,19 @@ test('a manual run refuses a missing, deleted or empty automation before creatin
   assert.equal(created, 0)
 })
 
+test('enabling an automation checks the plan of the workspace it is created in', async () => {
+  const checked: Array<Record<string, unknown>> = []
+  const { service } = createService(createRepository(), {
+    async assertCanEnable(args) { checked.push(args) },
+  })
+  await service.createAutomation({
+    userId: 'user_1',
+    workspaceId: 'workspace_team',
+    body: { name: 'A', description: 'B', instructions: 'C', schedule: { kind: 'interval', intervalMinutes: 60 } },
+  })
+  assert.deepEqual(checked, [{ enabledCount: 0, userId: 'user_1', workspaceId: 'workspace_team' }])
+})
+
 // ---------------------------------------------------------------------------
 // Durable execution helpers
 // ---------------------------------------------------------------------------

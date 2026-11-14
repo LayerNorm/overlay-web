@@ -283,7 +283,7 @@ export class AutomationService {
     const schedule = normalizeScheduleValue(body.schedule)
     this.assertScheduleAllowed(schedule)
     if (body.enabled !== false) {
-      await this.assertCanEnable(args.userId)
+      await this.assertCanEnable(args.userId, args.workspaceId)
     }
 
     const id = await this.deps.repository.createAutomation({
@@ -337,7 +337,7 @@ export class AutomationService {
     const schedule = body.schedule ? normalizeScheduleValue(body.schedule) : body.schedule
     this.assertScheduleAllowed(schedule)
     if (body.action === 'resume' || body.enabled === true) {
-      await this.assertCanEnable(args.userId)
+      await this.assertCanEnable(args.userId, args.workspaceId)
     }
 
     const automationId = body.automationId
@@ -692,11 +692,11 @@ export class AutomationService {
     }
   }
 
-  private async assertCanEnable(userId: string): Promise<void> {
+  private async assertCanEnable(userId: string, workspaceId?: string): Promise<void> {
     const existing = await this.deps.repository.listAutomations({ userId })
     const enabledCount = existing.filter((item) => item.enabled !== false).length
     try {
-      await this.deps.entitlementPolicy.assertCanEnable({ enabledCount, userId })
+      await this.deps.entitlementPolicy.assertCanEnable({ enabledCount, userId, workspaceId })
     } catch (error) {
       if (error instanceof AutomationEntitlementError) {
         serviceError({ error: error.publicMessage }, 403)

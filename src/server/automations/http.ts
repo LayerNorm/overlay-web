@@ -7,6 +7,7 @@ import { AutomationService, AutomationServiceError } from './AutomationService'
 import { ConfiguredAutomationEntitlementPolicy } from './AutomationEntitlementPolicy'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { start } from 'workflow/api'
+import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
 import { automationRunWorkflow } from '@/server/workflows/automation-run'
 
 const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
@@ -14,10 +15,17 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
     const config = getOverlayRuntimeConfigSync()
     return config.billing.provider === 'none'
   },
-  // The plan of the workspace the person is working in (falls back to their own when it has none).
-  getPlanKind: async (userId) => {
-    const entitlements = await getOverlayServerContext().chatUsagePolicy.getEntitlements({ userId })
-    return entitlements?.planKind === 'paid' ? 'paid' : 'free'
+  // The plan of the workspace the automation is enabled in (falls back to the
+  // person's own when it has none). A workspace that cannot pay is not paid:
+  // the caller answers "requires a paid plan", never a server error.
+  getPlanKind: async (userId, workspaceId) => {
+    try {
+      const entitlements = await getOverlayServerContext().chatUsagePolicy.getEntitlements({ userId, workspaceId })
+      return entitlements?.planKind === 'paid' ? 'paid' : 'free'
+    } catch (error) {
+      if (error instanceof BillingPayerResolutionError) return 'free'
+      throw error
+    }
   },
 })
 
