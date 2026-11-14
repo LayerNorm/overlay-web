@@ -106,7 +106,7 @@ is not an instruction to deploy staging or gate production on a candidate.
 
 ## Activation checkpoint
 
-Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. See `internal/plans/release-workflow-evidence/` for exact proof. Subsequent releases require fresh evidence.
+Migration acceptance passed on 2026-10-13. Candidate workflow `38413217001` verified exact main `bee84a33a2d4b101bf85d3b179cd30984b556045` before and after staging publication. Production `dpl_8PQvmTsqT9PSHXSswyZDi2H6KfMg` was verified web-first, then customer Convex and full authenticated smoke passed. Deliberate web rollback, compatibility checks, restoration and full final smoke passed; the accepted release is live. Automatic test Stripe checkout/cancellation and actual browser storage acceptance passed. The exact proof is preserved in git history. Subsequent releases require fresh evidence.
 
 Commands and guards are in [Staging and Production Promotion](./worktree-staging-qa.md) and [Convex Workflow](./convex-workflow.md).
 
@@ -167,7 +167,7 @@ Cancellation also removes unused paid funding as pre-existing holds release or s
 
 ### First complete candidate acceptance
 
-The first complete candidate was `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`. Its recorded evidence remains historical. The final current-main candidate and production/rollback acceptance are recorded in the activation checkpoint above and `internal/plans/release-workflow-evidence/`.
+The first complete candidate was `f863915508795c695d9778f33476eaaf4d14436e`, workflow `38394669549`. Its recorded evidence remains historical. The final current-main candidate and production/rollback acceptance are recorded in the activation checkpoint above; the raw evidence files are preserved in git history.
 
 ### Historical production CLI output and readiness
 
