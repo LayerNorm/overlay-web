@@ -177,9 +177,20 @@
     "src/app/api/v1/surfaces/connections/route.ts",
     "src/app/api/v1/surfaces/slack/callback/route.ts",
     "src/app/api/v1/surfaces/slack/connect/route.ts",
+    "src/app/api/v1/sync/history/process/route.ts",
+    "src/app/api/v1/sync/outbound/route.ts",
+    "src/app/api/v1/sync/slack/route.ts",
+    "src/app/api/v1/sync/teams/account/callback/route.ts",
+    "src/app/api/v1/sync/teams/account/connect/route.ts",
+    "src/app/api/v1/sync/teams/app-package/route.ts",
+    "src/app/api/v1/sync/teams/callback/route.ts",
+    "src/app/api/v1/sync/teams/connect/route.ts",
+    "src/app/api/v1/sync/teams/maintain/route.ts",
+    "src/app/api/v1/sync/teams/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
     "src/app/api/v1/webhooks/slack/route.ts",
+    "src/app/api/v1/webhooks/teams/route.ts",
     "src/app/api/v1/work/[id]/events/route.ts",
     "src/app/api/v1/work/[id]/move/route.ts",
     "src/app/api/v1/work/[id]/route.ts",
@@ -242,6 +253,7 @@
     "src/features/chat/components/ConversationExperienceRouter.tsx",
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
+    "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAutomationDetail.ts",
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
@@ -258,7 +270,8 @@
     "src/features/work/components/WorkPeekSections.tsx",
     "src/features/work/components/WorkTaskComposer.tsx",
     "src/features/work/lib/use-live-work.ts",
-    "src/features/workspaces/components/SlackImportPanel.tsx"
+    "src/features/workspaces/components/SlackImportPanel.tsx",
+    "src/features/workspaces/components/SyncSettingsPanel.tsx"
   ],
   "convexCronJobs": [
     {
@@ -270,6 +283,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "automation scheduler",
       "target": "internal.automations.automationRunner.runMinuteTick"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "channel sync history and repair",
+      "target": "internal.sync.history.runTick"
     },
     {
       "cadence": "{ minutes: 15 }",
@@ -367,6 +385,21 @@
       "target": "(internal as any).surfaces.chatState.pruneExpired"
     },
     {
+      "cadence": "{ hours: 1 }",
+      "name": "sync outbox prune",
+      "target": "internal.sync.outbox.prune"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "sync outbox sweep",
+      "target": "internal.sync.outbox.sweep"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "teams sync maintenance",
+      "target": "internal.sync.teamsLinks.runMaintenanceTick"
+    },
+    {
       "cadence": "{ minutes: 2 }",
       "name": "tool loop agent run lease cleanup",
       "target": "internal.chat.conversations.expireToolLoopAgentRunLeases"
@@ -389,6 +422,7 @@
     "src/app/api/auth/desktop-link/route.ts",
     "src/app/api/share/file/[token]/route.ts",
     "src/app/api/v1/harness/continuation/route.ts",
+    "src/app/api/v1/surfaces/slack/callback/route.ts",
     "src/app/app/_components/KnowledgeViewHost.tsx",
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
@@ -422,6 +456,7 @@
     "src/features/chat/components/ConversationExperienceRouter.tsx",
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
+    "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAutomationDetail.ts",
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
@@ -439,6 +474,7 @@
     "src/features/work/components/WorkTaskComposer.tsx",
     "src/features/work/lib/use-live-work.ts",
     "src/features/workspaces/components/SlackImportPanel.tsx",
+    "src/features/workspaces/components/SyncSettingsPanel.tsx",
     "src/hooks/use-agent-directory.ts",
     "src/hooks/use-billing.ts",
     "src/hooks/use-connections.ts",
@@ -447,6 +483,7 @@
     "src/hooks/use-memories.ts",
     "src/hooks/use-mention-search.ts",
     "src/hooks/use-skills.ts",
+    "src/hooks/use-sync-sources.ts",
     "src/hooks/use-workspace-create-access.ts",
     "src/hooks/use-workspace-members.ts",
     "src/server/account/AccountDeletionService.ts",
@@ -488,6 +525,10 @@
     "src/server/app-api/v1/onboarding/status/route.ts",
     "src/server/app-api/v1/scope/route.ts",
     "src/server/app-api/v1/settings/route.ts",
+    "src/server/app-api/v1/sync/shared.ts",
+    "src/server/app-api/v1/sync/slack/route.ts",
+    "src/server/app-api/v1/sync/teams/oauth-routes.ts",
+    "src/server/app-api/v1/sync/teams/route.ts",
     "src/server/app-api/v1/workspace-invitations/[invitationId]/route.ts",
     "src/server/app-api/v1/workspaces/[workspaceId]/billing/request/route.ts",
     "src/server/app-api/v1/workspaces/[workspaceId]/icon/route.ts",
@@ -581,6 +622,16 @@
     "src/server/surfaces/chat.ts",
     "src/server/surfaces/convex-chat-state.ts",
     "src/server/surfaces/surface-authors.ts",
+    "src/server/sync/history-worker.ts",
+    "src/server/sync/outbound-worker.ts",
+    "src/server/sync/rate-limit.ts",
+    "src/server/sync/slack/events.ts",
+    "src/server/sync/slack/inbound.ts",
+    "src/server/sync/teams/history.ts",
+    "src/server/sync/teams/inbound.ts",
+    "src/server/sync/teams/messages.ts",
+    "src/server/sync/teams/outbound.ts",
+    "src/server/sync/teams/subscriptions.ts",
     "src/server/tools/tools/files-executes.ts",
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/usage/ConvexUsageRepository.ts",
@@ -621,6 +672,9 @@
     "convex/migrations/backfillAuditWorkspaceIds.ts",
     "convex/platform/growth.ts",
     "convex/platform/nativePolicy.ts",
+    "convex/sync/ingest.ts",
+    "convex/sync/links.ts",
+    "convex/sync/outbox.ts",
     "convex/webhooks/deliveryRunner.ts",
     "convex/work/workItems.ts"
   ]

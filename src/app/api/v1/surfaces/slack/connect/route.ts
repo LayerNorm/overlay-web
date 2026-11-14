@@ -7,6 +7,7 @@ import { getBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import { slackConfigured } from '@/server/surfaces/chat'
 import {
+  SLACK_SYNC_USER_SCOPES,
   sanitizeReturnTo,
   sealSlackConnectState,
   slackAuthorizeUrl,
@@ -54,8 +55,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(signIn.toString(), { headers: NO_STORE })
   }
 
+  const requested = params.get('purpose')
+  const purpose = requested === 'sync' || requested === 'sync_member' ? requested : undefined
+  const forSync = purpose === 'sync'
   const agentId = params.get('agentId')?.trim()
-  if (!agentId) return failure(returnTo, 'missing_agent')
+  if (!purpose && !agentId) return failure(returnTo, 'missing_agent')
 
   if (!slackConfigured()) {
     logger.warn('[surfaces] Slack connect requested without Slack env configured')
@@ -68,18 +72,25 @@ export async function GET(request: NextRequest) {
       session.user.id,
       params.get('workspaceId')?.trim() || undefined,
     )
-    await serverContext.surfaceService.requireBindableAgent({
-      actor: {
-        userId: session.user.id,
-        principalId: access.principal.id,
-        workspaceRole: access.membership.role,
-      },
-      workspaceId: access.workspace.id,
-      agentId,
-    })
+    if (forSync) {
+      // Channel sync is a workspace setting: owners and admins connect it.
+      if (access.membership.role !== 'owner' && access.membership.role !== 'admin') {
+        return failure(returnTo, 'forbidden')
+      }
+    } else if (!purpose) {
+      await serverContext.surfaceService.requireBindableAgent({
+        actor: {
+          userId: session.user.id,
+          principalId: access.principal.id,
+          workspaceRole: access.membership.role,
+        },
+        workspaceId: access.workspace.id,
+        agentId: agentId!,
+      })
+    }
 
     const state = sealSlackConnectState({
-      agentId,
+      ...(purpose ? { purpose } : { agentId }),
       workspaceId: access.workspace.id,
       userId: session.user.id,
       returnTo,
@@ -89,6 +100,7 @@ export async function GET(request: NextRequest) {
         clientId: process.env.SLACK_CLIENT_ID!,
         redirectUri: slackOAuthRedirectUri(getBaseUrl()),
         state,
+        ...(purpose === 'sync_member' ? { userScopes: SLACK_SYNC_USER_SCOPES } : {}),
       }),
       { headers: NO_STORE },
     )

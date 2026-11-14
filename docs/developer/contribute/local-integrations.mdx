@@ -89,6 +89,10 @@ network call and leaves the transcript looking stuck. MCP calls have a
 30-second default timeout and record a terminal execution row for success or
 failure.
 
+## Microsoft Teams sync
+
+Teams channel sync needs a multi-tenant Microsoft Entra app (`MICROSOFT_SYNC_CLIENT_ID`, `MICROSOFT_SYNC_CLIENT_SECRET`) registered with your local callback URLs, `http://localhost:3000/api/v1/sync/teams/callback` and `http://localhost:3000/api/v1/sync/teams/account/callback`. Graph delivers change notifications only to a public HTTPS URL, so point `MICROSOFT_SYNC_NOTIFICATION_BASE_URL` at a tunnel (for example `cloudflared` or `ngrok`) that forwards to your dev server. Use a separate development Entra app, never the production one. Full setup, permissions and the Teams app package are described in `internal/develop/teams-sync-app.md`.
+
 ## Slack import via Composio
 
 Slack import uses Composio's `SLACKBOT` toolkit with **direct tool execution** — not the LLM session-based flow used by agent tools. This is a deterministic, paginated backfill that runs as a server-side background job.
@@ -96,7 +100,7 @@ Slack import uses Composio's `SLACKBOT` toolkit with **direct tool execution** �
 ### Architecture
 
 ```
-Workspace Settings → Import tab
+Workspace Settings → Import & sync tab → One-time import
   → Connect Slack (Composio OAuth, providerKey=slackbot)
   → Chats picker (SLACKBOT_LIST_ALL_CHANNELS)
   → Create import job (Convex slackImportJobs)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from 'react'
+import { useQuery } from 'convex/react'
 import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
@@ -9,6 +10,7 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { SYNC_SOURCE_LABEL, useChannelSyncSources, useSyncHistoryPriority } from '@/hooks/use-sync-sources'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
@@ -28,10 +30,14 @@ import {
   RoomRealtimeSubscriptions,
   RoomSidePanel,
   SurfaceReadOnlyComposer,
+  SyncConnectComposer,
   surfaceReadOnlyNotice,
+  syncConnectNotice,
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 
 function RoomComposerArea({
   safety,
@@ -39,6 +45,7 @@ function RoomComposerArea({
   isGuided,
   guidedComposer,
   surfacePlatform,
+  syncConnect,
   composerProps,
 }: {
   safety: NativeThreadSafety
@@ -46,11 +53,13 @@ function RoomComposerArea({
   isGuided: boolean
   guidedComposer?: GuidedRoomComposer
   surfacePlatform?: string | null
+  syncConnect?: { provider: 'slack' | 'teams'; workspaceId: string } | null
   composerProps: Omit<Parameters<typeof RoomComposer>[0], 'guided'>
 }) {
   if (safety.readOnly) return <NativeThreadReadOnlyFooter safety={safety} onNewThread={onNewThread} />
   if (isGuided && !guidedComposer) return null
   if (surfacePlatform) return <SurfaceReadOnlyComposer surfacePlatform={surfacePlatform} />
+  if (syncConnect) return <SyncConnectComposer provider={syncConnect.provider} workspaceId={syncConnect.workspaceId} />
   return <RoomComposer {...composerProps} guided={guidedComposer} />
 }
 
@@ -72,7 +81,7 @@ function resolveRoomRightPanel({
   roster,
   thread,
   conversationType,
-
+  syncConnectProvider,
   messageCtx,
 }: {
   panels: ReturnType<typeof useRoomPanels>
@@ -83,7 +92,7 @@ function resolveRoomRightPanel({
   roster: ReturnType<typeof useDirectMessageRoom>['roster']
   thread: ReturnType<typeof useDirectMessageRoom>['thread']
   conversationType: 'dm' | 'channel'
-
+  syncConnectProvider?: 'slack' | 'teams'
   messageCtx: ReturnType<typeof useDirectMessageRoom>['messageCtx']
 }) {
   const roomPanelOpen = room.roomPanel === 'people' || room.roomPanel === 'pinned'
@@ -115,7 +124,7 @@ function resolveRoomRightPanel({
           : undefined}
         readOnlyNotice={room.transcript.surfacePlatform
           ? surfaceReadOnlyNotice(room.transcript.surfacePlatform)
-          : undefined}
+          : syncConnectProvider ? syncConnectNotice(syncConnectProvider) + '.' : undefined}
       />
     ) : null)
   const rightPanelClose = panels.shellRightPanel
@@ -258,6 +267,19 @@ export function DirectMessageExperience({
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
+  const syncReply = useQuery(
+    api.sync.accounts.composerState,
+    conversationType === 'channel' && !draft && activeWorkspaceId
+      ? { workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'> }
+      : 'skip',
+  )
+  const syncSource = useChannelSyncSources().get(conversationId)
+  useSyncHistoryPriority({
+    conversationId,
+    importing: syncSource?.importing === true,
+    listRef: transcript.listRef,
+    hasMoreMessages: transcript.hasMoreMessages,
+  })
   const pathname = usePathname()
   const agentId = roomAgentId(vm)
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
@@ -274,7 +296,7 @@ export function DirectMessageExperience({
     roster,
     thread,
     conversationType,
-
+    syncConnectProvider: syncReply?.connectProvider,
     messageCtx,
       })
       const externalPanelOpen = Boolean(externalRightPanel)
@@ -337,6 +359,11 @@ export function DirectMessageExperience({
             breadcrumbs={header.breadcrumbs}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={header.leading}
+            metadata={syncSource ? (
+              <span className="rounded-sm bg-(--surface-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--muted)">
+                {SYNC_SOURCE_LABEL[syncSource.provider]}
+              </span>
+            ) : undefined}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 vm={vm}
@@ -377,6 +404,7 @@ export function DirectMessageExperience({
               isGuided={Boolean(guided)}
               guidedComposer={guided?.composer ?? undefined}
               surfacePlatform={transcript.surfacePlatform}
+              syncConnect={syncReply && activeWorkspaceId ? { provider: syncReply.connectProvider, workspaceId: activeWorkspaceId } : null}
               composerProps={{
                 composer,
                 mentionCategories: vm.mentionCategories,

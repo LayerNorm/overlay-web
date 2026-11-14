@@ -1132,6 +1132,16 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
   { routePath: '/api/v1/webhooks/slack', reason: 'Inbound Slack Events API webhook, authenticated by the Slack request signature.' },
+  { routePath: '/api/v1/sync/history/process', reason: 'Internal channel sync history and repair worker tick called by the Convex cron; not part of the public web API reference.' },
+  { routePath: '/api/v1/sync/teams', reason: 'Teams channel sync settings for the workspace settings page; boundary definition pending. Owners and admins only, protected by workspace authorization.' },
+  { routePath: '/api/v1/sync/teams/app-package', reason: 'Downloads the Overlay Teams app package for a Teams admin; a file download for owners and admins, not a public API call.' },
+  { routePath: '/api/v1/sync/teams/connect', reason: 'Starts Microsoft admin consent for Teams sync; a browser flow, not a public API call.' },
+  { routePath: '/api/v1/sync/teams/callback', reason: 'Microsoft admin consent redirect target, protected by signed state bound to the session rather than the public API authentication scheme.' },
+  { routePath: '/api/v1/sync/teams/account/connect', reason: 'Starts a member Microsoft sign-in for replying in Teams; a browser flow, not a public API call.' },
+  { routePath: '/api/v1/sync/teams/account/callback', reason: 'Microsoft sign-in redirect target, protected by signed state bound to the session rather than the public API authentication scheme.' },
+  { routePath: '/api/v1/sync/teams/maintain', reason: 'Internal Teams sync maintenance trigger for the Convex cron; not part of the public web API reference.' },
+  { routePath: '/api/v1/webhooks/teams', reason: 'Inbound Microsoft Graph change notifications, authenticated by the per-link signed clientState.' },
+  { routePath: '/api/v1/sync/slack', reason: 'Slack channel sync settings for the workspace settings page; boundary definition pending. Owners and admins only, protected by workspace authorization.' },
   { routePath: '/api/v1/surfaces/connections', reason: 'Surface connection listing; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/surfaces/connections/[connectionId]/channels', reason: 'Surface channel listing; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/surfaces/bindings', reason: 'Agent surface binding management; boundary definition pending. Protected by workspace authorization.' },
@@ -1157,6 +1167,7 @@ export const webApiExcludedRouteDefinitions = [
   // Import routes pending full boundary definitions.
   { routePath: '/api/v1/imports/slack', reason: 'Slack import job management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/imports/slack/process', reason: 'Internal Slack import job processor; not part of the public web API reference.' },
+  { routePath: '/api/v1/sync/outbound', reason: 'Internal Slack and Teams sync outbox worker called by Convex; not part of the public web API reference.' },
   // Mention search and link preview pending full boundary definitions.
   // Search and share routes pending full boundary definitions.
   { routePath: '/api/v1/shares', reason: 'Resource sharing management; boundary definition pending. Protected by workspace authorization.' },

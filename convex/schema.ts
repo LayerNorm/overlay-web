@@ -3259,4 +3259,166 @@ export default defineSchema({
   })
     .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
     .index('by_runId_generation', ['runId', 'generation']),
+
+  // ─── Slack and Teams channel sync ───────────────────────────────────────
+  // See internal/plans/SLACK_TEAMS_SYNC_PLAN.md. One connection per workspace
+  // and provider; each external channel links to exactly one Overlay channel.
+  syncConnections: defineTable({
+    workspaceId: v.string(),
+    provider: v.union(v.literal('slack'), v.literal('teams')),
+    externalOrgId: v.string(),
+    externalOrgName: v.optional(v.string()),
+    status: v.union(v.literal('connected'), v.literal('paused'), v.literal('disconnected')),
+    autoLink: v.boolean(),
+    connectedByUserId: v.string(),
+    connectedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_provider', ['workspaceId', 'provider'])
+    .index('by_provider_externalOrgId', ['provider', 'externalOrgId']),
+
+  syncChannelLinks: defineTable({
+    workspaceId: v.string(),
+    provider: v.union(v.literal('slack'), v.literal('teams')),
+    connectionId: v.id('syncConnections'),
+    externalOrgId: v.string(),
+    externalChannelId: v.string(),
+    /** Teams team id that owns the channel; absent for Slack. */
+    externalGroupId: v.optional(v.string()),
+    externalChannelName: v.string(),
+    externalChannelKind: v.union(
+      v.literal('public'),
+      v.literal('private'),
+      v.literal('shared'),
+    ),
+    conversationId: v.id('conversations'),
+    status: v.union(
+      v.literal('syncing'),
+      v.literal('history'),
+      v.literal('catching_up'),
+      v.literal('paused'),
+    ),
+    pauseReason: v.optional(v.string()),
+    /** Earliest platform timestamp (ms) the history import must reach. */
+    historyTargetAt: v.optional(v.number()),
+    /** Oldest platform timestamp (ms) imported so far. */
+    historyOldestAt: v.optional(v.number()),
+    historyCursor: v.optional(v.string()),
+    historyCompletedAt: v.optional(v.number()),
+    /** Raised when a member scrolls past imported history. */
+    historyPriorityAt: v.optional(v.number()),
+    /** Set while a history or repair worker holds the link, so ticks never overlap. */
+    historyLeaseUntil: v.optional(v.number()),
+    /** Last completed gap repair; links repaired before the nightly cutoff are due again. */
+    repairedAt: v.optional(v.number()),
+    repairCursor: v.optional(v.string()),
+    catchUpUntil: v.optional(v.number()),
+    subscriptionId: v.optional(v.string()),
+    subscriptionExpiresAt: v.optional(v.number()),
+    lastEventAt: v.optional(v.number()),
+    linkedByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_conversationId', ['conversationId'])
+    .index('by_provider_externalOrgId_externalChannelId', ['provider', 'externalOrgId', 'externalChannelId'])
+    .index('by_workspaceId_provider', ['workspaceId', 'provider'])
+    .index('by_connectionId', ['connectionId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt'])
+    .index('by_status_workspaceId_updatedAt', ['status', 'workspaceId', 'updatedAt'])
+    .index('by_status_workspaceId_historyPriorityAt', ['status', 'workspaceId', 'historyPriorityAt'])
+    .index('by_status_repairedAt', ['status', 'repairedAt'])
+    .index('by_historyLeaseUntil', ['historyLeaseUntil'])
+    .index('by_provider_status_updatedAt', ['provider', 'status', 'updatedAt'])
+    .index('by_subscriptionExpiresAt', ['subscriptionExpiresAt']),
+
+  syncMessageMap: defineTable({
+    linkId: v.id('syncChannelLinks'),
+    conversationId: v.id('conversations'),
+    provider: v.union(v.literal('slack'), v.literal('teams')),
+    externalChannelId: v.string(),
+    externalMessageId: v.string(),
+    externalThreadId: v.optional(v.string()),
+    messageId: v.id('conversationMessages'),
+    direction: v.union(v.literal('inbound'), v.literal('outbound')),
+    createdAt: v.number(),
+  })
+    .index('by_provider_externalChannelId_externalMessageId', ['provider', 'externalChannelId', 'externalMessageId'])
+    .index('by_messageId', ['messageId'])
+    .index('by_linkId', ['linkId']),
+
+  syncIdentities: defineTable({
+    workspaceId: v.string(),
+    provider: v.union(v.literal('slack'), v.literal('teams')),
+    externalOrgId: v.string(),
+    externalUserId: v.string(),
+    displayName: v.string(),
+    email: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    isBot: v.optional(v.boolean()),
+    /** Set when the external user is (or connects as) an Overlay member. */
+    principalId: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_provider_externalUserId', ['workspaceId', 'provider', 'externalUserId'])
+    .index('by_workspaceId_principalId', ['workspaceId', 'principalId']),
+
+  /** A member's own Slack or Teams grant for posting as themselves. Tokens are sealed by the web server. */
+  syncMemberAccounts: defineTable({
+    workspaceId: v.string(),
+    userId: v.string(),
+    principalId: v.string(),
+    provider: v.union(v.literal('slack'), v.literal('teams')),
+    externalOrgId: v.string(),
+    externalUserId: v.string(),
+    externalDisplayName: v.optional(v.string()),
+    sealedToken: v.string(),
+    sealedRefreshToken: v.optional(v.string()),
+    tokenExpiresAt: v.optional(v.number()),
+    scopes: v.array(v.string()),
+    dmSyncEnabled: v.boolean(),
+    status: v.union(v.literal('active'), v.literal('revoked')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_workspaceId_userId_provider', ['workspaceId', 'userId', 'provider'])
+    .index('by_provider_externalOrgId_externalUserId', ['provider', 'externalOrgId', 'externalUserId']),
+
+  /** Outbound work: a member's Overlay message, edit, delete or reaction to mirror into Slack or Teams. */
+  syncOutbox: defineTable({
+    linkId: v.id('syncChannelLinks'),
+    workspaceId: v.string(),
+    provider: v.union(v.literal('slack'), v.literal('teams')),
+    messageId: v.id('conversationMessages'),
+    action: v.union(
+      v.literal('post'),
+      v.literal('edit'),
+      v.literal('delete'),
+      v.literal('react'),
+      v.literal('unreact'),
+    ),
+    actorUserId: v.string(),
+    emoji: v.optional(v.string()),
+    state: v.union(v.literal('pending'), v.literal('claimed'), v.literal('done'), v.literal('failed')),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
+    .index('by_messageId', ['messageId']),
+
+  /** Token-bucket budgets shared by live work, outbound sends, repair and history per workspace and method. */
+  syncRateBudgets: defineTable({
+    key: v.string(),
+    capacity: v.number(),
+    refillPerMinute: v.number(),
+    tokens: v.number(),
+    refilledAt: v.number(),
+    blockedUntil: v.optional(v.number()),
+    /** A denied higher-priority caller holds the next tokens until this time, so lower-priority work can't starve it. */
+    reservedPriority: v.optional(v.number()),
+    reservedUntil: v.optional(v.number()),
+  }).index('by_key', ['key']),
 })

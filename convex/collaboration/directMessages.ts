@@ -9,6 +9,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { projectAgentThreadPullRequests } from '../lib/threadPullRequests'
 import { recordConversationEvent } from './events'
+import { enqueueSyncOutbound } from '../sync/outbox'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
@@ -581,6 +582,7 @@ export async function insertCollaborationMessage(
   await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
     messageId,
   })
+  await enqueueSyncOutbound(ctx, { messageId, actorUserId: args.actorUserId, action: 'post' })
   return messageId
 }
 
@@ -2342,6 +2344,7 @@ export async function editRoomMessage(
     ],
     updatedAt: now,
   })
+  await enqueueSyncOutbound(ctx, { messageId: message._id, actorUserId: args.actorUserId, action: 'edit' })
   return true
 }
 
@@ -2365,5 +2368,6 @@ export async function deleteRoomMessage(
     sourceKind: 'message',
     sourceId: args.messageId,
   })
+  await enqueueSyncOutbound(ctx, { messageId: message._id, actorUserId: args.actorUserId, action: 'delete' })
   return true
 }

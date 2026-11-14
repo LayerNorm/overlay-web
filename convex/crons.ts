@@ -158,6 +158,12 @@ crons.interval(
   {},
 )
 
+// Slack and Teams channel sync: imports linked channels' history newest
+// first, resumes links whose rate-limit window passed and runs each syncing
+// link's nightly gap repair. The web server's worker does the platform calls
+// within each workspace's rate budget; this only wakes it when work exists.
+crons.interval('channel sync history and repair', { minutes: 1 }, internal.sync.history.runTick, {})
+
 // knowledgeChunks have no tombstone — a chunk is dead when its source row is.
 // Interrupted purges can strand retrievable chunks; a daily whole-table scan
 // deletes provable orphans (missing source row, tombstoned memory). The action
@@ -179,6 +185,17 @@ crons.interval(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).surfaces.chatState.pruneExpired,
 )
+
+// Retries outbound Slack/Teams sync rows that are due or whose worker died mid-send.
+crons.interval('sync outbox sweep', { minutes: 1 }, internal.sync.outbox.sweep, {})
+
+crons.interval('sync outbox prune', { hours: 1 }, internal.sync.outbox.prune, {})
+
+// Teams channel sync: renews Graph subscriptions before they expire, creates
+// missing ones, polls private and shared channels (Graph refuses
+// resource-specific-consent subscriptions there) and retries links paused
+// because Overlay was missing in Teams. Calls the web server only when due.
+crons.interval('teams sync maintenance', { minutes: 1 }, internal.sync.teamsLinks.runMaintenanceTick, {})
 
 // Counts yesterday (UTC) for the admin console's growth panel. Runs a little
 // after midnight so late writes for the day have landed.
