@@ -48,6 +48,77 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
   }
 }
 
+const citationFixture = {
+  '1': { kind: 'memory' as const, sourceId: 'memory_1' },
+  '2': { kind: 'file' as const, sourceId: 'file_2' },
+}
+
+const eightWebSources = Array.from({ length: 8 }, (_, index) => ({
+  url: `https://example.test/source-${index + 1}`,
+  title: `Result ${index + 1}`,
+}))
+
+function webSearchStep(text: string, output?: unknown, error?: string): ActAssistantFinishEvent['steps'][number] {
+  const call = {
+    type: 'tool-call',
+    toolCallId: 'web-search-1',
+    toolName: 'web_search',
+    input: { query: 'source citation test' },
+  }
+  const result = output === undefined ? undefined : {
+    type: 'tool-result',
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    input: call.input,
+    output,
+  }
+  const failure = error ? {
+    type: 'tool-error',
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    input: call.input,
+    error: new Error(error),
+  } : undefined
+  return {
+    text,
+    toolCalls: [call],
+    toolResults: result ? [{
+      toolCallId: result.toolCallId,
+      toolName: result.toolName,
+      input: result.input,
+      output: result.output,
+    }] : [],
+    content: [call, ...(result ? [result] : []), ...(failure ? [failure] : [])],
+  } as unknown as ActAssistantFinishEvent['steps'][number]
+}
+
+async function persistActAssistantText(text: string, step?: ActAssistantFinishEvent['steps'][number]) {
+  let finalized: { content: string; parts: Array<Record<string, unknown>> } | undefined
+  const service = new ActMessagePersistenceService({
+    repository: repository({
+      addMessage: async (args) => {
+        finalized = { content: args.content, parts: args.parts }
+        return 'message_1' as Id<'conversationMessages'>
+      },
+    }),
+  })
+  await service.persistAssistantFinish({
+    attemptModelId: 'claude-sonnet-4-6',
+    conversationId: 'conversation_1' as Id<'conversations'>,
+    emitWebhook: false,
+    event: { steps: step ? [step] : [], text, usage: { inputTokens: 0, outputTokens: 0 } },
+    finishedToolCallIds: new Set(),
+    sourceCitations: citationFixture,
+    timedOut: false,
+    timeoutMs: 30_000,
+    toolFailuresByCallId: new Map(),
+    turnId: 'turn_1',
+    userId: 'user_1',
+  })
+  assert.ok(finalized)
+  return finalized
+}
+
 const paidEntitlements = {
   tier: 'pro' as const,
   planKind: 'paid' as const,
@@ -433,6 +504,45 @@ test('act assistant persistence writes one final message and emits completion', 
     turnId: 'turn_1',
     userId: 'user_1',
   }])
+})
+
+test('act persistence leaves ambiguous numeric citations unlinked when successful web sources are present', async () => {
+  const text = 'Answer\n\n**Sources:** [1] [2]\n\n```text\n[1]\n```'
+  const finalized = await persistActAssistantText(text, webSearchStep(text, { sources: eightWebSources }))
+  assert.equal(finalized.content, text)
+  const search = finalized.parts.find((part) => part.type === 'tool-invocation')?.toolInvocation as {
+    state: string
+    toolOutput: { sources: unknown[] }
+  }
+  assert.equal(search.state, 'output-available')
+  assert.equal(search.toolOutput.sources.length, 8)
+})
+
+test('act persistence preserves explicit internal and external links with web sources', async () => {
+  const text = 'Answer\n\n**Sources:** [1](/app/settings?section=memories&memory=explicit) [2](https://example.test/reference)'
+  const finalized = await persistActAssistantText(text, webSearchStep(text, { sources: eightWebSources }))
+  assert.equal(finalized.content, text)
+})
+
+test('act persistence keeps knowledge-only numeric citations and does not classify failed or empty searches as sources', async () => {
+  const text = 'Answer\n\n**Sources:** [1]'
+  const expected = 'Answer\n\n**Sources:** [1](/app/settings?section=memories&memory=memory_1)'
+  assert.equal((await persistActAssistantText(text)).content, expected)
+  const emptySearch = await persistActAssistantText(text, webSearchStep(text, { sources: [] }))
+  assert.equal(emptySearch.content, expected)
+  const emptyInvocation = emptySearch.parts.find((part) => part.type === 'tool-invocation')?.toolInvocation as {
+    toolOutput: Record<string, unknown>
+  }
+  assert.deepEqual(emptyInvocation.toolOutput.sources, [])
+
+  const failedSearch = await persistActAssistantText(text, webSearchStep(text, undefined, 'search unavailable'))
+  assert.equal(failedSearch.content, expected)
+  const failedInvocation = failedSearch.parts.find((part) => part.type === 'tool-invocation')?.toolInvocation as {
+    state: string
+    toolOutput: Record<string, unknown>
+  }
+  assert.equal(failedInvocation.state, 'output-error')
+  assert.equal('sources' in failedInvocation.toolOutput, false)
 })
 
 test('act usage budget service never checks or charges BYOK attempts', async () => {
