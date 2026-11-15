@@ -3,7 +3,7 @@ import { APICallError } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import {
   HarnessPersistenceError, harnessDiagnosticForFailure, harnessDiagnosticTerminalError, INTERRUPTED_MODEL_CALL_PROVIDER,
-  logHarnessFailure, stableHarnessDiagnosticId,
+  describeHarnessFailureCause, logHarnessFailure, stableHarnessDiagnosticId,
 } from './harness-diagnostics'
 
 function snapshot(overrides: Partial<HarnessSnapshot> = {}): HarnessSnapshot {
@@ -21,8 +21,6 @@ function snapshot(overrides: Partial<HarnessSnapshot> = {}): HarnessSnapshot {
       maxCostMicros: 0,
       executionPolicyVersion: 2, spendingMode: 'none',
       workspaceId: 'workspace',
-      maxParallelChildren: 0,
-      maxDepth: 0,
     },
     status: 'running',
     revision: 4,
@@ -41,11 +39,11 @@ function snapshot(overrides: Partial<HarnessSnapshot> = {}): HarnessSnapshot {
   }
 }
 
-test('generic budget-like text remains UNKNOWN and is not retryable', () => {
+test('an unrecognized failure is an internal error, never UNKNOWN, and keeps its text out of the message', () => {
   const diagnostic = harnessDiagnosticForFailure('root', snapshot(), new Error('budget was rejected'), 'model')
-  expect(diagnostic).toMatchObject({ code: 'UNKNOWN', retryability: 'reconcile' })
+  expect(diagnostic).toMatchObject({ code: 'INTERNAL_ERROR', retryability: 'user_action' })
   expect(harnessDiagnosticTerminalError(diagnostic)).toMatchObject({
-    retryable: false,
+    retryable: true,
     message: expect.stringContaining('Diagnostic ID:'),
   })
   expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain('budget was rejected')
@@ -102,18 +100,45 @@ test('an interrupted call that exhausted its retries stays MODEL_OUTCOME_UNKNOWN
   expect(harnessDiagnosticForFailure('root', interrupted, new Error('stream closed'), 'model'))
     .toMatchObject({ code: 'MODEL_OUTCOME_UNKNOWN', operationId: 'model:7' })
   expect(harnessDiagnosticForFailure('root', { ...interrupted, modelRecovery: undefined }, new Error('stream closed'), 'model').code)
-    .toBe('UNKNOWN')
+    .toBe('INTERNAL_ERROR')
 })
 
-test('failure logs carry identifiers and the error name only', () => {
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  const diagnostic = harnessDiagnosticForFailure('root', snapshot(openDispatch), new Error('secret prompt text'), 'model')
-  logHarnessFailure('root', diagnostic, new Error('secret prompt text'))
-  expect(warn).toHaveBeenCalledExactlyOnceWith('[harness] run failed', {
-    runId: 'root', diagnosticId: diagnostic.diagnosticId, code: 'MODEL_OUTCOME_UNKNOWN', stage: 'model', errorName: 'Error',
+test('failure logs are keyed by diagnostic ID and carry the cause chain', () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  const cause = Object.assign(new Error('Delegate an unfinished unassigned milestone.'), {
+    name: 'FatalError', cause: new Error('token sk-live-abcdefghijklmnopqrstuvwxyz0123'),
   })
-  expect(JSON.stringify(warn.mock.calls)).not.toContain('secret')
-  warn.mockRestore()
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot(), cause, 'model')
+  logHarnessFailure('root', diagnostic, cause)
+  expect(error).toHaveBeenCalledOnce()
+  const line = String(error.mock.calls[0]?.[0])
+  expect(line.startsWith(`[harness] task stopped ${diagnostic.diagnosticId} `)).toBe(true)
+  expect(JSON.parse(line.slice(line.indexOf('{')))).toMatchObject({
+    diagnosticId: diagnostic.diagnosticId, code: 'INTERNAL_ERROR', stage: 'model', runId: 'root',
+    cause: [{ name: 'FatalError', message: 'Delegate an unfinished unassigned milestone.' }, { name: 'Error' }],
+  })
+  expect(line).not.toContain('abcdefghijklmnopqrstuvwxyz0123')
+  error.mockRestore()
+})
+
+test('provider causes keep the authored description, never raw provider text', () => {
+  const apiError = new APICallError({
+    message: 'raw provider body echoing the prompt', url: 'https://provider.invalid', requestBodyValues: {}, statusCode: 503,
+  })
+  const [cause] = describeHarnessFailureCause(apiError)
+  expect(cause).toMatchObject({ name: 'AI_APICallError', statusCode: 503 })
+  expect(JSON.stringify(cause)).not.toContain('raw provider body')
+})
+
+test('fatal model and backend failures are classified instead of unknown', () => {
+  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('This hosted model is retired. Choose a supported paid model.'), 'model').code)
+    .toBe('MODEL_UNAVAILABLE')
+  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('Harness backend is unavailable.'), 'model').code)
+    .toBe('BACKEND_UNAVAILABLE')
+  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('This native action requires fresh approval.'), 'tool').code)
+    .toBe('AUTHORIZATION_REVOKED')
+  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('The explicit harness task deadline was reached while waiting.'), 'model').code)
+    .toBe('TASK_DEADLINE')
 })
 
 test('verified provider status and exact task policy failures use authored safe copy', () => {
@@ -162,13 +187,13 @@ test.each([
   expect(diagnostic.code).toBe(code)
 })
 
-test('unknown final failure has safe nonretryable reconciliation provenance', () => {
+test('an unrecognized final failure is an internal error that does not echo its details', () => {
   const diagnostic = harnessDiagnosticForFailure('root', snapshot({
     status: 'failed',
     terminalReason: 'untrusted provider details',
   }), new Error('untrusted provider details'), 'delivery')
-  expect(diagnostic).toMatchObject({ code: 'UNKNOWN', stage: 'delivery', retryability: 'reconcile' })
-  expect(harnessDiagnosticTerminalError(diagnostic)).toMatchObject({ retryable: false })
+  expect(diagnostic).toMatchObject({ code: 'INTERNAL_ERROR', stage: 'delivery', retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(diagnostic)).toMatchObject({ retryable: true })
   expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain('untrusted provider details')
 })
 
@@ -178,7 +203,7 @@ test('an earlier progress diagnostic does not label a different terminal failure
     diagnostic: earlier,
     terminalReason: 'unknown failure',
   }), new Error('unknown failure'), 'delivery')
-  expect(current.code).toBe('UNKNOWN')
+  expect(current.code).toBe('INTERNAL_ERROR')
   const terminalSnapshot = snapshot({ status: 'failed', diagnostic: earlier })
   expect(harnessDiagnosticForFailure('root', terminalSnapshot, new Error('different'), 'delivery')).toBe(earlier)
   const persistence = harnessDiagnosticForFailure('root', snapshot(), new HarnessPersistenceError(), 'persistence')

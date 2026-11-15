@@ -91,7 +91,7 @@ test('surface admission claims an authentic native room delivery and projects/re
     source: { conversationId: fixture.conversationId }, goal: 'Help me.', constraints: [],
     policy: {
       actorUserId: 'user', workspaceId: 'ws', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0,
     },
     serverSecret: secret,
   })).rejects.toThrow('HARNESS_DELIVERY_TARGET_DENIED')
@@ -103,7 +103,7 @@ test('surface admission claims an authentic native room delivery and projects/re
     constraints: [],
     policy: {
       actorUserId: 'user', workspaceId: 'ws', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0,
     },
     serverSecret: secret,
   })

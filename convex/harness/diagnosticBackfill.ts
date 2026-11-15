@@ -10,7 +10,8 @@ const PAGE_MAXIMUM_BYTES = 1_000_000
 const diagnosticCodes = new Set<HarnessDiagnostic['code']>([
   'TASK_DEADLINE', 'TASK_SPEND_LIMIT', 'WORKSPACE_FUNDS', 'PROVIDER_REJECTED', 'PROVIDER_REQUEST_INVALID',
   'PROVIDER_ACCOUNT', 'PROVIDER_TIMEOUT', 'PROVIDER_RATE_LIMIT', 'PROVIDER_UNAVAILABLE', 'TOOL_FAILED',
-  'TOOL_OUTCOME_UNKNOWN', 'MODEL_OUTCOME_UNKNOWN', 'AUTHORIZATION_REVOKED', 'PERSISTENCE_FAILED', 'STAGNATION', 'UNKNOWN',
+  'TOOL_OUTCOME_UNKNOWN', 'MODEL_OUTCOME_UNKNOWN', 'AUTHORIZATION_REVOKED', 'PERSISTENCE_FAILED', 'STAGNATION',
+  'MODEL_UNAVAILABLE', 'BACKEND_UNAVAILABLE', 'INTERNAL_ERROR', 'UNKNOWN',
 ])
 const diagnosticStages = new Set<HarnessDiagnostic['stage']>(['admission', 'model', 'tool', 'persistence', 'delivery'])
 
@@ -85,7 +86,7 @@ async function recordDiagnostic(
     workflowRunId: undefined,
     policy: { workspaceId: metadata?.policy?.workspaceId },
     diagnostic,
-  }, diagnostic)
+  }, diagnostic, { log: false })
   const failures = diagnostic.operationId
     ? await ctx.db.query('harnessToolFailures')
       .withIndex('by_runId_toolCallId', q => q.eq('runId', run.runId).eq('toolCallId', diagnostic.operationId!))

@@ -35,7 +35,7 @@ const nativeRoomTurn = {
 const root = {
   runId: 'run', goal: 'Complete the task', constraints: [], source: { conversationId: identity.conversationId },
   policy: { actorUserId: 'owner', workspaceId: 'workspace', allowedToolIds: [], requiresPlan: false,
-    deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 1, maxDepth: 1 },
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 100 },
 }
 const ready = { nativeThreadCompatibilityRevision: NATIVE_THREAD_COMPATIBILITY_REVISION }
 

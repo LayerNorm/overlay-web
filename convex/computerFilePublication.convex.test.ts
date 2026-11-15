@@ -66,8 +66,6 @@ async function fixture(deadlineAt: number = Date.now() + 60_000, renewable = fal
       ...(renewable ? { executionPolicyVersion: 2 as const, spendingMode: 'workspace' as const } : {}),
       deadlineAt,
       maxCostMicros: renewable ? 0 : 100,
-      maxParallelChildren: 1,
-      maxDepth: 1,
     },
     source: { conversationId: ids.conversationId },
   }
