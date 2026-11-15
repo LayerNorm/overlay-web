@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
+import { ConvexError } from 'convex/values'
 import { admitPersonalHarnessChild } from './personal-child-steps'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), get: vi.fn(), apply: vi.fn() }))
@@ -37,4 +38,18 @@ test('revoked personal access and a stale workflow cannot admit children', async
   mocks.get.mockResolvedValue({ runId: 'root', workflowRunId: 'other', revision: 1 })
   await expect(admitPersonalHarnessChild(input, delegation, 'call')).rejects.toThrow('delegation authority')
   expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('personal admission returns a rejected rule to the model instead of failing', async () => {
+  mocks.apply.mockRejectedValue(new ConvexError({
+    code: 'HARNESS_OPERATION_REJECTED', message: 'Delegate an unfinished unassigned milestone.',
+  }))
+  await expect(admitPersonalHarnessChild(input, delegation, 'call')).resolves.toEqual({
+    rejected: true, reason: 'Delegate an unfinished unassigned milestone.',
+  })
+})
+
+test('personal admission still fails on an infrastructure error', async () => {
+  mocks.apply.mockRejectedValue(new Error('network down'))
+  await expect(admitPersonalHarnessChild(input, delegation, 'call')).rejects.toThrow('network down')
 })

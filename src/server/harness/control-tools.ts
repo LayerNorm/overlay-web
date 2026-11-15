@@ -155,14 +155,32 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         constraints: z.array(z.string().min(1).max(2_000)).max(32),
         allowedToolIds: z.array(id).max(512),
       }),
-      execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
+      execute: async (input, { toolCallId }) => {
+        const child = await ports.delegate(input, toolCallId)
+        if ('rejected' in child) {
+          return {
+            success: false,
+            code: 'delegation_rejected',
+            error: child.reason,
+            hint: 'Fix the step or the granted tools and try again, or do this step yourself.',
+          }
+        }
+        return child
+      },
     }),
     harness_read_child: tool({
       description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. ',
       inputSchema: z.object({ childRunId: id }),
       execute: async ({ childRunId }, { toolCallId }) => {
         const parent = await ports.read()
-        if (!parent.children.some(child => child.id === childRunId)) throw new Error('This run did not delegate that child.')
+        if (!parent.children.some(child => child.id === childRunId)) {
+          return {
+            success: false,
+            code: 'unknown_child',
+            error: 'This run did not delegate that child.',
+            hint: `Use a childRunId returned by harness_delegate: ${parent.children.map(child => child.id).join(', ') || 'none yet'}.`,
+          }
+        }
         let child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
         if (!['completed', 'failed', 'cancelled'].includes(child.status)) {

@@ -68,8 +68,8 @@ test('failure retains partial text and reports failure instead of completing', a
   await finishPersonalHarnessDelivery(access, delivery, { emitWebhook: false, turnId: 'turn' })
   expect(mocks.progress).not.toHaveBeenCalled()
   expect(mocks.fail).toHaveBeenCalledWith(expect.objectContaining({
-    errorText: expect.stringContaining('unclassified reason'),
-    error: expect.objectContaining({ code: 'harness_unknown', retryable: false }),
+    errorText: expect.stringContaining('internal error'),
+    error: expect.objectContaining({ code: 'harness_internal_error', retryable: true }),
   }))
   expect(mocks.fail.mock.calls[0]?.[0].errorText).not.toContain('Budget exhausted.')
   expect(mocks.complete).not.toHaveBeenCalled()

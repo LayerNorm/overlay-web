@@ -106,9 +106,6 @@ export type HarnessPolicy = {
   taskDeadlineAt?: number
   /** Always 0. Kept because stored runs carry it; the workspace budget is the only spending limit. */
   maxCostMicros: number
-  /** Retired sub-agent caps, ignored everywhere. Optional until web stops sending them. */
-  maxParallelChildren?: number
-  maxDepth?: number
 }
 
 export function effectiveHarnessDeadlineAt(policy: Pick<HarnessPolicy, 'deadlineAt' | 'taskDeadlineAt'>): number {
