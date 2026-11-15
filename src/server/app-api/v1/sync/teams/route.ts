@@ -5,7 +5,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { logger } from '@/server/observability/logger'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { graphAppToken, graphRequest, isAppMissing } from '@/server/sync/teams/graph'
+import { graphAppToken, graphRequest, isAppMissing, teamsSyncConfigured } from '@/server/sync/teams/graph'
 import { createTeamsSubscription, deleteTeamsSubscription, type TeamsManagedLink } from '@/server/sync/teams/subscriptions'
 import type { SyncChannelKind } from '@/shared/sync/types'
 import { canManageSync, handleSyncAction, syncErrorResponse, syncJson } from '../shared'
@@ -28,6 +28,8 @@ const KINDS: Record<string, SyncChannelKind> = { standard: 'public', private: 'p
  */
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   if (request.nextUrl.searchParams.get('action') !== 'channels') return syncJson({ error: 'Unknown action', code: 'invalid_request' }, 400)
+  // Checked first: the settings page reads this 503 as "Teams sync isn't available yet".
+  if (!teamsSyncConfigured()) return syncJson({ error: 'Teams sync is not configured on this deployment.', code: 'teams_not_configured' }, 503)
   if (!canManageSync(context)) return syncErrorResponse(new Error('SYNC_MANAGE_DENIED'), 'teams')
   try {
     const connection = await convex.query<{ externalOrgId: string; status: string } | null>('sync/links:getConnection', {
