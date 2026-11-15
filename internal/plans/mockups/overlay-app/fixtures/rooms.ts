@@ -90,6 +90,39 @@ function agentRoom(id: string, agentId: string, title: string, ago: number, acti
   return { id, kind: 'agent', title, agentId, participants: [VIEWER_PRINCIPAL, agent.principalId as string], lastModified: NOW - ago, createdAt: NOW - ago - 2 * DAY, activity, messages: messages(id, agent.principalId as string), ...extra }
 }
 
+const TRIAGE_INSTRUCTIONS = 'Triage my inbox. Archive newsletters and receipts, draft replies to anything from customers, and flag what needs me.'
+
+const TRIAGE_YESTERDAY = `Inbox is clear. I archived 18 newsletters and receipts and drafted 2 customer replies, both sent.
+
+Nothing needs you today.`
+
+const TRIAGE_TODAY = `I archived 14 newsletters and receipts and drafted replies to 3 customers.
+
+Two of the drafts promise a delivery date, so I held them:
+
+- **Acme Logistics**: confirms the December 2 rollout.
+- **Brightline**: offers SSO by the end of the month.
+
+Should I send both as written?`
+
+rooms.push(
+  agentRoom('k17convinboxtriage00000000000000', 'agent_chief', 'Morning inbox triage', 8 * MIN, 'needs_input', (room, agent) => [
+    message(room, VIEWER_PRINCIPAL, 1 * DAY + 10 * MIN, TRIAGE_INSTRUCTIONS),
+    message(room, agent, 1 * DAY + 4 * MIN, TRIAGE_YESTERDAY, [
+      tool('m1', 'GMAIL_FETCH_EMAILS', { query: 'is:unread newer_than:1d' }, { messages: 20 }),
+      tool('m2', 'GMAIL_CREATE_EMAIL_DRAFT', { to: 'ops@harbor.example' }, { success: true }),
+      text(TRIAGE_YESTERDAY),
+    ]),
+    message(room, VIEWER_PRINCIPAL, 14 * MIN, TRIAGE_INSTRUCTIONS),
+    message(room, agent, 8 * MIN, TRIAGE_TODAY, [
+      tool('m3', 'GMAIL_FETCH_EMAILS', { query: 'is:unread newer_than:1d' }, { messages: 23 }),
+      tool('m4', 'GMAIL_CREATE_EMAIL_DRAFT', { to: 'dana@acme.example' }, { success: true }),
+      tool('m5', 'GMAIL_CREATE_EMAIL_DRAFT', { to: 'lee@brightline.example' }, { success: true }),
+      text(TRIAGE_TODAY),
+    ]),
+  ]),
+)
+
 rooms.push(
   agentRoom('k17convlaunch0000000000000000000', 'agent_overlay', 'Plan the Q4 launch', 3 * MIN, 'working', (room, agent) => [
     message(room, VIEWER_PRINCIPAL, 52 * MIN, 'We launch the new homepage and pricing on December 2. Can you plan it across the team?'),

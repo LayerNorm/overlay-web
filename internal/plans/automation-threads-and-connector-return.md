@@ -1,7 +1,10 @@
 # Connector return and automations as threads
 
 Status: Proposed. Nothing implemented yet.
-Mockup: `internal/plans/mockups/overlay-app.html#/app/proposals/automation-threads` (add `?theme=dark` before the hash for dark mode).
+Mockups, both using production UI and fixture data:
+
+- Automation thread: `internal/plans/mockups/overlay-app.html#/app/agents?agent=agent_chief&id=k17convinboxtriage00000000000000`. It is the real Agents thread view. Each scheduled run appears as an ordinary user message, and the sidebar shows the thread's Needs you status. Nothing new is drawn.
+- Connector callback: `internal/plans/mockups/connector-callback.html`, the proposed static page the provider tab lands on. The original Connectors and onboarding screens keep their production look; only their state updates.
 
 ## 1. Connector return
 
@@ -29,4 +32,4 @@ Mockup: `internal/plans/mockups/overlay-app.html#/app/proposals/automation-threa
 
 **Phases.** (a) Thread binding plus the message-injection runner behind a flag, with existing automations migrated to a bound thread. (b) Chat thread status parity. (c) Remove the old runner, routes and fields, and update `internal/develop/tool-catalog.md` and the API route catalogs.
 
-**Open decision.** One thread per automation that accumulates runs (proposed, relying on compaction), or a new thread per run grouped under the automation.
+**Decided (2026-11-15).** Each automation has exactly one thread. Every run is appended to it, and the existing context compaction keeps it within the model's window. The sidebar lists that thread, not a separate automation entry.
