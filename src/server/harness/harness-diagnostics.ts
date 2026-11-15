@@ -77,7 +77,39 @@ export type HarnessFailureCause = {
   name: string
   message?: string
   code?: string
+  /** The provider's error type label, e.g. Anthropic's `api_error`. Never its message. */
+  providerType?: string
   statusCode?: number
+}
+
+const PROVIDER_ERROR_TYPE = /^[a-z][a-z0-9_.-]{0,63}$/i
+
+/**
+ * The provider's own error type label from a streamed error event (Anthropic
+ * `{ type: 'error', error: { type, message } }`, kept by the AI SDK as `type`).
+ * A fixed vocabulary, so it is safe to log and classify; free text is dropped.
+ */
+export function providerErrorType(error: unknown): string | undefined {
+  if (readErrorField(error, 'name') !== 'AI_StreamProviderError') return undefined
+  const data = readErrorField(error, 'data')
+  for (const value of [readErrorField(error, 'type'), readErrorField(readErrorField(data, 'error'), 'type'), readErrorField(data, 'type')]) {
+    if (typeof value === 'string' && value !== 'error' && PROVIDER_ERROR_TYPE.test(value)) return value
+  }
+  return undefined
+}
+
+const STREAM_PROVIDER_ERROR_CODES: Readonly<Record<string, HarnessDiagnosticCode>> = {
+  overloaded_error: 'PROVIDER_UNAVAILABLE',
+  api_error: 'PROVIDER_UNAVAILABLE',
+  server_error: 'PROVIDER_UNAVAILABLE',
+  timeout_error: 'PROVIDER_TIMEOUT',
+  rate_limit_error: 'PROVIDER_RATE_LIMIT',
+  authentication_error: 'PROVIDER_ACCOUNT',
+  permission_error: 'PROVIDER_ACCOUNT',
+  billing_error: 'PROVIDER_ACCOUNT',
+  invalid_request_error: 'PROVIDER_REQUEST_INVALID',
+  not_found_error: 'PROVIDER_REQUEST_INVALID',
+  request_too_large: 'PROVIDER_REQUEST_INVALID',
 }
 
 const MAX_CAUSE_MESSAGE = 300
@@ -107,6 +139,7 @@ export function describeHarnessFailureCause(error: unknown): HarnessFailureCause
     const data = readErrorField(current, 'data')
     const code = readErrorField(data, 'code') ?? readErrorField(current, 'code')
     const fromProvider = (typeof name === 'string' && name.startsWith('AI_')) || typeof statusCode === 'number'
+    const providerType = providerErrorType(current)
     const text = fromProvider
       ? describeAISDKFailure(current)
       : readErrorField(data, 'message') ?? readErrorField(current, 'message')
@@ -114,6 +147,7 @@ export function describeHarnessFailureCause(error: unknown): HarnessFailureCause
       name: typeof name === 'string' && name ? name.slice(0, 64) : 'Object',
       ...(typeof text === 'string' && text.trim() ? { message: oneLine(text) } : {}),
       ...(typeof code === 'string' ? { code: code.slice(0, 64) } : {}),
+      ...(providerType ? { providerType } : {}),
       ...(typeof statusCode === 'number' ? { statusCode } : {}),
     })
     current = readErrorField(current, 'cause')
@@ -167,6 +201,12 @@ function harnessProviderFailureCode(error: unknown): HarnessDiagnosticCode {
       if (description.startsWith('The model provider request timed out.')) return 'PROVIDER_TIMEOUT'
       if (providerAccountFailures.some(prefix => description.startsWith(prefix))) return 'PROVIDER_ACCOUNT'
       if (providerRequestFailures.some(prefix => description.startsWith(prefix))) return 'PROVIDER_REQUEST_INVALID'
+    }
+    // The provider sent an error event mid-stream without an HTTP status. Its type
+    // label says why; any other stream error is still the provider's, not Overlay's.
+    if (currentName === 'AI_StreamProviderError') {
+      const providerType = providerErrorType(current)
+      return (providerType ? STREAM_PROVIDER_ERROR_CODES[providerType] : undefined) ?? 'PROVIDER_UNAVAILABLE'
     }
     current = readErrorField(current, 'cause')
   }
