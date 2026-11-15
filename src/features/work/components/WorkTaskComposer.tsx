@@ -7,7 +7,7 @@ import { Settings, X } from 'lucide-react'
 import { Button, Popover, PopoverContent, PopoverTrigger, Textarea } from '@overlay/ui/primitives'
 import { unstyledTextarea } from '@overlay/ui/control-reset'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
-import { PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit } from '@overlay/chat-react'
+import { PromptInput, PromptInputBody, PromptInputButton, PromptInputSubmit } from '@overlay/chat-react'
 import type { CreateWorkItemRequest, WorkContextRef, WorkItem, WorkPerson } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { WORK_LIMITS, WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/work/status'
@@ -83,27 +83,29 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
   return <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4" data-testid="work-task-composer">
     <div className="@container/work-composer mx-auto w-full min-w-0 max-w-4xl">
       <PromptInput><PromptInputBody>
-        <Textarea ref={input} rows={1} aria-label="Describe a task" placeholder="Describe a task" value={draft.text} disabled={locked} onChange={event => patch({ text: event.target.value })}
-          onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }}
-          className={unstyledTextarea('block min-h-11 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-0.5 py-1 text-sm leading-6 text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
-        {draft.context.length ? <div className="flex flex-wrap gap-1 pt-1">{draft.context.map((context, index) => <Button key={`${context.type}:${context.id}`} type="button" variant="secondary" size="sm" className="h-7 max-w-full text-xs" disabled={locked} aria-label={`Remove ${context.label}`} onClick={() => patch({ context: draft.context.filter((_, i) => i !== index) })}><span className="truncate">{context.label}</span><X size={12} /></Button>)}</div> : null}
-        <PromptInputFooter className="flex-nowrap">
+        {draft.context.length ? <div className="flex flex-wrap gap-1 pb-1.5">{draft.context.map((context, index) => <Button key={`${context.type}:${context.id}`} type="button" variant="secondary" size="sm" className="h-7 max-w-full text-xs" disabled={locked} aria-label={`Remove ${context.label}`} onClick={() => patch({ context: draft.context.filter((_, i) => i !== index) })}><span className="truncate">{context.label}</span><X size={12} /></Button>)}</div> : null}
+        <div className="flex items-end gap-1">
           <WorkComposerContext search={search} disabled={locked || draft.context.length >= WORK_LIMITS.contextItems} onAdd={context => patch({ context: [...draft.context.filter(item => item.type !== context.type || item.id !== context.id), context] })} />
-          <ComposerAssignee people={people} scope={scope} principalId={principalId} value={draft.assigneePrincipalId} onChange={assigneePrincipalId => patch({ assigneePrincipalId })} disabled={locked} />
-          <ComposerSchedule draft={draft} onChange={patch} disabled={locked} />
-          <ComposerDependencies tasks={tasks} value={draft.blockedBy} onChange={blockedBy => patch({ blockedBy })} disabled={locked} />
-          <Popover open={settingsOpen && !locked} onOpenChange={setSettingsOpen}>
-            <PopoverTrigger asChild><PromptInputButton aria-label="Task settings" disabled={locked}><Settings size={15} /></PromptInputButton></PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-72 max-w-[calc(100vw-2rem)] p-3" aria-label="Task settings">
-              <WorkTaskSettings draft={draft} disabled={locked} onChange={patch} />
-            </PopoverContent>
-          </Popover>
-          <span className="min-w-0 flex-1" />
-          {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
+          <Textarea ref={input} rows={1} aria-label="Describe a task" placeholder="Describe a task" value={draft.text} disabled={locked} onChange={event => patch({ text: event.target.value })}
+            onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }}
+            className={unstyledTextarea('block min-h-9 max-h-40 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-0.5 py-1.5 text-sm leading-6 text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
           <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
-        </PromptInputFooter>
-        {error ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+        </div>
       </PromptInputBody></PromptInput>
+      <div data-slot="prompt-input-accessories" className="mt-1.5 flex min-h-8 items-center gap-1 px-1">
+        <ComposerAssignee people={people} scope={scope} principalId={principalId} value={draft.assigneePrincipalId} onChange={assigneePrincipalId => patch({ assigneePrincipalId })} disabled={locked} />
+        <ComposerSchedule draft={draft} onChange={patch} disabled={locked} />
+        <ComposerDependencies tasks={tasks} value={draft.blockedBy} onChange={blockedBy => patch({ blockedBy })} disabled={locked} />
+        <Popover open={settingsOpen && !locked} onOpenChange={setSettingsOpen}>
+          <PopoverTrigger asChild><PromptInputButton aria-label="Task settings" className="size-8" disabled={locked}><Settings size={15} /></PromptInputButton></PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-72 max-w-[calc(100vw-2rem)] p-3" aria-label="Task settings">
+            <WorkTaskSettings draft={draft} disabled={locked} onChange={patch} />
+          </PopoverContent>
+        </Popover>
+        <span className="min-w-0 flex-1" />
+        {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
+      </div>
+      {error ? <p role="alert" className="mt-2 px-1 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
     </div>
   </div>
 })

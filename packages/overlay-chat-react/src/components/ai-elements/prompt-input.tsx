@@ -27,7 +27,7 @@ export function PromptInput({ className, dragging = false, ...props }: Component
 }
 
 export function PromptInputBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-input-body" className={join('relative p-2.5 sm:p-3', className)} {...props} />
+  return <div data-slot="prompt-input-body" className={join('relative p-2', className)} {...props} />
 }
 
 export function PromptInputFooter({ className, ...props }: ComponentProps<'div'>) {

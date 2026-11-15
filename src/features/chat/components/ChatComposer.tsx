@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
+import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
 import {
   AtSign,
   Brain,
@@ -174,6 +174,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   }
 
   return (
+    <>
     <PromptInput>
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <PromptInputBody>
@@ -215,104 +216,83 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
             event.target.value = ''
           }}
         />
-        <MentionInput
-          ref={props.textareaRef}
-          value={props.input}
-          valueRevision={props.inputRevision}
-          onChange={props.onInputChange}
-          onMentionsChange={props.onMentionsChange}
-          onPaste={props.onPaste}
-          onUploadFile={() => props.docInputRef.current?.click()}
-          mentionCategories={props.mentionCategories}
-          placeholder={composerPlaceholder(props)}
-          className={undefined}
-          onKeyDown={handleComposerKeyDown}
-        />
-        <ComposerControls
-          {...props}
-          mixedFileInputRef={mixedFileInputRef}
-        />
+        <div className="flex items-end gap-1">
+          {props.textOnly ? null : <AttachMenu {...props} mixedFileInputRef={mixedFileInputRef} />}
+          <div className="min-w-0 flex-1">
+          <MentionInput
+            ref={props.textareaRef}
+            value={props.input}
+            valueRevision={props.inputRevision}
+            onChange={props.onInputChange}
+            onMentionsChange={props.onMentionsChange}
+            onPaste={props.onPaste}
+            onUploadFile={() => props.docInputRef.current?.click()}
+            mentionCategories={props.mentionCategories}
+            placeholder={composerPlaceholder(props)}
+            className={undefined}
+            onKeyDown={handleComposerKeyDown}
+          />
+          </div>
+          <ComposerSendControl {...props} />
+        </div>
       </PromptInputBody>
     </PromptInput>
+    <ComposerAccessoryRow {...props} />
+    </>
   )
 }
 
 
-type ComposerControlsProps = ComposerViewProps & {
-  disabledSend: boolean
-  mixedFileInputRef: RefObject<HTMLInputElement | null>
+function ComposerSendControl(props: ComposerViewProps & { disabledSend: boolean }) {
+  if (props.queue?.running && props.hasComposerText) {
+    return (
+      <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
+        <Button variant="primary" size="icon" type="button" aria-label="Queue message" className="shrink-0" onClick={props.queue.onQueueDraft}>
+          <ListEnd size={17} strokeWidth={2} />
+        </Button>
+      </DelayedTooltip>
+    )
+  }
+  return (
+    <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
+      <PromptInputSubmit
+        status={props.isActiveLoading ? 'streaming' : 'ready'}
+        onStop={() => void props.onStop()}
+        onClick={() => void props.onSend()}
+        disabled={props.disabledSend || props.isSendBlocked}
+      />
+    </DelayedTooltip>
+  )
 }
 
-function ComposerControls(props: ComposerControlsProps) {
-  const mentionTooltip = mentionReferenceLabel(props)
-  const hasAgentCommands = Boolean(props.agentCommands?.length)
+/** Page controls sit under the input card, never inside it. */
+function ComposerAccessoryRow(props: ComposerViewProps) {
+  const memoryOff = props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled
+  const tools = props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props))
+  const hasChips = memoryOff || tools.length > 0 || Boolean(props.generationChip)
+  const queueRunning = Boolean(props.queue?.running)
+  if (!hasChips && !queueRunning && !props.contextUsage && !props.modelControl) return null
   return (
-    <PromptInputFooter>
-      {props.textOnly ? null : <AttachMenu {...props} />}
-      {props.textOnly ? null : <DelayedTooltip label={mentionTooltip} side="top">
-        <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">
-          <AtSign size={16} strokeWidth={1.75} />
-        </PromptInputButton>
-      </DelayedTooltip>}
-      {hasAgentCommands ? (
-        <DelayedTooltip label="Agent slash commands" side="top">
-          <PromptInputButton
-            onClick={() => {
-              if (!props.hasComposerText) props.onInputChange('/')
-              props.textareaRef.current?.focus()
-            }}
-            aria-label="Agent slash commands"
-          >
-            <Slash size={16} strokeWidth={1.75} />
-          </PromptInputButton>
-        </DelayedTooltip>
-      ) : null}
+    <div data-slot="prompt-input-accessories" className="mt-1.5 flex min-h-8 items-center gap-1.5 px-1">
       <PromptInputTools>
-        {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
+        {memoryOff ? (
           <DelayedTooltip label="Memory is off for this message." side="top">
             <div className="shrink-0">
-              <ToolRequestChip
-                label="Memory: OFF"
-                Icon={Brain}
-                onClear={props.onToggleMemory}
-              />
+              <ToolRequestChip label="Memory: OFF" Icon={Brain} onClear={props.onToggleMemory} />
             </div>
           </DelayedTooltip>
-        )}
-        {props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props)).map((toolId) => {
+        ) : null}
+        {tools.map((toolId) => {
           const tool = TOOL_REQUEST_BY_ID.get(toolId)
           if (!tool) return null
-          return (
-            <ToolRequestChip
-              key={toolId}
-              label={tool.label}
-              Icon={tool.Icon}
-              onClear={() => props.onRemoveTool(toolId)}
-            />
-          )
+          return <ToolRequestChip key={toolId} label={tool.label} Icon={tool.Icon} onClear={() => props.onRemoveTool(toolId)} />
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </PromptInputTools>
-      {props.queue?.running ? <QueueShortcutHint /> : null}
+      {queueRunning ? <QueueShortcutHint /> : null}
       {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
       {props.modelControl}
-      {props.queue?.running && props.hasComposerText ? (
-        <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
-          <Button variant="primary" size="icon" type="button" aria-label="Queue message" className="shrink-0" onClick={props.queue.onQueueDraft}>
-            <ListEnd size={17} strokeWidth={2} />
-          </Button>
-        </DelayedTooltip>
-      ) : (
-        <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
-          <PromptInputSubmit
-            status={props.isActiveLoading ? 'streaming' : 'ready'}
-            onStop={() => void props.onStop()}
-            onClick={() => void props.onSend()}
-            disabled={props.disabledSend || props.isSendBlocked}
-          />
-        </DelayedTooltip>
-      )}
-    </PromptInputFooter>
+    </div>
   )
 }
 
@@ -369,7 +349,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
         </PromptInputButton>
       </DelayedTooltip>
       {props.showAttachMenu && (
-        <div className={`absolute left-0 z-20 w-64 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+        <div className={`absolute left-0 z-20 w-72 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
           {props.capabilities.files && (
             <AttachMenuButton
               onClick={() => {
@@ -381,6 +361,26 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
+          <AttachMenuButton
+            onClick={() => {
+              props.setShowAttachMenu(false)
+              props.textareaRef.current?.openMentionPopup()
+            }}
+            icon={<AtSign size={13} strokeWidth={1.75} />}
+            label="Mention"
+            suffix="@"
+          />
+          {props.agentCommands?.length ? (
+            <AttachMenuButton
+              onClick={() => {
+                props.setShowAttachMenu(false)
+                if (!props.hasComposerText) props.onInputChange('/')
+                props.textareaRef.current?.focus()
+              }}
+              icon={<Slash size={13} strokeWidth={1.75} />}
+              label="Slash commands"
+            />
+          ) : null}
           {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
             const active = selectedToolIdSet.has(tool.id)
             const Icon = tool.Icon

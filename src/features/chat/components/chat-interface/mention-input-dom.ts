@@ -16,7 +16,7 @@ export type MentionInputFormatCommand =
 export const MENTION_ATTR = 'data-mention'
 const MENTION_TYPE_ATTR = 'data-mention-type'
 const MENTION_ID_ATTR = 'data-mention-id'
-const MIN_EDITOR_HEIGHT = 44
+const MIN_EDITOR_HEIGHT = 36
 const MAX_EDITOR_HEIGHT = 160
 
 function escapeHtml(value: string): string {
