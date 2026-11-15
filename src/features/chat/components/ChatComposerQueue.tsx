@@ -24,7 +24,7 @@ export function steerShortcutLabel(): string {
 
 function trayStatus(queue: ChatComposerQueueControls): string {
   if (queue.running) return 'Sends when the response finishes'
-  if (queue.paused) return 'Paused because the response was stopped'
+  if (queue.paused) return 'Paused until you send a message'
   return 'Sending'
 }
 

@@ -43,7 +43,8 @@ function newQueuedMessage(text: string, mentions: MentionItem[]): QueuedMessage 
  * the moment a send is accepted until its response settles; `send` resolves
  * true once the message was accepted. `ready` holds the queue while the
  * surface cannot yet send into this conversation, such as a new chat whose
- * first response finished before the chat adopted its saved id. A message that is not accepted returns to
+ * first response finished before the chat adopted its saved id, or a turn
+ * that has not yet reconciled with the saved transcript. A message that is not accepted returns to
  * the front of the queue and pauses it, so nothing is dropped or retried in a loop.
  */
 export function useComposerQueue({
