@@ -32,6 +32,7 @@ import {
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { AgentThreadModelControl } from './collaboration/AgentThreadModelControl'
 
 function RoomComposerArea({
   safety,
@@ -389,6 +390,7 @@ export function DirectMessageExperience({
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
                 queue: room.composerQueue,
+                modelControl: vm.soloAgentParticipant ? <AgentThreadModelControl agentPrincipalId={vm.soloAgentParticipant.principalId} /> : undefined,
               }}
             />
           </AppScreenBody>

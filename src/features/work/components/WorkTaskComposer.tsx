@@ -93,6 +93,8 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
       </PromptInputBody></PromptInput>
       <div data-slot="prompt-input-accessories" className="mt-1 flex min-h-8 items-center gap-0.5 px-0.5">
         <WorkComposerContext search={search} disabled={locked || draft.context.length >= WORK_LIMITS.contextItems} onAdd={context => patch({ context: [...draft.context.filter(item => item.type !== context.type || item.id !== context.id), context] })} />
+        <span className="min-w-0 flex-1" />
+        {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
         <ComposerAssignee people={people} scope={scope} principalId={principalId} value={draft.assigneePrincipalId} onChange={assigneePrincipalId => patch({ assigneePrincipalId })} disabled={locked} />
         <ComposerSchedule draft={draft} onChange={patch} disabled={locked} />
         <ComposerDependencies tasks={tasks} value={draft.blockedBy} onChange={blockedBy => patch({ blockedBy })} disabled={locked} />
@@ -102,8 +104,6 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
             <WorkTaskSettings draft={draft} disabled={locked} onChange={patch} />
           </PopoverContent>
         </Popover>
-        <span className="min-w-0 flex-1" />
-        {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
       </div>
       {error ? <p role="alert" className="mt-2 px-1 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
     </div>

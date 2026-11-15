@@ -729,6 +729,7 @@ export function RoomComposer({
   onOpenFilePreview,
   guided,
   queue,
+  modelControl,
 }: {
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
@@ -742,6 +743,7 @@ export function RoomComposer({
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
   queue?: ReturnType<typeof useRoomComposerQueue>
+  modelControl?: ReactNode
 }) {
   recordRender('RoomComposer')
   const activeQueue = guided ? undefined : queue
@@ -760,6 +762,7 @@ export function RoomComposer({
         mentionCategories: guided ? [] : mentionCategories,
         agentCommands: guided ? [] : agentCommands,
         textOnly: Boolean(guided),
+        modelControl: guided ? undefined : modelControl,
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
       queue={activeQueue?.controls}

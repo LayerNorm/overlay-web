@@ -56,6 +56,7 @@ export function FloatingMenu({
   align?: 'start' | 'end'
   trigger?: ReactElement
   kind?: 'menu' | 'popover'
+  onCloseAutoFocus?: (event: Event) => void
 } & Omit<HTMLAttributes<HTMLDivElement>, 'children'>) {
   const outsideInteraction = useRef(false)
   const virtualRef = useMemo(

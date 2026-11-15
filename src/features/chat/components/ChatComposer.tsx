@@ -6,20 +6,18 @@ import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptIn
 import {
   AtSign,
   Brain,
-  Check,
   Paperclip,
   Globe2,
   Image as ImageIcon,
   ListEnd,
   MousePointerClick,
   Plus,
-  Slash,
   Video,
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { Button } from '@overlay/ui/primitives'
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { markComposerReady } from '../lib/realtime-baseline'
@@ -265,9 +263,14 @@ function ComposerAccessoryRow(props: ComposerViewProps & { mixedFileInputRef: Re
   const tools = props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props))
   return (
     <div data-slot="prompt-input-accessories" className="mt-1 grid min-h-8 grid-cols-[1fr_auto_1fr] items-center gap-2 px-0.5">
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="flex min-w-0 items-center">
         {props.textOnly ? null : <AttachMenu {...props} />}
-        <PromptInputTools>
+      </div>
+      <p className="truncate text-center text-xs text-(--muted-light) max-sm:hidden">
+        {props.queue?.running ? <QueueShortcutHint /> : props.mode === 'chat' ? 'Overlay can make mistakes. Check important info.' : null}
+      </p>
+      <div className="flex min-w-0 items-center justify-end gap-1.5">
+        <PromptInputTools className="flex-none">
           {memoryOff ? (
             <DelayedTooltip label="Memory is off for this message." side="top">
               <div className="shrink-0">
@@ -282,11 +285,6 @@ function ComposerAccessoryRow(props: ComposerViewProps & { mixedFileInputRef: Re
           })}
           {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
         </PromptInputTools>
-      </div>
-      <p className="truncate text-center text-xs text-(--muted-light) max-sm:hidden">
-        {props.queue?.running ? <QueueShortcutHint /> : props.mode === 'chat' ? 'Overlay can make mistakes. Check important info.' : null}
-      </p>
-      <div className="flex min-w-0 items-center justify-end gap-1.5">
         {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
         {props.modelControl}
       </div>
@@ -312,97 +310,35 @@ function composerPlaceholder(props: ComposerViewProps): string {
 }
 
 function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
-  const [menuDirection, setMenuDirection] = useState<'up' | 'down'>('up')
-
-  function handleToggle(event: MouseEvent<HTMLButtonElement>) {
-    const rect = event.currentTarget.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    const spaceAbove = rect.top
-    setMenuDirection(spaceBelow < 340 && spaceAbove > spaceBelow ? 'up' : 'down')
-    props.setShowAttachMenu((value) => !value)
-  }
-
-  const selectedToolIdSet = new Set(props.selectedToolIds)
-
+  const [open, setOpen] = useState(false)
   return (
-    <div ref={props.attachMenuRef} className="relative shrink-0">
-      <DelayedTooltip label="Attach files or choose tools" side="top">
-        <PromptInputButton onClick={handleToggle} aria-label="Open attachment and tools menu" className="size-8">
+    <FloatingMenu
+      kind="menu"
+      anchorRef={props.attachMenuRef}
+      open={open}
+      onOpenChange={setOpen}
+      side="top"
+      align="start"
+      className="w-56"
+      onCloseAutoFocus={(event) => event.preventDefault()}
+      trigger={
+        <PromptInputButton aria-label="Add files or mention" className="size-8">
           <Plus size={17} strokeWidth={1.75} />
         </PromptInputButton>
-      </DelayedTooltip>
-      {props.showAttachMenu && (
-        <div className={`absolute left-0 z-20 w-60 rounded-xl border border-(--border) bg-(--surface-elevated) p-1 shadow-xl ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
-          {props.capabilities.files && (
-            <AttachMenuButton
-              onClick={() => {
-                props.mixedFileInputRef.current?.click()
-                props.setShowAttachMenu(false)
-              }}
-              icon={<Paperclip size={15} strokeWidth={1.6} />}
-              label="Upload files or photos"
-            />
-          )}
-          <AttachMenuButton
-            onClick={() => {
-              props.setShowAttachMenu(false)
-              props.textareaRef.current?.openMentionPopup()
-            }}
-            icon={<AtSign size={15} strokeWidth={1.6} />}
-            label="Mention"
-            suffix="@"
-          />
-          <MenuDivider />
-          {props.agentCommands?.length ? (
-            <AttachMenuButton
-              onClick={() => {
-                props.setShowAttachMenu(false)
-                if (!props.hasComposerText) props.onInputChange('/')
-                props.textareaRef.current?.focus()
-              }}
-              icon={<Slash size={15} strokeWidth={1.6} />}
-              label="Slash commands"
-            />
-          ) : null}
-          {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
-            const active = selectedToolIdSet.has(tool.id)
-            const Icon = tool.Icon
-            return (
-              <AttachMenuButton
-                key={tool.id}
-                active={active}
-                onClick={() => {
-                  props.onToggleTool(tool.id)
-                  props.setShowAttachMenu(false)
-                }}
-                icon={<Icon size={15} strokeWidth={1.6} />}
-                label={tool.label}
-                checked={active}
-              />
-            )
-          })}
-          <MenuDivider />
-          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={15} strokeWidth={1.6} />} label="Generate images" />
-          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={15} strokeWidth={1.6} />} label="Generate videos" />
-          {props.capabilities.memory && props.capabilities.vectorSearch && (
-            <>
-              <MenuDivider />
-              <AttachMenuButton
-                active={props.memoryEnabled}
-                onClick={() => {
-                  props.onToggleMemory()
-                  props.setShowAttachMenu(false)
-                }}
-                icon={<Brain size={15} strokeWidth={1.6} />}
-                label="Memory"
-                showSwitch
-                neutralWhenActive
-              />
-            </>
-          )}
-        </div>
-      )}
-    </div>
+      }
+    >
+      {props.capabilities.files ? (
+        <MenuItem onClick={() => props.mixedFileInputRef.current?.click()}>
+          <Paperclip size={14} strokeWidth={1.75} />
+          Upload files or photos
+        </MenuItem>
+      ) : null}
+      <MenuItem onClick={() => requestAnimationFrame(() => props.textareaRef.current?.openMentionPopup())}>
+        <AtSign size={14} strokeWidth={1.75} />
+        Mention
+        <span className="ml-auto text-(--muted-light)">@</span>
+      </MenuItem>
+    </FloatingMenu>
   )
 }
 
@@ -414,52 +350,6 @@ function isToolRequestEnabled(
   if (toolId === 'browser') return props.capabilities.computers
   if (toolId === 'memory') return props.capabilities.memory && props.capabilities.vectorSearch
   return true
-}
-
-function AttachMenuButton({
-  active,
-  disabled,
-  title,
-  onClick,
-  icon,
-  label,
-  suffix,
-  showSwitch,
-  checked,
-  neutralWhenActive,
-}: {
-  active?: boolean
-  disabled?: boolean
-  title?: string
-  onClick: () => void
-  icon: ReactNode
-  label: string
-  suffix?: string
-  showSwitch?: boolean
-  checked?: boolean
-  neutralWhenActive?: boolean
-}) {
-  const activeClass = active && !neutralWhenActive ? 'bg-(--surface-muted)' : 'hover:bg-(--surface-muted)'
-
-  return (
-    <Button variant="ghost" type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={'h-8 w-full justify-start gap-2.5 rounded-lg px-2.5 text-[13px] font-normal text-(--foreground) transition-colors ' + (disabled ? 'cursor-not-allowed opacity-50' : activeClass)}>
-      {icon}
-      <span>{label}</span>
-      {showSwitch ? (
-        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-(--muted)' : 'bg-(--border)'}`}>
-          <span className={`h-3 w-3 rounded-full bg-(--surface-elevated) transition-transform ${active ? 'translate-x-3' : ''}`} />
-        </span>
-      ) : checked ? (
-        <Check size={11} strokeWidth={1.8} className="ml-auto shrink-0 text-(--foreground)" />
-      ) : suffix ? (
-        <span className="ml-auto text-xs text-(--muted-light)">{suffix}</span>
-      ) : null}
-    </Button>
-  )
-}
-
-function MenuDivider() {
-  return <div className="mx-2 my-1 border-t border-(--border)" />
 }
 
 function ToolRequestChip({

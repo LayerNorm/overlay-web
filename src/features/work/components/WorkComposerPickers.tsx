@@ -19,7 +19,7 @@ function ComposerPicker({ label, icon, count = 0, disabled, children }: { label:
         {count > 0 ? <span aria-hidden="true" className="absolute right-0.5 top-0.5 hidden h-[13px] min-w-[13px] items-center justify-center rounded-full bg-(--foreground) px-[3px] text-[9px] font-semibold leading-none text-(--background) @max-[520px]/work-composer:flex">{count}</span> : null}
       </Button>
     </PopoverTrigger></TooltipTrigger><TooltipContent side="top">{label}</TooltipContent></Tooltip>
-    <PopoverContent align="start" side="top" className="w-72 max-w-[calc(100vw-2rem)] p-1">{children(() => setOpen(false))}</PopoverContent>
+    <PopoverContent align="end" side="top" className="w-72 max-w-[calc(100vw-2rem)] p-1">{children(() => setOpen(false))}</PopoverContent>
   </Popover></TooltipProvider>
 }
 
