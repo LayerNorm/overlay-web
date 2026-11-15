@@ -24,10 +24,12 @@ Only text and mentions can be queued. Attachments, quoted replies, person mentio
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| 1 | Client queue and stop-then-send steer for chat, automation and agent-room composers | Implemented; PR preview QA pending |
+| 1 | Client queue and stop-then-send steer for chat, automation and agent-room composers | Implemented; PR #500 preview QA passed on `ef3572f1` (chats and automation threads end to end, agent threads queue/steer/stop); not yet merged or deployed |
 | 2 | Server-side durable queue (drains with the tab closed) and *Steered*/*From queue* transcript tags | Not started |
 | 3 | In-loop SDK `steer()`/`queue()` once `WorkflowAgent` supports durable steering; connected-agent host queue | Blocked upstream |
 
 ## QA (PR preview)
 
 Queue three messages and check their order. Steer during text and during a tool call. Edit, remove and reload while messages are queued. Press Stop with messages queued and confirm they don't send until the next message. Try to queue with an attachment and confirm the notice. Repeat in an agent thread and an automation thread.
+
+Not yet covered: a steer that lands while a chat tool call is visibly running (the chat model often had not started the tool when the steer arrived; the automation thread covered it), and stop-from-message pause in an agent thread beyond screenshots.
