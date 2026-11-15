@@ -67,6 +67,10 @@ them. Besides the canonical app mockup, this folder holds only:
   extensions-catalog`): the approved Extensions catalog design that
   `ExtensionCatalogPage` implements. Delete it once the redesign is accepted
   in production.
+- `overlay-app/proposals/AutomationThreadsProposal.tsx` (route
+  `#/app/proposals/automation-threads` in `overlay-app.html`): the proposal for
+  `internal/plans/automation-threads-and-connector-return.md`. Remove the route
+  and file when that plan ships.
 - Brand source: `build-aligned-brand.py` generates `aligned-brand.*`,
   `overlay-brand-approved/` and the production `ApprovedBrand.tsx`;
   `export-brand-pngs.cjs` exports the raster assets. These are production

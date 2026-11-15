@@ -16,6 +16,7 @@ const KnowledgeViewHost = dynamic(() => import('@/app/app/_components/KnowledgeV
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'))
 const SettingsPage = dynamic(() => import('@/app/app/settings/page'))
 const AccountPage = dynamic(() => import('@/app/app/account/account-content'))
+const AutomationThreadsProposal = dynamic(() => import('./proposals/AutomationThreadsProposal'))
 
 function appPath(pathname: string): string {
   const route = readWorkspaceRouteDescriptor(pathname)
@@ -38,6 +39,7 @@ function render(pathname: string): ReactNode {
   if (pathname === '/app/integrations') return <IntegrationsView userId={MOCK_USER.id} />
   if (pathname === '/app/settings') return <SettingsPage />
   if (pathname === '/app/account') return <AccountPage />
+  if (pathname === '/app/proposals/automation-threads') return <AutomationThreadsProposal />
   return <div className="p-8 text-sm text-(--muted)">This mockup has no screen for {pathname}.</div>
 }
 
