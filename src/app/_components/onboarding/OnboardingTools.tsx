@@ -15,6 +15,8 @@ import { api } from '../../../../convex/_generated/api'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { byoModelId } from '@/shared/agents/agent-model'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { usePendingConnection } from '@/features/integrations/hooks/use-pending-connection'
 import { ONBOARDING_TOOL_LABELS, type OnboardingSession } from '@/shared/onboarding/session'
 import { onboardingRequestInit } from './onboarding-client'
 import { BrandMark } from './onboarding-logos'
@@ -43,15 +45,17 @@ function useAvailability(workspaceId: string) {
   const agents: boolean | null = !capabilities.connectedAgents ? false : launch === undefined ? null : launch === true
   const refreshApps = useCallback(async () => {
     const result = await overlayAppClient.integrations.get<{ connected?: string[] }>(undefined, { headers: { 'x-overlay-workspace-id': workspaceId }, cache: 'no-store' })
-    setApps(new Set(result.connected ?? []))
+    const next = new Set(result.connected ?? [])
+    setApps(next)
+    return next
   }, [workspaceId])
   useEffect(() => {
     if (!capabilities.integrations) return
     const reload = () => { void refreshApps().catch(() => setApps((current) => (current instanceof Set ? current : false))) }
     reload()
     window.addEventListener('focus', reload)
-    window.addEventListener('overlay:integrations-changed', reload)
-    return () => { window.removeEventListener('focus', reload); window.removeEventListener('overlay:integrations-changed', reload) }
+    const unsubscribe = subscribeIntegrationsChanged(reload)
+    return () => { window.removeEventListener('focus', reload); unsubscribe() }
   }, [capabilities.integrations, refreshApps])
   return { apps, agents, refreshApps }
 }
@@ -63,6 +67,7 @@ export function OnboardingTools({ session, disabled, onContinue }: {
 }) {
   const { apps, agents, refreshApps } = useAvailability(session.workspaceId)
   const [connecting, setConnecting] = useState<string | null>(null)
+  const [, setPendingConnection] = usePendingConnection({ load: refreshApps, onConnected: () => {} })
   const [harness, setHarness] = useState<Harness | null>(null)
   const [agentIds, setAgentIds] = useState<Partial<Record<Harness, string>>>({})
   const [error, setError] = useState<string | null>(null)
@@ -81,9 +86,11 @@ export function OnboardingTools({ session, disabled, onContinue }: {
       const result = await response.json()
       if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : `Could not connect ${ONBOARDING_TOOL_LABELS[slug]}.`)
       const url = safeHttpUrl(result.redirectUrl)
-      if (url && tab) tab.location.href = url
-      else if (url) window.open(url, '_blank', 'noopener,noreferrer')
-      else { tab?.close(); if (!result.connectionId) throw new Error('No connection setup URL was returned.') }
+      if (url) {
+        if (tab) tab.location.href = url
+        else window.open(url, '_blank', 'noopener,noreferrer')
+        setPendingConnection(slug)
+      } else { tab?.close(); if (!result.connectionId) throw new Error('No connection setup URL was returned.') }
       await refreshApps()
     } catch (value) {
       tab?.close()
