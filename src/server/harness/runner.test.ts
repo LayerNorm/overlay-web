@@ -57,7 +57,6 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
     actorUserId: 'user', allowedToolIds: ['read', 'write', ...extraAllowedToolIds], requiresPlan,
     deadlineAt: Date.now() + (options.executionPolicyVersion === 2 ? 3 * 60 * 60_000 : 60_000),
     maxCostMicros: options.executionPolicyVersion === 2 ? 0 : 100,
-    maxDepth: 1, maxParallelChildren: 2,
     ...(options.executionPolicyVersion ? {
       executionPolicyVersion: options.executionPolicyVersion,
       ...(options.executionPolicyVersion === 2 ? { spendingMode: 'none' as const } : {}),

@@ -33,7 +33,7 @@ async function fixture() {
   const admitted = await t.mutation(mutation('harness/runs:admit'), {
     runId, deliveryAgentRunId: run._id, goal: 'Reply', constraints: [], source: { conversationId },
     policy: { actorUserId: 'u', workspaceId: 'ws', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 1_000, maxParallelChildren: 2, maxDepth: 2, publicProgressVersion: 1 },
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 1_000, publicProgressVersion: 1 },
     serverSecret: secret,
   })
   await t.mutation(mutation('harness/runs:apply'), {

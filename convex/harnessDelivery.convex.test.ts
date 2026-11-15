@@ -98,8 +98,6 @@ function admission(
       requiresPlan: false,
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 2_000,
-      maxParallelChildren: 2,
-      maxDepth: 2,
     },
     source: { conversationId },
     ...(deliveryAgentRunId ? { deliveryAgentRunId } : {}),
