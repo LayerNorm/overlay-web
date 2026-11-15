@@ -10,6 +10,7 @@ import {
   FileText,
   Globe2,
   Image as ImageIcon,
+  ListEnd,
   MousePointerClick,
   Plus,
   Slash,
@@ -30,6 +31,7 @@ import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
+import { ComposerQueueTray, steerShortcutLabel } from './ChatComposerQueue'
 
 const DOCUMENT_FILE_ACCEPT = [
   '.pdf',
@@ -131,6 +133,7 @@ export function ChatComposer(props: ChatComposerProps) {
         >
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
+          {viewProps.queue ? <ComposerQueueTray queue={viewProps.queue} canEdit={!viewProps.hasComposerText} /> : null}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading && viewProps.blockedComposerContent ? (
             viewProps.blockedComposerContent
           ) : (
@@ -160,6 +163,12 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
     if (slash.handleKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
+      if (props.queue?.running) {
+        if (!props.hasComposerText) return
+        if (event.metaKey || event.ctrlKey) props.queue.onSteerDraft()
+        else props.queue.onQueueDraft()
+        return
+      }
       if (!props.isSendBlocked && props.hasComposerText) void props.onSend()
     }
   }
@@ -284,17 +293,38 @@ function ComposerControls(props: ComposerControlsProps) {
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </PromptInputTools>
+      {props.queue?.running ? <QueueShortcutHint /> : null}
       {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
       {props.modelControl}
-      <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
-        <PromptInputSubmit
-          status={props.isActiveLoading ? 'streaming' : 'ready'}
-          onStop={() => void props.onStop()}
-          onClick={() => void props.onSend()}
-          disabled={props.disabledSend || props.isSendBlocked}
-        />
-      </DelayedTooltip>
+      {props.queue?.running && props.hasComposerText ? (
+        <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
+          <Button variant="primary" size="icon" type="button" aria-label="Queue message" className="shrink-0" onClick={props.queue.onQueueDraft}>
+            <ListEnd size={17} strokeWidth={2} />
+          </Button>
+        </DelayedTooltip>
+      ) : (
+        <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
+          <PromptInputSubmit
+            status={props.isActiveLoading ? 'streaming' : 'ready'}
+            onStop={() => void props.onStop()}
+            onClick={() => void props.onSend()}
+            disabled={props.disabledSend || props.isSendBlocked}
+          />
+        </DelayedTooltip>
+      )}
     </PromptInputFooter>
+  )
+}
+
+function QueueShortcutHint() {
+  return (
+    <span className="mr-1 flex shrink-0 items-center gap-1 text-[11px] text-(--muted-light) max-sm:hidden" aria-hidden>
+      <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">↵</kbd>
+      queue
+      <span className="px-0.5">·</span>
+      <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">{steerShortcutLabel()}↵</kbd>
+      steer
+    </span>
   )
 }
 
