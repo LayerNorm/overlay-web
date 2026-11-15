@@ -100,17 +100,13 @@ export const methodSchemas = {
     })
     .strict(),
   "agentHost.status": empty,
+  /** Connects this Mac as an Overlay Computer: the host serves Overlay's own tools, never a third-party harness. */
   "agentHost.start": z
     .object({
-      adapter: z.enum(["claude-code", "codex", "hermes"]).optional(),
       enrollmentCode: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/),
-      /** Serve Overlay's own tools on this Mac; requires the localComputer capability. */
-      localTools: z.literal(true).optional(),
+      localTools: z.literal(true),
     })
-    .strict()
-    .refine((value) => value.adapter !== undefined || value.localTools === true, {
-      message: "Choose a harness or local tools",
-    }),
+    .strict(),
   "agentHost.stop": empty,
   "agentHost.logs": empty,
   "localComputer.status": empty,
@@ -137,7 +133,6 @@ export type Handshake = {
 };
 export type HostStatus = {
   state: string;
-  adapterId: string | null;
   pid: number | null;
   logTail: string[];
 };

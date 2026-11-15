@@ -12,20 +12,19 @@ import {
   buildEmbeddedHostRunArgs,
   embeddedHostPackageSpec,
   verificationPhraseFrom,
-  isEmbeddedHostAdapter,
   isValidServerOrigin,
-  resolveNpxPath,
-  type EmbeddedHostAdapter
+  resolveNpxPath
 } from './embedded-host-config'
-
-export type { EmbeddedHostAdapter }
 
 export type EmbeddedHostState = 'idle' | 'starting' | 'running' | 'stopping' | 'error'
 
 /**
  * Security posture (deliberate, review before widening):
- * - Every start is explicitly user-initiated from Settings; no auto-start, no
- *   background relaunch, and the child dies with the app (see beginShutdown).
+ * - The host serves only Overlay's own tools on this Mac (local tools); it never
+ *   starts a third-party harness.
+ * - The first start is user-initiated from Settings → This Mac. It restarts at
+ *   launch only while the user keeps "Keep available" on, and the child dies
+ *   with the app (see beginShutdown).
  * - argv is built from validated fields only — never a shell string — and the
  *   host package spec is pinned, never `latest`.
  * - The child inherits a sanitized environment (see local-helper-process) and
@@ -43,7 +42,6 @@ export interface EmbeddedHostExit {
 
 export interface EmbeddedHostStatus {
   state: EmbeddedHostState
-  adapterId: EmbeddedHostAdapter | null
   /** The host serves Overlay's own tools on this Mac. */
   localTools: boolean
   /** Printed by a host waiting for approval; matched in-app against its enrollment. */
@@ -60,7 +58,6 @@ const STOP_GRACE_MS = 5_000
 class EmbeddedHostService {
   private child: ChildProcess | null = null
   private state: EmbeddedHostState = 'idle'
-  private adapterId: EmbeddedHostAdapter | null = null
   private startedAt: number | null = null
   private lastExit: EmbeddedHostExit | null = null
   private logLines: string[] = []
@@ -88,7 +85,6 @@ class EmbeddedHostService {
   getStatus(): EmbeddedHostStatus {
     return {
       state: this.state,
-      adapterId: this.adapterId,
       localTools: this.localTools,
       verificationPhrase: this.verificationPhrase,
       pid: this.child?.pid ?? null,
@@ -98,11 +94,9 @@ class EmbeddedHostService {
     }
   }
 
-  async start(input: { code: string; adapterId?: string; localTools?: boolean }): Promise<EmbeddedHostStatus> {
+  async start(input: { code: string }): Promise<EmbeddedHostStatus> {
     const code = typeof input.code === 'string' ? input.code.trim() : ''
     if (!ENROLLMENT_CODE_PATTERN.test(code)) throw new Error('Invalid enrollment code.')
-    if (input.adapterId !== undefined && !isEmbeddedHostAdapter(input.adapterId)) throw new Error('Unsupported harness.')
-    if (input.adapterId === undefined && input.localTools !== true) throw new Error('Choose a harness or local tools.')
     const origin = serverProfileService.getActiveOrigin()
     if (!isValidServerOrigin(origin)) throw new Error('Invalid Overlay server origin.')
     const stateDir = this.stateDirectory()
@@ -110,8 +104,6 @@ class EmbeddedHostService {
     return this.launch({
       argv: buildEmbeddedHostArgs({
         code,
-        ...(input.adapterId ? { adapterId: input.adapterId as EmbeddedHostAdapter } : {}),
-        ...(input.localTools ? { localTools: true } : {}),
         origin,
         stateDir,
         name: `${hostname()} (Desktop)`,
@@ -121,8 +113,7 @@ class EmbeddedHostService {
           : {})
       }),
       code,
-      adapterId: (input.adapterId as EmbeddedHostAdapter | undefined) ?? null,
-      localTools: input.localTools === true
+      localTools: true
     })
   }
 
@@ -134,7 +125,6 @@ class EmbeddedHostService {
     return this.launch({
       argv: buildEmbeddedHostRunArgs({ configPath, packageSpec: embeddedHostPackageSpec(process.env, app.isPackaged) }),
       code: null,
-      adapterId: null,
       localTools: true
     })
   }
@@ -142,7 +132,6 @@ class EmbeddedHostService {
   private async launch(input: {
     argv: string[]
     code: string | null
-    adapterId: EmbeddedHostAdapter | null
     localTools: boolean
   }): Promise<EmbeddedHostStatus> {
     if (this.child) this.stopImmediately()
@@ -154,7 +143,6 @@ class EmbeddedHostService {
     }
     this.enrollmentCode = input.code
     this.state = 'starting'
-    this.adapterId = input.adapterId
     this.localTools = input.localTools
     this.verificationPhrase = null
     this.startedAt = Date.now()

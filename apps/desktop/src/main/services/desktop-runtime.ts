@@ -529,14 +529,10 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     })
   },
   'agentHost.status': () => embeddedHostService.getStatus(),
-  'agentHost.start': async ({ adapter, enrollmentCode, localTools }) => {
+  'agentHost.start': async ({ enrollmentCode }) => {
     await authenticated()
-    if (localTools && process.platform !== 'darwin') throw new Error('This Mac is available on macOS only.')
-    return embeddedHostService.start({
-      ...(adapter ? { adapterId: adapter } : {}),
-      ...(localTools ? { localTools: true } : {}),
-      code: enrollmentCode
-    })
+    if (process.platform !== 'darwin') throw new Error('This Mac is available on macOS only.')
+    return embeddedHostService.start({ code: enrollmentCode })
   },
   'localComputer.status': () => localComputerStatus(),
   'localComputer.requestPermission': async ({ permission }) => {

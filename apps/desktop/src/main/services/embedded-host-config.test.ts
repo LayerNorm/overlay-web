@@ -8,7 +8,6 @@ import {
   buildEmbeddedHostRunArgs,
   embeddedHostPackageSpec,
   verificationPhraseFrom,
-  isEmbeddedHostAdapter,
   isValidServerOrigin,
   resolveNpxPath,
   ENROLLMENT_CODE_PATTERN
@@ -17,14 +16,6 @@ import {
 describe('embedded-host-config', () => {
   it('pins the same host release line as the web enrollment command', () => {
     expect(EMBEDDED_HOST_PACKAGE_SPEC).toBe('@layernorm/overlay-agent-host@0.5.0')
-  })
-
-  it('accepts only the built-in harness adapters', () => {
-    expect(isEmbeddedHostAdapter('codex')).toBe(true)
-    expect(isEmbeddedHostAdapter('claude-code')).toBe(true)
-    expect(isEmbeddedHostAdapter('hermes')).toBe(true)
-    expect(isEmbeddedHostAdapter('openclaw')).toBe(false)
-    expect(isEmbeddedHostAdapter(undefined)).toBe(false)
   })
 
   it('accepts https origins and http loopback only', () => {
@@ -66,7 +57,6 @@ describe('embedded-host-config', () => {
   it('builds a pinned, shell-free argv array', () => {
     const args = buildEmbeddedHostArgs({
       code: 'ABCD-1234',
-      adapterId: 'codex',
       origin: 'https://www.getoverlay.io',
       stateDir: '/tmp/state',
       name: 'Mac (Desktop)'
@@ -82,8 +72,7 @@ describe('embedded-host-config', () => {
       'ABCD-1234',
       '--server',
       'https://www.getoverlay.io',
-      '--adapter',
-      'codex',
+      '--local-tools',
       '--state-dir',
       '/tmp/state',
       '--name',
@@ -101,15 +90,10 @@ describe('local tools (this Mac as a Computer)', () => {
   const base = { code: 'ABCD-1234', origin: 'https://www.getoverlay.io', stateDir: '/tmp/host', name: 'Mac (Desktop)' }
 
   it('starts a local-tools host with no third-party harness', () => {
-    const argv = buildEmbeddedHostArgs({ ...base, localTools: true })
+    const argv = buildEmbeddedHostArgs(base)
     expect(argv).toContain('--local-tools')
     expect(argv).not.toContain('--adapter')
     expect(argv.slice(0, 6)).toEqual(['--yes', '--package', 'node@24', '--package', EMBEDDED_HOST_PACKAGE_SPEC, 'overlay-agent-host'])
-  })
-
-  it('still requires a harness or local tools', () => {
-    expect(() => buildEmbeddedHostArgs(base)).toThrow(/harness or local tools/)
-    expect(buildEmbeddedHostArgs({ ...base, adapterId: 'codex' })).toContain('codex')
   })
 
   it('restarts a saved host from its configuration without an enrollment code', () => {

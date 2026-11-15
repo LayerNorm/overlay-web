@@ -11,14 +11,7 @@ import { delimiter, join } from 'node:path'
 export const EMBEDDED_HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.5.0'
 export const EMBEDDED_HOST_NODE_SPEC = 'node@24'
 
-export const EMBEDDED_HOST_ADAPTERS = ['codex', 'claude-code', 'hermes'] as const
-export type EmbeddedHostAdapter = (typeof EMBEDDED_HOST_ADAPTERS)[number]
-
 export const ENROLLMENT_CODE_PATTERN = /^[A-Za-z0-9_-]{6,128}$/
-
-export function isEmbeddedHostAdapter(value: unknown): value is EmbeddedHostAdapter {
-  return typeof value === 'string' && (EMBEDDED_HOST_ADAPTERS as readonly string[]).includes(value)
-}
 
 export function isValidServerOrigin(value: string): boolean {
   try {
@@ -85,18 +78,15 @@ export function embeddedHostPackageSpec(
   return EMBEDDED_HOST_PACKAGE_SPEC
 }
 
+/** Connects this Mac with local tools only; the host never starts a third-party harness. */
 export function buildEmbeddedHostArgs(args: {
   code: string
-  adapterId?: EmbeddedHostAdapter
-  /** Serve Overlay's own tools on this Mac. With no adapter the host starts no third-party agent. */
-  localTools?: boolean
   origin: string
   stateDir: string
   name: string
   hostingAuthFile?: string
   packageSpec?: string
 }): string[] {
-  if (!args.adapterId && !args.localTools) throw new Error('Choose a harness or local tools.')
   return [
     '--yes',
     '--package',
@@ -108,8 +98,7 @@ export function buildEmbeddedHostArgs(args: {
     args.code,
     '--server',
     args.origin,
-    ...(args.adapterId ? ['--adapter', args.adapterId] : []),
-    ...(args.localTools ? ['--local-tools'] : []),
+    '--local-tools',
     '--state-dir',
     args.stateDir,
     '--name',
