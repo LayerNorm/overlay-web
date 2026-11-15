@@ -40,7 +40,7 @@ Desktop → This Mac) through its Agent Host. Each takes an optional `target`:
 Computer is used and the Mac is the fallback. A connected Mac also makes the
 computer tools available in personal chat. Approvals are the same on both;
 automations never use the Mac, and only the person who approved the Mac can use
-it. See `bring-your-own-agents.md` → Local tools.
+it. See `local-computer.md`.
 
 ## How tool calls appear in chat
 
@@ -75,8 +75,7 @@ server's name and tools, never the secret. Connectors work differently: the work
 An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
 than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
 and a private channel with one person, are not. The server decides this from the conversation
-(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared), for native agents and
-for Claude Code / Codex over `/api/agent-mcp` alike. In a shared room:
+(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared). In a shared room:
 
 - **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
   notes and memories, and their personal skills are not loaded; what the workspace shares still is.
@@ -97,7 +96,6 @@ purpose, but there is no per-message opt-in yet.
 | --- | --- |
 | **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Computer. |
-| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` and `present_generated_ui`. Tools that need approval show an approval card. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
 
 ## Native agent permissions

@@ -7,7 +7,6 @@ import {
 } from './index'
 
 test('deriveOverlayCapabilities fills defaults from partial runtime config', () => {
-  assert.equal(DEFAULT_OVERLAY_CAPABILITIES.externalAgents, false)
   assert.deepEqual(deriveOverlayCapabilities({ billing: false, automations: false }), {
     ...DEFAULT_OVERLAY_CAPABILITIES,
     billing: false,
@@ -52,17 +51,11 @@ test('resolveOverlayAppShellConfig exposes webhook settings when enabled', () =>
   assert.equal(shell.settingsPanels.some((item) => item.id === 'webhooks'), true)
 })
 
-test('connected-agent settings require both the product flag and server capability', () => {
-  const hidden = resolveOverlayAppShellConfig({
+test('the removed connected-agent environments settings section is never shown', () => {
+  const config = resolveOverlayAppShellConfig({
     featureFlags: [{ id: 'agents', label: 'Agents', enabled: true }],
   })
-  assert.equal(hidden.settingsSections.some((item) => item.id === 'agent-environments'), false)
-
-  const visible = resolveOverlayAppShellConfig({
-    featureFlags: [{ id: 'agents', label: 'Agents', enabled: true }],
-  }, { capabilities: { connectedAgents: true } })
-  assert.equal(visible.settingsSections.some((item) => item.id === 'agent-environments'), true)
-  assert.equal(visible.settingsPanels.some((item) => item.id === 'agent-environments'), true)
+  assert.equal(config.settingsSections.some((item) => item.id === 'agent-environments'), false)
 })
 
 test('computers settings follow the computers capability', () => {

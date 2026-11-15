@@ -1,7 +1,6 @@
 'use client'
 
 
-import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useSearchParams, type useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -377,8 +376,6 @@ function buildRoomMessageItemProps({
       message.status === 'generating' && !message.id.startsWith('optimistic_')
         ? () => void ctx.stopAgentResponse(message.id)
         : undefined,
-    onControlRemoteQueue: (runId: string, action: Parameters<RoomMessageContext['controlRemoteQueue']>[1]) => void ctx.controlRemoteQueue(runId, action),
-    onResolveRemoteRequest: (request: Parameters<RoomMessageContext['resolveRemoteRequest']>[0], decision: Parameters<RoomMessageContext['resolveRemoteRequest']>[1], response: Parameters<RoomMessageContext['resolveRemoteRequest']>[2]) => void ctx.resolveRemoteRequest(request, decision, response),
     highlighted: ctx.highlightedMessageId === message.id,
     grouped,
     personalChatStyle: ctx.conversationType !== 'channel',
@@ -429,10 +426,7 @@ export function RoomMessage({
     teaserMessage,
     teaserAuthor,
   })
-  return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} remoteStatus={view.streaming && view.remoteRun
-    ? <RemoteRunLiveness key={view.remoteRun.runId} conversationId={ctx.conversationId} runId={view.remoteRun.runId}
-        workspaceId={ctx.participants.find(participant => participant.principalId === ctx.currentPrincipalId)?.workspaceId} />
-    : null} />
+  return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} />
 }
 
 function RoomEmptyState({
@@ -718,7 +712,6 @@ export type GuidedRoomComposer = {
 export function RoomComposer({
   composer,
   mentionCategories,
-  agentCommands,
   capabilities,
   participantsHaveAgent,
   memoryEnabled,
@@ -730,7 +723,6 @@ export function RoomComposer({
 }: {
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
-  agentCommands: import('./collaboration/room-message-view').RemoteAgentCommand[]
   capabilities: CapabilityCheck
   participantsHaveAgent: boolean
   memoryEnabled: boolean
@@ -754,7 +746,6 @@ export function RoomComposer({
         hideGenerationModes: true,
         placeholder: guided?.placeholder ?? 'What do you want to get done?',
         mentionCategories: guided ? [] : mentionCategories,
-        agentCommands: guided ? [] : agentCommands,
         textOnly: Boolean(guided),
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}

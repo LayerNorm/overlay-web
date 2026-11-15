@@ -237,80 +237,117 @@ export class LocalBrowser {
 
   private async action(request: Record<string, unknown>): Promise<Record<string, unknown>> {
     await this.ensure()
-    const action = request.action
-    if (action === 'navigate') {
-      const url = browserUrl(request.url)
-      const page = await this.activePage()
-      await this.activate(page.id)
-      await this.withPage((connection) => connection.call('Page.navigate', { url }), page)
-      return { success: true }
-    }
-    if (action === 'back' || action === 'forward') {
-      return await this.withPage(async (connection) => {
-        const history = await connection.call('Page.getNavigationHistory') as { entries?: Array<{ id: number }>; currentIndex?: number }
-        const destination = (history.currentIndex ?? -1) + (action === 'back' ? -1 : 1)
-        const entry = history.entries?.[destination]
-        if (destination >= 0 && entry) { await connection.call('Page.navigateToHistoryEntry', { entryId: entry.id }); return { success: true, navigated: true } }
-        return { success: true, navigated: false }
-      })
-    }
-    if (action === 'reload') { await this.withPage((connection) => connection.call('Page.reload', { ignoreCache: false })); return { success: true } }
-    if (action === 'snapshot') {
-      const value = await this.withPage((connection) => LocalBrowser.evaluate(connection, SNAPSHOT_EXPRESSION))
-      if (!value || typeof value !== 'object') throw new LocalToolFailure('desktop_driver_failed', 'The browser snapshot was invalid.')
-      return value as Record<string, unknown>
-    }
-    if (action === 'click') {
-      return await this.withPage(async (connection) => {
-        const info = await LocalBrowser.evaluate(connection, refExpression(request.ref, CLICK_INSPECTION)) as Record<string, unknown> | null
-        if (!info || typeof info !== 'object') throw new LocalToolFailure('desktop_driver_failed', 'The browser click target could not be inspected.')
-        const name = String(info.name ?? '').trim()
-        if (request.confirm !== true && (info.isSubmit === true || RISKY_CLICK_NAME.test(name))) {
-          return {
-            success: false, error: 'approval_required', label: name.slice(0, 80),
-            message: 'This click may post, send, buy, or delete something. Call computer_browser click again with confirm: true to ask the user for approval.',
-          }
-        }
-        await LocalBrowser.evaluate(connection, refExpression(request.ref, 'element.click(); return true;'))
-        return { success: true }
-      })
-    }
-    if (action === 'type') {
-      if (typeof request.text !== 'string' || request.text.length > 10_000) throw new LocalToolFailure('invalid_input', 'text must contain at most 10000 characters.')
-      await this.withPage(async (connection) => {
-        await LocalBrowser.evaluate(connection, refExpression(request.ref, 'element.focus(); return true;'))
-        await connection.call('Input.insertText', { text: request.text })
-        if (request.submit === true) await LocalBrowser.key(connection, 'Enter')
-      })
-      return { success: true }
-    }
-    if (action === 'scroll') {
-      const offsets = ({ up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as Record<string, [number, number]>)[String(request.direction)]
-      const amount = request.amount
-      if (!offsets) throw new LocalToolFailure('invalid_input', 'direction must be up, down, left, or right.')
-      if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < 1 || amount > 25) throw new LocalToolFailure('invalid_input', 'amount must be between 1 and 25.')
-      await this.withPage((connection) => LocalBrowser.evaluate(connection,
-        `window.scrollBy({left: innerWidth * ${offsets[0] * amount}, top: innerHeight * ${offsets[1] * amount}, behavior: 'instant'}); true`))
-      return { success: true }
-    }
-    if (action === 'press') { await this.withPage((connection) => LocalBrowser.key(connection, request.keys)); return { success: true } }
-    if (action === 'tabs') {
-      return { tabs: (await this.pages()).slice(0, 50).map((page, index) => ({ index, url: page.url, title: page.title })) }
-    }
-    if (action === 'switch_tab') {
-      const index = request.index
-      const pages = await this.pages()
-      if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= pages.length) throw new LocalToolFailure('invalid_input', 'index does not identify an open browser tab.')
-      await this.activate(pages[index]!.id)
-      return { success: true, index }
-    }
-    if (action === 'new_tab') {
-      const url = browserUrl(request.url)
-      const created = await this.json<Target>(`/json/new?${encodeURIComponent(url)}`, 'PUT')
-      if (!created?.id) throw new LocalToolFailure('desktop_driver_failed', 'The browser tab could not be created.')
-      await this.activate(created.id)
-      return { success: true, targetId: created.id }
-    }
-    throw new LocalToolFailure('invalid_input', 'Unsupported browser action.')
+    const handler = BROWSER_ACTIONS[String(request.action)]
+    if (!handler) throw new LocalToolFailure('invalid_input', 'Unsupported browser action.')
+    return handler(this, request)
   }
+
+  async navigate(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const url = browserUrl(request.url)
+    const page = await this.activePage()
+    await this.activate(page.id)
+    await this.withPage((connection) => connection.call('Page.navigate', { url }), page)
+    return { success: true }
+  }
+
+  history(step: -1 | 1): Promise<Record<string, unknown>> {
+    return this.withPage(async (connection) => {
+      const history = await connection.call('Page.getNavigationHistory') as { entries?: Array<{ id: number }>; currentIndex?: number }
+      const destination = (history.currentIndex ?? -1) + step
+      const entry = history.entries?.[destination]
+      if (destination < 0 || !entry) return { success: true, navigated: false }
+      await connection.call('Page.navigateToHistoryEntry', { entryId: entry.id })
+      return { success: true, navigated: true }
+    })
+  }
+
+  async reload(): Promise<Record<string, unknown>> {
+    await this.withPage((connection) => connection.call('Page.reload', { ignoreCache: false }))
+    return { success: true }
+  }
+
+  async snapshot(): Promise<Record<string, unknown>> {
+    const value = await this.withPage((connection) => LocalBrowser.evaluate(connection, SNAPSHOT_EXPRESSION))
+    if (!value || typeof value !== 'object') throw new LocalToolFailure('desktop_driver_failed', 'The browser snapshot was invalid.')
+    return value as Record<string, unknown>
+  }
+
+  click(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.withPage(async (connection) => {
+      const info = await LocalBrowser.evaluate(connection, refExpression(request.ref, CLICK_INSPECTION)) as Record<string, unknown> | null
+      if (!info || typeof info !== 'object') throw new LocalToolFailure('desktop_driver_failed', 'The browser click target could not be inspected.')
+      const name = String(info.name ?? '').trim()
+      if (request.confirm !== true && (info.isSubmit === true || RISKY_CLICK_NAME.test(name))) {
+        return {
+          success: false, error: 'approval_required', label: name.slice(0, 80),
+          message: 'This click may post, send, buy, or delete something. Call computer_browser click again with confirm: true to ask the user for approval.',
+        }
+      }
+      await LocalBrowser.evaluate(connection, refExpression(request.ref, 'element.click(); return true;'))
+      return { success: true }
+    })
+  }
+
+  async type(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (typeof request.text !== 'string' || request.text.length > 10_000) throw new LocalToolFailure('invalid_input', 'text must contain at most 10000 characters.')
+    await this.withPage(async (connection) => {
+      await LocalBrowser.evaluate(connection, refExpression(request.ref, 'element.focus(); return true;'))
+      await connection.call('Input.insertText', { text: request.text })
+      if (request.submit === true) await LocalBrowser.key(connection, 'Enter')
+    })
+    return { success: true }
+  }
+
+  async scroll(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const offsets = SCROLL_OFFSETS[String(request.direction)]
+    const amount = request.amount
+    if (!offsets) throw new LocalToolFailure('invalid_input', 'direction must be up, down, left, or right.')
+    if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < 1 || amount > 25) throw new LocalToolFailure('invalid_input', 'amount must be between 1 and 25.')
+    await this.withPage((connection) => LocalBrowser.evaluate(connection,
+      `window.scrollBy({left: innerWidth * ${offsets[0] * amount}, top: innerHeight * ${offsets[1] * amount}, behavior: 'instant'}); true`))
+    return { success: true }
+  }
+
+  async press(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    await this.withPage((connection) => LocalBrowser.key(connection, request.keys))
+    return { success: true }
+  }
+
+  async tabs(): Promise<Record<string, unknown>> {
+    return { tabs: (await this.pages()).slice(0, 50).map((page, index) => ({ index, url: page.url, title: page.title })) }
+  }
+
+  async switchTab(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const index = request.index
+    const pages = await this.pages()
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= pages.length) throw new LocalToolFailure('invalid_input', 'index does not identify an open browser tab.')
+    await this.activate(pages[index]!.id)
+    return { success: true, index }
+  }
+
+  async newTab(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const url = browserUrl(request.url)
+    const created = await this.json<Target>(`/json/new?${encodeURIComponent(url)}`, 'PUT')
+    if (!created?.id) throw new LocalToolFailure('desktop_driver_failed', 'The browser tab could not be created.')
+    await this.activate(created.id)
+    return { success: true, targetId: created.id }
+  }
+}
+
+const SCROLL_OFFSETS: Record<string, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }
+
+type BrowserAction = (browser: LocalBrowser, request: Record<string, unknown>) => Promise<Record<string, unknown>>
+const BROWSER_ACTIONS: Record<string, BrowserAction> = {
+  navigate: (browser, request) => browser.navigate(request),
+  back: (browser) => browser.history(-1),
+  forward: (browser) => browser.history(1),
+  reload: (browser) => browser.reload(),
+  snapshot: (browser) => browser.snapshot(),
+  click: (browser, request) => browser.click(request),
+  type: (browser, request) => browser.type(request),
+  scroll: (browser, request) => browser.scroll(request),
+  press: (browser, request) => browser.press(request),
+  tabs: (browser) => browser.tabs(),
+  switch_tab: (browser, request) => browser.switchTab(request),
+  new_tab: (browser, request) => browser.newTab(request),
 }

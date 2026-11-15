@@ -6,7 +6,6 @@ import {
   type ReactNode,
   useEffect,
   useEffectEvent,
-  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -24,24 +23,19 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import { RemoteRunDeadline } from './RemoteRunDeadline'
 import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
-import { Avatar, AvatarFallback, AvatarImage, Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
+import { Avatar, AvatarFallback, AvatarImage, Button, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
-import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
 import { roomMessageTime } from './room-message-time'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
-import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
-import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
-import { RemoteRunTrace } from './RemoteRunTrace'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
 import type { RunPlanPhase, RunPlanStep } from '@overlay/chat-react/exchange'
 import { NativeAgentInputCard } from './NativeAgentInputCard'
@@ -103,18 +97,12 @@ export type RoomMessageView = {
   plan?: readonly RunPlanStep[]
   planPhase?: RunPlanPhase
   generationError?: string
-  remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
-  remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
-    options: Array<{ id: string; label: string }>; requestedSchema?: Record<string, unknown> }
-  remoteRun?: { runId: string; state: string; retryable: boolean; retryClass?: string; hardDeadlineAt?: number; recovered?: boolean }
-  remoteDrive?: DriveSyncStatus
   /** Persisted turn time for agent messages (assistant row createdAt→updatedAt). */
   workedDurationMs?: number
 }
 
 export type RoomMessageItemProps = {
   readOnly?: boolean
-  remoteStatus?: ReactNode
   /** Hides reactions, edit, pin and the other message actions (guided onboarding). */
   hideToolbar?: boolean
   message: RoomMessageView
@@ -140,8 +128,6 @@ export type RoomMessageItemProps = {
   onRetrySend: () => void
   onOpenAttachmentPreview: (preview: AttachmentPreview) => void
   onCopyPermalink: () => void
-  onControlRemoteQueue?: (runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') => void
-  onResolveRemoteRequest?: (request: NonNullable<RoomMessageView['remoteRequest']>, decision: string, response?: Record<string, unknown>) => void
   /** Present only while an agent response is generating — stops that run. */
   onStopResponse?: () => void
   /** Briefly outlines the message after a jump from the pinned or thread list. */
@@ -302,13 +288,10 @@ export function RoomMessageItem({
   onRetrySend,
   onOpenAttachmentPreview,
   onCopyPermalink,
-  onControlRemoteQueue,
-  onResolveRemoteRequest,
   onStopResponse,
   highlighted = false,
   grouped = false,
   personalChatStyle = false,
-  remoteStatus,
   hideToolbar = false,
 }: RoomMessageItemProps) {
   recordRender('RoomMessageItem')
@@ -326,19 +309,7 @@ export function RoomMessageItem({
     ? 'rounded-xl ring-2 ring-(--foreground) ring-offset-4 ring-offset-(--background)'
     : ''
 
-  // A connected agent's run is stopped by cancelling it; a native agent's response by stopping the response.
-  const activeRemoteRun = message.remoteRun && !['completed', 'cancelled', 'failed', 'recoverable'].includes(message.remoteRun.state)
-    ? message.remoteRun
-    : null
-  const stopHandler = activeRemoteRun && onControlRemoteQueue
-    ? () => onControlRemoteQueue(activeRemoteRun.runId, 'cancel')
-    : !message.remoteRun && message.streaming ? onStopResponse : undefined
-  const retryableRun = message.remoteRun?.state === 'recoverable' && message.remoteRun.retryable
-    ? message.remoteRun
-    : null
-  const retryHandler = retryableRun && onControlRemoteQueue
-    ? () => onControlRemoteQueue(retryableRun.runId, 'retry')
-    : undefined
+  const stopHandler = message.streaming ? onStopResponse : undefined
 
   const toolbar = hideToolbar ? null : (
     <RoomMessageToolbar
@@ -351,7 +322,6 @@ export function RoomMessageItem({
       saved={saved}
       disabled={Boolean(message.delivery)}
       onStop={stopHandler}
-      onRetry={retryHandler}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
       onReport={onReport}
@@ -361,12 +331,10 @@ export function RoomMessageItem({
       onTogglePinned={onTogglePinned}
       onToggleSaved={onToggleSaved}
       onCopyPermalink={onCopyPermalink}
-      diagnostics={message.remoteRun ? <RemoteRunTrace runId={message.remoteRun.runId} messageId={message.id} state={message.remoteRun.state} /> : undefined}
     />
   )
 
   const content: RoomMessageContentProps = {
-    remoteStatus,
     message,
     reactions,
     replyCount,
@@ -420,8 +388,6 @@ export function RoomMessageItem({
       timeLabel={timeLabel}
       grouped={grouped}
       pinned={pinned}
-      onControlRemoteQueue={onControlRemoteQueue}
-      onResolveRemoteRequest={onResolveRemoteRequest}
     />
   )
 }
@@ -434,7 +400,6 @@ type RoomMessageRootProps = {
 
 /** Props shared by the sent and received message rows. */
 type RoomMessageContentProps = {
-  remoteStatus?: ReactNode
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
@@ -727,16 +692,12 @@ function RoomMessageMetaRow({ message, timeLabel, grouped, pinned }: {
   )
 }
 
-function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onControlRemoteQueue, onResolveRemoteRequest, remoteStatus }: {
-  remoteStatus?: ReactNode
+function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
   message: RoomMessageView
   readOnly: boolean
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
-  onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
-  onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
-  const resolveFileHref = useSavedDriveLinkResolver(message.remoteDrive)
   const trace = usePublicTrace({ messageId: message.id, enabled: !message.streaming && (!message.planPhase || message.planPhase === 'ended'),
     blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
@@ -767,35 +728,19 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
         workedDurationMs={message.workedDurationMs}
         plan={message.plan}
         planPhase={message.planPhase}
-        foldWorkIntoSummary={collapseAgentWork && !['cancelled', 'failed', 'recoverable'].includes(message.remoteRun?.state ?? '')}
+        foldWorkIntoSummary={collapseAgentWork}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}
         suppressTypingIndicator
-        resolveFileHref={resolveFileHref}
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
       />
-      {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
       {/* The avatar beside the name shows activity; no second indicator under the reply. */}
-      {message.streaming ? (
-        <div className="flex items-center gap-1 empty:hidden" role="status" aria-label={`${message.authorName} is responding`}>
-          {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
-        </div>
-      ) : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
       {message.generationError ? <p className="mt-2 text-sm text-destructive" role="alert">{message.generationError}</p> : null}
-      {message.remoteRun ? <RemoteRunDeadline deadlineAt={message.remoteRun.hardDeadlineAt} state={message.remoteRun.state} /> : null}
-      {message.remoteRun?.recovered ? <p className="mt-1 text-xs text-(--muted)" role="status">Recovered</p> : null}
-      {message.remoteRun?.state === 'cancelled' ? <p className='mt-2 text-xs text-(--muted)' role='status'>Cancelled</p> : null}
-      {message.remoteRequest && onResolveRemoteRequest ? (
-        <RemoteRequestControls key={message.remoteRequest.requestKey} request={message.remoteRequest} onResolve={onResolveRemoteRequest} />
-      ) : null}
-      {message.remoteRun && onControlRemoteQueue && message.remoteRun.state !== 'waiting' ? (
-        <RemoteRunControls run={message.remoteRun} onControl={onControlRemoteQueue} />
-      ) : null}
     </>
   )
 }
@@ -843,7 +788,7 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
   )
 }
 
-function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAgent, timeLabel, grouped, pinned, onControlRemoteQueue, onResolveRemoteRequest }: {
+function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAgent, timeLabel, grouped, pinned }: {
   rootProps: RoomMessageRootProps
   highlightClass: string
   toolbar: ReactNode
@@ -852,8 +797,6 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
   timeLabel: string
   grouped: boolean
   pinned: boolean
-  onControlRemoteQueue: RoomMessageItemProps['onControlRemoteQueue']
-  onResolveRemoteRequest: RoomMessageItemProps['onResolveRemoteRequest']
 }) {
   const { message, personalChatStyle } = content
   const entranceClass = useMessageEntrance(isRecentMessage(message.createdAt))
@@ -876,12 +819,9 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           />
         ) : isAgent ? (
           <AgentMessageBody
-            remoteStatus={content.remoteStatus}
             message={message}
             readOnly={content.readOnly}
             onOpenAttachmentPreview={content.onOpenAttachmentPreview}
-            onControlRemoteQueue={onControlRemoteQueue}
-            onResolveRemoteRequest={onResolveRemoteRequest}
           />
         ) : (
           <HumanMessageText message={message} />
@@ -892,186 +832,6 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
       </div>
     </div>
   )
-}
-
-function RemoteRequestControls({ request, onResolve }: {
-  request: NonNullable<RoomMessageView['remoteRequest']>
-  onResolve: NonNullable<RoomMessageItemProps['onResolveRemoteRequest']>
-}) {
-  const { properties, required } = useMemo(
-    () => ({
-      properties:
-        request.requestedSchema?.properties &&
-        typeof request.requestedSchema.properties === 'object'
-          ? (request.requestedSchema.properties as Record<
-              string,
-              {
-                title?: string
-                type?: string
-                enum?: unknown[]
-                oneOf?: Array<{ const?: unknown; title?: string }>
-              }
-            >)
-          : {},
-      required: Array.isArray(request.requestedSchema?.required)
-        ? request.requestedSchema.required.filter(
-            (key): key is string => typeof key === 'string',
-          )
-        : [],
-    }),
-    [request],
-  )
-  const requiredSet = new Set(required)
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    initialElicitationValues(properties, required),
-  )
-  return (
-    <div className="mt-3 max-w-xl rounded-lg bg-(--surface-subtle) p-3">
-      <p className='text-xs font-medium text-(--foreground)'>
-        {request.pendingDelivery ? 'Decision pending delivery' : request.kind === 'permission'
-          ? 'Permission requested'
-          : 'Input requested'}
-      </p>
-      <p className='mt-1 text-xs leading-5 text-(--muted)'>
-        {request.prompt}
-      </p>
-      {request.expiresAt ? <p className='mt-1 text-xs text-(--muted)'>Expires {new Date(request.expiresAt).toLocaleString()}</p> : null}
-      {request.machineCostContinues ? <p className='mt-1 text-xs text-(--muted)'>Machine time continues to be billed while waiting.</p> : null}
-      {request.pendingDelivery ? <p className='mt-2 text-xs text-(--muted)'>Waiting for the agent to accept your decision.</p> : null}
-      {!request.pendingDelivery && request.kind === 'elicitation'
-        ? Object.entries(properties).map(([key, property]) =>
-        property.type === 'boolean' ? (
-          <div key={key} className="mt-2 flex items-center gap-3">
-            <span className="flex-1 text-[11px] text-(--muted)">
-                  {property.title ?? key}
-                  {requiredSet.has(key) ? ' *' : ''}
-            </span>
-            <Toggle
-              checked={values[key] === true}
-                  onCheckedChange={(next) =>
-                    setValues((current) => ({ ...current, [key]: next }))
-                  }
-                  aria-label={
-                    typeof (property.title ?? key) === 'string'
-                      ? ((property.title ?? key) as string)
-                      : key
-                  }
-            />
-          </div>
-        ) : (
-          <label key={key} className="mt-2 block text-[11px] text-(--muted)">
-            <span>{property.title ?? key}{requiredSet.has(key) ? ' *' : ''}</span>
-            {elicitationOptions(property).length > 0 ? (
-              <Select
-                aria-label={key}
-                value={String(values[key] ?? '')}
-                onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    [key]: elicitationFieldValue(property.type, event.target.value),
-                  }))
-                }
-                className="mt-1 h-8 w-full rounded-md bg-(--surface) px-2 text-xs text-(--foreground)"
-              >
-                <option value="">Select…</option>
-                {elicitationOptions(property).map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <Input type={property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
-                aria-label={key}
-                value={String(values[key] ?? '')}
-                onChange={(event) => setValues((current) => ({ ...current, [key]: elicitationFieldValue(property.type, event.target.value) }))}
-                className="mt-1 h-8 w-full rounded-md bg-(--surface) px-2 text-xs text-(--foreground)" />
-            )}
-          </label>
-        ),
-        )
-        : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {request.pendingDelivery ? null : request.kind === 'permission' ? (
-          request.options.map((option) => (
-            <Button
-              variant="ghost"
-              key={option.id}
-              type='button'
-              onClick={() => onResolve(request, option.id)}
-              className='h-auto rounded-md bg-(--surface) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface-muted)'
-            >
-              {option.label}
-            </Button>
-          ))
-        ) : (
-          <>
-            <Button
-              variant="ghost"
-              type='button'
-              onClick={() => onResolve(request, 'accept', values)}
-              className='h-auto rounded-md bg-(--surface) px-2 py-1 text-xs font-normal text-(--foreground) hover:bg-(--surface-muted)'
-            >
-              Submit
-            </Button>
-            <Button
-              variant="ghost"
-              type='button'
-              onClick={() => onResolve(request, 'decline')}
-              className='h-auto rounded-md px-2 py-1 text-xs font-normal text-(--muted) hover:bg-(--surface)'
-            >
-              Decline
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function initialElicitationValues(
-  properties: Record<string, { type?: string }>,
-  required: string[],
-) {
-  return Object.fromEntries(required.flatMap((key) => properties[key]?.type === 'boolean' ? [[key, false]] : []))
-}
-
-function elicitationFieldValue(type: string | undefined, value: string): unknown {
-  if (type === 'number' || type === 'integer') return value === '' ? '' : Number(value)
-  if (type === 'boolean') return value === 'true'
-  if (type === 'array')
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-  return value
-}
-
-function elicitationOptions(property: { enum?: unknown[]; oneOf?: Array<{ const?: unknown; title?: string }> }) {
-  if (Array.isArray(property.enum)) return property.enum.map((value) => ({ value: String(value), label: String(value) }))
-  if (Array.isArray(property.oneOf)) return property.oneOf.flatMap((option) => option.const === undefined
-    ? [] : [{ value: String(option.const), label: option.title ?? String(option.const) }])
-  return []
-}
-
-function RemoteRunControls({ run, onControl }: {
-  run: NonNullable<RoomMessageView['remoteRun']>
-  onControl: NonNullable<RoomMessageItemProps['onControlRemoteQueue']>
-}) {
-  if (['completed', 'cancelled', 'failed'].includes(run.state)) return null
-  if (run.state === 'cancelling') return <p className='mt-2 text-xs text-(--muted)' role='status'>Cancellation requested. Waiting for execution to stop.</p>
-  if (run.state === 'needs_attention') return (
-    <div className="mt-2 flex items-center gap-2 text-xs text-(--muted)">
-      <p role="status">Execution needs attention. Stop or isolate the original process before starting fresh.</p>
-      <Button variant="ghost" type="button" className={unstyledButton("shrink-0 rounded-md bg-(--surface-subtle) px-2 py-1 text-(--foreground) hover:bg-(--surface-muted)")}
-        onClick={() => {
-          if (window.confirm('Confirm that you inspected and stopped or isolated the original process. Starting fresh creates a new attempt and does not resume the old process.'))
-            onControl(run.runId, 'start_fresh')
-        }}>Start fresh</Button>
-    </div>
-  )
-  // Cancelling an active run is the Stop button in the message toolbar.
-  return null
 }
 
 const QUICK_REACTIONS = [

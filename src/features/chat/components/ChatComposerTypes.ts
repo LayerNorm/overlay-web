@@ -7,7 +7,6 @@ import type { CapabilityCheck } from '@overlay/app-core'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
-import type { RemoteAgentCommand } from './collaboration/room-message-view'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
 export type ChatComposerEmptyState = { showCenteredEmptyChat: boolean; greetingLine: string; belowEmptyComposer?: ReactNode }
@@ -62,8 +61,6 @@ export type ChatComposerSurface = {
   placeholder?: string
   /** Additional mention targets, such as workspace people and named agents. */
   mentionCategories?: MentionCategory[]
-  /** Slash commands the connected agent advertised over ACP, if any. */
-  agentCommands?: RemoteAgentCommand[]
   /** Model and video sub-mode controls rendered before the send button. */
   modelControl?: ReactNode
   contextUsage?: { usedTokens: number; contextWindow: number } | null

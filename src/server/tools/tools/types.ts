@@ -43,7 +43,7 @@ export interface OverlayToolsOptions {
   memoryOwnerId?: string
   /**
    * Set when a workspace agent is driving the turn. Tools still authenticate as
-   * `userId` (the delegate model — see internal/develop/bring-your-own-agents.md),
+   * `userId` (the delegate model — see internal/develop/tool-catalog.md),
    * so this exists to attribute the work, not to authorize it.
    */
   agentId?: string

@@ -67,7 +67,7 @@ the laptop (local dictation models are unaffected).
 
 | Phase | State |
 | --- | --- |
-| 1: Mac as a Computer | Local tools implemented on the feature branch (web, Convex, Agent Host 0.5.0, desktop branch); unit, Convex and server end-to-end tests pass. ACP connected-agent removal in progress. Not merged, not deployed; Agent Host 0.5.0 is not published. Hosted preview QA pending. |
+| 1: Mac as a Computer | Local tools implemented on the feature branch (web, Convex, Agent Host 0.5.0, desktop branch); unit, Convex and server end-to-end tests pass. ACP connected-agent removal implemented on the same branches (desktop, Agent Host, web, Convex tables and purge); the purge has not run anywhere and the shared-table remote fields remain until a follow-up deploy. Not merged, not deployed; Agent Host 0.5.0 is not published. Hosted preview QA pending. |
 | 2: Projects and context packages | Not started |
 | 3: Continue in cloud / bring back | Not started |
 | 4: Delegating from local threads | Not started |
@@ -87,9 +87,15 @@ Phase 1 also removes the ACP connected-agent feature end to end (Decision 5):
   remote runs (commands, events, artifacts, drive, run credentials) and the
   connected-agent MCP server, plus their routes, settings and transcript rendering.
   Enrollment and machine management stay for "This Mac".
-- **Convex:** connected-agent run functions and crons. Existing rows are left in
-  place and unreferenced, so nothing is deleted from customer data by this change;
-  the tables are dropped in a later cleanup once production holds no live rows.
+- **Convex:** connected-agent functions, crons and tables are deleted outright
+  (bindings, remote runs and sessions, MCP calls and approvals, artifacts, agent
+  drive, profiles, provider accounts and agent secrets). There is no history worth
+  keeping: `migrations/purgeConnectedAgents:purgeRemovedTables` and
+  `purgeRemoteRuns` delete the leftover rows and remote-run messages, and
+  `scripts/db/purge-connected-agent-credentials.ts` deletes stored provider
+  credentials from the vault before their rows. The remote-run fields on shared
+  tables (`conversationAgentRuns`, message parts) are removed in a second deploy
+  once the purge has run, since Convex validates existing rows against them.
 - **Existing connected agents:** they keep their identity, threads and history
   and become ordinary Overlay agents, running on the native harness.
 
@@ -140,8 +146,8 @@ sleep/wake and host restart settle in-flight tool calls.
 
 - **Continue in cloud**: take the project lease, then snapshot the working state.
   For git, push a work branch that includes uncommitted and untracked files inside
-  the approved roots. For other folders, use the connected-agent drive
-  (`features.connectedAgentDrive`) into Files. Provision or resume the agent's
+  the approved roots. For other folders, upload an archive into Files
+  through the local tool channel (the connected-agent drive was removed). Provision or resume the agent's
   cloud Computer, check out the snapshot, apply the context package, prompt for
   needed values, and continue the same thread on the cloud target.
 - **Bring back to my Mac**: take the lease back, then fetch and check out the

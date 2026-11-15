@@ -1,4 +1,3 @@
-import { dispatchRemoteRunIntents } from '@/server/agents/remote-agent-run-dispatcher'
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -23,7 +22,6 @@ export async function POST(request: Request) {
       const result = await server.managedAgentSandboxBilling.idleCheck(idleCheck)
       return NextResponse.json({ idleCheck: result }, { headers: { 'Cache-Control': 'no-store' } })
     }
-    const controlPlane = server.connectedAgentControlPlane
     const cloudReclaim = Promise.resolve()
       .then(() => createRetiredCloudAgentService().reclaimAbandonedProvisions())
       .catch((error) => {
@@ -42,18 +40,14 @@ export async function POST(request: Request) {
           return { scanned: 0, live: 0, unowned: [], truncated: false, failed: true }
         })
       : Promise.resolve({ skipped: true })
-    const [supervised, meter, lifecycle, cloudReclaimResult, providerInventoryResult] = await Promise.all([
-      controlPlane.sweepRemoteRuns(),
+    const [meter, cloudReclaimResult, providerInventoryResult] = await Promise.all([
       server.managedAgentSandboxBilling.meterLeases(),
-      dispatchRemoteRunIntents(),
       cloudReclaim,
       providerInventory,
     ])
     return NextResponse.json({
-      lifecycle,
       cloudReclaim: cloudReclaimResult,
       providerInventory: providerInventoryResult,
-      supervised: supervised.expiredRunIds.length,
       metered: {
         disabled: meter.disabled === true,
         killed: meter.ticks.filter((tick) => tick.outcome === 'killed').length,

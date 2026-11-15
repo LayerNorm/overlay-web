@@ -102,7 +102,7 @@ export function DesktopLocalComputerSettings({ bridge }: { bridge: DesktopBridge
     setBusy(true);
     setError("");
     try {
-      const enrollment = await overlayAppClient.agentEnvironments.createEnrollment(activeWorkspaceId, { localTools: true });
+      const enrollment = await overlayAppClient.agentEnvironments.createEnrollment(activeWorkspaceId);
       await bridge.call("agentHost.start", { enrollmentCode: enrollment.code, localTools: true });
       setConnecting({ startedAt: Date.now(), roots });
       await refresh();

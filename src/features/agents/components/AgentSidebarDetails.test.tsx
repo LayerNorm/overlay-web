@@ -12,18 +12,16 @@ type Controller = ReturnType<typeof useAgentEditorController>
 function renderDetails() {
   const editor = {
     loading: false,
-    connectedAgentsChecked: true,
-    connectedAgentsEnabled: false,
     isDefaultMaster: false,
 
     computersAvailable: false,
-    byo: { initialLoading: false },
     surfaces: { initialLoading: false },
     computer: { initialLoading: false },
     form: {
       instructions: 'Answer clearly and ask questions when details are missing.',
       enabledToolGroups: new Set(['memory', 'files']),
       modelId: 'openrouter/free',
+      permissionMode: 'ask',
     },
     modelField: {
       modelPickerLabel: 'Auto',
@@ -32,11 +30,6 @@ function renderDetails() {
       isFreeTierWorkspace: false,
       favoriteScope: 'agent',
       textModelsLoading: false,
-    },
-    runtime: {
-      agentType: 'overlay',
-      cloudAgent: false,
-      legacyHostedRuntime: false,
     },
   } as unknown as Controller
 
@@ -67,8 +60,7 @@ test('agent details render collapsed Model, Instructions, Tools, and Advanced se
 
 test('the sidebar identifies its current Computer operator instead of reporting someone else', () => {
   const editor = {
-    computersAvailable: true, isDefaultMaster: true, connectedAgentsEnabled: false,
-    runtime: { agentType: 'overlay' },
+    computersAvailable: true, isDefaultMaster: true,
     form: { name: 'QA agent', permissionMode: 'ask', visibility: 'workspace', enabledToolGroups: new Set(['computer']) },
     computer: { currentUserId: 'qa-operator', computerSize: 'small', computerOpenBusy: false, computerLifecycleBusy: null,
       agentComputer: { id: 'owned-computer', status: 'ready', size: 'small', controlledByUserId: 'qa-operator' } },

@@ -330,9 +330,6 @@ export async function dispatchNativeHarnessAgentRequest(
     workspaceId: string
   }) => {
     const invocations = await resolveWorkspaceAgentInvocations(args)
-    if (invocations.some(invocation => invocation.externalAgent || invocation.remoteTarget || invocation.harness !== 'overlay')) {
-      throw new Error("External agents can't be asked from this run yet.")
-    }
     const started: Array<{ agentId: string; turnId: string }> = []
     for (const invocation of invocations) {
       const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({

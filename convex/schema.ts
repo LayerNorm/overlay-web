@@ -1,7 +1,4 @@
-import { driveUploadFields } from './lib/agentDriveUploadSchema'
-import { remoteLifecycleValidator } from './agents/remoteRunModel'
-import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
-import { agentMcpCallState } from './lib/agentMcpCallSchema'
+import { remoteLifecycleValidator } from './lib/retiredConnectedAgentSchema'
 import { growthTables } from './lib/growthSchema'
 import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
 import { harnessDiagnosticValidator } from './lib/harnessDiagnosticValidator'
@@ -259,26 +256,6 @@ export default defineSchema({
     .index('by_connectionId', ['connectionId'])
     .index('by_userId', ['userId']),
 
-  // Historical provider-account metadata. Provider/model adapters may still
-  // use these records; retired Cloud runtimes cannot receive credentials.
-  agentProviderAccounts: defineTable({
-    userId: v.string(),
-    provider: v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor')),
-    method: v.union(v.literal('subscription'), v.literal('api_key')),
-    label: v.string(),
-    credentialRef: v.string(),
-    status: v.union(v.literal('active'), v.literal('needs_reauth')),
-    lastError: v.optional(v.string()),
-    lastUsedAt: v.optional(v.number()),
-    /** Held while one server refreshes a rotating sign-in (a Codex subscription), so two never use the same refresh token. */
-    refreshLockOwner: v.optional(v.string()),
-    refreshLockUntil: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_userId_provider', ['userId', 'provider']),
-
   // A version of an Overlay Cloud agent's imported harness config (CLAUDE.md, skills, commands, subagents, MCP
   // servers). The cleaned bundle lives in `agentProfileChunks`; secret values are never in either.
   /** How many questions one person's message (rootKey) and one agent turn (turnKey) have asked other agents. */
@@ -287,46 +264,6 @@ export default defineSchema({
     /** Legacy: replies once used to add up what a request's chain spent; kept so existing rows validate. */
     replies: v.optional(v.array(v.object({ conversationId: v.string(), turnId: v.string() }))),
   }).index('by_workspaceId_key', ['workspaceId', 'key']),
-
-  agentProfiles: defineTable({
-    workspaceId: v.string(),
-    agentId: v.string(),
-    userId: v.string(),
-    harness: v.union(v.literal('claude-code'), v.literal('codex')),
-    version: v.number(),
-    status: v.union(
-      v.literal('awaiting_upload'), v.literal('staged'), v.literal('active'), v.literal('superseded'), v.literal('discarded'),
-    ),
-    // A one-time code (hashed) a person's computer uploads with; cleared when used.
-    codeHash: v.optional(v.string()),
-    codeExpiresAt: v.optional(v.number()),
-    summary: v.optional(v.any()),
-    meta: v.optional(v.any()),
-    digest: v.optional(v.string()),
-    chunkCount: v.optional(v.number()),
-    hooksEnabled: v.boolean(),
-    createdAt: v.number(),
-    uploadedAt: v.optional(v.number()),
-    appliedAt: v.optional(v.number()),
-  })
-    .index('by_agentId', ['agentId'])
-    .index('by_codeHash', ['codeHash']),
-
-  agentProfileChunks: defineTable({
-    profileId: v.id('agentProfiles'),
-    index: v.number(),
-    data: v.string(),
-  }).index('by_profileId', ['profileId']),
-
-  // Values an agent's imported config asked for (an MCP server's token). The value is in the credential vault.
-  agentSecrets: defineTable({
-    workspaceId: v.string(),
-    agentId: v.string(),
-    userId: v.string(),
-    name: v.string(),
-    credentialRef: v.string(),
-    updatedAt: v.number(),
-  }).index('by_agentId', ['agentId']),
 
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
@@ -1944,28 +1881,6 @@ export default defineSchema({
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
 
-  agentDriveRetiredObjects: defineTable({
-    purpose: v.union(v.literal('version'), v.literal('staging'), v.literal('uncommitted')),
-    ownerUserId: v.string(), sizeBytes: v.number(), retiredAt: v.number(), nextAttemptAt: v.number(),
-    source: v.union(v.object({ kind: v.literal('object'), key: v.string() }),
-      v.object({ kind: v.literal('convex'), storageId: v.id('_storage') })),
-    state: v.union(v.object({ kind: v.literal('waiting') }),
-      v.object({ kind: v.literal('deleting'), claim: v.string() })),
-  }).index('by_nextAttemptAt', ['nextAttemptAt']),
-
-  agentDriveUploads: defineTable(driveUploadFields).index('by_uploadId', ['uploadId']).index('by_runId_requestId', ['runId', 'requestId'])
-    .index('by_expiresAt', ['expiresAt']).index('by_retireAt', ['retireAt']),
-
-  agentDriveWriteBudgets: defineTable({ runId: v.string(), uploads: v.number(), bytes: v.number(), expiresAt: v.number() })
-    .index('by_runId', ['runId']).index('by_expiresAt', ['expiresAt']),
-
-  agentDriveMetadataReceipts: defineTable({
-    runId: v.string(), sessionId: v.string(), requestId: v.string(),
-    attemptId: v.optional(v.string()), generation: v.optional(v.number()),
-    fingerprint: v.string(), result: v.object({ fileId: v.id('files'), updatedAt: v.number() }),
-    createdAt: v.number(), retireAt: v.optional(v.number()),
-  }).index('by_runId_requestId', ['runId', 'requestId']).index('by_retireAt', ['retireAt']),
-
   files: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
@@ -2845,71 +2760,6 @@ export default defineSchema({
     .index('by_credentialId_expiresAt', ['credentialId', 'expiresAt'])
     .index('by_expiresAt', ['expiresAt']),
 
-  agentBindings: defineTable({
-    bindingId: v.string(), workspaceId: v.string(), agentId: v.string(), environmentId: v.string(),
-    protocolAdapter: v.string(), adapterConfig: v.any(), enabled: v.boolean(),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_bindingId', ['bindingId'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
-    .index('by_environmentId', ['environmentId']),
-
-  agentRunCommands: defineTable({
-    commandId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
-    type: v.string(), sequence: v.number(), payload: v.any(), status: v.string(),
-    attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
-    claimedAt: v.optional(v.number()), claimExpiresAt: v.optional(v.number()),
-    acknowledgedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_commandId', ['commandId'])
-    .index('by_runId', ['runId'])
-    .index('by_environmentId_sequence', ['environmentId', 'sequence'])
-    .index('by_environmentId_status_sequence', ['environmentId', 'status', 'sequence'])
-    .index('by_environmentId_status_claimExpiresAt', ['environmentId', 'status', 'claimExpiresAt'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_status_updatedAt', ['status', 'updatedAt']),
-
-  agentRemoteSessions: defineTable({
-    sessionId: v.string(), workspaceId: v.string(), environmentId: v.string(), bindingId: v.string(),
-    runId: v.string(), remoteSessionId: v.optional(v.string()), status: v.string(),
-    attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
-    restorationCommandId: v.optional(v.string()), preparationRetryCount: v.optional(v.number()),
-    lastPreparationStopAt: v.optional(v.number()),
-    nativeStartAdmission: v.optional(nativeStartAdmissionValidator),
-    nativeStartAdmissionRequired: v.optional(v.literal(true)),
-    hostBootId: v.optional(v.string()), lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
-    checkpointReference: v.optional(v.string()), recoveryCause: v.optional(v.string()), recoveryResult: v.optional(v.string()),
-    hardDeadlineAt: v.optional(v.number()), claimDeadlineAt: v.optional(v.number()), executionLeaseExpiresAt: v.optional(v.number()),
-    commandCursor: v.number(), eventCursor: v.number(), capabilitySnapshot: v.any(),
-    stopConfirmedAt: v.optional(v.number()),
-    startedAt: v.optional(v.number()), endedAt: v.optional(v.number()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_sessionId', ['sessionId'])
-    .index('by_runId', ['runId'])
-    .index('by_runId_attemptId', ['runId', 'attemptId'])
-    .index('by_environmentId_status', ['environmentId', 'status'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_status', ['workspaceId', 'status']),
-
-  agentRemoteRunIntents: defineTable({
-    intentId: v.string(), runId: v.string(), kind: v.union(v.literal('start'), v.literal('signal'), v.literal('control'), v.literal('finalize')),
-    revision: v.number(), status: v.string(), operationId: v.optional(v.string()), action: v.optional(v.string()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_intentId', ['intentId'])
-    .index('by_kind_status_updatedAt', ['kind', 'status', 'updatedAt'])
-    .index('by_status_updatedAt', ['status', 'updatedAt'])
-    .index('by_runId', ['runId']),
-
-  agentEventRateWindows: defineTable({
-    environmentId: v.string(), workspaceId: v.string(), windowStartedAt: v.number(),
-    eventCount: v.number(), updatedAt: v.number(),
-  }).index('by_environmentId_windowStartedAt', ['environmentId', 'windowStartedAt'])
-    .index('by_workspaceId_windowStartedAt', ['workspaceId', 'windowStartedAt'])
-    .index('by_windowStartedAt', ['windowStartedAt']),
-
-  agentWorkspacePolicyUsage: defineTable({
-    workspaceId: v.string(), activeArtifactBytes: v.number(), updatedAt: v.number(),
-  }).index('by_workspaceId', ['workspaceId']),
-
   /**
    * Request/response tool calls Overlay sends to a user's own machine (local
    * tools). At most once: a host claims a call before running it, and a call
@@ -2924,48 +2774,6 @@ export default defineSchema({
   }).index('by_callId', ['callId'])
     .index('by_environmentId_status_createdAt', ['environmentId', 'status', 'createdAt'])
     .index('by_createdAt', ['createdAt']),
-
-  agentMcpCalls: defineTable({
-    callId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(), sessionId: v.string(),
-    execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
-    clientSessionId: v.string(), rpcId: v.string(), toolName: v.string(), argumentsJson: v.string(), requestKey: v.string(),
-    state: agentMcpCallState, expiresAt: v.number(), retireAt: v.number(), createdAt: v.number(),
-    elicitationAnsweredAt: v.optional(v.number()),
-  }).index('by_callId', ['callId'])
-    .index('by_session_rpc', ['sessionId', 'clientSessionId', 'rpcId'])
-    .index('by_retireAt', ['retireAt']),
-
-  agentMcpResultChunks: defineTable({ callId: v.string(), index: v.number(), data: v.bytes() })
-    .index('by_callId_index', ['callId', 'index']),
-
-  agentMcpCallBudgets: defineTable({ runId: v.string(), calls: v.number(), bytes: v.number(), retireAt: v.number() })
-    .index('by_runId', ['runId']).index('by_retireAt', ['retireAt']),
-
-  agentApprovalRequests: defineTable({
-    approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),
-    requestKey: v.string(), kind: v.optional(v.union(v.literal('permission'), v.literal('elicitation'))),
-    prompt: v.string(), options: v.array(v.string()), payload: v.any(),
-    requestedAt: v.number(), resolution: v.optional(v.object({
-      decision: v.string(), response: v.optional(v.any()), resolvedByPrincipalId: v.string(), resolvedAt: v.number(),
-    })),
-  }).index('by_approvalId', ['approvalId'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_remoteSessionId_requestKey', ['remoteSessionId', 'requestKey'])
-    .index('by_workspaceId_runId', ['workspaceId', 'runId'])
-    .index('by_requestedAt', ['requestedAt']),
-
-  agentArtifacts: defineTable({
-    artifactId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
-    remoteSessionId: v.string(), name: v.string(), mediaType: v.string(), size: v.number(),
-    sha256: v.string(), objectKey: v.string(), status: v.string(), scanResult: v.optional(v.string()),
-    expiresAt: v.number(), linkedAt: v.optional(v.number()), deletedAt: v.optional(v.number()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_artifactId', ['artifactId'])
-    .index('by_objectKey', ['objectKey'])
-    .index('by_runId_status', ['runId', 'status'])
-    .index('by_status_expiresAt', ['status', 'expiresAt'])
-    .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
-    .index('by_workspaceId_status', ['workspaceId', 'status']),
 
   agentSandboxLeases: defineTable({
     leaseId: v.string(), workspaceId: v.string(), environmentId: v.optional(v.string()), computerId: v.optional(v.string()), runId: v.optional(v.string()),
@@ -2982,26 +2790,6 @@ export default defineSchema({
     .index('by_provider_providerReference', ['provider', 'providerReference'])
     .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
     .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
-
-  agentSandboxSettlements: defineTable({
-    reservationId: v.string(), workspaceId: v.string(), environmentId: v.string(),
-    runId: v.string(), leaseId: v.string(), status: v.string(),
-    settledAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_reservationId', ['reservationId'])
-    .index('by_status_updatedAt', ['status', 'updatedAt'])
-    .index('by_workspaceId', ['workspaceId']),
-
-  // Durable HarnessAgent session state per binding + conversation. The opaque
-  // resumeState carries the harness's native resume payload so a later turn
-  // can continue without replaying transcript history.
-  agentHarnessSessions: defineTable({
-    harnessSessionId: v.string(), workspaceId: v.string(), bindingId: v.string(),
-    conversationId: v.string(), harnessId: v.string(),
-    sessionId: v.optional(v.string()), resumeState: v.optional(v.any()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_harnessSessionId', ['harnessSessionId'])
-    .index('by_bindingId_conversationId', ['bindingId', 'conversationId'])
-    .index('by_workspaceId', ['workspaceId']),
 
   slackImportMappings: defineTable({
     importJobId: v.id('slackImportJobs'),

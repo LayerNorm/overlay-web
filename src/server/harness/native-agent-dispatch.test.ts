@@ -42,7 +42,7 @@ const parent = {
 }
 const invocation = {
   agentId: 'target', agentName: 'Target', agentPrincipalId: 'target-principal', invocationNonce: 'nonce',
-  modelId: 'model', harness: 'overlay', externalAgent: false, turnId: 'target-turn',
+  modelId: 'model', harness: 'overlay', turnId: 'target-turn',
 }
 
 beforeEach(() => {
@@ -136,11 +136,3 @@ test('a descendant dispatch uses the original root workflow for surface preparat
   }))
 })
 
-test('native asks refuse external targets before creating a delivery', async () => {
-  mocks.resolve.mockResolvedValueOnce([{ ...invocation, externalAgent: true, harness: 'claude-code' }])
-  await expect(dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
-    agent: 'External', message: 'inspect this',
-  })).rejects.toThrow("External agents can't be asked from this run yet.")
-  expect(mocks.startTurn).not.toHaveBeenCalled()
-  expect(mocks.apply).not.toHaveBeenCalled()
-})

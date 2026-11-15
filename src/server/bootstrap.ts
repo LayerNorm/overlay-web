@@ -39,7 +39,7 @@ import {
   createByokCredentialStore,
   type ByokCredentialStore,
 } from '@/server/ai/gateway/byok-credential-store'
-import { BillingBackedActUsagePolicy, createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
+import { createActUsagePolicy, type ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import {
   createGenerationUsagePolicy,
   type GenerationUsagePolicy,
@@ -52,23 +52,15 @@ import {
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
-import {
-  connectedAgentRolloutConfigFromEnv,
-  connectedAgentRolloutEnabled,
-  resolveConnectedAgentRollout,
-} from '@/shared/agents/connected-agent-rollout'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
-import { externalAgentLaunchEnabled, isPersistedExternalAgent } from '@/server/agents/external-agent-policy'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
-import { AgentProfileService } from '@/server/agents/profiles/AgentProfileService'
 import { McpAccessService } from '@/server/mcp/McpAccessService'
-import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { ConvexLocalToolCallRepository, LocalComputerService } from '@/server/computers/local/LocalComputerService'
 import { ComputerBilling } from '@/server/computers/ComputerBilling'
@@ -79,7 +71,6 @@ import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
-import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 import { WorkspaceSharingService } from '@/server/sharing/WorkspaceSharingService'
 import { ConvexWorkspaceSharingRepository } from '@/server/sharing/ConvexWorkspaceSharingRepository'
@@ -128,9 +119,7 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceGovernanceService: WorkspaceGovernanceService
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
-  agentProviderAccounts: AgentProviderAccountService
   mcpAccess: McpAccessService
-  agentProfiles: AgentProfileService
   agentAsks: AgentAskService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
@@ -231,22 +220,7 @@ export function createOverlayServerContext(
   const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
-  const workspaceAgentService = new WorkspaceAgentService(
-    workspaceAgentRepository,
-    workspaceService,
-    undefined,
-    undefined,
-    async ({ workspaceId, record }) => {
-      const bindings = await appData.repositories.connectedAgents.listBindings({
-        workspaceId,
-        agentId: record.id,
-      })
-      return {
-        external: isPersistedExternalAgent(record) || bindings.length > 0,
-        allowed: await externalAgentLaunchEnabled(workspaceId),
-      }
-    },
-  )
+  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
   const computerLifecycleRef: { current?: ComputerLifecycleService } = {}
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,
@@ -315,21 +289,9 @@ export function createOverlayServerContext(
       listSlackChannels(connection, adapter as SlackAdapter),
     resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
   })
-  const agentProviderAccounts = new AgentProviderAccountService({
-    repository: appData.repositories.agentProviderAccounts,
-    store: byokCredentialStore,
-    audit: auditService,
-    launchEnabled: (workspaceId) => externalAgentLaunchEnabled(workspaceId),
-  })
   const mcpAccess = new McpAccessService({
     grants: appData.repositories.mcpGrants,
     workspaces: workspaceService,
-    audit: auditService,
-  })
-  const agentProfiles = new AgentProfileService({
-    repository: appData.repositories.agentProfiles,
-    agents: { requireEditable: (args) => workspaceAgentService.requireEditable(args) },
-    store: byokCredentialStore,
     audit: auditService,
   })
   const agentAsks = new AgentAskService({
@@ -359,61 +321,13 @@ export function createOverlayServerContext(
   })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
-    agentProviderAccounts,
-    objectStore,
-    providerConnections: appData.repositories.providerConnections,
     repository: appData.repositories.connectedAgents,
     workspaces: workspaceService,
-    isEnabled: (workspaceId) => {
-      if (runtimeConfig?.features.connectedAgentControlPlane !== true) return false
-      const rollout = connectedAgentRolloutConfigFromEnv(process.env)
-      return workspaceId
-        ? resolveConnectedAgentRollout(rollout, workspaceId).eligible
-        : connectedAgentRolloutEnabled(rollout)
-    },
-    launchEnabled: (workspaceId) => externalAgentLaunchEnabled(workspaceId),
-    artifactsEnabled: () => runtimeConfig?.features.connectedAgentArtifacts === true,
-    driveEnabled: () => runtimeConfig?.features.connectedAgentDrive === true,
-    policyProjectionEnabled: chatUsagePolicy instanceof BillingBackedActUsagePolicy,
+    isEnabled: () => runtimeConfig?.features.computers === true,
     policyLimits: async ({ userId, workspaceId, entitlements: currentPolicy }) => {
       const entitlements = currentPolicy ?? await chatUsagePolicy.getEntitlements({ userId, workspaceId })
       if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')
       return connectedAgentPolicyFor(entitlements)
-    },
-    onTerminalMessage: async (terminal) => {
-      if (!terminal.agentId || !terminal.conversationId || !terminal.messageId || !terminal.turnId) return
-      await conversationCollaboration.enqueueMemoryExtraction({
-        actorUserId: terminal.userId,
-        conversationId: terminal.conversationId,
-        memoryOwnerId: agentMemoryOwnerId(terminal.agentId),
-        messageId: terminal.messageId,
-        targetActor: 'agent',
-        turnId: terminal.turnId,
-        workspaceId: terminal.workspaceId,
-      })
-    },
-    meterSandboxLease: async (lease) => {
-      await managedAgentSandboxBilling.meterLease(lease, { idleStop: 'none' })
-    },
-    settleUsage: async (usage) => {
-      if (!usage.userId) return
-      try {
-        // Host-owned/BYOK model calls are observable token counts, not Overlay model spend.
-        // Overlay-billed runs are charged their reported tokens directly, whatever the outcome;
-        // a run that used nothing charges nothing. The run's operation id keeps the charge once-only.
-        if (usage.modelUsageBilling !== 'overlay' || (usage.inputTokens === 0 && usage.outputTokens === 0)) return
-        await chatUsagePolicy.recordFinishedUsage({
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          modelId: usage.modelId,
-          operationId: usage.operationId,
-          programmaticSubjectId: usage.agentId ? `agent:${usage.agentId}` : undefined,
-          userId: usage.userId,
-          workspaceId: usage.workspaceId || undefined,
-        })
-      } finally {
-        await managedAgentSandboxBilling.settle(usage)
-      }
     },
   })
 
@@ -476,9 +390,7 @@ export function createOverlayServerContext(
     workspaceGovernanceService,
     workspaceAgentService,
     connectedAgentControlPlane,
-    agentProviderAccounts,
     mcpAccess,
-    agentProfiles,
     agentAsks,
     managedAgentSandboxBilling,
     computerService,
@@ -811,14 +723,7 @@ function transactionalEmailEnabled(config: OverlayRuntimeConfig | null): config 
 }
 
 function runtimeCapabilities(config: OverlayRuntimeConfig): CapabilityCheck {
-  const externalAgentsEnabled = config.features.externalAgents === true
-    && config.features.connectedAgentControlPlane === true
-    && config.features.remoteAgentRuns === true
-  return {
-    ...resolveOverlayCapabilities(config),
-    connectedAgents: externalAgentsEnabled,
-    externalAgents: externalAgentsEnabled,
-  }
+  return resolveOverlayCapabilities(config)
 }
 
 function selectedProvider(

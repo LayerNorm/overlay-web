@@ -7,7 +7,6 @@ import { agentStartFailureMessage, agentStartFailureReason } from '@/server/app-
 import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 import {
   resolveWorkspaceAgentInvocations,
-  startRemoteWorkspaceAgentTurn,
   WorkspaceAgentInvocationError,
   type WorkspaceAgentInvocation,
 } from '@/server/agents/workspace-agent-invocation'
@@ -32,7 +31,6 @@ type WorkspaceAgentTurnsArgs = {
 export type WorkspaceAgentTurnDispatcherDependencies = {
   resolveInvocations?: typeof resolveWorkspaceAgentInvocations
   requireExecution?: typeof requireWorkspaceExecution
-  startRemote?: typeof startRemoteWorkspaceAgentTurn
   getCollaboration?: () => ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversationCollaboration']
   startNative?: typeof startNativeHarnessTurn
 }
@@ -74,37 +72,11 @@ export async function startWorkspaceAgentTurns(
   }
   await Promise.all(invocations.map(async (invocation) => {
     try {
-      if (invocation.remoteTarget?.protocolAdapter === 'harness') {
-        // Managed harness runtimes were removed; the room gets the failure
-        // message rather than a silent switch to a different runtime.
-        throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is no longer available.')
-      }
-      if (invocation.externalAgent && !invocation.remoteTarget) {
-        throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is disabled.')
-      }
       await (dependencies.requireExecution ?? requireWorkspaceExecution)({
         userId: args.actorUserId,
         workspaceId: args.workspaceId,
         checkBudget: false,
       })
-      if (invocation.remoteTarget) {
-        await (dependencies.startRemote ?? startRemoteWorkspaceAgentTurn)({
-          actorUserId: args.actorUserId,
-          conversationId: args.conversationId,
-          initiatorPrincipalId: args.initiatorPrincipalId,
-          invocation: { ...invocation, remoteTarget: invocation.remoteTarget },
-          messageId: args.messageId,
-          memoryEnabled: args.memoryEnabled,
-          prompt: args.prompt,
-          ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
-          ...(dependencies.requireExecution ? { requireExecution: dependencies.requireExecution } : {}),
-          workspaceId: args.workspaceId,
-        })
-        return
-      }
-      if (invocation.harness !== 'overlay') {
-        throw new WorkspaceAgentInvocationError('not_entitled', 'This agent does not have a supported execution runtime.')
-      }
       const turn = await collaboration.startAgentTurn({
         actorUserId: args.actorUserId,
         agentId: invocation.agentId,

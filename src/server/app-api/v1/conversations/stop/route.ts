@@ -59,19 +59,6 @@ export async function POST(
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
       userId: resourceUserId,
     })
-    // Connected agents (Claude Code, Codex…) are stopped through the control plane, which tells their machine to cancel.
-    const remoteRunIds = cancelled.remoteRunIds ?? []
-    const controlRemoteTurn = dependencies?.controlRemoteTurn
-      ?? (input => server!.connectedAgentControlPlane.controlRemoteTurn(input))
-    await Promise.all(remoteRunIds.map((runId) => controlRemoteTurn({
-      actorUserId: context.auth.userId,
-      workspaceId: context.workspace.workspace.id,
-      conversationId,
-      runId,
-      action: 'cancel',
-    }).catch((error) => {
-      logger.warn('[conversations/stop POST] Failed to cancel remote run', { runId, error })
-    })))
     const abortedLocalRunIds = (dependencies?.abortToolLoops ?? abortToolLoopRunIds)(cancelled.cancelledRunIds)
     const cancelWorkflow = dependencies?.cancelWorkflow
       ?? cancelHarnessWorkflow

@@ -149,7 +149,7 @@ export async function buildExternalAppTooling(args: {
  *
  * Tools authenticate as the triggering human (`actorUserId`) — the delegate
  * model. The agent's identity rides along on the tool options for attribution
- * and for memory ownership, not for authorization. See internal/develop/bring-your-own-agents.md,
+ * and for memory ownership, not for authorization. See internal/develop/tool-catalog.md,
  * "Agent as principal", for the model that replaces this.
  */
 export async function buildWorkspaceAgentTooling(args: {

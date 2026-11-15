@@ -12,7 +12,6 @@ import type {
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useLiveAgentSurfaces } from '@/hooks/use-connections'
-import type { AgentType } from './AgentEditorForm'
 
 export type SurfaceChannelPicker = {
   connectionId: string
@@ -36,9 +35,7 @@ const SURFACE_ERROR_LABELS: Record<string, string> = {
 /**
  * Agent editor "Reachable on" state: workspace surface connections, this
  * agent's channel bindings, the lazy channel picker, and immediate-commit
- * bind/unbind mutations. Mirrors `useByoConnection` — the editor page stays
- * presentational. Only Overlay-type agents can bind (BYO surfaces are
- * deferred), so the hook no-ops for them.
+ * bind/unbind mutations, so the editor page stays presentational.
  */
 const NO_CONNECTIONS: SurfaceConnection[] = []
 const NO_BINDINGS: SurfaceBinding[] = []
@@ -47,16 +44,15 @@ export function useAgentSurfaces(args: {
   activeWorkspaceId: string | null
 
   agent: WorkspaceAgentDirectoryItem | null
-  agentType: AgentType
 }) {
-  const { activeWorkspaceId,  agent, agentType } = args
+  const { activeWorkspaceId, agent } = args
   const searchParams = useSearchParams()
   const handledOAuthNoticeRef = useRef<string | null>(null)
   const [channelPicker, setChannelPicker] = useState<SurfaceChannelPicker | null>(null)
   const [busyBindingId, setBusyBindingId] = useState<string | null>(null)
 
   const enabled = Boolean(
-    activeWorkspaceId && agent && !agent.archivedAt && agentType === 'overlay',
+    activeWorkspaceId && agent && !agent.archivedAt,
   )
   // Live: a Slack install, a channel bound or removed in any tab, or a connection degrading, updates at once.
   const live = useLiveAgentSurfaces(enabled && agent ? agent.id : null)

@@ -69,9 +69,7 @@ import {
   createRoomScrollIntent,
   holdRoomScrollAnchor,
   mergeRoomMessages,
-  remoteAgentCommands,
   roomMessageDomId, scrollRoomMessageIntoView,
-  type RemoteAgentCommand,
   type RoomMessageRecord,
   type RoomScrollAnchor,
 } from './collaboration/room-message-view'
@@ -640,13 +638,6 @@ function useRoomMessageDerivations({
   threadRootId: string | null
 }) {
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
-  const agentCommands = useMemo<RemoteAgentCommand[]>(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const commands = remoteAgentCommands(messages[index]?.parts)
-      if (commands.length > 0) return commands
-    }
-    return []
-  }, [messages])
   const threadRoot = messages.find((message) => message.id === threadRootId)
   const threadReplies = messages.filter((message) => (
     Boolean(threadRootId) && message.threadRootMessageId === threadRootId
@@ -677,7 +668,7 @@ function useRoomMessageDerivations({
     }
     return latest
   }, [messages])
-  return { mainMessages, agentCommands, threadRoot, threadReplies, unreadBoundaryMessageId, replyCounts, threadTeasers }
+  return { mainMessages, threadRoot, threadReplies, unreadBoundaryMessageId, replyCounts, threadTeasers }
 }
 
 export function useRoomViewModels({
@@ -722,7 +713,6 @@ export function useRoomViewModels({
   const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
   const {
     mainMessages,
-    agentCommands,
     threadRoot,
     threadReplies,
     unreadBoundaryMessageId,
@@ -785,7 +775,6 @@ export function useRoomViewModels({
     online,
     currentParticipant,
     mainMessages,
-    agentCommands,
     threadRoot,
     threadReplies,
     unreadBoundaryMessageId,
@@ -1522,55 +1511,8 @@ export function useRoomComposer({
   }
 }
 
-export function useRemoteAgentControls({
-  activeWorkspaceId,
-  conversationId,
-  setMessages,
-  setAttachmentError,
-}: {
-  activeWorkspaceId: string | null | undefined
-  conversationId: string
-  setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
-  setAttachmentError: Dispatch<SetStateAction<string | null>>
-}) {
-  const pendingControls = useRef(new Set<string>())
-  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') {
-    const controlKey = `${conversationId}:${runId}:${action}`
-    if (!activeWorkspaceId || pendingControls.current.has(controlKey)) return
-    pendingControls.current.add(controlKey)
-    setMessages(current => current.map(message => ({ ...message,
-      parts: message.parts?.map(part => part.type === 'data-remote-agent-status' && part.data?.runId === runId
-        ? { ...part, data: { ...part.data, state: action === 'cancel' ? 'cancelling' : 'recovering' } } : part),
-    })))
-    try {
-      await overlayAppClient.conversations.controlRemoteQueue({
-        workspaceId: activeWorkspaceId,
-        conversationId,
-        runId,
-        action,
-        controlRequestId: crypto.randomUUID(),
-      })
-    } catch (value) {
-      setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
-    } finally {
-      pendingControls.current.delete(controlKey)
-    }
-  }
-
-  async function resolveRemoteRequest(
-    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
-    decision: string,
-    response?: Record<string, unknown>,
-  ) {
-    if (!activeWorkspaceId) return
-    try {
-      await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
-        conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
-    } catch (value) {
-      setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
-    }
-  }
-
+/** Stops an agent reply that is still being written. */
+export function useRemoteAgentControls({ conversationId }: { conversationId: string }) {
   async function stopAgentResponse(messageId: string) {
     try {
       await overlayAppClient.conversations.stopResponse({ conversationId, messageId })
@@ -1579,7 +1521,7 @@ export function useRemoteAgentControls({
     }
   }
 
-  return { controlRemoteQueue, resolveRemoteRequest, stopAgentResponse }
+  return { stopAgentResponse }
 }
 
 export function useMessageActions({
@@ -2001,12 +1943,6 @@ export type RoomMessageContext = {
   onOpenAttachmentPreview: (preview: AttachmentPreview, options?: AttachmentPreviewOpenOptions) => void
   copyMessagePermalink: (messageId: string) => Promise<void>
   stopAgentResponse: (messageId: string) => Promise<void>
-  controlRemoteQueue: (runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') => Promise<void>
-  resolveRemoteRequest: (
-    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
-    decision: string,
-    response?: Record<string, unknown>,
-  ) => Promise<void>
   highlightedMessageId: string | null
 }
 
@@ -2082,8 +2018,6 @@ export function buildRoomMessageContext({
     onOpenAttachmentPreview,
     copyMessagePermalink: actions.copyMessagePermalink,
     stopAgentResponse: remoteControls.stopAgentResponse,
-    controlRemoteQueue: remoteControls.controlRemoteQueue,
-    resolveRemoteRequest: remoteControls.resolveRemoteRequest,
     highlightedMessageId: navigation.highlightedMessageId,
   }
 }
@@ -2254,12 +2188,7 @@ export function useDirectMessageRoom({
     setMentions,
     readOnly: Boolean(transcript.surfacePlatform) || nativeThreadSafety.readOnly,
   })
-  const remoteControls = useRemoteAgentControls({
-    activeWorkspaceId,
-    conversationId,
-    setMessages: transcript.setMessages,
-    setAttachmentError: composer.setAttachmentError,
-  })
+  const remoteControls = useRemoteAgentControls({ conversationId })
   const isReadOnlyMessage = (messageId: string) => {
     const message = transcript.messages.find((row) => row.id === messageId)
     return !canSendToThread(message?.threadRootMessageId ?? messageId)

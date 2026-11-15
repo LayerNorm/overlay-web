@@ -380,7 +380,6 @@ export function DirectMessageExperience({
               composerProps={{
                 composer,
                 mentionCategories: vm.mentionCategories,
-                agentCommands: vm.agentCommands,
                 capabilities,
                 participantsHaveAgent: roster.participants.some((participant) => participant.principalType === 'agent'),
                 memoryEnabled: room.memoryEnabled,
