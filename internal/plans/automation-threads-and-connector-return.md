@@ -46,6 +46,6 @@ Not done in (a): the "Scheduled · 9:00 AM" label on the injected message (no me
 
 Preview QA (PR #524, head `0b5ce559`): Run now on an agent automation and a chat automation each posted the instructions as a user message in the bound thread, the turn replied, and the minute tick settled the ledger run (completed; an earlier run that failed authorization settled as failed). The agent sidebar lists the automation as a thread under its agent, and the Chats sidebar showed Working, then Ready with an unread count.
 
-Open question: editing an automation still posts an "Automation updated: …" assistant note into `automations.conversationId`. That is now the visible thread, and in a chat each note renders under an "Original message unavailable" placeholder, because the chat transcript has no assistant-only notes. Decide whether to drop these notes or render them as a status line.
+Owner decision (2026-11-15): editing an automation posts nothing into its thread. The "Automation updated: …" notes were removed on PR #524 (the builder, the repository write and their tests); configuration changes apply from the next run. Automations are scheduled user messages in one thread, with context set by origin: an agent thread for agent automations, otherwise a normal chat.
 
 Untested so far: a run that waits for approval or input (Needs you), skip-if-running while waiting, and a scheduled (cron) tick rather than Run now.

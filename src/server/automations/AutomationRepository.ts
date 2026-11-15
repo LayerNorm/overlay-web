@@ -13,8 +13,6 @@ export type AutomationRecord = AutomationSummary & {
   workspaceId?: string
 }
 
-export type AutomationForUpdateNote = AutomationRecord
-
 export type AutomationRunTarget = AutomationRecord
 
 export type AutomationExecutionPayload = {
@@ -77,7 +75,7 @@ export interface AutomationRepository {
     automationId: string
     userId: string
     workspaceId?: string
-  }): Promise<AutomationForUpdateNote | null>
+  }): Promise<AutomationRecord | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
   attachOwnedConversation(args: {
@@ -110,12 +108,6 @@ export interface AutomationRepository {
     userId: string
   }): Promise<string | null>
   removeConversation(args: {
-    conversationId: string
-    userId: string
-  }): Promise<void>
-  appendAutomationUpdateNote(args: {
-    automationId: string
-    content: string
     conversationId: string
     userId: string
   }): Promise<void>

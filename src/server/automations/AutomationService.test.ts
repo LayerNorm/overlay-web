@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AutomationService, AutomationServiceError, buildAutomationUpdateNote } from './AutomationService'
+import { AutomationService, AutomationServiceError } from './AutomationService'
 import {
   PaidPlanAutomationEntitlementPolicy,
   type AutomationEntitlementPolicy,
@@ -30,21 +30,18 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
   failedRuns: Array<Record<string, unknown>>
   startedRuns: Array<Record<string, unknown>>
   completedRuns: Array<Record<string, unknown>>
-  updateNotes: Array<Record<string, unknown>>
   updatedAutomations: Array<Record<string, unknown>>
 } {
   const createdAutomations: Array<Record<string, unknown>> = []
   const failedRuns: Array<Record<string, unknown>> = []
   const startedRuns: Array<Record<string, unknown>> = []
   const completedRuns: Array<Record<string, unknown>> = []
-  const updateNotes: Array<Record<string, unknown>> = []
   const updatedAutomations: Array<Record<string, unknown>> = []
   return {
     createdAutomations,
     failedRuns,
     startedRuns,
     completedRuns,
-    updateNotes,
     updatedAutomations,
     async listAutomations() {
       return []
@@ -78,9 +75,6 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async requestRunCancellation() { return true },
     async retryRun() { return 'run_retry_1' },
     async removeConversation() {},
-    async appendAutomationUpdateNote(args) {
-      updateNotes.push(args)
-    },
     async createManualRun() {
       return 'run_1' as never
     },
@@ -296,48 +290,6 @@ test('AutomationService.createAutomation parses a stringified schedule before pe
     minuteUTC: 30,
   })
   assert.equal(repository.createdAutomations[0]?.workspaceId, 'workspace_1')
-})
-
-test('buildAutomationUpdateNote preserves update note wording', () => {
-  const note = buildAutomationUpdateNote({
-    _id: 'automation_1' as never,
-    userId: 'user_1',
-    name: 'Old name',
-    description: 'Old description',
-    instructions: 'Old instructions',
-    enabled: true,
-    modelId: 'old-model',
-    createdAt: 1,
-    updatedAt: 1,
-  }, {
-    name: 'New name',
-    description: 'New description',
-    instructions: 'New instructions',
-    enabled: false,
-    modelId: 'new-model',
-  })
-
-  assert.equal(
-    note,
-    'Automation updated: name changed to "New name"; description updated; instructions updated; paused; model changed to new-model.',
-  )
-})
-
-test('AutomationService.updateAutomation appends update note best effort', async () => {
-  const repository = createRepository()
-  const { service } = createService(repository)
-
-  await service.updateAutomation({
-    userId: 'user_1',
-    workspaceId: 'workspace_1',
-    body: {
-      automationId: 'automation_1',
-      name: 'New name',
-    },
-  })
-
-  assert.equal(repository.updateNotes.length, 1)
-  assert.equal(repository.updateNotes[0]?.content, 'Automation updated: name changed to "New name".')
 })
 
 test('AutomationService.updateAutomation parses a stringified schedule before persistence', async () => {
@@ -715,39 +667,34 @@ test('AutomationService.markRunCompleted passes the conversationId when provided
 // the active scheduler workflow.
 // ---------------------------------------------------------------------------
 
-test('AutomationService.updateAutomation posts update notes to the owned thread', async () => {
+test('AutomationService.updateAutomation writes no message to the automation thread', async () => {
   const repository = createRepository()
-  const { service } = createService(repository)
-
-  await service.updateAutomation({
-    userId: 'user_1',
-    body: { automationId: 'automation_1', name: 'New name' },
-  })
-
-  assert.equal(repository.updateNotes.length, 1)
-  assert.equal(repository.updateNotes[0]?.conversationId, 'conversation_owned')
-})
-
-test('AutomationService.updateAutomation skips update note when no owned thread exists', async () => {
-  const repository = createRepository({
-    async getAutomation() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Old name',
-        instructions: 'Old instructions',
-        sourceConversationId: 'conversation_source',
-      } as never
+  const calls: string[] = []
+  const recorded = new Proxy(repository, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        calls.push(String(property))
+        return value.apply(target, args)
+      }
     },
   })
-  const { service } = createService(repository)
+  const { service } = createService(recorded)
 
   await service.updateAutomation({
     userId: 'user_1',
-    body: { automationId: 'automation_1', name: 'New name' },
+    body: {
+      automationId: 'automation_1',
+      name: 'New name',
+      instructions: 'New instructions',
+      schedule: { kind: 'daily', hourUTC: 10, minuteUTC: 0 },
+      modelId: 'new-model',
+    },
   })
 
-  assert.equal(repository.updateNotes.length, 0)
+  assert.deepEqual(calls, ['getAutomation', 'updateAutomation'])
+  assert.equal(repository.updatedAutomations[0]?.instructions, 'New instructions')
 })
 
 test('AutomationService.deleteAutomation removes only the owned conversation, never the source', async () => {
@@ -819,7 +766,6 @@ test('AutomationService.updateAutomation refuses a save from an older version be
     (error: unknown) => (error as { statusCode?: number }).statusCode === 409,
   )
   assert.equal(repository.updatedAutomations.length, 0)
-  assert.equal(repository.updateNotes.length, 0)
 })
 
 // ---------------------------------------------------------------------------

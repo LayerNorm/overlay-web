@@ -4,7 +4,6 @@ import { logger } from '@/server/observability/logger'
 import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
 import type {
   AutomationExecutionPayload,
-  AutomationForUpdateNote,
   AutomationRepository,
   AutomationSchedule,
   AutomationThreadBinding,
@@ -140,121 +139,6 @@ function normalizeScheduleValue(schedule: unknown): AutomationSchedule {
   return schedule as AutomationSchedule
 }
 
-function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
-  if (!schedule) return ''
-  if (schedule.kind === 'interval') return `interval:${schedule.intervalMinutes ?? ''}`
-  if (schedule.kind === 'daily') return `daily:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
-  if (schedule.kind === 'weekly') return `weekly:${schedule.dayOfWeekUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
-  return `monthly:${schedule.dayOfMonthUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
-}
-
-const UTC_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'UTC',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-const UTC_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'UTC',
-  weekday: 'long',
-})
-
-function formatLocalTime(date: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
-  } catch (_error) {
-    return UTC_TIME_FORMATTER.format(date)
-  }
-}
-
-function weekdayName(date: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      weekday: 'long',
-    }).format(date)
-  } catch (_error) {
-    return UTC_WEEKDAY_FORMATTER.format(date)
-  }
-}
-
-function dateForUtcSchedule(hourUTC = 9, minuteUTC = 0, dayOffset = 0): Date {
-  const now = new Date()
-  return new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + dayOffset,
-    hourUTC,
-    minuteUTC,
-  ))
-}
-
-function formatSchedule(schedule: AutomationSchedule | undefined, timezone: string | undefined): string {
-  if (!schedule) return 'unscheduled'
-  const zone = timezone?.trim() || 'UTC'
-  if (schedule.kind === 'interval') {
-    const minutes = schedule.intervalMinutes ?? 60
-    if (minutes % 1440 === 0) return `every ${minutes / 1440} day${minutes === 1440 ? '' : 's'}`
-    if (minutes % 60 === 0) return `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}`
-    return `every ${minutes} minutes`
-  }
-  if (schedule.kind === 'daily') {
-    return `daily at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
-  }
-  if (schedule.kind === 'weekly') {
-    const today = new Date().getUTCDay()
-    const target = schedule.dayOfWeekUTC ?? 1
-    const dayOffset = (target - today + 7) % 7
-    const date = dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC, dayOffset)
-    return `weekly on ${weekdayName(date, zone)} at ${formatLocalTime(date, zone)} ${zone}`
-  }
-  const day = schedule.dayOfMonthUTC ?? 1
-  return `monthly on day ${day} at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
-}
-
-export function buildAutomationUpdateNote(
-  before: AutomationForUpdateNote,
-  after: {
-    name?: string
-    description?: string
-    instructions?: string
-    enabled?: boolean
-    schedule?: AutomationSchedule
-    timezone?: string
-    modelId?: string
-  },
-): string | null {
-  const changes: string[] = []
-  const beforeName = (before.name || before.title || 'Untitled automation').trim()
-  const afterName = after.name !== undefined ? after.name.trim() : beforeName
-  if (after.name !== undefined && afterName !== beforeName) changes.push(`name changed to "${afterName || beforeName}"`)
-
-  if (after.description !== undefined && after.description.trim() !== (before.description || '').trim()) {
-    changes.push('description updated')
-  }
-  if (after.instructions !== undefined && after.instructions.trim() !== (before.instructions || '').trim()) {
-    changes.push('instructions updated')
-  }
-  const nextTimezone = after.timezone !== undefined ? after.timezone.trim() || 'UTC' : before.timezone
-  if (after.schedule !== undefined && stableScheduleKey(after.schedule) !== stableScheduleKey(before.schedule)) {
-    changes.push(`schedule changed to ${formatSchedule(after.schedule, nextTimezone)}`)
-  } else if (after.timezone !== undefined && nextTimezone !== (before.timezone || 'UTC')) {
-    changes.push(`timezone changed to ${nextTimezone}`)
-  }
-  if (after.enabled !== undefined && after.enabled !== (before.enabled ?? true)) {
-    changes.push(after.enabled ? 'enabled' : 'paused')
-  }
-  if (after.modelId !== undefined && (after.modelId.trim() || '') !== (before.modelId || '')) {
-    changes.push(`model changed to ${after.modelId.trim() || 'default'}`)
-  }
-
-  if (changes.length === 0) return null
-  return `Automation updated: ${changes.join('; ')}.`
-}
-
 export class AutomationService {
   private readonly clock: AutomationServiceClock
 
@@ -374,7 +258,6 @@ export class AutomationService {
     } else if (body.action === 'resume') {
       await this.deps.repository.resumeAutomation(idArgs)
     } else {
-      const before = existingAutomation
       try {
         await this.deps.repository.updateAutomation({
           ...idArgs,
@@ -396,17 +279,6 @@ export class AutomationService {
           serviceError({ error: AUTOMATION_CONFLICT_MESSAGE, conflict: true }, 409)
         }
         throw error
-      }
-      if (before) {
-        await this.appendUpdateNoteBestEffort(before, {
-          name: body.name,
-          description: body.description,
-          instructions: body.instructions,
-          enabled: body.enabled,
-          schedule,
-          timezone: body.timezone,
-          modelId: body.modelId,
-        }, args.userId)
       }
     }
     return { success: true }
@@ -774,22 +646,5 @@ export class AutomationService {
     }
   }
 
-  private async appendUpdateNoteBestEffort(
-    automation: AutomationForUpdateNote,
-    after: Parameters<typeof buildAutomationUpdateNote>[1],
-    userId: string,
-  ): Promise<void> {
-    const updateNote = buildAutomationUpdateNote(automation, after)
-    const conversationId = automation.conversationId
-    if (!updateNote || !conversationId) return
-    await this.deps.repository.appendAutomationUpdateNote({
-      automationId: automation._id,
-      userId,
-      conversationId,
-      content: updateNote,
-    }).catch((error) => {
-      logger.warn('[automations PATCH] Failed to append automation update note', error)
-    })
-  }
 }
 

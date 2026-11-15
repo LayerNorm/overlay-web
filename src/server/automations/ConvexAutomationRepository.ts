@@ -5,7 +5,6 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
   AutomationRecord,
   AutomationExecutionPayload,
-  AutomationForUpdateNote,
   AutomationRepository,
   AutomationThreadBinding,
   AutomationThreadRunOutcome,
@@ -47,8 +46,8 @@ export class ConvexAutomationRepository implements AutomationRepository {
   async getAutomation(args: {
     automationId: string
     userId: string
-  }): Promise<AutomationForUpdateNote | null> {
-    return await convex.query<AutomationForUpdateNote | null>('automations/automations:get', {
+  }): Promise<AutomationRecord | null> {
+    return await convex.query<AutomationRecord | null>('automations/automations:get', {
       ...args,
       automationId: args.automationId as Id<'automations'>,
       serverSecret: this.serverSecret,
@@ -155,24 +154,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
     }, { throwOnError: true })
   }
 
-  async appendAutomationUpdateNote(args: {
-    automationId: string
-    content: string
-    conversationId: string
-    userId: string
-  }): Promise<void> {
-    await convex.mutation('chat/conversations:addMessage', {
-      conversationId: args.conversationId as Id<'conversations'>,
-      userId: args.userId,
-      serverSecret: this.serverSecret,
-      turnId: `automation-update-${args.automationId}-${Date.now()}`,
-      role: 'assistant',
-      mode: 'act',
-      content: args.content,
-      contentType: 'text',
-      parts: [{ type: 'text', text: args.content }],
-    }, { throwOnError: true })
-  }
 
   async createManualRun(args: {
     automationId: string
