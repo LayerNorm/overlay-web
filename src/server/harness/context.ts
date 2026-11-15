@@ -100,7 +100,6 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
       deadlineAt: state.policy.deadlineAt,
       ...(state.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: state.policy.taskDeadlineAt } : {}),
       ...(state.policy.spendingMode ? { spendingMode: state.policy.spendingMode } : {}),
-      remainingDepth: state.policy.maxDepth - state.depth,
     },
   })
 }

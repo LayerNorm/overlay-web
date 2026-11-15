@@ -51,7 +51,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   state = { ...createHarnessSnapshot({ runId: 'root', goal: 'Check the records', constraints: [], policy: {
     actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read', 'write'], requiresPlan: false,
-    maxCostMicros: 100, deadlineAt: Date.now() + 60_000, maxDepth: 2, maxParallelChildren: 2,
+    maxCostMicros: 100, deadlineAt: Date.now() + 60_000,
   } }, Date.now()), workflowRunId: 'workflow' }
   mocks.read.mockImplementation(async () => state)
   mocks.readAndClaim.mockImplementation(async () => ({ snapshot: state, claimed: true }))
@@ -206,7 +206,7 @@ test('execution failure is persisted before a child wakes its parent', async () 
   expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'execution-failed',
     expect.objectContaining({
       type: 'terminate', status: 'failed', reason: expect.stringContaining('Diagnostic ID:'),
-      diagnostic: expect.objectContaining({ code: 'UNKNOWN', retryability: 'reconcile' }),
+      diagnostic: expect.objectContaining({ code: 'INTERNAL_ERROR', retryability: 'user_action' }),
     }))
   expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.notify.mock.invocationCallOrder[0])
 })

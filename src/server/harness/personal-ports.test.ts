@@ -142,7 +142,7 @@ beforeEach(() => {
   mocks.sleep.mockResolvedValue(undefined)
   current = state.claimHarnessExecution(state.createHarnessSnapshot({ runId: 'run', goal: 'Check observations', constraints: ['Do not publish'], policy: {
     actorUserId: 'user', workspaceId: 'workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 0,
-    deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
+    deadlineAt: Date.now() + 60_000,
   } }, Date.now()), 'workflow', Date.now())
   mocks.claim.mockResolvedValue(true)
   mocks.read.mockImplementation(async () => current)

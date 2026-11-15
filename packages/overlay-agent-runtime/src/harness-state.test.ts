@@ -29,7 +29,7 @@ test('a rejection receipt cannot conceal consumed tokens or unknown costs', () =
 })
 const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a checked report', constraints: [], policy: {
   actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan: true,
-  deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,
+  deadlineAt: 10_000, maxCostMicros: 100,
 } }, now)
 
 test('compaction transitions are replay-safe and never replace an unrelated reservation', () => {
@@ -160,7 +160,7 @@ test('explicit task-deadline pause is persisted, nonterminal, and cannot resume 
     policy: {
       actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read'],
       requiresPlan: false, deadlineAt: deadlineAt + 86_400_000, taskDeadlineAt: deadlineAt,
-      maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+      maxCostMicros: 0,
       executionPolicyVersion: 2, spendingMode: 'workspace',
     },
   }, now)
@@ -496,13 +496,14 @@ test('telemetry is not progress and compaction does not count as continuation st
   assert.equal(state.progressRevision, 0)
 })
 
-test('child admission enforces capabilities, concurrency and depth, but no spending split', () => {
+test('child admission enforces capabilities only: no fan-out, depth or spending cap', () => {
   let state = replaceHarnessPlan(make(), [...steps.map(step => ({ ...step, dependsOn: [] })), { ...steps[0]!, id: 'extra' }], now)
   assert.throws(() => admitHarnessChild(state, { ...child('bad', 'read', 1), allowedToolIds: ['admin'] }, now), /capabilities/)
   state = admitHarnessChild(state, child('first', 'read', 60), now)
   state = admitHarnessChild(state, child('second', 'report', 1_000), now)
-  assert.throws(() => admitHarnessChild(state, child('third', 'extra', 0), now), /concurrency/)
-  assert.throws(() => admitHarnessChild({ ...state, depth: 1, children: [] }, child('deep', 'extra', 0), now), /depth/)
+  const third = admitHarnessChild(state, child('third', 'extra', 0), now)
+  assert.equal(third.children.filter(entry => entry.status === 'running').length, 3)
+  assert.equal(admitHarnessChild({ ...state, depth: 40, children: [] }, child('deep', 'extra', 0), now).children.length, 1)
   assert.throws(() => assertHarnessRunnable(state, 10_000), /deadline/)
 })
 
@@ -651,14 +652,14 @@ test('delegation preserves verification evidence for another milestone', () => {
   assert.equal(state.plan.find(step => step.id === 'verified')?.status, 'done')
 })
 
-test('named child admission enforces depth, concurrency and plan size, but no spending split', () => {
+test('named child admission enforces plan size only: no fan-out, depth or spending cap', () => {
   const step = { title: 'Ask agent', acceptanceCriteria: ['Receive the reply.'] }
   assert.equal(admitHarnessNamedChild(make(), child('large', 'ask:large', 1_000), step, now).children[0]?.maxCostMicros, 0)
-  assert.throws(() => admitHarnessNamedChild({ ...make(), depth: 1 }, child('deep', 'ask:deep', 0), step, now), /depth/)
-  assert.throws(() => admitHarnessNamedChild({
+  assert.equal(admitHarnessNamedChild({ ...make(), depth: 40 }, child('deep', 'ask:deep', 0), step, now).children.length, 1)
+  assert.equal(admitHarnessNamedChild({
     ...make(),
     children: [child('first', 'first', 0), child('second', 'second', 0)],
-  }, child('third', 'ask:third', 0), step, now), /concurrency/)
+  }, child('third', 'ask:third', 0), step, now).children.length, 3)
   const full = replaceHarnessPlan(make(), Array.from({ length: 128 }, (_, index) => ({
     id: `step-${index}`,
     title: `Step ${index}`,

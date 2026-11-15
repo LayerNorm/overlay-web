@@ -22,7 +22,7 @@ const input = { reference, receiptId: 'model:0', observation, contextWindow: 100
 const state = (modelId = 'provider/requested') => ({
   ...bindHarnessModelDispatch(reserveHarnessModel(createHarnessSnapshot({ runId: 'root', goal: 'Work', constraints: [], policy: {
     actorUserId: 'user', workspaceId: 'original-workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 0,
-    deadlineAt: 10_000, maxDepth: 1, maxParallelChildren: 2,
+    deadlineAt: 10_000,
   } }, 1), 'model:0', 0, 1), 'model:0', { modelId, billingReservationId: null }, 1),
   workflowRunId: 'workflow',
 })

@@ -61,8 +61,6 @@ function admission(runId: string, conversationId: string, overrides: Partial<Har
       requiresPlan: true,
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 1_000,
-      maxParallelChildren: 2,
-      maxDepth: 2,
       ...overrides,
     },
     source: { conversationId },
@@ -710,7 +708,7 @@ describe('durable harness runs', () => {
 
   test('settles a normally completed child without charging propagated receipts twice', async () => {
     const convex = convexTest(schema, modules)
-    const input = admission('run-settlement-root', await seedConversation(convex), { maxParallelChildren: 2 })
+    const input = admission('run-settlement-root', await seedConversation(convex))
     await admit(convex, input)
     await apply(convex, input, 'settlement-root-plan', 0, {
       type: 'replace_plan', steps: oneStep('delegated'),
@@ -784,8 +782,6 @@ describe('durable harness runs', () => {
   test('propagates grandchild receipts through cancellation and late retries exactly once', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-accounting-root', await seedConversation(convex), {
-      maxParallelChildren: 2,
-      maxDepth: 3,
     })
     await admit(convex, input)
     await apply(convex, input, 'accounting-plan', 0, {
@@ -914,11 +910,10 @@ describe('durable harness runs', () => {
     await expect(apply(convex, shared, 'workspace-committed', 0, committed)).rejects.toThrow()
   })
 
-  test('admits a bounded child atomically and projects root cancellation without rewriting child state', async () => {
+  test('admits children without a fan-out or nesting cap and projects root cancellation without rewriting child state', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-root', await seedConversation(convex), {
       maxCostMicros: 1_000,
-      maxParallelChildren: 1,
     })
     await admit(convex, input)
     await apply(convex, input, 'root-plan', 0, {
@@ -979,7 +974,8 @@ describe('durable harness runs', () => {
       type: 'replace_plan',
       steps: oneStep('nested'),
     })
-    await expect(apply(convex, { ...input, runId: 'run-child' }, 'nested-child', 1, {
+    // No fan-out or nesting cap: a child running beside another may delegate again.
+    const nested = await apply(convex, { ...input, runId: 'run-child' }, 'nested-child', 1, {
       type: 'admit_child',
       child: {
         id: 'run-grandchild',
@@ -992,10 +988,9 @@ describe('durable harness runs', () => {
       },
       goal: 'Inspect one nested item.',
       constraints: [],
-    })).rejects.toThrow(/root child concurrency budget/)
-    const afterRejectedAdmission = await get(convex, 'run-child')
-    expect(afterRejectedAdmission?.revision).toBe(1)
-    expect(await get(convex, 'run-grandchild')).toBeNull()
+    })
+    expect(nested.snapshot.children.map(entry => entry.id)).toEqual(['run-grandchild'])
+    expect(await get(convex, 'run-grandchild')).toMatchObject({ depth: 2, rootRunId: input.runId, parentRunId: 'run-child' })
 
     const cancelled = await apply(convex, input, 'cancel-root', 2, {
       type: 'terminate',
