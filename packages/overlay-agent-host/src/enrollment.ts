@@ -1,4 +1,4 @@
-import { hostname, homedir, platform, release } from 'node:os'
+import { hostname, homedir } from 'node:os'
 import { join } from 'node:path'
 import { sign } from 'node:crypto'
 import {
@@ -6,45 +6,31 @@ import {
   canonicalEnrollmentProof,
   enrollmentResponseSchema,
   environmentCredentialResponseSchema,
-  type HostCapabilities,
+  type LocalToolsCapability,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { saveStoredConnection, type StoredAgentConnection } from './connection.js'
 import { loadOrCreateDeviceKeyPair } from './device-key.js'
+import { buildHostCapabilities } from './host-capabilities.js'
 
 export type ConnectAgentHostOptions = {
-  durableLifecycle?: boolean
   code: string
   serverUrl: string
   stateDirectory?: string
   name?: string
   kind?: 'local' | 'vps' | 'external'
-  adapters?: HostCapabilities['adapters']
-  localTools?: HostCapabilities['localTools']
+  localTools: LocalToolsCapability
   fetch?: typeof globalThis.fetch
   waitTimeoutMs?: number
   onPendingApproval?: (value: { verificationPhrase: string; environmentId: string }) => void
 }
 
+/** Enrolls this machine: proves its device key, waits for in-app approval and stores the short-lived credential. */
 export async function connectAgentHost(options: ConnectAgentHostOptions): Promise<StoredAgentConnection> {
   const fetcher = options.fetch ?? globalThis.fetch
   const stateDirectory = options.stateDirectory ?? join(homedir(), '.overlay', 'agent-host')
   const serverUrl = withoutSlash(new URL(options.serverUrl).toString())
   const keys = await loadOrCreateDeviceKeyPair(stateDirectory)
-  const capabilities: HostCapabilities = {
-    protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
-    ...(options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
-    ...(options.localTools ? { localTools: options.localTools } : {}),
-    hostVersion: '0.5.0',
-    platform: `${platform()} ${release()}`,
-    adapters: (options.adapters ?? []).map(capability => {
-      if (options.durableLifecycle) return capability
-      const { recovery, ...legacy } = capability
-      void recovery
-      return legacy
-    }),
-    filesystem: { mode: 'all_user_files' },
-    maxConcurrentRuns: 1,
-  }
+  const capabilities = buildHostCapabilities({ filesystem: { mode: 'all_user_files' }, localTools: options.localTools })
   const enrollmentResponse = await fetcher(`${serverUrl}/api/v1/agent-environments/enroll`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

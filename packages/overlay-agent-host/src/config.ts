@@ -3,10 +3,12 @@ import { dirname } from 'node:path'
 import { z } from 'zod/v3'
 import { filesystemGrantSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { loadStoredConnection } from './connection.js'
-import { ACP_ADAPTER_MANIFESTS, resolveAcpAdapterManifest } from './adapter-manifests.js'
 
+/**
+ * Restart configuration written at enrollment. The host serves only Overlay's
+ * local tools; it runs no third-party agent harness.
+ */
 export const agentHostConfigSchema = z.object({
-  durableLifecycle: z.boolean().optional(),
   hostingAuthFile: z.string().min(1).optional(),
   environmentId: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -14,79 +16,35 @@ export const agentHostConfigSchema = z.object({
   credentialEnv: z.string().min(1).default('OVERLAY_AGENT_HOST_CREDENTIAL'),
   stateDirectory: z.string().min(1),
   filesystem: filesystemGrantSchema,
-  /** Serve Overlay's native tools on this machine. A local-tools host needs no adapter. */
-  localTools: z.boolean().optional(),
-  adapters: z.array(z.union([
-    z.object({ manifest: z.enum(Object.keys(ACP_ADAPTER_MANIFESTS) as [keyof typeof ACP_ADAPTER_MANIFESTS, ...(keyof typeof ACP_ADAPTER_MANIFESTS)[]]), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional() }).strict(),
-    z.object({ id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('fake') }).strict(),
-    z.object({
-      id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('acp'),
-      command: z.string().min(1), args: z.array(z.string()).optional(), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional(),
-    }).strict(),
-    z.object({
-      id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('acpx'),
-      agent: z.string().min(1), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional(),
-    }).strict(),
-    z.object({
-      id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('eve'),
-      host: z.string().url(), bearerTokenEnv: z.string().min(1).optional(),
-    }).strict(),
-  ])),
-}).strict().refine(config => config.adapters.length > 0 || config.localTools === true,
-  {message: 'A host needs at least one adapter or local tools'}).refine(config => config.durableLifecycle === true || !config.adapters.some(adapter => 'fencedSessionRestoration' in adapter && adapter.fencedSessionRestoration === true),
-  {message: 'Fenced session restoration requires durable lifecycle negotiation'})
-type AgentHostFileConfig = z.infer<typeof agentHostConfigSchema>
-export type AgentHostConfig = Omit<AgentHostFileConfig, 'adapters'> & {
-  adapters: Array<
-    | { id: string; displayName: string; protocol: 'fake' }
-    | { id: string; displayName: string; protocol: 'acp'; command: string; args?: string[]; env?: Record<string, string>; fencedSessionRestoration?: boolean }
-    | { id: string; displayName: string; protocol: 'acpx'; agent: string; env?: Record<string, string>; fencedSessionRestoration?: boolean }
-    | { id: string; displayName: string; protocol: 'eve'; host: string; bearerTokenEnv?: string }
-  >
-  credential?: string
-}
+  localTools: z.literal(true),
+}).strict()
+
+export type AgentHostConfig = z.infer<typeof agentHostConfigSchema> & { credential?: string }
+
+export const RETIRED_HARNESS_CONFIG_MESSAGE =
+  'This host was set up to run a third-party agent, which Overlay no longer supports. Connect it again from Overlay (Settings → Desktop → This Mac, or a new connection command).'
 
 export async function loadAgentHostConfig(path: string): Promise<AgentHostConfig> {
-  const parsed = agentHostConfigSchema.parse(JSON.parse(await readFile(path, 'utf8')))
-  const config: AgentHostConfig = {
-    ...parsed,
-    adapters: parsed.adapters.map((adapter) => {
-      if (!('manifest' in adapter)) return adapter
-      const manifest = resolveAcpAdapterManifest(adapter.manifest)
-      if (!manifest) throw new Error(`unknown ACP adapter manifest: ${adapter.manifest}`)
-      return { ...manifest, args: [...manifest.args], ...(adapter.fencedSessionRestoration !== undefined ? {fencedSessionRestoration: adapter.fencedSessionRestoration} : {}), ...('env' in adapter && adapter.env ? { env: adapter.env } : {}) }
-    }),
-  }
-  const stored = await loadStoredConnection(config.stateDirectory)
-  if (stored && (stored.environmentId !== config.environmentId || stored.workspaceId !== config.workspaceId)) {
+  const raw = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+  if (raw.localTools !== true) throw new Error(RETIRED_HARNESS_CONFIG_MESSAGE)
+  // Configurations written by 0.5.0 previews may carry an empty adapter list and lifecycle flag; neither applies.
+  const { adapters, durableLifecycle: _durableLifecycle, ...rest } = raw
+  void _durableLifecycle
+  if (Array.isArray(adapters) && adapters.length > 0) throw new Error(RETIRED_HARNESS_CONFIG_MESSAGE)
+  const parsed = agentHostConfigSchema.parse(rest)
+  const stored = await loadStoredConnection(parsed.stateDirectory)
+  if (stored && (stored.environmentId !== parsed.environmentId || stored.workspaceId !== parsed.workspaceId)) {
     throw new Error('stored connection scope does not match the host configuration')
   }
-  const credential = process.env[config.credentialEnv]?.trim() ?? stored?.token
-  return { ...config, ...(credential ? { credential } : {}) }
+  const credential = process.env[parsed.credentialEnv]?.trim() ?? stored?.token
+  return { ...parsed, ...(credential ? { credential } : {}) }
 }
 
-export async function saveAgentHostConfig(
-  path: string,
-  config: Omit<AgentHostConfig, 'credential'>,
-): Promise<void> {
+export async function saveAgentHostConfig(path: string, config: Omit<AgentHostConfig, 'credential'>): Promise<void> {
   const parsed = agentHostConfigSchema.parse(config)
   await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   const temporary = `${path}.${process.pid}.tmp`
   await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600, flag: 'wx' })
   await rename(temporary, path)
   await chmod(path, 0o600)
-}
-
-/** Managed rollout affects the next host boot; private adapter opt-ins remain explicit. */
-export function managedRestorationAdapters(adapters: AgentHostConfig['adapters'], options: {
-  durableLifecycle: boolean; rollout: string | undefined
-}): AgentHostConfig['adapters'] {
-  if (options.rollout === undefined) return adapters
-  return adapters.map(adapter => {
-    if (adapter.protocol !== 'acp' && adapter.protocol !== 'acpx') return adapter
-    const validated = adapter.protocol === 'acpx' && (
-      (adapter.id === 'claude-code' && adapter.agent === 'claude')
-      || (adapter.id === 'codex' && adapter.agent === 'codex'))
-    return {...adapter, fencedSessionRestoration: options.durableLifecycle && options.rollout === '1' && validated}
-  })
 }

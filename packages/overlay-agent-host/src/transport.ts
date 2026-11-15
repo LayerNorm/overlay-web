@@ -1,27 +1,13 @@
 import {
   canonicalHostRequestProof,
-  commandPollResponseSchema,
   environmentCredentialResponseSchema,
-  eventAcknowledgementSchema,
-  eventBatchSchema,
   OVERLAY_AGENT_PROTOCOL_VERSION,
-  driveCredentialsRequestSchema,
-  driveCredentialsResponseSchema,
-  type DriveCredentialsRequest,
-  type DriveCredentialsResponse,
-  type CommandAcknowledgement,
-  type EventAcknowledgement,
-  type EventBatch,
-  type HostCapabilities,
-  type CommandPollResponse,
-  type ArtifactUploadRequest,
-  type ArtifactUploadResponse,
-  type EnvironmentCredentialResponse,
-  type FilesystemGrant,
-  artifactUploadResponseSchema,
   localToolPollResponseSchema,
   localToolResultSchema,
   LOCAL_TOOL_POLL_WAIT_MAX_MS,
+  type EnvironmentCredentialResponse,
+  type FilesystemGrant,
+  type HostCapabilities,
   type LocalToolPollResponse,
   type LocalToolResult,
 } from '@layernorm/overlay-agent-bridge-protocol'
@@ -37,20 +23,10 @@ export class ControlPlaneRequestError extends Error {
 }
 
 export interface AgentControlPlaneClient {
-  pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<CommandPollResponse, 'protocolVersion'>>
-  acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void>
-  uploadEvents(batch: EventBatch): Promise<EventAcknowledgement>
-  heartbeat?(): Promise<void>
-  updateCapabilities?(capabilities: HostCapabilities): Promise<void>
-  createArtifactUpload?(input: ArtifactUploadRequest): Promise<ArtifactUploadResponse>
-  uploadArtifactBytes?(upload: ArtifactUploadResponse, bytes: Uint8Array): Promise<void>
-  completeArtifactUpload?(artifactId: string): Promise<void>
-  fetchDriveCredentials?(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse>
-  /** Refresh the approved policy through the existing device-signed credential rotation. */
-  refreshFilesystemGrant?(): Promise<FilesystemGrant>
-  /** Local tools: long-poll for Overlay tool calls to run on this machine. */
-  pollLocalToolCalls?(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<LocalToolPollResponse, 'protocolVersion'>>
-  submitLocalToolResult?(result: LocalToolResult): Promise<void>
+  heartbeat(): Promise<void>
+  updateCapabilities(capabilities: HostCapabilities): Promise<void>
+  pollLocalToolCalls(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<LocalToolPollResponse, 'protocolVersion'>>
+  submitLocalToolResult(result: LocalToolResult): Promise<void>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -69,6 +45,7 @@ export type HttpControlPlaneClientOptions = {
   requestTimeoutMs?: number
 }
 
+/** Device-signed HTTPS client for the host's own environment routes. */
 export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
   private readonly fetch: typeof globalThis.fetch
   private readonly requestTimeoutMs: number
@@ -83,34 +60,6 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     this.credentialExpiresAt = options.credentialExpiresAt
   }
 
-  async pollCommands(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<CommandPollResponse, 'protocolVersion'>> {
-    const url = new URL('commands', withSlash(this.options.baseUrl))
-    url.searchParams.set('environmentId', this.options.environmentId)
-    url.searchParams.set('waitMs', String(Math.min(Math.max(args.waitMs, 0), 30_000)))
-    const response = await this.request(url, { method: 'GET', signal: args.signal })
-    const parsed = commandPollResponseSchema.parse(await response.json())
-    return {
-      commands: parsed.commands,
-      ...(parsed.streaming ? { streaming: parsed.streaming } : {}),
-      ...(parsed.retryAfterMs === undefined ? {} : { retryAfterMs: parsed.retryAfterMs }),
-      ...(parsed.resolvedThroughSequence === undefined ? {} : { resolvedThroughSequence: parsed.resolvedThroughSequence }),
-    }
-  }
-
-  async acknowledgeCommand(acknowledgement: CommandAcknowledgement): Promise<void> {
-    await this.request(new URL(`commands/${encodeURIComponent(acknowledgement.commandId)}/ack`, withSlash(this.options.baseUrl)), {
-      method: 'POST', body: JSON.stringify(acknowledgement), headers: { 'content-type': 'application/json' },
-    })
-  }
-
-  async uploadEvents(batch: EventBatch): Promise<EventAcknowledgement> {
-    const validated = eventBatchSchema.parse(batch)
-    const response = await this.request(new URL('events', withSlash(this.options.baseUrl)), {
-      method: 'POST', body: JSON.stringify(validated), headers: { 'content-type': 'application/json' },
-    })
-    return eventAcknowledgementSchema.parse(await response.json())
-  }
-
   async heartbeat(): Promise<void> {
     await this.request(new URL('heartbeat', withSlash(this.options.baseUrl)), {
       method: 'POST', body: '', headers: { 'content-type': 'application/json' },
@@ -121,34 +70,6 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     await this.request(new URL('capabilities', withSlash(this.options.baseUrl)), {
       method: 'PUT', body: JSON.stringify(capabilities), headers: { 'content-type': 'application/json' },
     })
-  }
-
-  async createArtifactUpload(input: ArtifactUploadRequest): Promise<ArtifactUploadResponse> {
-    const response = await this.request(new URL('artifacts', withSlash(this.options.baseUrl)), {
-      method: 'POST', body: JSON.stringify(input), headers: { 'content-type': 'application/json' },
-    })
-    return artifactUploadResponseSchema.parse(await response.json())
-  }
-
-  async uploadArtifactBytes(upload: ArtifactUploadResponse, bytes: Uint8Array): Promise<void> {
-    const response = await this.fetch(upload.uploadUrl, { method: 'PUT', headers: upload.headers, body: bytes as BodyInit,
-      signal: AbortSignal.timeout(this.requestTimeoutMs) })
-    if (!response.ok) throw new Error(`artifact upload failed with ${response.status}`)
-  }
-
-  async completeArtifactUpload(artifactId: string): Promise<void> {
-    await this.request(new URL(`artifacts/${encodeURIComponent(artifactId)}/complete`, withSlash(this.options.baseUrl)), {
-      method: 'POST', body: JSON.stringify({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, uploadReference: artifactId }),
-      headers: { 'content-type': 'application/json' },
-    })
-  }
-
-  async fetchDriveCredentials(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse> {
-    const body = driveCredentialsRequestSchema.parse({ ...input, protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION })
-    const response = await this.request(new URL('drive-credentials', withSlash(this.options.baseUrl)), {
-      method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
-    })
-    return driveCredentialsResponseSchema.parse(await response.json())
   }
 
   async pollLocalToolCalls(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<LocalToolPollResponse, 'protocolVersion'>> {
@@ -196,15 +117,11 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
       headers.set('x-overlay-agent-nonce', nonce)
       headers.set('x-overlay-agent-signature', sign(null, Buffer.from(canonical), this.options.privateKey).toString('base64url'))
     }
-    const response = await this.fetch(url, {
-      ...init,
-      signal,
-      headers,
-    })
+    const response = await this.fetch(url, { ...init, signal, headers })
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { code?: unknown } | null
+      const failure = await response.json().catch(() => null) as { code?: unknown } | null
       const requestId = response.headers?.get?.('x-overlay-request-id') ?? undefined
-      throw new ControlPlaneRequestError(response.status, typeof body?.code === 'string' ? body.code : undefined,
+      throw new ControlPlaneRequestError(response.status, typeof failure?.code === 'string' ? failure.code : undefined,
         requestId && /^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) ? requestId : undefined)
     }
     return response
@@ -224,10 +141,7 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
     this.credential = rotated.token
     this.credentialExpiresAt = rotated.expiresAt
     await this.options.onCredentialRotated?.({
-      token: rotated.token,
-      expiresAt: rotated.expiresAt,
-      filesystemGrant: rotated.filesystemGrant,
-      methods: rotated.methods,
+      token: rotated.token, expiresAt: rotated.expiresAt, filesystemGrant: rotated.filesystemGrant, methods: rotated.methods,
     })
     return rotated
   }

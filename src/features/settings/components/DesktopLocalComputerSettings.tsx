@@ -31,6 +31,7 @@ export function DesktopLocalComputerSettings({ bridge }: { bridge: DesktopBridge
   const [connecting, setConnecting] = useState<{ startedAt: number; roots: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [log, setLog] = useState<string[] | null>(null);
   const approving = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -89,7 +90,7 @@ export function DesktopLocalComputerSettings({ bridge }: { bridge: DesktopBridge
     if (!connecting) return;
     const timer = window.setTimeout(() => {
       setConnecting(null);
-      setError("This Mac did not finish connecting. Check the agent host log below, then try again.");
+      setError("This Mac did not finish connecting. Open the log to see why, then try again.");
     }, Math.max(0, connecting.startedAt + CONNECT_TIMEOUT_MS - Date.now()));
     return () => window.clearTimeout(timer);
   }, [connecting]);
@@ -126,6 +127,15 @@ export function DesktopLocalComputerSettings({ bridge }: { bridge: DesktopBridge
     }
   };
 
+  const toggleLog = async () => {
+    if (log) return setLog(null);
+    try {
+      setLog(await bridge.call("agentHost.logs", undefined));
+    } catch {
+      setLog([]);
+    }
+  };
+
   const allow = async (permission: "accessibility" | "screen_recording") => {
     setError("");
     try {
@@ -156,18 +166,28 @@ export function DesktopLocalComputerSettings({ bridge }: { bridge: DesktopBridge
           }
           description={connected && roots ? `Folders: ${roots.join(", ")}` : undefined}
           control={connected && !connecting ? (
-            <SettingsToggle
+            <>
+              <Button variant="ghost" size="sm" aria-expanded={log !== null} onClick={() => void toggleLog()}>
+                {log ? "Hide log" : "Log"}
+              </Button>
+              <SettingsToggle
               checked={status?.keepAvailable === true && running}
               disabled={busy}
               onChange={() => void setAvailable(!(status?.keepAvailable === true && running))}
               aria-label="Keep this Mac available to your agents"
-            />
+              />
+            </>
           ) : (
             <Button variant="secondary" size="sm" disabled={busy || Boolean(connecting)} onClick={() => void connect()}>
               Use this Mac
             </Button>
           )}
         >
+          {log?.length ? (
+            <pre className="max-h-48 overflow-auto rounded-lg bg-(--surface-subtle) p-3 font-mono text-[11px] leading-relaxed text-(--muted)">
+              {log.join("\n")}
+            </pre>
+          ) : null}
           {!connected && !connecting ? (
             <Input
               aria-label="Folders Overlay can use"

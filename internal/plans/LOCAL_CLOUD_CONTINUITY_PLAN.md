@@ -53,10 +53,13 @@ the laptop (local dictation models are unaffected).
 4. **Handoff, not sync.** Moving a project between the Mac and the cloud
    is an explicit checkpoint with a single writer at a time, enforced by a
    project lease. No background two-way file sync.
-5. **No ACP fallback.** The local target does not depend on ACP adapters or a
-   third-party harness. The Agent Host's tool executor runs with no adapter
-   configured, and the desktop does not ship one for this feature. Subscriptions
-   reach the native harness only through the existing server-side bridge.
+5. **No ACP, anywhere.** Overlay runs only its own harness. The connected-agent
+   feature that runs Codex, Claude Code, Hermes, Eve or any other harness over ACP
+   through the Agent Host is removed from the desktop app, the Agent Host, the web
+   app and Convex, so the codebase stays focused on one harness for code and work.
+   The Agent Host remains only as the enrolled, signed bridge that serves local
+   tools. Subscriptions reach the native harness only through the server-side
+   subscription bridge.
 
 ## Phases
 
@@ -64,13 +67,31 @@ the laptop (local dictation models are unaffected).
 
 | Phase | State |
 | --- | --- |
-| 1: Mac as a Computer | Implemented on the feature branch (web, Convex, Agent Host 0.5.0, desktop branch); unit, Convex and server end-to-end tests pass. Not merged, not deployed; Agent Host 0.5.0 is not published. Hosted preview QA pending. |
+| 1: Mac as a Computer | Local tools implemented on the feature branch (web, Convex, Agent Host 0.5.0, desktop branch); unit, Convex and server end-to-end tests pass. ACP connected-agent removal in progress. Not merged, not deployed; Agent Host 0.5.0 is not published. Hosted preview QA pending. |
 | 2: Projects and context packages | Not started |
 | 3: Continue in cloud / bring back | Not started |
 | 4: Delegating from local threads | Not started |
 | 5: Subscription coverage | Not started |
 
 ### Phase 1: Mac as a Computer
+
+Phase 1 also removes the ACP connected-agent feature end to end (Decision 5):
+
+- **Desktop:** the "Agent host" settings section and harness choices; the
+  embedded host starts only in local-tools mode.
+- **Agent Host:** the ACP, acpx, Eve and fake adapters, the run command and event
+  machinery, drive sync, MCP relay and approval bridge, adapter discovery and
+  config export. What stays: enrollment, device-signed credentials, heartbeat,
+  capabilities, approved folders and local tools.
+- **Web:** the agent editor's "connect your own agent" flow, agent bindings,
+  remote runs (commands, events, artifacts, drive, run credentials) and the
+  connected-agent MCP server, plus their routes, settings and transcript rendering.
+  Enrollment and machine management stay for "This Mac".
+- **Convex:** connected-agent run functions and crons. Existing rows are left in
+  place and unreferenced, so nothing is deleted from customer data by this change;
+  the tables are dropped in a later cleanup once production holds no live rows.
+- **Existing connected agents:** they keep their identity, threads and history
+  and become ordinary Overlay agents, running on the native harness.
 
 - Define the execution target interface in a shared package (target identity,
   capabilities, availability, tool dispatch). Wrap the existing cloud Computer

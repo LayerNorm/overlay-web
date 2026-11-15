@@ -1,7 +1,7 @@
 {
   "name": "@layernorm/overlay-agent-bridge-protocol",
   "version": "0.5.0",
-  "description": "Versioned command and event contracts for Overlay Agent Host.",
+  "description": "Enrollment, signed host request and local tool contracts for the Overlay Agent Host.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",

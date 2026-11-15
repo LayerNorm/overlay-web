@@ -5,20 +5,15 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   OVERLAY_AGENT_PROTOCOL_VERSION,
-  hostCapabilitiesSchema,
   localToolCallSchema,
   type FilesystemGrant,
-  type HostCapabilities,
   type LocalToolCall,
   type LocalToolRequest,
   type LocalToolResult,
 } from '@layernorm/overlay-agent-bridge-protocol'
-import { agentHostConfigSchema } from './config'
-import { buildHostCapabilities, updateHostCapabilities } from './host-capabilities'
 import { LocalToolExecutor, LocalToolLoop, type LocalToolClient } from './local-tools'
 import { jpegSize } from './local-tools-macos'
 import { resolveLocalToolPath } from './local-tools-paths'
-import { ControlPlaneRequestError, type AgentControlPlaneClient } from './transport'
 
 async function fixture() {
   const base = await realpath(await mkdtemp(join(tmpdir(), 'overlay-local-tools-')))
@@ -162,30 +157,6 @@ test('the loop runs each call once, reports expired calls without running them a
     assert.deepEqual(byId.get('late'), { ok: false, error: { code: 'expired', message: 'The tool call expired before this Mac received it.' } })
     assert.equal(await readFile(marker, 'utf8'), 'ran\n')
   } finally { await f.cleanup() }
-})
-
-test('a host advertises local tools and drops them for a strict older server', async () => {
-  const capabilities = buildHostCapabilities([], {
-    durableLifecycle: false, drive: false, hostVersion: '0.5.0', filesystem: { mode: 'all_user_files' }, maxConcurrentRuns: 0,
-    localTools: { version: 1, os: 'darwin', features: ['exec', 'files'], homeDirectory: '/Users/me' },
-  })
-  assert.equal(hostCapabilitiesSchema.parse(capabilities).localTools?.features.length, 2)
-  const sent: HostCapabilities[] = []
-  const client = {
-    async updateCapabilities(value: HostCapabilities) {
-      sent.push(value)
-      if (value.localTools) throw new ControlPlaneRequestError(400, 'invalid_request')
-    },
-  } as unknown as AgentControlPlaneClient
-  await updateHostCapabilities(client, capabilities)
-  assert.equal(sent.at(-1)?.localTools, undefined)
-  assert.equal(sent.at(-1)?.mcp?.approvalBridge, true)
-})
-
-test('a local-tools host needs no adapter, and a host still needs one of the two', () => {
-  const base = { environmentId: 'env', workspaceId: 'ws', controlPlaneUrl: 'https://example.test', stateDirectory: '/tmp/x', filesystem: { mode: 'all_user_files' } }
-  assert.equal(agentHostConfigSchema.safeParse({ ...base, localTools: true, adapters: [] }).success, true)
-  assert.equal(agentHostConfigSchema.safeParse({ ...base, adapters: [] }).success, false)
 })
 
 test('JPEG frame size is read from the header', () => {
