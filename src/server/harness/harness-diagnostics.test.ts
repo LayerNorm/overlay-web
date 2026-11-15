@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { APICallError } from 'ai'
+import { APICallError, StreamProviderError } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import {
   HarnessPersistenceError, harnessDiagnosticForFailure, harnessDiagnosticTerminalError, INTERRUPTED_MODEL_CALL_PROVIDER,
@@ -128,6 +128,40 @@ test('provider causes keep the authored description, never raw provider text', (
   const [cause] = describeHarnessFailureCause(apiError)
   expect(cause).toMatchObject({ name: 'AI_APICallError', statusCode: 503 })
   expect(JSON.stringify(cause)).not.toContain('raw provider body')
+})
+
+// What an Anthropic `error` event becomes after the AI SDK normalizes it.
+function anthropicStreamError(type: string) {
+  return new StreamProviderError({
+    message: 'raw provider text echoing the prompt', type,
+    data: { type, message: 'raw provider text echoing the prompt' },
+  })
+}
+
+test('a mid-stream provider error logs its type label, never its text', () => {
+  const [cause] = describeHarnessFailureCause(anthropicStreamError('api_error'))
+  expect(cause).toMatchObject({ name: 'AI_StreamProviderError', providerType: 'api_error' })
+  expect(JSON.stringify(cause)).not.toContain('raw provider text')
+})
+
+test.each([
+  ['api_error', 'PROVIDER_UNAVAILABLE'],
+  ['overloaded_error', 'PROVIDER_UNAVAILABLE'],
+  ['rate_limit_error', 'PROVIDER_RATE_LIMIT'],
+  ['timeout_error', 'PROVIDER_TIMEOUT'],
+  ['billing_error', 'PROVIDER_ACCOUNT'],
+  ['invalid_request_error', 'PROVIDER_REQUEST_INVALID'],
+  ['an_unlisted_error', 'PROVIDER_UNAVAILABLE'],
+] as const)('a mid-stream %s is a provider failure, not an internal error', (type, code) => {
+  expect(harnessDiagnosticForFailure('root', snapshot(), anthropicStreamError(type), 'model').code).toBe(code)
+})
+
+test('a mid-stream provider error stays classified after durable transport strips its prototype', () => {
+  const stripped = { name: 'AI_StreamProviderError', message: 'raw', type: 'rate_limit_error', data: { type: 'rate_limit_error' } }
+  expect(harnessDiagnosticForFailure('root', snapshot(), stripped, 'model').code).toBe('PROVIDER_RATE_LIMIT')
+  const typeless = { name: 'AI_StreamProviderError', message: 'raw' }
+  expect(harnessDiagnosticForFailure('root', snapshot(), typeless, 'model').code).toBe('PROVIDER_UNAVAILABLE')
+  expect(describeHarnessFailureCause({ name: 'AI_StreamProviderError', type: 'not a label!' })[0]).not.toHaveProperty('providerType')
 })
 
 test('fatal model and backend failures are classified instead of unknown', () => {
