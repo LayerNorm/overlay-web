@@ -32,6 +32,7 @@ import type * as agents_providerInventory from "../agents/providerInventory.js";
 import type * as agents_remoteRunModel from "../agents/remoteRunModel.js";
 import type * as agents_remoteRuns from "../agents/remoteRuns.js";
 import type * as agents_settlementReconciliation from "../agents/settlementReconciliation.js";
+import type * as agents_threadTurns from "../agents/threadTurns.js";
 import type * as agents_threads from "../agents/threads.js";
 import type * as auth_accountBrowse from "../auth/accountBrowse.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -248,6 +249,7 @@ declare const fullApi: ApiFromModules<{
   "agents/remoteRunModel": typeof agents_remoteRunModel;
   "agents/remoteRuns": typeof agents_remoteRuns;
   "agents/settlementReconciliation": typeof agents_settlementReconciliation;
+  "agents/threadTurns": typeof agents_threadTurns;
   "agents/threads": typeof agents_threads;
   "auth/accountBrowse": typeof auth_accountBrowse;
   "auth/apiKeys": typeof auth_apiKeys;

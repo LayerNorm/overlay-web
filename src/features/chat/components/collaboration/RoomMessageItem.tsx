@@ -29,7 +29,7 @@ import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, ExchangeActions, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
@@ -153,6 +153,18 @@ export type RoomMessageItemProps = {
    * action row sits under the message instead of a floating rail on top.
    */
   personalChatStyle?: boolean
+  /** Agent threads use the personal-chat response actions instead of channel actions. */
+  chatActions?: RoomChatActions
+}
+
+export type RoomChatActions = {
+  onRegenerate?: () => void
+  retryDisabled: boolean
+  /** True while the reply's own turn is still running, so it cannot be deleted. */
+  actionsLocked: boolean
+  onDeleteTurn: () => void
+  onReply: () => void
+  onBranch?: () => void
 }
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
@@ -310,6 +322,7 @@ export function RoomMessageItem({
   personalChatStyle = false,
   remoteStatus,
   hideToolbar = false,
+  chatActions,
 }: RoomMessageItemProps) {
   recordRender('RoomMessageItem')
   const { mine } = message
@@ -340,7 +353,9 @@ export function RoomMessageItem({
     ? () => onControlRemoteQueue(retryableRun.runId, 'retry')
     : undefined
 
-  const toolbar = hideToolbar ? null : (
+  const toolbar = hideToolbar ? null : chatActions ? (
+    <RoomChatMessageActions message={message} isAgent={isAgent} actions={chatActions} />
+  ) : (
     <RoomMessageToolbar
       alignEnd={mine}
       floating={!personalChatStyle}
@@ -381,6 +396,7 @@ export function RoomMessageItem({
     onOpenThread,
     personalChatStyle,
     readOnly,
+    chatActions: Boolean(chatActions),
   }
 
   if (message.deletedAt) {
@@ -449,6 +465,7 @@ type RoomMessageContentProps = {
   onOpenThread: () => void
   personalChatStyle: boolean
   readOnly: boolean
+  chatActions: boolean
 }
 
 function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
@@ -835,8 +852,12 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
           </Button>
           )
         ) : null}
-        <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
-        <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+        {content.chatActions ? null : (
+          <>
+            <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
+            <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+          </>
+        )}
         {personalChatStyle && toolbar}
       </div>
     </div>
@@ -886,8 +907,12 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
         ) : (
           <HumanMessageText message={message} />
         )}
-        <RoomReactionRow reactions={content.reactions} alignEnd={message.mine} onToggleReaction={content.onToggleReaction} />
-        <RoomThreadEntry mine={message.mine} replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+        {content.chatActions ? null : (
+          <>
+            <RoomReactionRow reactions={content.reactions} alignEnd={message.mine} onToggleReaction={content.onToggleReaction} />
+            <RoomThreadEntry mine={message.mine} replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+          </>
+        )}
         {personalChatStyle && toolbar}
       </div>
     </div>
@@ -1168,6 +1193,39 @@ function EditDeleteButtons({ buttonClass, disabled, onStartEdit, onDelete }: {
         <Trash2 size={14} strokeWidth={1.75} />
       </Button>
     </>
+  )
+}
+
+function RoomChatMessageActions({ message, isAgent, actions }: {
+  message: RoomMessageView
+  isAgent: boolean
+  actions: RoomChatActions
+}) {
+  if (!isAgent) {
+    return (
+      <div className={`chat-exchange-actions--hover flex justify-end ${messageActionVisibilityClass()}`}>
+        <FlashCopyIconButton copyText={message.text} disabled={message.text.length === 0} ariaLabel="Copy message" />
+      </div>
+    )
+  }
+  if (message.streaming) return null
+  return (
+    <ExchangeActions
+      copyPlainText={message.text}
+      isExiting={false}
+      onRetry={actions.onRegenerate}
+      retryDisabled={actions.retryDisabled}
+      onDeleteTurn={actions.onDeleteTurn}
+      onReply={actions.onReply}
+      onBranch={actions.onBranch}
+      turnIdForActions={message.id}
+      actionsLocked={actions.actionsLocked}
+      sources={[]}
+      userMsgId={message.id}
+      isSourcesOpenForThis={false}
+      modelLabel=""
+      showModelLabel={false}
+    />
   )
 }
 
