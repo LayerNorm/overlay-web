@@ -52,6 +52,43 @@ export function writeQueuedMessages(scope: QueueScope, messages: readonly Queued
   }
 }
 
+const CLAIM_PREFIX = 'overlay.queue.claim.v1'
+const CLAIM_TTL_MS = 24 * 60 * 60 * 1000
+const TAB_ID = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random())
+
+/**
+ * Claims a queued message for this tab before it is sent. Every open tab of a
+ * conversation loads the same stored queue, so without a claim each tab would
+ * send it. Returns false when another tab already claimed it. Claims hold only
+ * an id, a tab id and a time, and expire after a day. When storage is
+ * unavailable there is no other tab to coordinate with, so the claim succeeds.
+ */
+export function claimQueuedMessage(id: string, now = Date.now()): boolean {
+  const storage = safeStorage()
+  if (!storage) return true
+  try {
+    const key = `${CLAIM_PREFIX}:${id}`
+    const [owner, at] = (storage.getItem(key) ?? '').split('|')
+    if (owner && owner !== TAB_ID && now - Number(at) < CLAIM_TTL_MS) return false
+    storage.setItem(key, `${TAB_ID}|${now}`)
+    pruneClaims(storage, now)
+    return true
+  } catch {
+    return true
+  }
+}
+
+function pruneClaims(storage: Storage, now: number): void {
+  const expired: string[] = []
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index)
+    if (!key?.startsWith(`${CLAIM_PREFIX}:`)) continue
+    const at = Number((storage.getItem(key) ?? '').split('|')[1])
+    if (!(now - at < CLAIM_TTL_MS)) expired.push(key)
+  }
+  for (const key of expired) storage.removeItem(key)
+}
+
 function isQueuedMessage(value: unknown): value is QueuedMessage {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<QueuedMessage>

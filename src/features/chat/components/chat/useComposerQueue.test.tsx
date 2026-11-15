@@ -26,6 +26,8 @@ function browser(t: TestContext) {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => { values.set(key, value) },
       removeItem: (key: string) => { values.delete(key) },
+      get length() { return values.size },
+      key: (index: number) => [...values.keys()][index] ?? null,
     },
     setTimeout: (callback: () => void) => {
       const id = ++timerId
@@ -191,4 +193,34 @@ test('the queue persists per conversation and follows a new chat to its id', asy
   assert.equal(view.queue.items.length, 0)
   await view.render({ conversationId: 'c-new', running: true })
   assert.deepEqual(view.queue.items.map(item => item.text), ['from the first turn'])
+})
+
+test('a message another tab already claimed is dropped instead of sent twice', async (t) => {
+  const { values } = browser(t)
+  const view = await mountQueue(t, { conversationId: 'c1', running: true })
+  await view.run(queue => {
+    queue.enqueue('sent by the other tab', [])
+    queue.enqueue('mine', [])
+  })
+  const [first] = view.queue.items
+  values.set(`overlay.queue.claim.v1:${first!.id}`, `another-tab|${Date.now()}`)
+
+  await view.render({ conversationId: 'c1', running: false })
+  assert.deepEqual(view.sent, ['mine'])
+  assert.equal(view.queue.items.length, 0)
+})
+
+test('a refused message can be sent again from the tab that claimed it', async (t) => {
+  browser(t)
+  let accept = false
+  const view = await mountQueue(t, { conversationId: 'c1', running: true }, () => accept)
+  await view.run(queue => queue.enqueue('retry me', []))
+  await view.render({ conversationId: 'c1', running: false })
+  assert.equal(view.queue.paused, true)
+
+  accept = true
+  await view.render({ conversationId: 'c1', running: true })
+  await view.render({ conversationId: 'c1', running: false })
+  assert.deepEqual(view.sent, ['retry me', 'retry me'])
+  assert.equal(view.queue.items.length, 0)
 })

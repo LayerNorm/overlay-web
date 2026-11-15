@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import {
+  claimQueuedMessage,
   readQueuedMessages,
   writeQueuedMessages,
   type QueuedMessage,
@@ -109,11 +110,13 @@ export function useComposerQueue({
     }
     const next = state.items[0]
     const drainKey = state.key
-    sendingRef.current = true
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the drain reacts to the response settling; the message leaves the tray as it is sent
     setState(current => current.key === drainKey
       ? { ...current, items: current.items.filter(item => item.id !== next.id) }
       : current)
+    // Every open tab of this conversation loads the same stored queue; only the tab that claims a message sends it.
+    if (!claimQueuedMessage(next.id)) return
+    sendingRef.current = true
     void sendRef.current(next).catch(() => false).then(accepted => {
       sendingRef.current = false
       if (accepted) {
