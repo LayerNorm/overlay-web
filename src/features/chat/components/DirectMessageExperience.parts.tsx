@@ -53,6 +53,7 @@ import type {
   useRoomActions,
   useRoomCollaboration,
   useRoomComposer,
+  useRoomComposerQueue,
   useRoomPanels,
   useRoomRoster,
   useRoomTranscript,
@@ -756,6 +757,7 @@ export function RoomComposer({
   onOpenAttachmentPreview,
   onOpenFilePreview,
   guided,
+  queue,
 }: {
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
@@ -768,8 +770,10 @@ export function RoomComposer({
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
+  queue?: ReturnType<typeof useRoomComposerQueue>
 }) {
   recordRender('RoomComposer')
+  const activeQueue = guided ? undefined : queue
   useEffect(() => {
     if (guided?.focusRevision) composer.composerRef.current?.focus()
   }, [guided?.focusRevision, composer.composerRef])
@@ -787,6 +791,7 @@ export function RoomComposer({
         textOnly: Boolean(guided),
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+      queue={activeQueue?.controls}
       attachments={{
         attachedImages: composer.attachedImages,
         setAttachedImages: composer.setAttachedImages,
@@ -803,7 +808,7 @@ export function RoomComposer({
       runtime={{
         composerNotice: null,
         isSendBlocked: guided?.disabled ?? false,
-        isActiveLoading: false,
+        isActiveLoading: activeQueue?.running ?? false,
         isTemporaryChat: false,
         blockedComposerContent: null,
       }}
@@ -841,7 +846,7 @@ export function RoomComposer({
         onNavigateMode: () => {},
       }}
       actions={{
-        onStop: () => {},
+        onStop: activeQueue?.stop ?? (() => {}),
         onSend: guided ? () => { if (!guided.disabled) guided.onSubmit() } : () => void composer.handleSend(),
       }}
     />
