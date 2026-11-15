@@ -46,16 +46,17 @@ function browser(t: TestContext) {
   return { values }
 }
 
-type Props = { conversationId: string | null; running: boolean }
+type Props = { conversationId: string | null; running: boolean; ready?: boolean }
 
 async function mountQueue(t: TestContext, initial: Props, accept: (message: QueuedMessage) => boolean = () => true) {
   const sent: string[] = []
   let stops = 0
   let queue!: ComposerQueue
-  function Probe({ conversationId, running }: Props) {
+  function Probe({ conversationId, running, ready }: Props) {
     const current = useComposerQueue({
       scope: conversationId ? { workspaceId: 'w1', conversationId } : null,
       running,
+      ready,
       send: async (message) => {
         sent.push(message.text)
         return accept(message)
@@ -98,6 +99,21 @@ test('queued messages wait for the response and then send one per response, in o
   await view.render({ conversationId: 'c1', running: false })
   assert.deepEqual(view.sent, ['first', 'second'])
   assert.equal(view.queue.items.length, 0)
+})
+
+test('queued messages wait until the conversation is ready to receive them', async (t) => {
+  browser(t)
+  const view = await mountQueue(t, { conversationId: 'c-new', running: true, ready: false })
+  await view.run(queue => {
+    queue.enqueue('first', [])
+    queue.enqueue('second', [])
+  })
+  await view.render({ conversationId: 'c-new', running: false, ready: false })
+  assert.deepEqual(view.sent, [])
+  assert.equal(view.queue.items.length, 2)
+
+  await view.render({ conversationId: 'c-new', running: false, ready: true })
+  assert.deepEqual(view.sent, ['first'])
 })
 
 test('steering stops the running response and sends ahead of queued messages', async (t) => {

@@ -1134,6 +1134,7 @@ export function useChatExperienceController({
   const composerQueue = useComposerQueue({
     scope: runConversationId && !isTemporaryChat ? { workspaceId: activeWorkspaceId, conversationId: runConversationId } : null,
     running: responseRunning,
+    ready: activeChatId !== null,
     send: sendQueuedMessage,
     stop: stopActiveChat,
   })

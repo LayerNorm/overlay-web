@@ -41,17 +41,21 @@ function newQueuedMessage(text: string, mentions: MentionItem[]): QueuedMessage 
 /**
  * Queue and steer for one conversation composer. `running` must stay true from
  * the moment a send is accepted until its response settles; `send` resolves
- * true once the message was accepted. A message that is not accepted returns to
+ * true once the message was accepted. `ready` holds the queue while the
+ * surface cannot yet send into this conversation, such as a new chat whose
+ * first response finished before the chat adopted its saved id. A message that is not accepted returns to
  * the front of the queue and pauses it, so nothing is dropped or retried in a loop.
  */
 export function useComposerQueue({
   scope,
   running,
+  ready = true,
   send,
   stop,
 }: {
   scope: QueueScope | null
   running: boolean
+  ready?: boolean
   send: (message: QueuedMessage) => Promise<boolean>
   stop: () => void | Promise<void>
 }): ComposerQueue {
@@ -96,7 +100,7 @@ export function useComposerQueue({
   }, [running])
 
   useEffect(() => {
-    if (running || state.paused || sendingRef.current || state.items.length === 0) return
+    if (running || !ready || state.paused || sendingRef.current || state.items.length === 0) return
     const wait = startDeadlineRef.current - Date.now()
     if (wait > 0) {
       const timer = window.setTimeout(() => setRecheck(value => value + 1), wait)
@@ -120,7 +124,7 @@ export function useComposerQueue({
       }
       setRecheck(value => value + 1)
     })
-  }, [running, state.items, state.key, state.paused, recheck])
+  }, [running, ready, state.items, state.key, state.paused, recheck])
 
   const interrupt = useCallback(() => {
     if (runningRef.current) void stopRef.current()
