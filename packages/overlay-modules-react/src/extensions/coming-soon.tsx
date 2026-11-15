@@ -3,8 +3,7 @@
 import type { McpAuthType,McpTransport } from '@overlay/app-core'
 import { Button,Input,Select,Textarea,Toggle } from '@overlay/ui'
 import {
-LayoutGrid,
-Lock
+LayoutGrid
 } from 'lucide-react'
 import { type ReactNode } from 'react'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '../shell'
@@ -25,10 +24,6 @@ export function ToolsComingSoonView({ title, icon: Icon, tabs }: {
       </AppScreenBody>
     </AppScreenShell>
   )
-}
-
-export function AppsComingSoonView({ tabs }: { tabs?: ReactNode } = {}) {
-  return <ToolsComingSoonView title="Apps" icon={Lock} tabs={tabs} />
 }
 
 export function AllExtensionsComingSoonView() {

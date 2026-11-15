@@ -2,8 +2,6 @@
 
 Status: in progress, written 2026-11-03. Forced plans, Phase 1, Phase 2 and the response UI are built. Phase 3 remains and waits for runs already in progress to finish. The Phase 3 PR deletes this plan.
 
-Response mockup: `internal/plans/mockups/response-plan-questionnaire-mockup.html`.
-
 ## Decision
 
 The harness no longer judges whether work is correct. When the model marks a milestone done, it is done. When it returns a final answer with no work left, the run finishes. People check the result themselves, or add a verifier agent if they want one.

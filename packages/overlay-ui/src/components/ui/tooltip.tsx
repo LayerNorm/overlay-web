@@ -6,7 +6,7 @@ import { Tooltip as TooltipPrimitive } from 'radix-ui'
 import { cn } from '../../utils/cn'
 
 function TooltipProvider({
-  delayDuration = 450,
+  delayDuration = 300,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
@@ -40,7 +40,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          'z-10100 w-max max-w-[min(calc(100vw-16px),20rem)] rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-center text-[11px] font-medium leading-snug text-(--muted) shadow-xs data-[state=delayed-open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=delayed-open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-0.5 data-[side=left]:slide-in-from-right-0.5 data-[side=right]:slide-in-from-left-0.5 data-[side=top]:slide-in-from-bottom-0.5',
+          'z-10100 origin-(--radix-tooltip-content-transform-origin) w-max max-w-[min(calc(100vw-16px),20rem)] rounded-md border border-(--border) bg-(--surface-subtle) px-2 py-1 text-center text-[11px] font-medium leading-snug text-(--muted) shadow-xs data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-[state=delayed-open]:duration-150 data-[side=bottom]:slide-in-from-top-0.5 data-[side=left]:slide-in-from-right-0.5 data-[side=right]:slide-in-from-left-0.5 data-[side=top]:slide-in-from-bottom-0.5',
           className,
         )}
         {...props}

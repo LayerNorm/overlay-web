@@ -1,9 +1,10 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { APICallError } from 'ai'
+import { createHarnessSnapshot, recordHarnessReceipt, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import type { PreparedHarnessModel } from './model-ports'
-import { createHarnessModelPorts, harnessOutputLimits, harnessReasoningSetting } from './model-ports'
+import { createHarnessModelPorts, harnessOutputLimits, harnessReasoningSetting, MAX_INTERRUPTED_MODEL_RETRIES } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
@@ -684,4 +685,80 @@ test('a response call after one cut off at its output cap is prepared as a conti
   const handedOff = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
   await handedOff.prepareModel(request('model:3', true))
   expect((prepare.mock.calls.at(-1)![0] as { continuesPrevious?: boolean }).continuesPrevious).toBe(true)
+})
+
+function dispatchedState(billingReservationId: string | null = null, modelRecovery?: HarnessSnapshot['modelRecovery']) {
+  const state = createHarnessSnapshot({
+    runId: 'run', goal: 'Write the page.', constraints: [], policy: {
+      actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+    },
+  }, Date.now())
+  return {
+    ...state, status: 'running' as const, workflowRunId: 'workflow',
+    ...(modelRecovery ? { modelRecovery } : {}),
+    modelReservation: { id: 'model:1', maxCostMicros: 0, dispatch: { modelId: 'byok/anthropic/model', billingReservationId } },
+  }
+}
+
+function recordOperationsOn(start: HarnessSnapshot) {
+  let current = start
+  mocks.read.mockImplementation(async () => current)
+  mocks.apply.mockImplementation(async (_reference, _operationId, operation) => {
+    if (operation.type === 'record_receipt') {
+      current = recordHarnessReceipt(current, operation.receipt, Date.now())
+    }
+    return current
+  })
+  return () => current
+}
+
+function interruptedPorts() {
+  return createHarnessModelPorts({
+    reference, modelId: 'byok/anthropic/model',
+    prepare: async () => ({ model: {} as HarnessModelReference, options: { prompt: [] }, contextWindow: null }),
+  })
+}
+
+test('a dropped stream on an unheld dispatch settles a failed zero receipt and retries', async () => {
+  const current = recordOperationsOn(dispatchedState())
+  mocks.recovery.mockResolvedValue(true)
+  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('terminated'))).toBe(true)
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(reference, 'interrupted:model:1', {
+    type: 'record_receipt', receipt: {
+      id: 'model:1', modelId: 'byok/anthropic/model', provider: 'interrupted',
+      inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 0, costSource: 'catalog', responseFailure: 'provider_error',
+    },
+  })
+  expect(current().modelReservation).toBeUndefined()
+  expect(current().usage.costMicros).toBe(0)
+  expect(current().modelRecovery).toMatchObject({ receiptId: 'model:1', attempt: 1 })
+  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
+})
+
+test('a permanent provider failure closes the dispatch without retrying', async () => {
+  const current = recordOperationsOn(dispatchedState())
+  const unauthorized = new APICallError({
+    message: 'bad key', url: 'https://provider.invalid', requestBodyValues: {}, statusCode: 401,
+  })
+  expect(await interruptedPorts().recoverModelFailure!('model:1', unauthorized)).toBe(false)
+  expect(current().modelReservation).toBeUndefined()
+  expect(mocks.recovery).not.toHaveBeenCalled()
+})
+
+test('interrupted calls stop retrying after the retry limit', async () => {
+  const previous = { receiptId: 'model:0', modelId: 'byok/anthropic/model', code: 'provider_error' as const,
+    attempt: MAX_INTERRUPTED_MODEL_RETRIES, firstFailureAt: 1, nextRetryAt: 2 }
+  const current = recordOperationsOn(dispatchedState(null, previous))
+  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('terminated'))).toBe(false)
+  expect(current().modelRecovery?.attempt).toBe(MAX_INTERRUPTED_MODEL_RETRIES + 1)
+  expect(mocks.recovery).not.toHaveBeenCalled()
+})
+
+test('a dispatch bound to a billing hold is left for reconciliation', async () => {
+  recordOperationsOn(dispatchedState('billing-hold'))
+  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('terminated'))).toBe(false)
+  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(mocks.recovery).not.toHaveBeenCalled()
 })

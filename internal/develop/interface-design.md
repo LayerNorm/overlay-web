@@ -3,9 +3,9 @@ title: "Interface Design"
 description: "Product UI decisions every surface follows: toggles-only controls, one-control-per-row layouts, and editors without save bars."
 ---
 
-## Extension cards and dialogs
+## Extensions catalog and dialogs
 
-MCP and Skills use shared Card surfaces with explicit Manage actions and confirmation before deletion. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact content-width Configuration/Tools tabs and spacing instead of internal dividers. Preserve OAuth connection status, tool policy, scope and existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.
+Connectors, Skills, MCPs and Apps share `ExtensionCatalogPage` from `@overlay/modules-react/extensions` (approved mockup: `internal/plans/mockups/extensions-catalog.html`). The page has a title, one-line subtitle, search (leading Search icon, clear button) and an Add dropdown of type-specific create flows, then pill tabs Browse and Yours (Workspace in the Workspace scope). Browse lists curated sections from `@overlay/app-core/extensions` (`CONNECTOR_CATEGORIES`, `MCP_CATEGORIES`, `SKILL_CATEGORIES`, grouped by `groupExtensionCatalog`, with everything else under All); each section previews six rows and its title opens the full list, kept in the URL as `?category=` so back and the breadcrumb return to the overview. Rows are two columns (one below 768px): a 40px bordered logo tile (initial fallback), name, one truncated description line, an optional attention state (Off, Not connected, Connection error) and one trailing ghost icon button, + to add or ⋯ for Settings/Disconnect or Edit/Delete. The whole row opens the details: `ConnectorDetailsDialog`, `SkillDialog` or `McpServerDialog`. Catalog skills and MCP servers open the normal editor pre-filled (`state.preset`); added entries are matched by skill name or normalized server URL. Search covers every entry on the page; connectors also query the provider. Deleting from a row confirms first. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact Configuration/Tools tabs and spacing instead of internal dividers; preserve OAuth status, tool policy, scope actions and the existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.
 
 ## Chief identity and Organization
 
@@ -35,7 +35,7 @@ The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/s
 
 `src/app/double-sidebar.css` scopes the rounded content frame, default light/dark chrome, compact chat presentation, and curved agent-thread guides to this layout at desktop widths. Custom theme presets retain semantic colors. The mobile drawer, onboarding, and compact native desktop panel retain their existing layouts; macOS keeps a dedicated drag region above the shell.
 
-The contextual sidebar and right detail panels use the same 1px border and 12px radius as the main surface, with an 8px gap between docked surfaces. `AppScreenShell` exposes separate main and right-panel slots so details do not share one enclosing content border. Side-panel headers in this shell are 48px with the same top edge as the main header and the contextual sidebar title row. Only the outer screen gets the frame; embedded editor shells are not framed again. Floating panels and mobile overlays keep their positioning and dismissal behavior. Established conversations retain the shared `max-w-4xl` transcript/composer width, including agent-room transcripts. New chats and new automations use the same bottom-docked `max-w-4xl` composer: the greeting (and any automation intro) is centred in the free space with suggestions just above the composer, so nothing moves when the first message is sent (`internal/plans/mockups/composer-at-bottom.html`). The approved follow-up is `internal/plans/mockups/double-sidebar-bordered-mockup.html`.
+The contextual sidebar and right detail panels use the same 1px border and 12px radius as the main surface, with an 8px gap between docked surfaces. `AppScreenShell` exposes separate main and right-panel slots so details do not share one enclosing content border. Side-panel headers in this shell are 48px with the same top edge as the main header and the contextual sidebar title row. Only the outer screen gets the frame; embedded editor shells are not framed again. Floating panels and mobile overlays keep their positioning and dismissal behavior. Established conversations retain the shared `max-w-4xl` transcript/composer width, including agent-room transcripts. New chats and new automations use the same bottom-docked `max-w-4xl` composer: the greeting (and any automation intro) is centred in the free space with suggestions just above the composer, so nothing moves when the first message is sent.
 
 While onboarding hides navigation, the desktop double-sidebar shell uses equal 8px left and right gutters, including its loading and error states. `OnboardingShell` exposes its existing locked state through `data-onboarding-locked`; unlocking restores the rail's normal zero left padding. Mobile spacing and macOS top drag-region clearance are unchanged.
 
@@ -45,9 +45,9 @@ The guided onboarding conversation shares live room read markers with Chats. Roo
 
 `useSecondarySidebar` still means rail-and-panel. New settings default to `true`. The owner requested a one-time reset of existing accounts to double sidebar; the internal `migrations/doubleSidebar:enableExistingAccounts` mutation supports bounded pages and dry runs, changing only this preference. Run it once during rollout, never as a scheduled reconciliation. Later explicit `false` choices still select `UnifiedSidebar`. This is an account-wide setting that applies across all workspaces; there is no separate workspace sidebar preference. The frontend contract and Convex new-row defaults must agree. Deploy backend default changes only through the normal isolated preview/canonical-main release process, never to shared development from a feature branch.
 
-Workspace mockups must strictly reuse this production shell, not approximate it with a custom single sidebar or move agent threads into tabs above the conversation. The canonical interactive reference is `internal/plans/mockups/agent-thread-activity.html`; its source imports the real `DoubleSidebar` and production shell CSS. See `internal/plans/mockups/README.md` for the required structure and the scope of older non-workspace previews. This rule governs mockups, not removal of the existing optional `UnifiedSidebar` setting.
+Workspace mockups must strictly reuse this production shell, not approximate it with a custom single sidebar or move agent threads into tabs above the conversation. The canonical interactive reference is `internal/plans/mockups/overlay-app.html`, which bundles the real production shell, sidebars, right panel and route pages with fixture data. See `internal/plans/mockups/README.md` for how to build feature mockups from it. This rule governs mockups, not removal of the existing optional `UnifiedSidebar` setting.
 
-Regression checks: `npm --prefix packages/overlay-shell-react test`, focused sidebar/navigation/thread tests, `npm run check:raw-controls`, and `npm run check:module-boundaries`. Browser QA should compare light/dark and collapsed/expanded states with `internal/plans/mockups/agent-thread-activity.html` and `internal/plans/mockups/double-sidebar-bordered-mockup.html`, then check scope switching, Settings, More, agent thread actions, and mobile navigation on the isolated PR preview.
+Regression checks: `npm --prefix packages/overlay-shell-react test`, focused sidebar/navigation/thread tests, `npm run check:raw-controls`, and `npm run check:module-boundaries`. Browser QA should compare light/dark and collapsed/expanded states with `internal/plans/mockups/overlay-app.html` (rebuilt from the branch), then check scope switching, Settings, More, agent thread actions, and mobile navigation on the isolated PR preview.
 
 # Overlay interface design
 
@@ -112,7 +112,13 @@ failure output and the explicit safety confirmation for runs that need inspectio
 
 Use `PanelResizeHandle` from `@overlay/ui` for adjustable sidebar and side-panel
 widths. It exposes a vertical separator with pointer resizing, arrow-key steps,
-and Home/End bounds; the owning shell supplies and stores the width.
+and Home/End bounds; the owning shell supplies and stores the width. Drags update
+at most once per animation frame. Shells whose only resized element is the
+handle's parent (the double and unified sidebars) pass `livePreview`: the drag
+writes the width straight onto that element and `onResize` runs once on release,
+so the sidebar's React tree does not re-render while dragging. Sidebar collapse
+snaps; do not animate an in-flow panel's `width`, which re-lays-out the whole
+main column every frame.
 
 The agent conversation sidebar uses the app sidebar surface and one scroll
 container below its fixed hero and tabs. Its editable fields autosave after an
@@ -200,6 +206,8 @@ The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
 70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
 Descriptions cap at 45% of their row so long agent instructions cannot hide
 the result title or overflow the mobile palette.
+`CommandDialog` opens and closes with no animation (content and backdrop):
+it is opened by keyboard many times a day, so motion there only reads as lag.
 Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper
 regressions with deterministic search fixtures, macOS/Windows shortcuts,
 long/grouped lists, CSS presets and mobile sizing. Current-head authenticated
@@ -212,7 +220,12 @@ its child. Container and Fragment children describe the actual focused control
 while open; existing `aria-describedby` tokens are preserved and the tooltip's
 ID is removed on blur, close or unmount. Wrappers add no Tab stop. Radix owns
 positioning, the portal and Escape dismissal. Fine-pointer hover opens after
-450 ms; touch/coarse input suppresses tooltips, including capability changes
+300 ms (`TOOLTIP_OPEN_DELAY_MS`); while any tooltip is open, or for 500 ms
+after one closes, the next opens at once with no entrance animation. That
+warm-up lives in `tooltip-warmth.ts` and is shared with the global `title`
+tooltips (`NativeTitleTooltips`), so moving along a toolbar never waits twice.
+Tooltips scale from the Radix transform origin and close without an exit
+animation. Touch/coarse input suppresses tooltips, including capability changes
 while mounted. Run `node scripts/qa/tooltip-interactions.mjs` for rendered
 association, cleanup, pointer and media-query checks in installed Chrome.
 
@@ -229,6 +242,11 @@ optional `trigger` for native expanded state, keyboard opening and focus return;
 action menus opt into `kind="menu"` and supply a trigger. `MenuItem` preserves
 button props and callbacks, using Radix item semantics only inside that action
 menu. Standalone `MenuSurface` remains visual, with no implied role.
+
+Floating layers enter with `overlay-pop-in`, which grows from
+`--radix-popper-transform-origin` and moves away from the trigger based on
+`data-side`. A hand-rolled menu placed above its trigger (`bottom-full`) sets
+`data-side="top"` so it rises instead of dropping.
 
 Both primitives portal at z-10090, consume Overlay CSS vars directly, use a 6px
 anchor gap and 8px collision padding, and constrain height to the available
@@ -327,7 +345,7 @@ collision/dialog/mobile tests and all 39 preset variable checks. Set
 
 Work has a bottom-pinned prompt composer in Personal and Workspace scope. It is the same `PromptInput` box as chat and agent threads: one outlined card centered at `max-w-4xl`, a 44px text area, and one footer row with context +, Assignee, Schedule, Depends on, the settings gear and submit. The page header has no New task button; the composer (and the C shortcut) is how a task starts. Enter creates a task from the first line (200 characters maximum); Shift+Enter adds description lines. Assignee and Depends on use searchable Popover/Command pickers; Schedule has Start/Due date inputs and presets. Inline settings offer Backlog/Todo and Low/Medium/High (Medium by default). Successful creation clears all fields and refocuses. Context reuses Work's file/note/chat/link search. The composer has no microphone on any platform (Desktop dictates through its global shortcut). There is no expand control or Repeat setting yet.
 
-The composer footer never wraps. Below 520px of composer width (a named Tailwind container query, not a viewport breakpoint), Assignee, Schedule and Depends on become 32px square icon buttons. Labels remain accessible and appear in tooltips; selected assignees retain their 16px avatar, while date/dependency counts become compact badges. The dependency-start hint hides at this width. Wider composers keep their existing labelled controls. The approved reference is `internal/plans/mockups/work-composer-compact-pickers.html`.
+The composer footer never wraps. Below 520px of composer width (a named Tailwind container query, not a viewport breakpoint), Assignee, Schedule and Depends on become 32px square icon buttons. Labels remain accessible and appear in tooltips; selected assignees retain their 16px avatar, while date/dependency counts become compact badges. The dependency-start hint hides at this width. Wider composers keep their existing labelled controls.
 
 An agent assignment starts immediately unless a dependency is not done. Blocked assignments retain a pending execution; completing the final blocker through either a field edit or a board move schedules a deployment-secret callback under the original assigner's identity. The callback rechecks visibility and budget, and the Convex claim rechecks dependency status atomically with the assignment generation/status, so concurrent releases cannot dispatch twice. Transient callback failures retry six times with capped exponential backoff; terminal failures are logged. Removing dependencies also reevaluates pending assignments.
 
@@ -609,6 +627,8 @@ avatar. Sidebar rows without a conversation open the automation itself.
 ## Chat AI primitives (`@overlay/ui/ai`)
 
 Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Trace rows are text-only; `TraceMark`, `ToolLineLogo` and `ToolLogoColumn` remain empty compatibility exports. Running titles may shimmer (CSS in `styles.css`, off under reduced motion). The one active-response mark is 24px and sits after all assistant output.
+
+Fenced ```` ```mermaid ```` blocks render through `MermaidCodeBlock` (`packages/overlay-chat-react/src/components/markdown/mermaid-block.tsx`): the diagram by default and a segmented Diagram | Code text toggle (22px buttons, subtle track, active pill on the panel surface) placed before the copy button, which always copies the source. `mermaid-render.ts` dynamically imports `mermaid` and `dompurify` on first use (client only), initializes `securityLevel: 'strict'`, `startOnLoad: false` and the `base` theme with variables resolved from Overlay tokens at the block (panel fill, 16% foreground stroke, foreground text, `--muted-light` edges), re-renders when `<html>` theme attributes change, and sanitizes the SVG again with DOMPurify. The SVG is mounted in an open shadow root on the diagram container (`mountDiagramSvg`), never with `dangerouslySetInnerHTML`, because Mermaid's `<style>` (including model-written `classDef`/`style` rules) would otherwise apply to the whole document. Diagrams shrink to 75% of natural width, then scroll horizontally. Incomplete streaming fences (`useIsCodeFenceIncomplete`) show code with no toggle; finished renders are cached by source so the remount when a reply settles keeps the diagram instead of flashing code; render failures keep the code, hide the toggle and add a quiet `CodeBlockFooter` note with the short parse error.
 
 Visual rules for these and every new component:
 

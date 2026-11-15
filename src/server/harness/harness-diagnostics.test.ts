@@ -1,8 +1,9 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { APICallError } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import {
-  HarnessPersistenceError, harnessDiagnosticForFailure, harnessDiagnosticTerminalError, stableHarnessDiagnosticId,
+  HarnessPersistenceError, harnessDiagnosticForFailure, harnessDiagnosticTerminalError, INTERRUPTED_MODEL_CALL_PROVIDER,
+  logHarnessFailure, stableHarnessDiagnosticId,
 } from './harness-diagnostics'
 
 function snapshot(overrides: Partial<HarnessSnapshot> = {}): HarnessSnapshot {
@@ -50,17 +51,69 @@ test('generic budget-like text remains UNKNOWN and is not retryable', () => {
   expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain('budget was rejected')
 })
 
-test('only an unresolved bound model dispatch becomes MODEL_OUTCOME_UNKNOWN', () => {
-  const diagnostic = harnessDiagnosticForFailure('root', snapshot({
-    modelReservation: { id: 'model:7', maxCostMicros: 20, dispatch: { modelId: 'fixture/model', billingReservationId: 'billing-7' } },
-  }), new Error('provider failed'), 'model')
+const openDispatch = {
+  modelReservation: { id: 'model:7', maxCostMicros: 0, dispatch: { modelId: 'fixture/model', billingReservationId: null } },
+} satisfies Partial<HarnessSnapshot>
+
+test('an open dispatch with no known cause becomes MODEL_OUTCOME_UNKNOWN with plain copy', () => {
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot(openDispatch), new Error('stream closed'), 'model')
   expect(diagnostic).toMatchObject({
     code: 'MODEL_OUTCOME_UNKNOWN',
     stage: 'model',
     operationId: 'model:7',
-    retryability: 'reconcile',
+    retryability: 'user_action',
+    safeMessage: 'The model connection dropped before the response finished.',
+    nextAction: 'Send your message again.',
   })
-  expect(harnessDiagnosticTerminalError(diagnostic).retryable).toBe(false)
+  expect(harnessDiagnosticTerminalError(diagnostic)).toMatchObject({
+    retryable: true,
+    message: `The model connection dropped before the response finished. Send your message again. Diagnostic ID: ${diagnostic.diagnosticId}`,
+  })
+})
+
+test('the real provider cause is classified before an open dispatch', () => {
+  const status = (statusCode: number) => new APICallError({
+    message: 'provider failed', url: 'https://provider.invalid', requestBodyValues: {}, statusCode,
+  })
+  const open = snapshot(openDispatch)
+  expect(harnessDiagnosticForFailure('root', open, status(429), 'model').code).toBe('PROVIDER_RATE_LIMIT')
+  expect(harnessDiagnosticForFailure('root', open, status(503), 'model').code).toBe('PROVIDER_UNAVAILABLE')
+  expect(harnessDiagnosticForFailure('root', open, status(401), 'model').code).toBe('PROVIDER_ACCOUNT')
+  expect(harnessDiagnosticForFailure('root', open, status(400), 'model').code).toBe('PROVIDER_REQUEST_INVALID')
+  expect(harnessDiagnosticForFailure('root', open, Object.assign(new Error('slow'), { name: 'TimeoutError' }), 'model').code)
+    .toBe('PROVIDER_TIMEOUT')
+  expect(harnessDiagnosticForFailure('root', open, { name: 'AI_APICallError', statusCode: 429, message: 'stripped' }, 'model').code)
+    .toBe('PROVIDER_RATE_LIMIT')
+  expect(harnessDiagnosticForFailure('root', open, new Error('The workspace budget is under 2%.'), 'model').code)
+    .toBe('WORKSPACE_FUNDS')
+  expect(harnessDiagnosticForFailure('root', open, new Error('Native harness permissions were revoked.'), 'model').code)
+    .toBe('AUTHORIZATION_REVOKED')
+})
+
+test('an interrupted call that exhausted its retries stays MODEL_OUTCOME_UNKNOWN after its dispatch closes', () => {
+  const interrupted = snapshot({
+    latestReceipt: {
+      id: 'model:7', modelId: 'fixture/model', provider: INTERRUPTED_MODEL_CALL_PROVIDER,
+      inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 0, costSource: 'catalog', responseFailure: 'provider_error',
+    },
+    modelRecovery: { receiptId: 'model:7', modelId: 'fixture/model', code: 'provider_error', attempt: 4, firstFailureAt: 1, nextRetryAt: 2 },
+  })
+  expect(harnessDiagnosticForFailure('root', interrupted, new Error('stream closed'), 'model'))
+    .toMatchObject({ code: 'MODEL_OUTCOME_UNKNOWN', operationId: 'model:7' })
+  expect(harnessDiagnosticForFailure('root', { ...interrupted, modelRecovery: undefined }, new Error('stream closed'), 'model').code)
+    .toBe('UNKNOWN')
+})
+
+test('failure logs carry identifiers and the error name only', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot(openDispatch), new Error('secret prompt text'), 'model')
+  logHarnessFailure('root', diagnostic, new Error('secret prompt text'))
+  expect(warn).toHaveBeenCalledExactlyOnceWith('[harness] run failed', {
+    runId: 'root', diagnosticId: diagnostic.diagnosticId, code: 'MODEL_OUTCOME_UNKNOWN', stage: 'model', errorName: 'Error',
+  })
+  expect(JSON.stringify(warn.mock.calls)).not.toContain('secret')
+  warn.mockRestore()
 })
 
 test('verified provider status and exact task policy failures use authored safe copy', () => {

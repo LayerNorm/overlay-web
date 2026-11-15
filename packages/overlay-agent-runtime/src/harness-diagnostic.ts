@@ -39,7 +39,7 @@ const descriptions: Record<HarnessDiagnosticCode, Pick<HarnessDiagnostic, 'safeM
   PROVIDER_ACCOUNT: { safeMessage: 'The model provider rejected the connected account or key, its access, or its billing.', nextAction: 'Reconnect the account or check the provider key, access and billing in Settings, then retry.', retryability: 'user_action' },
   TOOL_FAILED: { safeMessage: 'A tool could not complete its operation.', nextAction: 'Review the failed tool and saved work before continuing.', retryability: 'user_action' },
   TOOL_OUTCOME_UNKNOWN: { safeMessage: 'A tool operation ended without a confirmed outcome.', nextAction: 'Check whether the action took effect before retrying it.', retryability: 'reconcile' },
-  MODEL_OUTCOME_UNKNOWN: { safeMessage: 'A model request ended without confirmed usage.', nextAction: 'Reconcile the outstanding request before retrying it.', retryability: 'reconcile' },
+  MODEL_OUTCOME_UNKNOWN: { safeMessage: 'The model connection dropped before the response finished.', nextAction: 'Send your message again.', retryability: 'user_action' },
   AUTHORIZATION_REVOKED: { safeMessage: 'This task no longer has the authorization it needs.', nextAction: 'Check workspace membership and tool access before starting another task.', retryability: 'user_action' },
   PERSISTENCE_FAILED: { safeMessage: 'The task could not save or publish its latest progress.', nextAction: 'Reload to inspect saved work. Do not repeat completed actions to recover missing text.', retryability: 'reconcile' },
   STAGNATION: { safeMessage: 'The task paused because repeated attempts made no verifiable progress.', nextAction: 'Review the blocker and provide guidance to continue.', retryability: 'user_action' },

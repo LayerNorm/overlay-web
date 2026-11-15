@@ -2,6 +2,7 @@ import { publicHarnessStepPersistence, writeSettledHarnessTranscriptStep } from 
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import type { HarnessDiagnosticCode } from '@overlay/agent-runtime/harness-diagnostic'
 import { compactHarnessPrompt, estimateContextTokens } from '@/server/chat/context-compaction-core'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import { buildHarnessStepInstructions, buildHarnessStepStateMessage } from './context'
@@ -16,11 +17,20 @@ import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { estimateHarnessPromptTokens } from './artifact-context'
 import { recordPublicStreamMetric } from './public-stream-metrics'
+import { harnessDiagnosticForFailure, INTERRUPTED_MODEL_CALL_PROVIDER } from './harness-diagnostics'
 
 export type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
+
+/** Consecutive retries of calls that ended before the provider reported usage. */
+export const MAX_INTERRUPTED_MODEL_RETRIES = 3
+// Only transient causes are retried. Account, request, content-filter, authorization,
+// deadline and funding failures would repeat, so they end the run with their real cause.
+const RETRYABLE_INTERRUPTIONS = new Set<HarnessDiagnosticCode>([
+  'MODEL_OUTCOME_UNKNOWN', 'PROVIDER_TIMEOUT', 'PROVIDER_RATE_LIMIT', 'PROVIDER_UNAVAILABLE',
+])
 
 function recordPreparationMetricIfEligible(
   reference: HarnessExecutionReference,
@@ -140,8 +150,30 @@ export function createHarnessModelPorts(input: {
   })
 
   return {
-    recoverModelFailure: async receiptId => {
-      const state = await readHarnessState(reference)
+    recoverModelFailure: async (receiptId, error) => {
+      let state = await readHarnessState(reference)
+      const dispatch = state.modelReservation?.id === receiptId ? state.modelReservation.dispatch : undefined
+      // The call threw after it was sent and before the provider reported usage. No
+      // billing hold exists (billingReservationId is always null), so settle it as a
+      // failed zero-usage receipt. That closes the dispatch and starts the normal
+      // retry; a real hold would still need reconciliation.
+      if (state.status === 'running' && dispatch && dispatch.billingReservationId === null) {
+        try {
+          state = await applyHarnessOperation(reference, `interrupted:${receiptId}`, {
+            type: 'record_receipt', receipt: {
+              id: receiptId, modelId: dispatch.modelId, provider: INTERRUPTED_MODEL_CALL_PROVIDER,
+              inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+              contextWindow: preparedCalls.get(receiptId)?.contextWindow ?? null,
+              costMicros: 0, costSource: 'catalog', responseFailure: 'provider_error',
+            },
+          })
+        } catch (_recordError) {
+          return false
+        }
+        const cause = harnessDiagnosticForFailure(reference.runId, state, error, 'model').code
+        if (!RETRYABLE_INTERRUPTIONS.has(cause)
+          || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
+      }
       const receipt = state.latestReceipt
       if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId) return false
       if (state.modelRecovery?.receiptId === receiptId) {

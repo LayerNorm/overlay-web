@@ -7,7 +7,7 @@ import { chargeSandboxSpendLimits } from '../lib/sandboxSpendLimits'
 
 /**
  * One-time release of the holds left from before the workspace-budget-only change (see
- * internal/plans/WORKSPACE_BUDGET_ONLY_PLAN.md). Nothing creates holds any more, so every hold still open is
+ * internal/develop/workspace-billing.md). Nothing creates holds any more, so every hold still open is
  * released, never charged: its amount becomes available again. Run on each backend after the code that stops
  * creating holds is live:
  *

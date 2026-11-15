@@ -18,12 +18,12 @@ test('structured Harness diagnostics survive native error parsing', () => {
     diagnosticId: 'hd_parser_roundtrip',
     code: 'MODEL_OUTCOME_UNKNOWN',
     stage: 'model',
-    retryability: 'reconcile',
-    safeMessage: 'A model request ended without confirmed usage.',
-    nextAction: 'Reconcile the outstanding request before retrying it.',
+    retryability: 'user_action',
+    safeMessage: 'The model connection dropped before the response finished.',
+    nextAction: 'Send your message again.',
     occurredAt: 2,
   } as const
-  const error = { ...failure, retryable: false, diagnostic }
+  const error = { ...failure, retryable: true, diagnostic }
   assert.deepEqual(readNativeAgentError([{ type: NATIVE_AGENT_ERROR_PART, data: error }]), error)
 })
 

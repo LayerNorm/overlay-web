@@ -3,6 +3,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
+import { useMessageEntrance } from './message-entrance'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
   appendInterruptionNotice,
@@ -205,9 +206,10 @@ export function ChatExchange({
       responseSettled &&
       (assistantPlainText.length > 0 || !!errorMessage || interrupted)
     const densityClass = presentation?.density === 'compact' ? 'gap-1' : 'gap-2'
+    const entranceClass = useMessageEntrance(isStreaming || responseInProgress)
     return (
       <div
-        className={`group/exchange relative flex flex-col ${densityClass} message-appear transition-all duration-300 ease-out ${
+        className={`group/exchange relative flex flex-col ${densityClass} ${entranceClass} transition-[opacity,translate] duration-200 ease-out ${
           isExiting ? 'pointer-events-none opacity-0 -translate-y-1' : 'translate-y-0 opacity-100'
         }`}
         style={presentation?.maxContentWidth && presentation.maxContentWidth !== '56rem'

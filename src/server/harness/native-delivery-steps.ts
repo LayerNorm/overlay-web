@@ -172,7 +172,6 @@ export async function finishNativeHarnessDelivery(
     || (state.status === 'completed' && state.diagnostic?.code === 'PERSISTENCE_FAILED')) {
     const diagnostic = harnessDiagnosticForFailure(state.runId, state, new Error(state.terminalReason ?? ''), 'delivery')
     const reason = harnessDiagnosticMessage(diagnostic)
-    let content: string | undefined
     let failureTranscript: { content: string; parts: typeof delivery.parts } | undefined
     try {
       const [message] = await server.appData.repositories.conversationCollaboration.listMessages({
@@ -183,20 +182,19 @@ export async function finishNativeHarnessDelivery(
         && message.authorKind === 'agent' && message.authorPrincipalId === access.agentPrincipalId
         && (message.status === 'generating' || message.status === 'error')) {
         failureTranscript = { content: delivery.content, parts: delivery.parts }
-        if (message.status === 'generating' && !message.content.trim()) {
-          content = delivery.content.trim() || reason
-        }
       }
     } catch (_error) {
-      content = undefined
+      failureTranscript = undefined
     }
     await server.appData.repositories.conversationCollaboration.failAgentMessage({
       actorUserId: access.actorUserId, conversationId: access.conversationId,
       messageId: access.assistantMessageId, toolNames: [...activeToolNames],
       runId: access.agentRunId, workflowRunId: access.workflowRunId,
       workspaceId: access.workspaceId,
+      // The run failure attaches the diagnostic as a structured error part, so the
+      // message body never repeats it as text.
       ...(failureTranscript ? {
-        content: delivery.content.trim() || content || '',
+        content: delivery.content.trim(),
         parts: failureTranscript.parts,
       } : {}),
     })

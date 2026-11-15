@@ -3,7 +3,7 @@
  * each time a host uploads an event batch, so QA and the smoke test can read how a run actually streamed:
  * how much was sent to show how much text (snapshot amplification), how often the assistant message was
  * rewritten, how far behind the host the server was, the longest silence, and the longest tool call.
- * See internal/plans/RELIABLE_CONNECTED_AGENTS_PLAN.md (Phase 0).
+ * See "Transport diagnostics" in internal/develop/bring-your-own-agents.md.
  */
 
 export type RemoteRunStreamStats = {
