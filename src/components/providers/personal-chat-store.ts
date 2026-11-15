@@ -49,6 +49,7 @@ export function minimalSummary(summary: PersonalChatSummary): PersonalChatSummar
     lastMessageId: summary.lastMessageId,
     lastMessageAt: summary.lastMessageAt,
     unread: summary.unread,
+    activity: summary.activity,
     lastReadAt: summary.lastReadAt,
     markedUnreadAt: summary.markedUnreadAt,
   }

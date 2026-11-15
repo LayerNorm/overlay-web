@@ -23,6 +23,21 @@ export function decidePersonalActRoute(input: {
   return { kind: 'admit' }
 }
 
+/**
+ * An automation turn the server posted into its bound chat. The scheduler
+ * calls as the owner's service identity and Run now as their session.
+ */
+export function decideAutomationActRoute(input: {
+  authType: AuthenticatedAppUser['authType']
+  harnessReady?: boolean
+}): ActRoutePolicy {
+  if (input.authType !== 'service' && input.authType !== 'session' && input.authType !== 'access-token') {
+    return { kind: 'legacy_execution_retired' }
+  }
+  if (input.harnessReady === false) return { kind: 'harness_unavailable' }
+  return { kind: 'admit' }
+}
+
 export function actRoutePolicyResponse(kind: Exclude<ActRoutePolicy['kind'], 'admit'>, requestId: string): Response {
   const message = kind === 'legacy_execution_retired'
     ? 'Use the supported durable automation or surface entry point for this execution mode.'

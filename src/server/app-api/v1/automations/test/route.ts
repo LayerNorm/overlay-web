@@ -3,15 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 
-// POST /api/v1/automations/test — run an automation once now. Same durable
-// run as POST /api/v1/automations/{id}/run; kept for API clients.
+// POST /api/v1/automations/test — run an automation once now in its thread.
+// Same as POST /api/v1/automations/{id}/run; kept for API clients.
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json().catch((_error) => ({})) as { automationId?: string }
     const result = await automationService.startManualRun({
-      automationId: body.automationId,
+      automationId: body.automationId ?? (typeof context.parsedJson.automationId === 'string' ? context.parsedJson.automationId : undefined),
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
+      routeContext: context,
     })
     return NextResponse.json({ success: true, ...result })
   } catch (error) {

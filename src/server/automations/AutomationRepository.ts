@@ -24,6 +24,17 @@ export type AutomationExecutionPayload = {
   automation: AutomationRunTarget
 }
 
+export type AutomationThreadBinding = {
+  conversationId: string
+  /** An agent thread for agent-owned automations, otherwise an ordinary chat. */
+  kind: 'agent' | 'chat'
+  workspaceId: string
+}
+
+export type AutomationThreadRunOutcome =
+  | { status: 'pending' }
+  | { status: 'completed' | 'failed' | 'cancelled'; error?: string }
+
 export type CreateAutomationInput = {
   userId: string
   name: string
@@ -151,6 +162,21 @@ export interface AutomationRepository {
   getRunForExecution(args: {
     runId: string
   }): Promise<AutomationExecutionPayload | null>
+  /** The automation's one thread, created when it has none that fits. */
+  bindThread(args: {
+    automationId: string
+    userId: string
+  }): Promise<AutomationThreadBinding>
+  linkRunMessage(args: {
+    runId: string
+    userId: string
+    expectedWorkflowRunId: string
+    messageId: string
+  }): Promise<void>
+  /** The outcome of the thread turn a run's message started. */
+  getThreadRunOutcome(args: {
+    runId: string
+  }): Promise<AutomationThreadRunOutcome>
   updateRunWorkflowRunId?(args: {
     runId: string
     workflowRunId: string
