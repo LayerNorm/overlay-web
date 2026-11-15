@@ -267,7 +267,7 @@ function ComposerAccessoryRow(props: ComposerViewProps & { mixedFileInputRef: Re
         {props.textOnly ? null : <AttachMenu {...props} />}
       </div>
       <p className="truncate text-center text-xs text-(--muted-light) max-sm:hidden">
-        {props.queue?.running ? <QueueShortcutHint /> : props.mode === 'chat' ? 'Overlay can make mistakes. Check important info.' : null}
+        {props.queue?.running ? <QueueShortcutHint /> : props.mode === 'chat' ? 'Overlay can make mistakes.' : null}
       </p>
       <div className="flex min-w-0 items-center justify-end gap-1.5">
         <PromptInputTools className="flex-none">
