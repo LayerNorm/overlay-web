@@ -80,7 +80,7 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
   }
 
   // The same composer box as chat and agent threads: one outlined card, centered at the transcript width.
-  return <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4" data-testid="work-task-composer">
+  return <div className="shrink-0 px-3 pb-1 sm:px-4" data-testid="work-task-composer">
     <div className="@container/work-composer mx-auto w-full min-w-0 max-w-4xl">
       <PromptInput><PromptInputBody>
         {draft.context.length ? <div className="flex flex-wrap gap-1 pb-1.5">{draft.context.map((context, index) => <Button key={`${context.type}:${context.id}`} type="button" variant="secondary" size="sm" className="h-7 max-w-full text-xs" disabled={locked} aria-label={`Remove ${context.label}`} onClick={() => patch({ context: draft.context.filter((_, i) => i !== index) })}><span className="truncate">{context.label}</span><X size={12} /></Button>)}</div> : null}
