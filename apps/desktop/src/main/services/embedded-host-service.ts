@@ -1,15 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { app } from 'electron'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { emitDesktopEvent } from './desktop-events'
 import { serverProfileService } from './security/server-profile-service'
 import { createLocalHelperEnvironment } from './security/local-helper-process'
 import {
-  EMBEDDED_HOST_PACKAGE_SPEC,
   ENROLLMENT_CODE_PATTERN,
   buildEmbeddedHostArgs,
+  buildEmbeddedHostRunArgs,
+  embeddedHostPackageSpec,
+  verificationPhraseFrom,
   isEmbeddedHostAdapter,
   isValidServerOrigin,
   resolveNpxPath,
@@ -42,6 +44,10 @@ export interface EmbeddedHostExit {
 export interface EmbeddedHostStatus {
   state: EmbeddedHostState
   adapterId: EmbeddedHostAdapter | null
+  /** The host serves Overlay's own tools on this Mac. */
+  localTools: boolean
+  /** Printed by a host waiting for approval; matched in-app against its enrollment. */
+  verificationPhrase: string | null
   pid: number | null
   startedAt: number | null
   lastExit: EmbeddedHostExit | null
@@ -60,11 +66,31 @@ class EmbeddedHostService {
   private logLines: string[] = []
   private enrollmentCode: string | null = null
   private stopTimer: NodeJS.Timeout | null = null
+  private localTools = false
+  private verificationPhrase: string | null = null
+
+  stateDirectory(): string {
+    return join(app.getPath('userData'), 'agent-host')
+  }
+
+  /** A host connected earlier with local tools can restart from its saved configuration. */
+  savedLocalToolsConfig(): string | null {
+    const path = join(this.stateDirectory(), 'config.json')
+    try {
+      return existsSync(path) && (JSON.parse(readFileSync(path, 'utf8')) as { localTools?: unknown }).localTools === true
+        ? path
+        : null
+    } catch {
+      return null
+    }
+  }
 
   getStatus(): EmbeddedHostStatus {
     return {
       state: this.state,
       adapterId: this.adapterId,
+      localTools: this.localTools,
+      verificationPhrase: this.verificationPhrase,
       pid: this.child?.pid ?? null,
       startedAt: this.startedAt,
       lastExit: this.lastExit,
@@ -72,27 +98,65 @@ class EmbeddedHostService {
     }
   }
 
-  async start(input: { code: string; adapterId: string }): Promise<EmbeddedHostStatus> {
+  async start(input: { code: string; adapterId?: string; localTools?: boolean }): Promise<EmbeddedHostStatus> {
     const code = typeof input.code === 'string' ? input.code.trim() : ''
     if (!ENROLLMENT_CODE_PATTERN.test(code)) throw new Error('Invalid enrollment code.')
-    if (!isEmbeddedHostAdapter(input.adapterId)) throw new Error('Unsupported harness.')
-    if (this.child) this.stopImmediately()
+    if (input.adapterId !== undefined && !isEmbeddedHostAdapter(input.adapterId)) throw new Error('Unsupported harness.')
+    if (input.adapterId === undefined && input.localTools !== true) throw new Error('Choose a harness or local tools.')
+    const origin = serverProfileService.getActiveOrigin()
+    if (!isValidServerOrigin(origin)) throw new Error('Invalid Overlay server origin.')
+    const stateDir = this.stateDirectory()
+    mkdirSync(stateDir, { recursive: true })
+    return this.launch({
+      argv: buildEmbeddedHostArgs({
+        code,
+        ...(input.adapterId ? { adapterId: input.adapterId as EmbeddedHostAdapter } : {}),
+        ...(input.localTools ? { localTools: true } : {}),
+        origin,
+        stateDir,
+        name: `${hostname()} (Desktop)`,
+        packageSpec: embeddedHostPackageSpec(process.env, app.isPackaged),
+        ...(process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE
+          ? { hostingAuthFile: process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE }
+          : {})
+      }),
+      code,
+      adapterId: (input.adapterId as EmbeddedHostAdapter | undefined) ?? null,
+      localTools: input.localTools === true
+    })
+  }
 
+  /** Restarts the local-tools host from its saved connection; no-op when it is running or was never connected. */
+  async resumeLocalTools(): Promise<EmbeddedHostStatus> {
+    if (this.child) return this.getStatus()
+    const configPath = this.savedLocalToolsConfig()
+    if (!configPath) return this.getStatus()
+    return this.launch({
+      argv: buildEmbeddedHostRunArgs({ configPath, packageSpec: embeddedHostPackageSpec(process.env, app.isPackaged) }),
+      code: null,
+      adapterId: null,
+      localTools: true
+    })
+  }
+
+  private async launch(input: {
+    argv: string[]
+    code: string | null
+    adapterId: EmbeddedHostAdapter | null
+    localTools: boolean
+  }): Promise<EmbeddedHostStatus> {
+    if (this.child) this.stopImmediately()
     const npxPath = resolveNpxPath()
     if (!npxPath) {
       throw new Error(
         'Node.js (npx) was not found on this Mac. Install Node.js 22+ or run the connection command in a terminal instead.'
       )
     }
-    const origin = serverProfileService.getActiveOrigin()
-    if (!isValidServerOrigin(origin)) throw new Error('Invalid Overlay server origin.')
-
-    const stateDir = join(app.getPath('userData'), 'agent-host')
-    mkdirSync(stateDir, { recursive: true })
-
-    this.enrollmentCode = code
+    this.enrollmentCode = input.code
     this.state = 'starting'
     this.adapterId = input.adapterId
+    this.localTools = input.localTools
+    this.verificationPhrase = null
     this.startedAt = Date.now()
     this.lastExit = null
     this.logLines = []
@@ -100,16 +164,7 @@ class EmbeddedHostService {
 
     const child = spawn(
       npxPath,
-      buildEmbeddedHostArgs({
-        code,
-        adapterId: input.adapterId,
-        origin,
-        stateDir,
-        name: `${hostname()} (Desktop)`,
-        ...(process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE
-          ? { hostingAuthFile: process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE }
-          : {})
-      }),
+      input.argv,
       {
         env: createLocalHelperEnvironment(),
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -117,7 +172,7 @@ class EmbeddedHostService {
       }
     )
     this.child = child
-    this.appendLog(`Starting embedded agent host (${EMBEDDED_HOST_PACKAGE_SPEC})…`)
+    this.appendLog(`Starting embedded agent host (${input.argv[4]})…`)
 
     child.stdout?.on('data', (chunk: Buffer) => this.appendLog(chunk.toString()))
     child.stderr?.on('data', (chunk: Buffer) => this.appendLog(chunk.toString()))
@@ -205,6 +260,8 @@ class EmbeddedHostService {
         this.enrollmentCode ? line.replaceAll(this.enrollmentCode, '[redacted]') : line
       ).trim()
       if (!trimmed) continue
+      const phrase = verificationPhraseFrom(trimmed)
+      if (phrase) this.verificationPhrase = phrase
       this.logLines.push(trimmed.slice(0, 500))
       if (this.logLines.length > LOG_LINE_LIMIT) {
         this.logLines.splice(0, this.logLines.length - LOG_LINE_LIMIT)

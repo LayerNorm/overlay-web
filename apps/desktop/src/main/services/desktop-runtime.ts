@@ -39,6 +39,13 @@ import {
 import { emitDesktopEvent } from './desktop-events'
 import { desktopPanels } from './desktop-panels'
 import { embeddedHostService } from './embedded-host-service'
+import {
+  LocalComputerPreference,
+  localComputerHome,
+  localComputerPermissions,
+  requestLocalComputerPermission,
+  type LocalComputerSystem
+} from './local-computer'
 import { parakeetService } from './parakeet-service'
 import { whisperKitService } from './whisperkit-service'
 import { modelDownloadService } from './model-download-service'
@@ -113,9 +120,44 @@ export function clearNativeSession(): void {
   cancelPendingNativeAuth()
   safeStorageService.clearAuthSession()
   embeddedHostService.stopImmediately()
+  // Signing out stops this Mac serving tools until the user turns it on again.
+  try { localComputerPreference().keepAvailable = false } catch { /* best effort */ }
   desktopPanels.closeAll()
   clearNotifications()
   app.setBadgeCount(0)
+}
+const localComputerPreference = () => LocalComputerPreference.in(app.getPath('userData'))
+function localComputerSystem(): LocalComputerSystem {
+  return {
+    platform: process.platform,
+    isTrustedAccessibilityClient: (prompt) => systemPreferences.isTrustedAccessibilityClient(prompt),
+    getMediaAccessStatus: (media) => systemPreferences.getMediaAccessStatus(media),
+    openExternal: async (url) => (await import('electron')).shell.openExternal(url),
+    probeScreenCapture: async () => {
+      await (await import('electron')).desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+    }
+  }
+}
+function localComputerStatus(): Results['localComputer.status'] {
+  const host = embeddedHostService.getStatus()
+  return {
+    hostState: host.state,
+    localTools: host.localTools,
+    verificationPhrase: host.verificationPhrase,
+    keepAvailable: localComputerPreference().keepAvailable,
+    homeDirectory: localComputerHome(),
+    permissions: localComputerPermissions(localComputerSystem())
+  }
+}
+/** "Keep this Mac available": after the session is verified, restart the saved local-tools host. */
+export async function resumeLocalComputer(): Promise<void> {
+  if (process.platform !== 'darwin' || !localComputerPreference().keepAvailable) return
+  try {
+    await authenticated()
+    await embeddedHostService.resumeLocalTools()
+  } catch {
+    // Signed out or offline: the user can start it again from Settings → Desktop.
+  }
 }
 function registerShortcut(id: keyof typeof defaults, accelerator: string): void {
   const previous = keys[id]
@@ -337,7 +379,9 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     appVersion: app.getVersion(),
     platform: process.platform,
     capabilities: capabilities.filter(
-      (capability) => capability !== 'diagnostics' || Boolean(process.env.SENTRY_DSN)
+      (capability) =>
+        (capability !== 'diagnostics' || Boolean(process.env.SENTRY_DSN)) &&
+        (capability !== 'localComputer' || process.platform === 'darwin')
     )
   }),
   'window.openDataFolder': async () => {
@@ -485,9 +529,26 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     })
   },
   'agentHost.status': () => embeddedHostService.getStatus(),
-  'agentHost.start': async ({ adapter, enrollmentCode }) => {
+  'agentHost.start': async ({ adapter, enrollmentCode, localTools }) => {
     await authenticated()
-    return embeddedHostService.start({ adapterId: adapter, code: enrollmentCode })
+    if (localTools && process.platform !== 'darwin') throw new Error('This Mac is available on macOS only.')
+    return embeddedHostService.start({
+      ...(adapter ? { adapterId: adapter } : {}),
+      ...(localTools ? { localTools: true } : {}),
+      code: enrollmentCode
+    })
+  },
+  'localComputer.status': () => localComputerStatus(),
+  'localComputer.requestPermission': async ({ permission }) => {
+    await authenticated()
+    await requestLocalComputerPermission(localComputerSystem(), permission)
+    return localComputerStatus()
+  },
+  'localComputer.setKeepAvailable': async ({ enabled }) => {
+    await authenticated()
+    localComputerPreference().keepAvailable = enabled
+    if (enabled) await embeddedHostService.resumeLocalTools()
+    return localComputerStatus()
   },
   'agentHost.stop': () => embeddedHostService.stop(),
   'agentHost.logs': () => embeddedHostService.getStatus().logTail,

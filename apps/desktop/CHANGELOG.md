@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Add This Mac: Overlay agents can use this Mac as a Computer. The embedded Agent Host (now 0.5.0) can start with `--local-tools` and no third-party harness. The bridge gains the `localComputer` capability (status, macOS Screen Recording and Accessibility permission requests, and a per-device "keep available" switch) plus a `localTools` option on `agentHost.start`. With "keep available" on, the saved local-tools host restarts at launch once the session is verified; sign-out turns it off and stops the host. Unpackaged development builds can run a locally packed host through `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` for QA.
 - Slim the repository down to the desktop shell: delete the release-gate checklists, internal TODOs, outdated guides and docs, one-off test scripts for the old chat app (Composio, LanceDB, OpenRouter, phase tests, voice QA and their audio fixtures), checks for the removed renderer, the public-export tooling, unused fonts, provider logos, sounds and file icons, and duplicate license files. Settings, system helpers and security code lose the leftovers nothing called (old assistant settings, screenshots/volume/context capture helpers, rate limiter, unused sign-in exchange, panel latency marks).
 - Allow the manual `Release macOS` workflow to publish to GitHub Releases; it was disabled while the old release gates were open.
 - Drop the Windows/Linux packaging config (the app is macOS only) and the unused WorkOS/Convex environment variables.

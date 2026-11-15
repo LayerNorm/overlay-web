@@ -9,7 +9,7 @@ import {
   remotePreferences,
   redeemSessionTransferInWebShell
 } from './services/web-shell'
-import { registerDesktopRuntime, initializeUpdates } from './services/desktop-runtime'
+import { registerDesktopRuntime, initializeUpdates, resumeLocalComputer } from './services/desktop-runtime'
 import { restorePanelLayout } from './services/desktop-panels'
 import { consumeSessionTransferVerifier } from './services/security/native-auth-service'
 import { verifyCodeSigning } from './services/security/security-service'
@@ -86,6 +86,8 @@ else {
     registerDesktopRuntime()
     createMain()
     initializeUpdates()
+    // "Keep this Mac available": restart the saved local-tools host once the session checks out.
+    void resumeLocalComputer()
     app.on('activate', () => {
       if (!isYieldingFocus()) {
         createMain().show()
