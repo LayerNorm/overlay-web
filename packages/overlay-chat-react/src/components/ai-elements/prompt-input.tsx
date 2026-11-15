@@ -1,7 +1,7 @@
 'use client'
 
 import type { ComponentProps } from 'react'
-import { ArrowUp } from 'lucide-react'
+import { CornerDownLeft } from 'lucide-react'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 import { Spinner } from '@overlay/ui/ai'
@@ -27,7 +27,7 @@ export function PromptInput({ className, dragging = false, ...props }: Component
 }
 
 export function PromptInputBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="prompt-input-body" className={join('relative p-2', className)} {...props} />
+  return <div data-slot="prompt-input-body" className={join('relative py-1 pl-3.5 pr-1.5', className)} {...props} />
 }
 
 export function PromptInputFooter({ className, ...props }: ComponentProps<'div'>) {
@@ -63,7 +63,7 @@ export function PromptInputButton({ className, ...props }: ComponentProps<typeof
 
 export type PromptInputStatus = 'ready' | 'submitted' | 'streaming'
 
-/** ArrowUp when ready, a spinner while the request is submitted, a stop square while streaming. */
+/** A return arrow when ready, a spinner while the request is submitted, a stop square while streaming. */
 export function PromptInputSubmit({
   status = 'ready',
   onStop,
@@ -75,7 +75,7 @@ export function PromptInputSubmit({
   const stopping = status === 'streaming' && Boolean(onStop)
   return (
     <Button
-      variant="primary"
+      variant="ghost"
       size="icon"
       type="button"
       data-slot="prompt-input-submit"
@@ -83,15 +83,15 @@ export function PromptInputSubmit({
       aria-label={stopping ? 'Stop generating' : 'Send message'}
       disabled={stopping ? false : disabled || status === 'submitted'}
       onClick={stopping ? () => onStop?.() : onClick}
-      className={join('shrink-0', className)}
+      className={join('size-9 shrink-0 rounded-lg text-(--foreground) hover:bg-(--surface-muted) disabled:text-(--muted-light) disabled:opacity-100', className)}
       {...props}
     >
       {stopping ? (
-        <span className="size-3.5 rounded-xs bg-current" />
+        <span className="size-3 rounded-[3px] bg-current" />
       ) : status === 'submitted' ? (
         <Spinner className="size-4" />
       ) : (
-        <ArrowUp size={17} strokeWidth={2} />
+        <CornerDownLeft size={17} strokeWidth={1.75} />
       )}
     </Button>
   )

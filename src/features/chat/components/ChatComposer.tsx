@@ -7,7 +7,7 @@ import {
   AtSign,
   Brain,
   Check,
-  FileText,
+  Paperclip,
   Globe2,
   Image as ImageIcon,
   ListEnd,
@@ -139,11 +139,6 @@ export function ChatComposer(props: ChatComposerProps) {
           ) : (
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
-          {viewProps.mode === 'chat' ? (
-            <p className="mt-2 text-center text-[11px] text-(--muted-light)">
-              Overlay can make mistakes. Check important info.
-            </p>
-          ) : null}
         </div>
       </div>
     </>
@@ -217,7 +212,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
           }}
         />
         <div className="flex items-end gap-1">
-          {props.textOnly ? null : <AttachMenu {...props} mixedFileInputRef={mixedFileInputRef} />}
           <div className="min-w-0 flex-1">
           <MentionInput
             ref={props.textareaRef}
@@ -237,7 +231,7 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
         </div>
       </PromptInputBody>
     </PromptInput>
-    <ComposerAccessoryRow {...props} />
+    <ComposerAccessoryRow {...props} mixedFileInputRef={mixedFileInputRef} />
     </>
   )
 }
@@ -247,7 +241,7 @@ function ComposerSendControl(props: ComposerViewProps & { disabledSend: boolean 
   if (props.queue?.running && props.hasComposerText) {
     return (
       <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
-        <Button variant="primary" size="icon" type="button" aria-label="Queue message" className="shrink-0" onClick={props.queue.onQueueDraft}>
+        <Button variant="ghost" size="icon" type="button" aria-label="Queue message" className="size-9 shrink-0 rounded-lg text-(--foreground) hover:bg-(--surface-muted)" onClick={props.queue.onQueueDraft}>
           <ListEnd size={17} strokeWidth={2} />
         </Button>
       </DelayedTooltip>
@@ -265,40 +259,44 @@ function ComposerSendControl(props: ComposerViewProps & { disabledSend: boolean 
   )
 }
 
-/** Page controls sit under the input card, never inside it. */
-function ComposerAccessoryRow(props: ComposerViewProps) {
+/** Everything except the text sits on one quiet row under the input card. */
+function ComposerAccessoryRow(props: ComposerViewProps & { mixedFileInputRef: RefObject<HTMLInputElement | null> }) {
   const memoryOff = props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled
   const tools = props.selectedToolIds.filter((toolId) => isToolRequestEnabled(toolId, props))
-  const hasChips = memoryOff || tools.length > 0 || Boolean(props.generationChip)
-  const queueRunning = Boolean(props.queue?.running)
-  if (!hasChips && !queueRunning && !props.contextUsage && !props.modelControl) return null
   return (
-    <div data-slot="prompt-input-accessories" className="mt-1.5 flex min-h-8 items-center gap-1.5 px-1">
-      <PromptInputTools>
-        {memoryOff ? (
-          <DelayedTooltip label="Memory is off for this message." side="top">
-            <div className="shrink-0">
-              <ToolRequestChip label="Memory: OFF" Icon={Brain} onClear={props.onToggleMemory} />
-            </div>
-          </DelayedTooltip>
-        ) : null}
-        {tools.map((toolId) => {
-          const tool = TOOL_REQUEST_BY_ID.get(toolId)
-          if (!tool) return null
-          return <ToolRequestChip key={toolId} label={tool.label} Icon={tool.Icon} onClear={() => props.onRemoveTool(toolId)} />
-        })}
-        {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
-      </PromptInputTools>
-      {queueRunning ? <QueueShortcutHint /> : null}
-      {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
-      {props.modelControl}
+    <div data-slot="prompt-input-accessories" className="mt-1 grid min-h-8 grid-cols-[1fr_auto_1fr] items-center gap-2 px-0.5">
+      <div className="flex min-w-0 items-center gap-1">
+        {props.textOnly ? null : <AttachMenu {...props} />}
+        <PromptInputTools>
+          {memoryOff ? (
+            <DelayedTooltip label="Memory is off for this message." side="top">
+              <div className="shrink-0">
+                <ToolRequestChip label="Memory: OFF" Icon={Brain} onClear={props.onToggleMemory} />
+              </div>
+            </DelayedTooltip>
+          ) : null}
+          {tools.map((toolId) => {
+            const tool = TOOL_REQUEST_BY_ID.get(toolId)
+            if (!tool) return null
+            return <ToolRequestChip key={toolId} label={tool.label} Icon={tool.Icon} onClear={() => props.onRemoveTool(toolId)} />
+          })}
+          {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
+        </PromptInputTools>
+      </div>
+      <p className="truncate text-center text-xs text-(--muted-light) max-sm:hidden">
+        {props.queue?.running ? <QueueShortcutHint /> : props.mode === 'chat' ? 'Overlay can make mistakes. Check important info.' : null}
+      </p>
+      <div className="flex min-w-0 items-center justify-end gap-1.5">
+        {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
+        {props.modelControl}
+      </div>
     </div>
   )
 }
 
 function QueueShortcutHint() {
   return (
-    <span className="mr-1 flex shrink-0 items-center gap-1 text-[11px] text-(--muted-light) max-sm:hidden" aria-hidden>
+    <span className="inline-flex items-center gap-1" aria-hidden>
       <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">↵</kbd>
       queue
       <span className="px-0.5">·</span>
@@ -306,21 +304,6 @@ function QueueShortcutHint() {
       steer
     </span>
   )
-}
-
-function mentionReferenceLabel(props: Pick<ComposerViewProps, 'capabilities' | 'mentionCategories'>): string {
-  const { capabilities, mentionCategories } = props
-  const targets = [
-    mentionCategories?.some((category) => category.type === 'person') ? 'members' : null,
-    capabilities.files ? 'files' : null,
-    capabilities.knowledge ? 'knowledge bases' : null,
-    capabilities.skills ? 'skills' : null,
-    capabilities.automations ? 'automations' : null,
-    capabilities.mcpServers ? 'MCP servers' : null,
-    capabilities.integrations ? 'connectors' : null,
-    capabilities.chat ? 'chats' : null,
-  ].filter(Boolean)
-  return `Reference ${targets.length > 0 ? targets.join(', ') : 'context'}`
 }
 
 function composerPlaceholder(props: ComposerViewProps): string {
@@ -344,21 +327,20 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
   return (
     <div ref={props.attachMenuRef} className="relative shrink-0">
       <DelayedTooltip label="Attach files or choose tools" side="top">
-        <PromptInputButton onClick={handleToggle} aria-label="Open attachment and tools menu">
-          <Plus size={18} strokeWidth={1.75} />
+        <PromptInputButton onClick={handleToggle} aria-label="Open attachment and tools menu" className="size-8">
+          <Plus size={17} strokeWidth={1.75} />
         </PromptInputButton>
       </DelayedTooltip>
       {props.showAttachMenu && (
-        <div className={`absolute left-0 z-20 w-72 rounded-xl border border-(--border) bg-(--surface-elevated) py-1 shadow-lg ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+        <div className={`absolute left-0 z-20 w-60 rounded-xl border border-(--border) bg-(--surface-elevated) p-1 shadow-xl ${menuDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
           {props.capabilities.files && (
             <AttachMenuButton
               onClick={() => {
                 props.mixedFileInputRef.current?.click()
                 props.setShowAttachMenu(false)
               }}
-              icon={<FileText size={13} strokeWidth={1.75} />}
-              label="Attach photos and files"
-              suffix="Images, docs"
+              icon={<Paperclip size={15} strokeWidth={1.6} />}
+              label="Upload files or photos"
             />
           )}
           <AttachMenuButton
@@ -366,10 +348,11 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               props.setShowAttachMenu(false)
               props.textareaRef.current?.openMentionPopup()
             }}
-            icon={<AtSign size={13} strokeWidth={1.75} />}
+            icon={<AtSign size={15} strokeWidth={1.6} />}
             label="Mention"
             suffix="@"
           />
+          <MenuDivider />
           {props.agentCommands?.length ? (
             <AttachMenuButton
               onClick={() => {
@@ -377,7 +360,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
                 if (!props.hasComposerText) props.onInputChange('/')
                 props.textareaRef.current?.focus()
               }}
-              icon={<Slash size={13} strokeWidth={1.75} />}
+              icon={<Slash size={15} strokeWidth={1.6} />}
               label="Slash commands"
             />
           ) : null}
@@ -392,25 +375,25 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
                   props.onToggleTool(tool.id)
                   props.setShowAttachMenu(false)
                 }}
-                icon={<Icon size={13} strokeWidth={1.75} />}
+                icon={<Icon size={15} strokeWidth={1.6} />}
                 label={tool.label}
-                suffix={active ? undefined : tool.description}
                 checked={active}
               />
             )
           })}
-          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={13} className="text-(--foreground)" />} label="Generate images" />
-          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={13} className="text-(--foreground)" />} label="Generate videos" />
+          <MenuDivider />
+          <AttachMenuButton onClick={() => { props.onModeChange('image'); props.setShowAttachMenu(false) }} icon={<ImageIcon size={15} strokeWidth={1.6} />} label="Generate images" />
+          <AttachMenuButton onClick={() => { props.onModeChange('video'); props.setShowAttachMenu(false) }} icon={<Video size={15} strokeWidth={1.6} />} label="Generate videos" />
           {props.capabilities.memory && props.capabilities.vectorSearch && (
             <>
-              <div className="my-1 border-t border-(--border)" />
+              <MenuDivider />
               <AttachMenuButton
                 active={props.memoryEnabled}
                 onClick={() => {
                   props.onToggleMemory()
                   props.setShowAttachMenu(false)
                 }}
-                icon={<Brain size={13} strokeWidth={1.75} />}
+                icon={<Brain size={15} strokeWidth={1.6} />}
                 label="Memory"
                 showSwitch
                 neutralWhenActive
@@ -456,12 +439,10 @@ function AttachMenuButton({
   checked?: boolean
   neutralWhenActive?: boolean
 }) {
-  const activeClass = active && !neutralWhenActive
-    ? 'bg-(--surface-muted) text-(--foreground)'
-    : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)'
+  const activeClass = active && !neutralWhenActive ? 'bg-(--surface-muted)' : 'hover:bg-(--surface-muted)'
 
   return (
-    <Button variant="ghost" type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={`h-auto w-full justify-start gap-2.5 px-3 py-2 text-xs font-normal transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : activeClass}`}>
+    <Button variant="ghost" type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={'h-8 w-full justify-start gap-2.5 rounded-lg px-2.5 text-[13px] font-normal text-(--foreground) transition-colors ' + (disabled ? 'cursor-not-allowed opacity-50' : activeClass)}>
       {icon}
       <span>{label}</span>
       {showSwitch ? (
@@ -471,10 +452,14 @@ function AttachMenuButton({
       ) : checked ? (
         <Check size={11} strokeWidth={1.8} className="ml-auto shrink-0 text-(--foreground)" />
       ) : suffix ? (
-        <span className="ml-auto max-w-27 truncate text-[10px] text-(--muted-light)">{suffix}</span>
+        <span className="ml-auto text-xs text-(--muted-light)">{suffix}</span>
       ) : null}
     </Button>
   )
+}
+
+function MenuDivider() {
+  return <div className="mx-2 my-1 border-t border-(--border)" />
 }
 
 function ToolRequestChip({
