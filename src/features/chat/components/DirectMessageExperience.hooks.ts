@@ -1625,7 +1625,11 @@ export function useRoomComposerQueue({
     queue.pause()
     setStopRequested(true)
   }, [queue])
-  return { controls, running, stop }
+  const stopMessage = useCallback((messageId: string) => {
+    queue.pause()
+    return stopAgentResponse(messageId)
+  }, [queue, stopAgentResponse])
+  return { controls, running, stop, stopMessage }
 }
 
 export function useRemoteAgentControls({
@@ -2513,7 +2517,7 @@ export function useDirectMessageRoom({
     composer,
     sendMessage,
     navigation,
-    remoteControls,
+    remoteControls: { ...remoteControls, stopAgentResponse: composerQueue.stopMessage },
     onOpenAttachmentPreview,
   })
 
