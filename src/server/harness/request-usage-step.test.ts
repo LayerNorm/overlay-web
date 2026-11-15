@@ -10,7 +10,7 @@ vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ appData
 const reference = { actorUserId: 'user', runId: 'root', workflowRunId: 'workflow' }
 const snapshot = () => ({ ...createHarnessSnapshot({ runId: 'root', goal: 'Complete the work', constraints: [], policy: {
   actorUserId: 'user', workspaceId: 'original-workspace', requiresPlan: false, allowedToolIds: [],
-  maxCostMicros: 0, deadlineAt: 10_000, maxDepth: 1, maxParallelChildren: 2,
+  maxCostMicros: 0, deadlineAt: 10_000,
 } }, 1), workflowRunId: 'workflow' })
 
 beforeEach(() => { vi.resetAllMocks(); mocks.read.mockResolvedValue(snapshot()) })

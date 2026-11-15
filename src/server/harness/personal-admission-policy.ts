@@ -54,8 +54,5 @@ export function personalHarnessPolicy(input: {
     // Only a deadline the person set explicitly; there is no per-task spending limit.
     ...(input.budget?.durationMs !== undefined ? { taskDeadlineAt: input.createdAt + durationMs } : {}),
     maxCostMicros: 0,
-    // Sub-agents share the workspace budget; these only bound runaway fan-out and nesting.
-    maxParallelChildren: 16,
-    maxDepth: 5,
   }
 }

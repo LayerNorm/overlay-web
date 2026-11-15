@@ -59,7 +59,7 @@ async function seedWritableStream(
     runId, goal: 'Answer the request.', constraints: [],
     policy: {
       actorUserId: 'owner', allowedToolIds: [], requiresPlan: false, deadlineAt: now + 60_000,
-      maxCostMicros: 1_000, maxParallelChildren: 1, maxDepth: 1, publicStreamVersion: 1 as const,
+      maxCostMicros: 1_000, publicStreamVersion: 1 as const,
       workspaceId,
     },
     source: { conversationId }, deliveryAgentRunId: messageIds.deliveryId,

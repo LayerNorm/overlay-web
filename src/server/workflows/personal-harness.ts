@@ -177,6 +177,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       }),
       delegate: async (delegation, toolCallId) => {
         const child = await admitPersonalHarnessChild(execution, delegation, toolCallId)
+        if ('rejected' in child) return child
         const snapshot = await readHarnessChild(access, child.id)
         await startPersonalHarnessChild(access, input.context, personalHarnessChildInput(input, snapshot))
         return child
@@ -218,6 +219,10 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
       const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot, new Error(result.snapshot.blocker?.question ?? ''), 'model')
+      // The blocker question is model output; log only which kind of blocker ended the run.
+      logHarnessFailure(access.runId, diagnostic, Object.assign(
+        new Error(`The run ended while blocked (${result.snapshot.blocker?.kind ?? 'none'}, ${result.snapshot.status}).`),
+        { name: 'HarnessBlockedFinalization' }))
       const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason, diagnostic,

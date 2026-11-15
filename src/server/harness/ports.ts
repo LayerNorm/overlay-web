@@ -14,6 +14,8 @@ import type { AuthenticatedToolDenial, ObservedToolOutcome } from './tool-outcom
 
 export type HarnessModelSettings = Pick<WorkflowAgentOptions, 'maxOutputTokens' | 'temperature' | 'reasoning' | 'providerOptions'>
 
+export type HarnessDelegationRejection = { rejected: true; reason: string }
+
 export type HarnessDelegation = {
   stepId: string
   goal: string
@@ -92,7 +94,8 @@ export interface HarnessExecutionPorts {
   /** The error is present when the call threw rather than settling with a failed response. */
   recoverModelFailure?(receiptId: string, error?: unknown): Promise<boolean>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
-  delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
+  /** A refused admission comes back as a result the model can act on, never as a run failure. */
+  delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild | HarnessDelegationRejection>
   readChild(childRunId: string): Promise<HarnessSnapshot>
   waitForChildren(childRunIds: string[]): Promise<void>
   waitForInput(state: HarnessSnapshot): Promise<ModelMessage[] | null>

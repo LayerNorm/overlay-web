@@ -108,8 +108,10 @@ const policyValidator = v.object({
   deadlineAt: v.number(),
   taskDeadlineAt: v.optional(v.number()),
   maxCostMicros: v.number(),
-  maxParallelChildren: v.number(),
-  maxDepth: v.number(),
+  // Retired sub-agent caps. Accepted and ignored until web and Convex both run
+  // without them; the workspace budget is the only limit. Delete after rollout.
+  maxParallelChildren: v.optional(v.number()),
+  maxDepth: v.optional(v.number()),
 })
 
 const sourceValidator = v.union(
@@ -286,7 +288,8 @@ const operationValidator = v.union(
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
-        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
+        v.literal('MODEL_UNAVAILABLE'), v.literal('BACKEND_UNAVAILABLE'), v.literal('INTERNAL_ERROR'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
         v.literal('persistence'), v.literal('delivery')),
       operationId: v.optional(v.string()),
@@ -303,7 +306,8 @@ const operationValidator = v.union(
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
-        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
+        v.literal('MODEL_UNAVAILABLE'), v.literal('BACKEND_UNAVAILABLE'), v.literal('INTERNAL_ERROR'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
         v.literal('persistence'), v.literal('delivery')),
       operationId: v.optional(v.string()),
@@ -341,7 +345,8 @@ const operationValidator = v.union(
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
-        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
+        v.literal('MODEL_UNAVAILABLE'), v.literal('BACKEND_UNAVAILABLE'), v.literal('INTERNAL_ERROR'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
         v.literal('persistence'), v.literal('delivery')),
       operationId: v.optional(v.string()),
@@ -468,12 +473,7 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || !Number.isFinite(input.policy.deadlineAt)
     || (input.policy.taskDeadlineAt !== undefined && !Number.isFinite(input.policy.taskDeadlineAt))
     || !Number.isSafeInteger(input.policy.maxCostMicros)
-    || input.policy.maxCostMicros < 0
-    || !Number.isSafeInteger(input.policy.maxParallelChildren)
-    || input.policy.maxParallelChildren < 0
-    || !Number.isSafeInteger(input.policy.maxDepth)
-    || input.policy.maxDepth < 0
-    || input.policy.maxDepth > MAX_HARNESS_DEPTH) {
+    || input.policy.maxCostMicros < 0) {
     throw new Error('Invalid harness policy.')
   }
   if ((input.policy.executionPolicyVersion === 2
@@ -1309,8 +1309,6 @@ function childAdmission(
       spendingMode: parent.policy.spendingMode!,
     } : {}),
     maxCostMicros: 0,
-    maxParallelChildren: parent.policy.maxParallelChildren,
-    maxDepth: parent.policy.maxDepth,
   }
   return {
     runId: operation.child.id,
@@ -2291,13 +2289,6 @@ export const apply = mutation({
           createdAt: now,
         })
         return { applied: false, conflict: false, snapshot: current }
-      }
-    }
-
-    if (operation.type === 'admit_child') {
-      const root = lineage.at(-1)!
-      if (root.run.activeDescendantCount >= root.metadata.policy.maxParallelChildren) {
-        throw new Error('The root child concurrency budget is exhausted.')
       }
     }
 

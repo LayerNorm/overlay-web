@@ -62,7 +62,7 @@ async function open(
 function admission(conversationId: string, deliveryAgentRunId: string): HarnessAdmission {
   return { runId: `workspace:${deliveryAgentRunId}`, deliveryAgentRunId, source: { conversationId }, goal: 'Read the record.',
     constraints: [], policy: { actorUserId: 'alice', workspaceId: 'workspace', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2 } }
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0 } }
 }
 
 test.each(['legacy', 'unowned', 'native', 'remote'])('message writes require a supported run: %s', async scenario => {

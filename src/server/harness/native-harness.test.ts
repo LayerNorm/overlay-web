@@ -50,7 +50,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   state = { ...createHarnessSnapshot({ runId: 'workspace:agent', goal: 'Read', constraints: [], policy: {
     actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read'], requiresPlan: false,
-    maxCostMicros: 100, deadlineAt: Date.now() + 60_000, maxDepth: 2, maxParallelChildren: 2,
+    maxCostMicros: 100, deadlineAt: Date.now() + 60_000,
   } }, Date.now()), workflowRunId: 'workflow' }
   mocks.read.mockResolvedValue(state)
   mocks.claim.mockResolvedValue(true)
