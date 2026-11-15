@@ -388,6 +388,7 @@ export function DirectMessageExperience({
                 setMentions: room.setMentions,
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
+                queue: room.composerQueue,
               }}
             />
           </AppScreenBody>
