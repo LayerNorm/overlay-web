@@ -28,7 +28,7 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  createEnrollment(workspaceId: string, input?: { adapterId?: BuiltInUserOwnedAcpAdapterId }, init?: RequestInit) {
+  createEnrollment(workspaceId: string, input?: { adapterId?: BuiltInUserOwnedAcpAdapterId; localTools?: true }, init?: RequestInit) {
     return this.http.json<{ enrollmentSessionId: string; code: string; command: string; expiresAt: number }>(
       '/api/v1/agent-environments/enrollment-sessions',
       this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),

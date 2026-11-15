@@ -19,6 +19,7 @@ import {
   DesktopSection,
   ShortcutRecorder,
 } from "./DesktopSettingsParts";
+import { DesktopLocalComputerSettings } from "./DesktopLocalComputerSettings";
 import { useDesktopBridge } from "@/components/desktop/DesktopProvider";
 import type {
   DesktopBridge,
@@ -191,6 +192,9 @@ export function DesktopSettings() {
             ))}
           </SettingsGroup>
         </DesktopSection>
+      ) : null}
+      {can("localComputer") && can("agentHost") ? (
+        <DesktopLocalComputerSettings bridge={bridge} />
       ) : null}
       {can("agentHost") ? (
         <AgentHostSection bridge={bridge} host={host} busy={busy} run={run} />

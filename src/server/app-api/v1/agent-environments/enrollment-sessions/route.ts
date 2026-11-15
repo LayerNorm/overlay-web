@@ -10,7 +10,7 @@ import { agentEnvironmentErrorResponse } from '../shared'
 
 export async function POST(request: Request, context: AppApiRouteContext) {
   try {
-    const body = context.parsedJson as Partial<{ adapterId: string }>
+    const body = context.parsedJson as Partial<{ adapterId: string; localTools: boolean }>
     const requestedAdapterId = body.adapterId?.trim()
     let adapterId: BuiltInUserOwnedAcpAdapterId | undefined
     if (requestedAdapterId) {
@@ -30,6 +30,7 @@ export async function POST(request: Request, context: AppApiRouteContext) {
         code: enrollment.code,
         origin,
         ...(adapterId ? { adapterId } : {}),
+        ...(body.localTools === true ? { localTools: true } : {}),
       }),
     }, { status: 201, headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

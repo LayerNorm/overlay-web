@@ -1750,10 +1750,50 @@ and visible desktop, including on Boat. There is no separate hosted browser
 provider. E2B remains a self-hosted Computer option; acceptance must name the
 provider actually tested.
 
+## Local tools: the user's Mac as a Computer
+
+An Agent Host started with `--local-tools` (the desktop's "This Mac") serves
+Overlay's own computer tools on its machine. It needs no adapter, ACP process or
+third-party harness; `config.json` accepts `adapters: []` with `localTools: true`.
+The native Overlay harness, inference and subscriptions stay in Overlay; only
+tool execution runs on the machine.
+
+- **Protocol.** `hostCapabilities.localTools` (`version: 1`, `os`, `features`,
+  `homeDirectory`) is an optional negotiated extension; a host drops it on a 400
+  from an older server. Tool calls are a separate request/response channel, not
+  run commands: `GET local-tool-calls` long-polls up to 20 s (command-poll
+  scope) and `POST local-tool-calls/{callId}/result` answers (events-write
+  scope). Types live in `packages/overlay-agent-bridge-protocol/src/local-tools.ts`.
+- **Delivery.** `agentLocalToolCalls` rows are at most once: claimed before
+  running, expired (not delivered) after their deadline, answered once. The web
+  server polls the row while it waits and expires it on timeout. Rows are
+  deleted after an hour.
+- **Who can use it.** Only the user who approved the environment, while it is
+  online, advertises local tools and they remain an active workspace member.
+  Automations never use a local machine.
+- **Tools.** `LocalHostSandboxInstance` presents the machine through the
+  sandbox interface, so every `computer_*` tool runs unchanged; desktop and
+  terminal commands go to the host's native driver instead of the cloud Python
+  driver. Each tool takes an optional `target` (`cloud` or `local`); without it a
+  bound cloud Computer wins and the user's Mac is the fallback. Approvals,
+  risky-click confirmation and tool rows are the same as on a cloud Computer.
+  Cloud gateway credentials are not forwarded to the user's machine.
+- **Host executor** (`packages/overlay-agent-host/src/local-tools*.ts`). Shell
+  commands run in the user's login shell inside approved folders; file paths are
+  resolved through symlinks before the root check. Terminal sessions mirror the
+  cloud driver (ids, eight-session limit, output limits). macOS screen control
+  uses only built-in tools (`screencapture`, `sips`, JavaScript for Automation
+  CoreGraphics events) and needs the Screen Recording and Accessibility
+  permissions of the app that started the host. Typing pastes through the
+  clipboard and restores plain-text clipboard content. The browser is a
+  dedicated Overlay Chrome profile on loopback DevTools, never the user's
+  everyday profile.
+
 ## macOS desktop web shell
 
 The desktop loads the web Agents flow and starts its pinned local Agent Host
-through the origin-checked desktop bridge. Enrollment remains explicitly initiated
+through the origin-checked desktop bridge. Settings → Desktop → This Mac starts
+it with local tools only (see Local tools above). Enrollment remains explicitly initiated
 by the user; selected-root approval and heartbeat readiness stay server-owned.
 The window owns the cookie session. Sign-out stops the child and closes panels;
 native code never stores a second rotating WorkOS session. See

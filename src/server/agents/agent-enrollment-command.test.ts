@@ -47,3 +47,10 @@ test('the enrollment command rejects shell-unsafe codes and non-HTTPS origins', 
     /HTTPS origin/,
   )
 })
+
+test('a local-tools command serves Overlay tools on the machine and starts no harness', () => {
+  assert.equal(
+    buildAgentHostEnrollmentCommand({ code: 'single-use-code', origin: 'https://getoverlay.io', localTools: true }),
+    `npx --yes --package node@24 --package @layernorm/overlay-agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION} overlay-agent-host connect single-use-code --server https://getoverlay.io --local-tools --run`,
+  )
+})

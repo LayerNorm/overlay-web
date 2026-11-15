@@ -19,6 +19,11 @@ import {
   type EnvironmentCredentialResponse,
   type FilesystemGrant,
   artifactUploadResponseSchema,
+  localToolPollResponseSchema,
+  localToolResultSchema,
+  LOCAL_TOOL_POLL_WAIT_MAX_MS,
+  type LocalToolPollResponse,
+  type LocalToolResult,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import { createHash, randomBytes, sign } from 'node:crypto'
 
@@ -43,6 +48,9 @@ export interface AgentControlPlaneClient {
   fetchDriveCredentials?(input: Omit<DriveCredentialsRequest, 'protocolVersion'>): Promise<DriveCredentialsResponse>
   /** Refresh the approved policy through the existing device-signed credential rotation. */
   refreshFilesystemGrant?(): Promise<FilesystemGrant>
+  /** Local tools: long-poll for Overlay tool calls to run on this machine. */
+  pollLocalToolCalls?(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<LocalToolPollResponse, 'protocolVersion'>>
+  submitLocalToolResult?(result: LocalToolResult): Promise<void>
 }
 
 export type HttpControlPlaneClientOptions = {
@@ -141,6 +149,21 @@ export class HttpAgentControlPlaneClient implements AgentControlPlaneClient {
       method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
     })
     return driveCredentialsResponseSchema.parse(await response.json())
+  }
+
+  async pollLocalToolCalls(args: { waitMs: number; signal?: AbortSignal }): Promise<Omit<LocalToolPollResponse, 'protocolVersion'>> {
+    const url = new URL('local-tool-calls', withSlash(this.options.baseUrl))
+    url.searchParams.set('environmentId', this.options.environmentId)
+    url.searchParams.set('waitMs', String(Math.min(Math.max(args.waitMs, 0), LOCAL_TOOL_POLL_WAIT_MAX_MS)))
+    const response = await this.request(url, { method: 'GET', signal: args.signal })
+    return { calls: localToolPollResponseSchema.parse(await response.json()).calls }
+  }
+
+  async submitLocalToolResult(result: LocalToolResult): Promise<void> {
+    const body = localToolResultSchema.parse(result)
+    await this.request(new URL(`local-tool-calls/${encodeURIComponent(body.callId)}/result`, withSlash(this.options.baseUrl)), {
+      method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
+    })
   }
 
   async refreshFilesystemGrant(): Promise<FilesystemGrant> {

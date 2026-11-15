@@ -208,8 +208,12 @@ export async function prepareActTooling(params: {
       automationExecution: params.automationExecution,
       automationMode: params.automationMode,
       mode: params.mode,
-      findPersonalComputer: params.findPersonalComputer ?? ((workspaceId, userId) =>
-        getOverlayServerContext().appData.repositories.computers.findByOwner(workspaceId, 'user', userId)),
+      // A cloud Computer or the user's own connected Mac both make the computer tools available.
+      findPersonalComputer: params.findPersonalComputer ?? (async (workspaceId, userId) => {
+        const context = getOverlayServerContext()
+        return await context.appData.repositories.computers.findByOwner(workspaceId, 'user', userId)
+          ?? await context.localComputerService.findForUser({ workspaceId, userId })
+      }),
     },
   )
   const policyToolIds = applyAccountToolPolicy(applyRuntimeToolGates(

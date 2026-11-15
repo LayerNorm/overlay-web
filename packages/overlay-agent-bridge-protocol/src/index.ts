@@ -1,6 +1,8 @@
 import { z } from 'zod/v3'
 import { driveSyncStatusSchema } from './drive.js'
+import { localToolsCapabilitySchema } from './local-tools.js'
 export * from './drive.js'
+export * from './local-tools.js'
 export * from './drive-recovery.js'
 
 export const OVERLAY_AGENT_PROTOCOL_VERSION = 1 as const
@@ -70,6 +72,8 @@ export const hostCapabilitiesSchema = z.object({
   streaming: streamingCapabilitiesSchema.optional(),
   mcp: z.object({ approvalBridge: z.literal(true) }).strict().optional(),
   drive: z.object({ version: z.literal(1) }).strict().optional(),
+  /** Negotiated extension: the host serves Overlay's native tools on its own machine. */
+  localTools: localToolsCapabilitySchema.optional(),
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   adapters: z.array(adapterCapabilitySchema).max(100),

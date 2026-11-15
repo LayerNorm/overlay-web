@@ -32,6 +32,7 @@ import { createRunStream } from './run-stream.js'
 import { StructuredLogger } from './logger.js'
 import { SqliteHostStateStore } from './state.js'
 import type { AgentControlPlaneClient } from './transport.js'
+import { LocalToolLoop, type LocalToolExecutor } from './local-tools.js'
 import { nextReconnectDelay } from './transport.js'
 
 export type AgentHostRuntimeOptions = {
@@ -46,6 +47,8 @@ export type AgentHostRuntimeOptions = {
   logger?: StructuredLogger
   maxOutboxEvents?: number
   drive?: { stateDirectory: string; apiUrl: string; create?: typeof createRuntimeDrive; syncIntervalMs?: number; fetch?: typeof globalThis.fetch }
+  /** Serve Overlay's native tools on this machine; independent of adapters. */
+  localTools?: LocalToolExecutor
 }
 
 export class AgentHostRuntime {
@@ -120,12 +123,15 @@ export class AgentHostRuntime {
 
   async run(signal: AbortSignal): Promise<void> {
     let attempt = 0
+    let localToolsRun: Promise<void> | undefined
     const abort = () => { this.shuttingDown = true }
     signal.addEventListener('abort', abort, { once: true })
     if (signal.aborted) abort()
     try {
       if (signal.aborted) return
       await this.refreshHostState()
+      const localTools = this.startLocalTools(signal)
+      if (localTools) localToolsRun = localTools
       this.hostHeartbeat.start(signal, error => this.logger.warn('host heartbeat deferred', { error: safeError(error) }))
       while (!signal.aborted) {
         try {
@@ -143,6 +149,7 @@ export class AgentHostRuntime {
       }
     } finally {
       this.shuttingDown = true
+      await localToolsRun?.catch(error => this.logger.warn('local tools stopped with an error', {error: safeError(error)}))
       const heartbeatStopped = this.hostHeartbeat.stop()
       try {
         await quiesceHostRuns({sessions: this.sessions.values(), prompts: this.prompts, streams: this.streams.values(), drives: this.drives.values()})
@@ -155,11 +162,20 @@ export class AgentHostRuntime {
     }
   }
 
+  private startLocalTools(signal: AbortSignal): Promise<void> | undefined {
+    const { localTools, controlPlane } = this.options
+    if (!localTools || !controlPlane.pollLocalToolCalls || !controlPlane.submitLocalToolResult) return undefined
+    const client = { pollLocalToolCalls: controlPlane.pollLocalToolCalls.bind(controlPlane), submitLocalToolResult: controlPlane.submitLocalToolResult.bind(controlPlane) }
+    this.logger.info('local tools ready', {environmentId: this.options.environmentId})
+    return new LocalToolLoop(client, localTools, this.logger).run(signal)
+  }
+
   private async refreshHostState(): Promise<void> {
     if (this.options.controlPlane.updateCapabilities) {
       const capabilities = buildHostCapabilities(await this.discoverCapabilities(), {
         durableLifecycle: this.options.durableLifecycle === true, drive: Boolean(this.options.drive),
-        hostVersion: '0.4.3', filesystem: this.options.filesystem, maxConcurrentRuns: this.adapters.size,
+        hostVersion: '0.5.0', filesystem: this.options.filesystem, maxConcurrentRuns: this.adapters.size,
+        ...(this.options.localTools ? { localTools: await this.options.localTools.capability() } : {}),
       })
       await updateHostCapabilities(this.options.controlPlane, capabilities)
     }

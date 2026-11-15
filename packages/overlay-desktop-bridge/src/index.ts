@@ -12,6 +12,7 @@ export const capabilities = [
   "capture",
   "notifications",
   "agentHost",
+  "localComputer",
   "updates",
   "diagnostics",
 ] as const;
@@ -101,12 +102,24 @@ export const methodSchemas = {
   "agentHost.status": empty,
   "agentHost.start": z
     .object({
-      adapter: z.enum(["claude-code", "codex", "hermes"]),
+      adapter: z.enum(["claude-code", "codex", "hermes"]).optional(),
       enrollmentCode: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/),
+      /** Serve Overlay's own tools on this Mac; requires the localComputer capability. */
+      localTools: z.literal(true).optional(),
     })
-    .strict(),
+    .strict()
+    .refine((value) => value.adapter !== undefined || value.localTools === true, {
+      message: "Choose a harness or local tools",
+    }),
   "agentHost.stop": empty,
   "agentHost.logs": empty,
+  "localComputer.status": empty,
+  "localComputer.requestPermission": z
+    .object({ permission: z.enum(["accessibility", "screen_recording"]) })
+    .strict(),
+  "localComputer.setKeepAvailable": z
+    .object({ enabled: z.boolean() })
+    .strict(),
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -127,6 +140,15 @@ export type HostStatus = {
   adapterId: string | null;
   pid: number | null;
   logTail: string[];
+};
+/** This Mac as an Overlay Computer: host state, the enrollment phrase it printed, and macOS permissions. */
+export type LocalComputerStatus = {
+  hostState: string;
+  localTools: boolean;
+  verificationPhrase: string | null;
+  keepAvailable: boolean;
+  homeDirectory: string;
+  permissions: { accessibility: boolean; screenRecording: boolean };
 };
 export type UpdateStatus = {
   state: string;
@@ -172,6 +194,9 @@ export type Results = {
   "agentHost.start": HostStatus;
   "agentHost.stop": HostStatus;
   "agentHost.logs": string[];
+  "localComputer.status": LocalComputerStatus;
+  "localComputer.requestPermission": LocalComputerStatus;
+  "localComputer.setKeepAvailable": LocalComputerStatus;
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;

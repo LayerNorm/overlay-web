@@ -25,6 +25,7 @@ import type * as agents_directory from "../agents/directory.js";
 import type * as agents_environmentControlPlane from "../agents/environmentControlPlane.js";
 import type * as agents_environmentsBrowse from "../agents/environmentsBrowse.js";
 import type * as agents_idleStop from "../agents/idleStop.js";
+import type * as agents_localToolCalls from "../agents/localToolCalls.js";
 import type * as agents_mcpCalls from "../agents/mcpCalls.js";
 import type * as agents_nativeRecovery from "../agents/nativeRecovery.js";
 import type * as agents_profiles from "../agents/profiles.js";
@@ -241,6 +242,7 @@ declare const fullApi: ApiFromModules<{
   "agents/environmentControlPlane": typeof agents_environmentControlPlane;
   "agents/environmentsBrowse": typeof agents_environmentsBrowse;
   "agents/idleStop": typeof agents_idleStop;
+  "agents/localToolCalls": typeof agents_localToolCalls;
   "agents/mcpCalls": typeof agents_mcpCalls;
   "agents/nativeRecovery": typeof agents_nativeRecovery;
   "agents/profiles": typeof agents_profiles;

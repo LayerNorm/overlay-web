@@ -9,6 +9,8 @@ crons.interval('Harness continuation reconciliation', { minutes: 1 }, internal.h
 
 crons.interval('expired connected-agent MCP results', { hours: 1 }, internal.agents.mcpCalls.cleanupExpired)
 
+crons.interval('expired local tool calls', { minutes: 15 }, internal.agents.localToolCalls.cleanupExpired)
+
 crons.interval(
   'expired harness context artifacts',
   { hours: 1 },

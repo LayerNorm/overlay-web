@@ -1,9 +1,23 @@
-import {OVERLAY_AGENT_PROTOCOL_VERSION, type AdapterCapability, type FilesystemGrant, type HostCapabilities} from '@layernorm/overlay-agent-bridge-protocol'
+import {OVERLAY_AGENT_PROTOCOL_VERSION, type AdapterCapability, type FilesystemGrant, type HostCapabilities, type LocalToolsCapability} from '@layernorm/overlay-agent-bridge-protocol'
 import {platform, release} from 'node:os'
 import { ControlPlaneRequestError, type AgentControlPlaneClient } from './transport.js'
 
 /** Negotiate optional extensions without breaking hosts connected to strict older servers. */
 export async function updateHostCapabilities(client: AgentControlPlaneClient, capabilities: HostCapabilities): Promise<void> {
+  if (capabilities.localTools) {
+    try { await updateWithoutLocalToolsFallback(client, capabilities); return }
+    catch (error) {
+      if (!(error instanceof ControlPlaneRequestError) || error.status !== 400) throw error
+      // An older server does not know local tools; keep the rest of the negotiation.
+      const { localTools: _localTools, ...legacy } = capabilities
+      void _localTools
+      capabilities = legacy
+    }
+  }
+  await updateWithoutLocalToolsFallback(client, capabilities)
+}
+
+async function updateWithoutLocalToolsFallback(client: AgentControlPlaneClient, capabilities: HostCapabilities): Promise<void> {
   const send = async (value: HostCapabilities) => {
     try { await client.updateCapabilities?.(value) }
     catch (error) {
@@ -40,12 +54,14 @@ export async function updateHostCapabilities(client: AgentControlPlaneClient, ca
 
 export function buildHostCapabilities(adapters: AdapterCapability[], options: {
   durableLifecycle: boolean; drive: boolean; hostVersion: string; filesystem: FilesystemGrant; maxConcurrentRuns: number
+  localTools?: LocalToolsCapability
 }): HostCapabilities {
   return {
     protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
     ...(options.durableLifecycle ? {remoteLifecycleVersion: 2} : {}),
     streaming: {textDeltas: true, heartbeats: true}, mcp: {approvalBridge: true},
     ...(options.drive ? {drive: {version: 1}} : {}),
+    ...(options.localTools ? {localTools: options.localTools} : {}),
     hostVersion: options.hostVersion, platform: `${platform()} ${release()}`,
     adapters: adapters.map(capability => {
       if (options.durableLifecycle) return capability

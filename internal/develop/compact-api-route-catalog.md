@@ -84,6 +84,8 @@ For a description of what each route does and its associated implementation file
 - `PUT /api/v1/agent-environments/[environmentId]/capabilities`
 - `POST /api/v1/agent-environments/[environmentId]/commands/[commandId]/ack`
 - `GET /api/v1/agent-environments/[environmentId]/commands`
+- `GET /api/v1/agent-environments/[environmentId]/local-tool-calls`
+- `POST /api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result`
 - `POST /api/v1/agent-environments/[environmentId]/credentials/refresh`
 - `POST /api/v1/agent-environments/[environmentId]/credentials`
 - `POST /api/v1/agent-environments/[environmentId]/desktop`

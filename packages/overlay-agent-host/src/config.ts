@@ -14,6 +14,8 @@ export const agentHostConfigSchema = z.object({
   credentialEnv: z.string().min(1).default('OVERLAY_AGENT_HOST_CREDENTIAL'),
   stateDirectory: z.string().min(1),
   filesystem: filesystemGrantSchema,
+  /** Serve Overlay's native tools on this machine. A local-tools host needs no adapter. */
+  localTools: z.boolean().optional(),
   adapters: z.array(z.union([
     z.object({ manifest: z.enum(Object.keys(ACP_ADAPTER_MANIFESTS) as [keyof typeof ACP_ADAPTER_MANIFESTS, ...(keyof typeof ACP_ADAPTER_MANIFESTS)[]]), env: z.record(z.string(), z.string()).optional(), fencedSessionRestoration: z.boolean().optional() }).strict(),
     z.object({ id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('fake') }).strict(),
@@ -29,8 +31,9 @@ export const agentHostConfigSchema = z.object({
       id: z.string().min(1), displayName: z.string().min(1), protocol: z.literal('eve'),
       host: z.string().url(), bearerTokenEnv: z.string().min(1).optional(),
     }).strict(),
-  ])).min(1),
-}).strict().refine(config => config.durableLifecycle === true || !config.adapters.some(adapter => 'fencedSessionRestoration' in adapter && adapter.fencedSessionRestoration === true),
+  ])),
+}).strict().refine(config => config.adapters.length > 0 || config.localTools === true,
+  {message: 'A host needs at least one adapter or local tools'}).refine(config => config.durableLifecycle === true || !config.adapters.some(adapter => 'fencedSessionRestoration' in adapter && adapter.fencedSessionRestoration === true),
   {message: 'Fenced session restoration requires durable lifecycle negotiation'})
 type AgentHostFileConfig = z.infer<typeof agentHostConfigSchema>
 export type AgentHostConfig = Omit<AgentHostFileConfig, 'adapters'> & {

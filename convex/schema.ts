@@ -2910,6 +2910,21 @@ export default defineSchema({
     workspaceId: v.string(), activeArtifactBytes: v.number(), updatedAt: v.number(),
   }).index('by_workspaceId', ['workspaceId']),
 
+  /**
+   * Request/response tool calls Overlay sends to a user's own machine (local
+   * tools). At most once: a host claims a call before running it, and a call
+   * past its deadline is expired instead of delivered. Rows are short-lived.
+   */
+  agentLocalToolCalls: defineTable({
+    callId: v.string(), workspaceId: v.string(), environmentId: v.string(), requestedByUserId: v.string(),
+    agentId: v.optional(v.string()), toolName: v.string(), request: v.any(),
+    status: v.union(v.literal('pending'), v.literal('claimed'), v.literal('completed'), v.literal('expired')),
+    outcome: v.optional(v.any()), deadlineAt: v.number(), claimedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_callId', ['callId'])
+    .index('by_environmentId_status_createdAt', ['environmentId', 'status', 'createdAt'])
+    .index('by_createdAt', ['createdAt']),
+
   agentMcpCalls: defineTable({
     callId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(), sessionId: v.string(),
     execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),

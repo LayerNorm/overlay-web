@@ -20,9 +20,10 @@ import { EveAgentAdapter } from './eve-adapter.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { installLaunchAgent, launchAgentStatus, uninstallLaunchAgent } from './launchd.js'
 import { exportConfig } from './export-config.js'
-import { isAgentProfileHarness } from '@layernorm/overlay-agent-bridge-protocol'
+import { isAgentProfileHarness, type FilesystemGrant } from '@layernorm/overlay-agent-bridge-protocol'
+import { LocalToolExecutor } from './local-tools.js'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.3'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.5.0'
 
 assertSupportedNodeVersion()
 
@@ -87,9 +88,11 @@ async function connectFromArgs(args: string[]) {
   await withPreviewHostingAccess(hostingAuthFile, serverUrl, async hosting => {
     const stateDirectory = option(args, '--state-dir') ?? join(homedir(), '.overlay', 'agent-host')
     const adapterIds = options(args, '--adapter')
+    // `--local-tools` serves Overlay's own tools on this machine; with no `--adapter` it starts no ACP agent at all.
+    const localTools = args.includes('--local-tools')
     // `--engine acpx` runs ACP agents through acpx's runtime.
     const useAcpx = option(args, '--engine') === 'acpx'
-    const adapterConfigs: AgentHostConfig['adapters'] = (adapterIds.length ? adapterIds : ['codex', 'claude-code']).map((id) => {
+    const adapterConfigs: AgentHostConfig['adapters'] = (adapterIds.length ? adapterIds : localTools ? [] : ['codex', 'claude-code']).map((id) => {
       if (id === 'eve') {
         const host = option(args, '--eve-url')
         if (!host) throw new Error('--adapter eve requires --eve-url <url>')
@@ -111,6 +114,7 @@ async function connectFromArgs(args: string[]) {
       stateDirectory,
       name: option(args, '--name'),
       kind: option(args, '--kind') as 'local' | 'vps' | 'external' | undefined,
+      ...(localTools ? { localTools: await new LocalToolExecutor({ stateDirectory, grant: () => ({ mode: 'all_user_files' }) }).capability() } : {}),
       adapters: adapterConfigs.map((adapter) => ({
         id: adapter.id,
         displayName: adapter.displayName,
@@ -131,6 +135,7 @@ async function connectFromArgs(args: string[]) {
       credentialEnv: 'OVERLAY_AGENT_HOST_CREDENTIAL',
       stateDirectory,
       filesystem: connection.filesystemGrant,
+      ...(localTools ? { localTools: true } : {}),
       adapters: managedRestorationAdapters(adapterConfigs, {
         durableLifecycle: process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2',
         rollout: process.env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION,
@@ -164,6 +169,7 @@ async function runHost(config: AgentHostConfig, hosting?: PreviewHostingTranspor
     loadStoredConnection(config.stateDirectory),
   ])
   const logger = new StructuredLogger()
+  let runtimeGrant: FilesystemGrant | undefined
   const state = new SqliteHostStateStore(join(config.stateDirectory, 'host.sqlite'), {
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,
@@ -185,10 +191,14 @@ async function runHost(config: AgentHostConfig, hosting?: PreviewHostingTranspor
       privateKey: keys.privateKey,
       onCredentialRotated: stored ? async (credential) => {
         await saveStoredConnection(config.stateDirectory, { ...stored, ...credential })
+        runtimeGrant = credential.filesystemGrant
         runtime.updateFilesystemGrant(credential.filesystemGrant)
       } : undefined,
     }),
     logger,
+    ...(config.localTools ? { localTools: new LocalToolExecutor({
+      stateDirectory: config.stateDirectory, grant: () => runtimeGrant ?? stored?.filesystemGrant ?? config.filesystem,
+    }) } : {}),
   })
   const controller = new AbortController()
   process.once('SIGINT', () => controller.abort(new Error('SIGINT')))
@@ -233,7 +243,7 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|external] [--engine acpx] [--hosting-auth-file path] [--run] [--adapter codex|claude-code] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|external] [--engine acpx] [--hosting-auth-file path] [--run] [--local-tools] [--adapter codex|claude-code] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
   process.exit(2)
 }
 

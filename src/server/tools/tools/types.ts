@@ -9,6 +9,9 @@ export type { ToolCategory } from '@overlay/tools-core'
  * Composio tools are merged in act/route.ts.
  */
 
+/** Where a computer tool runs. */
+export type ComputerTarget = 'cloud' | 'local'
+
 export interface OverlayToolsOptions {
   userId: string
   accessToken?: string
@@ -17,6 +20,12 @@ export interface OverlayToolsOptions {
   turnId?: string
   automationId?: string
   approvalMode?: 'ask' | 'auto'
+  /**
+   * Where computer tools run when a call names no target: the cloud Computer or
+   * the user's own connected Mac. Unset prefers the cloud Computer and falls back
+   * to the Mac.
+   */
+  computerTarget?: ComputerTarget
   /** Approval-capable durable execution context for consequential computer actions. */
   computerApprovalContext?: 'work' | 'automation'
   workspaceId?: string

@@ -70,6 +70,7 @@ import { AgentProfileService } from '@/server/agents/profiles/AgentProfileServic
 import { McpAccessService } from '@/server/mcp/McpAccessService'
 import { AgentProviderAccountService } from '@/server/agents/provider-accounts/AgentProviderAccountService'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
+import { ConvexLocalToolCallRepository, LocalComputerService } from '@/server/computers/local/LocalComputerService'
 import { ComputerBilling } from '@/server/computers/ComputerBilling'
 import { ComputerLifecycleService } from '@/server/computers/ComputerLifecycleService'
 import { SurfaceService } from '@/server/surfaces/SurfaceService'
@@ -133,6 +134,8 @@ export interface OverlayServerContext extends OverlayProviderContext {
   agentAsks: AgentAskService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
+  /** The user's own connected machine used as a Computer through its Agent Host. */
+  localComputerService: LocalComputerService
   surfaceService: SurfaceService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
@@ -300,6 +303,10 @@ export function createOverlayServerContext(
     },
     limits: computerLimits,
     lifecycle: computerLifecycle,
+  })
+  const localComputerService = new LocalComputerService({
+    repository: new ConvexLocalToolCallRepository(),
+    listEnvironments: (input) => appData.repositories.connectedAgents.listEnvironments(input),
   })
   const surfaceService = new SurfaceService({
     repository: appData.repositories.surfaces,
@@ -475,6 +482,7 @@ export function createOverlayServerContext(
     agentAsks,
     managedAgentSandboxBilling,
     computerService,
+    localComputerService,
     surfaceService,
     workspaceSharingService,
     workspaceSearchService,

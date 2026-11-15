@@ -34,6 +34,14 @@ request selects these Computer tools; it cannot bypass Computer availability or
 approvals. Old saved browser-only grants do not automatically gain Computer
 permissions.
 
+Every `computer_*` tool also runs on the user's own connected Mac (Settings →
+Desktop → This Mac) through its Agent Host. Each takes an optional `target`:
+`local` for the Mac, `cloud` for the cloud Computer; without one a bound cloud
+Computer is used and the Mac is the fallback. A connected Mac also makes the
+computer tools available in personal chat. Approvals are the same on both;
+automations never use the Mac, and only the person who approved the Mac can use
+it. See `bring-your-own-agents.md` → Local tools.
+
 ## How tool calls appear in chat
 
 Rows describe what a call did, built from its input and result by `describeToolCall`

@@ -19,6 +19,7 @@ export type ConnectAgentHostOptions = {
   name?: string
   kind?: 'local' | 'vps' | 'external'
   adapters?: HostCapabilities['adapters']
+  localTools?: HostCapabilities['localTools']
   fetch?: typeof globalThis.fetch
   waitTimeoutMs?: number
   onPendingApproval?: (value: { verificationPhrase: string; environmentId: string }) => void
@@ -32,7 +33,8 @@ export async function connectAgentHost(options: ConnectAgentHostOptions): Promis
   const capabilities: HostCapabilities = {
     protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION,
     ...(options.durableLifecycle ? { remoteLifecycleVersion: 2 as const } : {}),
-    hostVersion: '0.4.3',
+    ...(options.localTools ? { localTools: options.localTools } : {}),
+    hostVersion: '0.5.0',
     platform: `${platform()} ${release()}`,
     adapters: (options.adapters ?? []).map(capability => {
       if (options.durableLifecycle) return capability
