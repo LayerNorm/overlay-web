@@ -211,6 +211,19 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'GET /api/v1/surfaces/slack/callback': [
     { bucket: 'surfaces/slack:callback:ip', limit: 60, windowMs: TEN_MINUTES },
   ],
+  // Teams sync admin consent and member sign-in are browser navigations too.
+  'GET /api/v1/sync/teams/connect': [
+    { bucket: 'sync/teams:connect:ip', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/sync/teams/callback': [
+    { bucket: 'sync/teams:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/sync/teams/account/connect': [
+    { bucket: 'sync/teams:account-connect:ip', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/sync/teams/account/callback': [
+    { bucket: 'sync/teams:account-callback:ip', limit: 60, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {

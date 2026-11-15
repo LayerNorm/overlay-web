@@ -1,6 +1,6 @@
 # Slack and Teams sync
 
-Status: In progress. The foundation (data model, Slack live sync into Overlay, link management API), Phase 2 (Slack history and repair) and Phase 3 (replying to Slack as yourself) are in review; nothing is merged, deployed or accepted yet.
+Status: In progress. The foundation (data model, Slack live sync into Overlay, link management API), Phase 2 (Slack history and repair), Phase 3 (replying to Slack as yourself) and Phases 4 and 5 (Teams in both directions) are in review; nothing is merged, deployed or accepted yet.
 
 Overlay becomes the hub of a customer's chat: chosen Slack channels and Microsoft Teams channels stay in sync with Overlay channels in both directions, so a team can start using Overlay without everyone leaving Slack or Teams on the same day. This plan builds that on official platform APIs and our existing Convex backend.
 
@@ -14,8 +14,8 @@ Mockup: [mockups/slack-teams-sync.html](mockups/slack-teams-sync.html), built fr
 | 1 | Data model and Slack live sync into Overlay | In review (foundation PR); the settings UI lands separately |
 | 2 | Rate-limited Slack history backfill and gap repair | In review: shared rate limiter, newest-first history with thread replies, member prioritization, `app_rate_limited` and 429 catch-up, nightly last-day repair and auto-link for new public channels. Not merged; not yet run against a real Slack workspace. Folding the one-time importer onto the sync tables and showing progress in settings are still to do. |
 | 3 | Replying from Overlay to Slack as yourself | In review (Phase 3 change, stacked on the foundation): member Slack sign-in, outbox, outbound worker, echo suppression and the "Connect Slack to reply" composer. Covered by unit tests with recorded Slack payloads; not yet tested against a live Slack workspace |
-| 4 | Teams live sync and history into Overlay | Not started |
-| 5 | Replying from Overlay to Teams as yourself | Not started |
+| 4 | Teams live sync and history into Overlay | In review (Teams sync PR): admin consent connect, Teams app package, channel discovery, Graph webhook with subscriptions and renewal cron, polling for private and shared channels, history adapter. The shared history worker registers the adapter separately. Untested against a live tenant until the Phase 0 Entra app and Azure Bot exist |
+| 5 | Replying from Overlay to Teams as yourself | In review (Teams sync PR): member sign-in for `ChannelMessage.Send`, sealed tokens with refresh, outbound adapter. The shared outbound worker registers it separately; untested against a live tenant |
 | 6 | Opt-in DM sync, attachments, reaction and edit mirroring outward | Partly in review: Slack edits, deletes and reactions mirror outward with Phase 3, and the DM opt-in preference is stored. DM syncing, attachments and the Teams side are not started |
 | 7 | Queue-backed ingest for scale (only when the numbers call for it) | Not started |
 
@@ -42,7 +42,8 @@ Checked on November 12–13, 2026.
 | Marketplace submission needs 10 active workspaces. The preliminary review takes up to 10 business days, and the functional review up to 10 weeks. | Slack Marketplace review guide |
 | Teams message APIs stopped being metered on August 25, 2025. | Microsoft Learn, Metered APIs |
 | Installing a Teams app with resource-specific consent (`ChannelMessage.Read.Group`) lets us read and subscribe to a team's channels without Microsoft's protected-API approval for tenant-wide access. | Microsoft Learn, chat message change notifications |
-| Graph subscriptions that last longer than an hour need a lifecycle notification URL. Notifications can include encrypted message data. | Microsoft Learn, chat message change notifications |
+| Graph subscriptions that last longer than an hour need a lifecycle notification URL. Notifications can include encrypted message data, or omit it so the subscriber fetches the message (no certificate needed). | Microsoft Learn, chat message change notifications |
+| Graph refuses channel-message subscriptions on private and shared channels when the app uses resource-specific consent (403 "Caller is not allowed to subscribe ... for Shared/Private channel"), though reading them with GET works. We poll those channels instead of requesting tenant-wide `ChannelMessage.Read.All`. | Microsoft Q&A, March 2026; checked November 13, 2026 |
 | Teams apps can't post as a user, and can't post in shared or private channels. Posting from Overlay needs each member's delegated `ChannelMessage.Send` grant. | Ando Teams sync docs; Microsoft Graph permissions |
 
 ## What exists today
@@ -170,7 +171,7 @@ Exit: a reply from Overlay appears in Slack under the member's name exactly once
 
 ### Phase 4: Teams into Overlay
 
-- Teams app install flow, channel discovery per installed team, per-channel Graph subscriptions with encrypted message data, lifecycle notifications, renewal cron and history import.
+- Teams app install flow, channel discovery per installed team, per-channel Graph subscriptions without resource data (each changed message is fetched), lifecycle notifications, renewal cron, polling for private and shared channels, and history import. Setup: `internal/develop/teams-sync-app.md`.
 - Paused states for removed apps and shared or private channels that still need Overlay added.
 
 Exit: the same checks as Phases 1 and 2 on a Microsoft test tenant, including a shared channel.

@@ -191,6 +191,12 @@ crons.interval('sync outbox sweep', { minutes: 1 }, internal.sync.outbox.sweep, 
 
 crons.interval('sync outbox prune', { hours: 1 }, internal.sync.outbox.prune, {})
 
+// Teams channel sync: renews Graph subscriptions before they expire, creates
+// missing ones, polls private and shared channels (Graph refuses
+// resource-specific-consent subscriptions there) and retries links paused
+// because Overlay was missing in Teams. Calls the web server only when due.
+crons.interval('teams sync maintenance', { minutes: 1 }, internal.sync.teamsLinks.runMaintenanceTick, {})
+
 // Counts yesterday (UTC) for the admin console's growth panel. Runs a little
 // after midnight so late writes for the day have landed.
 crons.daily('growth daily totals', { hourUTC: 0, minuteUTC: 20 }, internal.platform.growth.startDaily)

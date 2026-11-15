@@ -3286,6 +3286,7 @@ export default defineSchema({
     .index('by_status_workspaceId_historyPriorityAt', ['status', 'workspaceId', 'historyPriorityAt'])
     .index('by_status_repairedAt', ['status', 'repairedAt'])
     .index('by_historyLeaseUntil', ['historyLeaseUntil'])
+    .index('by_provider_status_updatedAt', ['provider', 'status', 'updatedAt'])
     .index('by_subscriptionExpiresAt', ['subscriptionExpiresAt']),
 
   syncMessageMap: defineTable({

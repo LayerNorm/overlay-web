@@ -214,6 +214,8 @@ import type * as sync_ingest from "../sync/ingest.js";
 import type * as sync_links from "../sync/links.js";
 import type * as sync_outbox from "../sync/outbox.js";
 import type * as sync_rateBudgets from "../sync/rateBudgets.js";
+import type * as sync_teamsAccounts from "../sync/teamsAccounts.js";
+import type * as sync_teamsLinks from "../sync/teamsLinks.js";
 import type * as sync_validators from "../sync/validators.js";
 import type * as webhooks_browse from "../webhooks/browse.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
@@ -436,6 +438,8 @@ declare const fullApi: ApiFromModules<{
   "sync/links": typeof sync_links;
   "sync/outbox": typeof sync_outbox;
   "sync/rateBudgets": typeof sync_rateBudgets;
+  "sync/teamsAccounts": typeof sync_teamsAccounts;
+  "sync/teamsLinks": typeof sync_teamsLinks;
   "sync/validators": typeof sync_validators;
   "webhooks/browse": typeof webhooks_browse;
   "webhooks/deliveries": typeof webhooks_deliveries;
