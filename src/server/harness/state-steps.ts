@@ -18,7 +18,7 @@ export type HarnessOperationStepResult =
   | { ok: false; code: 'HARNESS_PLAN_VALIDATION'; message: string }
   | { ok: false; code: 'HARNESS_STEP_VALIDATION'; message: string }
 
-function rejectedOperation(error: unknown): { code: 'HARNESS_OPERATION_REJECTED' | 'HARNESS_PLAN_VALIDATION'; message: string } | null {
+export function rejectedOperation(error: unknown): { code: 'HARNESS_OPERATION_REJECTED' | 'HARNESS_PLAN_VALIDATION'; message: string } | null {
   if (!(error instanceof ConvexError) || !error.data || typeof error.data !== 'object') return null
   const data = error.data as { code?: unknown; message?: unknown }
   return (data.code === 'HARNESS_OPERATION_REJECTED' || data.code === 'HARNESS_PLAN_VALIDATION')

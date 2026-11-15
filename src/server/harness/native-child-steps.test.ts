@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
+import { ConvexError } from 'convex/values'
 import { admitNativeHarnessChild } from './native-child-steps'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), get: vi.fn(), apply: vi.fn() }))
@@ -37,4 +38,18 @@ test('stale native workflow cannot admit a child', async () => {
     policy: { actorUserId: 'user', workspaceId: 'workspace' } })
   await expect(admitNativeHarnessChild(input, delegation, 'call')).rejects.toThrow('delegation authority')
   expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('native admission returns a rejected rule to the model instead of failing', async () => {
+  mocks.apply.mockRejectedValue(new ConvexError({
+    code: 'HARNESS_OPERATION_REJECTED', message: 'Delegate an unfinished unassigned milestone.',
+  }))
+  await expect(admitNativeHarnessChild(input, delegation, 'call')).resolves.toEqual({
+    rejected: true, reason: 'Delegate an unfinished unassigned milestone.',
+  })
+})
+
+test('native admission still fails on an infrastructure error', async () => {
+  mocks.apply.mockRejectedValue(new Error('network down'))
+  await expect(admitNativeHarnessChild(input, delegation, 'call')).rejects.toThrow('network down')
 })

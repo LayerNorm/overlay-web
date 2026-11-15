@@ -29,7 +29,7 @@ beforeEach(() => {
   disposed = vi.fn()
   state = { ...createHarnessSnapshot({ runId: 'run', goal: 'Check a document', constraints: [], policy: {
     actorUserId: 'user', allowedToolIds: [], requiresPlan: false, maxCostMicros: 0,
-    deadlineAt: Date.now() + 60_000, maxDepth: 2, maxParallelChildren: 2,
+    deadlineAt: Date.now() + 60_000,
   } }, Date.now()), workflowRunId: 'workflow', status: 'waiting_for_input', blocker: { kind: 'input', question: 'Which document?' } }
   mocks.read.mockImplementation(async () => state)
   mocks.publish.mockImplementation(async (_reference, request) => ({ ...request, runId: state.runId,

@@ -16,7 +16,7 @@ vi.mock('workflow', () => ({ sleep: mocks.sleep }))
 const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
 const initial = (): HarnessSnapshot => ({ ...createHarnessSnapshot({ runId: 'run', goal: 'Complete the work', constraints: [],
   policy: { actorUserId: 'user', allowedToolIds: [], requiresPlan: false, maxCostMicros: 100,
-    maxDepth: 0, maxParallelChildren: 0, deadlineAt: 10_000_000 } }, 0), workflowRunId: 'workflow' })
+    deadlineAt: 10_000_000 } }, 0), workflowRunId: 'workflow' })
 const receipt = (id: string): HarnessReceipt => ({ id, modelId: 'provider/model', provider: 'provider', inputTokens: 10,
   outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
   costMicros: 1, costSource: 'catalog', responseFailure: 'empty_response' })
