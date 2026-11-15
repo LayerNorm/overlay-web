@@ -47,8 +47,6 @@ function admission(runId: string, conversationId: string, overrides: Partial<Har
       requiresPlan: true,
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 1_000,
-      maxParallelChildren: 2,
-      maxDepth: 2,
       ...overrides,
     },
     source: { conversationId },

@@ -46,6 +46,7 @@ export async function appendHarnessDiagnosticIndex(
   run: RunCorrelation,
   snapshot: SnapshotCorrelation,
   diagnostic: HarnessDiagnostic = snapshot.diagnostic!,
+  options: { log?: boolean } = {},
 ): Promise<'inserted' | 'existing' | 'collision'> {
   if (!diagnostic) throw new Error('Harness diagnostic index requires a diagnostic.')
   const existing = await ctx.db.query('harnessDiagnosticIndex')
@@ -69,6 +70,14 @@ export async function appendHarnessDiagnosticIndex(
     occurredAt: diagnostic.occurredAt,
     indexedAt: Date.now(),
   })
+  // Every diagnostic people can see has a server log line, whatever produced it.
+  // Exception-driven failures also log their cause chain from the web workflow.
+  if (options.log !== false) {
+    console.error(`[harness] diagnostic recorded ${diagnostic.diagnosticId} ${JSON.stringify({
+      diagnosticId: diagnostic.diagnosticId, code: diagnostic.code, stage: diagnostic.stage,
+      operationId: diagnostic.operationId, runId: run.runId, workflowRunId: snapshot.workflowRunId,
+    })}`)
+  }
   return existing.length > 0 ? 'collision' : 'inserted'
 }
 
