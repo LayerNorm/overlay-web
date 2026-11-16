@@ -139,7 +139,7 @@ rooms.push(
   ]),
   agentRoom('k17convquillpost0000000000000000', 'agent_quill', 'Launch announcement draft', 4 * HOUR, 'ready', (room, agent) => [
     message(room, VIEWER_PRINCIPAL, 6 * HOUR, 'Draft the launch announcement for the new homepage.'),
-    message(room, agent, 4 * HOUR, 'The first draft is in Files as **Launch announcement — v1**. It is 540 words and links to the pricing page.'),
+    message(room, agent, 4 * HOUR, 'The first draft is ready. It leads with speed, lists the new plan limits and keeps existing customers on their price until renewal.\n\n![Launch announcement — v1](/api/v1/files/k17file0000000000000000000000005/content)'),
   ]),
   agentRoom('k17convledgerclose00000000000000', 'agent_ledger', 'September close', 2 * DAY, 'completed', (room, agent) => [
     message(room, agent, 2 * DAY, 'September is reconciled. Two invoices from Acme Logistics are still unpaid; I added a reminder task.'),

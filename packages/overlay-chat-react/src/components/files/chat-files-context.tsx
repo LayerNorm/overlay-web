@@ -22,6 +22,8 @@ export type ChatFileOpenRequest = { id: string; name?: string; kind?: string; mi
 export type ChatFilesHost = {
   useFileSummaries: (ids: readonly string[]) => ReadonlyMap<string, ChatFileSummary> | undefined
   openFile?: (file: ChatFileOpenRequest) => void
+  /** The file the surface is showing beside the chat (the agent's right panel), so its card can look selected. */
+  activeFileId?: string | null
 }
 
 const noSummaries: ChatFilesHost['useFileSummaries'] = () => undefined
