@@ -11,7 +11,7 @@ Mockup: [mockups/slack-teams-sync.html](mockups/slack-teams-sync.html), built fr
 | Phase | What ships | State |
 | --- | --- | --- |
 | 0 | Slack and Microsoft app registrations, Slack Marketplace submission | Not started |
-| 1 | Data model and Slack live sync into Overlay | In review (foundation PR); the settings UI lands separately |
+| 1 | Data model and Slack live sync into Overlay | In review (foundation PR), with the Import & sync settings page and Chats source labels in their own PR; not merged, and not yet tested against a live Slack workspace |
 | 2 | Rate-limited Slack history backfill and gap repair | In review: shared rate limiter, newest-first history with thread replies, member prioritization, `app_rate_limited` and 429 catch-up, nightly last-day repair and auto-link for new public channels. Not merged; not yet run against a real Slack workspace. Folding the one-time importer onto the sync tables and showing progress in settings are still to do. |
 | 3 | Replying from Overlay to Slack as yourself | In review (Phase 3 change, stacked on the foundation): member Slack sign-in, outbox, outbound worker, echo suppression and the "Connect Slack to reply" composer. Covered by unit tests with recorded Slack payloads; not yet tested against a live Slack workspace |
 | 4 | Teams live sync and history into Overlay | In review (Teams sync PR): admin consent connect, Teams app package, channel discovery, Graph webhook with subscriptions and renewal cron, polling for private and shared channels, history adapter. The shared history worker registers the adapter separately. Untested against a live tenant until the Phase 0 Entra app and Azure Bot exist |

@@ -4,8 +4,9 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
 
 import { useState } from 'react'
-import { ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { SlackImportPanel } from './SlackImportPanel'
+import { SyncSettingsPanel } from './SyncSettingsPanel'
 
 /**
  * A service the workspace can import history from. Slack is live today; the
@@ -35,11 +36,21 @@ const IMPORT_SERVICES: ImportService[] = [
 ]
 
 /**
- * Entry point for the workspace "Import" tab. Presents the service picker, then
- * hands off to the selected adapter's flow. Keeping selection here (rather than
- * inside each adapter) lets every service share the same back-to-services chrome.
+ * Entry point for the workspace "Import & sync" tab. Ongoing Slack and Teams
+ * sync comes first; the one-time import stays one click away.
  */
 export function ImportPanel() {
+  const [importing, setImporting] = useState(false)
+  if (!importing) return <SyncSettingsPanel onOpenImport={() => setImporting(true)} />
+  return <OneTimeImportPanel onBack={() => setImporting(false)} />
+}
+
+/**
+ * The one-time import: presents the service picker, then hands off to the
+ * selected adapter's flow. Keeping selection here (rather than inside each
+ * adapter) lets every service share the same back-to-services chrome.
+ */
+function OneTimeImportPanel({ onBack }: { onBack(): void }) {
   const [service, setService] = useState<ImportServiceKey | null>(null)
 
   if (service === 'slack') {
@@ -48,6 +59,10 @@ export function ImportPanel() {
 
   return (
     <div className="px-5 py-4">
+      <Button variant="ghost" size="sm" className="-ml-2 mb-3" onClick={onBack}>
+        <ArrowLeft size={13} />
+        Import &amp; sync
+      </Button>
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-(--foreground)">Import from another service</h3>
         <p className="mt-0.5 text-xs text-(--muted)">

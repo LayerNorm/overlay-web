@@ -10,6 +10,7 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { SYNC_SOURCE_LABEL, useChannelSyncSources, useSyncHistoryPriority } from '@/hooks/use-sync-sources'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
@@ -69,6 +70,42 @@ function shouldDisableQuestionnaireSuggestions(
   agentResponding: boolean,
 ) {
   return guided || hasSurfacePlatform || agentResponding
+}
+
+function useRoomSync({
+  conversationId,
+  conversationType,
+  draft,
+  activeWorkspaceId,
+  transcript,
+}: {
+  conversationId: string
+  conversationType: 'dm' | 'channel'
+  draft: boolean
+  activeWorkspaceId: string | null | undefined
+  transcript: ReturnType<typeof useDirectMessageRoom>['transcript']
+}) {
+  const syncReply = useQuery(
+    api.sync.accounts.composerState,
+    conversationType === 'channel' && !draft && activeWorkspaceId
+      ? { workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'> }
+      : 'skip',
+  )
+  const syncSource = useChannelSyncSources().get(conversationId)
+  useSyncHistoryPriority({
+    conversationId,
+    importing: syncSource?.importing === true,
+    listRef: transcript.listRef,
+    hasMoreMessages: transcript.hasMoreMessages,
+  })
+  return {
+    connect: syncReply && activeWorkspaceId ? { provider: syncReply.connectProvider, workspaceId: activeWorkspaceId } : null,
+    badge: syncSource ? (
+      <span className="rounded-sm bg-(--surface-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--muted)">
+        {SYNC_SOURCE_LABEL[syncSource.provider]}
+      </span>
+    ) : undefined,
+  }
 }
 
 function resolveRoomRightPanel({
@@ -266,12 +303,7 @@ export function DirectMessageExperience({
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
-  const syncReply = useQuery(
-    api.sync.accounts.composerState,
-    conversationType === 'channel' && !draft && activeWorkspaceId
-      ? { workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'> }
-      : 'skip',
-  )
+  const roomSync = useRoomSync({ conversationId, conversationType, draft, activeWorkspaceId, transcript })
   const pathname = usePathname()
   const agentId = roomAgentId(vm)
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
@@ -288,7 +320,7 @@ export function DirectMessageExperience({
     roster,
     thread,
     conversationType,
-    syncConnectProvider: syncReply?.connectProvider,
+    syncConnectProvider: roomSync.connect?.provider,
     messageCtx,
       })
       const externalPanelOpen = Boolean(externalRightPanel)
@@ -351,6 +383,7 @@ export function DirectMessageExperience({
             breadcrumbs={header.breadcrumbs}
             subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={header.leading}
+            metadata={roomSync.badge}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 vm={vm}
@@ -391,7 +424,7 @@ export function DirectMessageExperience({
               isGuided={Boolean(guided)}
               guidedComposer={guided?.composer ?? undefined}
               surfacePlatform={transcript.surfacePlatform}
-              syncConnect={syncReply && activeWorkspaceId ? { provider: syncReply.connectProvider, workspaceId: activeWorkspaceId } : null}
+              syncConnect={roomSync.connect}
               composerProps={{
                 composer,
                 mentionCategories: vm.mentionCategories,
