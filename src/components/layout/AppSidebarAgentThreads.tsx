@@ -59,7 +59,10 @@ export function AgentThreadRows({
   }
   const statuses = new Map(activity?.map(item => [item.conversationId, item.status]))
   const threads = bundle.threads.filter((thread) => !thread.archivedAt && (!activityOnly || (statuses.has(thread.conversationId) && hasThreadActivity(statuses.get(thread.conversationId)!))))
-  const automations = bundle.automations
+  // An automation is listed as its thread. Only an automation whose thread
+  // is not among the agent's threads yet (bound on its next run) keeps its own row.
+  const threadIds = new Set(bundle.threads.map((thread) => thread.conversationId))
+  const automations = bundle.automations.filter((automation) => !automation.conversationId || !threadIds.has(automation.conversationId))
   return (
     <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
       {threads.map((thread) => {

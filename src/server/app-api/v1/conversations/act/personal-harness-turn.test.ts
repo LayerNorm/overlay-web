@@ -10,7 +10,7 @@ import {
   personalHarnessConversationClientId,
   startPersonalHarnessTurn,
 } from './personal-harness-turn'
-import { actRoutePolicyResponse, decidePersonalActRoute } from './act-route-policy'
+import { actRoutePolicyResponse, decideAutomationActRoute, decidePersonalActRoute } from './act-route-policy'
 
 const mocks = vi.hoisted(() => ({
   after: vi.fn(),
@@ -127,6 +127,14 @@ test('personal Act policy rejects retired execution and fails closed on Harness 
   expect(decidePersonalActRoute({ authType: 'session', harnessReady: true })).toEqual({ kind: 'admit' })
   expect(decidePersonalActRoute({ authType: 'session', mode: 'automate' })).toEqual({ kind: 'admit' })
   expect(decidePersonalActRoute({ authType: 'session' })).toEqual({ kind: 'admit' })
+})
+
+test('an in-process automation chat turn admits its owner and still requires the harness', () => {
+  expect(decideAutomationActRoute({ authType: 'service' })).toEqual({ kind: 'admit' })
+  expect(decideAutomationActRoute({ authType: 'session', harnessReady: true })).toEqual({ kind: 'admit' })
+  expect(decideAutomationActRoute({ authType: 'service', harnessReady: false })).toEqual({ kind: 'harness_unavailable' })
+  expect(decideAutomationActRoute({ authType: 'api-key' })).toEqual({ kind: 'legacy_execution_retired' })
+  expect(decideAutomationActRoute({ authType: 'anonymous' })).toEqual({ kind: 'legacy_execution_retired' })
 })
 
 test('personal Act policy responses include truthful status, code, message, and request ID', async () => {

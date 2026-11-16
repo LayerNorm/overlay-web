@@ -224,6 +224,8 @@ async function pollPersistedPublicStream(input: {
 export async function startPersonalHarnessTurn(input: {
   agentRun: AgentRun
   auth: AuthenticatedAppUser
+  /** Overrides the caller's own authentication, for an automation turn. */
+  authentication?: PersonalHarnessWorkflowInput['access']['authentication']
   budget?: PersonalHarnessBudget
   conversationId: string
   emitWebhook: boolean
@@ -274,7 +276,7 @@ export async function startPersonalHarnessTurn(input: {
         agentRunId: input.agentRun.id,
         workspaceId: input.workspaceId,
         principalId: input.principalId,
-        authentication: personalHarnessAuthentication(input.auth),
+        authentication: input.authentication ?? personalHarnessAuthentication(input.auth),
       },
       context: input.toolingContext,
       definitions,
