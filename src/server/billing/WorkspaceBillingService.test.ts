@@ -223,6 +223,26 @@ test('workspace verification fails when a paid subscription cannot be persisted'
   }), /billing_period_rollover_has_active_reservations/)
 })
 
+test('a preview test plan creates a missing wallet first, and members cannot grant one', async () => {
+  const calls: string[] = []
+  const owner = fixture({ role: 'owner', repository: repository({
+    async getWorkspaceBillingAccountByWorkspaceIdByServer() { return null },
+    async ensureWorkspaceBillingAccount() { calls.push('wallet'); return account() },
+    async grantPreviewTestPlan({ workspaceId }) { calls.push(`grant:${workspaceId}`); return { granted: true } },
+  }) })
+  assert.deepEqual(await owner.grantPreviewTestPlan({ actorUserId: 'admin_1', workspaceId: 'workspace_1' }), { granted: true })
+  assert.deepEqual(calls, ['wallet', 'grant:workspace_1'])
+
+  const member = fixture({ role: 'member', repository: repository({
+    async grantPreviewTestPlan() { calls.push('member-grant'); return { granted: true } },
+  }) })
+  await assert.rejects(
+    member.grantPreviewTestPlan({ actorUserId: 'member_1', workspaceId: 'workspace_1' }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
+  )
+  assert.ok(!calls.includes('member-grant'))
+})
+
 function fixture(args: {
   provider?: BillingProvider
   repository?: BillingRepository

@@ -239,6 +239,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/preview-plan', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/request', methods: { POST: authenticated() } },
   {
     path: '/api/v1/subscription/settings',
