@@ -93,6 +93,7 @@ import { useComposerQueue, useComposerQueueControls } from './chat/useComposerQu
 import type { QueuedMessage } from '@/shared/chat/conversation-queue'
 import { roomScrollReadKey } from './room-scroll-read-key'
 import { createHandoffConversation } from './chat/chat-send-create'
+import { useAgentThreadTurnActions, type AgentThreadTurnActions } from './collaboration/useAgentThreadTurnActions'
 
 export type OptimisticMessage = RoomMessageRecord
 export type RoomSendResult = {
@@ -635,12 +636,15 @@ function useRoomMessageDerivations({
   messages,
   unreadBoundarySequence,
   threadRootId,
+  hideDeleted,
 }: {
   messages: OptimisticMessage[]
   unreadBoundarySequence: number | null
   threadRootId: string | null
+  /** Agent threads drop deleted turns like a chat instead of leaving a "Message deleted" row. */
+  hideDeleted: boolean
 }) {
-  const mainMessages = messages.filter((message) => !message.threadRootMessageId)
+  const mainMessages = messages.filter((message) => !message.threadRootMessageId && !(hideDeleted && message.deletedAt))
   const threadRoot = messages.find((message) => message.id === threadRootId)
   const threadReplies = messages.filter((message) => (
     Boolean(threadRootId) && message.threadRootMessageId === threadRootId
@@ -721,7 +725,7 @@ export function useRoomViewModels({
     unreadBoundaryMessageId,
     replyCounts,
     threadTeasers,
-  } = useRoomMessageDerivations({ messages, unreadBoundarySequence, threadRootId })
+  } = useRoomMessageDerivations({ messages, unreadBoundarySequence, threadRootId, hideDeleted: Boolean(soloAgentParticipant) })
 
   const participantMentions = useMemo(() => participants.map((participant) => {
     const agent = participant.principalType === 'agent'
@@ -2020,6 +2024,8 @@ export type RoomMessageContext = {
   isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   conversationType: 'dm' | 'channel'
+  /** Chat-style turn actions; set only in the member's own agent thread. */
+  agentThreadTurns: AgentThreadTurnActions | null
   currentPrincipalId: string
   participants: ConversationParticipant[]
   directoryAgentsByPrincipal: ReadonlyMap<string, AgentDirectoryEntry>
@@ -2081,11 +2087,13 @@ export function buildRoomMessageContext({
   sendMessage,
   navigation,
   remoteControls,
+  agentThreadTurns,
   onOpenAttachmentPreview,
 }: {
   isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   conversationType: 'dm' | 'channel'
+  agentThreadTurns: AgentThreadTurnActions | null
   roster: ReturnType<typeof useRoomRoster>
   collab: ReturnType<typeof useRoomCollaboration>
   thread: ReturnType<typeof useThreadPanel>
@@ -2102,6 +2110,7 @@ export function buildRoomMessageContext({
     isReadOnlyMessage,
     conversationId,
     conversationType,
+    agentThreadTurns,
     currentPrincipalId: roster.currentPrincipalId,
     participants: roster.participants,
     directoryAgentsByPrincipal,
@@ -2433,6 +2442,16 @@ export function useDirectMessageRoom({
     room,
     setMenuOpen,
   })
+  const agentThreadTurns = useAgentThreadTurnActions({
+    workspaceId: activeWorkspaceId,
+    agentId: vm.soloAgentParticipant
+      ? directoryAgentsByPrincipal.get(vm.soloAgentParticipant.principalId)?.id ?? nativeThreadSafety.agentId
+      : null,
+    conversationId,
+    mainMessages: vm.mainMessages,
+    sendMessage,
+    router,
+  })
   const messageCtx = buildRoomMessageContext({
     isReadOnlyMessage,
     conversationId,
@@ -2447,6 +2466,7 @@ export function useDirectMessageRoom({
     sendMessage,
     navigation,
     remoteControls: { ...remoteControls, stopAgentResponse: composerQueue.stopMessage },
+    agentThreadTurns,
     onOpenAttachmentPreview,
   })
 
