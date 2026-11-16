@@ -16,9 +16,7 @@ type TestNode = {
   props: {
     open: boolean
     onOpenChange(open: boolean): void
-    onPointerEnter(event: { pointerType: string }): void
-    onPointerLeave(event: { pointerType: string }): void
-    onClick?: unknown
+    onPointerEnter?: unknown
     className?: string
     size?: string
   }
@@ -29,59 +27,25 @@ const { create } = createRequire(import.meta.url)('react-test-renderer') as {
 }
 
 afterEach(() => {
-  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
-test('touch and pen leave opening to the trigger and do not schedule hover dismissal', async () => {
+test('help opens only when its trigger is clicked, never on hover', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  vi.useFakeTimers()
   let renderer!: ReturnType<typeof create>
   await act(() => { renderer = create(<HelpMenu collapsed docsUrl="https://example.com/docs" />) })
   const root = renderer.root
   const isOpen = () => root.findByType('test-popover').props.open
   try {
-    expect(root.findByType('test-menu-button').props.onClick).toBeUndefined()
     expect(root.findByType('test-menu-button').props.className).toBe('justify-center px-0')
     expect(root.findByType('test-menu-button').props.size).toBe('lg')
-    for (const pointerType of ['touch', 'pen']) {
-      await act(() => root.findByType('test-item').props.onPointerEnter({ pointerType }))
-      expect(isOpen()).toBe(false)
-      await act(() => root.findByType('test-popover').props.onOpenChange(true))
-      await act(() => root.findByType('test-item').props.onPointerLeave({ pointerType }))
-      await act(() => root.findByType('test-popover-content').props.onPointerLeave({ pointerType }))
-      await act(() => vi.advanceTimersByTime(500))
-      expect(isOpen()).toBe(true)
-      await act(() => root.findByType('test-popover').props.onOpenChange(false))
-    }
-  } finally {
-    await act(() => renderer.unmount())
-  }
-})
-
-test('mouse can cross into the menu and an explicit open cancels pending hover dismissal', async () => {
-  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  vi.useFakeTimers()
-  let renderer!: ReturnType<typeof create>
-  await act(() => { renderer = create(<HelpMenu collapsed docsUrl="https://example.com/docs" />) })
-  const root = renderer.root
-  const isOpen = () => root.findByType('test-popover').props.open
-  const mouse = { pointerType: 'mouse' }
-  try {
-    await act(() => root.findByType('test-item').props.onPointerEnter(mouse))
-    expect(isOpen()).toBe(true)
-    await act(() => root.findByType('test-item').props.onPointerLeave(mouse))
-    await act(() => root.findByType('test-popover-content').props.onPointerEnter(mouse))
-    await act(() => vi.advanceTimersByTime(500))
-    expect(isOpen()).toBe(true)
-    await act(() => root.findByType('test-popover-content').props.onPointerLeave(mouse))
-    await act(() => vi.advanceTimersByTime(200))
+    expect(root.findByType('test-item').props.onPointerEnter).toBeUndefined()
+    expect(root.findByType('test-popover-content').props.onPointerEnter).toBeUndefined()
     expect(isOpen()).toBe(false)
-    await act(() => root.findByType('test-item').props.onPointerEnter(mouse))
-    await act(() => root.findByType('test-item').props.onPointerLeave(mouse))
     await act(() => root.findByType('test-popover').props.onOpenChange(true))
-    await act(() => vi.advanceTimersByTime(500))
     expect(isOpen()).toBe(true)
+    await act(() => root.findByType('test-popover').props.onOpenChange(false))
+    expect(isOpen()).toBe(false)
   } finally {
     await act(() => renderer.unmount())
   }
