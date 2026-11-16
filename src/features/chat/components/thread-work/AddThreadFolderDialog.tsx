@@ -56,6 +56,11 @@ export function AddThreadFolderDialog({ open, onClose, workspaceId, macs, github
     window.location.assign(overlayAppClient.github.connectUrl(workspaceId, returnTo))
   }
 
+  // Installing happens on GitHub in its own tab; connecting afterwards picks the installation up.
+  const installGitHub = () => {
+    window.open(overlayAppClient.github.installUrl(), '_blank', 'noopener')
+  }
+
   const addOnMac = async () => {
     if (!mac || !validPath) return
     setBusy('use')
@@ -153,11 +158,12 @@ export function AddThreadFolderDialog({ open, onClose, workspaceId, macs, github
           <section className="space-y-2">
             <p className="text-[11px] leading-relaxed text-(--muted-light)">
               {githubConnected
-                ? 'Your repositories are listed in the folder menu. Connect another GitHub account or organization to add more.'
-                : 'Install the Overlay GitHub App and choose which repositories agents can work in.'}
+                ? 'Your repositories are listed in the folder menu. To add another account or organization, install the app there, then connect again.'
+                : 'Install the Overlay GitHub App on your account or organization and choose its repositories, then connect.'}
             </p>
-            <div className="flex justify-end">
-              <Button variant="primary" size="sm" onClick={connectGitHub}><Github size={14} />{githubConnected ? 'Connect another account' : 'Connect GitHub'}</Button>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={installGitHub}>Install on GitHub</Button>
+              <Button variant="primary" size="sm" onClick={connectGitHub}><Github size={14} />{githubConnected ? 'Connect again' : 'Connect GitHub'}</Button>
             </div>
           </section>
         ) : null}

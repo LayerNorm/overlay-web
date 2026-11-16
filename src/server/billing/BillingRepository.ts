@@ -152,6 +152,8 @@ export interface BillingRepository {
   upsertBillingAccountSubscription(args: Record<string, unknown> & {
     billingAccountId: string
   }): Promise<unknown>
+  /** PR previews only: a paid test plan with a small synthetic allowance, so QA needs no card. */
+  grantPreviewTestPlan?(args: { workspaceId: string }): Promise<{ granted: boolean }>
   recordBillingAccountTopUp(args: {
     actorUserId: string
     amountCents: number

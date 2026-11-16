@@ -176,6 +176,14 @@ The owner-funded boundary guard follows the current Act orchestration, Harness
 model dispatch and Convex knowledge payer path. It also rejects retired Postgres
 and desktop billing implementations and native client-calculated usage writes.
 
+## Preview test plan
+
+On a PR preview, workspace owners and admins can press **Make paid for testing** in Billing. It writes the same
+`preview-fixture` paid subscription the preview seed uses, with a $5 synthetic allowance that granting again never
+refills, so QA (people and agents) can run paid work on any workspace without a card. The route answers 404 unless the
+deployment has a provisioned PR preview origin, and `billing/previewTestPlan:grantByServer` refuses on any non-preview
+Convex deployment, so it can't make a production workspace paid.
+
 ## Usage markup configuration
 
 `OVERLAY_USAGE_MARKUP_BPS` is required on Next and its matching Convex deployment.
