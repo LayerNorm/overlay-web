@@ -25,7 +25,7 @@ waits; the person approves the machine and the folders it may use. The desktop
 matches the phrase its host printed to the pending enrollment, so the user only
 picks folders. Later host requests carry a 15-minute bearer credential plus a
 signature over method, path and query, body hash, timestamp, nonce and credential
-hash; rotation can keep or narrow scopes, never add one. Credential scopes:
+hash; rotation can keep or narrow scopes, never add one. A host whose credential expired while the Mac slept may still renew it through `credentials/refresh` for 30 days after expiry, with the same device signature and single-use nonce; renewing revokes the old credential, and no other route accepts an expired one. Credential scopes:
 heartbeat, capabilities, `commands:poll` (local tool long-poll),
 `events:write` (local tool results) and credential refresh. Revoking a machine
 revokes its credentials. Connecting a machine follows the Computers feature

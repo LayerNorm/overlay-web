@@ -138,6 +138,20 @@ test('a bundled environment does not bypass credential expiry or device signatur
   await assertControlPlaneError(() => active.service.authenticateHostRequest({ ...request, rawBody: new TextEncoder().encode('{"forged":true}') }), 'proof_invalid')
 })
 
+test('a Mac that slept past its credential can renew it, and only renew it, for 30 days', async () => {
+  const methods = ['agent:commands:poll', 'agent:events:write', 'agent:credentials:refresh'] as const
+  const asleep = fixture({}, { expiresAt: NOW - 8 * 60 * 60_000, methods: [...methods] })
+  asleep.repository.findEnvironmentCredential = async () => ({ ...asleep.credential, environment: asleep.environment })
+  const renew = { ...signedRequest({ target: '/api/v1/agent-environments/environment-1/credentials/refresh' }), requiredMethod: 'agent:credentials:refresh' as const }
+  const auth = await asleep.service.authenticateHostRequest(renew)
+  assert.equal(auth.credential.id, 'credential-1')
+  await assertControlPlaneError(() => asleep.service.authenticateHostRequest(
+    signedRequest({ target: '/api/v1/agent-environments/environment-1/events', nonce: 'nonce_nonce_nonce_nonce_02' })), 'credential_invalid')
+  const gone = fixture({}, { expiresAt: NOW - 31 * 24 * 60 * 60_000, methods: [...methods] })
+  gone.repository.findEnvironmentCredential = async () => ({ ...gone.credential, environment: gone.environment })
+  await assertControlPlaneError(() => gone.service.authenticateHostRequest(renew), 'credential_invalid')
+})
+
 test('host authentication rejects query tampering and forged event bodies', async () => {
   const { service } = fixture()
   const signed = signedRequest({ target: '/api/v1/agent-environments/environment-1/events?limit=1', body: '{"events":[]}' })

@@ -35,6 +35,8 @@ import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
 import type { ConnectedAgentPolicyEntitlements, ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
 
+/** How long after expiry a host may still renew its credential, e.g. after a Mac slept overnight. */
+const EXPIRED_CREDENTIAL_RENEWAL_MS = 30 * 24 * 60 * 60_000
 const ENROLLMENT_TTL_MS = 10 * 60_000
 const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
 const CREDENTIAL_TTL_MS = 15 * 60_000
@@ -326,7 +328,12 @@ export class ConnectedAgentControlPlaneService {
     }
     const tokenHash = sha256(token)
     const credential = await this.dependencies.repository.findEnvironmentCredential({ tokenHash })
-    const expired = Boolean(credential && credential.expiresAt <= now)
+    // A Mac that slept past its 15-minute credential may still renew it: the refresh route alone accepts an expired,
+    // unrevoked credential for 30 days, still behind the device-key signature and a single-use nonce, and renewing
+    // revokes it. Every other route needs a live credential.
+    const renewal = args.requiredMethod === 'agent:credentials:refresh'
+    const expired = Boolean(credential && credential.expiresAt <= now
+      && !(renewal && credential.expiresAt > now - EXPIRED_CREDENTIAL_RENEWAL_MS))
     if (!credential || credential.revokedAt || expired ||
       credential.audience !== AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE ||
       credential.environmentId !== args.environmentId ||
@@ -355,6 +362,7 @@ export class ConnectedAgentControlPlaneService {
       nonceHash: sha256(headers.data.nonce),
       expiresAt: now + PROOF_NONCE_TTL_MS,
       now,
+      ...(renewal ? { expiredGraceMs: EXPIRED_CREDENTIAL_RENEWAL_MS } : {}),
     })
     if (!consumed) throw controlPlaneError('Device request proof was already used', 409, 'proof_replayed')
     return { credential, environment }

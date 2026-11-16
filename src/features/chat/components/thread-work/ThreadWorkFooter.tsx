@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { Check, ChevronDown, Cloud, Folder, FolderPlus, Github, Laptop, Plus } from 'lucide-react'
 import {
@@ -40,6 +40,32 @@ function Chip({ children, ...props }: { children: ReactNode } & Record<string, u
   )
 }
 
+const GITHUB_RESULTS: Record<string, string> = {
+  not_configured: 'GitHub isn’t set up on this Overlay server yet.',
+  expired: 'Connecting GitHub took too long. Try again.',
+  signed_in_as_someone_else: 'You came back signed in as someone else. Sign in as the person who started connecting GitHub.',
+  awaiting_org_approval: 'Your GitHub organization needs an owner to approve the Overlay app first.',
+  missing_installation: 'GitHub didn’t say which installation to connect. Try again.',
+  not_yours: 'That GitHub installation isn’t visible to your GitHub account.',
+  workspace: 'That workspace isn’t available to you.',
+  connect_failed: 'Connecting GitHub didn’t work. Try again.',
+}
+
+/** GitHub sends people back here with the result in the address; show it once and tidy the address. */
+function useGitHubConnectResult() {
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const connected = url.searchParams.get('github') === 'connected'
+    const error = url.searchParams.get('githubError')
+    if (!connected && !error) return
+    if (connected) toast('GitHub is connected. Its repositories are in the folder menu.')
+    else toast.error(GITHUB_RESULTS[error ?? ''] ?? GITHUB_RESULTS.connect_failed)
+    url.searchParams.delete('github')
+    url.searchParams.delete('githubError')
+    window.history.replaceState(window.history.state, '', url.toString())
+  }, [])
+}
+
 const macOnline = (mac: ThreadMac, now: number) =>
   effectiveAgentEnvironmentStatus({ status: mac.status, lastSeenAt: mac.lastSeenAt }, now) === 'online'
 
@@ -57,6 +83,7 @@ export function ThreadWorkFooter({ workspaceId, agentId, conversationId }: { wor
   const [adding, setAdding] = useState(false)
   // The clock only refreshes online states when a menu opens; the query itself is live.
   const [now, setNow] = useState(() => Date.now())
+  useGitHubConnectResult()
 
   if (!work || !options) return null
   const current: ThreadWork = work
