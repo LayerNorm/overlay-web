@@ -230,10 +230,14 @@ export function NoteBlockHandle({ editor, containerRef }: { editor: Editor | nul
   const kind = currentKind(editor, block)
   const turnInto = (target: BlockKind) => {
     if (target === kind) return
-    const inside = block.pos + (LIST_ITEMS.has(block.node.type.name) ? 2 : 1)
-    const chain = editor.chain().focus().setTextSelection(inside)
-    // Leave any list first so every target starts from a plain block.
-    const lifted = LIST_ITEMS.has(block.node.type.name) ? chain.liftListItem(block.node.type.name) : chain
+    const name = block.node.type.name
+    // Leave any list or quote first so every target starts from a plain block.
+    const lifted = name === 'blockquote'
+      // Select the whole quote so every paragraph in it is unwrapped, not just the first.
+      ? editor.chain().focus().setTextSelection({ from: block.pos + 2, to: block.pos + block.node.nodeSize - 2 }).unsetBlockquote()
+      : LIST_ITEMS.has(name)
+        ? editor.chain().focus().setTextSelection(block.pos + 2).liftListItem(name)
+        : editor.chain().focus().setTextSelection(block.pos + 1)
     switch (target) {
       case 'paragraph': lifted.setParagraph().run(); break
       case 'h1': lifted.setHeading({ level: 1 }).run(); break

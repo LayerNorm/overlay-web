@@ -71,8 +71,13 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
   const meta = kind === 'note' ? 'Note' : kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'File'
   const openInFiles = () => router.push(buildWorkspaceHref(null, `/app/files?file=${encodeURIComponent(fileId)}`))
 
+  // Once a note is open, keep its editor mounted even if the note's summary later disappears (deleted or no longer
+  // readable elsewhere): the editor's own removed-note handling keeps unsaved edits and asks to copy them first.
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null)
+  if (kind === 'note' && openNoteId !== fileId) setOpenNoteId(fileId)
+
   // Notes open in the same editable page as the Notes page, not a read-only render.
-  if (kind === 'note') {
+  if (kind === 'note' || openNoteId === fileId) {
     return <AgentNotePanel fileId={fileId} onBack={onBack} onClose={onClose} onOpenInFiles={openInFiles} />
   }
 
