@@ -75,8 +75,9 @@ export interface ThreadWorkRepository {
   }): Promise<{ updated: boolean; status: FolderCopyStatus }>
 }
 
-const call = <T>(kind: 'query' | 'mutation', name: string, args: Record<string, unknown>) =>
-  convex[kind]<T>(name, { ...args, serverSecret: getInternalApiSecret() }, { throwOnError: true }) as Promise<T>
+/** Async, so a missing server secret rejects like any other failure instead of throwing synchronously. */
+const call = async <T>(kind: 'query' | 'mutation', name: string, args: Record<string, unknown>): Promise<T> =>
+  await (convex[kind]<T>(name, { ...args, serverSecret: getInternalApiSecret() }, { throwOnError: true }) as Promise<T>)
 
 export class ConvexThreadWorkRepository implements ThreadWorkRepository {
   getWork(conversationId: string) {

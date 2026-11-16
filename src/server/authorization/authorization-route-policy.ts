@@ -112,6 +112,13 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { PATCH: authenticated() },
   },
   {
+    path: '/api/v1/agent-environments/:environmentId/copy-to-files',
+    methods: { POST: authenticated() },
+  },
+  { path: '/api/v1/github/repositories', methods: { GET: authenticated() } },
+  { path: '/api/v1/github/connect', methods: { GET: authenticated() } },
+  { path: '/api/v1/github/callback', methods: { GET: authenticated() } },
+  {
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },
   },

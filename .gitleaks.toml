@@ -25,6 +25,12 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Generated mockup bundles: minified production code built by internal/plans/mockups/overlay-app/build.mjs"
+paths = [
+  '''internal/plans/mockups/(overlay-app|local-cloud-continuity|files-on-computers|thread-folders)\.html$''',
+]
+
+[[allowlists]]
 description = "Build output directories are not source files"
 paths = [
   '''\.next/.*''',

@@ -33,6 +33,9 @@ function call(request: LocalToolRequest, overrides: Partial<LocalToolCall> = {})
   })
 }
 
+// Local tools are Mac-first. These tests use a POSIX shell (pwd, LF output); Windows shells are not supported yet.
+const posixShellOnly = process.platform === 'win32' ? 'POSIX shell tests; Windows local tools are not supported yet' : false
+
 test('paths resolve against the first root and cannot leave the approved folders, including through a symlink', async () => {
   const f = await fixture()
   try {
@@ -48,7 +51,7 @@ test('paths resolve against the first root and cannot leave the approved folders
   } finally { await f.cleanup() }
 })
 
-test('exec runs in an approved folder with output, exit code and timeout', async () => {
+test('exec runs in an approved folder with output, exit code and timeout', { skip: posixShellOnly }, async () => {
   const f = await fixture()
   try {
     const ok = await f.executor.execute(call({ kind: 'exec', command: 'pwd; echo err >&2; exit 3', timeoutMs: 10_000 }))
@@ -82,7 +85,7 @@ test('files are written atomically, read back with limits and listed', async () 
   } finally { await f.cleanup() }
 })
 
-test('terminal sessions start, stream output, list and cancel like the cloud driver', async () => {
+test('terminal sessions start, stream output, list and cancel like the cloud driver', { skip: posixShellOnly }, async () => {
   const f = await fixture()
   try {
     const started = await f.executor.execute(call({ kind: 'driver', command: 'terminal_start', args: { command: 'echo one; sleep 30' } }))
@@ -128,7 +131,7 @@ test('screen control reports unsupported off macOS instead of guessing', async (
   } finally { await f.cleanup() }
 })
 
-test('the loop runs each call once, reports expired calls without running them and posts results', async () => {
+test('the loop runs each call once, reports expired calls without running them and posts results', { skip: posixShellOnly }, async () => {
   const f = await fixture()
   try {
     const marker = join(f.root, 'ran.txt')

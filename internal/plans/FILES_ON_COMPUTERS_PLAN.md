@@ -30,11 +30,11 @@ agent's cloud computer or on any Mac with the desktop app, and can be started an
 | Phase | State |
 | --- | --- |
 | 0. Checks | Done: mount works on Boat (see `todos.md`). Drive check moved to `todos.md`. |
-| 1. Copy in and out | Implemented, unit and Convex tested. Not run against a real computer or Preview. |
-| 2. Several computers | Implemented (pinned Mac for computer tools, Runs on picker). Not tested on two real Macs. |
+| 1. Copy in and out | Implemented and passed hosted QA on PR #542's Preview (cloud computer): copy in, edit, new note, conflict saved as a copy, and save-back after Stop, with the summary card. |
+| 2. Several computers | Implemented; on the Preview a thread pinned to one connected Mac ran its tools there. Not tested with two Macs at once. |
 | 3. Folder sources and pickers | Implemented as the composer pickers; GitHub and Mac folders are not rows in Files yet. |
 | 4. GitHub App | Implemented. Untested end to end: the GitHub App isn't registered and has no settings yet. |
-| 5. Mac folders | Implemented (add an approved folder, Copy to Files). Not tested on a real Mac. |
+| 5. Mac folders | Implemented; on the Preview an agent edited an approved Mac folder in place and Copy to Files skipped `.env` and `node_modules`. Adding a folder from the dialog was not tested. |
 
 Living doc: `internal/develop/thread-folders.md`.
 

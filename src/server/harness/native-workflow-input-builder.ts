@@ -169,7 +169,9 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
   const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution)
   assertPreparedRoomIdentity(args, run, prepared)
   // Slack turns and threads without choices keep today's behavior.
-  const work = surfaceExecution ? undefined : chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId))
+  // A thread whose choices can't be read runs as before, without folders, rather than failing the turn.
+  const work = surfaceExecution ? undefined
+    : chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId).catch((_error: unknown) => null))
   const workBlock = work ? await threadWorkInstructions({ work, workspaceId: args.workspaceId, actorUserId: run.userId }) : ''
   return buildNativeWorkflowInput(args, run, surfaceExecution, prepared, work, workBlock)
 }
