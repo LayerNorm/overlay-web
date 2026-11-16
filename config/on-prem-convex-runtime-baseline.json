@@ -179,6 +179,7 @@
     "src/app/api/v1/workspaces/[workspaceId]/billing/auto-top-up/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/checkout/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/portal/route.ts",
+    "src/app/api/v1/workspaces/[workspaceId]/billing/preview-plan/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/request/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/route.ts",
     "src/app/api/v1/workspaces/[workspaceId]/billing/top-ups/route.ts",
