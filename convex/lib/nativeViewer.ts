@@ -42,9 +42,9 @@ export async function nativePersonalChatScope(
     || conversation.workspaceId !== viewer.workspaceId || conversation.userId !== viewer.userId
     || (conversation.conversationType ?? 'personal') !== 'personal'
     || conversation.agentId || conversation.externalPlatform || conversation.surfaceBindingId) return null
-  const automation = await ctx.db.query('automations')
-    .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversation._id).eq('deletedAt', undefined)).first()
-  const kind: NativeChatKind = conversation.isAutomation || automation
+  // An automation's bound thread is an ordinary chat. Only threads the retired
+  // automation runner created (still flagged isAutomation) stay out of Chats.
+  const kind: NativeChatKind = conversation.isAutomation
     ? 'automation'
     : conversation.scope === 'workspace' ? 'workspace' : 'personal'
   const participant = await ctx.db.query('conversationParticipants')
