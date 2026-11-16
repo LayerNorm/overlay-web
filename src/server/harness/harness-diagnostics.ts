@@ -166,34 +166,36 @@ function interruptedModelCallIsLatest(snapshot: HarnessSnapshot): boolean {
   return receipt?.provider === INTERRUPTED_MODEL_CALL_PROVIDER && snapshot.modelRecovery?.receiptId === receipt.id
 }
 
-/**
- * Classifies a model call failure from the provider error alone: HTTP status,
- * timeout names, or the authored descriptions that survive durable transport.
- * Returns UNKNOWN when the error says nothing about the provider.
- */
-function providerStatusFailureCode(status: number): HarnessDiagnosticCode | undefined {
+function httpStatusFailureCode(status: number): HarnessDiagnosticCode {
   if (status === 408) return 'PROVIDER_TIMEOUT'
   if (status === 429) return 'PROVIDER_RATE_LIMIT'
   if (status >= 500) return 'PROVIDER_UNAVAILABLE'
   if ([401, 402, 403].includes(status)) return 'PROVIDER_ACCOUNT'
   if (status >= 400) return 'PROVIDER_REQUEST_INVALID'
-  return undefined
+  return 'UNKNOWN'
 }
 
-function providerDescriptionFailureCode(description: string): HarnessDiagnosticCode | undefined {
+/** Maps an authored provider failure description to its code, or UNKNOWN. */
+function describedFailureCode(description: string): HarnessDiagnosticCode {
   if (description === PROVIDER_CONTENT_FILTER_REASON) return 'PROVIDER_REJECTED'
   if (description.startsWith('The model provider rate limit or quota was exceeded.')) return 'PROVIDER_RATE_LIMIT'
   if (description.startsWith('The model provider encountered a server error.')) return 'PROVIDER_UNAVAILABLE'
   if (description.startsWith('The model provider request timed out.')) return 'PROVIDER_TIMEOUT'
   if (providerAccountFailures.some(prefix => description.startsWith(prefix))) return 'PROVIDER_ACCOUNT'
   if (providerRequestFailures.some(prefix => description.startsWith(prefix))) return 'PROVIDER_REQUEST_INVALID'
-  return undefined
+  return 'UNKNOWN'
 }
 
+/**
+ * Classifies a model call failure from the provider error alone: HTTP status,
+ * timeout names, or the authored descriptions that survive durable transport.
+ * Returns UNKNOWN when the error says nothing about the provider.
+ */
 function harnessProviderFailureCode(error: unknown): HarnessDiagnosticCode {
-  const statusCode = APICallError.isInstance(error) && typeof error.statusCode === 'number'
-    ? providerStatusFailureCode(error.statusCode) : undefined
-  if (statusCode) return statusCode
+  if (APICallError.isInstance(error) && typeof error.statusCode === 'number') {
+    const code = httpStatusFailureCode(error.statusCode)
+    if (code !== 'UNKNOWN') return code
+  }
   const name = readErrorField(error, 'name')
   const errorCode = readErrorField(error, 'code')
   if (name === 'TimeoutError' || name === 'APITimeoutError' || errorCode === 'ETIMEDOUT' || errorCode === 'ECONNABORTED') {
@@ -208,8 +210,8 @@ function harnessProviderFailureCode(error: unknown): HarnessDiagnosticCode {
     const currentName = readErrorField(current, 'name')
     const description = currentName === 'HarnessModelFailure'
       ? readErrorField(current, 'message') : describeAISDKFailure(current)
-    const describedCode = typeof description === 'string' ? providerDescriptionFailureCode(description) : undefined
-    if (describedCode) return describedCode
+    const described = typeof description === 'string' ? describedFailureCode(description) : 'UNKNOWN'
+    if (described !== 'UNKNOWN') return described
     // The provider sent an error event mid-stream without an HTTP status. Its type
     // label says why; any other stream error is still the provider's, not Overlay's.
     if (currentName === 'AI_StreamProviderError') {
