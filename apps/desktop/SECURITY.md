@@ -25,17 +25,10 @@ ask reporters to allow time for investigation and coordinated disclosure.
 ## High-priority scope
 
 - Authentication, session transfer, and server-profile trust
-- Authorization, billing, model policy, and usage-accounting bypasses
-- Electron IPC and renderer-to-main privilege boundaries
-- Shell, AppleScript, Accessibility, filesystem, and browser-agent operations
-- Approval-mode or Full-access policy bypasses
-- Browser profile isolation, SSRF, downloads, and local network access
+- The desktop bridge and main-process privilege boundaries
+- Dictation delivery, Accessibility, AppleScript and Agent Host operations
 - Auto-update, signing, notarization, release workflow, and supply chain
 - Sensitive telemetry, logs, local storage, and credential handling
-
-Detailed audits and active remediation notes are maintained privately. Public
-security documentation describes supported behavior without publishing
-unresolved exploit details.
 
 ## Remote web shell
 

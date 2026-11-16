@@ -43,13 +43,11 @@ jobs:
 
       - name: Verify public source boundaries
         run: |
-          npm run check:standalone
           npm run license:check
           # Gate on production dependencies only. Dev-tool advisories (eslint,
           # electron-builder toolchain) do not ship in the macOS app artifact.
           npm run check:dependencies:prod
           npm run check:release-security
-          npm run check:launch-controls
           npm run check:public-source-secrets
 
       - name: Test and compile

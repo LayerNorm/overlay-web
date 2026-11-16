@@ -1,5 +1,5 @@
 // Security Service - Centralized security utilities for Overlay
-// Handles redacted audit logging, rate limiting, and code signing verification.
+// Handles redacted audit logging and code signing verification.
 
 import { app } from 'electron'
 import { createHash } from 'crypto'
@@ -26,8 +26,6 @@ export type AuditEventType =
   | 'api:request'
   | 'platform/usage:track'
   | 'platform/usage:limit_exceeded'
-  | 'ipc:sensitive_call'
-  | 'ipc:rate_limited'
   | 'security:tampering_detected'
 
 interface AuditLogEntry {
@@ -117,66 +115,8 @@ class AuditLogger {
   }
 }
 
-// ── Rate Limiting ─────────────────────────────────────────────────────────────
-
-interface RateLimitConfig {
-  maxRequests: number
-  windowMs: number
-}
-
-interface RateLimitEntry {
-  count: number
-  resetAt: number
-}
-
-class RateLimiter {
-  private limits: Map<string, RateLimitEntry> = new Map()
-  private configs: Map<string, RateLimitConfig> = new Map()
-
-  constructor() {
-    // Default rate limits for sensitive operations
-    this.setConfig('auth:refresh', { maxRequests: 5, windowMs: 60000 }) // 5 per minute
-    this.setConfig('api:key_fetch', { maxRequests: 10, windowMs: 60000 }) // 10 per minute
-    this.setConfig('platform/usage:track', { maxRequests: 100, windowMs: 60000 }) // 100 per minute
-    this.setConfig('ipc:sensitive', { maxRequests: 30, windowMs: 60000 }) // 30 per minute
-    this.setConfig('ai:request', { maxRequests: 60, windowMs: 60000 }) // 60 per minute
-  }
-
-  setConfig(operation: string, config: RateLimitConfig): void {
-    this.configs.set(operation, config)
-  }
-
-  check(
-    operation: string,
-    identifier: string = 'default'
-  ): { allowed: boolean; remaining: number; resetIn: number } {
-    const key = `${operation}:${identifier}`
-    const config = this.configs.get(operation) || { maxRequests: 100, windowMs: 60000 }
-    const now = Date.now()
-
-    let entry = this.limits.get(key)
-    if (!entry || entry.resetAt <= now) {
-      entry = { count: 0, resetAt: now + config.windowMs }
-      this.limits.set(key, entry)
-    }
-
-    entry.count++
-    const allowed = entry.count <= config.maxRequests
-    const remaining = Math.max(0, config.maxRequests - entry.count)
-    const resetIn = entry.resetAt - now
-
-    return { allowed, remaining, resetIn }
-  }
-
-  reset(operation: string, identifier: string = 'default'): void {
-    const key = `${operation}:${identifier}`
-    this.limits.delete(key)
-  }
-}
-
 // ── Code Signing Verification ─────────────────────────────────────────────────
 
-let codeSigningVerified = false
 let codeSigningError: string | null = null
 
 export async function verifyCodeSigning(): Promise<{ valid: boolean; error?: string }> {
@@ -207,7 +147,6 @@ export async function verifyCodeSigning(): Promise<{ valid: boolean; error?: str
           '--verbose=2',
           resolve(bundlePath)
         ])
-        codeSigningVerified = true
         auditLogger.log({
           type: 'security:tampering_detected',
           action: 'Code signing verification passed',
@@ -234,61 +173,9 @@ export async function verifyCodeSigning(): Promise<{ valid: boolean; error?: str
   }
 }
 
-export function isCodeSigningVerified(): boolean {
-  return codeSigningVerified || !app.isPackaged
-}
-
 // ── Export Singleton Instances ────────────────────────────────────────────────
 
 export const auditLogger = new AuditLogger()
-export const rateLimiter = new RateLimiter()
-
-// ── IPC Security Wrapper ──────────────────────────────────────────────────────
-
-export function secureIpcHandler<T>(
-  operation: string,
-  handler: (...args: unknown[]) => Promise<T>,
-  options: {
-    rateLimit?: boolean
-    audit?: boolean
-    userId?: () => string | undefined
-  } = {}
-): (...args: unknown[]) => Promise<T> {
-  return async (...args: unknown[]): Promise<T> => {
-    const userId = options.userId?.()
-
-    // Rate limiting
-    if (options.rateLimit !== false) {
-      const { allowed, remaining, resetIn } = rateLimiter.check(
-        'ipc:sensitive',
-        userId || 'anonymous'
-      )
-      if (!allowed) {
-        auditLogger.log({
-          type: 'ipc:rate_limited',
-          action: `Rate limited: ${operation}`,
-          userId,
-          details: { remaining, resetIn },
-          success: false
-        })
-        throw new Error(`Rate limit exceeded. Try again in ${Math.ceil(resetIn / 1000)} seconds.`)
-      }
-    }
-
-    // Audit logging
-    if (options.audit !== false) {
-      auditLogger.log({
-        type: 'ipc:sensitive_call',
-        action: operation,
-        userId,
-        details: { argsCount: args.length },
-        success: true
-      })
-    }
-
-    return handler(...args)
-  }
-}
 
 // Cleanup on app quit
 app.on('before-quit', () => {

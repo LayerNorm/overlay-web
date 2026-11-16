@@ -1,6 +1,4 @@
 import { globalShortcut, systemPreferences } from 'electron'
-import { settingsService } from './settings-service'
-import { panelLatencyMarkHotkey } from '../utils/panel-latency'
 
 // Lazily loaded uiohook module to prevent accessibility prompt at startup
 let uIOhookInstance: any = null
@@ -58,7 +56,7 @@ export class HotkeyManager {
   private configuredPanelHotkeys: Map<PanelToggleMode, string> = new Map()
   private activeToggles: Set<HotkeyMode> = new Set()
   private callbacks: HotkeyCallbacks | null = null
-  private canUseHotkeys = (): boolean => settingsService.isAuthenticated
+  private canUseHotkeys = (): boolean => false
   private panelCallbacks: PanelToggleCallbacks | null = null
   private isRecording = false
   private currentMode: HotkeyMode | null = null
@@ -262,7 +260,6 @@ export class HotkeyManager {
           return
         }
         console.log(`[HotkeyManager] Panel toggle triggered: ${panel}`)
-        panelLatencyMarkHotkey(panel)
         this.panelCallbacks?.onPanelToggle(panel)
       })
 

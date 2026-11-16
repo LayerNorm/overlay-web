@@ -20,13 +20,9 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "check:native-artifacts": "node scripts/verify-native-artifacts.mjs",
     "check:public-source-secrets": "node scripts/check-public-source-secrets.mjs",
-    "check:launch-controls": "node scripts/check-launch-controls.mjs",
     "check:dependencies:prod": "npm audit --omit=dev --audit-level=high",
     "check:dependencies:all": "npm audit --audit-level=high",
     "license:check": "node --experimental-strip-types scripts/check-licensing.ts",
-    "check:standalone": "node scripts/check-standalone-repository.mjs",
-    "check:public-tree": "node scripts/check-public-tree.mjs",
-    "public:export": "node scripts/create-public-export.mjs",
     "generate:sbom": "node scripts/generate-sbom.mjs",
     "test:watch": "vitest",
     "start": "electron-vite preview",
@@ -48,15 +44,13 @@
     "security:verify:source": "npm run check:public-source-secrets && npm run check:no-provider-sdks && npm run check:release-security && npm run check:dependencies:prod && npm test"
   },
   "dependencies": {
-    "@electron-toolkit/utils": "^4.0.0",
+    "@overlay/desktop-bridge": "0.0.1",
     "@sentry/electron": "7.15.0",
     "axios": "1.21.0",
     "dotenv": "^17.2.3",
-    "electron-log": "^5.4.3",
     "electron-updater": "^6.3.9",
-    "zod": "^4.6.7",
-    "@overlay/desktop-bridge": "0.0.1",
-    "uiohook-napi": "^1.5.4"
+    "uiohook-napi": "^1.5.4",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

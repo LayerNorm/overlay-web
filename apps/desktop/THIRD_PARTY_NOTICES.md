@@ -1,7 +1,7 @@
 # Third-Party Notices
 
 Overlay Desktop includes third-party JavaScript packages, native modules,
-frameworks, fonts, models, and helper binaries. Each component remains subject
+frameworks, models, and helper binaries. Each component remains subject
 to its own license and notice requirements.
 
 The authoritative JavaScript dependency set is `package-lock.json`. Run
@@ -22,8 +22,8 @@ Important native and model components include:
 - WhisperKit CoreML model files — downloaded from immutable model revision
   `97a5bf9bbc74c7d9c12c755d04dea59e672e3808`. The pinned model card is
   preserved under `third_party/licenses`.
-- LanceDB and native npm dependencies — licenses recorded in their package
-  metadata and the generated SBOM.
+- Native npm dependencies — licenses recorded in their package metadata and the
+  generated SBOM.
 
 `npm run check:native-artifacts` verifies hashes, architecture, build records,
 licenses, source records, and absence of private workstation paths for every

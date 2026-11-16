@@ -25,8 +25,7 @@ const mocks = vi.hoisted(() => {
   const systemPreferences = {
     isTrustedAccessibilityClient: vi.fn(() => true)
   }
-  const settingsService = { isAuthenticated: true }
-  const panelLatencyMarkHotkey = vi.fn()
+  const auth = { signedIn: true }
 
   return {
     globalHandlers,
@@ -34,22 +33,13 @@ const mocks = vi.hoisted(() => {
     hook,
     globalShortcut,
     systemPreferences,
-    settingsService,
-    panelLatencyMarkHotkey
+    auth
   }
 })
 
 vi.mock('electron', () => ({
   globalShortcut: mocks.globalShortcut,
   systemPreferences: mocks.systemPreferences
-}))
-
-vi.mock('./settings-service', () => ({
-  settingsService: mocks.settingsService
-}))
-
-vi.mock('../utils/panel-latency', () => ({
-  panelLatencyMarkHotkey: mocks.panelLatencyMarkHotkey
 }))
 
 vi.mock('uiohook-napi', () => ({
@@ -88,8 +78,7 @@ describe('HotkeyManager panel lifecycle', () => {
     mocks.hook.on.mockClear()
     mocks.systemPreferences.isTrustedAccessibilityClient.mockClear()
     mocks.systemPreferences.isTrustedAccessibilityClient.mockReturnValue(true)
-    mocks.settingsService.isAuthenticated = true
-    mocks.panelLatencyMarkHotkey.mockClear()
+    mocks.auth.signedIn = true
     onPanelToggle.mockReset()
     onRecordingCancel.mockReset()
 
@@ -98,7 +87,7 @@ describe('HotkeyManager panel lifecycle', () => {
       onRecordingStart: vi.fn(),
       onRecordingStop: vi.fn(),
       onRecordingCancel
-    })
+    }, () => mocks.auth.signedIn)
     manager.initializePanelCallbacks({ onPanelToggle })
   })
 
@@ -122,7 +111,6 @@ describe('HotkeyManager panel lifecycle', () => {
 
     expect(onPanelToggle).toHaveBeenCalledTimes(1)
     expect(onPanelToggle).toHaveBeenCalledWith(panel)
-    expect(mocks.panelLatencyMarkHotkey).toHaveBeenCalledWith(panel)
   })
 
   it('does not initialize uIOhook for panel shortcuts', async () => {
@@ -178,13 +166,12 @@ describe('HotkeyManager panel lifecycle', () => {
   })
 
   it.each(PANELS)('blocks %s when the user is not authenticated', (panel) => {
-    mocks.settingsService.isAuthenticated = false
+    mocks.auth.signedIn = false
     manager.registerPanelHotkey(panel, PANEL_HOTKEYS[panel])
 
     mocks.globalHandlers.get(PANEL_ACCELERATORS[panel])?.()
 
     expect(onPanelToggle).not.toHaveBeenCalled()
-    expect(mocks.panelLatencyMarkHotkey).not.toHaveBeenCalled()
   })
 })
 

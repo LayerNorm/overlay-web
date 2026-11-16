@@ -26,10 +26,6 @@ files:
   - '!ParakeetServer/**/*'
   - '!scripts'
   - '!scripts/**/*'
-  - '!node_modules/onnxruntime-node/bin/napi-v3/linux/**'
-  - '!node_modules/onnxruntime-node/bin/napi-v3/win32/**'
-  - '!node_modules/@xenova/transformers/**'
-  - '!node_modules/onnxruntime-web/**'
 asarUnpack:
   - resources/**
 extraResources:
@@ -37,7 +33,6 @@ extraResources:
     to: resources
     filter:
       - '**/*'
-      - '!models/embeddings/**'
   - from: whisperkit-bundle
     to: whisperkit
     filter:
@@ -47,14 +42,6 @@ extraResources:
     to: parakeet
     filter:
       - '**/*'
-win:
-  icon: resources/icon.png
-  executableName: overlay
-nsis:
-  artifactName: overlay-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
 mac:
   icon: resources/icon.png
   hardenedRuntime: true
@@ -70,16 +57,6 @@ mac:
     - dmg
     - zip
 dmg:
-  artifactName: overlay-${version}.${ext}
-linux:
-  icon: resources/icon.png
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
   artifactName: overlay-${version}.${ext}
 npmRebuild: true
 publish:

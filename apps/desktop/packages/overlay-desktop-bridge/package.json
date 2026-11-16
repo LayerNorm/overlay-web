@@ -4,6 +4,5 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "zod": "^4.0.0" },
-  "scripts": { "test": "tsx --test src/*.test.ts" }
+  "dependencies": { "zod": "^4.0.0" }
 }

@@ -77,16 +77,9 @@ requireText(
 )
 requireText(workflow, 'persist-credentials: false', 'checkout credentials must not persist')
 requireText(workflow, "node-version: '22'", 'release Node version must match package engines')
-// At least one job remains frozen until Gate B (publish-mac dry-run freeze is OK).
-requireText(workflow, 'if: ${{ false }}', 'release workflow must remain frozen until Gate B')
 const buildIndex = workflow.indexOf('Build, sign, and notarize')
 // Same-repo publish uses GITHUB_TOKEN only in the publish job (after build).
-// Legacy path created a GitHub App token after the verified build.
-const publishIndex = Math.max(
-  workflow.indexOf('Create release publishing token'),
-  workflow.indexOf('Publish verified artifacts to this repository'),
-  workflow.indexOf('Publish verified artifacts'),
-)
+const publishIndex = workflow.indexOf('Publish verified artifacts to this repository')
 if (buildIndex < 0 || publishIndex < 0 || publishIndex < buildIndex) {
   failures.push('release publishing credentials must be created only after the verified build')
 }

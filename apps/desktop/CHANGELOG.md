@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Slim the repository down to the desktop shell: delete the release-gate checklists, internal TODOs, outdated guides and docs, one-off test scripts for the old chat app (Composio, LanceDB, OpenRouter, phase tests, voice QA and their audio fixtures), checks for the removed renderer, the public-export tooling, unused fonts, provider logos, sounds and file icons, and duplicate license files. Settings, system helpers and security code lose the leftovers nothing called (old assistant settings, screenshots/volume/context capture helpers, rate limiter, unused sign-in exchange, panel latency marks).
+- Allow the manual `Release macOS` workflow to publish to GitHub Releases; it was disabled while the old release gates were open.
+- Drop the Windows/Linux packaging config (the app is macOS only) and the unused WorkOS/Convex environment variables.
+- Remove the `electron-log` and `@electron-toolkit/utils` runtime dependencies, which nothing imports anymore.
+
 - Show the Dock's running indicator: the dictation overlay is now a non-activating panel that floats over full-screen apps without briefly turning Overlay into a background app, which made macOS drop the dot under its Dock icon.
 - Match the main window's frame to the Overlay theme (from the page's theme colour) instead of the macOS appearance, removing the black outline around the light theme when macOS is in Dark mode.
 - Use the current Overlay logo (the black serif O with two eyes) as the app icon on macOS, Windows and Linux, sized to the macOS icon grid so it matches other Dock icons. Delete the outdated orb and "Dawn" logos, tray images and marketing images that the app no longer used.

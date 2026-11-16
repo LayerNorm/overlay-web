@@ -1,11 +1,7 @@
 import { app, shell } from 'electron'
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import type { OverlayServerDiscovery } from './server-discovery'
-import {
-  safeStorageService,
-  type AuthSession,
-  type AuthSessionMetadata
-} from './safe-storage-service'
+import { safeStorageService } from './safe-storage-service'
 import { serverProfileService } from './server-profile-service'
 import { readBoundedJson } from './bounded-json-response'
 
@@ -105,52 +101,6 @@ export async function startNativeSignIn(
 
   console.log('[Auth] Opening browser session handoff through configured Overlay Server')
   await shell.openExternal(handoffUrl.toString())
-}
-
-export async function completeNativeSignIn(
-  code: string,
-  returnedState: string
-): Promise<AuthSession> {
-  const pending = pendingNativeAuth
-  pendingNativeAuth = null
-  if (!pending || Date.now() - pending.startedAt > AUTH_TTL_MS) {
-    throw new Error('native_auth_expired_or_missing_state')
-  }
-  const expected = Buffer.from(pending.state, 'utf8')
-  const actual = Buffer.from(returnedState, 'utf8')
-  if (expected.byteLength !== actual.byteLength || !timingSafeEqual(expected, actual)) {
-    throw new Error('native_auth_state_mismatch')
-  }
-  if (typeof code !== 'string' || code.length < 8 || code.length > 4096) {
-    throw new Error('native_auth_invalid_code')
-  }
-
-  const response = await fetch(new URL(pending.tokenPath, pending.serverOrigin), {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ code, codeVerifier: pending.codeVerifier }),
-    signal: AbortSignal.timeout(AUTH_REQUEST_TIMEOUT_MS)
-  })
-  if (!response.ok) throw new Error('native_auth_exchange_failed')
-  const result = (await readBoundedJson(response, 1024 * 1024)) as {
-    success?: unknown
-    session?: unknown
-  }
-  if (result.success !== true || !result.session) throw new Error('native_auth_invalid_exchange')
-  const session = result.session as AuthSession
-  if (!safeStorageService.storeAuthSession(session)) {
-    throw new Error('native_auth_secure_storage_failed')
-  }
-  const stored = safeStorageService.getAuthSession()
-  if (!stored) throw new Error('native_auth_secure_storage_verification_failed')
-  return stored
-}
-
-export function getNativeAuthState(): AuthSessionMetadata | null {
-  return safeStorageService.getAuthSessionMetadata()
 }
 
 export function consumeSessionTransferVerifier(serverOrigin: string): string | null {

@@ -1,79 +1,55 @@
 # Overlay for Mac
 
-The complete Overlay web app in a secure Electron shell, with native dictation,
-floating chat and notes panels, screenshots, notifications, a local Agent Host
-and automatic updates. Web features ship to desktop through the same app routes.
+The Overlay web app in a secure Electron shell, plus the parts a browser can't do:
+system-wide dictation, floating chat and notes panels, screenshots, notifications,
+a local Agent Host and automatic updates. Every web feature ships to desktop
+through the same app routes; the desktop itself contains no chat or model code.
 
-CI exercises the native recorder HUD with a synthetic media device as well as
-direct transcription, so capture startup and preload isolation are both covered.
-Local capture is decoded to 16 kHz mono PCM WAV in the isolated preload before
-native inference; cloud transcription keeps its original capture container.
+macOS on Apple Silicon only.
+
+## Develop
 
 ```sh
+cp .env.example .env
 npm ci
 npm run dev
 ```
 
-Development defaults to the local web server. Set `APP_SERVER_URL` to the intended
-HTTPS server (HTTP is accepted only for loopback development). The server profile
-pins the origin used for navigation, permissions and the typed bridge. Remote
-pages have no Node access. SSO opens in your normal browser and transfers a
-one-time PKCE-bound session into the persistent app cookie partition.
-
-Settings → Desktop configures native features. Default shortcuts are Control+Space (tap to toggle, hold to talk)
-for dictation, Command+. for chat and Command+/ for notes. Local WhisperKit and
-Parakeet models work offline after downloading; cloud dictation uses your Overlay
-account and its existing billing checks. No provider key is stored in the desktop.
+`APP_SERVER_URL` picks the Overlay Server the window loads (HTTPS, or HTTP on
+localhost only). SSO opens in your normal browser and hands a one-time,
+PKCE-bound session back to the app.
 
 ```sh
+npm run lint
 npm test
 npm run build
 npm run test:e2e
-npm run security:verify:source
 ```
 
-Playwright drives the actual Electron preload with throwaway profiles. Boundary
-tests use a loopback fixture; the configured-server tests exercise real signed-out
-web rendering and PKCE transfer navigation. Real Google sign-in, audio, screen
-permissions and signed upgrade acceptance also require the release QA checklist.
+## How it works
 
-`packages/overlay-desktop-bridge` is vendored from overlay-web. Keep its schemas
-and fingerprint synchronized. Only the pinned top-level origin receives it; main
-validates the caller, method and arguments again. Main contains no chat/agent
-inference pipeline, provider SDK or direct Convex client. Agent Host enrollment is
-user-initiated and server approval still gates filesystem access.
+- **Web shell.** One window pinned to one server origin. Remote pages get no Node
+  access; only the top-level page of that origin receives the typed desktop bridge
+  (`packages/overlay-desktop-bridge`, copied from overlay-web, so keep it in sync).
+  The main process validates every call again.
+- **Dictation.** Default shortcut Control+Space (tap to toggle, hold to talk).
+  Local WhisperKit and Parakeet models run offline after download; cloud
+  dictation uses your Overlay account. No provider key is stored on the Mac.
+- **Panels.** Command+. opens chat and Command+/ opens notes.
+- **Agent Host.** Started only by the user; the server still approves any
+  filesystem access.
+- **Upgrades from the old app.** Old transcripts and native preferences are
+  exported to the app's data folder once; nothing is uploaded or deleted.
 
-On upgrade, transcripts and native preferences are exported privately, while
-recordings, knowledge files and migration journals remain on disk. Desktop settings
-opens that folder. Legacy browser tabs/bookmarks and local assistant preferences
-are retired. No local content is uploaded or deleted automatically.
+## Release
 
-Official macOS builds use the existing signed/notarized workflow and protected
-release environments. Binary publication remains gated by the release checklist;
-source validation alone does not approve publication. CI saves the compiled shell
-with source provenance for interactive QA without rebuilding on the laptop. See [release process](guides/RELEASE_PROCESS.md)
-and [security policy](SECURITY.md).
+`Release macOS` (manual dispatch with a full commit SHA) builds, signs,
+notarizes, verifies and attests the DMG and ZIP, then publishes them to this
+repository's GitHub Releases, which the auto-updater reads.
 
-The macOS CI wrapper imports the existing signing certificate into an ephemeral
-keychain using a separate random keychain password, then passes `CSC_KEYCHAIN`
-to electron-builder. It removes the certificate file and keychain after use.
-Signing and notarization remain in CI; the publication gate remains separate.
+## License
 
-Clean-clone CI also seeds a throwaway legacy file-origin browser profile and
-launches the real upgrade path, verifying private transcript export, secret
-exclusion, retained recordings/journals and a once-only migration notice.
-
-For real local-model QA, dispatch Clean public clone with `local_transcription`
-enabled. This opt-in lane uses macOS 26; ordinary checks remain on macOS 15.
-The runner synthesizes a test phrase and downloads the pinned
-Whisper Base model before transcribing through the actual sandboxed bridge. The ASR helper runs
-under a test-only macOS sandbox that denies networking, verifying offline inference.
-Model and tokenizer bytes are verified against their immutable upstream hashes
-in isolated app data. Include physical-device acceptance when investigating a
-Core ML runner discrepancy; a helper process exit alone does not prove recognition.
-This is an opt-in network/model smoke, separate from the ordinary fixture suite.
-
-Whisper downloads include pinned model-specific tokenizer files. Older downloads
-without them appear as needing Download; this repairs their tokenizer without
-replacing existing model weights. Transcription refuses an incomplete offline
-setup instead of letting the helper fetch dependencies implicitly.
+AGPL-3.0-or-later ([LICENSE](LICENSE)). Overlay branding is not licensed for
+forks; see [TRADEMARKS.md](TRADEMARKS.md) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Report security issues as
+described in [SECURITY.md](SECURITY.md).
