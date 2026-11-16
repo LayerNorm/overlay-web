@@ -6,10 +6,7 @@ import {
   startWorkspaceAgentTurns,
   type WorkspaceAgentTurnDispatcherDependencies,
 } from './start-agent-turns'
-import {
-  WorkspaceAgentInvocationError,
-  type WorkspaceAgentInvocation,
-} from './workspace-agent-invocation'
+import type { WorkspaceAgentInvocation } from './workspace-agent-invocation'
 import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const args = {
@@ -24,43 +21,22 @@ const args = {
   workspaceId: 'workspace-1',
 }
 
-function invocation(
-  agentId: string,
-  options: { externalAgent?: boolean; remoteTarget?: boolean; harness?: string } = {},
-): WorkspaceAgentInvocation {
+function invocation(agentId: string): WorkspaceAgentInvocation {
   return {
     agentId,
     agentName: agentId,
     agentPrincipalId: `principal-${agentId}`,
     invocationNonce: `nonce-${agentId}`,
-    modelId: options.externalAgent ? 'byo/codex' : 'overlay/default',
-    harness: options.harness ?? 'overlay',
-    externalAgent: options.externalAgent ?? false,
+    modelId: 'overlay/default',
     turnId: `turn-${agentId}`,
-    ...(options.remoteTarget ? {
-      remoteTarget: {
-        adapterId: 'codex',
-        bindingId: 'binding-1',
-        environmentId: 'environment-1',
-        environmentName: 'Host',
-        environmentKind: 'local',
-        usesProviderAccount: true,
-        modelUsageBilling: 'byok',
-        online: true,
-        protocolAdapter: 'acp',
-        workingDirectory: '/workspace',
-      } as NonNullable<WorkspaceAgentInvocation['remoteTarget']>,
-    } : {}),
   }
 }
 
 function fixture(
   invocations: WorkspaceAgentInvocation[],
-  startRemote: NonNullable<WorkspaceAgentTurnDispatcherDependencies['startRemote']>,
   options: { resumed?: boolean; nativeStartFails?: boolean; admissionFails?: boolean } = {},
 ) {
   const nativeStarts: string[] = []
-  const remoteStarts: string[] = []
   const failures: string[] = []
   const failureRows: Array<{ content: string; failure?: { code: string; message: string; retryable: boolean } }> = []
   const turnInputs: Array<Record<string, unknown>> = []
@@ -96,10 +72,6 @@ function fixture(
       NonNullable<WorkspaceAgentTurnDispatcherDependencies['getCollaboration']>
     >,
     resolveInvocations: async () => invocations,
-    startRemote: async (input) => {
-      remoteStarts.push(input.invocation.agentId)
-      return await startRemote(input)
-    },
     startNative: async (input) => {
       harnessStarts.push(input.runId)
       if (options.nativeStartFails) throw new Error('native start failed')
@@ -108,7 +80,6 @@ function fixture(
   return {
     run: (strictErrors = false) => startWorkspaceAgentTurns({ ...args, ...(strictErrors ? { strictErrors } : {}) }, dependencies),
     nativeStarts,
-    remoteStarts,
     failures,
     failureRows,
     turnInputs,
@@ -117,51 +88,8 @@ function fixture(
   }
 }
 
-test('a disabled external peer does not prevent a native peer from starting', async () => {
-  const f = fixture(
-    [invocation('native'), invocation('external', { externalAgent: true, remoteTarget: true })],
-    async () => {
-      throw new WorkspaceAgentInvocationError('not_entitled')
-    },
-  )
-
-  await f.run()
-
-  assert.deepEqual(f.nativeStarts, ['native'])
-  assert.deepEqual(f.remoteStarts, ['external'])
-  assert.deepEqual(f.failures, ['principal-external'])
-})
-
-test('an external identity without a target never falls back to native execution', async () => {
-  const f = fixture(
-    [invocation('external', { externalAgent: true })],
-    async () => {
-      throw new Error('remote dispatcher should not be reached')
-    },
-  )
-
-  await f.run()
-
-  assert.deepEqual(f.nativeStarts, [])
-  assert.deepEqual(f.remoteStarts, [])
-  assert.deepEqual(f.failures, ['principal-external'])
-})
-
-test('an enabled external peer with a target uses remote dispatch', async () => {
-  const f = fixture(
-    [invocation('external', { externalAgent: true, remoteTarget: true })],
-    async () => {},
-  )
-
-  await f.run()
-
-  assert.deepEqual(f.nativeStarts, [])
-  assert.deepEqual(f.remoteStarts, ['external'])
-  assert.deepEqual(f.failures, [])
-})
-
 test('agent starts require workspace admission before opening a durable turn', async () => {
-  const f = fixture([invocation('native')], async () => {}, { admissionFails: true })
+  const f = fixture([invocation('native')], { admissionFails: true })
 
   await f.run()
 
@@ -172,7 +100,7 @@ test('agent starts require workspace admission before opening a durable turn', a
 })
 
 test('an unpaid workspace tells the user why the agent did not start', async () => {
-  const f = fixture([invocation('native')], async () => {}, { admissionFails: true })
+  const f = fixture([invocation('native')], { admissionFails: true })
 
   await f.run()
 
@@ -181,35 +109,8 @@ test('an unpaid workspace tells the user why the agent did not start', async () 
   assert.deepEqual(f.failureRows[0]!.failure, { code: 'subscription_required', message: 'Paid plan required.', retryable: false })
 })
 
-test('an unfunded BYO turn is refused before remote dispatch', async () => {
-  const f = fixture([
-    invocation('external', { externalAgent: true, remoteTarget: true }),
-  ], async () => {}, { admissionFails: true })
-
-  await f.run()
-
-  assert.deepEqual(f.admissions, [false])
-  assert.deepEqual(f.remoteStarts, [])
-  assert.deepEqual(f.failures, ['principal-external'])
-})
-
-test('unsupported native identities never open a legacy delivery', async () => {
-  const f = fixture(
-    [invocation('unsupported', { harness: 'retired' })],
-    async () => {},
-    { resumed: false },
-  )
-  await f.run()
-  assert.equal(f.turnInputs.length, 0)
-  assert.deepEqual(f.harnessStarts, [])
-  assert.deepEqual(f.failures, ['principal-unsupported'])
-})
-
 test('overlay agents always use native Harness and mark its delivery row', async () => {
-  const f = fixture(
-    [invocation('native', { harness: 'overlay' })],
-    async () => {},
-    { resumed: false },
+  const f = fixture([invocation('native')], { resumed: false },
   )
   await f.run()
   assert.equal(f.turnInputs[0]!.executionEngine, 'overlay_harness')
@@ -217,41 +118,26 @@ test('overlay agents always use native Harness and mark its delivery row', async
   assert.deepEqual(f.harnessStarts, ['run-1'])
 })
 
-test('remote and external invocations stay outside native dispatch and resumed turns do not start again', async () => {
-  const remote = fixture(
-    [invocation('remote', { harness: 'overlay', remoteTarget: true }), invocation('external', { externalAgent: true })],
-    async () => {},
-    { resumed: false },
-  )
-  await remote.run()
-  assert.deepEqual(remote.remoteStarts, ['remote'])
-  assert.deepEqual(remote.harnessStarts, [])
-  assert.deepEqual(remote.turnInputs, [])
+test('every agent, including one set up for a removed third-party harness, starts a native turn; a resumed turn does not start again', async () => {
+  const fresh = fixture([invocation('one'), invocation('two')], { resumed: false })
+  await fresh.run()
+  assert.deepEqual(fresh.nativeStarts, ['one', 'two'])
+  assert.deepEqual(fresh.harnessStarts, ['run-1', 'run-1'])
+  assert.deepEqual(fresh.failures, [])
 
-  const resumed = fixture(
-    [invocation('native', { harness: 'overlay' })],
-    async () => {},
-    { resumed: true },
-  )
+  const resumed = fixture([invocation('native')], { resumed: true })
   await resumed.run()
   assert.deepEqual(resumed.harnessStarts, [])
 })
-
 test('a native workflow start failure uses the existing failure-message path', async () => {
-  const f = fixture(
-    [invocation('native', { harness: 'overlay' })],
-    async () => {},
-    { resumed: false, nativeStartFails: true },
+  const f = fixture([invocation('native')], { resumed: false, nativeStartFails: true },
   )
   await f.run()
   assert.deepEqual(f.failures, ['principal-native'])
 })
 
 test('strict assignment dispatch propagates a start failure after persisting the existing failure message', async () => {
-  const f = fixture(
-    [invocation('native', { harness: 'overlay' })],
-    async () => {},
-    { nativeEnabled: true, resumed: false, nativeStartFails: true },
+  const f = fixture([invocation('native')], { resumed: false, nativeStartFails: true },
   )
   await assert.rejects(f.run(true), /native start failed/)
   assert.deepEqual(f.failures, ['principal-native'])

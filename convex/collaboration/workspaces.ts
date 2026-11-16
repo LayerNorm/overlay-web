@@ -1713,71 +1713,7 @@ export const purgeArchivedWorkspaceByServer = mutation({
     )
     await deleteRows(
       await ctx.db
-        .query('agentApprovalRequests')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentRunCommands')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentEventRateWindows')
-        .withIndex('by_workspaceId_windowStartedAt', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentWorkspacePolicyUsage')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentArtifacts')
-        .withIndex('by_workspaceId_environmentId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentSandboxSettlements')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentRemoteSessions')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
         .query('agentSandboxLeases')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect(),
-    )
-    await deleteRows(
-      await ctx.db
-        .query('agentBindings')
         .withIndex('by_workspaceId', (q) =>
           q.eq('workspaceId', args.workspaceId),
         )

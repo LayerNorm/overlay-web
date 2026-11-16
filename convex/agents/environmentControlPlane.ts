@@ -2,13 +2,11 @@ import { v } from 'convex/values'
 import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
 import { mutation, query, type MutationCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { z } from 'zod/v3'
 
 const MAX_ENROLLMENT_LIFETIME_MS = 15 * 60 * 1000
 const MAX_CREDENTIAL_LIFETIME_MS = 15 * 60 * 1000
 const MAX_PROOF_NONCE_LIFETIME_MS = 5 * 60 * 1000
 const MAX_CAPABILITY_BYTES = 128 * 1024
-const driveCapability = z.object({ drive: z.object({ version: z.literal(1) }) })
 const anyObject = v.any()
 const filesystemGrant = v.union(
   v.object({ mode: v.literal('selected_roots'), roots: v.array(v.string()) }),
@@ -84,13 +82,10 @@ async function requireActiveEnvironment(ctx: MutationCtx, workspaceId: string, e
   return environment
 }
 
-function compatibleCredentialMethods(current: string[], next: string[], capabilities: unknown): boolean {
-  const prior = new Set(current), requested = new Set(next)
-  // All existing scopes remain fixed except the negotiated drive extension.
-  // Check capability in the same transaction that revokes/issues credentials.
-  return current.every(method => requested.has(method) || method === 'agent:drive-credentials')
-    && next.every(method => prior.has(method)
-      || method === 'agent:drive-credentials' && driveCapability.safeParse(capabilities).success)
+/** Rotation keeps or narrows a credential's scopes; it never adds one. */
+function compatibleCredentialMethods(current: string[], next: string[]): boolean {
+  const prior = new Set(current)
+  return next.every(method => prior.has(method))
 }
 
 export const createEnrollmentSessionByServer = mutation({
@@ -274,8 +269,8 @@ export const rotateEnvironmentCredentialByServer = mutation({
     assertCredentialClaims(args.credential, args.now)
     const current = await ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.currentCredentialId)).unique()
     if (!current || current.revokedAt || current.workspaceId !== args.credential.workspaceId || current.environmentId !== args.credential.environmentId || current.audience !== args.credential.audience) return null
-    const environment = await requireActiveEnvironment(ctx, current.workspaceId, current.environmentId)
-    if (!compatibleCredentialMethods(current.methods, args.credential.methods, environment.capabilities)) return null
+    await requireActiveEnvironment(ctx, current.workspaceId, current.environmentId)
+    if (!compatibleCredentialMethods(current.methods, args.credential.methods)) return null
     const [idCollision, hashCollision, nonceCollision] = await Promise.all([
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_credentialId', q => q.eq('credentialId', args.credential.id)).unique(),
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_tokenHash', q => q.eq('tokenHash', args.credential.tokenHash)).unique(),
@@ -318,14 +313,10 @@ export const revokeEnvironmentAccessByServer = mutation({
     if (!environment || environment.workspaceId !== args.workspaceId) return false
     if (environment.status === 'revoked') return true
     await ctx.db.patch(environment._id, { status: 'revoked', revokedAt: args.now, updatedAt: args.now })
-    const [bindings, commands, credentials, leases] = await Promise.all([
-      ctx.db.query('agentBindings').withIndex('by_environmentId', q => q.eq('environmentId', args.environmentId)).take(1_000),
-      ctx.db.query('agentRunCommands').withIndex('by_environmentId_sequence', q => q.eq('environmentId', args.environmentId)).take(1_000),
+    const [credentials, leases] = await Promise.all([
       ctx.db.query('agentEnvironmentCredentials').withIndex('by_environmentId_expiresAt', q => q.eq('environmentId', args.environmentId)).take(1_000),
       ctx.db.query('agentSandboxLeases').withIndex('by_workspaceId_environmentId', q => q.eq('workspaceId', args.workspaceId).eq('environmentId', args.environmentId)).take(1_000),
     ])
-    for (const binding of bindings) await ctx.db.patch(binding._id, { enabled: false, updatedAt: args.now })
-    for (const command of commands) if (command.status === 'pending' || command.status === 'claimed') await ctx.db.patch(command._id, { status: 'cancelled', claimExpiresAt: args.now, updatedAt: args.now })
     for (const credential of credentials) if (!credential.revokedAt) await ctx.db.patch(credential._id, { revokedAt: args.now })
     for (const lease of leases) if (!['released', 'cleanup_failed'].includes(lease.status)) await ctx.db.patch(lease._id, { status: 'stopping', reservedUntil: args.now, cleanupAfter: args.now, updatedAt: args.now })
     return true

@@ -59,18 +59,6 @@ test('fields render native agent setup without hosted-runtime fields', () => {
   assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account<|Connect your agent/)
 })
 
-test('the type control opens user-owned machine setup and has no hosted fields', () => {
-  let opened = false
-  const markup = renderToStaticMarkup(
-    <NewAgentFields draft={initialNewAgentDraft()} onChange={() => undefined} modelField={modelField} computersAvailable onOpenMachineSetup={() => { opened = true }} />,
-  )
-  assert.match(markup, /Connect your agent/)
-  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account</)
-  assert.equal(opened, false)
-  assert.match(markup, />Computer</)
-  assert.match(markup, />Advanced</)
-})
-
 test('the computer row is hidden when the deployment has no computers', () => {
   const markup = renderToStaticMarkup(
     <NewAgentFields draft={initialNewAgentDraft()} onChange={() => undefined} modelField={modelField} computersAvailable={false} />,

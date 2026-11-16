@@ -1,18 +1,16 @@
 import { access, mkdir } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { join } from 'node:path'
-import type { AgentAdapter } from './adapter.js'
 import type { AgentHostConfig } from './config.js'
 import { loadOrCreateDeviceKeyPair } from './device-key.js'
-import { SqliteHostStateStore } from './state.js'
+import type { LocalToolExecutor } from './local-tools.js'
 
 export type DoctorCheck = { name: string; ok: boolean; detail: string }
 
-export async function diagnoseHost(config: AgentHostConfig, adapters: AgentAdapter[]): Promise<DoctorCheck[]> {
+export async function diagnoseHost(config: AgentHostConfig, localTools: LocalToolExecutor): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = []
   checks.push({
     name: 'credential', ok: Boolean(config.credential),
-    detail: config.credential ? `Loaded from ${config.credentialEnv}` : `Missing environment variable ${config.credentialEnv}`,
+    detail: config.credential ? `Loaded from ${config.credentialEnv} or the connection store` : `Missing environment variable ${config.credentialEnv}`,
   })
   try {
     await mkdir(config.stateDirectory, { recursive: true, mode: 0o700 })
@@ -23,19 +21,11 @@ export async function diagnoseHost(config: AgentHostConfig, adapters: AgentAdapt
     const keys = await loadOrCreateDeviceKeyPair(config.stateDirectory)
     checks.push({ name: 'device-key', ok: keys.publicKey.includes('PUBLIC KEY'), detail: 'Ed25519 device key is available' })
   } catch (error) { checks.push({ name: 'device-key', ok: false, detail: safeError(error) }) }
-  try {
-    const store = new SqliteHostStateStore(join(config.stateDirectory, 'host.sqlite'))
-    store.close()
-    checks.push({ name: 'sqlite', ok: true, detail: 'SQLite state and outbox are writable' })
-  } catch (error) { checks.push({ name: 'sqlite', ok: false, detail: safeError(error) }) }
-  const adapterChecks = await Promise.all(adapters.map(async (adapter) => {
-    try {
-      const capability = await adapter.discover()
-      return { name: `adapter:${capability.id}`, ok: true, detail: `${capability.protocol} adapter discovered` }
-    } catch (error) { return { name: `adapter:${adapter.capability.id}`, ok: false, detail: safeError(error) } }
-  }))
-  checks.push(...adapterChecks)
+  const capability = await localTools.capability()
+  checks.push({ name: 'local-tools', ok: capability.features.length > 0, detail: capability.features.join(', ') })
   return checks
 }
 
-function safeError(error: unknown): string { return error instanceof Error ? error.message : 'unknown error' }
+function safeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

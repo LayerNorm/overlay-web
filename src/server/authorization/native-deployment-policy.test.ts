@@ -54,8 +54,6 @@ test('policy follows fresh file, remote and environment precedence instead of Co
         NEXT_PUBLIC_CONVEX_URL: snapshot.backendUrl,
         OVERLAY_FEATURE_SKILLS: 'false',
         OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED: 'true',
-        OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE: 'invited',
-        OVERLAY_CONNECTED_AGENTS_INVITED_WORKSPACE_IDS: 'invited-fixture',
       },
     }
     const first = await resolveNativeDeploymentPolicy(options)
@@ -63,7 +61,7 @@ test('policy follows fresh file, remote and environment precedence instead of Co
     assert.equal(first.features.skills, false)
     assert.equal(first.features.mcpServers, false)
     assert.equal(first.features.workspaceHandles, true)
-    assert.equal(first.rollout.invitedWorkspaceIds, 'invited-fixture')
+    assert.equal(first.rollout.stage, 'off')
     remoteFiles = false
     const second = await resolveNativeDeploymentPolicy(options)
     assert.equal(second.features.files, false)

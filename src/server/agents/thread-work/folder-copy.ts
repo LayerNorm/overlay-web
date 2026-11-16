@@ -1,0 +1,448 @@
+import 'server-only'
+
+import { createHash } from 'node:crypto'
+import { toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import { isExcludedWorkPath, workDirectoryName } from '@/shared/agents/thread-work'
+import { FileServiceError } from '@/server/files/FileServiceErrors'
+import type { FileService } from '@/server/files/FileService'
+import type { FolderCopyEntry, FolderCopyRecord, ThreadWorkRepository } from './ConvexThreadWorkRepository'
+
+/**
+ * Copies a chosen Overlay folder onto the computer that runs an agent thread, and saves what changed back to Files
+ * when the run ends (internal/develop/thread-folders.md). Every save goes through FileService, so permissions,
+ * revision checks and agent attribution match the app. A file someone changed in the app meanwhile is never
+ * overwritten: the agent's version is saved beside it as a copy.
+ */
+
+/** The computer a copy is written to, reduced to what copying needs. */
+export type WorkMachine = {
+  target: 'cloud' | 'mac'
+  environmentId?: string
+  /** Copies of Overlay folders go in folders inside this one. */
+  base: string
+  maxFileBytes: number
+  maxTotalBytes: number
+  maxFiles: number
+  run(script: string, cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }>
+  write(files: Array<{ path: string; contents: Uint8Array }>): Promise<void>
+  read(path: string): Promise<Uint8Array | null>
+}
+
+export type FolderFiles = Pick<FileService,
+  'getOrListFiles' | 'readFileBytes' | 'updateFile' | 'createFile' | 'createFileFromBytes' | 'deleteFile'>
+
+export type FolderRun = {
+  agentRunId: string; conversationId: string; workspaceId: string; userId: string; agentId: string
+  agentName?: string; messageId?: string
+}
+
+export type SavedChange = { path: string; action: 'created' | 'updated' | 'deleted' | 'saved_as_copy'; fileId?: string }
+export type FolderSaveSummary = {
+  folderId: string
+  folderName: string
+  saved: SavedChange[]
+  failed: Array<{ path: string; reason: string }>
+  skipped: string[]
+}
+
+export type CopyInResult =
+  | { folderId: string; folderName: string; root: string; copied: number; skipped: string[]; alreadyCopied?: boolean }
+  | { folderId: string; folderName: string; root: string; error: string }
+
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
+const encoder = new TextEncoder()
+export const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
+
+function splitName(name: string): { stem: string; ext: string } {
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? { stem: name.slice(0, dot), ext: name.slice(dot) } : { stem: name, ext: '' }
+}
+
+/** The file name on the computer: notes become Markdown files, and names stay unique within a folder. */
+function uniqueName(taken: Set<string>, name: string): string {
+  const safe = workDirectoryName(name)
+  let candidate = safe
+  for (let index = 2; taken.has(candidate.toLowerCase()); index += 1) {
+    const { stem, ext } = splitName(safe)
+    candidate = `${stem} (${index})${ext}`
+  }
+  taken.add(candidate.toLowerCase())
+  return candidate
+}
+
+const join = (...parts: string[]) => parts.filter(Boolean).join('/')
+
+async function inBatches<T>(items: T[], size: number, work: (item: T) => Promise<void>) {
+  for (let index = 0; index < items.length; index += size) await Promise.all(items.slice(index, index + size).map(work))
+}
+
+type PlannedFile = { path: string; fileId: string; parentId: string; kind: FolderCopyEntry['kind']; updatedAt: number; sizeBytes: number }
+
+/** Decides every path before anything is fetched, so the copy is predictable and bounded. */
+export function planFolderCopy(
+  rows: Awaited<ReturnType<ThreadWorkRepository['subtree']>>['rows'],
+  rootId: string,
+  limits: Pick<WorkMachine, 'maxFileBytes' | 'maxTotalBytes' | 'maxFiles'>,
+) {
+  const directoryOf = new Map<string, string>([[rootId, '']])
+  const taken = new Map<string, Set<string>>()
+  const namesIn = (directory: string) => {
+    let names = taken.get(directory)
+    if (!names) { names = new Set(); taken.set(directory, names) }
+    return names
+  }
+  const folders: Array<{ path: string; fileId: string }> = [{ path: '', fileId: rootId }]
+  const files: PlannedFile[] = []
+  const skipped: string[] = []
+  let total = 0
+  for (const row of rows) {
+    const parent = directoryOf.get(row.parentId)
+    if (parent === undefined) continue
+    if (row.type === 'folder') {
+      const path = join(parent, uniqueName(namesIn(parent), row.name))
+      if (isExcludedWorkPath(path)) { skipped.push(path); continue }
+      directoryOf.set(row.id, path)
+      folders.push({ path, fileId: row.id })
+      continue
+    }
+    const kind: FolderCopyEntry['kind'] = row.kind === 'note' ? 'note'
+      : row.hasStorageObject && !row.textInObjectStore ? 'binary' : 'text'
+    const name = kind === 'note' && !/\.md$/i.test(row.name) ? `${row.name}.md` : row.name
+    const path = join(parent, uniqueName(namesIn(parent), name))
+    const sizeBytes = row.sizeBytes ?? 0
+    if (isExcludedWorkPath(path)) { skipped.push(path); continue }
+    if (sizeBytes > limits.maxFileBytes || files.length >= limits.maxFiles || total + sizeBytes > limits.maxTotalBytes) {
+      skipped.push(path)
+      continue
+    }
+    total += sizeBytes
+    files.push({ path, fileId: row.id, parentId: row.parentId, kind, updatedAt: row.updatedAt, sizeBytes })
+  }
+  return { folders, files, skipped }
+}
+
+async function readOverlayFile(files: FolderFiles, run: FolderRun, file: PlannedFile): Promise<Uint8Array | null> {
+  if (file.kind === 'binary') return await files.readFileBytes({ fileId: file.fileId, userId: run.userId })
+  const row = await files.getOrListFiles({ fileId: file.fileId, fullText: true, userId: run.userId, workspaceId: run.workspaceId }) as
+    { content?: unknown; textContent?: unknown }
+  const text = typeof row.textContent === 'string' ? row.textContent : typeof row.content === 'string' ? row.content : ''
+  return encoder.encode(file.kind === 'note' ? toCanonicalNoteMarkdown(text) : text)
+}
+
+export async function copyFolderIn(args: {
+  repository: ThreadWorkRepository
+  files: FolderFiles
+  machine: WorkMachine
+  run: FolderRun
+  folder: { fileId: string; name: string }
+  /** The folder's name on the computer, unique among the thread's folders. */
+  directoryName: string
+}): Promise<CopyInResult> {
+  const { repository, files, machine, run, folder } = args
+  const root = join(machine.base, args.directoryName)
+  const copyId = `${run.agentRunId}:${folder.fileId}`
+  const base = { folderId: folder.fileId, folderName: folder.name, root }
+  const started = await repository.startCopy({
+    copyId, agentRunId: run.agentRunId, conversationId: run.conversationId, workspaceId: run.workspaceId,
+    userId: run.userId, agentId: run.agentId,
+    ...(run.agentName ? { agentName: run.agentName } : {}), ...(run.messageId ? { messageId: run.messageId } : {}),
+    target: machine.target, ...(machine.environmentId ? { environmentId: machine.environmentId } : {}),
+    folderId: folder.fileId, folderName: folder.name, root,
+  })
+  // A continuation of the same run keeps the copy it already has.
+  if (!started.created && started.status !== 'copying') return { ...base, copied: 0, skipped: [], alreadyCopied: true }
+  try {
+    const subtree = await repository.subtree({ userId: run.userId, workspaceId: run.workspaceId, folderId: folder.fileId })
+    if (subtree.truncated) throw new Error('The folder has more than 2,000 files and folders. Choose a smaller folder.')
+    const plan = planFolderCopy(subtree.rows, folder.fileId, machine)
+    const directories = plan.folders.map(entry => join(root, entry.path))
+    // Start from an empty folder, so files left by an earlier run are never mistaken for the agent's new files.
+    if (!args.directoryName || args.directoryName.includes('/') || args.directoryName.startsWith('.')) {
+      throw new Error('The folder name can\'t be used on the computer.')
+    }
+    const prepare = `rm -rf -- ${quote(root)} && mkdir -p -- ${directories.map(quote).join(' ')}`
+    const prepared = await machine.run(prepare)
+    if (prepared.exitCode !== 0) throw new Error(`Couldn't create the folder on the computer: ${prepared.stderr.trim().slice(0, 300)}`)
+    const entries: FolderCopyEntry[] = []
+    const skipped = [...plan.skipped]
+    await inBatches(plan.files, 6, async (file) => {
+      const contents = await readOverlayFile(files, run, file).catch((_error) => null)
+      if (!contents) { skipped.push(file.path); return }
+      await machine.write([{ path: join(root, file.path), contents }])
+      entries.push({ path: file.path, fileId: file.fileId, parentId: file.parentId, kind: file.kind, updatedAt: file.updatedAt, sha256: sha256(contents) })
+    })
+    await repository.updateCopy({ copyId, status: 'copied', entries, folders: plan.folders, skipped })
+    return { ...base, copied: entries.length, skipped }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await repository.updateCopy({ copyId, status: 'failed', error: message.slice(0, 1000) }).catch((_error) => undefined)
+    return { ...base, error: message }
+  }
+}
+
+/** Lists every file under the copy with its size and SHA-256, skipping dependency and secret folders. */
+export function listingScript(): string {
+  const pruned = ['node_modules', '.git', '.next', '.turbo', '.venv', 'venv', '__pycache__', '.cache', 'dist', 'build']
+    .map(name => `-name ${quote(name)}`).join(' -o ')
+  return [
+    'if command -v sha256sum >/dev/null 2>&1; then H="sha256sum"; else H="shasum -a 256"; fi',
+    `find . \\( ${pruned} \\) -prune -o -type f -print | while IFS= read -r f; do`,
+    '  s=$(wc -c < "$f" | tr -d " "); h=$($H "$f" | cut -d " " -f 1)',
+    '  printf "%s\\t%s\\t%s\\n" "$s" "$h" "${f#./}"',
+    'done',
+    // Output can be cut off on the way back; without this last line the listing is treated as incomplete.
+    `printf '%s\\n' ${LISTING_END}`,
+  ].join('\n')
+}
+
+const LISTING_END = '__overlay_listing_end__'
+
+/** True only when the listing arrived in full. An incomplete listing must never be read as files being deleted. */
+export function isCompleteListing(stdout: string): boolean {
+  return stdout.trimEnd().endsWith(LISTING_END)
+}
+
+export function parseListing(stdout: string): Map<string, { size: number; sha256: string }> {
+  const listing = new Map<string, { size: number; sha256: string }>()
+  // A cut-off listing can end in half a line; only whole lines count.
+  const whole = stdout.endsWith('\n') ? stdout : stdout.slice(0, stdout.lastIndexOf('\n') + 1)
+  for (const line of whole.split('\n')) {
+    const [size, hash, ...rest] = line.split('\t')
+    const path = rest.join('\t')
+    if (!path || !hash || !/^[0-9a-f]{64}$/.test(hash)) continue
+    listing.set(path, { size: Number(size) || 0, sha256: hash })
+  }
+  return listing
+}
+
+export type FolderChanges = {
+  changed: Array<{ entry: FolderCopyEntry; size: number }>
+  added: Array<{ path: string; size: number }>
+  deleted: FolderCopyEntry[]
+}
+
+export function diffFolderCopy(entries: FolderCopyEntry[], listing: Map<string, { size: number; sha256: string }>): FolderChanges {
+  const known = new Set(entries.map(entry => entry.path))
+  const changed: FolderChanges['changed'] = []
+  const deleted: FolderChanges['deleted'] = []
+  for (const entry of entries) {
+    const current = listing.get(entry.path)
+    if (!current) deleted.push(entry)
+    else if (current.sha256 !== entry.sha256) changed.push({ entry, size: current.size })
+  }
+  const added = [...listing.entries()]
+    .filter(([path]) => !known.has(path) && !isExcludedWorkPath(path) && !path.split('/').some(part => part.startsWith('.overlay-')))
+    .map(([path, value]) => ({ path, size: value.size }))
+  return { changed, added, deleted }
+}
+
+function decodeText(bytes: Uint8Array): string | null {
+  if (bytes.includes(0)) return null
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch (_error) {
+    return null
+  }
+}
+
+const isConflict = (error: unknown) => error instanceof FileServiceError && error.statusCode === 409
+const reasonOf = (error: unknown) => error instanceof FileServiceError
+  ? String(error.payload.message ?? error.payload.error ?? error.message)
+  : error instanceof Error ? error.message : String(error)
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.md': 'text/markdown', '.txt': 'text/plain', '.csv': 'text/csv', '.json': 'application/json', '.ts': 'text/plain',
+  '.tsx': 'text/plain', '.js': 'text/plain', '.py': 'text/plain', '.yaml': 'text/plain', '.yml': 'text/plain',
+  '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.zip': 'application/zip',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+const mimeFor = (name: string) => MIME_BY_EXTENSION[splitName(name).ext.toLowerCase()] ?? 'application/octet-stream'
+
+/** Saves bytes as a new file in Files: Markdown becomes a note, other text a text file, anything else a stored file. */
+export async function createOverlayFile(
+  files: FolderFiles,
+  owner: { userId: string; workspaceId: string; scope: 'personal' | 'workspace'; byAgent: boolean },
+  file: { parentId: string; name: string; bytes: Uint8Array },
+): Promise<string> {
+  const { userId, workspaceId, scope, byAgent } = owner
+  const text = decodeText(file.bytes)
+  if (text !== null && /\.md$/i.test(file.name)) {
+    const created = await files.createFile({
+      body: { name: file.name.replace(/\.md$/i, ''), type: 'file', kind: 'note', parentId: file.parentId, content: toCanonicalNoteMarkdown(text), scope, byAgent },
+      userId, workspaceId,
+    })
+    return String(created.id)
+  }
+  if (text !== null) {
+    const created = await files.createFile({
+      body: { name: file.name, type: 'file', kind: 'upload', parentId: file.parentId, textContent: text, mimeType: mimeFor(file.name), scope, byAgent },
+      userId, workspaceId,
+    })
+    return String(created.id)
+  }
+  const created = await files.createFileFromBytes({
+    bytes: file.bytes, name: file.name, mimeType: mimeFor(file.name), parentId: file.parentId, scope, byAgent, userId, workspaceId,
+  })
+  return created.id
+}
+
+/** What saving one copy needs: where to read, where to write, and the running summary. */
+type SaveContext = {
+  files: FolderFiles
+  machine: WorkMachine
+  copy: FolderCopyRecord
+  run: { userId: string; workspaceId: string }
+  summary: FolderSaveSummary
+  agentName: string
+  scope: 'personal' | 'workspace'
+  folderIds: Map<string, string>
+  handled: { count: number }
+}
+
+const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+const directoryOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
+
+function copyName(context: SaveContext, name: string): string {
+  const { stem, ext } = splitName(name)
+  return `${stem} (${context.agentName}’s copy)${ext}`
+}
+
+const createIn = (context: SaveContext, parentId: string, name: string, bytes: Uint8Array) =>
+  createOverlayFile(context.files, { ...context.run, scope: context.scope, byAgent: true }, { parentId, name, bytes })
+
+/** Counts a change against the per-run limits; anything over them is listed as left out. */
+function admit(context: SaveContext, path: string, size?: number): boolean {
+  if (context.handled.count >= context.machine.maxFiles || (size !== undefined && size > context.machine.maxFileBytes)) {
+    context.summary.skipped.push(path)
+    return false
+  }
+  context.handled.count += 1
+  return true
+}
+
+async function ensureFolder(context: SaveContext, directory: string): Promise<string> {
+  const existing = context.folderIds.get(directory)
+  if (existing) return existing
+  const parentId = await ensureFolder(context, directoryOf(directory))
+  const created = await context.files.createFile({
+    body: { name: baseName(directory), type: 'folder', kind: 'folder', parentId, scope: context.scope, byAgent: true }, ...context.run,
+  })
+  const id = String(created.id)
+  context.folderIds.set(directory, id)
+  return id
+}
+
+async function readCopied(context: SaveContext, path: string): Promise<Uint8Array | null> {
+  const bytes = await context.machine.read(join(context.copy.root, path))
+  if (!bytes) context.summary.failed.push({ path, reason: 'The file couldn’t be read on the computer.' })
+  return bytes
+}
+
+/** A note or text file is updated in place unless someone changed it meanwhile; then the agent's version is a copy. */
+async function saveChangedText(context: SaveContext, entry: FolderCopyEntry, text: string, bytes: Uint8Array) {
+  try {
+    await context.files.updateFile({
+      body: { fileId: entry.fileId, ...(entry.kind === 'note' ? { content: toCanonicalNoteMarkdown(text) } : { textContent: text }), expectedUpdatedAt: entry.updatedAt, byAgent: true },
+      ...context.run,
+    })
+    context.summary.saved.push({ path: entry.path, action: 'updated', fileId: entry.fileId })
+  } catch (error) {
+    if (!isConflict(error)) throw error
+    const id = await createIn(context, entry.parentId, copyName(context, baseName(entry.path)), bytes)
+    context.summary.saved.push({ path: entry.path, action: 'saved_as_copy', fileId: id })
+  }
+}
+
+/** Stored files can't be edited in place: save the new version, then remove the old one if nobody changed it. */
+async function saveChangedStored(context: SaveContext, entry: FolderCopyEntry, bytes: Uint8Array) {
+  const current = await context.files.getOrListFiles({ fileId: entry.fileId, ...context.run }) as { updatedAt?: number }
+  if (current.updatedAt !== entry.updatedAt) {
+    const id = await createIn(context, entry.parentId, copyName(context, baseName(entry.path)), bytes)
+    context.summary.saved.push({ path: entry.path, action: 'saved_as_copy', fileId: id })
+    return
+  }
+  const id = await createIn(context, entry.parentId, baseName(entry.path), bytes)
+  await context.files.deleteFile({ fileId: entry.fileId, ...context.run })
+  context.summary.saved.push({ path: entry.path, action: 'updated', fileId: id })
+}
+
+async function saveChanged(context: SaveContext, entry: FolderCopyEntry, size: number) {
+  if (!admit(context, entry.path, size)) return
+  try {
+    const bytes = await readCopied(context, entry.path)
+    if (!bytes) return
+    const text = entry.kind === 'binary' ? null : decodeText(bytes)
+    if (text !== null) await saveChangedText(context, entry, text, bytes)
+    else await saveChangedStored(context, entry, bytes)
+  } catch (error) {
+    context.summary.failed.push({ path: entry.path, reason: reasonOf(error) })
+  }
+}
+
+async function saveAdded(context: SaveContext, path: string, size: number) {
+  if (!admit(context, path, size)) return
+  try {
+    const bytes = await readCopied(context, path)
+    if (!bytes) return
+    const id = await createIn(context, await ensureFolder(context, directoryOf(path)), baseName(path), bytes)
+    context.summary.saved.push({ path, action: 'created', fileId: id })
+  } catch (error) {
+    context.summary.failed.push({ path, reason: reasonOf(error) })
+  }
+}
+
+/** A deleted file is removed only if nobody changed it in the app while the agent worked. */
+async function saveDeleted(context: SaveContext, entry: FolderCopyEntry) {
+  if (!admit(context, entry.path)) return
+  try {
+    const current = await context.files.getOrListFiles({ fileId: entry.fileId, ...context.run }).catch((_error) => null) as { updatedAt?: number } | null
+    if (!current) return
+    if (current.updatedAt !== entry.updatedAt) { context.summary.skipped.push(entry.path); return }
+    await context.files.deleteFile({ fileId: entry.fileId, ...context.run })
+    context.summary.saved.push({ path: entry.path, action: 'deleted', fileId: entry.fileId })
+  } catch (error) {
+    context.summary.failed.push({ path: entry.path, reason: reasonOf(error) })
+  }
+}
+
+export async function saveFolderBack(args: {
+  repository: ThreadWorkRepository
+  files: FolderFiles
+  machine: WorkMachine
+  copy: FolderCopyRecord
+  agentName: string
+  scope: 'personal' | 'workspace'
+}): Promise<FolderSaveSummary | null> {
+  const { repository, machine, copy } = args
+  const claim = await repository.updateCopy({ copyId: copy.copyId, expectedStatus: 'copied', status: 'saving' })
+  if (!claim.updated) return null
+  const summary: FolderSaveSummary = { folderId: copy.folderId, folderName: copy.folderName, saved: [], failed: [], skipped: [] }
+  const context: SaveContext = {
+    files: args.files, machine, copy, summary, agentName: args.agentName, scope: args.scope,
+    run: { userId: copy.userId, workspaceId: copy.workspaceId },
+    folderIds: new Map(copy.folders.map(entry => [entry.path, entry.fileId])),
+    handled: { count: 0 },
+  }
+  try {
+    const listed = await machine.run(listingScript(), copy.root)
+    if (listed.exitCode !== 0) throw new Error(`Couldn't read the folder on the computer: ${listed.stderr.trim().slice(0, 300)}`)
+    const changes = diffFolderCopy(copy.entries, parseListing(listed.stdout))
+    for (const { entry, size } of changes.changed) await saveChanged(context, entry, size)
+    for (const { path, size } of changes.added) await saveAdded(context, path, size)
+    if (isCompleteListing(listed.stdout)) {
+      for (const entry of changes.deleted) await saveDeleted(context, entry)
+    } else if (changes.deleted.length > 0) {
+      summary.failed.push({ path: '', reason: 'The folder was too large to check for deleted files, so nothing was deleted from Files.' })
+    }
+    await repository.updateCopy({ copyId: copy.copyId, status: 'saved', summary })
+    return summary
+  } catch (error) {
+    const reason = reasonOf(error)
+    summary.failed.push({ path: '', reason })
+    await repository.updateCopy({ copyId: copy.copyId, status: 'failed', summary, error: reason.slice(0, 1000) }).catch((_error) => undefined)
+    return summary
+  }
+}

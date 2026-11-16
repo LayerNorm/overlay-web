@@ -2,18 +2,16 @@
 
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
-import { Fragment, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
+import { ChevronDown, Hash, Loader2, Lock, Monitor, Plus, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import type { Computer, ComputerSize, SurfaceBinding, SurfaceChannelOption, SurfaceConnection, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
-import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { ChatModelPicker, type ChatModelPickerProps } from '@overlay/chat-react'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
-import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useMemories } from '@/hooks/use-memories'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
@@ -22,8 +20,6 @@ import { FieldLabel } from './InfoTip'
 import { useEditorLoad } from './EditorLoadGate'
 import type { SurfaceChannelPicker } from './use-agent-surfaces'
 
-export type AgentType = 'overlay' | 'byo'
-export type EnvironmentChoice = 'existing' | 'connect'
 export type AgentModelFieldProps = Pick<
   ChatModelPickerProps,
   'favoriteScope' | 'selectableTextModels' | 'textModelsLoading' | 'reasoningByModel' | 'onModelReasoningChange'
@@ -100,35 +96,6 @@ export function ToggleRow({ checked, onChange, label, description, disabled }: {
         ) : null}
       </div>
       <Toggle checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} />
-    </div>
-  )
-}
-
-export function AgentTypeSelector({ value, onChange, hidden }: {
-  value: AgentType
-  onChange(value: AgentType): void
-  hidden?: boolean
-}) {
-  if (hidden) return null
-  return (
-    <div role="radiogroup" aria-label="Agent type">
-      <p className="text-xs font-medium">Agent type</p>
-      <div className="mt-1.5 space-y-2">
-        <OptionRow
-          checked={value === 'overlay'}
-          onSelect={() => onChange('overlay')}
-          icon={<Bot size={15} />}
-          label="Create your own agent"
-          description="Runs on Overlay Cloud. Pick a runtime below. No machines to connect."
-        />
-        <OptionRow
-          checked={value === 'byo'}
-          onSelect={() => onChange('byo')}
-          icon={<Server size={15} />}
-          label="Bring your own agent"
-          description="Run Codex or Claude Code on your own machines and VPSs."
-        />
-      </div>
     </div>
   )
 }
@@ -547,7 +514,7 @@ export function AgentSurfacesSection({
   connections: SurfaceConnection[]
   bindings: SurfaceBinding[]
   canBind: boolean
-  /** True once the server answered the bind gate, keeping the creator hint off BYO editors. */
+  /** True once the server answered the bind gate, so the creator hint does not flash while loading. */
   canBindResolved: boolean
   channelPicker: SurfaceChannelPicker | null
   busyId: string | null
@@ -743,107 +710,6 @@ export function MasterAgentNotice() {
   )
 }
 
-export function AgentBehaviorFields({ agentType, connectedAgentsEnabled, computersAvailable, computer, instructions, onInstructionsChange, modelId, onModelChange, modelField, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, legacyHostedRuntime, adapterId, harnessOptions, onHarnessChange, environmentChoice, onEnvironmentChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: {
-  agentType: AgentType
-  connectedAgentsEnabled: boolean
-  computersAvailable: boolean
-  computer?: Omit<ComponentProps<typeof AgentComputerSection>, 'enabled'>
-  instructions: string
-  onInstructionsChange(value: string): void
-  modelId: string
-  onModelChange(value: string): void
-  modelField: AgentModelFieldProps
-  enabledToolGroups: Set<string>
-  onToggleToolGroup(groupId: string): void
-  advanced: boolean
-  onAdvancedChange(value: boolean): void
-  /** The agent was bound to a hosted runtime that no longer exists. */
-  legacyHostedRuntime: boolean
-  adapterId: string
-  harnessOptions: Array<{ id: string; label: string; description: string; connectable: boolean }>
-  onHarnessChange(value: string): void
-  environmentChoice: EnvironmentChoice
-  onEnvironmentChoiceChange(value: EnvironmentChoice): void
-  compatibleEnvironments: AgentEnvironmentResource[]
-  environmentsLoading: boolean
-  environmentId: string
-  onEnvironmentChange(value: string): void
-  workingDirectory: string
-  onWorkingDirectoryChange(value: string): void
-  selectedHarnessConnectable: boolean
-  environmentBusy: string | null
-  environmentError: string | null
-  command: string
-  copied: boolean
-  onCopyCommand(): void
-  onBeginConnection(): void
-  setupEnvironment?: AgentEnvironmentResource
-  setupRoots: string
-  onSetupRootsChange(value: string): void
-  onApproveSetup(): void
-}) {
-  if (agentType === 'overlay') {
-    // An agent that ran on a hosted runtime that has since been removed stays
-    // read-only instead of silently rendering as a native Overlay agent (which a
-    // save would convert it into).
-    if (legacyHostedRuntime) {
-      return (
-        <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4 text-xs leading-5 text-(--muted)">
-          This agent ran on a hosted runtime that is no longer available. It is unchanged; recreate it as an Overlay agent, or connect an agent running on your own machine.
-        </div>
-      )
-    }
-    return (
-      <OverlayAgentFields
-        instructions={instructions}
-        onInstructionsChange={onInstructionsChange}
-        modelId={modelId}
-        onModelChange={onModelChange}
-        modelField={modelField}
-        enabledToolGroups={enabledToolGroups}
-        onToggleToolGroup={onToggleToolGroup}
-        advanced={advanced}
-        onAdvancedChange={onAdvancedChange}
-        computersAvailable={computersAvailable}
-        computer={computer}
-      />
-    )
-  }
-  if (!connectedAgentsEnabled) {
-    return (
-      <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4 text-xs leading-5 text-(--muted)">
-        This connected agent is unchanged. Connected-agent editing is not available for this workspace right now.
-      </div>
-    )
-  }
-  return (
-    <ByoAgentFields
-      adapterId={adapterId}
-      harnessOptions={harnessOptions}
-      onHarnessChange={onHarnessChange}
-      choice={environmentChoice}
-      onChoiceChange={onEnvironmentChoiceChange}
-      compatibleEnvironments={compatibleEnvironments}
-      environmentsLoading={environmentsLoading}
-      environmentId={environmentId}
-      onEnvironmentChange={onEnvironmentChange}
-      workingDirectory={workingDirectory}
-      onWorkingDirectoryChange={onWorkingDirectoryChange}
-      selectedHarnessConnectable={selectedHarnessConnectable}
-      environmentBusy={environmentBusy}
-      environmentError={environmentError}
-      command={command}
-      copied={copied}
-      onCopyCommand={onCopyCommand}
-      onBeginConnection={onBeginConnection}
-      setupEnvironment={setupEnvironment}
-      setupRoots={setupRoots}
-      onSetupRootsChange={onSetupRootsChange}
-      onApproveSetup={onApproveSetup}
-    />
-  )
-}
-
 export function OverlayAgentFields({ instructions, onInstructionsChange, modelId, onModelChange, modelField, enabledToolGroups, onToggleToolGroup, advanced, onAdvancedChange, computersAvailable = true, computer }: { instructions: string; onInstructionsChange(value: string): void; modelId: string; onModelChange(value: string): void; modelField: AgentModelFieldProps; enabledToolGroups: Set<string>; onToggleToolGroup(groupId: string): void; advanced: boolean; onAdvancedChange(value: boolean): void; computersAvailable?: boolean; computer?: Omit<ComponentProps<typeof AgentComputerSection>, 'enabled'> }) {
   const toolGroups = computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')
   return (
@@ -916,250 +782,5 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
         </div>
       ) : null}
     </>
-  )
-}
-
-export function ByoAgentFields({ adapterId, harnessOptions, onHarnessChange, choice, onChoiceChange, compatibleEnvironments, environmentsLoading, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange, selectedHarnessConnectable, environmentBusy, environmentError, command, copied, onCopyCommand, onBeginConnection, setupEnvironment, setupRoots, onSetupRootsChange, onApproveSetup }: { adapterId: string; harnessOptions: Array<{ id: string; label: string; description: string; connectable: boolean }>; onHarnessChange(value: string): void; choice: EnvironmentChoice; onChoiceChange(value: EnvironmentChoice): void; compatibleEnvironments: AgentEnvironmentResource[]; environmentsLoading: boolean; environmentId: string; onEnvironmentChange(value: string): void; workingDirectory: string; onWorkingDirectoryChange(value: string): void; selectedHarnessConnectable: boolean; environmentBusy: string | null; environmentError: string | null; command: string; copied: boolean; onCopyCommand(): void; onBeginConnection(): void; setupEnvironment?: AgentEnvironmentResource; setupRoots: string; onSetupRootsChange(value: string): void; onApproveSetup(): void }) {
-  const [setupMode, setSetupMode] = useState<'paste' | 'manual'>('paste')
-  const [copiedPrompt, setCopiedPrompt] = useState(false)
-  const [copyError, setCopyError] = useState<string | null>(null)
-  const [prevCommand, setPrevCommand] = useState(command)
-  const setupPrompt = useMemo(() => (command ? generatedAgentSetupPrompt(command) : ''), [command])
-  if (prevCommand !== command) {
-    setPrevCommand(command)
-    setSetupMode('paste')
-    setCopiedPrompt(false)
-    setCopyError(null)
-  }
-  const copyPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(setupPrompt)
-      setCopiedPrompt(true)
-      window.setTimeout(() => setCopiedPrompt(false), 1_500)
-    } catch {
-      setCopyError('Could not copy the prompt. Select it and copy it manually.')
-    }
-  }
-  return (
-    <div className="space-y-5">
-      <section>
-        <p className='text-xs font-medium'>Harness</p>
-        <p className='mt-1 text-[11px] leading-4 text-(--muted)'>
-          Choose the coding agent Overlay will invoke.
-        </p>
-        <div className="mt-2 space-y-2" role="radiogroup" aria-label="Harness">
-          {harnessOptions.map((harness) => (
-            <OptionRow
-              key={harness.id}
-              checked={adapterId === harness.id}
-              onSelect={() => onHarnessChange(harness.id)}
-              label={harness.label}
-              description={harness.description}
-            />
-          ))}
-        </div>
-      </section>
-      <section>
-        <p className="text-xs font-medium">Where it runs</p>
-        <div
-          className='mt-2 space-y-2'
-          role='radiogroup'
-          aria-label='Agent environment'
-        >
-          <EnvironmentChoiceButton
-            active={choice === 'existing'}
-            icon={<Server size={15} />}
-            label='Existing environment'
-            description='Pick an already-connected computer, VPS, or sandbox.'
-            onClick={() => onChoiceChange('existing')}
-          />
-          <EnvironmentChoiceButton
-            active={choice === 'connect'}
-            icon={<Laptop size={15} />}
-            label='Connect a new machine'
-            description='Outbound-only. No inbound port is opened.'
-            disabled={!selectedHarnessConnectable}
-            onClick={() => onChoiceChange('connect')}
-          />
-        </div>
-        <div className="mt-3 rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
-          {choice === 'existing' ? (
-            <ExistingEnvironmentFields
-              environmentsLoading={environmentsLoading}
-              compatibleEnvironments={compatibleEnvironments}
-              selectedHarnessConnectable={selectedHarnessConnectable}
-              environmentId={environmentId}
-              onEnvironmentChange={onEnvironmentChange}
-              workingDirectory={workingDirectory}
-              onWorkingDirectoryChange={onWorkingDirectoryChange}
-            />
-          ) : null}
-          {choice === 'connect' ? (
-            <ConnectMachineFields
-              command={command}
-              environmentBusy={environmentBusy}
-              onBeginConnection={onBeginConnection}
-              setupMode={setupMode}
-              onSetupModeChange={setSetupMode}
-              setupPrompt={setupPrompt}
-              copiedPrompt={copiedPrompt}
-              onCopyPrompt={copyPrompt}
-              copied={copied}
-              onCopyCommand={onCopyCommand}
-              setupEnvironment={setupEnvironment}
-            />
-          ) : null}
-          {setupEnvironment ? <EnvironmentApprovalPanel environment={setupEnvironment} roots={setupRoots} busy={environmentBusy === 'approve'} onRootsChange={onSetupRootsChange} onApprove={onApproveSetup} /> : null}
-        </div>
-      </section>
-      {environmentError || copyError ? (
-        <p role='alert' className='text-xs text-red-500'>
-          {environmentError ?? copyError}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-function ExistingEnvironmentFields({ environmentsLoading, compatibleEnvironments, selectedHarnessConnectable, environmentId, onEnvironmentChange, workingDirectory, onWorkingDirectoryChange }: {
-  environmentsLoading: boolean
-  compatibleEnvironments: AgentEnvironmentResource[]
-  selectedHarnessConnectable: boolean
-  environmentId: string
-  onEnvironmentChange(value: string): void
-  workingDirectory: string
-  onWorkingDirectoryChange(value: string): void
-}) {
-  if (environmentsLoading) {
-    return <p className="flex items-center gap-2 text-xs text-(--muted)"><Loader2 size={14} className="animate-spin" /> Loading environments…</p>
-  }
-  if (compatibleEnvironments.length === 0) {
-    return (
-      <div className="text-xs text-(--muted)">
-        <p>No connected environment currently advertises this harness.</p>
-        {selectedHarnessConnectable ? <p className="mt-1">Connect a computer, VPS, or sandbox to continue.</p> : null}
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-3">
-      <label className="block text-xs font-medium">Environment<ListboxSelect className="mt-1.5" aria-label="Connected environment" value={environmentId} options={compatibleEnvironments.map((environment) => ({ value: environment.id, label: `${environment.name} · ${environment.status}` }))} onChange={onEnvironmentChange} portal /></label>
-      <label className="block text-xs font-medium">Default working directory<Input className="mt-1.5" value={workingDirectory} onChange={(event) => onWorkingDirectoryChange(event.target.value)} placeholder="/Users/you/Projects/app" /></label>
-      <p className="text-[11px] leading-4 text-(--muted)">This must be inside the environment’s approved roots. The environment may host other agents too.</p>
-    </div>
-  )
-}
-
-function SetupPromptPane({ setupPrompt, copiedPrompt, onCopyPrompt }: {
-  setupPrompt: string
-  copiedPrompt: boolean
-  onCopyPrompt(): void
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] leading-4 text-(--muted)">Paste this into a chat with the agent on this machine. It runs the connection command for you and keeps it alive.</p>
-      <div className="rounded-lg border border-(--border) bg-(--background) p-2.5"><pre className="whitespace-pre-wrap wrap-break-word px-0.5 font-mono text-[11px] leading-4 text-(--foreground)">{setupPrompt}</pre></div>
-      <Button variant="secondary" size="sm" onClick={onCopyPrompt} className="gap-1.5">{copiedPrompt ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompt</>}</Button>
-    </div>
-  )
-}
-
-function ConnectMachineFields({ command, environmentBusy, onBeginConnection, setupMode, onSetupModeChange, setupPrompt, copiedPrompt, onCopyPrompt, copied, onCopyCommand, setupEnvironment }: {
-  command: string
-  environmentBusy: string | null
-  onBeginConnection(): void
-  setupMode: 'paste' | 'manual'
-  onSetupModeChange(mode: 'paste' | 'manual'): void
-  setupPrompt: string
-  copiedPrompt: boolean
-  onCopyPrompt(): void
-  copied: boolean
-  onCopyCommand(): void
-  setupEnvironment?: AgentEnvironmentResource
-}) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-xs font-medium text-(--foreground)">Connect any computer, VPS, or sandbox</p>
-        <p className="mt-1 text-[11px] leading-4 text-(--muted)">Outbound-only. No inbound port is opened.</p>
-      </div>
-      {!command ? (
-        <Button variant="secondary" size="sm" disabled={environmentBusy !== null} onClick={onBeginConnection}>{environmentBusy === 'connect' ? 'Creating…' : 'Create connection'}</Button>
-      ) : (
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-(--surface-subtle) p-1" role="radiogroup" aria-label="Setup mode">
-            <Button variant="ghost" type="button" role="radio" aria-checked={setupMode === 'paste'} onClick={() => onSetupModeChange('paste')} className={unstyledButton(`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'paste' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`)}><Sparkles size={12} /> Automatic setup</Button>
-            <Button variant="ghost" type="button" role="radio" aria-checked={setupMode === 'manual'} onClick={() => onSetupModeChange('manual')} className={unstyledButton(`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${setupMode === 'manual' ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs' : 'text-(--muted) hover:text-(--foreground)'}`)}><Terminal size={12} /> Manual setup</Button>
-          </div>
-          {setupMode === 'paste' ? (
-            <SetupPromptPane setupPrompt={setupPrompt} copiedPrompt={copiedPrompt} onCopyPrompt={onCopyPrompt} />
-          ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-(--border) bg-(--background) p-2"><code className="min-w-0 flex-1 overflow-x-auto px-1 text-[11px] text-(--foreground)">{command}</code><Button variant="ghost" type="button" aria-label="Copy connection command" onClick={onCopyCommand} className={unstyledButton(`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}>{copied ? <Check size={14} /> : <Copy size={14} />}</Button></div>
-          )}
-        </div>
-      )}
-      {command && !setupEnvironment ? <p className="flex items-center gap-2 text-[11px] text-(--muted)"><Loader2 size={13} className="animate-spin" /> Waiting for the host to connect…</p> : null}
-    </div>
-  )
-}
-
-function EnvironmentChoiceButton({ active, icon, label, description, disabled = false, onClick }: {
-  active: boolean
-  icon: ReactNode
-  label: string
-  description?: string
-  disabled?: boolean
-  onClick(): void
-}) {
-  return (
-    <OptionRow checked={active} onSelect={onClick} icon={icon} label={label} description={description} disabled={disabled} />
-  )
-}
-
-export function EnvironmentApprovalPanel({
-  environment,
-  roots,
-  busy,
-  onRootsChange,
-  onApprove,
-}: {
-  environment: AgentEnvironmentResource
-  roots: string
-  busy: boolean
-  onRootsChange(value: string): void
-  onApprove(): void
-}) {
-  return (
-    <div className='mt-4 space-y-3 border-t border-(--border) pt-4'>
-      <div className='flex items-center gap-2 text-xs text-(--foreground)'>
-        <ShieldCheck size={15} className='text-(--muted)' /> Verify phrase:{' '}
-        <strong>{environment.verificationPhrase ?? 'waiting…'}</strong>
-      </div>
-      <label className='block text-xs font-medium'>
-        Approved project roots
-        <Textarea
-          value={roots}
-          onChange={(event) => onRootsChange(event.target.value)}
-          placeholder={
-            environment.kind === 'overlay_cloud'
-              ? '/workspace'
-              : '/Users/you/Projects'
-          }
-          className={unstyledTextarea(`mt-1.5 min-h-20 w-full resize-y rounded-lg border border-(--border) bg-(--background) px-3 py-2 text-sm text-(--foreground) outline-hidden focus:border-(--muted)`)}
-        />
-      </label>
-      <p className='text-[11px] leading-4 text-(--muted)'>
-        Overlay can dispatch work only inside these explicit roots. You can
-        change or revoke access later.
-      </p>
-      <Button
-        variant='secondary'
-        size='sm'
-        disabled={busy || !environment.verificationPhrase}
-        onClick={onApprove}
-      >
-        {busy ? 'Approving…' : 'Approve and continue'}
-      </Button>
-    </div>
   )
 }

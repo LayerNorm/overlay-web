@@ -23,12 +23,12 @@ export async function enforceAgentHostRateLimit(
   ])
 }
 
-export async function readAgentHostBody(request: Request): Promise<{
+export async function readAgentHostBody(request: Request, maxBytes = MAX_HOST_REQUEST_BYTES): Promise<{
   rawBody: Uint8Array
   parsed: Record<string, unknown>
 }> {
   const rawBody = new Uint8Array(await request.arrayBuffer())
-  if (rawBody.byteLength > MAX_HOST_REQUEST_BYTES) {
+  if (rawBody.byteLength > maxBytes) {
     throw new ConnectedAgentControlPlaneError('Request body is too large', 413, 'request_too_large')
   }
   if (rawBody.byteLength === 0) return { rawBody, parsed: {} }
