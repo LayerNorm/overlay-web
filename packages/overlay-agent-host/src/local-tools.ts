@@ -25,11 +25,15 @@ import { nextReconnectDelay } from './transport.js'
 
 const run = promisify(execFile)
 const MAX_CONCURRENT_CALLS = 4
+/** A refused path asks Overlay for the current folders at most this often. */
+const GRANT_REFRESH_INTERVAL_MS = 30_000
 
 export type LocalToolsOptions = {
   stateDirectory: string
   /** Read on every call so a changed folder approval applies immediately. */
   grant: () => FilesystemGrant
+  /** Asks Overlay for the folders approved now. A folder the person just added works without waiting for renewal. */
+  refreshGrant?: () => Promise<void>
   platform?: NodeJS.Platform
   browser?: LocalBrowser
 }
@@ -39,6 +43,8 @@ export class LocalToolExecutor {
   private readonly platform: NodeJS.Platform
   readonly terminals: LocalTerminals
   private readonly browser: LocalBrowser
+
+  private lastGrantRefresh = 0
 
   constructor(private readonly options: LocalToolsOptions) {
     this.platform = options.platform ?? process.platform
@@ -60,7 +66,7 @@ export class LocalToolExecutor {
 
   async execute(call: LocalToolCall, signal?: AbortSignal): Promise<LocalToolOutcome> {
     try {
-      const result = await this.dispatch(call, signal)
+      const result = await this.dispatchWithCurrentGrant(call, signal)
       const size = Buffer.byteLength(JSON.stringify(result))
       if (size > MAX_LOCAL_TOOL_RESULT_BYTES) {
         return failure(new LocalToolFailure('result_too_large', 'The result is too large to send back. Read a smaller part, for example with a byte limit or a narrower command.'))
@@ -68,6 +74,20 @@ export class LocalToolExecutor {
       return { ok: true, result }
     } catch (error) {
       return failure(error)
+    }
+  }
+
+  /** A path outside the approved folders may be a folder approved a moment ago: fetch the grant once and try again. */
+  private async dispatchWithCurrentGrant(call: LocalToolCall, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    try {
+      return await this.dispatch(call, signal)
+    } catch (error) {
+      const refresh = this.options.refreshGrant
+      if (!refresh || !(error instanceof LocalToolFailure) || error.code !== 'outside_approved_folders'
+        || Date.now() - this.lastGrantRefresh < GRANT_REFRESH_INTERVAL_MS) throw error
+      this.lastGrantRefresh = Date.now()
+      try { await refresh() } catch { throw error }
+      return await this.dispatch(call, signal)
     }
   }
 
@@ -140,7 +160,7 @@ function failure(error: unknown): LocalToolOutcome {
   const code = (error as NodeJS.ErrnoException | undefined)?.code
   if (code === 'EACCES' || code === 'EPERM') return { ok: false, error: { code: 'permission_denied', message: 'macOS denied access to that path.' } }
   if (code === 'ENOENT') return { ok: false, error: { code: 'not_found', message: 'That path does not exist.' } }
-  return { ok: false, error: { code: 'local_tool_failed', message: 'The action failed on this Mac.' } }
+  return { ok: false, error: { code: 'local_tool_failed', message: 'The action failed on this computer.' } }
 }
 
 export interface LocalToolClient {
@@ -181,7 +201,7 @@ export class LocalToolLoop {
     this.active++
     const work = (async () => {
       const outcome: LocalToolOutcome = Date.now() > call.deadlineAt
-        ? { ok: false, error: { code: 'expired', message: 'The tool call expired before this Mac received it.' } }
+        ? { ok: false, error: { code: 'expired', message: 'The tool call expired before this computer received it.' } }
         : await this.executor.execute(call, AbortSignal.any([signal, AbortSignal.timeout(Math.max(1_000, call.deadlineAt - Date.now()))]))
       const result = localToolResultSchema.parse({ protocolVersion: OVERLAY_AGENT_PROTOCOL_VERSION, callId: call.callId, outcome })
       for (let attempt = 0; attempt < 4; attempt++) {

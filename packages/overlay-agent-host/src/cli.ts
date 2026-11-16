@@ -100,24 +100,30 @@ async function runHost(config: AgentHostConfig, fetch?: typeof globalThis.fetch)
   const [keys, stored] = await Promise.all([loadOrCreateDeviceKeyPair(config.stateDirectory), loadStoredConnection(config.stateDirectory)])
   const logger = new StructuredLogger()
   let grant: FilesystemGrant = stored?.filesystemGrant ?? config.filesystem
+  const controlPlane = new HttpAgentControlPlaneClient({
+    ...(fetch ? { fetch } : {}),
+    baseUrl: config.controlPlaneUrl,
+    environmentId: config.environmentId,
+    credential: config.credential,
+    credentialExpiresAt: stored?.expiresAt,
+    privateKey: keys.privateKey,
+    onCredentialRotated: stored ? async (credential) => {
+      await saveStoredConnection(config.stateDirectory, { ...stored, ...credential })
+      grant = credential.filesystemGrant
+      runtime.updateFilesystemGrant(credential.filesystemGrant)
+    } : undefined,
+  })
   const runtime: AgentHostRuntime = new AgentHostRuntime({
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,
     filesystem: grant,
-    localTools: new LocalToolExecutor({ stateDirectory: config.stateDirectory, grant: () => grant }),
-    controlPlane: new HttpAgentControlPlaneClient({
-      ...(fetch ? { fetch } : {}),
-      baseUrl: config.controlPlaneUrl,
-      environmentId: config.environmentId,
-      credential: config.credential,
-      credentialExpiresAt: stored?.expiresAt,
-      privateKey: keys.privateKey,
-      onCredentialRotated: stored ? async (credential) => {
-        await saveStoredConnection(config.stateDirectory, { ...stored, ...credential })
-        grant = credential.filesystemGrant
-        runtime.updateFilesystemGrant(credential.filesystemGrant)
-      } : undefined,
+    localTools: new LocalToolExecutor({
+      stateDirectory: config.stateDirectory,
+      grant: () => grant,
+      // Only a stored connection can renew its access, which is what returns the folders approved now.
+      ...(stored ? { refreshGrant: async () => { await controlPlane.refreshFilesystemGrant() } } : {}),
     }),
+    controlPlane,
     logger,
   })
   const controller = new AbortController()

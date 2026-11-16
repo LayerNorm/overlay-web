@@ -155,7 +155,7 @@ test('computer tools fall back to the user\'s Mac without a cloud Computer, hono
     const cloudOnly = await executeComputerExec(options, { command: 'ls', target: 'cloud' })
     assert.equal(cloudOnly.success, false)
     const automation = await executeComputerExec({ ...options, computerApprovalContext: 'automation' }, { command: 'ls', target: 'local' })
-    assert.deepEqual(automation, { success: false, error: "Automations cannot use the user's Mac. Use the cloud Computer instead." })
+    assert.deepEqual(automation, { success: false, error: "Automations cannot use the user's computer. Use the cloud Computer instead." })
     const other = await executeComputerExec({ ...options, userId: 'someone-else' }, { command: 'ls', target: 'local' })
     assert.equal(other.success, false)
     assert.match(String((other as { error: string }).error), /not connected/)

@@ -67,6 +67,7 @@ export const MCP_GROUP_COVERAGE: {
     automations: { exposed: true }, image: { exposed: true }, video: { exposed: true },
     agents: { exposed: true }, agent_chat: { exposed: true }, tasks: { exposed: true },
     computer: { exposed: false, reason: 'The agent already runs on a machine of its own; a second computer would only duplicate it.' },
+    local_computer: { exposed: false, reason: 'A person\'s own computer is used only by a thread they run on it in Overlay, never by an agent on another machine.' },
   },
   externalApps: {
     memory: { exposed: true }, knowledge: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
@@ -76,6 +77,7 @@ export const MCP_GROUP_COVERAGE: {
     agent_chat: { exposed: true },
     tasks: { exposed: true },
     computer: { exposed: false, reason: 'A paid desktop that belongs to the person\'s agents, not something an outside app should start.' },
+    local_computer: { exposed: false, reason: 'A person\'s own computer is used only by a thread they run on it in Overlay, which an outside app does not have.' },
   },
 }
 
@@ -104,5 +106,5 @@ export function mcpToolGrantFor(access: McpAccessLevel): string[] {
   if (access === 'read') return [...READ_TOOL_IDS]
   // Every level contains the one below it, including read tools whose group is not otherwise granted.
   if (access === 'write') return [...new Set([...READ_TOOL_IDS, ...toolIdsForEnabledGroups(new Set(WRITE_GROUP_IDS))])]
-  return toolIdsForEnabledGroups(new Set(AGENT_TOOL_GROUPS.map((group) => group.id).filter((id) => id !== 'computer' && id !== 'agents')))
+  return toolIdsForEnabledGroups(new Set(AGENT_TOOL_GROUPS.map((group) => group.id).filter((id) => id !== 'computer' && id !== 'local_computer' && id !== 'agents')))
 }

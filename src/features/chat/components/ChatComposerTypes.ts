@@ -44,6 +44,8 @@ export type ChatComposerToolState = {
   selectedToolIds: ChatToolRequestId[]; memoryEnabled: boolean
   capabilities: CapabilityCheck
   onToggleTool: (toolId: ChatToolRequestId) => void; onToggleMemory: () => void; onRemoveTool: (toolId: ChatToolRequestId) => void
+  /** Extra rows in the + menu, after attaching files: an agent thread's folder on the web. */
+  attachMenuExtra?: (close: () => void) => ReactNode
 }
 export type ChatComposerModeState = {
   onModeChange: (mode: GenerationMode) => void; generationChip: 'image' | 'video' | null; setGenerationChip: (chip: 'image' | 'video' | null) => void
