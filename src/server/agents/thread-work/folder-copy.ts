@@ -276,6 +276,125 @@ export async function createOverlayFile(
   return created.id
 }
 
+/** What saving one copy needs: where to read, where to write, and the running summary. */
+type SaveContext = {
+  files: FolderFiles
+  machine: WorkMachine
+  copy: FolderCopyRecord
+  run: { userId: string; workspaceId: string }
+  summary: FolderSaveSummary
+  agentName: string
+  scope: 'personal' | 'workspace'
+  folderIds: Map<string, string>
+  handled: { count: number }
+}
+
+const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+const directoryOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
+
+function copyName(context: SaveContext, name: string): string {
+  const { stem, ext } = splitName(name)
+  return `${stem} (${context.agentName}’s copy)${ext}`
+}
+
+const createIn = (context: SaveContext, parentId: string, name: string, bytes: Uint8Array) =>
+  createOverlayFile(context.files, { ...context.run, scope: context.scope, byAgent: true }, { parentId, name, bytes })
+
+/** Counts a change against the per-run limits; anything over them is listed as left out. */
+function admit(context: SaveContext, path: string, size?: number): boolean {
+  if (context.handled.count >= context.machine.maxFiles || (size !== undefined && size > context.machine.maxFileBytes)) {
+    context.summary.skipped.push(path)
+    return false
+  }
+  context.handled.count += 1
+  return true
+}
+
+async function ensureFolder(context: SaveContext, directory: string): Promise<string> {
+  const existing = context.folderIds.get(directory)
+  if (existing) return existing
+  const parentId = await ensureFolder(context, directoryOf(directory))
+  const created = await context.files.createFile({
+    body: { name: baseName(directory), type: 'folder', kind: 'folder', parentId, scope: context.scope, byAgent: true }, ...context.run,
+  })
+  const id = String(created.id)
+  context.folderIds.set(directory, id)
+  return id
+}
+
+async function readCopied(context: SaveContext, path: string): Promise<Uint8Array | null> {
+  const bytes = await context.machine.read(join(context.copy.root, path))
+  if (!bytes) context.summary.failed.push({ path, reason: 'The file couldn’t be read on the computer.' })
+  return bytes
+}
+
+/** A note or text file is updated in place unless someone changed it meanwhile; then the agent's version is a copy. */
+async function saveChangedText(context: SaveContext, entry: FolderCopyEntry, text: string, bytes: Uint8Array) {
+  try {
+    await context.files.updateFile({
+      body: { fileId: entry.fileId, ...(entry.kind === 'note' ? { content: toCanonicalNoteMarkdown(text) } : { textContent: text }), expectedUpdatedAt: entry.updatedAt, byAgent: true },
+      ...context.run,
+    })
+    context.summary.saved.push({ path: entry.path, action: 'updated', fileId: entry.fileId })
+  } catch (error) {
+    if (!isConflict(error)) throw error
+    const id = await createIn(context, entry.parentId, copyName(context, baseName(entry.path)), bytes)
+    context.summary.saved.push({ path: entry.path, action: 'saved_as_copy', fileId: id })
+  }
+}
+
+/** Stored files can't be edited in place: save the new version, then remove the old one if nobody changed it. */
+async function saveChangedStored(context: SaveContext, entry: FolderCopyEntry, bytes: Uint8Array) {
+  const current = await context.files.getOrListFiles({ fileId: entry.fileId, ...context.run }) as { updatedAt?: number }
+  if (current.updatedAt !== entry.updatedAt) {
+    const id = await createIn(context, entry.parentId, copyName(context, baseName(entry.path)), bytes)
+    context.summary.saved.push({ path: entry.path, action: 'saved_as_copy', fileId: id })
+    return
+  }
+  const id = await createIn(context, entry.parentId, baseName(entry.path), bytes)
+  await context.files.deleteFile({ fileId: entry.fileId, ...context.run })
+  context.summary.saved.push({ path: entry.path, action: 'updated', fileId: id })
+}
+
+async function saveChanged(context: SaveContext, entry: FolderCopyEntry, size: number) {
+  if (!admit(context, entry.path, size)) return
+  try {
+    const bytes = await readCopied(context, entry.path)
+    if (!bytes) return
+    const text = entry.kind === 'binary' ? null : decodeText(bytes)
+    if (text !== null) await saveChangedText(context, entry, text, bytes)
+    else await saveChangedStored(context, entry, bytes)
+  } catch (error) {
+    context.summary.failed.push({ path: entry.path, reason: reasonOf(error) })
+  }
+}
+
+async function saveAdded(context: SaveContext, path: string, size: number) {
+  if (!admit(context, path, size)) return
+  try {
+    const bytes = await readCopied(context, path)
+    if (!bytes) return
+    const id = await createIn(context, await ensureFolder(context, directoryOf(path)), baseName(path), bytes)
+    context.summary.saved.push({ path, action: 'created', fileId: id })
+  } catch (error) {
+    context.summary.failed.push({ path, reason: reasonOf(error) })
+  }
+}
+
+/** A deleted file is removed only if nobody changed it in the app while the agent worked. */
+async function saveDeleted(context: SaveContext, entry: FolderCopyEntry) {
+  if (!admit(context, entry.path)) return
+  try {
+    const current = await context.files.getOrListFiles({ fileId: entry.fileId, ...context.run }).catch((_error) => null) as { updatedAt?: number } | null
+    if (!current) return
+    if (current.updatedAt !== entry.updatedAt) { context.summary.skipped.push(entry.path); return }
+    await context.files.deleteFile({ fileId: entry.fileId, ...context.run })
+    context.summary.saved.push({ path: entry.path, action: 'deleted', fileId: entry.fileId })
+  } catch (error) {
+    context.summary.failed.push({ path: entry.path, reason: reasonOf(error) })
+  }
+}
+
 export async function saveFolderBack(args: {
   repository: ThreadWorkRepository
   files: FolderFiles
@@ -284,116 +403,23 @@ export async function saveFolderBack(args: {
   agentName: string
   scope: 'personal' | 'workspace'
 }): Promise<FolderSaveSummary | null> {
-  const { repository, files, machine, copy } = args
+  const { repository, machine, copy } = args
   const claim = await repository.updateCopy({ copyId: copy.copyId, expectedStatus: 'copied', status: 'saving' })
   if (!claim.updated) return null
   const summary: FolderSaveSummary = { folderId: copy.folderId, folderName: copy.folderName, saved: [], failed: [], skipped: [] }
-  const run = { userId: copy.userId, workspaceId: copy.workspaceId }
+  const context: SaveContext = {
+    files: args.files, machine, copy, summary, agentName: args.agentName, scope: args.scope,
+    run: { userId: copy.userId, workspaceId: copy.workspaceId },
+    folderIds: new Map(copy.folders.map(entry => [entry.path, entry.fileId])),
+    handled: { count: 0 },
+  }
   try {
     const listed = await machine.run(listingScript(), copy.root)
     if (listed.exitCode !== 0) throw new Error(`Couldn't read the folder on the computer: ${listed.stderr.trim().slice(0, 300)}`)
     const changes = diffFolderCopy(copy.entries, parseListing(listed.stdout))
-    const folderIds = new Map(copy.folders.map(entry => [entry.path, entry.fileId]))
-    const copyName = (name: string) => {
-      const { stem, ext } = splitName(name)
-      return `${stem} (${args.agentName}’s copy)${ext}`
-    }
-
-    const ensureFolder = async (directory: string): Promise<string> => {
-      const existing = folderIds.get(directory)
-      if (existing) return existing
-      const parentPath = directory.includes('/') ? directory.slice(0, directory.lastIndexOf('/')) : ''
-      const parentId = await ensureFolder(parentPath)
-      const name = directory.slice(directory.lastIndexOf('/') + 1)
-      const created = await files.createFile({
-        body: { name, type: 'folder', kind: 'folder', parentId, scope: args.scope, byAgent: true }, ...run,
-      })
-      const id = String(created.id)
-      folderIds.set(directory, id)
-      return id
-    }
-
-    const createFrom = (_path: string, parentId: string, name: string, bytes: Uint8Array) =>
-      createOverlayFile(files, { ...run, scope: args.scope, byAgent: true }, { parentId, name, bytes })
-
-    const fits = (path: string, size: number) => {
-      if (size <= machine.maxFileBytes) return true
-      summary.skipped.push(path)
-      return false
-    }
-    const budget = machine.maxFiles
-    let handled = 0
-    const withinBudget = (path: string) => {
-      if (handled < budget) { handled += 1; return true }
-      summary.skipped.push(path)
-      return false
-    }
-
-    for (const { entry, size } of changes.changed) {
-      if (!withinBudget(entry.path) || !fits(entry.path, size)) continue
-      try {
-        const bytes = await machine.read(join(copy.root, entry.path))
-        if (!bytes) { summary.failed.push({ path: entry.path, reason: 'The file couldn’t be read on the computer.' }); continue }
-        const fileName = entry.path.slice(entry.path.lastIndexOf('/') + 1)
-        const text = entry.kind === 'binary' ? null : decodeText(bytes)
-        if (text !== null) {
-          try {
-            await files.updateFile({
-              body: { fileId: entry.fileId, ...(entry.kind === 'note' ? { content: toCanonicalNoteMarkdown(text) } : { textContent: text }), expectedUpdatedAt: entry.updatedAt, byAgent: true },
-              ...run,
-            })
-            summary.saved.push({ path: entry.path, action: 'updated', fileId: entry.fileId })
-          } catch (error) {
-            if (!isConflict(error)) throw error
-            const name = copyName(fileName)
-            const id = await createFrom(entry.path, entry.parentId, name, bytes)
-            summary.saved.push({ path: entry.path, action: 'saved_as_copy', fileId: id })
-          }
-          continue
-        }
-        // Stored files can't be edited in place: save the new version, then remove the old one if nobody changed it.
-        const current = await files.getOrListFiles({ fileId: entry.fileId, ...run }) as { updatedAt?: number }
-        if (current.updatedAt !== entry.updatedAt) {
-          const id = await createFrom(entry.path, entry.parentId, copyName(fileName), bytes)
-          summary.saved.push({ path: entry.path, action: 'saved_as_copy', fileId: id })
-          continue
-        }
-        const id = await createFrom(entry.path, entry.parentId, fileName, bytes)
-        await files.deleteFile({ fileId: entry.fileId, ...run })
-        summary.saved.push({ path: entry.path, action: 'updated', fileId: id })
-      } catch (error) {
-        summary.failed.push({ path: entry.path, reason: reasonOf(error) })
-      }
-    }
-
-    for (const { path, size } of changes.added) {
-      if (!withinBudget(path) || !fits(path, size)) continue
-      try {
-        const bytes = await machine.read(join(copy.root, path))
-        if (!bytes) { summary.failed.push({ path, reason: 'The file couldn’t be read on the computer.' }); continue }
-        const directory = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-        const parentId = await ensureFolder(directory)
-        const id = await createFrom(path, parentId, path.slice(path.lastIndexOf('/') + 1), bytes)
-        summary.saved.push({ path, action: 'created', fileId: id })
-      } catch (error) {
-        summary.failed.push({ path, reason: reasonOf(error) })
-      }
-    }
-
-    for (const entry of changes.deleted) {
-      if (!withinBudget(entry.path)) continue
-      try {
-        const current = await files.getOrListFiles({ fileId: entry.fileId, ...run }).catch((_error) => null) as { updatedAt?: number } | null
-        if (!current) continue
-        // Someone changed it in the app while the agent worked: keep their version.
-        if (current.updatedAt !== entry.updatedAt) { summary.skipped.push(entry.path); continue }
-        await files.deleteFile({ fileId: entry.fileId, ...run })
-        summary.saved.push({ path: entry.path, action: 'deleted', fileId: entry.fileId })
-      } catch (error) {
-        summary.failed.push({ path: entry.path, reason: reasonOf(error) })
-      }
-    }
-
+    for (const { entry, size } of changes.changed) await saveChanged(context, entry, size)
+    for (const { path, size } of changes.added) await saveAdded(context, path, size)
+    for (const entry of changes.deleted) await saveDeleted(context, entry)
     await repository.updateCopy({ copyId: copy.copyId, status: 'saved', summary })
     return summary
   } catch (error) {

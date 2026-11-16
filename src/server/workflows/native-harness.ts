@@ -22,7 +22,7 @@ import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnos
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
-import { prepareThreadWorkStep, saveThreadWorkStep } from '@/server/harness/thread-work-steps'
+import { instructionsWithWork, prepareThreadWork, saveThreadWorkIfChosen } from '@/server/harness/thread-work-steps'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
 import {
@@ -82,7 +82,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
     if (owns) await attachNativeHarnessDelivery(access)
     // The thread's chosen folders are copied onto its computer before the model starts.
-    const workNote = owns && input.context.work ? await prepareThreadWorkStep(access, input.context) : ''
+    const workNote = await prepareThreadWork(access, input.context, owns)
     const execution = { access, context: input.context }
     const ports = createNativeHarnessExecutionPorts(execution, {
       ...createHarnessWaitPorts({
@@ -115,7 +115,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     const tools = createNativeHarnessTools({ access, context: input.context, definitions: input.definitions })
     activeToolNames = new Set([...activeToolNames, ...Object.keys(tools)])
     result = await runOverlayHarness({
-      instructions: workNote ? `${input.instructions}\n\n${workNote}` : input.instructions,
+      instructions: instructionsWithWork(input.instructions, workNote),
       messages: input.messages, settings: input.settings,
       continuation: input.continuation,
       model: { modelId: input.context.modelId, credentialOwnerId: access.actorUserId,
@@ -168,7 +168,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     const delivery = buildNativeHarnessDelivery(result, activeToolNames, reconciledJournal)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
     // Whatever the outcome, changes made in the copied folders are saved back to Files.
-    if (input.context.work) await saveThreadWorkStep(access, input.context)
+    await saveThreadWorkIfChosen(access, input.context)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)
   return { runId: result.snapshot.runId, status: result.snapshot.status }

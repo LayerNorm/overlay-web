@@ -38,3 +38,18 @@ export async function saveThreadWorkStep(access: NativeHarnessAccess, context: N
     runStartedAt: run?.createdAt ?? Date.now() - 60 * 60_000, agentName: context.agentName,
   }).catch((_error) => undefined)
 }
+
+// Plain helpers the workflow calls, so its own control flow stays the same size. Each step runs only when the
+// thread chose folders.
+
+export async function prepareThreadWork(access: NativeHarnessAccess, context: NativeHarnessContext, owns: boolean): Promise<string> {
+  return owns && context.work ? await prepareThreadWorkStep(access, context) : ''
+}
+
+export function instructionsWithWork(instructions: string, workNote: string): string {
+  return workNote ? `${instructions}\n\n${workNote}` : instructions
+}
+
+export async function saveThreadWorkIfChosen(access: NativeHarnessAccess, context: NativeHarnessContext): Promise<void> {
+  if (context.work) await saveThreadWorkStep(access, context)
+}
