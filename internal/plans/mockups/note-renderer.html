@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Note renderer mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Production semantic tokens (packages/overlay-ui/src/styles.css). */
+:root {
+  --background: #fafafa; --foreground: #0a0a0a; --muted: #71717a; --muted-light: #a1a1aa;
+  --border: #e4e4e7; --surface-elevated: #ffffff; --surface-muted: #f5f5f5; --surface-subtle: #f0f0f0;
+  --sidebar-surface: #f5f5f5;
+  --hover: rgba(0,0,0,.045); --drop: #3b82f6; --link-line: rgba(10,10,10,.28);
+  --shadow-pop: 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.10);
+  --check-bg: #0a0a0a; --check-fg: #fff;
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+[data-theme='dark'] {
+  --background: #09090b; --foreground: #f5f5f5; --muted: #a1a1aa; --muted-light: #71717a;
+  --border: #27272a; --surface-elevated: #111113; --surface-muted: #151518; --surface-subtle: #1c1c20;
+  --sidebar-surface: #09090b;
+  --hover: rgba(255,255,255,.055); --drop: #60a5fa; --link-line: rgba(245,245,245,.32);
+  --shadow-pop: 0 1px 2px rgba(0,0,0,.3), 0 10px 32px rgba(0,0,0,.5);
+  --check-bg: #e4e4e7; --check-fg: #111113;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--sidebar-surface); color: var(--foreground); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; font-size: 14px; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: var(--muted); transition: background .12s, color .12s; }
+.icon-btn:hover { background: var(--hover); color: var(--foreground); }
+
+/* ---------- Mockup chrome (not part of the proposal) ---------- */
+.mock-bar { height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--surface-elevated); }
+.mock-bar b { font-weight: 600; font-size: 13px; }
+.mock-bar .sub { color: var(--muted); font-size: 12px; }
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--surface-subtle); margin-left: auto; }
+.seg button { padding: 4px 10px; border-radius: 6px; font-size: 12.5px; color: var(--muted); }
+.seg button[aria-pressed='true'] { background: var(--surface-elevated); color: var(--foreground); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.view { display: none; height: calc(100vh - 44px); }
+.view.on { display: flex; }
+
+/* ---------- Simplified shell frame ---------- */
+.rail { width: 60px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0; color: var(--muted); }
+.rail .logo { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--foreground); margin-bottom: 10px; position: relative; }
+.rail .logo::after { content: ''; position: absolute; inset: 8px 6px; background: radial-gradient(circle at 30% 50%, var(--foreground) 1.6px, transparent 2px), radial-gradient(circle at 70% 50%, var(--foreground) 1.6px, transparent 2px); }
+.ctx { width: 248px; flex-shrink: 0; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+.ctx h4 { margin: 2px 8px 10px; font-size: 13px; font-weight: 600; }
+.ctx .row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.ctx .row.sel { background: var(--surface-elevated); color: var(--foreground); box-shadow: 0 0 0 1px var(--border); }
+.ctx .row .av { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; }
+.frame { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.stage { flex: 1; display: flex; gap: 8px; padding: 8px 8px 8px 0; min-width: 0; }
+.topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px; }
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
+.crumbs .cur { color: var(--foreground); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs svg.i { width: 14px; height: 14px; color: var(--muted-light); }
+.spacer { flex: 1; }
+
+/* ---------- Thread ---------- */
+.thread { flex: 1; overflow-y: auto; }
+.thread-inner { max-width: 720px; margin: 0 auto; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 22px; }
+.msg-user { align-self: flex-end; max-width: 80%; background: var(--surface-subtle); padding: 9px 14px; border-radius: 16px; font-size: 14px; line-height: 1.55; }
+.msg-agent { display: flex; gap: 10px; }
+.msg-agent .av { width: 24px; height: 24px; border-radius: 7px; background: #5b7f6a; flex-shrink: 0; margin-top: 1px; }
+.msg-agent .body { min-width: 0; flex: 1; font-size: 14px; line-height: 1.65; }
+.msg-agent .name { font-weight: 600; font-size: 13px; }
+.msg-agent .name span { color: var(--muted-light); font-weight: 400; font-size: 12px; margin-left: 6px; }
+.msg-agent p { margin: 4px 0 10px; }
+.composer { margin: 0 auto 10px; width: calc(100% - 56px); max-width: 664px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-muted); padding: 12px 14px 10px; color: var(--muted-light); font-size: 14px; }
+.composer .tools { display: flex; justify-content: space-between; margin-top: 18px; color: var(--muted); }
+
+/* ---------- Note card (proposal) ---------- */
+.note-card { display: block; width: 100%; max-width: 440px; text-align: left; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-elevated); transition: border-color .15s, box-shadow .15s; margin: 6px 0 2px; }
+.note-card:hover { border-color: var(--muted-light); }
+.note-card.is-open { border-color: color-mix(in srgb, var(--foreground) 40%, transparent); }
+.note-card .peek { position: relative; height: 128px; background: var(--surface-muted); padding: 16px 28px 0; overflow: hidden; border-bottom: 1px solid var(--border); }
+.note-card .sheet { height: 100%; background: var(--surface-elevated); border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; padding: 14px 18px; overflow: hidden; transition: transform .2s cubic-bezier(.2,.8,.2,1); -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
+.note-card:hover .sheet { transform: translateY(-3px); }
+[data-theme='dark'] .note-card .peek { background: #0c0c0e; }
+[data-theme='dark'] .note-card .sheet { background: #19191c; border-color: #2e2e33; }
+.sheet .t { font-size: 13px; font-weight: 600; margin-bottom: 6px; letter-spacing: -.005em; }
+.sheet .h { font-size: 9.5px; font-weight: 600; margin: 7px 0 3px; }
+.sheet p { font-size: 9px; line-height: 1.5; color: var(--muted); margin: 0; }
+.sheet .mini-table { margin-top: 6px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: 3px; }
+.sheet .mini-table span { height: 9px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.sheet .mini-table span:nth-child(3n) { border-right: 0; }
+.note-card .foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; }
+.note-card .foot .fi { color: var(--muted); }
+.note-card .foot .txt { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.note-card .foot .ttl { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-card .foot .meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-card .foot .go { color: var(--muted-light); transition: color .15s, transform .15s; }
+.note-card:hover .foot .go { color: var(--foreground); transform: translate(1px,-1px); }
+
+.note-list { max-width: 440px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 6px 0 2px; background: var(--surface-elevated); }
+.note-row { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 12px 9px 14px; text-align: left; transition: background .12s; }
+.note-row + .note-row { border-top: 1px solid var(--border); }
+.note-row:hover { background: var(--hover); }
+.note-row .fi { color: var(--muted); }
+.note-row .txt { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.note-row .ttl { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-row .meta { font-size: 12px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.note-row .go { color: var(--muted-light); }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+
+/* Current card (before) */
+.old-card { display: flex; gap: 12px; max-width: 460px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.old-card .tile { width: 32px; height: 32px; border-radius: 8px; background: var(--surface-subtle); display: grid; place-items: center; color: var(--muted); flex-shrink: 0; }
+.old-card .t { font-size: 13px; font-weight: 500; }
+.old-card .p { font-size: 12px; color: var(--muted); line-height: 18px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---------- Right panel ---------- */
+.rpanel { width: 520px; flex-shrink: 0; position: relative; }
+.rpanel.closed { display: none; }
+.rpanel .resizer { position: absolute; left: -6px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+.rpanel .resizer::after { content: ''; position: absolute; left: 3px; top: 50%; height: 32px; width: 2px; margin-top: -16px; border-radius: 2px; background: var(--border); opacity: 0; transition: opacity .15s; }
+.rpanel .resizer:hover::after { opacity: 1; }
+.rp-head { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid var(--border); }
+.rp-head .txt { flex: 1; min-width: 0; padding: 0 4px; }
+.rp-head .ttl { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-head .meta { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.save-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-light); transition: background .2s; }
+.save-dot.saving { background: #f59e0b; }
+.scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+
+/* ---------- Document (the proposal) ---------- */
+.page { position: relative; margin: 0 auto; }
+.files .page { max-width: 900px; padding: 72px 96px 160px; }
+.files.wide .page { max-width: none; padding: 72px 96px 160px; }
+.panel-page { padding: 28px 44px 120px; }
+.doc-title { font-size: 38px; line-height: 1.15; font-weight: 700; letter-spacing: -.02em; margin: 0 0 8px; outline: none; }
+.panel-page .doc-title { font-size: 26px; letter-spacing: -.015em; }
+.doc-meta { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-bottom: 28px; }
+.panel-page .doc-meta { margin-bottom: 20px; }
+.doc-meta .av { width: 16px; height: 16px; border-radius: 5px; background: #5b7f6a; }
+.doc-meta .sep { color: var(--muted-light); }
+
+.doc { outline: none; font-size: 16px; line-height: 1.65; color: var(--foreground); caret-color: var(--foreground); }
+.panel-page .doc { font-size: 14.5px; line-height: 1.62; }
+.doc > * { margin: 0; }
+.doc p { padding: 3px 0; }
+.doc h1, .doc h2, .doc h3 { font-weight: 600; letter-spacing: -.01em; }
+.doc h1 { font-size: 1.875em; line-height: 1.25; margin-top: 1.4em; padding: 3px 0 2px; }
+.doc h2 { font-size: 1.4em; line-height: 1.3; margin-top: 1.25em; padding: 3px 0 2px; }
+.doc h3 { font-size: 1.15em; line-height: 1.35; margin-top: 1em; padding: 3px 0 1px; }
+.doc > :first-child { margin-top: 0; }
+.doc strong { font-weight: 600; }
+.doc a { color: inherit; text-decoration: underline; text-decoration-color: var(--link-line); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.doc a:hover { text-decoration-color: var(--foreground); }
+.doc code { font-family: var(--font-mono); font-size: .85em; background: var(--surface-subtle); border-radius: 4px; padding: .15em .35em; }
+.doc ul, .doc ol { padding-left: 1.6em; margin: 2px 0; }
+.doc li { padding: 3px 0; padding-left: 2px; }
+.doc ul > li::marker { color: var(--foreground); font-size: .9em; }
+.doc ol > li::marker { color: var(--foreground); }
+.doc blockquote { border-left: 3px solid var(--foreground); padding: 2px 0 2px 16px; margin: 6px 0; font-size: 1.04em; }
+.doc hr { border: 0; height: 1px; background: var(--border); margin: 18px 0; }
+.doc pre { font-family: var(--font-mono); font-size: 13.5px; line-height: 1.6; background: var(--surface-muted); border-radius: 6px; padding: 16px 18px; margin: 6px 0; overflow-x: auto; }
+.doc .muted { color: var(--muted); font-size: .9em; }
+
+/* To-do list */
+.doc ul.todo { list-style: none; padding-left: 0; }
+.doc ul.todo > li { display: flex; gap: 10px; align-items: flex-start; padding-left: 0; }
+.doc .check { width: 16px; height: 16px; margin-top: .3em; border: 1.5px solid var(--muted-light); border-radius: 4px; flex-shrink: 0; display: grid; place-items: center; cursor: pointer; user-select: none; transition: background .12s, border-color .12s; }
+.doc .check svg { width: 11px; height: 11px; stroke: var(--check-fg); stroke-width: 3; fill: none; opacity: 0; }
+.doc li.done .check { background: var(--check-bg); border-color: var(--check-bg); }
+.doc li.done .check svg { opacity: 1; }
+.doc li.done > .li-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted-light); }
+
+/* Tables: quiet grid, readable cells, horizontal scroll instead of squeezing. */
+.doc .table-wrap { margin: 8px 0 10px; overflow-x: auto; scrollbar-width: thin; }
+/* In the side panel the table scrolls edge to edge instead of crushing its columns. */
+.panel-page .doc .table-wrap { margin-left: -44px; margin-right: -44px; padding: 0 44px 6px; }
+.doc table { border-collapse: collapse; font-size: .875em; line-height: 1.5; min-width: 100%; }
+.doc th, .doc td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; min-width: 150px; }
+.panel-page .doc td, .panel-page .doc th { min-width: 200px; }
+.panel-page .doc tr > :first-child { min-width: 140px; }
+.doc th { font-weight: 500; color: var(--muted); background: var(--surface-muted); font-size: .95em; }
+.doc tr > :first-child { font-weight: 500; }
+.doc th:first-child { font-weight: 500; }
+
+/* Empty-block placeholder */
+.doc .ph::before { content: attr(data-ph); color: var(--muted-light); pointer-events: none; position: absolute; }
+
+/* ---------- Block handle (drag + insert) ---------- */
+.handle { position: absolute; display: flex; gap: 1px; opacity: 0; transition: opacity .12s; z-index: 4; }
+.handle.on { opacity: 1; }
+.handle button { width: 22px; height: 24px; border-radius: 5px; display: grid; place-items: center; color: var(--muted-light); }
+.handle button:hover { background: var(--hover); color: var(--muted); }
+.handle .grip { cursor: grab; width: 18px; }
+.handle .grip:active { cursor: grabbing; }
+.handle svg.i { width: 16px; height: 16px; }
+.drop-line { position: absolute; height: 3px; border-radius: 2px; background: var(--drop); opacity: .7; pointer-events: none; display: none; z-index: 3; }
+.doc .dragging { opacity: .35; }
+.doc .block-sel { background: color-mix(in srgb, var(--drop) 12%, transparent); border-radius: 4px; }
+
+/* ---------- Menus (shadcn Command / DropdownMenu look) ---------- */
+.menu { position: absolute; z-index: 20; width: 300px; max-height: 340px; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop); padding: 4px; font-size: 13px; display: none; }
+.menu.on { display: block; animation: pop .12s cubic-bezier(.2,.8,.2,1); }
+@keyframes pop { from { opacity: 0; transform: translateY(-2px) scale(.98); } }
+.menu .label { padding: 6px 8px 4px; font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.menu .item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 4px 8px 4px 4px; border-radius: 6px; text-align: left; }
+.menu .item.active { background: var(--hover); }
+.menu .item .tile { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-elevated); display: grid; place-items: center; color: var(--foreground); flex-shrink: 0; }
+.menu .item .tl { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.menu .item .tl b { font-weight: 500; font-size: 13px; }
+.menu .item .tl small { color: var(--muted); font-size: 11.5px; }
+.menu .item kbd { font-family: var(--font-mono); font-size: 11px; color: var(--muted-light); }
+.menu .empty { padding: 10px 8px; color: var(--muted); }
+.menu .q { display: flex; align-items: center; gap: 6px; padding: 6px 8px 8px; margin: 0 -4px 4px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+.menu .q b { color: var(--foreground); font-weight: 500; }
+.menu.compact { width: 220px; }
+.menu.compact .item { padding: 6px 8px; gap: 8px; }
+.menu.compact .item svg.i { color: var(--muted); width: 15px; height: 15px; }
+.menu.compact .item.danger { color: #dc2626; }
+.menu.compact .item.danger svg.i { color: #dc2626; }
+[data-theme='dark'] .menu.compact .item.danger, [data-theme='dark'] .menu.compact .item.danger svg.i { color: #f87171; }
+.menu hr { border: 0; height: 1px; background: var(--border); margin: 4px -4px; }
+
+/* ---------- Card states board ---------- */
+.board { flex: 1; overflow: auto; padding: 32px; }
+.board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 20px; max-width: 1100px; margin: 0 auto; }
+.tilecard { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.tilecard h5 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+.tilecard .why { margin: 0 0 16px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+/* ---------- Narrow layout ---------- */
+@media (max-width: 1180px) { .ctx { display: none; } }
+@media (max-width: 960px) {
+  .rail { display: none; }
+  .stage { padding: 8px; }
+  .rpanel { position: fixed; right: 8px; top: 52px; bottom: 8px; width: min(520px, calc(100vw - 16px)) !important; z-index: 30; box-shadow: var(--shadow-pop); }
+  .files .page { padding: 40px 56px 120px; }
+}
+@media (max-width: 560px) {
+  .files .page { padding: 28px 24px 120px; }
+  .doc-title { font-size: 30px; }
+  .panel-page { padding: 24px 24px 100px 40px; }
+  .mock-bar .sub { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="mock-bar">
+  <b>Note renderer</b><span class="sub">Proposal mockup · one editable Markdown surface everywhere</span>
+  <div class="seg" role="group" aria-label="View">
+    <button data-view="thread" aria-pressed="true">Thread + panel</button>
+    <button data-view="files" aria-pressed="false">Files</button>
+    <button data-view="cards" aria-pressed="false">Note cards</button>
+  </div>
+  <button class="icon-btn" id="theme" aria-label="Toggle theme"></button>
+</div>
+
+<!-- ================= Thread + right panel ================= -->
+<section class="view on" id="view-thread">
+  <nav class="rail" aria-hidden="true">
+    <div class="logo"></div>
+    <span class="icon-btn" data-i="list-todo"></span><span class="icon-btn" data-i="bot"></span><span class="icon-btn" data-i="message-square"></span><span class="icon-btn" data-i="ellipsis"></span>
+  </nav>
+  <aside class="ctx" aria-hidden="true">
+    <h4>Agents</h4>
+    <div class="row"><span class="av" style="background:#71717a"></span>Overlay</div>
+    <div class="row sel"><span class="av" style="background:#5b7f6a"></span>Atlas</div>
+    <div class="row" style="padding-left:36px">ARMS discovery brief</div>
+    <div class="row"><span class="av" style="background:#6366f1"></span>Scout</div>
+  </aside>
+  <div class="stage">
+    <main class="frame" style="flex:1">
+      <div class="topbar">
+        <div class="crumbs">Personal<span data-i="chevron-right"></span>Agents<span data-i="chevron-right"></span><span class="cur">Atlas</span></div>
+        <span class="spacer"></span>
+        <button class="icon-btn" id="toggle-panel" aria-label="Toggle details"><span data-i="panel-right"></span></button>
+      </div>
+      <div class="thread">
+        <div class="thread-inner">
+          <div class="msg-user">Draft a discovery decision brief for a novel alveolar rhabdomyosarcoma program and save it as a note.</div>
+          <div class="msg-agent">
+            <span class="av"></span>
+            <div class="body">
+              <div class="name">Atlas<span>8:31 PM</span></div>
+              <p>I compared fusion degradation, FGFR4 ADCs and KDM4 inhibition against the retrieved abstracts and the WO2024130027 application. The brief recommends a bounded feasibility assessment of PAX3::FOXO1 degradation before any chemistry campaign.</p>
+              <button class="note-card is-open" id="thread-card" type="button"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="composer">What do you want to get done?<div class="tools"><span data-i="plus"></span><span data-i="arrow-up"></span></div></div>
+    </main>
+    <aside class="frame rpanel" id="rpanel" aria-label="Note">
+      <div class="resizer" id="resizer" title="Drag to resize"></div>
+      <div class="rp-head">
+        <button class="icon-btn" aria-label="Back to Library"><span data-i="arrow-left"></span></button>
+        <div class="txt">
+          <div class="ttl">ARMS — discovery decision brief</div>
+          <div class="meta"><span class="save-dot" data-save></span><span data-save-label>Saved</span></div>
+        </div>
+        <button class="icon-btn" aria-label="Open in Files" title="Open in Files" data-goto-files><span data-i="maximize-2"></span></button>
+        <button class="icon-btn" aria-label="More"><span data-i="ellipsis"></span></button>
+        <button class="icon-btn" aria-label="Close" id="close-panel"><span data-i="x"></span></button>
+      </div>
+      <div class="scroll"><div class="page panel-page" data-editor></div></div>
+    </aside>
+  </div>
+</section>
+
+<!-- ================= Files ================= -->
+<section class="view" id="view-files">
+  <nav class="rail" aria-hidden="true">
+    <div class="logo"></div>
+    <span class="icon-btn" data-i="list-todo"></span><span class="icon-btn" data-i="bot"></span><span class="icon-btn" data-i="message-square"></span><span class="icon-btn" data-i="folder"></span>
+  </nav>
+  <aside class="ctx" aria-hidden="true">
+    <h4>Files</h4>
+    <div class="row"><span data-i="folder"></span>Notes</div>
+    <div class="row sel" style="padding-left:28px"><span data-i="file-text"></span>ARMS — discovery decision brief</div>
+    <div class="row" style="padding-left:28px"><span data-i="file-text"></span>Research lab applications</div>
+    <div class="row"><span data-i="folder"></span>Uploads</div>
+  </aside>
+  <div class="stage">
+    <main class="frame files" style="flex:1" id="files-frame">
+      <div class="topbar">
+        <button class="icon-btn" aria-label="Back"><span data-i="arrow-left"></span></button>
+        <div class="crumbs">Personal<span data-i="chevron-right"></span>Notes<span data-i="chevron-right"></span><span class="cur">ARMS — discovery decision brief</span></div>
+        <span class="spacer"></span>
+        <span class="meta" style="font-size:12px;color:var(--muted);margin-right:6px" data-save-label>Saved</span>
+        <button class="icon-btn" aria-label="Full width" title="Full width" id="wide"><span data-i="move-horizontal"></span></button>
+        <button class="icon-btn" aria-label="Comments"><span data-i="message-square"></span></button>
+        <button class="icon-btn" aria-label="More"><span data-i="ellipsis"></span></button>
+      </div>
+      <div class="scroll"><div class="page" data-editor data-large></div></div>
+    </main>
+  </div>
+</section>
+
+<!-- ================= Card states ================= -->
+<section class="view" id="view-cards">
+  <div class="board"><div class="board-grid">
+    <div class="tilecard">
+      <h5>Before</h5>
+      <p class="why">Raw note text run together as a preview (“Discovery decision brief Status and scope…”), so the title repeats and headings read as prose.</p>
+      <div class="old-card"><span class="tile"><span data-i="file-text"></span></span><span><div class="t">Alveolar rhabdomyosarcoma — discovery decision brief v1</div><div class="p">Discovery decision brief Status and scope Research proposal only. No new compound has been designed, synthesized, tested, or shown…</div></span></div>
+    </div>
+    <div class="tilecard">
+      <h5>After · one note created</h5>
+      <p class="why">A page peek shows the note's real shape (title, sections, table) instead of flattened text. One line of meta says what happened. The sheet lifts slightly on hover.</p>
+      <button class="note-card" type="button" data-card="created"></button>
+    </div>
+    <div class="tilecard">
+      <h5>After · note updated</h5>
+      <p class="why">Edits to an existing note say what changed, so the reader knows whether to open it.</p>
+      <button class="note-card" type="button" data-card="updated"></button>
+    </div>
+    <div class="tilecard">
+      <h5>After · several notes in one reply</h5>
+      <p class="why">Three or more notes collapse into one quiet list instead of a wall of cards.</p>
+      <div class="note-list">
+        <button class="note-row" type="button"><span class="fi" data-i="file-text"></span><span class="txt"><span class="ttl">ARMS — discovery decision brief</span><span class="meta">Created</span></span><span class="go" data-i="chevron-right"></span></button>
+        <button class="note-row" type="button"><span class="fi" data-i="file-text"></span><span class="txt"><span class="ttl">WO2024130027 claim map</span><span class="meta">Created</span></span><span class="go" data-i="chevron-right"></span></button>
+        <button class="note-row" type="button"><span class="fi" data-i="file-text"></span><span class="txt"><span class="ttl">PFP-16 potency and selectivity</span><span class="meta">Updated · 2 sections</span></span><span class="go" data-i="chevron-right"></span></button>
+      </div>
+    </div>
+    <div class="tilecard">
+      <h5>After · open in the right panel</h5>
+      <p class="why">While the note is open beside the thread, its card keeps a selected outline so the link between the two is obvious.</p>
+      <button class="note-card is-open" type="button" data-card="created"></button>
+    </div>
+  </div></div>
+</section>
+
+<!-- Menus (one shared instance each) -->
+<div class="menu" id="slash" role="listbox"></div>
+<div class="menu compact" id="blockmenu" role="menu"></div>
+
+<script>
+/* ---------- Lucide icons (inline paths) ---------- */
+const ICONS = {
+  'plus': '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  'grip-vertical': '<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',
+  'arrow-left': '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  'arrow-up-right': '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
+  'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  'ellipsis': '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  'type': '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+  'heading-1': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>',
+  'heading-2': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/>',
+  'heading-3': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2"/><path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2"/>',
+  'list': '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
+  'list-ordered': '<path d="M10 12h11"/><path d="M10 18h11"/><path d="M10 6h11"/><path d="M4 10h2"/><path d="M4 6h1v4"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
+  'list-todo': '<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  'text-quote': '<path d="M17 6H3"/><path d="M21 12H8"/><path d="M21 18H8"/><path d="M3 12v6"/>',
+  'code': '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  'table': '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+  'minus': '<path d="M5 12h14"/>',
+  'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  'trash-2': '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  'link': '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+  'check': '<path d="M20 6 9 17l-5-5"/>',
+  'panel-right': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+  'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  'maximize-2': '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/>',
+  'move-horizontal': '<path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/>',
+  'bot': '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  'repeat-2': '<path d="m2 9 3-3 3 3"/><path d="M13 18H7a2 2 0 0 1-2-2V6"/><path d="m22 15-3 3-3-3"/><path d="M11 6h6a2 2 0 0 1 2 2v10"/>',
+  'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  'moon': '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+};
+const icon = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
+const paintIcons = (root = document) => root.querySelectorAll('[data-i]').forEach((el) => { if (!el.firstChild) el.innerHTML = icon(el.dataset.i); });
+
+/* ---------- Note content (all of it is plain GFM: headings, lists, tasks, quote, table, links) ---------- */
+const CHECK = `<span class="check" contenteditable="false">${'<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>'}</span>`;
+const DOC = `
+<h2>Status and scope</h2>
+<p>Research proposal only. No new compound has been designed, synthesized, tested, or shown efficacious. Novelty and freedom to operate are unestablished.</p>
+<h2>Decision recommendation</h2>
+<p>Advance a bounded feasibility assessment of <strong>PAX3::FOXO1-directed degradation</strong>, using published FGFR4 ADCs as a translational efficacy benchmark. Do not yet commit to a chemistry campaign. Keep KDM4 as a mechanistic alternative.</p>
+<blockquote>This prioritization is our research judgment, not evidence of comparative superiority.</blockquote>
+<h2>Evidence ledger</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Strategy</th><th>Strongest evidence</th><th>What it does not show</th><th>Next step</th></tr></thead>
+<tbody>
+<tr><td>Fusion degradation</td><td>Up to 70% endogenous PAX3::FOXO1 degradation in cells; &gt;80% loss of anchorage-independent growth with vincristine</td><td>Durable regression, clinical benefit, a safe exposure window</td><td>Map <a href="#">WO2024130027</a> claims to the design</td></tr>
+<tr><td>FGFR4 ADCs</td><td>Durable tumor control with the exatecan ADC in RH4 and an RMS PDX</td><td>Head-to-head comparison or human safety</td><td>Confirm surface expression and internalization</td></tr>
+<tr><td>KDM4</td><td>KDM4B dependency, growth delay, regression with cytotoxic chemotherapy</td><td>Separation of KDM4 and DHODH effects</td><td>Treat QC6352 as insufficient for attribution</td></tr>
+</tbody></table></div>
+<h3>Prior art</h3>
+<p>Search results identified <a href="#">WO2024130027</a>, concerning PROTAC degradation of PAX3 and FOXO1. Prosecution status, ownership and structural compound coverage remain unverified, so no freedom-to-operate conclusion is available.</p>
+<h2>Proposed target product profile</h2>
+<ul>
+<li>Initial indication: relapsed or refractory, molecularly confirmed PAX3::FOXO1-positive RMS.</li>
+<li>Other populations: test PAX7::FOXO1-positive and fusion-negative disease separately.</li>
+<li>Mechanism: sustained suppression of the fusion-driven transcriptional program through selective degradation.</li>
+<li>Exposure: measurable tumor target engagement at tolerated systemic exposure.</li>
+</ul>
+<h2>Next steps</h2>
+<ul class="todo">
+<li class="done">${CHECK}<span class="li-text">Retrieve the US application record</span></li>
+<li>${CHECK}<span class="li-text">Map claim language to the proposed degrader strategy</span></li>
+<li>${CHECK}<span class="li-text">Compare PFP-16 potency and selectivity to judge candidate viability</span></li>
+</ul>
+<hr>
+<p class="muted">Sources: retrieved article abstracts and bounded excerpts, not a systematic review.</p>`;
+
+/* ---------- Editor ---------- */
+const slash = document.getElementById('slash');
+const blockmenu = document.getElementById('blockmenu');
+const COMMANDS = [
+  { id: 'p', label: 'Text', hint: 'Plain paragraph', icon: 'type', kbd: '' },
+  { id: 'h1', label: 'Heading 1', hint: 'Large section heading', icon: 'heading-1', kbd: '#' },
+  { id: 'h2', label: 'Heading 2', hint: 'Medium section heading', icon: 'heading-2', kbd: '##' },
+  { id: 'h3', label: 'Heading 3', hint: 'Small section heading', icon: 'heading-3', kbd: '###' },
+  { id: 'ul', label: 'Bulleted list', hint: 'Simple bulleted list', icon: 'list', kbd: '-' },
+  { id: 'ol', label: 'Numbered list', hint: 'List with numbering', icon: 'list-ordered', kbd: '1.' },
+  { id: 'todo', label: 'To-do list', hint: 'Track tasks with checkboxes', icon: 'list-todo', kbd: '[]' },
+  { id: 'quote', label: 'Quote', hint: 'Capture a quotation', icon: 'text-quote', kbd: '>' },
+  { id: 'code', label: 'Code', hint: 'Code block with syntax', icon: 'code', kbd: '```' },
+  { id: 'table', label: 'Table', hint: 'Markdown table', icon: 'table', kbd: '' },
+  { id: 'hr', label: 'Divider', hint: 'Separate sections', icon: 'minus', kbd: '---' },
+];
+const PH = { P: "Type '/' for commands", H1: 'Heading 1', H2: 'Heading 2', H3: 'Heading 3', LI: 'List', BLOCKQUOTE: 'Quote', PRE: 'Code' };
+
+let active = null; // { editor, block, query, index, items }
+
+function placeCaret(el, atEnd = true) {
+  const target = el.querySelector('.li-text') || el;
+  const r = document.createRange(); r.selectNodeContents(target); r.collapse(!atEnd ? true : false);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+function blockFor(doc, node) {
+  let el = node && (node.nodeType === 1 ? node : node.parentElement);
+  if (!el || !doc.contains(el)) return null;
+  const li = el.closest('li'); if (li && doc.contains(li)) return li;
+  while (el && el.parentElement !== doc) el = el.parentElement;
+  return el;
+}
+function setSaving(on) {
+  document.querySelectorAll('[data-save]').forEach((d) => d.classList.toggle('saving', on));
+  document.querySelectorAll('[data-save-label]').forEach((d) => { d.textContent = on ? 'Saving…' : 'Saved'; });
+}
+let saveTimer;
+function touched() { setSaving(true); clearTimeout(saveTimer); saveTimer = setTimeout(() => setSaving(false), 700); }
+
+function mountEditor(page) {
+  const large = page.hasAttribute('data-large');
+  page.innerHTML = `
+    <h1 class="doc-title" contenteditable="true" spellcheck="false">ARMS — discovery decision brief</h1>
+    <div class="doc-meta"><span class="av"></span>Atlas<span class="sep">·</span>Edited just now<span class="sep">·</span>${large ? '1,240 words' : 'Note'}</div>
+    <div class="doc" contenteditable="true" spellcheck="false">${DOC}</div>
+    <div class="handle" aria-hidden="false">
+      <button type="button" class="add" aria-label="Insert block below" title="Click to add below">${icon('plus')}</button>
+      <button type="button" class="grip" draggable="true" aria-label="Drag to move, click for options" title="Drag to move · Click for options">${icon('grip-vertical')}</button>
+    </div>
+    <div class="drop-line"></div>`;
+  const doc = page.querySelector('.doc');
+  const handle = page.querySelector('.handle');
+  const line = page.querySelector('.drop-line');
+  const editor = { page, doc, handle, hovered: null, dragging: null };
+
+  const blocks = () => [...doc.children].flatMap((c) => (c.tagName === 'UL' || c.tagName === 'OL') ? [...c.children] : [c]);
+
+  function showHandle(block) {
+    if (!block) return;
+    editor.hovered = block;
+    const pr = page.getBoundingClientRect(), br = block.getBoundingClientRect();
+    const cs = getComputedStyle(block);
+    const lh = parseFloat(cs.lineHeight) || 24;
+    const top = br.top - pr.top + parseFloat(cs.paddingTop || 0) + (lh - 24) / 2;
+    const left = doc.getBoundingClientRect().left - pr.left - 43;
+    handle.style.top = `${block.classList.contains('table-wrap') ? br.top - pr.top + 4 : top}px`;
+    handle.style.left = `${left}px`;
+    handle.classList.add('on');
+  }
+
+  page.addEventListener('mousemove', (e) => {
+    if (editor.dragging || slash.classList.contains('on') || blockmenu.classList.contains('on')) return;
+    if (handle.contains(e.target)) return;
+    const dr = doc.getBoundingClientRect();
+    if (e.clientY < dr.top - 4 || e.clientY > dr.bottom + 4) { handle.classList.remove('on'); return; }
+    const probe = document.elementFromPoint(Math.min(dr.left + 40, dr.right - 2), e.clientY);
+    const b = blockFor(doc, probe);
+    if (b) showHandle(b);
+  });
+  page.addEventListener('mouseleave', () => { if (!editor.dragging && !blockmenu.classList.contains('on')) handle.classList.remove('on'); });
+
+  /* + : insert an empty paragraph below and open the block menu, like typing "/" */
+  handle.querySelector('.add').addEventListener('click', () => {
+    const b = editor.hovered; if (!b) return;
+    const isLi = b.tagName === 'LI';
+    const p = document.createElement(isLi ? 'li' : 'p');
+    if (isLi && b.parentElement.classList.contains('todo')) p.innerHTML = `${CHECK}<span class="li-text">/</span>`; else p.textContent = '/';
+    b.after(p);
+    placeCaret(p);
+    openSlash(editor, p);
+    touched();
+  });
+
+  /* Grip click: block actions */
+  const grip = handle.querySelector('.grip');
+  grip.addEventListener('click', (e) => { e.stopPropagation(); openBlockMenu(editor, editor.hovered, grip); });
+
+  /* Drag to reorder */
+  grip.addEventListener('dragstart', (e) => {
+    editor.dragging = editor.hovered; if (!editor.dragging) return;
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', '');
+    const ghost = editor.dragging.cloneNode(true);
+    ghost.style.cssText = `position:absolute;top:-1000px;width:${editor.dragging.offsetWidth}px;opacity:.9;background:var(--surface-elevated);font:inherit;list-style:none`;
+    doc.appendChild(ghost); e.dataTransfer.setDragImage(ghost, 0, 10); setTimeout(() => ghost.remove());
+    requestAnimationFrame(() => editor.dragging && editor.dragging.classList.add('dragging'));
+    closeMenus();
+  });
+  let dropTarget = null;
+  page.addEventListener('dragover', (e) => {
+    if (!editor.dragging) return;
+    e.preventDefault();
+    const d = editor.dragging;
+    const pool = d.tagName === 'LI' ? [...d.parentElement.children] : [...doc.children];
+    let best = null;
+    for (const b of pool) {
+      if (b === d) continue;
+      const r = b.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      const y = after ? r.bottom : r.top;
+      const dist = Math.abs(e.clientY - y);
+      if (!best || dist < best.dist) best = { b, after, y, dist };
+    }
+    if (!best) return;
+    dropTarget = best;
+    const pr = page.getBoundingClientRect(), dr = doc.getBoundingClientRect();
+    line.style.display = 'block';
+    line.style.top = `${best.y - pr.top - 1.5}px`;
+    line.style.left = `${dr.left - pr.left}px`;
+    line.style.width = `${dr.width}px`;
+  });
+  page.addEventListener('drop', (e) => {
+    if (!editor.dragging || !dropTarget) return;
+    e.preventDefault();
+    dropTarget.after ? dropTarget.b.after(editor.dragging) : dropTarget.b.before(editor.dragging);
+    touched();
+  });
+  grip.addEventListener('dragend', () => {
+    editor.dragging && editor.dragging.classList.remove('dragging');
+    editor.dragging = null; dropTarget = null; line.style.display = 'none';
+    handle.classList.remove('on');
+  });
+
+  /* Checkboxes */
+  doc.addEventListener('mousedown', (e) => {
+    const c = e.target.closest('.check'); if (!c) return;
+    e.preventDefault(); c.parentElement.classList.toggle('done'); touched();
+  });
+
+  /* Slash menu while typing */
+  doc.addEventListener('input', () => {
+    touched();
+    const s = getSelection(); const b = blockFor(doc, s.anchorNode);
+    if (!b) return;
+    const text = (b.querySelector('.li-text') || b).textContent;
+    if (/^\/[\w ]*$/.test(text)) openSlash(editor, b); else if (active && active.block === b) closeMenus();
+  });
+  doc.addEventListener('keydown', (e) => {
+    if (!active || active.editor !== editor || !slash.classList.contains('on')) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = active.items.length; if (!n) return;
+      active.index = (active.index + (e.key === 'ArrowDown' ? 1 : n - 1)) % n; renderSlash();
+    } else if (e.key === 'Enter') {
+      if (!active.items.length) return;
+      e.preventDefault(); applyCommand(active.items[active.index].id);
+    } else if (e.key === 'Escape') { e.preventDefault(); closeMenus(); }
+  });
+  page.querySelector('.doc-title').addEventListener('input', touched);
+  return editor;
+}
+
+/* Placeholders on the focused empty block */
+document.addEventListener('selectionchange', () => {
+  document.querySelectorAll('.doc .ph').forEach((n) => n.classList.remove('ph'));
+  const s = getSelection(); if (!s.anchorNode) return;
+  const doc = (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement)?.closest?.('.doc'); if (!doc) return;
+  const b = blockFor(doc, s.anchorNode); if (!b) return;
+  const t = b.querySelector('.li-text') || b;
+  if (t.textContent === '' ) { t.classList.add('ph'); t.dataset.ph = PH[b.tagName] || PH.P; }
+});
+
+function positionNear(menu, el, page) {
+  const pr = page.getBoundingClientRect(), r = el.getBoundingClientRect();
+  menu.style.visibility = 'hidden'; menu.classList.add('on');
+  const h = menu.offsetHeight, w = menu.offsetWidth;
+  let top = r.bottom + 6 + scrollY, left = r.left + scrollX;
+  if (r.bottom + 6 + h > innerHeight - 8) top = r.top - h - 6 + scrollY;
+  left = Math.min(left, innerWidth - w - 8);
+  menu.style.top = `${Math.max(8, top)}px`; menu.style.left = `${Math.max(8, left)}px`;
+  menu.style.visibility = '';
+}
+function openSlash(editor, block) {
+  const text = (block.querySelector('.li-text') || block).textContent;
+  const query = text.slice(1).trim().toLowerCase();
+  const items = COMMANDS.filter((c) => !query || c.label.toLowerCase().includes(query) || c.id.includes(query));
+  const same = active && active.block === block;
+  active = { editor, block, query, items, index: same ? Math.min(active.index, Math.max(0, items.length - 1)) : 0 };
+  editor.handle.classList.remove('on');
+  renderSlash();
+  positionNear(slash, block, editor.page);
+}
+const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+function renderSlash() {
+  const { items, index, query } = active;
+  slash.innerHTML = (query ? `<div class="q">Filter: <b>${escapeHtml(query)}</b></div>` : '') + (items.length ? `<div class="label">Basic blocks</div>` + items.map((c, i) => `
+    <button type="button" class="item${i === index ? ' active' : ''}" data-cmd="${c.id}" role="option">
+      <span class="tile">${icon(c.icon)}</span>
+      <span class="tl"><b>${c.label}</b><small>${c.hint}</small></span>
+      ${c.kbd ? `<kbd>${c.kbd}</kbd>` : ''}
+    </button>`).join('') : '<div class="empty">No matching blocks</div>');
+  slash.querySelector('.item.active')?.scrollIntoView({ block: 'nearest' });
+}
+slash.addEventListener('mousedown', (e) => { e.preventDefault(); const it = e.target.closest('[data-cmd]'); if (it) applyCommand(it.dataset.cmd); });
+slash.addEventListener('mousemove', (e) => { const it = e.target.closest('[data-cmd]'); if (!it || !active) return; const i = active.items.findIndex((c) => c.id === it.dataset.cmd); if (i !== active.index) { active.index = i; renderSlash(); } });
+
+function makeBlock(id) {
+  const el = (t, html = '<br>') => { const n = document.createElement(t); n.innerHTML = html; return n; };
+  switch (id) {
+    case 'h1': case 'h2': case 'h3': return { node: el(id), focus: (n) => n };
+    case 'ul': case 'ol': { const l = el(id, '<li><br></li>'); return { node: l, focus: (n) => n.firstChild }; }
+    case 'todo': { const l = el('ul', `<li>${CHECK}<span class="li-text"><br></span></li>`); l.className = 'todo'; return { node: l, focus: (n) => n.firstChild }; }
+    case 'quote': return { node: el('blockquote'), focus: (n) => n };
+    case 'code': { const p = el('pre'); return { node: p, focus: (n) => n }; }
+    case 'table': {
+      const w = el('div', `<table><thead><tr><th><br></th><th><br></th><th><br></th></tr></thead><tbody><tr><td><br></td><td><br></td><td><br></td></tr><tr><td><br></td><td><br></td><td><br></td></tr></tbody></table>`);
+      w.className = 'table-wrap'; return { node: w, focus: (n) => n.querySelector('th') };
+    }
+    case 'hr': return { node: el('hr', ''), after: el('p'), focus: (_n, a) => a };
+    default: return { node: el('p'), focus: (n) => n };
+  }
+}
+function applyCommand(id) {
+  if (!active) return;
+  const { block, editor } = active;
+  const made = makeBlock(id);
+  let anchor = block;
+  // A list item turning into a non-list block leaves its list.
+  if (block.tagName === 'LI') {
+    const list = block.parentElement;
+    if (list.children.length === 1) { anchor = list; }
+    else { block.remove(); anchor = null; list.after(made.node); }
+  }
+  if (anchor) anchor.replaceWith(made.node);
+  if (made.after) made.node.after(made.after);
+  placeCaret(made.focus(made.node, made.after), true);
+  closeMenus(); touched();
+  editor.doc.focus();
+}
+
+function openBlockMenu(editor, block, anchor) {
+  if (!block) return;
+  closeMenus();
+  block.classList.add('block-sel');
+  const turn = [['p', 'Text', 'type'], ['h2', 'Heading 2', 'heading-2'], ['h3', 'Heading 3', 'heading-3'], ['quote', 'Quote', 'text-quote']];
+  blockmenu.innerHTML = `
+    <div class="label">Turn into</div>
+    ${turn.map(([id, l, i]) => `<button type="button" class="item" data-turn="${id}">${icon(i)}${l}</button>`).join('')}
+    <hr>
+    <button type="button" class="item" data-act="dup">${icon('copy')}Duplicate</button>
+    <button type="button" class="item" data-act="link">${icon('link')}Copy link to block</button>
+    <hr>
+    <button type="button" class="item danger" data-act="del">${icon('trash-2')}Delete</button>`;
+  blockmenu._ctx = { editor, block };
+  positionNear(blockmenu, anchor, editor.page);
+}
+blockmenu.addEventListener('mousemove', (e) => { blockmenu.querySelectorAll('.item').forEach((n) => n.classList.toggle('active', n === e.target.closest('.item'))); });
+blockmenu.addEventListener('click', (e) => {
+  const it = e.target.closest('.item'); if (!it) return;
+  const { editor, block } = blockmenu._ctx;
+  if (it.dataset.act === 'dup') block.after(block.cloneNode(true));
+  if (it.dataset.act === 'del') block.remove();
+  if (it.dataset.turn) {
+    const source = block.querySelector('.li-text') || block;
+    const nodes = [...source.childNodes];
+    active = { editor, block }; applyCommand(it.dataset.turn);
+    const sel = getSelection(); const b = blockFor(editor.doc, sel.anchorNode);
+    if (b && it.dataset.turn !== 'hr') (b.querySelector('.li-text') || b).replaceChildren(...nodes);
+  }
+  touched(); closeMenus();
+});
+function closeMenus() {
+  slash.classList.remove('on'); blockmenu.classList.remove('on');
+  document.querySelectorAll('.block-sel').forEach((n) => n.classList.remove('block-sel'));
+  active = null;
+}
+document.addEventListener('mousedown', (e) => { if (!slash.contains(e.target) && !blockmenu.contains(e.target) && !e.target.closest('.handle')) closeMenus(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+
+/* ---------- Note cards ---------- */
+function cardHTML(kind) {
+  const meta = kind === 'updated'
+    ? `Updated just now<span style="color:var(--muted-light)"> · </span>Evidence ledger, Next steps`
+    : `Note<span style="color:var(--muted-light)"> · </span>Created just now<span style="color:var(--muted-light)"> · </span>1,240 words`;
+  return `
+    <div class="peek"><div class="sheet">
+      <div class="t">ARMS — discovery decision brief</div>
+      <div class="h">Status and scope</div>
+      <p>Research proposal only. No new compound has been designed, synthesized, tested, or shown efficacious.</p>
+      <div class="h">Decision recommendation</div>
+      <p>Advance a bounded feasibility assessment of PAX3::FOXO1-directed degradation, using published FGFR4 ADCs as a benchmark.</p>
+      <div class="mini-table"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    </div></div>
+    <div class="foot">
+      <span class="fi">${icon('file-text')}</span>
+      <span class="txt"><span class="ttl">ARMS — discovery decision brief</span><span class="meta">${meta}</span></span>
+      <span class="go">${icon('arrow-up-right')}</span>
+    </div>`;
+}
+document.querySelectorAll('[data-card]').forEach((c) => { c.innerHTML = cardHTML(c.dataset.card); });
+document.getElementById('thread-card').innerHTML = cardHTML('created');
+
+/* ---------- Wiring ---------- */
+paintIcons();
+document.querySelectorAll('[data-editor]').forEach(mountEditor);
+
+const views = { thread: 'view-thread', files: 'view-files', cards: 'view-cards' };
+function show(v) {
+  document.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
+  Object.entries(views).forEach(([k, id]) => document.getElementById(id).classList.toggle('on', k === v));
+  closeMenus();
+  history.replaceState(null, '', `#${v}`);
+}
+document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => show(b.dataset.view)));
+document.querySelector('[data-goto-files]').addEventListener('click', () => show('files'));
+const fromHash = () => { if (location.hash.slice(1) in views) show(location.hash.slice(1)); };
+fromHash(); addEventListener('hashchange', fromHash);
+
+const rpanel = document.getElementById('rpanel');
+const card = document.getElementById('thread-card');
+const setPanel = (open) => { rpanel.classList.toggle('closed', !open); card.classList.toggle('is-open', open); };
+document.getElementById('close-panel').addEventListener('click', () => setPanel(false));
+document.getElementById('toggle-panel').addEventListener('click', () => setPanel(rpanel.classList.contains('closed')));
+card.addEventListener('click', () => setPanel(true));
+document.getElementById('wide').addEventListener('click', () => document.getElementById('files-frame').classList.toggle('wide'));
+
+/* Resizable right panel */
+document.getElementById('resizer').addEventListener('pointerdown', (e) => {
+  const startX = e.clientX, startW = rpanel.offsetWidth;
+  const move = (ev) => { rpanel.style.width = `${Math.min(860, Math.max(380, startW + startX - ev.clientX))}px`; };
+  const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); document.body.style.cursor = ''; };
+  addEventListener('pointermove', move); addEventListener('pointerup', up); document.body.style.cursor = 'col-resize';
+});
+
+/* Theme */
+const themeBtn = document.getElementById('theme');
+const params = new URLSearchParams(location.search);
+function setTheme(t) { document.documentElement.dataset.theme = t; themeBtn.innerHTML = icon(t === 'dark' ? 'sun' : 'moon'); }
+setTheme(params.get('theme') === 'dark' ? 'dark' : 'light');
+themeBtn.addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+</script>
+</body>
+</html>

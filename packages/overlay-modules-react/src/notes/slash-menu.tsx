@@ -8,7 +8,9 @@ export interface SlashMenuItem {
   description: string
   icon: React.ReactNode
   command: () => void
-  category: 'nodes' | 'marks' | 'table'
+  category: 'nodes' | 'media' | 'marks' | 'table'
+  /** The Markdown a writer can type instead, shown at the row's end. */
+  shortcut?: string
 }
 
 interface SlashMenuProps {
@@ -23,10 +25,14 @@ interface SlashMenuProps {
 }
 
 const SECTION_ORDER: Array<{ category: SlashMenuItem['category']; label: string }> = [
-  { category: 'nodes', label: 'Blocks' },
+  { category: 'nodes', label: 'Basic blocks' },
   { category: 'table', label: 'Table' },
+  { category: 'media', label: 'Media' },
   { category: 'marks', label: 'Formatting' },
 ]
+
+const MENU_WIDTH = 300
+const MENU_MAX_HEIGHT = 340
 
 const subscribeToViewportResize = (onStoreChange: () => void) => {
   window.addEventListener('resize', onStoreChange)
@@ -36,6 +42,7 @@ const getViewportWidth = () => window.innerWidth
 const getViewportHeight = () => window.innerHeight
 const getServerViewportSize = () => Number.POSITIVE_INFINITY
 
+/** The block menu opened by typing `/` or the block handle's +: a filterable command list in the app's menu style. */
 export function SlashMenu({
   showSlashMenu,
   slashMenuPosition,
@@ -67,124 +74,79 @@ export function SlashMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showSlashMenu, onClose])
 
+  useEffect(() => {
+    if (!showSlashMenu) return
+    slashMenuRef.current
+      ?.querySelector<HTMLElement>(`[data-slash-index="${selectedSlashIndex}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [selectedSlashIndex, showSlashMenu])
+
   if (!showSlashMenu || !portalHost) return null
 
   const menu = (
     <div
       ref={slashMenuRef}
+      role="listbox"
+      aria-label="Insert block"
+      data-slot="note-slash-menu"
+      className="overlay-pop-in fixed z-100000 overflow-y-auto overscroll-contain rounded-[10px] border border-(--border) bg-(--surface-elevated) p-1 text-[13px] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_28px_rgba(0,0,0,0.12)]"
       style={{
-        position: 'fixed',
-        top: Math.max(8, Math.min(slashMenuPosition.top, viewportHeight - 340)),
-        left: Math.max(8, Math.min(slashMenuPosition.left, viewportWidth - 296)),
-        width: 280,
-        maxHeight: 320,
-        background: 'var(--surface-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 12,
-        boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
-        overflow: 'hidden',
-        zIndex: 100000,
+        top: Math.max(8, Math.min(slashMenuPosition.top, viewportHeight - MENU_MAX_HEIGHT - 8)),
+        left: Math.max(8, Math.min(slashMenuPosition.left, viewportWidth - MENU_WIDTH - 8)),
+        width: MENU_WIDTH,
+        maxHeight: MENU_MAX_HEIGHT,
       }}
+      // Keep the editor's selection (and the typed "/query") while the pointer is in the menu.
+      onMouseDown={(event) => event.preventDefault()}
     >
-      <div
-        style={{
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border)',
-          fontSize: 11,
-          color: 'var(--muted)',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        }}
-      >
-        {slashMenuFilter ? `Searching "${slashMenuFilter}"` : 'Commands'}
-      </div>
-      <div style={{ maxHeight: 272, overflowY: 'auto', padding: '4px' }}>
-        {filteredSlashItems.length === 0 ? (
-          <div
-            style={{
-              padding: '16px',
-              textAlign: 'center',
-              color: 'var(--muted)',
-              fontSize: 13,
-            }}
-          >
-            No matching commands
-          </div>
-        ) : (
-          SECTION_ORDER.map(({ category, label }) => {
-            const sectionItems = filteredSlashItems.filter((item) => item.category === category)
-            if (sectionItems.length === 0) return null
-
-            return (
-              <div key={category}>
-                <div
-                  style={{
-                    padding: '6px 8px',
-                    fontSize: 10,
-                    color: 'var(--muted)',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    fontFamily: 'system-ui, -apple-system, sans-serif',
-                    marginTop: category === 'nodes' ? 0 : 4,
-                  }}
-                >
-                  {label}
-                </div>
-                {sectionItems.map((item) => {
-                  const globalIndex = filteredSlashItems.indexOf(item)
-                  return (
-                    <Button variant="ghost" type="submit"
-                      key={item.title}
-                      onClick={() => executeSlashCommand(item)}
-                      onMouseEnter={() => setSelectedSlashIndex(globalIndex)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        background: selectedSlashIndex === globalIndex ? 'var(--surface-muted)' : 'transparent',
-                        border: 'none',
-                        borderRadius: 8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'background 0.08s ease',
-                        fontFamily: 'system-ui, -apple-system, sans-serif',
-                      }}
-                     className={unstyledButton()}>
-                      <div
-                        style={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: 8,
-                          background: 'var(--surface-muted)',
-                          border: '1px solid var(--border)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'var(--foreground)',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {item.icon}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, color: 'var(--foreground)', fontWeight: 500 }}>
-                          {item.title}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{item.description}</div>
-                      </div>
-                    </Button>
-                  )
-                })}
-              </div>
-            )
-          })
-        )}
-      </div>
+      {slashMenuFilter ? (
+        <div className="-mx-1 mb-1 flex items-center gap-1.5 border-b border-(--border) px-3 pb-2 pt-1.5 text-[12.5px] text-(--muted)">
+          Filter: <span className="font-medium text-(--foreground)">{slashMenuFilter}</span>
+        </div>
+      ) : null}
+      {filteredSlashItems.length === 0 ? (
+        <div className="px-2 py-2.5 text-(--muted)">No matching blocks</div>
+      ) : (
+        SECTION_ORDER.map(({ category, label }) => {
+          const sectionItems = filteredSlashItems.filter((item) => item.category === category)
+          if (sectionItems.length === 0) return null
+          return (
+            <div key={category} role="group" aria-label={label}>
+              <div className="px-2 pb-1 pt-1.5 text-[11.5px] font-medium text-(--muted)">{label}</div>
+              {sectionItems.map((item) => {
+                const globalIndex = filteredSlashItems.indexOf(item)
+                const active = selectedSlashIndex === globalIndex
+                return (
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    key={item.title}
+                    role="option"
+                    aria-selected={active}
+                    data-slash-index={globalIndex}
+                    onClick={() => executeSlashCommand(item)}
+                    onMouseMove={() => { if (!active) setSelectedSlashIndex(globalIndex) }}
+                    className={unstyledButton(`flex h-auto w-full items-center gap-2.5 rounded-md py-1 pl-1 pr-2 text-left font-normal ${
+                      active ? 'bg-(--surface-subtle)' : 'bg-transparent'
+                    }`)}
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center rounded-md border border-(--border) bg-(--surface-elevated) text-(--foreground)">
+                      {item.icon}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-[13px] font-medium leading-[18px] text-(--foreground)">{item.title}</span>
+                      <span className="truncate text-[11.5px] leading-4 text-(--muted)">{item.description}</span>
+                    </span>
+                    {item.shortcut ? (
+                      <kbd className="shrink-0 font-mono text-[11px] text-(--muted-light)">{item.shortcut}</kbd>
+                    ) : null}
+                  </Button>
+                )
+              })}
+            </div>
+          )
+        })
+      )}
     </div>
   )
 
