@@ -57,15 +57,21 @@ the retained focus-yield helper. Transparent corners and display-change clamping
 are native window behavior; no full-screen renderer mask is needed.
 
 Settings → Desktop (Lucide `Laptop` in the settings sidebar) groups its controls into Dictation,
-Local models, Floating panels, This Mac, Agent host and About sections, matching the Shortcuts page layout.
-This Mac (bridge capability `localComputer`, macOS only) connects the Mac as an Overlay Computer in one
-click: it creates an enrollment code, starts the embedded host with `agentHost.start({localTools: true})`
-and no harness, matches the phrase the host printed (`localComputer.status`) to its pending enrollment and
-approves the folders the user entered. `localComputer.requestPermission` shows the macOS prompt and opens the
-Screen Recording or Accessibility pane; the host's access is this app's permission. "Keep available"
-(`localComputer.setKeepAvailable`) restarts the saved local-tools host from its `config.json` at launch once
-the session is verified; sign-out turns it off and stops the host. Unpackaged builds may set
-`OVERLAY_DESKTOP_DEV_HOST_PACKAGE` to a packed host tarball for QA; packaged builds always use the pin.
+Local models, Floating panels, This computer and About sections, matching the Shortcuts page layout.
+This computer (bridge capability `localComputer`, macOS only for now) lets agent threads run on the computer
+the app is open on; `internal/develop/thread-folders.md` has the product rules. Connecting takes no code: the web
+app creates an enrollment, starts the embedded host with `agentHost.start({localTools: true})` and no harness,
+matches the phrase the host printed (`localComputer.status`) to its pending enrollment and approves it for the
+work folder `~/Overlay Files`, which the app creates. `localComputer.status` also reports the computer's own
+name, the environment it connected as (read from the host's `config.json`) and the work folder, so the web app
+knows which threads are this computer's. `localComputer.chooseFolder` opens the system's folder dialog and
+returns the chosen path; the web app adds it to the computer's approved folders. The same code
+(`src/components/desktop/this-computer.ts`) serves the thread controls and the Settings section.
+`localComputer.requestPermission` shows the macOS prompt and opens the Screen Recording or Accessibility pane;
+the host's access is this app's permission. The switch (`localComputer.setKeepAvailable`) restarts the saved
+local-tools host from its `config.json` at launch once the session is verified; sign-out turns it off and stops
+the host. Unpackaged builds may set `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` to a packed host tarball for QA; packaged
+builds always use the pin.
 Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
 press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
 The Agent host row shows its state and keeps the harness, connection code and Start controls in the

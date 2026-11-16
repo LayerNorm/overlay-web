@@ -69,6 +69,23 @@ describe('thread work', () => {
     await expect(as('bob').mutation(set, { ...args, work: own })).rejects.toThrow(/THREAD_WORK_MAC_UNAVAILABLE/)
   })
 
+  test('the computer and folder are fixed after the first message', async () => {
+    const { convex, as, args, folderId, conversationId } = await seed()
+    const set = fn('agents/threadWork:set', 'mutation')
+    const chosen = { computer: { kind: 'cloud' }, folders: [{ source: 'overlay', fileId: folderId, name: 'Launch' }] }
+    await expect(as('alice').mutation(set, { ...args, work: chosen })).resolves.toEqual(chosen)
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('conversationMessages', {
+        conversationId, userId: 'alice', turnId: 'turn-1', role: 'user', mode: 'act', content: 'Go', contentType: 'text',
+        parts: [{ type: 'text', text: 'Go' }], createdAt: now,
+      } as never)
+    })
+    // Saving the same choice again is harmless; any change is refused.
+    await expect(as('alice').mutation(set, { ...args, work: chosen })).resolves.toEqual(chosen)
+    await expect(as('alice').mutation(set, { ...args, work: { computer: { kind: 'cloud' }, folders: [] } })).rejects.toThrow(/can’t be changed after its first message/)
+    await expect(as('alice').mutation(set, { ...args, work: { computer: { kind: 'mac', environmentId: 'mac-alice' }, folders: [] } })).rejects.toThrow(/can’t be changed after its first message/)
+  })
+
   test('folders must be readable and the combination must make sense', async () => {
     const { as, args, folderId, privateFolder } = await seed()
     const set = fn('agents/threadWork:set', 'mutation')
@@ -76,7 +93,7 @@ describe('thread work', () => {
     await expect(as('alice').mutation(set, { ...args, work: { folders: [{ source: 'overlay', fileId: privateFolder, name: 'Bob only' }] } }))
       .rejects.toThrow(/THREAD_WORK_FOLDER_UNAVAILABLE/)
     await expect(as('alice').mutation(set, { ...args, work: { computer: { kind: 'cloud' }, folders: [{ source: 'mac', environmentId: 'mac-alice', path: '/Users/alice/code' }] } }))
-      .rejects.toThrow(/only be used by a thread that runs on that Mac/)
+      .rejects.toThrow(/only be used by a thread that runs on that computer/)
     await expect(as('alice').mutation(set, { ...args, work: { folders: [{ source: 'github', repository: 'acme/web', installationId: 5 }] } }))
       .rejects.toThrow(/THREAD_WORK_REPOSITORY_UNAVAILABLE/)
   })

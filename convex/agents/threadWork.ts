@@ -6,12 +6,13 @@ import { requireServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { threadWorkValidator } from '../lib/threadWork'
 import { visibleRow } from './directory'
-import { threadWorkProblem, type ThreadFolder, type ThreadWork } from '../../src/shared/agents/thread-work'
+import { THREAD_WORK_LOCKED, sameThreadWork, threadWorkProblem, type ThreadFolder, type ThreadWork } from '../../src/shared/agents/thread-work'
 
 /**
  * Where an agent thread works: its computer and chosen folders (internal/develop/thread-folders.md).
- * Any active member of the thread can read and change it, but a Mac can only be chosen by the person who
- * connected it, and a run uses that Mac only when its owner started the run.
+ * Any active member of the thread can read it and choose it before the thread's first message; after that it is
+ * fixed. A person's own computer can only be chosen by the person who connected it, and a run uses that computer
+ * only when its owner started the run.
  */
 
 const threadArgs = { workspaceId: v.string(), agentId: v.string(), conversationId: v.id('conversations') }
@@ -87,6 +88,11 @@ export const set = mutation({
     const problem = threadWorkProblem(work)
     if (problem) throw new ConvexError(problem)
     const current = storedWork(conversation)
+    if (sameThreadWork(current, work)) return current
+    // Where a thread runs and its folder are part of how it started: a run already copied or used them.
+    const started = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', q => q.eq('conversationId', conversation._id)).first()
+    if (started) throw new ConvexError(THREAD_WORK_LOCKED)
     // A Mac already chosen by its owner stays usable by the thread; a newly chosen Mac must be the viewer's own.
     if (work.computer?.kind === 'mac') {
       const unchanged = current.computer?.kind === 'mac' && current.computer.environmentId === work.computer.environmentId

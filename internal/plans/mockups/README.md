@@ -79,9 +79,6 @@ them. Besides the canonical app mockup, this folder holds only:
   `LOCAL_CLOUD_CONTINUITY_PLAN.md`. Open
   `local-cloud-continuity.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`
   (handoff) or `...&id=k17convatlascheckout000000000000` (delegation). Delete it when those phases ship.
-- `thread-folders.html` (feature `thread-folders`): the shipped thread-folder components (computer and folder pickers,
-  add-folder dialog, saved-back card) rendered from production code with fixtures, for visual QA. Open
-  `thread-folders.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlasfolders0000000000000`.
 - `files-on-computers.html` (feature `files-on-computers`): the proposed folders-as-sources design. Folders from
   Overlay, GitHub, Google Drive and several Macs in Files, a per-thread computer picker (the cloud computer plus each
   Mac with the desktop app, with online and offline states) and folder picker under the composer,
@@ -91,6 +88,14 @@ them. Besides the canonical app mockup, this folder holds only:
   `id=k17convatlasiosshare000000000000` for a thread running on the Mac Studio.
   `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
   rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
+- `local-and-cloud.html` (feature `local-and-cloud`): the Local and Cloud design, kept as the reference and for
+  visual QA. It renders the production thread controls and Settings → Desktop → This computer
+  (`internal/develop/thread-folders.md`) with sample data and a stand-in for the desktop app; "Choose folder…" opens
+  the browser's real folder dialog. The bar at the top switches web/desktop and whether this computer has connected
+  (`?host=web`, `?setup=done`). Open
+  `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
+  thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
+  (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.
