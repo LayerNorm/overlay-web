@@ -71,6 +71,9 @@ them. Besides the canonical app mockup, this folder holds only:
   `internal/plans/automation-threads-and-connector-return.md`. The same plan's
   automation thread is the `Morning inbox triage` fixture thread in
   `overlay-app.html`. Delete the page when the plan ships.
+- `note-renderer.html`: the approved note page, block handle, block menu and
+  note card design that the notes editor implements. Delete it once the
+  redesign is accepted in production.
 - Brand source: `build-aligned-brand.py` generates `aligned-brand.*`,
   `overlay-brand-approved/` and the production `ApprovedBrand.tsx`;
   `export-brand-pngs.cjs` exports the raster assets. These are production

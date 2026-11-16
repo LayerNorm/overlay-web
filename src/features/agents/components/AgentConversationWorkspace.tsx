@@ -291,7 +291,8 @@ function AgentConversationWorkspaceContent() {
       setSidebarPreferences((current) => ({ ...current, open: true, tab: 'library' }))
       setLibraryPreviewFileId(id)
     },
-  }), [outerFilesHost.useFileSummaries, setLibraryPreviewFileId])
+    activeFileId: sidebarPreferences.open ? libraryPreviewFileId : null,
+  }), [libraryPreviewFileId, outerFilesHost.useFileSummaries, setLibraryPreviewFileId, sidebarPreferences.open])
   const { sidebarEditor, computerAccess, computerControl, updateComputerControl } = useAgentConversationComputer({
     activeWorkspaceId,
     agentId,
