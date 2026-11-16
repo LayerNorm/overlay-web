@@ -291,7 +291,17 @@ at `z-50`, with Radix collision handling in both modes.
 
 ## Prose (Typeset)
 
-Rendered Markdown and rich text use shadcn Typeset from `@overlay/ui/typeset.css`, our own copy of the upstream file. Add the `typeset` class to the element that wraps rendered prose (chat messages via `MarkdownMessage`, notes via the editor's `app-note-editor` root) and tune it with the `--typeset-*` variables rather than per-element overrides. Typeset skips `[data-slot]` components and anything under `.not-typeset`, so buttons, chips and cards inside prose keep their own styles. It is not for app chrome.
+Rendered Markdown and rich text in chat use shadcn Typeset from `@overlay/ui/typeset.css`, our own copy of the upstream file. Add the `typeset` class to the element that wraps rendered prose (chat messages via `MarkdownMessage`) and tune it with the `--typeset-*` variables rather than per-element overrides. Notes and Markdown files do not use Typeset; they use the note page below. Typeset skips `[data-slot]` components and anything under `.not-typeset`, so buttons, chips and cards inside prose keep their own styles. It is not for app chrome.
+
+## Note page
+
+Notes are one editable Markdown page everywhere: the Notes/Files page and the agent thread's right panel both render `CanonicalNotebookEditor` (`packages/overlay-modules-react/src/notes/`), styled by `notebook-editor.css`. Read-only `.md` files use the same document styles through `FileMarkdown document` in the file viewer.
+
+- Layout: `.overlay-note-page` is a centered 708px reading column with 96px gutters (`layout="page"`), or tighter type and 44px gutters in a side panel (`layout="panel"`, used by `AgentNotePanel`). The header's full-width toggle (`MoveHorizontal`) is remembered per device. The title is the page's first line (`NotePageTitle`); the breadcrumb only names it. A meta line shows when it was edited and its word count.
+- Blocks: Notion-like spacing (3px block padding, 16px body, 1.875/1.4/1.15em headings). Tables are a quiet grid with muted header cells and 150px (panel: 200px) minimum columns, and scroll sideways instead of squeezing; in the panel they scroll edge to edge. To-dos use 16px rounded checkboxes filled with the foreground color.
+- Block handle (`NoteBlockHandle`): hovering a block shows + and a grip in the left margin. + inserts a block below and opens the slash menu; the grip drags the block (ProseMirror moves it, with its drop cursor) or, on click, opens Turn into, Duplicate, Copy as Markdown and Delete in a `DropdownMenu`. Hidden on touch-only devices.
+- Slash menu: typing `/` or + opens a 300px command list in the app's menu style: an icon tile, label, one-line description and the Markdown shortcut (`#`, `-`, `[]`, ```` ``` ````). Table commands only appear with the cursor in a table.
+- Base-layer CSS loses to utilities, so styles on primitives (the title textarea) are utility classes, not stylesheet rules.
 
 ## Primitive style resets
 
@@ -422,8 +432,13 @@ Non-default creatures retain legacy color normalization.
 
 Chat shows files as compact cards, never full-width media (`packages/overlay-chat-react/src/components/files/`):
 images are thumbnails of at most 320 × 240 that open a lightbox; videos are 16:9 poster cards with
-a play badge, three across (two on narrow screens) within 600px; notes and documents are a
-bordered card with a title and two-line preview, at most 460px. Markdown images go through the
+a play badge, three across (two on narrow screens) within 600px; a note is a page-peek card at most 440px: a sheet
+showing its title and opening sections (short unpunctuated preview lines read as headings, a
+leading line that repeats the title is dropped), then a footer with the name and "Note · Created
+just now" or "Updated 5m ago". Other documents are the footer row alone. Three or more notes and
+documents from one turn collapse into one bordered list. The note open in the agent's right panel
+(`ChatFilesHost.activeFileId`) keeps a selected outline, and notes open there in the editable note
+page (`AgentNotePanel`), not a read-only render. Markdown images go through the
 same cards. Hosts provide file lookup and opening with `ChatFilesProvider`: agent threads open
 files in the Library panel's in-place preview (`AgentLibraryPreview`), other surfaces open the
 Files page. Tool rows stay logo-free; a created file's name in a row opens it the same way.
