@@ -509,6 +509,7 @@
     "src/server/harness/harness-transcript.ts",
     "src/server/harness/model-dispatch.ts",
     "src/server/harness/native-access.ts",
+    "src/server/harness/native-agent-request-guards.ts",
     "src/server/harness/native-assignment-steps.ts",
     "src/server/harness/native-child-steps.ts",
     "src/server/harness/native-delivery-steps.ts",
