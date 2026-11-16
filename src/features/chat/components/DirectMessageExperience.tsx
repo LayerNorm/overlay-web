@@ -38,7 +38,8 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
+import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
+import { useThreadWork } from './thread-work/useThreadWork'
 
 function RoomComposerArea({
   safety,
@@ -307,6 +308,12 @@ export function DirectMessageExperience({
   const roomSync = useRoomSync({ conversationId, conversationType, draft, activeWorkspaceId, transcript })
   const pathname = usePathname()
   const agentId = roomAgentId(vm)
+  // Where an agent thread runs and its folder: chosen before the first message, fixed after it.
+  const threadWorkEnabled = Boolean(agentId && activeWorkspaceId && !guided)
+  const threadWork = useThreadWork({
+    workspaceId: activeWorkspaceId ?? null, agentId: agentId ?? null, conversationId,
+    started: vm.mainMessages.length > 0, enabled: threadWorkEnabled,
+  })
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
   useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
   // Guided onboarding writes to this room server-side; the live transcript shows them.
@@ -419,6 +426,7 @@ export function DirectMessageExperience({
               hideScrollbar={Boolean(guided)}
               guided={Boolean(guided)}
             />
+            {threadWork.readOnly ? <LocalThreadNotice computerName={threadWork.computerName} /> : (
             <RoomComposerArea
               safety={room.nativeThreadSafety}
               onNewThread={room.startNewNativeThread}
@@ -436,12 +444,14 @@ export function DirectMessageExperience({
                 setMentions: room.setMentions,
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
-                footer: agentId && activeWorkspaceId && !guided
-                  ? <ThreadWorkFooter workspaceId={activeWorkspaceId} agentId={agentId} conversationId={conversationId} />
+                footer: threadWorkEnabled ? <ThreadWorkFooter controls={threadWork} /> : undefined,
+                attachMenuExtra: threadWorkEnabled
+                  ? (close) => <ThreadFolderMenuItems controls={threadWork} close={close} />
                   : undefined,
                 queue: room.composerQueue,
               }}
             />
+            )}
           </AppScreenBody>
           {bodyOverlay ? (
             <div className="absolute inset-0 z-30 min-h-0 bg-(--background)">

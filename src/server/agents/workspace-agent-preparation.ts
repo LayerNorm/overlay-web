@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { ThreadWork } from '@/shared/agents/thread-work'
 import { asSchema } from 'ai'
 import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -29,6 +30,8 @@ export async function prepareWorkspaceAgentInputs(input: {
   turnIdOverride?: string
   requestFingerprintOverride?: string
   billingProgrammaticSubjectId?: string
+  /** The thread's computer and folders: a local thread is offered the computer tools (thread-folders.md). */
+  work?: ThreadWork
 }) {
   const room = await loadRoomTurnContext(input)
   const agent = room.directory.agents.find(candidate => candidate.id === input.agentId)
@@ -61,6 +64,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
     computerApprovalContext: 'work',
+    ...(input.work ? { work: input.work } : {}),
     idempotencyKey: identity.invocationNonce,
     latestUserText: room.latestUserText,
     memoryEnabled: input.memoryEnabled,

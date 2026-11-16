@@ -7,6 +7,7 @@ import {
   Folder,
   Globe,
   Link2,
+  Laptop,
   Monitor,
   PanelsTopLeft,
   Search,
@@ -45,6 +46,7 @@ const toolIcons: Record<string, typeof Wrench> = {
   video: Video,
   browser: PanelsTopLeft,
   computer: Monitor,
+  local_computer: Laptop,
 }
 
 const toolLabels: Record<string, string> = {
@@ -60,7 +62,8 @@ const toolLabels: Record<string, string> = {
   image: 'Image generation',
   video: 'Video generation',
   browser: 'Browser',
-  computer: 'Computer',
+  computer: 'Cloud computer',
+  local_computer: 'Local computer',
 }
 
 function visibleToolGroups(computersAvailable: boolean) {

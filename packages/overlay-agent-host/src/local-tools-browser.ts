@@ -164,7 +164,7 @@ export class LocalBrowser {
 
   private async start(): Promise<void> {
     const binary = await LocalBrowser.findBinary()
-    if (!binary) throw new LocalToolFailure('desktop_unsupported', 'Google Chrome is not installed on this Mac.', ['chrome'])
+    if (!binary) throw new LocalToolFailure('desktop_unsupported', 'Google Chrome is not installed on this computer.', ['chrome'])
     await mkdir(this.profileDirectory, { recursive: true, mode: 0o700 })
     await rm(join(this.profileDirectory, 'DevToolsActivePort'), { force: true })
     const child = spawn(binary, [

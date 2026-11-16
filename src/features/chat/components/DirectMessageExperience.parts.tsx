@@ -752,6 +752,7 @@ export function RoomComposer({
   onOpenFilePreview,
   guided,
   footer,
+  attachMenuExtra,
   queue,
 }: {
   composer: ReturnType<typeof useRoomComposer>
@@ -766,6 +767,8 @@ export function RoomComposer({
   guided?: GuidedRoomComposer
   /** Shown under the message box instead of the disclaimer: an agent thread's computer and folder pickers. */
   footer?: ReactNode
+  /** Rows for the + menu: an agent thread's folder on the web. */
+  attachMenuExtra?: (close: () => void) => ReactNode
   queue?: ReturnType<typeof useRoomComposerQueue>
 }) {
   recordRender('RoomComposer')
@@ -831,6 +834,7 @@ export function RoomComposer({
         onToggleTool: () => {},
         onToggleMemory: () => setMemoryEnabled((current) => !current),
         onRemoveTool: () => {},
+        ...(attachMenuExtra && !guided ? { attachMenuExtra } : {}),
       }}
       modeState={{
         onModeChange: () => {},
