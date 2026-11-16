@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type FormEvent, type PointerEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import { CircleHelp, FilePlus2, Loader2, Trash2 } from 'lucide-react'
 import {
   Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -17,29 +17,11 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ url: string; emailSent: boolean } | null>(null)
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const preparedUpload = useRef<{ files: File[]; ticket: string; expiresAt: number } | null>(null)
   const submission = useRef<{ payload: string; key: string } | null>(null)
   const descriptionId = useId()
   const attachmentsId = useId()
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current) }, [])
-
-  function changeMenu(open: boolean) {
-    if (closeTimer.current) clearTimeout(closeTimer.current)
-    setMenuOpen(open)
-  }
-
-  function openMenu(event: PointerEvent) {
-    if (event.pointerType === 'mouse') changeMenu(true)
-  }
-
-  function scheduleClose(event: PointerEvent) {
-    if (event.pointerType !== 'mouse') return
-    if (closeTimer.current) clearTimeout(closeTimer.current)
-    closeTimer.current = setTimeout(() => setMenuOpen(false), 180)
-  }
-
   function addFiles(incoming: FileList | File[]) {
     const additions = Array.from(incoming)
     if (!validBugReportFiles([...files, ...additions])) {
@@ -91,14 +73,14 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
   }
 
   return <>
-    <SidebarMenuItem onPointerEnter={openMenu} onPointerLeave={scheduleClose}>
-      <Popover open={menuOpen} onOpenChange={changeMenu}>
+    <SidebarMenuItem>
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
         <PopoverTrigger asChild>
           <SidebarMenuButton size="lg" className={collapsed ? 'justify-center px-0' : '[&>svg]:mx-1'} aria-label="Help" aria-expanded={menuOpen} title={collapsed ? 'Help' : undefined}>
             <CircleHelp size={18} aria-hidden />{collapsed ? null : <span>Help</span>}
           </SidebarMenuButton>
         </PopoverTrigger>
-        <PopoverContent side="right" align="end" className="w-44 p-1" onPointerEnter={openMenu} onPointerLeave={scheduleClose}>
+        <PopoverContent side="right" align="end" className="w-44 p-1">
           <Button variant="ghost" asChild className="w-full justify-start text-sm">
             <a href={docsUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
           </Button>
