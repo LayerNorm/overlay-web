@@ -99,6 +99,7 @@ export function useEditorLifecycle({
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
   const [title, setTitle] = useState('')
   const [isDirty, setIsDirty] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
   const [editorConflict, setEditorConflict] = useState<NotebookEditorConflict | undefined>()
   const activeNoteRef = useRef<NotebookNote | null>(null)
   const titleRef = useRef('')
@@ -157,6 +158,7 @@ export function useEditorLifecycle({
   useEffect(() => lifecycleControllerRef.current?.subscribe((snapshot) => {
     setIsDirty(snapshot.dirty)
     setEditorConflict(snapshot.conflict)
+    setSaveFailed(Boolean(snapshot.error) && snapshot.dirty && !snapshot.saving)
   }), [])
 
   useEffect(() => {
@@ -211,6 +213,7 @@ export function useEditorLifecycle({
     title,
     setTitle,
     isDirty,
+    saveFailed,
     editorConflict,
     lifecycleController: lifecycleControllerRef,
     activeNoteRef,
@@ -262,9 +265,13 @@ export function useNotebookEditor({
         codeBlock: false,
         link: false,
         underline: false,
+        dropcursor: { color: 'var(--note-drop-indicator, #3b82f6)', width: 3 },
       }),
       Placeholder.configure({
-        placeholder: 'Start writing... (type / for commands)',
+        placeholder: ({ node }) => {
+          if (node.type.name === 'heading') return `Heading ${String(node.attrs.level ?? 1)}`
+          return "Type '/' for commands"
+        },
         showOnlyWhenEditable: true,
         showOnlyCurrent: true,
         includeChildren: true,
@@ -353,7 +360,7 @@ export function useNotebookEditor({
     },
     editorProps: {
       attributes: {
-        class: 'typeset app-note-editor',
+        class: 'app-note-editor',
       },
       handlePaste(view, event) {
         const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith('image/'))
@@ -431,14 +438,17 @@ export function useSlashMenu({
   const slashMenuItems = useMemo<SlashMenuItem[]>(() => createSlashMenuItems(editor), [editor])
 
   const filteredSlashItems = useMemo(() => {
-    if (!slashMenuFilter) return slashMenuItems
+    // Table commands only make sense with the cursor in a table; elsewhere they bury the blocks.
+    const inTable = showSlashMenu && Boolean(editor?.isActive('table'))
+    const available = inTable ? slashMenuItems : slashMenuItems.filter((item) => item.category !== 'table')
+    if (!slashMenuFilter) return available
     const query = slashMenuFilter.toLowerCase()
-    return slashMenuItems.filter(
+    return available.filter(
       (item) =>
         item.title.toLowerCase().includes(query) ||
         item.description.toLowerCase().includes(query),
     )
-  }, [slashMenuFilter, slashMenuItems])
+  }, [editor, showSlashMenu, slashMenuFilter, slashMenuItems])
 
   const executeSlashCommand = useCallback(
     (item: SlashMenuItem) => {

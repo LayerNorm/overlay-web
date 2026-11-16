@@ -10,34 +10,28 @@ import {
 } from '@/shared/ui/panel-presentation'
 import { useCallback, useMemo, useRef, useState, type ComponentProps } from 'react'
 import {
-  createLocalNotebookNote,
   DEFAULT_OVERLAY_CAPABILITIES,
-  type CreateNoteResponse,
   type NotebookAgentRequest,
-  type UpdateNoteResponse,
 } from '@overlay/app-core'
 import {
   CanonicalNotebookEditor,
   type NotebookAgentComposerRenderProps,
-  type NotebookEditorRepository,
 } from '@overlay/modules-react/notes'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
 import { ShareDialog } from '@/features/share/components/ShareDialog'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ChatComposer } from '@/features/chat/components/ChatComposer'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { noteDocFromFile, useLiveNote } from '@/hooks/use-file-tree'
-import { useConvex, useMutation } from 'convex/react'
+import { useLiveNote } from '@/hooks/use-file-tree'
+import { useMutation } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
 import { api } from '../../../../convex/_generated/api'
 import { notebookChatClientId, runNotebookChatTurn } from '../lib/notebook-chat-turn'
-import type { Id } from '../../../../convex/_generated/dataModel'
+import { useNotebookRepository } from '@/hooks/use-notebook-repository'
 
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
@@ -59,7 +53,6 @@ export default function NotebookEditor({
   const router = useRouter()
   const searchParams = useSearchParams()
   const buildWorkspaceHref = useWorkspaceHref()
-  const convex = useConvex()
   const { activeWorkspaceId } = useWorkspace()
   const scope = usePanelScope()
   const models = useMemo(
@@ -107,48 +100,7 @@ export default function NotebookEditor({
   if (liveNote && seenNoteId !== liveNote._id) setSeenNoteId(liveNote._id)
   const noteGone = liveNote === null && noteId !== null && seenNoteId === noteId
 
-  const repository = useMemo<NotebookEditorRepository>(() => ({
-    async get(noteId, signal) {
-      if (!activeWorkspaceId || !isConvexIdShape(noteId)) return null
-      const file = await convex.query(api.files.browse.get, { workspaceId: activeWorkspaceId, fileId: noteId as Id<'files'> })
-        .catch(() => null)
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      return file ? noteDocFromFile(file) : null
-    },
-    async create() {
-      const result = await overlayAppClient.notes.create({ title: 'Untitled', content: '' }) as CreateNoteResponse
-      return result.note ?? {
-        ...createLocalNotebookNote(result.id),
-        title: 'Untitled',
-        content: '',
-      }
-    },
-    async save({ noteId, title, content, expectedUpdatedAt }) {
-      const response = await overlayAppClient.notes.updateResponse({
-        noteId,
-        title,
-        content,
-        expectedUpdatedAt,
-      })
-      const body = await response.json().catch(() => null) as (UpdateNoteResponse & {
-        conflict?: { localRevision?: string; remoteRevision?: string; message: string }
-      }) | null
-      if (response.status === 409) {
-        return {
-          conflict: body?.conflict ?? {
-            localRevision: String(expectedUpdatedAt ?? ''),
-            message: body?.error || 'This note changed in another session.',
-          },
-        }
-      }
-      if (!response.ok) throw new Error(body?.error || 'Could not save note')
-      return { note: body?.note }
-    },
-    async delete(noteId) {
-      const response = await overlayAppClient.notes.deleteResponse({ noteId })
-      if (!response.ok) throw new Error('Could not delete note')
-    },
-  }), [activeWorkspaceId, convex])
+  const repository = useNotebookRepository()
 
   return (
     <CanonicalNotebookEditor

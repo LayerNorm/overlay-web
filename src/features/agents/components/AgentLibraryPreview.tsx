@@ -10,6 +10,7 @@ import { FileViewer, type FileViewerAsset } from '@overlay/modules-react/knowled
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { AgentNotePanel } from './AgentNotePanel'
 
 function downloadFile({ name, url }: FileViewerAsset): void {
   if (!url) return
@@ -53,7 +54,7 @@ function useFileText(fileId: string, viewerName: string, revision: number | unde
 
 /**
  * One Library file previewed inside the agent's right panel, so the user never leaves the thread: back to the list,
- * open in Files, download, close. Notes render their live Markdown; media and documents use the shared viewer.
+ * open in Files, download, close. Notes open in the editable note page; media and documents use the shared viewer.
  */
 export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: string; onBack(): void; onClose(): void }) {
   const router = useRouter()
@@ -64,10 +65,16 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
   const kind = file ? chatFileKind(file) : null
   const name = file?.name ?? ''
   const viewerName = kind === 'note' ? `${name || 'Note'}.md` : name
-  const text = useFileText(fileId, viewerName, file?.updatedAt, Boolean(file))
+  const text = useFileText(fileId, viewerName, file?.updatedAt, Boolean(file) && kind !== 'note')
   const url = fileContentUrl(fileId)
   const content = text ?? ''
   const meta = kind === 'note' ? 'Note' : kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'File'
+  const openInFiles = () => router.push(buildWorkspaceHref(null, `/app/files?file=${encodeURIComponent(fileId)}`))
+
+  // Notes open in the same editable page as the Notes page, not a read-only render.
+  if (kind === 'note') {
+    return <AgentNotePanel fileId={fileId} onBack={onBack} onClose={onClose} onOpenInFiles={openInFiles} />
+  }
 
   return (
     <aside data-slot="right-sidebar" aria-label="File preview"
@@ -88,20 +95,18 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
         <p className="p-4 text-xs text-(--muted)">This file is no longer available.</p>
       ) : file ? (
         <>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&_.overlay-file-viewer]:px-4 [&_.overlay-file-viewer]:py-4">
-            <FileViewer key={fileId} name={viewerName} content={content} url={kind === 'note' ? undefined : url}
-              operations={viewerOperations} />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&_.overlay-file-viewer:not(.overlay-file-viewer--markdown)]:px-4 [&_.overlay-file-viewer:not(.overlay-file-viewer--markdown)]:py-4">
+            <FileViewer key={fileId} name={viewerName} content={content} url={url}
+              operations={viewerOperations} markdownLayout="panel" />
           </div>
           <div className="flex shrink-0 gap-1.5 border-t border-(--border) px-3 py-2.5">
             <Button variant="secondary" size="sm" type="button"
-              onClick={() => router.push(buildWorkspaceHref(null, `/app/files?file=${encodeURIComponent(fileId)}`))}>
+              onClick={openInFiles}>
               <ExternalLink size={14} />Open in Files
             </Button>
-            {kind !== 'note' ? (
-              <Button variant="ghost" size="sm" type="button" onClick={() => downloadFile({ name, url })}>
-                <Download size={14} />Download
-              </Button>
-            ) : null}
+            <Button variant="ghost" size="sm" type="button" onClick={() => downloadFile({ name, url })}>
+              <Download size={14} />Download
+            </Button>
           </div>
         </>
       ) : null}

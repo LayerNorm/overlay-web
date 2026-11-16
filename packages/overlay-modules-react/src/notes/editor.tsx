@@ -6,6 +6,7 @@ import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import {
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   useCallback,
@@ -18,6 +19,8 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { SlashMenu } from './slash-menu'
+import { NoteBlockHandle } from './block-handle'
+import { NotePageMeta, NotePageTitle } from './note-page'
 import {
   type NotebookEditorConflict,
   type NotebookNote,
@@ -95,6 +98,8 @@ export interface NotebookEditorHeaderRenderProps {
   loading: boolean
   title: string
   isDirty: boolean
+  /** The last save failed and the draft is still unsaved (a retry happens on the next edit or flush). */
+  saveFailed?: boolean
   agentPanelOpen: boolean
   onCreateNote(): void
   onDeleteNote?(): void
@@ -102,6 +107,29 @@ export interface NotebookEditorHeaderRenderProps {
   onTitleBlur(): void
   onTitleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void
   onToggleAgentPanel(): void
+}
+
+const FULL_WIDTH_KEY = 'overlay_note_full_width'
+
+function readFullWidth(): boolean {
+  try { return localStorage.getItem(FULL_WIDTH_KEY) === '1' } catch { return false }
+}
+
+/** The reader's choice between the centered column and the full surface width, remembered on this device. */
+function useNoteFullWidth(): [boolean, () => void] {
+  const [fullWidth, setFullWidth] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read device preference after hydration
+    setFullWidth(readFullWidth())
+  }, [])
+  const toggle = useCallback(() => {
+    setFullWidth((current) => {
+      const next = !current
+      try { localStorage.setItem(FULL_WIDTH_KEY, next ? '1' : '0') } catch { /* storage may be unavailable */ }
+      return next
+    })
+  }, [])
+  return [fullWidth, toggle]
 }
 
 export interface CanonicalNotebookEditorProps {
@@ -155,6 +183,11 @@ export interface CanonicalNotebookEditorProps {
   renderNotesSidebar?(props: NotebookNotesSidebarProps): ReactNode
   renderAgentComposer?(props: NotebookAgentComposerRenderProps): ReactNode
   renderHeader?(props: NotebookEditorHeaderRenderProps): ReactNode
+  /**
+   * `page` is the Files/Notes reading column; `panel` fits the note into a side panel (smaller type, tighter
+   * margins, tables scroll edge to edge). Both edit the same Markdown note.
+   */
+  layout?: 'page' | 'panel'
 }
 
 type EditorLifecycle = ReturnType<typeof useEditorLifecycle>
@@ -390,7 +423,11 @@ function NotebookEditorBody({
   setShowFloatingFormatToolbar,
   resolvingRequestedNote,
   noteRemoved = false,
+  layout,
+  fullWidth,
 }: {
+  layout: 'page' | 'panel'
+  fullWidth: boolean
   noteRemoved?: boolean
   lifecycle: EditorLifecycle
   mutations: NoteMutations
@@ -406,6 +443,9 @@ function NotebookEditorBody({
   resolvingRequestedNote: boolean
 }) {
   const { notes, activeNote, editorConflict } = lifecycle
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
+  useImperativeHandle(contentContainerRef, () => scrollRef.current as HTMLDivElement, [])
   return (
     <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="relative flex h-full flex-row">
       {showNotesSidebar
@@ -439,8 +479,23 @@ function NotebookEditorBody({
           ) : null}
           <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div ref={contentContainerRef} className="h-full overflow-y-auto px-6 py-4">
-                <EditorContent editor={editor} />
+              <div ref={scrollRef} className="h-full overflow-y-auto overflow-x-hidden">
+                <div
+                  ref={pageRef}
+                  className="overlay-note-page"
+                  data-layout={layout}
+                  data-width={fullWidth ? 'full' : undefined}
+                >
+                  <NotePageTitle
+                    value={lifecycle.title}
+                    onChange={mutations.updateTitle}
+                    onCommit={mutations.commitTitleChange}
+                    onEnterBody={() => editor?.chain().focus('start').run()}
+                  />
+                  <NotePageMeta editor={editor} updatedAt={activeNote.updatedAt} />
+                  <EditorContent editor={editor} />
+                  <NoteBlockHandle editor={editor} containerRef={pageRef} />
+                </div>
               </div>
 
               <NotebookFloatingFormatToolbar
@@ -536,6 +591,7 @@ function NotebookHeaderBlock({
   title,
   projectName,
   isDirty,
+  saveFailed,
   agentPanelOpen,
   headerLeading,
   hideBackButton,
@@ -545,7 +601,11 @@ function NotebookHeaderBlock({
   editor,
   handleBackToFiles,
   agent,
+  fullWidth,
+  onToggleFullWidth,
 }: {
+  fullWidth: boolean
+  onToggleFullWidth?: () => void
   renderHeader: CanonicalNotebookEditorProps['renderHeader']
   activeNote: ReturnType<typeof useEditorLifecycle>['activeNote']
   resolvingRequestedNote: boolean
@@ -553,6 +613,7 @@ function NotebookHeaderBlock({
   title: string
   projectName: CanonicalNotebookEditorProps['projectName']
   isDirty: boolean
+  saveFailed: boolean
   agentPanelOpen: boolean
   headerLeading: CanonicalNotebookEditorProps['headerLeading']
   hideBackButton: CanonicalNotebookEditorProps['hideBackButton']
@@ -568,6 +629,7 @@ function NotebookHeaderBlock({
     loading: resolvingRequestedNote,
     title,
     isDirty,
+    saveFailed,
     agentPanelOpen,
     onCreateNote: () => void mutations.createNote(),
     onDeleteNote: repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined,
@@ -596,6 +658,8 @@ function NotebookHeaderBlock({
         title: title || 'Untitled',
         content: editor?.getHTML() || activeNote.content || '',
       }) : null}
+      fullWidth={fullWidth}
+      onToggleFullWidth={onToggleFullWidth}
       onBackToFiles={() => void handleBackToFiles()}
       onCreateNote={() => void mutations.createNote()}
       onTitleChange={mutations.handleTitleChange}
@@ -643,7 +707,9 @@ export function CanonicalNotebookEditor({
   renderNotesSidebar,
   renderAgentComposer,
   renderHeader,
+  layout = 'page',
 }: CanonicalNotebookEditorProps) {
+  const [fullWidth, toggleFullWidth] = useNoteFullWidth()
   const lifecycle = useEditorLifecycle({ repository, liveNotes: notesList, onNoteChanged, media })
   const {
     notes,
@@ -756,6 +822,7 @@ export function CanonicalNotebookEditor({
           title={title}
           projectName={projectName}
           isDirty={isDirty}
+          saveFailed={lifecycle.saveFailed}
           agentPanelOpen={agent.agentPanelOpen}
           headerLeading={headerLeading}
           hideBackButton={hideBackButton}
@@ -765,6 +832,8 @@ export function CanonicalNotebookEditor({
           editor={editor}
           handleBackToFiles={handleBackToFiles}
           agent={agent}
+          fullWidth={fullWidth}
+          onToggleFullWidth={layout === 'page' ? toggleFullWidth : undefined}
         />
       }
       rightPanel={agent.agentPanelOpen && activeNote ? (
@@ -802,6 +871,8 @@ export function CanonicalNotebookEditor({
         setShowFloatingFormatToolbar={setShowFloatingFormatToolbar}
         resolvingRequestedNote={resolvingRequestedNote}
         noteRemoved={noteRemoved}
+        layout={layout}
+        fullWidth={fullWidth}
       />
     </AppScreenShell>
   )
