@@ -289,3 +289,35 @@ test('a live agent reply renders formatted chunks and one bottom dots row withou
   assert.ok(!html.includes('overlay-stream-marker'))
   assert.doesNotMatch(html, /agent-response-pending/)
 })
+
+test('agent-thread replies use the chat response actions instead of reactions and thread replies', () => {
+  const calls: string[] = []
+  const chatActions = {
+    onRegenerate: () => calls.push('retry'),
+    retryDisabled: false,
+    actionsLocked: false,
+    onDeleteTurn: () => calls.push('delete'),
+    onReply: () => calls.push('reply'),
+    onBranch: () => calls.push('branch'),
+  }
+  const element = messageElement(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'The fix is ready.' }), 'Atlas', false, false, false, undefined, true)
+  const html = renderToStaticMarkup(<RoomMessageItem {...element.props} chatActions={chatActions} />)
+  for (const label of ['Copy response', 'Regenerate response', 'Delete this turn from history', 'Reply', 'Branch chat from here']) {
+    assert.match(html, new RegExp(`aria-label="${label}"`), label)
+  }
+  assert.doesNotMatch(html, /👍|Add reaction|Reply in thread|1 reply|Pin message|Save message|Report message/)
+
+  const mine = renderToStaticMarkup(<RoomMessageItem {...messageElement(record(), 'Me', false, false, false, undefined, true).props} chatActions={chatActions} />)
+  assert.match(mine, /aria-label="Copy message"/)
+  assert.doesNotMatch(mine, /👍|Regenerate response|Add reaction|1 reply/)
+
+  const streaming = renderToStaticMarkup(<RoomMessageItem {...messageElement(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Working' }), 'Atlas', false, true, false, undefined, true).props} chatActions={chatActions} />)
+  assert.doesNotMatch(streaming, /Regenerate response|Branch chat from here/)
+})
+
+test('channel messages keep reactions and thread replies', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Atlas')
+  assert.match(html, /👍/)
+  assert.doesNotMatch(html, /Regenerate response|Branch chat from here/)
+})
+

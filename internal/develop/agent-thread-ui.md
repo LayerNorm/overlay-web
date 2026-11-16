@@ -32,6 +32,36 @@ the UI can leave the metadata in place. Keep the optional Convex schema field if
 rolling back the writer after rows have been populated; remove persisted metadata
 before a later schema contraction.
 
+## Response actions
+
+Agent threads are chats with one agent, not channels. Each agent reply shows the
+same action row as a personal chat reply (`ExchangeActions`): copy, retry,
+delete, reply and branch, hidden while the reply streams. The member's own
+messages show only a hover copy button. Agent threads show no reactions, thread
+replies, pins, saves, edit or report; channels and multi-person DMs keep the
+channel toolbar. `RoomMessageItem` switches on its `chatActions` prop, which
+`useAgentThreadTurnActions` provides only when the room has one agent
+participant with a directory id.
+
+- **Delete** calls `agents/threads:deleteTurn`, which soft-deletes the
+  member's message and every agent reply to it (agent reply turn ids are
+  `agent_<messageId>_<agentId>`; a started turn also records the trigger on its
+  run). It refuses with `TURN_IN_PROGRESS` while a reply is still being
+  written. Deleted rows disappear from the agent-thread transcript instead of
+  leaving a "Message deleted" placeholder.
+- **Retry** is enabled only on the latest reply while nothing is running. It
+  deletes that exchange and sends the same text and attachments again through
+  the normal send path, so the agent runs a fresh turn with exactly the history
+  it had before. Older replies cannot be retried, because a resend lands at the
+  end of the thread, after every later exchange.
+- **Branch** calls `agents/threads:branch`, which creates a new thread with the
+  same agent titled "<title> branch" and copies the main transcript up to and
+  including the chosen message (text and file parts only, like chat branches;
+  side-thread replies, deleted rows and replies still being written are left
+  out; 500-message limit). The client opens the new thread.
+
+Both mutations accept only the caller's own, non-automation agent thread.
+
 ## Response and composer behavior
 
 `AgentResponsePending` renders three compact dots beneath the author while the
