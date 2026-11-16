@@ -179,6 +179,9 @@
   "github.connectUrl": [
     "src/features/chat/components/thread-work/AddThreadFolderDialog.tsx"
   ],
+  "github.installUrl": [
+    "src/features/chat/components/thread-work/AddThreadFolderDialog.tsx"
+  ],
   "github.repositories": [
     "src/features/chat/components/thread-work/ThreadWorkFooter.tsx"
   ],
