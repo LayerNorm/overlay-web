@@ -28,6 +28,20 @@ export function resolveThreadActivity(
   }
 }
 
+/**
+ * A personal chat's status. Chats track reading by message rather than by
+ * time, so a finished run stays unreviewed exactly while the chat is unread.
+ */
+export function resolveChatActivity(
+  run: { status: string; completedAt?: number; updatedAt: number } | null,
+  unread: boolean,
+): ThreadActivityStatus {
+  const status = resolveThreadActivity(run, { lastReadAt: Number.POSITIVE_INFINITY })
+  if (status !== 'completed' || !unread || !run) return status
+  if (run.status === 'completed') return 'ready'
+  return run.status === 'failed' || run.status === 'cancelled' ? run.status : status
+}
+
 function unreviewed(
   run: { completedAt?: number; updatedAt: number },
   participant: { lastReadAt?: number; markedUnreadAt?: number } | null,

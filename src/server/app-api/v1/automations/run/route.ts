@@ -4,7 +4,6 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { consumeServiceAuthReplayNonce } from '@/server/auth/service-auth-replay'
-import { getInternalApiBaseUrl } from '@/server/web/app-url'
 
 export const maxDuration = 800
 
@@ -31,18 +30,18 @@ async function resolveAutomationRunServiceAuth(
 export async function POST(request: NextRequest, context?: AppApiRouteContext) {
   try {
     const serviceAuth = await resolveAutomationRunServiceAuth(request, context)
-    if (!serviceAuth) {
+    if (!serviceAuth || !context || context.auth.userId !== serviceAuth.userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json() as { runId?: string }
-    // Scheduler-claimed runs execute through the same durable one-shot
-    // workflow as manual runs — the workflow steps own run-status settlement,
-    // so the caller must not mark completion on dispatch.
-    const result = await automationService.startDurableScheduledRun({
-      runId: body.runId,
+    const body = await request.json().catch((_error) => ({})) as { runId?: string }
+    // Scheduler-claimed runs post their instructions into the automation's
+    // thread, the same as Run now. Once the thread's turn ends, the scheduler
+    // calls again and the run settles from that turn's outcome.
+    const result = await automationService.dispatchScheduledRun({
+      runId: body.runId ?? (typeof context.parsedJson.runId === 'string' ? context.parsedJson.runId : undefined),
       serviceUserId: serviceAuth.userId,
-      baseUrl: getInternalApiBaseUrl(request),
+      routeContext: context,
     })
 
     return NextResponse.json(result)
