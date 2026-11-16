@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 import type {
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
@@ -12,26 +11,21 @@ import {
   DEFAULT_AGENT_TOOL_GROUP_IDS,
   enabledAgentToolGroupIds,
 } from '@/shared/agents/tool-groups'
-import { workspaceAgentUsesByo, workspaceAgentUsesManagedHarness } from '../lib/byo-agent-setup'
+import { nativeAgentModelId } from '@/shared/agents/agent-model'
 import { dispatchAgentDraftPreview } from '@/shared/workspace/sidebar-events'
 import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
-import type { AgentType } from './AgentEditorForm'
 
 export function useAgentEditorForm({
   initial,
   agent,
 
   activeWorkspaceId,
-  setLegacyHostedRuntime,
-  setAgentType,
 }: {
   initial: ReturnType<typeof getInitialEditorState>
   agent: WorkspaceAgentDirectoryItem | null
 
   activeWorkspaceId: string | null
-  setLegacyHostedRuntime: Dispatch<SetStateAction<boolean>>
-  setAgentType: Dispatch<SetStateAction<AgentType>>
 }) {
   const [name, setName] = useState(initial.name)
   const [description, setDescription] = useState(initial.description)
@@ -80,7 +74,8 @@ export function useAgentEditorForm({
       setName(agent.name)
       setDescription(agent.description ?? '')
       setInstructions(agent.instructions)
-      setModelId(agent.modelId)
+      // An agent saved for a removed third-party harness runs on the default model until someone picks one.
+      setModelId(nativeAgentModelId(agent.modelId))
       setReasoningByModel(agent.reasoning && agent.reasoning !== 'provider-default'
         ? { [agent.modelId]: agent.reasoning }
         : {})
@@ -89,9 +84,6 @@ export function useAgentEditorForm({
       setVisibility(agent.visibility)
       setPermissionMode(agent.permissionMode === 'auto' ? 'auto' : 'ask')
       setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-      // The agent record marks a removed hosted runtime via `harness`.
-      setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(agent))
-      setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
       setDirty(false)
       setVersion(0)
     }

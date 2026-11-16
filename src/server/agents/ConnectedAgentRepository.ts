@@ -1,25 +1,13 @@
 import 'server-only'
-import type {NativeStartAdmission} from '@layernorm/overlay-agent-bridge-protocol'
-import type { ConnectedAgentPolicyEntitlements } from './ConnectedAgentPolicy'
 
 import type {
-  AgentApprovalRequest, AgentApprovalResolution, AgentArtifact, AgentBinding, AgentEnrollmentSession,
-  AgentEnvironment, AgentEnvironmentCredential, AgentEnvironmentEnrollmentView, AgentEnvironmentProofChallenge,
-  AgentFilesystemGrant, AgentHarnessSession, AgentRemoteEvent, AgentRemoteSession, AgentRunCommand,
-  AgentSandboxLease, AgentSandboxLeaseStatus,
+  AgentEnrollmentSession, AgentEnvironment, AgentEnvironmentCredential, AgentEnvironmentEnrollmentView,
+  AgentEnvironmentProofChallenge, AgentFilesystemGrant, AgentSandboxLease, AgentSandboxLeaseStatus,
 } from '@overlay/workspace-contracts'
 
 export type ConnectedAgentCreateEnvironment = Omit<AgentEnvironment, 'createdAt' | 'updatedAt'> & { now: number }
 /** Older backends omit the snapshot; null means the credential has no matching environment. */
 export type AgentEnvironmentCredentialLookup = AgentEnvironmentCredential & { environment?: AgentEnvironment | null }
-/** Missing projections retain the legacy resolver; null is a current policy refusal. */
-export type AgentRemoteSessionLookup = AgentRemoteSession & { policyEntitlements?: ConnectedAgentPolicyEntitlements | null }
-export type ConnectedAgentCreateBinding = Omit<AgentBinding, 'createdAt' | 'updatedAt'> & { now: number }
-export type ConnectedAgentCreateSession = Omit<AgentRemoteSession, 'createdAt' | 'updatedAt'> & { now: number }
-export type ConnectedAgentEnqueueCommand = Omit<AgentRunCommand,
-  'sequence' | 'status' | 'claimedAt' | 'claimExpiresAt' | 'acknowledgedAt' | 'createdAt' | 'updatedAt'
-> & { now: number }
-export type ConnectedAgentCreateApprovalRequest = AgentApprovalRequest
 export type ConnectedAgentCreateSandboxLease = Omit<AgentSandboxLease, 'createdAt' | 'updatedAt'> & { now: number }
 export type ConnectedAgentUpdateSandboxLease = Partial<Pick<
   AgentSandboxLease,
@@ -27,58 +15,6 @@ export type ConnectedAgentUpdateSandboxLease = Partial<Pick<
   | 'runtimeStartedAt' | 'runtimeEndedAt' | 'usage' | 'cleanupAttempts' | 'cleanupAfter'
   | 'nextMeterAt' | 'meterClaimToken' | 'meterClaimUntil'
 >> & { workspaceId: string; leaseId: string; now: number }
-export type ConnectedAgentUpsertHarnessSession = Omit<AgentHarnessSession, 'createdAt' | 'updatedAt'> & { now: number }
-
-export type ApplyRemoteEventsResult =
-  | {
-      accepted: true
-      acknowledgedSequence: number
-      duplicate: boolean
-      nativeStartAdmission?: NativeStartAdmission
-      stale?: 'stale_attempt' | 'stale_execution' | 'stale_terminal'
-      terminal?: {
-        agentId: string
-        conversationId: string
-        environmentId: string
-        inputTokens: number
-        modelId: string
-        modelUsageBilling: 'byok' | 'overlay'
-        memoryEnabled: boolean
-        messageId: string
-        operationId: string
-        outputTokens: number
-        outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
-        runId: string
-        sandboxBilling: ConnectedAgentSandboxBilling | null
-        userId: string
-        turnId: string
-        workspaceId: string
-      }
-    }
-  | { accepted: false; expectedSequence: number }
-
-export type ConnectedAgentInvocationTarget = {
-  binding: AgentBinding
-  environment: AgentEnvironment
-}
-
-export type RemoteAgentUsageSettlement = NonNullable<Extract<ApplyRemoteEventsResult, { accepted: true }>['terminal']>
-
-export type ConnectedAgentControlRemoteTurnResult = {
-  operationId?: string
-  phase?: string
-  applied: boolean
-  reason?: 'missing' | 'forbidden' | 'conflicting_state' | 'unsupported_recovery' | 'expired_deadline'
-  messageId?: string
-  commandId?: string
-  terminal?: RemoteAgentUsageSettlement
-}
-
-export type ConnectedAgentSweepResult = {
-  alerts: ConnectedAgentOperationalAlert[]
-  expiredRunIds: string[]
-  settlements: RemoteAgentUsageSettlement[]
-}
 
 export type ConnectedAgentOperationalAlert = {
   code:
@@ -141,49 +77,6 @@ export type ConnectedAgentMeterSandboxLeaseResult =
 
 export type ComputerMaintenanceClaim = { token: string; kind: 'provision' | 'wake' | 'stop' | 'delete' | 'idle'; expiresAt: number }
 export type ComputerActivityClaim = { token: string; expiresAt: number }
-
-export type ConnectedAgentStartRemoteTurn = {
-  lifecycleVersion?: 2
-  actorUserId: string
-  agentId: string
-  authorPrincipalId: string
-  bindingId: string
-  clientNonce: string
-  commandId: string
-  conversationId: string
-  environmentId: string
-  environmentName: string
-  environmentOnline: boolean
-  initiatorPrincipalId: string
-  modelId: string
-  modelUsageBilling: 'byok' | 'overlay'
-  maxConcurrentRuns: number
-  maxRunTimeMs: number
-  memoryEnabled?: boolean
-  prompt: string
-  queueExpiresAt: number
-  /** Always null: nothing is held before a run. Still sent because Convex backends before the hold removal require it. */
-  reservationId: null
-  sandboxBilling?: ConnectedAgentSandboxBilling
-  runId: string
-  sessionId: string
-  startPayload: Record<string, unknown>
-  threadRootMessageId?: string
-  turnId: string
-  userMessageId: string
-  workspaceId: string
-  now: number
-}
-
-export type ConnectedAgentStartRemoteTurnResult = {
-  lifecycleVersion?: 1 | 2
-  commandId: string
-  environmentName: string
-  messageId: string
-  resumed: boolean
-  runId: string
-  waiting: boolean
-}
 
 export type RedeemEnrollmentResult = {
   enrollment: AgentEnrollmentSession
@@ -261,112 +154,6 @@ export interface ConnectedAgentRepository {
     capabilities: Record<string, unknown>
     now: number
   }): Promise<AgentEnvironment | null>
-  createEnvironment(input: ConnectedAgentCreateEnvironment): Promise<AgentEnvironment>
-  createBinding(input: ConnectedAgentCreateBinding): Promise<AgentBinding>
-  upsertBinding(input: ConnectedAgentCreateBinding): Promise<AgentBinding>
-  listBindings(args: { workspaceId: string; agentId?: string }): Promise<AgentBinding[]>
-  disableBindingsForAgent(args: { workspaceId: string; agentId: string; now: number }): Promise<boolean>
-  findInvocationTarget(args: {
-    workspaceId: string
-    agentId: string
-    now: number
-    onlineWithinMs: number
-  }): Promise<ConnectedAgentInvocationTarget | null>
-  startRemoteAgentTurn(input: ConnectedAgentStartRemoteTurn): Promise<ConnectedAgentStartRemoteTurnResult>
-  controlRemoteAgentTurn(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-    runId: string
-    controlRequestId?: string
-    action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
-    queueExpiresAt: number
-    now: number
-  }): Promise<ConnectedAgentControlRemoteTurnResult>
-  createRemoteSession(input: ConnectedAgentCreateSession): Promise<AgentRemoteSession>
-  getRemoteSessionForRun(args: {
-    workspaceId: string
-    environmentId: string
-    runId: string
-  }): Promise<AgentRemoteSessionLookup | null>
-  enqueueCommand(input: ConnectedAgentEnqueueCommand): Promise<AgentRunCommand>
-  claimCommands(args: {
-    workspaceId: string
-    environmentId: string
-    now: number
-    leaseMs: number
-    limit: number
-  }): Promise<AgentRunCommand[]>
-  /** Highest command sequence the host may skip: everything below the first still-open command. */
-  commandResolutionFloor(args: { workspaceId: string; environmentId: string }): Promise<number>
-  acknowledgeCommand(args: {
-    workspaceId: string
-    environmentId: string
-    commandId: string
-    accepted?: boolean
-    /** Why the host rejected the command, when it said. */
-    errorCode?: string
-    errorMessage?: string
-    now: number
-  }): Promise<boolean>
-  createApprovalRequest(input: ConnectedAgentCreateApprovalRequest): Promise<AgentApprovalRequest>
-  /** An Overlay tool the agent called over MCP needs the person's approval; reports where that request stands. */
-  requestMcpApproval(args: {
-    workspaceId: string
-    environmentId: string
-    runId: string
-    sessionId?: string
-    execution?: { attemptId: string; generation: number }
-    expiresAt?: number
-    bridge?: boolean
-    requestKey: string
-    prompt: string
-    now: number
-  }): Promise<{ state: 'pending' | 'resolved' | 'unavailable'; decision?: string }>
-  resolveApprovalRequest(args: {
-    workspaceId: string
-    approvalId: string
-    resolution: AgentApprovalResolution
-  }): Promise<AgentApprovalRequest | null>
-  resolveRemoteRequest(args: {
-    actorUserId: string
-    workspaceId: string
-    conversationId: string
-    runId: string
-    requestKey: string
-    decision: string
-    response?: Record<string, unknown>
-    now: number
-  }): Promise<{ applied: boolean; commandId?: string; messageId?: string }>
-  createArtifact(input: AgentArtifact & { maxWorkspaceArtifactBytes?: number }): Promise<AgentArtifact>
-  getArtifact(args: {
-    workspaceId: string
-    environmentId: string
-    artifactId: string
-  }): Promise<AgentArtifact | null>
-  getArtifactForDownload(args: {
-    actorUserId: string
-    workspaceId: string
-    artifactId: string
-  }): Promise<AgentArtifact | null>
-  finalizeArtifact(args: {
-    workspaceId: string
-    environmentId: string
-    artifactId: string
-    status: 'clean' | 'rejected'
-    scanResult: string
-    expiresAt?: number
-    now: number
-  }): Promise<AgentArtifact | null>
-  listArtifactsForCleanup(args: { now: number; limit: number }): Promise<AgentArtifact[]>
-  markArtifactDeleted(args: { artifactId: string; now: number }): Promise<boolean>
-  sweepRemoteRuns(args: {
-    now: number
-    hostOfflineBefore: number
-    limit: number
-    /** Fail this cloud environment's active runs now (its machine is being paused or restarted). */
-    abandonEnvironmentId?: string
-  }): Promise<ConnectedAgentSweepResult>
   createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
   getSandboxLease(args: { workspaceId: string; leaseId: string }): Promise<AgentSandboxLease | null>
   getActiveSandboxLease(args: { workspaceId: string; environmentId: string }): Promise<AgentSandboxLease | null>
@@ -455,9 +242,6 @@ export interface ConnectedAgentRepository {
     /** Starts the idle timer: the lease is checked for idleness this long from now (replacing any earlier timer). */
     idleCheckInMs?: number
   }): Promise<AgentSandboxLease | null>
-  /** Whether a run on the environment has not finished (its machine must stay up). */
-  environmentHasActiveExecution?(args: { environmentId: string }): Promise<boolean>
-  environmentHasActiveRuns(args: { environmentId: string }): Promise<boolean>
   meterSandboxLease(args: {
     workspaceId: string
     leaseId: string
@@ -476,27 +260,5 @@ export interface ConnectedAgentRepository {
     reason: string
     now: number
   }): Promise<AgentSandboxLease | null>
-  getHarnessSession(args: {
-    workspaceId: string
-    bindingId: string
-    conversationId: string
-  }): Promise<AgentHarnessSession | null>
-  upsertHarnessSession(input: ConnectedAgentUpsertHarnessSession): Promise<AgentHarnessSession>
-  deleteHarnessSessionsForBinding(args: {
-    workspaceId: string
-    bindingId: string
-    now: number
-  }): Promise<number>
-  applyRemoteEvents(args: {
-    workspaceId: string
-    environmentId: string
-    sessionId: string
-    events: AgentRemoteEvent[]
-    maxEventsPerMinute?: number
-    now: number
-  }): Promise<ApplyRemoteEventsResult>
-  /** Counts a batch refused before it was applied; best effort, for transport diagnostics. */
-  recordRejectedEventBatch?(args: { workspaceId: string; environmentId: string; runId: string }): Promise<boolean>
   revokeEnvironment(args: { workspaceId: string; environmentId: string; now: number }): Promise<boolean>
-  deleteWorkspaceData(args: { workspaceId: string }): Promise<void>
 }

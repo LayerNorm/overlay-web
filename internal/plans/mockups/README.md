@@ -35,6 +35,14 @@ change the feature being proposed; navigation, sidebar, breadcrumbs, framing,
 spacing, typography and light/dark tokens come from production and must stay
 untouched. Compare desktop and narrow layouts in both themes before sharing.
 
+### Feature mockups that need to sit inside production components
+
+When the proposal belongs inside a production component (a composer row, a transcript row, a details row), put it
+in `overlay-app/features/<name>/`. Its `feature.mjs` names the output file and lists exact text patches that place
+the proposed components into production modules at bundle time; production files are not edited, and a patch whose
+text no longer appears exactly once stops the build. Build it with
+`MOCKUP_FEATURE=<name> node internal/plans/mockups/overlay-app/build.mjs`.
+
 ### Rebuild
 
 ```sh
@@ -71,6 +79,22 @@ them. Besides the canonical app mockup, this folder holds only:
   `internal/plans/automation-threads-and-connector-return.md`. The same plan's
   automation thread is the `Morning inbox triage` fixture thread in
   `overlay-app.html`. Delete the page when the plan ships.
+- `local-cloud-continuity.html` (feature `local-cloud-continuity`): the proposed Phases 2–4 of
+  `LOCAL_CLOUD_CONTINUITY_PLAN.md`. Open
+  `local-cloud-continuity.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`
+  (handoff) or `...&id=k17convatlascheckout000000000000` (delegation). Delete it when those phases ship.
+- `thread-folders.html` (feature `thread-folders`): the shipped thread-folder components (computer and folder pickers,
+  add-folder dialog, saved-back card) rendered from production code with fixtures, for visual QA. Open
+  `thread-folders.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlasfolders0000000000000`.
+- `files-on-computers.html` (feature `files-on-computers`): the proposed folders-as-sources design. Folders from
+  Overlay, GitHub, Google Drive and several Macs in Files, a per-thread computer picker (the cloud computer plus each
+  Mac with the desktop app, with online and offline states) and folder picker under the composer,
+  where each change went back to in the transcript, and the agent's Files row in Details. The bar at the top switches
+  between the web and desktop app (`?host=web` opens the web app). Open
+  `files-on-computers.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslaunch00000000000000`, or
+  `id=k17convatlasiosshare000000000000` for a thread running on the Mac Studio.
+  `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
+  rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.

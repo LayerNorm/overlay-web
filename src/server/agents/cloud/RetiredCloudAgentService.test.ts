@@ -12,7 +12,7 @@ function service(provision: Record<string, unknown>, lease: Record<string, unkno
     audit: { record: async () => undefined } as never,
     controlPlane: { revokeEnvironment: async () => undefined },
     repository: {
-      listBindings: async () => [],
+      
       getEnvironment: async () => environment,
       getActiveSandboxLease: async () => null,
       listSandboxLeases: async () => lease ? [lease] : [],
@@ -81,7 +81,7 @@ test('failed provider deletion stays retryable and never resumes or finishes the
     audit: { record: async () => undefined } as never,
     controlPlane: { revokeEnvironment: async () => undefined },
     repository: {
-      listBindings: async () => [],
+      
       getEnvironment: async () => null,
       getActiveSandboxLease: async () => null,
       listSandboxLeases: async () => [],
@@ -125,7 +125,7 @@ test('explicit teardown queues ready provision cleanup until its lease is releas
     audit: { record: async (entry: { metadata?: Record<string, unknown> }) => { audits.push(entry) } } as never,
     controlPlane: { revokeEnvironment: async () => { environmentStatus = 'revoked' } },
     repository: {
-      listBindings: async () => [],
+      
       getEnvironment: async () => ({ id: 'cloud-env', kind: 'overlay_cloud', status: environmentStatus }),
       getActiveSandboxLease: async () => lease.status === 'active' ? lease : null,
       listSandboxLeases: async ({ statuses }) => statuses.includes(lease.status) ? [lease] : [],
@@ -215,7 +215,7 @@ test('a provider delete acknowledgement cannot finish cleanup while the machine 
     audit: { record: async () => undefined } as never,
     controlPlane: { revokeEnvironment: async () => undefined },
     repository: {
-      listBindings: async () => [], getEnvironment: async () => null,
+       getEnvironment: async () => null,
       getActiveSandboxLease: async () => null, listSandboxLeases: async () => [],
     } as never,
     provisions: {

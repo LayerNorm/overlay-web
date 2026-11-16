@@ -26,29 +26,16 @@ export class RetiredCloudAgentService {
   constructor(private readonly dependencies: {
     audit: AuditService
     controlPlane: RetirementControlPlane
-    repository: Pick<ConnectedAgentRepository, 'listBindings' | 'getEnvironment' | 'getActiveSandboxLease' | 'listSandboxLeases'>
+    repository: Pick<ConnectedAgentRepository, 'getEnvironment' | 'getActiveSandboxLease' | 'listSandboxLeases'>
     provisions: Pick<CloudAgentProvisionRepository, 'get' | 'listReclaimable' | 'claimReclaim' | 'markReclaimPending' | 'finishReclaim'>
     runtime?: (provider?: string) => SandboxRuntime
     now?: () => number
   }) {}
 
   async status(args: { workspaceId: string; agentId: string }): Promise<CloudAgentStatus> {
-    const [provision, bindings] = await Promise.all([
-      this.dependencies.provisions.get(args),
-      this.dependencies.repository.listBindings(args),
-    ])
+    const provision = await this.dependencies.provisions.get(args)
     let environment: AgentEnvironment | null = null
-    for (const binding of bindings) {
-      const candidate = await this.dependencies.repository.getEnvironment({
-        workspaceId: args.workspaceId,
-        environmentId: binding.environmentId,
-      })
-      if (candidate?.kind === 'overlay_cloud') {
-        environment = candidate
-        break
-      }
-    }
-    if (!environment && provision?.environmentId) {
+    if (provision?.environmentId) {
       const candidate = await this.dependencies.repository.getEnvironment({
         workspaceId: args.workspaceId,
         environmentId: provision.environmentId,
@@ -74,10 +61,8 @@ export class RetiredCloudAgentService {
       machine,
       account: null,
     }
-    const adapterId = provisionAdapterId(bindings)
     return {
       agentId: args.agentId,
-      ...(adapterId ? { adapterId } : {}),
       ...parts,
       state: deriveCloudAgentState({
         ...parts,
@@ -95,11 +80,8 @@ export class RetiredCloudAgentService {
   }
 
   async teardown(args: { actorUserId: string; workspaceId: string; agentId: string }): Promise<{ cleanupPending: number }> {
-    const [provision, bindings] = await Promise.all([
-      this.dependencies.provisions.get({ workspaceId: args.workspaceId, agentId: args.agentId }),
-      this.dependencies.repository.listBindings({ workspaceId: args.workspaceId, agentId: args.agentId }),
-    ])
-    const environmentIds = new Set(bindings.map((binding) => binding.environmentId))
+    const provision = await this.dependencies.provisions.get({ workspaceId: args.workspaceId, agentId: args.agentId })
+    const environmentIds = new Set<string>()
     if (provision?.environmentId) environmentIds.add(provision.environmentId)
     let cleanupPending = 0
     if (provision?.providerReference && provision.allocationKey) {
@@ -270,7 +252,3 @@ export class RetiredCloudAgentService {
   }
 }
 
-function provisionAdapterId(bindings: Array<{ environmentId: string; adapterConfig: Record<string, unknown> }>) {
-  const value = bindings.map((binding) => binding.adapterConfig.adapterId).find((id) => typeof id === 'string')
-  return typeof value === 'string' ? value : undefined
-}

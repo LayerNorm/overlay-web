@@ -10,17 +10,15 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { announceArchived } from '@/shared/app/archive-toast'
-import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { startAgentChat } from '../lib/agent-chat'
 import {
   confirmComputerToolRemoval,
   type AgentEditSaveResult,
 } from '../lib/agent-edit-save-result'
 import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
+import { nativeAgentModelId } from '@/shared/agents/agent-model'
 import { toast } from '@overlay/ui/primitives'
 import { notifyActionError } from './notification-events'
-import type { useAgentRuntime } from './use-agent-runtime'
-import type { useByoConnection } from './use-byo-connection'
 import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentComputer } from './use-agent-computer'
 
@@ -37,8 +35,6 @@ export function useAgentEditorActions({
   closeEditor,
   buildInput,
   computersAvailable,
-  runtime,
-  byo,
   form,
   computer,
   onCreated,
@@ -58,8 +54,6 @@ export function useAgentEditorActions({
   closeEditor(): void
   buildInput(): WorkspaceAgentCreateInput
   computersAvailable: boolean
-  runtime: ReturnType<typeof useAgentRuntime>
-  byo: ReturnType<typeof useByoConnection>
   form: ReturnType<typeof useAgentEditorForm>
   computer: ReturnType<typeof useAgentComputer>
   onCreated?: (agent: WorkspaceAgentDirectoryItem) => void
@@ -68,8 +62,6 @@ export function useAgentEditorActions({
   keepOpenOnSave?: boolean
 }) {
   const buildWorkspaceHref = useWorkspaceHref()
-  const { agentType, cloudAgent } = runtime
-  const { environmentId, adapterId, workingDirectory } = byo
   const {
     enabledToolGroups,
     setEnabledToolGroups,
@@ -91,21 +83,7 @@ export function useAgentEditorActions({
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
-        if (agentType === 'byo') {
-          await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
-            agentId: saved.agent.id,
-            environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-          }).catch(async (bindingError) => {
-            // Agent identity may already be durable even if its remote binding
-            // fails. Land on the edit page so a retry never creates a duplicate.
-            setAgent(saved.agent)
-            if (presentation === 'page') {
-              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
-            }
-            throw bindingError
-          })
-        }
-        if (agentType === 'overlay' && computersAvailable && enabledToolGroups.has('computer')) {
+        if (computersAvailable && enabledToolGroups.has('computer')) {
           setComputerProvisionError(null)
           await overlayAppClient.computers.provision(activeWorkspaceId, {
             ownerType: 'agent',
@@ -146,9 +124,7 @@ export function useAgentEditorActions({
   } = {}): Promise<AgentEditSaveResult> => {
     if (!activeWorkspaceId || !agent || (busy && !ignoreBusy)) return 'failed'
     const confirmation = confirmComputerToolRemoval({
-      shouldConfirm: Boolean(
-        agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer'),
-      ),
+      shouldConfirm: Boolean(agentComputer && !enabledToolGroups.has('computer')),
       confirm: () => window.confirm(
         `Delete ${agent.name}'s computer? Its disk state is destroyed permanently.`,
       ),
@@ -162,11 +138,6 @@ export function useAgentEditorActions({
         workspaceId: activeWorkspaceId,
         agent,
         buildInput,
-        agentType,
-        cloudAgent,
-        environmentId,
-        adapterId,
-        workingDirectory,
         computersAvailable,
         enabledToolGroups,
         computer,
@@ -195,7 +166,7 @@ export function useAgentEditorActions({
     setName(agent.name)
     setDescription(agent.description ?? '')
     setInstructions(agent.instructions)
-    setModelId(agent.modelId)
+    setModelId(nativeAgentModelId(agent.modelId))
     setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
     setAvatarShape(agent.avatarShape ?? 'circle')
     setVisibility(agent.visibility)
@@ -206,22 +177,14 @@ export function useAgentEditorActions({
 
   const archiveAgent = async () => {
     if (!activeWorkspaceId || !agent || busy) return
-    const prompt = cloudAgent
-      ? `Archive ${agent.name}? Overlay access will be revoked and provider cleanup queued. Cleanup permanently deletes the machine and its files; export anything you need first. Its message history will remain.`
-      : `Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`
-    if (!window.confirm(prompt)) return
+    if (!window.confirm(`Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`)) return
     setBusy(true)
     try {
-      // Revoke the hosted environment before archiving so cleanup remains attributable to the agent.
-      if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
       const workspaceId = activeWorkspaceId
       announceArchived({
         name: agent.name,
-        // Hosted agents stay archived; restoring one does not restore its retired runtime.
-        ...(cloudAgent ? {} : {
-          undo: async () => { await overlayAppClient.agents.restore(workspaceId, agent.id) },
-        }),
+        undo: async () => { await overlayAppClient.agents.restore(workspaceId, agent.id) },
       })
       if (onArchived) onArchived()
       else router.push(directoryHref)
@@ -252,11 +215,6 @@ async function persistAgentEdit({
   workspaceId,
   agent,
   buildInput,
-  agentType,
-  cloudAgent,
-  environmentId,
-  adapterId,
-  workingDirectory,
   computersAvailable,
   enabledToolGroups,
   computer,
@@ -264,29 +222,13 @@ async function persistAgentEdit({
   workspaceId: string
   agent: WorkspaceAgentDirectoryItem
   buildInput(): WorkspaceAgentCreateInput
-  agentType: ReturnType<typeof useAgentRuntime>['agentType']
-  cloudAgent: ReturnType<typeof useAgentRuntime>['cloudAgent']
-  environmentId: ReturnType<typeof useByoConnection>['environmentId']
-  adapterId: ReturnType<typeof useByoConnection>['adapterId']
-  workingDirectory: ReturnType<typeof useByoConnection>['workingDirectory']
   computersAvailable: boolean
   enabledToolGroups: Set<string>
   computer: ReturnType<typeof useAgentComputer>
 }) {
   const saved = await overlayAppClient.agents.update(workspaceId, agent.id, buildInput())
-  await updateAgentBinding({
-    workspaceId,
-    agent,
-    savedAgentId: saved.agent.id,
-    agentType,
-    cloudAgent,
-    environmentId,
-    adapterId,
-    workingDirectory,
-  })
   await syncAgentComputer({
     workspaceId,
-    agentType,
     computersAvailable,
     enabledToolGroups,
     savedAgent: saved.agent,
@@ -295,57 +237,20 @@ async function persistAgentEdit({
   return saved
 }
 
-async function updateAgentBinding({
-  workspaceId,
-  agent,
-  savedAgentId,
-  agentType,
-  cloudAgent,
-  environmentId,
-  adapterId,
-  workingDirectory,
-}: {
-  workspaceId: string
-  agent: WorkspaceAgentDirectoryItem
-  savedAgentId: string
-  agentType: ReturnType<typeof useAgentRuntime>['agentType']
-  cloudAgent: ReturnType<typeof useAgentRuntime>['cloudAgent']
-  environmentId: ReturnType<typeof useByoConnection>['environmentId']
-  adapterId: ReturnType<typeof useByoConnection>['adapterId']
-  workingDirectory: ReturnType<typeof useByoConnection>['workingDirectory']
-}) {
-  if (agentType === 'byo' && cloudAgent) return
-  if (agentType === 'byo') {
-    await overlayAppClient.agentEnvironments.upsertBinding(workspaceId, {
-      agentId: savedAgentId,
-      environmentId,
-      adapterId,
-      workingDirectory: workingDirectory.trim(),
-    })
-    return
-  }
-  if (workspaceAgentUsesByo(agent)) {
-    await overlayAppClient.agentEnvironments.disableBindings(workspaceId, savedAgentId)
-      .catch(() => undefined)
-  }
-}
-
 async function syncAgentComputer({
   workspaceId,
-  agentType,
   computersAvailable,
   enabledToolGroups,
   savedAgent,
   computer,
 }: {
   workspaceId: string
-  agentType: ReturnType<typeof useAgentRuntime>['agentType']
   computersAvailable: boolean
   enabledToolGroups: Set<string>
   savedAgent: WorkspaceAgentDirectoryItem
   computer: ReturnType<typeof useAgentComputer>
 }) {
-  if (agentType !== 'overlay' || !computersAvailable) return
+  if (!computersAvailable) return
   const { agentComputer, setAgentComputer, computerSize, setComputerProvisionError } = computer
   if (enabledToolGroups.has('computer') && (!agentComputer || agentComputer.status === 'error')) {
     setComputerProvisionError(null)

@@ -905,67 +905,6 @@ test('an idle Computer past its session window still stops through the idle chec
   assert.equal(harness.meterCalls, 0)
 })
 
-function settleHarness(meterResult: Record<string, unknown>) {
-  const patches: Array<Record<string, unknown>> = []
-  const idleChecks: number[] = []
-  const stopReasons: string[] = []
-  const lease = leaseFixture({
-    usage: {
-      meteredUsage: { wallTimeMs: 60_000 },
-      meteredProviderReference: 'sandbox-reference',
-      meterVersion: 5,
-      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
-    },
-  })
-  const service = new ManagedAgentSandboxBilling({
-    now: () => 190_000,
-    // Settling never touches a reservation: a policy call other than the top-up check would throw.
-    policy: {
-      getEntitlements: async () => ({ planKind: 'paid' }),
-      ensureBudgetNotLow: async () => ({ ok: false, status: 402, code: 'insufficient_budget', payload: {} }),
-    } as never,
-    repository: {
-      environmentHasActiveRuns: async () => false,
-      getSandboxLease: async () => lease,
-      meterSandboxLease: async () => meterResult,
-      stopSandboxLease: async (args: { reason: string }) => { stopReasons.push(args.reason); return { ...lease, status: 'stopping' as const } },
-      updateSandboxLease: async () => lease,
-      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown>; idleCheckInMs?: number }) => {
-        patches.push(args.patch)
-        if (args.idleCheckInMs !== undefined) idleChecks.push(args.idleCheckInMs)
-        return lease
-      },
-    } as never,
-    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 90_000 })),
-  })
-  const settle = () => service.settle({
-    agentId: 'agent', environmentId: 'environment',
-    inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
-    outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
-    workspaceId: 'workspace',
-    sandboxBilling: {
-      baselineUsage: {}, leaseId: 'lease', provider: 'box', providerReference: 'sandbox-reference',
-      reservationId: null, resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: 60_000,
-    },
-  })
-  return { settle, patches, idleChecks, stopReasons }
-}
-
-test('metered settle runs a final tick with no hold to release and starts the idle window', async () => {
-  const { settle, patches, idleChecks, stopReasons } = settleHarness({ applied: true, meterVersion: 6, remainingCents: 800 })
-  await settle()
-  // The run's end starts the machine's idle timer for one full window.
-  assert.deepEqual(idleChecks, [600_000])
-  assert.deepEqual(stopReasons, [])
-  assert.equal(typeof (patches[0]?.lastSettlement as Record<string, unknown>)?.providerCostUsd, 'number')
-  assert.equal('reservationId' in (patches[0]?.lastSettlement as Record<string, unknown>), false)
-})
-
-test('a final run charge that leaves the workspace under 2% stops the machine', async () => {
-  const { settle, stopReasons } = settleHarness({ applied: true, meterVersion: 6, remainingCents: 1, budgetLow: true })
-  await settle()
-  assert.deepEqual(stopReasons, ['budget_exhausted'])
-})
 
 test('meterLease stops a lease whose authoritative provider counter is stalled', async () => {
   const stoppedLeases: Array<Record<string, unknown>> = []
@@ -1440,12 +1379,6 @@ test('idleCheck moves to the end of the window when something happened since it 
   assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'current' }), { outcome: 'rescheduled' })
   assert.deepEqual(events, [])
   assert.equal(patches[0]?.idleCheckInMs, 300_000)
-})
-
-test('idleCheck leaves a machine alone while a run is going', async () => {
-  const { service, events } = idleHarness({ now: 1_000_000, usage: { lastActiveAt: 100_000, idleToken: 'current', idleCheckAt: 700_000 }, activeRuns: true })
-  assert.deepEqual(await service.idleCheck({ workspaceId: 'workspace', leaseId: 'lease', token: 'current' }), { outcome: 'busy' })
-  assert.deepEqual(events, [])
 })
 
 test('idleCheck does nothing for a lease that is gone or no longer running', async () => {

@@ -9,10 +9,8 @@ import type {
   WorkspaceArchivedAgentThread,
 } from '@overlay/workspace-contracts'
 import { NEW_AGENT_DEFAULT_MODEL_ID, isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
-import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
-import { externalAgentPolicyAllowsRecord, type ExternalAgentPolicyDecision, type ExternalAgentPolicyRecord } from './external-agent-policy'
 import {
   assertChiefBindingUpdateAllowed,
   canCreateAgent,
@@ -32,14 +30,6 @@ export class WorkspaceAgentService {
     private readonly workspaces: WorkspaceService,
     private readonly id: () => string = randomUUID,
     private readonly now: () => number = Date.now,
-    private readonly externalAgentPolicy: (args: {
-      workspaceId: string
-      record: ExternalAgentPolicyRecord
-    }) => Promise<ExternalAgentPolicyDecision> = async ({ record }) => ({
-      external: record.harness !== undefined && record.harness !== 'overlay'
-        || parseByoModelId(record.modelId) !== null,
-      allowed: false,
-    }),
   ) {}
 
   async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
@@ -186,12 +176,6 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('validation', 'One or more teams do not exist in this workspace')
     }
     const agentId = this.id()
-    await this.assertExternalAgentAllowed({
-      id: agentId,
-      workspaceId: access.workspace.id,
-      harness,
-      modelId,
-    })
     try {
       return await this.repository.create({
         agentId,
@@ -228,12 +212,14 @@ export class WorkspaceAgentService {
   }) {
     const { access, agent } = await this.requireEditor(args)
     assertChiefBindingUpdateAllowed(agent, args.input)
-    if (args.input.modelId !== undefined || args.input.harness !== undefined) {
-      const harness = args.input.harness ?? agent.harness
-      assertSupportedWorkspaceAgentHarness(harness)
+    // Changing the model also writes the Overlay harness, which moves an agent saved for a removed third-party
+    // harness onto Overlay's own.
+    const nextHarness = args.input.harness ?? (args.input.modelId === undefined ? undefined : 'overlay')
+    if (nextHarness !== undefined) {
+      assertSupportedWorkspaceAgentHarness(nextHarness)
       assertSupportedAgentConfiguration(
         args.input.modelId === undefined ? agent.modelId : required(args.input.modelId, 'Model', 200),
-        harness,
+        nextHarness,
       )
     }
     if (args.input.harness !== undefined) {
@@ -243,21 +229,7 @@ export class WorkspaceAgentService {
         harness: args.input.harness,
       })
     }
-    const effectiveHarness = args.input.harness ?? agent.harness ?? 'overlay'
-    const effectivePermissionMode = args.input.permissionMode ?? agent.permissionMode
-    assertValidOverlayPermissionMode(effectiveHarness, effectivePermissionMode)
-    await this.assertExternalAgentAllowed({
-      id: agent.id,
-      workspaceId: access.workspace.id,
-      harness: effectiveHarness,
-      modelId: args.input.modelId ?? agent.modelId,
-    })
-    await this.assertExternalAgentAllowed({
-      id: agent.id,
-      workspaceId: access.workspace.id,
-      harness: agent.harness,
-      modelId: agent.modelId,
-    })
+    assertValidOverlayPermissionMode(nextHarness ?? agent.harness ?? 'overlay', args.input.permissionMode ?? agent.permissionMode)
     const teamIds = await validateWorkspaceAgentTeamIds(
       args.input.teamIds,
       args.actorUserId,
@@ -275,7 +247,7 @@ export class WorkspaceAgentService {
       ...workspaceAgentUpdateModelFields(args.input, agent.modelId),
       ...(args.input.permissionMode === undefined ? {} : { permissionMode: required(args.input.permissionMode, 'Permission mode', 200) }),
       ...(args.input.effort === undefined ? {} : { effort: required(args.input.effort, 'Effort', 200) }),
-      ...(args.input.harness === undefined ? {} : { harness: args.input.harness }),
+      ...(nextHarness === undefined ? {} : { harness: nextHarness }),
       ...(args.input.avatarColor === undefined ? {} : { avatarColor: color(args.input.avatarColor) }),
       ...(args.input.avatarShape === undefined ? {} : { avatarShape: shape(args.input.avatarShape) }),
       ...(args.input.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.input.allowedToolIds) }),
@@ -292,12 +264,6 @@ export class WorkspaceAgentService {
       role: access.membership.role,
       createdByDisplayName: creator?.displayName,
     })
-  }
-
-  private async assertExternalAgentAllowed(record: ExternalAgentPolicyRecord): Promise<void> {
-    if (!await externalAgentPolicyAllowsRecord(this.externalAgentPolicy, record)) {
-      throw new WorkspaceAgentServiceError('forbidden', 'External agent runtimes are disabled for this deployment')
-    }
   }
 
   async archive(args: { actorUserId: string; workspaceId: string; agentId: string }) {

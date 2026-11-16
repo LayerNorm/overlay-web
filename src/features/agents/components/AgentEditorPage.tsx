@@ -15,7 +15,6 @@ import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspace
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { parseByoModelId } from '@/shared/agents/agent-model'
 import {
   buildWorkspaceAgentInput,
   isAgentEditorValid,
@@ -23,10 +22,8 @@ import {
   workspaceAgentReasoningForSave,
 } from '../lib/agent-editor-input'
 import { getInitialEditorState } from '../lib/agent-editor-state'
-import { useByoConnection } from './use-byo-connection'
 import { useAgentSurfaces } from './use-agent-surfaces'
 import { useAgentEditorBootstrap } from './use-agent-editor-bootstrap'
-import { useAgentRuntime } from './use-agent-runtime'
 import { useAgentEditorForm } from './use-agent-editor-form'
 import { useAgentComputer } from './use-agent-computer'
 import { useAgentEditorActions } from './use-agent-editor-actions'
@@ -96,25 +93,13 @@ export function useAgentEditorController({
   const [busy, setBusy] = useState(false)
 
   const bootstrap = useAgentEditorBootstrap({  mode, agentId, activeWorkspaceId, initial })
-  const { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked } = bootstrap
+  const { agent, setAgent, loading, loadFailed, canCreate } = bootstrap
 
-  const runtime = useAgentRuntime()
+  const form = useAgentEditorForm({ initial, agent, activeWorkspaceId })
 
-  const byo = useByoConnection({
-    activeWorkspaceId,  agent, agentType: runtime.agentType, connectedAgentsEnabled,
-    setAgentType: runtime.setAgentType, onLegacyHostedBinding: runtime.onLegacyHostedBinding,
-    onCloudBinding: runtime.onCloudBinding,
-  })
-
-  const form = useAgentEditorForm({
-    initial, agent, activeWorkspaceId,
-    setLegacyHostedRuntime: runtime.setLegacyHostedRuntime,
-    setAgentType: runtime.setAgentType,
-  })
-
-  const surfaces = useAgentSurfaces({ activeWorkspaceId,  agent, agentType: runtime.agentType })
+  const surfaces = useAgentSurfaces({ activeWorkspaceId, agent })
   const computer = useAgentComputer({
-     computersAvailable, activeWorkspaceId, agent, agentType: runtime.agentType,
+    computersAvailable, activeWorkspaceId, agent,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
     markDirty: form.markDirty,
   })
@@ -148,60 +133,37 @@ export function useAgentEditorController({
   const isDefaultMaster = isDefaultMasterAgent(agent)
   const valid = agent?.canEdit !== false && isAgentEditorValid({
     name: form.name, instructions: form.instructions, modelId: form.modelId,
-    agentType: runtime.agentType, legacyHostedRuntime: runtime.legacyHostedRuntime, connectedAgentsEnabled,
-    bindingValid: byo.bindingValid || runtime.cloudAgent,
   })
 
   const directoryHref = buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal')
   const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
-  const buildInput = useCallback((): WorkspaceAgentCreateInput => {
-    const harnessLabel = byo.selectedHarness?.label ?? byo.adapterId
-    const built = {
-      ...buildWorkspaceAgentInput({
-        name: form.name,
-        description: form.description,
-        instructions: form.instructions,
-        agentType: runtime.agentType,
-        harnessLabel,
-        adapterId: byo.adapterId,
+  const buildInput = useCallback((): WorkspaceAgentCreateInput => ({
+    ...buildWorkspaceAgentInput({
+      name: form.name,
+      description: form.description,
+      instructions: form.instructions,
+      modelId: form.modelId,
+      avatarColor: form.avatarColor,
+      avatarShape: form.avatarShape,
+      enabledToolGroups: form.enabledToolGroups,
+      visibility: form.visibility,
+      permissionMode: form.permissionMode,
+      reasoning: workspaceAgentReasoningForSave({
         modelId: form.modelId,
-        avatarColor: form.avatarColor,
-        avatarShape: form.avatarShape,
-        enabledToolGroups: form.enabledToolGroups,
-        visibility: form.visibility,
-        permissionMode: form.permissionMode,
-        reasoning: workspaceAgentReasoningForSave({
-          modelId: form.modelId,
-          reasoning: form.reasoning,
-          reasoningModels: modelAccess.pickerTextModels,
-          existingModelId: agent?.modelId,
-          existingReasoning: agent?.reasoning,
-        }),
+        reasoning: form.reasoning,
+        reasoningModels: modelAccess.pickerTextModels,
+        existingModelId: agent?.modelId,
+        existingReasoning: agent?.reasoning,
       }),
-      teamIds: agent?.teamIds ?? [],
-    }
-    // A legacy Cloud agent's Overlay access is controlled separately from this form; sending the
-    // editor's copy (empty for connected agents) would wipe it.
-    // Its model is likewise set by its own control (Model).
-    if (runtime.cloudAgent) {
-      delete built.allowedToolIds
-      delete (built as { modelId?: string }).modelId
-      delete (built as { reasoning?: WorkspaceAgentCreateInput['reasoning'] }).reasoning
-    }
-    if (agent && runtime.agentType === 'byo' && parseByoModelId(agent.modelId)?.adapterId === byo.adapterId) {
-      // The separate settings controls own this choice; an identity edit must not reset it.
-      delete (built as { modelId?: string }).modelId
-    }
-    return built
-  }, [runtime.cloudAgent, byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
-    runtime.agentType,
+    }),
+    teamIds: agent?.teamIds ?? [],
+  }), [form.name, form.description, form.instructions,
     form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
     form.permissionMode, form.reasoning, modelAccess.pickerTextModels,
     agent])
 
   const { persistNew, saveEdit, cancelEdit, archiveAgent, sayHello } = useAgentEditorActions({
-
     presentation,
     activeWorkspaceId,
     router,
@@ -213,8 +175,6 @@ export function useAgentEditorController({
     closeEditor,
     buildInput,
     computersAvailable,
-    runtime,
-    byo,
     form,
     computer,
     onCreated,
@@ -253,12 +213,8 @@ export function useAgentEditorController({
     busy,
 
     computersAvailable,
-    connectedAgentsEnabled,
-    connectedAgentsChecked,
     modelField,
     form,
-    runtime,
-    byo,
     computer,
     surfaces,
     closeEditor,
@@ -275,17 +231,13 @@ export function useAgentEditorController({
     agent,
     loading,
     loadFailed,
-    connectedAgentsChecked,
     isDefaultMaster,
     valid,
     busy,
 
     computersAvailable,
-    connectedAgentsEnabled,
     modelField,
     form,
-    runtime,
-    byo,
     computer,
     surfaces,
     saveEdit,

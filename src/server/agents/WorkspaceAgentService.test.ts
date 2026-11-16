@@ -93,10 +93,6 @@ function serviceFor(
     deleteThreadError?: string
     resolveThreadError?: string
     archivedThreadRows?: WorkspaceArchivedAgentThread[]
-    externalAgentPolicy?: (args: {
-      workspaceId: string
-      record: { id: string; workspaceId: string; harness?: string; modelId: string }
-    }) => Promise<{ external: boolean; allowed: boolean }>
   } = {},
 ) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
@@ -216,7 +212,6 @@ function serviceFor(
     mockWorkspaces(principalId, role, principals),
     () => `generated-${++idCounter}`,
     () => NOW,
-    options.externalAgentPolicy,
   )
   return { service, created, updated, identityUpdates, archived, unarchived, deletedThreads, deletedAgents, archivedThreads, ensured }
 }
@@ -430,27 +425,6 @@ test('a non-manager cannot archive a creator-only agent they cannot see', async 
   assert.equal(error.code, 'not_found')
 })
 
-test('adapter-owned permission and effort ids persist on create and update, with bounded nonempty values', async () => {
-  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [], {}, {
-    externalAgentPolicy: async ({ record }) => ({
-      external: record.modelId.startsWith('byo/'),
-      allowed: true,
-    }),
-  })
-  const created = await fixture.service.create({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
-    input: { name: 'Runtime settings', instructions: 'Do the work', harness: 'claude-code', modelId: 'byo/claude-code', permissionMode: ' auto ', effort: ' high ' } })
-  assert.equal(created.permissionMode, 'auto')
-  assert.equal(created.effort, 'high')
-  const updated = await fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
-    input: { permissionMode: 'acceptEdits', effort: 'low' } })
-  assert.equal(updated.permissionMode, 'acceptEdits')
-  assert.equal(updated.effort, 'low')
-  await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
-    input: { permissionMode: ' ' } }), /Permission mode/)
-  await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
-    input: { effort: 'x'.repeat(201) } }), /Effort/)
-})
-
 test('native agent reasoning validates, persists, clears, and resets when its model changes', async () => {
   const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member')
   const created = await fixture.service.create({
@@ -544,34 +518,34 @@ test('Overlay permission mode accepts Ask and Auto and rejects connected-harness
   assert.equal(updated.permissionMode, 'auto')
 })
 
-test('new agent assignments reject retired providers while historical agents remain editable', async () => {
+test('retired third-party harnesses are rejected, and a legacy agent moves to Overlay when its model changes', async () => {
   const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [
     defaultAgentFixture(),
-    agentFixture({ id: 'legacy', harness: 'hermes', modelId: 'byo/hermes' }),
-    agentFixture({ id: 'legacy-provider', harness: 'codex', modelId: 'byo/codex' }),
-  ], {}, { externalAgentPolicy: async () => ({ external: true, allowed: true }) })
+    agentFixture({ id: 'legacy', harness: 'codex', modelId: 'byo/codex' }),
+  ])
   await assert.rejects(fixture.service.create({
     actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
-    input: { name: 'Retired', instructions: 'No longer supported', modelId: 'byo/hermes' },
-  }), /Unsupported connected agent adapter/)
-  await assert.rejects(fixture.service.create({
-    actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
-    input: { name: 'Retired', instructions: 'No longer supported', modelId: 'test-model', harness: 'pi' },
+    input: { name: 'Retired', instructions: 'No longer supported', modelId: 'test-model', harness: 'claude-code' },
   }), /Unsupported agent harness/)
-  await assert.rejects(fixture.service.update({
-    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy-provider',
-    input: { modelId: 'byo/opencode' },
-  }), /Unsupported connected agent adapter/)
+  await assert.rejects(fixture.service.create({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
+    input: { name: 'Retired', instructions: 'No longer supported', modelId: 'byo/codex' },
+  }), /Choose an Overlay model/)
   await assert.rejects(fixture.service.update({
     actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy',
-    input: { harness: 'hermes' },
+    input: { harness: 'codex' },
   }), /Unsupported agent harness/)
   const renamed = await fixture.service.update({
     actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy',
     input: { name: 'Historical agent' },
   })
-  assert.equal(renamed.harness, 'hermes')
-  assert.equal(renamed.modelId, 'byo/hermes')
+  assert.equal(renamed.name, 'Historical agent')
+  const migrated = await fixture.service.update({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: 'legacy',
+    input: { modelId: 'test-model' },
+  })
+  assert.equal(migrated.harness, 'overlay')
+  assert.equal(migrated.modelId, 'test-model')
 })
 
 test('native create and update remain available while external runtimes are disabled', async () => {
@@ -592,52 +566,6 @@ test('native create and update remain available while external runtimes are disa
   assert.equal(updated.instructions, 'Use Overlay tools carefully.')
 })
 
-test('external create and update cannot bypass the launch policy', async () => {
-  const seed = [
-    defaultAgentFixture(),
-    agentFixture({ id: 'agent-external', harness: 'claude-code', modelId: 'test-model' }),
-  ]
-  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
-  for (const input of [
-    { name: 'Claude', instructions: 'Use the runtime.', modelId: 'test-model', harness: 'claude-code' },
-    { name: 'BYO', instructions: 'Use the runtime.', modelId: 'byo/codex' },
-  ]) {
-    const error = await serviceError(service.create({
-      actorUserId: 'user-creator',
-      workspaceId: WORKSPACE_ID,
-      input,
-    }))
-    assert.equal(error.code, 'forbidden')
-  }
-  for (const input of [{}, { harness: 'overlay' }]) {
-    const error = await serviceError(service.update({
-      actorUserId: 'user-creator',
-      workspaceId: WORKSPACE_ID,
-      agentId: 'agent-external',
-      input,
-    }))
-    assert.equal(error.code, 'forbidden')
-  }
-})
-
-test('injected binding policy rejects legacy overlay-looking records without gating cleanup', async () => {
-  const seed = [agentFixture({ id: 'agent-legacy', harness: 'overlay', modelId: 'test-model' })]
-  const { service, archived } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed, {}, {
-    externalAgentPolicy: async ({ record }) => ({
-      external: record.id === 'agent-legacy',
-      allowed: false,
-    }),
-  })
-  const error = await serviceError(service.update({
-    actorUserId: 'user-creator',
-    workspaceId: WORKSPACE_ID,
-    agentId: 'agent-legacy',
-    input: { name: 'Still external' },
-  }))
-  assert.equal(error.code, 'forbidden')
-  await service.archive({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-legacy' })
-  assert.deepEqual(archived, [{ agentId: 'agent-legacy', workspaceId: WORKSPACE_ID }])
-})
 test('create defaults to workspace visibility and passes creator visibility through', async () => {
   const { service, created } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [defaultAgentFixture()])
   const shared = await service.create({

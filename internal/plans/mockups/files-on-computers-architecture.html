@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Files on Every Computer</title>
+<style>
+  :root {
+    --bg: #f7f7f6;
+    --surface: #ffffff;
+    --subtle: #f1f1ef;
+    --border: #e4e4e1;
+    --text: #1b1b1a;
+    --muted: #6b6b68;
+    --faint: #9a9a96;
+    --line: #8d8d89;
+    --accent: #2f6fde;
+    --accent-soft: #e8f0fd;
+    --code: #2d6a4f;
+    --code-soft: #e6f2ec;
+    --tool: #8a5a12;
+    --tool-soft: #f7efe1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161616; --surface: #1f1f1f; --subtle: #262626; --border: #333331; --text: #ececea; --muted: #a3a3a0;
+      --faint: #7a7a77; --line: #8a8a86; --accent: #7aa7f5; --accent-soft: #1d2a40; --code: #7cc7a0; --code-soft: #1a2c23;
+      --tool: #e0b46a; --tool-soft: #2f2716;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161616; --surface: #1f1f1f; --subtle: #262626; --border: #333331; --text: #ececea; --muted: #a3a3a0;
+    --faint: #7a7a77; --line: #8a8a86; --accent: #7aa7f5; --accent-soft: #1d2a40; --code: #7cc7a0; --code-soft: #1a2c23;
+    --tool: #e0b46a; --tool-soft: #2f2716;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 48px 16px 80px; }
+  h1 { font-family: "Libre Baskerville", Georgia, serif; font-weight: 400; font-size: 30px; line-height: 1.2; margin: 0 0 10px; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; font-weight: 600; margin: 48px 0 12px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--muted); max-width: 720px; font-size: 15px; }
+  .mono, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+  .diagram { margin-top: 28px; padding: 12px; overflow: hidden; }
+  .diagram svg { display: block; width: 100%; height: auto; }
+
+  /* SVG */
+  .lane { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; fill: var(--faint); font-weight: 600; }
+  .box { fill: var(--surface); stroke: var(--border); stroke-width: 1.2; }
+  .group { fill: var(--subtle); stroke: var(--border); stroke-width: 1; }
+  .title { font-size: 14px; font-weight: 600; fill: var(--text); }
+  .sub { font-size: 11.5px; fill: var(--muted); }
+  .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: var(--text); font-weight: 600; }
+  .doc { stroke: var(--accent); }
+  .code { stroke: var(--code); }
+  .tool { stroke: var(--tool); }
+  .flow { fill: none; stroke-width: 1.8; }
+  .dash { stroke-dasharray: 5 4; }
+  .tag { font-size: 11px; font-weight: 600; }
+  .tag.doc { fill: var(--accent); stroke: none; }
+  .tag.code { fill: var(--code); stroke: none; }
+  .tag.tool { fill: var(--tool); stroke: none; }
+  .pill-doc { fill: var(--accent-soft); }
+  .pill-code { fill: var(--code-soft); }
+  .pill-tool { fill: var(--tool-soft); }
+  .hl-doc { stroke: var(--accent); stroke-width: 1.4; fill: var(--surface); }
+  .hl-code { stroke: var(--code); stroke-width: 1.4; fill: var(--surface); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 8px 6px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend i { width: 22px; height: 0; border-top: 2px solid; display: inline-block; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .card h3 { margin: 0 0 6px; font-size: 14px; }
+  .card p { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+  .card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .card li + li { margin-top: 4px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 8px; vertical-align: 1px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .table-wrap { padding: 4px 8px; overflow-x: auto; }
+
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  ol.steps li { counter-increment: s; position: relative; padding: 12px 0 12px 40px; border-bottom: 1px solid var(--border); }
+  ol.steps li:last-child { border-bottom: 0; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 12px; width: 24px; height: 24px; border-radius: 99px;
+    background: var(--subtle); color: var(--muted); font-size: 12px; font-weight: 600; display: grid; place-items: center;
+  }
+  ol.steps b { font-weight: 600; }
+  ol.steps span { color: var(--muted); display: block; font-size: 13px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .two ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .two li + li { margin-top: 6px; }
+  .two li b { color: var(--text); font-weight: 600; }
+  a { color: var(--accent); }
+  @media (max-width: 760px) {
+    .cards, .two { grid-template-columns: 1fr; }
+    h1 { font-size: 24px; }
+    main { padding-top: 28px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Overlay Files on every computer</h1>
+  <p class="lede">Every folder an agent can use, whether it lives in Overlay, Google Drive, GitHub or on one of your Macs, appears in Files and can be picked for a thread. Cloud computers mount Overlay Files at <span class="mono">/overlay</span> and copy code into <span class="mono">/workspace</span>. Every save still goes through Overlay, so search and permissions work the same as in the app.</p>
+
+  <div class="panel diagram">
+    <div class="legend">
+      <span><i style="border-color: var(--accent)"></i>Documents: mounted, every save through Overlay</span>
+      <span><i style="border-color: var(--code)"></i>Code: copied, changes back as a pull request</span>
+      <span><i style="border-color: var(--tool)"></i>Tool calls from the agent</span>
+    </div>
+    <svg viewBox="0 0 1120 720" role="img" aria-labelledby="dg-title dg-desc">
+      <title id="dg-title">How folders reach a cloud computer and a Mac</title>
+      <desc id="dg-desc">Overlay Files and Google Drive are read and written through Overlay's file service and a WebDAV endpoint, which a cloud computer mounts at /overlay. GitHub repositories are cloned into /workspace and changes go back as pull requests. The Overlay harness sends tool calls to the cloud computer and to each of your Macs with the desktop app.</desc>
+      <defs>
+        <marker id="a-doc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" style="fill: var(--accent)"/></marker>
+        <marker id="a-code" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" style="fill: var(--code)"/></marker>
+        <marker id="a-tool" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" style="fill: var(--tool)"/></marker>
+      </defs>
+
+      <!-- Lane: where files live -->
+      <text class="lane" x="24" y="30">Where files live</text>
+      <rect class="box" x="240" y="44" width="210" height="80" rx="12"/>
+      <text class="title" x="258" y="74">Overlay Files</text>
+      <text class="sub" x="258" y="94">Folder tree and notes in Convex,</text>
+      <text class="sub" x="258" y="110">file contents in R2</text>
+
+      <rect class="box" x="490" y="44" width="210" height="80" rx="12"/>
+      <text class="title" x="508" y="74">Google Drive</text>
+      <text class="sub" x="508" y="94">Connected folders, shown in Files.</text>
+      <text class="sub" x="508" y="110">Sign-in stays on the server</text>
+
+      <rect class="box" x="860" y="44" width="236" height="80" rx="12"/>
+      <text class="title" x="878" y="74">GitHub</text>
+      <text class="sub" x="878" y="94">Connected repositories, shown</text>
+      <text class="sub" x="878" y="110">in Files as folders</text>
+
+      <!-- Lane: Overlay server -->
+      <text class="lane" x="24" y="190">Overlay server</text>
+      <rect class="group" x="24" y="202" width="760" height="190" rx="16"/>
+      <rect class="box" x="48" y="250" width="200" height="104" rx="12"/>
+      <text class="title" x="66" y="280">Overlay harness</text>
+      <text class="sub" x="66" y="300">Runs the thread, the model</text>
+      <text class="sub" x="66" y="316">and approvals. Sends tool</text>
+      <text class="sub" x="66" y="332">calls to a computer</text>
+
+      <rect class="box" x="290" y="250" width="220" height="104" rx="12"/>
+      <text class="title" x="308" y="280">File service</text>
+      <text class="sub" x="308" y="300">The one save path: permissions,</text>
+      <text class="sub" x="308" y="316">scope, search, revision checks,</text>
+      <text class="sub" x="308" y="332">“edited by agent”</text>
+
+      <rect class="hl-doc" x="552" y="250" width="208" height="104" rx="12"/>
+      <text class="title" x="570" y="280">WebDAV endpoint</text>
+      <text class="sub" x="570" y="300">Shows the real folder tree as</text>
+      <text class="sub" x="570" y="316">files. Each computer gets its</text>
+      <text class="sub" x="570" y="332">own short-lived access</text>
+
+      <!-- Lane: computers -->
+      <text class="lane" x="24" y="462">Computers</text>
+      <rect class="group" x="36" y="464" width="376" height="226" rx="16"/>
+      <rect class="group" x="30" y="469" width="388" height="226" rx="16"/>
+      <rect class="group" x="24" y="474" width="400" height="226" rx="16"/>
+      <text class="title" x="44" y="504">Your Macs</text>
+      <text class="sub" x="44" y="522">Each Mac with the desktop app is its own computer</text>
+      <rect class="box" x="44" y="538" width="360" height="66" rx="10"/>
+      <text class="path" x="60" y="564">~/code/…</text>
+      <text class="sub" x="60" y="584">Folders you added on that Mac, edited in place</text>
+      <rect class="box" x="44" y="614" width="360" height="66" rx="10"/>
+      <text class="title" x="60" y="640" style="font-size: 13px">Copy to Files</text>
+      <text class="sub" x="60" y="660">Uploads a folder once, so any computer can use it</text>
+
+      <rect class="group" x="456" y="474" width="640" height="226" rx="16"/>
+      <text class="title" x="476" y="504">Cloud computer</text>
+      <text class="sub" x="476" y="522">Linux VM per agent, paused when idle</text>
+      <rect class="hl-doc" x="476" y="538" width="290" height="142" rx="10"/>
+      <text class="path" x="494" y="566">/overlay</text>
+      <text class="sub" x="494" y="588">Workspace files, mounted with rclone</text>
+      <text class="sub" x="494" y="606">Read once, then served from local disk</text>
+      <text class="sub" x="494" y="624">Saves upload a few seconds later</text>
+      <text class="sub" x="494" y="642">Big files come straight from storage</text>
+      <text class="sub" x="494" y="660">through short-lived links</text>
+
+      <rect class="hl-code" x="786" y="538" width="290" height="142" rx="10"/>
+      <text class="path" x="804" y="566">/workspace/northwind-web</text>
+      <text class="sub" x="804" y="588">A real copy on the computer’s disk,</text>
+      <text class="sub" x="804" y="606">so installs, builds and git are fast</text>
+      <text class="sub" x="804" y="624">GitHub: git clone</text>
+      <text class="sub" x="804" y="642">Overlay folder: copied in, and</text>
+      <text class="sub" x="804" y="660">copied back when the work is done</text>
+
+      <!-- Documents: storage and Drive <-> file service <-> WebDAV <-> /overlay -->
+      <path class="flow doc" d="M360 250 L345 124" marker-start="url(#a-doc)" marker-end="url(#a-doc)"/>
+      <path class="flow doc" d="M450 250 L580 124" marker-start="url(#a-doc)" marker-end="url(#a-doc)"/>
+      <path class="flow doc" d="M510 302 L552 302" marker-start="url(#a-doc)" marker-end="url(#a-doc)"/>
+      <path class="flow doc" d="M640 354 L640 538" marker-start="url(#a-doc)" marker-end="url(#a-doc)"/>
+      <rect class="pill-doc" x="652" y="404" width="132" height="22" rx="11"/>
+      <text class="tag doc" x="664" y="419">list · read · save</text>
+
+      <!-- Code: GitHub <-> /workspace -->
+      <path class="flow code" d="M960 124 L960 538" marker-start="url(#a-code)" marker-end="url(#a-code)"/>
+      <rect class="pill-code" x="972" y="290" width="120" height="40" rx="11"/>
+      <text class="tag code" x="984" y="306">clone, then push</text>
+      <text class="tag code" x="984" y="322">a pull request</text>
+
+      <!-- Tools: harness -> Mac, harness -> cloud computer -->
+      <path class="flow tool dash" d="M130 354 L130 464" marker-end="url(#a-tool)"/>
+      <path class="flow tool dash" d="M200 354 L200 436 L520 436 L520 474" marker-end="url(#a-tool)"/>
+      <rect class="pill-tool" x="226" y="425" width="92" height="22" rx="11"/>
+      <text class="tag tool" x="240" y="440">tool calls</text>
+    </svg>
+  </div>
+
+  <h2>Three rules</h2>
+  <div class="cards">
+    <div class="panel card">
+      <h3><span class="dot" style="background: var(--accent)"></span>Mount for documents</h3>
+      <p>Notes, docs, spreadsheets and data appear at <span class="mono">/overlay</span>, so <span class="mono">ls</span>, <span class="mono">cat</span> and <span class="mono">grep</span> just work.</p>
+      <ul>
+        <li>Every save goes through the file service, never straight into storage.</li>
+        <li>A note edited by someone else in the meantime is saved as a copy, never overwritten.</li>
+        <li>Drive folders go through the same path, so Drive sign-ins stay on the server.</li>
+      </ul>
+    </div>
+    <div class="panel card">
+      <h3><span class="dot" style="background: var(--code)"></span>Copy for code</h3>
+      <p>Builds touch thousands of small files, which is slow over a mount. Code is copied to <span class="mono">/workspace</span> instead.</p>
+      <ul>
+        <li>GitHub: clone, work on a branch, open a pull request. Never pushes to <span class="mono">main</span>.</li>
+        <li>Overlay folder: copied in, and copied back when the work is done.</li>
+        <li>One writer at a time, so nothing needs two-way sync.</li>
+      </ul>
+    </div>
+    <div class="panel card">
+      <h3><span class="dot" style="background: var(--tool)"></span>Every Mac is a computer too</h3>
+      <p>The same harness sends the same tools to any of your Macs with the desktop app. You can start and watch a thread from anywhere, including the web.</p>
+      <ul>
+        <li>A Mac folder belongs to one Mac, so a thread using it runs only on that Mac. Offline Macs can’t be picked.</li>
+        <li>Mac folders are edited in place and never uploaded on their own.</li>
+        <li>“Copy to Files” turns a Mac folder into an Overlay folder that cloud agents can use.</li>
+        <li>Later, Finder can mount the same WebDAV endpoint.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Each source</h2>
+  <div class="panel table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>On a cloud computer</th><th>On a Mac</th><th>Changes go back as</th></tr></thead>
+      <tbody>
+        <tr><td>Overlay Files</td><td>Mounted at <span class="mono">/overlay/workspace/…</span></td><td>Read through Overlay (Finder later)</td><td>A save in Files (newest version only today)</td></tr>
+        <tr><td>Google Drive</td><td>Mounted beside Overlay folders</td><td>Read through Overlay</td><td>A save in Drive, with Drive’s version history</td></tr>
+        <tr><td>GitHub</td><td>Cloned to <span class="mono">/workspace/&lt;repo&gt;</span></td><td>Your own clone</td><td>A branch and a pull request</td></tr>
+        <tr><td>Mac folder</td><td>Not available until copied to Files</td><td>Edited in place, on the Mac it lives on</td><td>The files on your Mac</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Why not mount the storage bucket directly</h2>
+  <div class="two">
+    <div class="panel">
+      <ul>
+        <li><b>The names would be wrong.</b> Storage holds files under random keys. Folder names and the tree live in Convex, and most notes aren’t in storage at all.</li>
+        <li><b>It would skip what Files does on save:</b> search, scope, permissions, note checks and agent attribution.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <ul>
+        <li><b>It can’t be scoped.</b> Keys aren’t grouped by person or workspace, so a computer would see everyone’s files or none.</li>
+        <li><b>It isn’t a real disk.</b> No atomic renames, slow listings, and no safety when two writers touch one file.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Build order</h2>
+  <div class="panel">
+    <ol class="steps">
+      <li><b>Check that a cloud computer can mount</b><span>Confirm FUSE on a preview Boat computer. If it isn’t allowed, copy in and out everywhere instead.</span></li>
+      <li><b>Read-only WebDAV</b><span>Folder listings and downloads from the file service with per-computer access, then <span class="mono">rclone mount</span> on a computer. Measure <span class="mono">ls</span>, <span class="mono">cat</span> and <span class="mono">grep</span> on about 1,000 files.</span></li>
+      <li><b>Saves</b><span>Through the normal save path, with the note conflict rule and “edited by agent”.</span></li>
+      <li><b>A thread works in a folder</b><span>The folder picker under the composer. The computer mounts <span class="mono">/overlay</span> and makes the <span class="mono">/workspace</span> copy.</span></li>
+      <li><b>Connected sources</b><span>Drive folders through the same endpoint, GitHub repositories through git, and “Copy to Files” from any Mac.</span></li>
+    </ol>
+  </div>
+
+  <h2>Open decisions</h2>
+  <div class="two">
+    <div class="panel"><ul><li><b>What an agent’s computer mounts.</b> Proposed: workspace files only. Your personal files stay off it, matching today’s rule for shared threads.</li></ul></div>
+    <div class="panel"><ul><li><b>Whether agents can save into <span class="mono">/overlay</span> by default.</b> Proposed: yes. Agent edits are marked, and a file someone else changed meanwhile is saved as a copy. Files has no version history yet; adding it would make this safer.</li></ul></div>
+  </div>
+
+  <p style="margin-top: 32px; color: var(--muted); font-size: 13px;">See it in the app: <a href="files-on-computers.html">files-on-computers.html</a>.</p>
+</main>
+</body>
+</html>

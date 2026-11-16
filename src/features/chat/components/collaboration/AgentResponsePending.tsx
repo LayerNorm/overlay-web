@@ -9,8 +9,7 @@ export function AgentResponsePending({ message }: { message: RoomMessageView }) 
   const [started, setStarted] = useState(hasText)
   if (hasText && !started) setStarted(true)
   if (started || hasText || !message.streaming || message.generationError
-    || message.nativeApproval || message.nativeInput || message.remoteRequest
-    || ['cancelled', 'cancelling', 'failed', 'completed', 'recoverable'].includes(message.remoteRun?.state ?? '')) return null
+    || message.nativeApproval || message.nativeInput) return null
   return <div className="agent-response-pending" role="status" aria-label={`${message.authorName} is preparing a response`}>
     <span /><span /><span />
   </div>

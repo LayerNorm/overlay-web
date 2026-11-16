@@ -67,8 +67,6 @@ async function main() {
     ...DEFAULT_OVERLAY_CAPABILITIES,
     work: true,
     computers: true,
-    connectedAgents: true,
-    externalAgents: true,
     analytics: false,
     errorReporting: false,
   }

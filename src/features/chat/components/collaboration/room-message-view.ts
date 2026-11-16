@@ -1,10 +1,16 @@
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { buildAssistantVisualSequence, splitUserDisplayText, errorLabel, persistedGenerationErrorMessage } from '@overlay/chat-core'
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
-import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import { NATIVE_AGENT_INPUT_PART, readNativeAgentInput } from '@/shared/agents/native-agent-input'
 import { readNativeAgentError } from '@/shared/agents/native-agent-error'
+import { FOLDER_SAVES_PART, readFolderSaves } from '@/shared/agents/folder-saves'
+
+/** What the run saved back to Files, shown as a card under the reply (internal/develop/thread-folders.md). */
+function folderSavesOf(message: { parts?: RoomMessagePart[] }): Pick<RoomMessageView, 'folderSaves'> {
+  const data = readFolderSaves(message.parts?.find((part) => part.type === FOLDER_SAVES_PART)?.data)
+  return data ? { folderSaves: data } : {}
+}
 
 function nativeInputRequest(message: RoomMessageRecord): RoomMessageView['nativeInput'] {
   if (message.authorKind !== 'agent' || message.status !== 'generating') return undefined
@@ -31,76 +37,6 @@ function askedBy(message: { authorKind?: string; parts?: RoomMessagePart[] }): R
     hop: data.hop,
     ...(typeof data.parentConversationId === 'string' && data.parentConversationId ? { parentConversationId: data.parentConversationId } : {}),
   }
-}
-
-function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteQueue'] {
-  const part = parts?.find((candidate) => candidate.type === 'data-remote-agent-status')
-  const data = part?.data
-  if (!data || data.state !== 'waiting' || typeof data.runId !== 'string' || typeof data.environmentName !== 'string') {
-    return undefined
-  }
-  return {
-    runId: data.runId,
-    environmentName: data.environmentName,
-    queueExpiresAt: typeof data.queueExpiresAt === 'number' ? data.queueExpiresAt : 0,
-  }
-}
-
-function remoteRequest(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteRequest'] {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-request' && ['pending', 'decision_pending'].includes(String(part.data?.state)))?.data
-  if (!data || !['pending', 'decision_pending'].includes(String(data.state)) || typeof data.runId !== 'string' || typeof data.requestKey !== 'string') return undefined
-  return {
-    runId: data.runId, requestKey: data.requestKey,
-    ...(data.state === 'decision_pending' ? { pendingDelivery: true } : {}),
-    ...(typeof data.expiresAt === 'number' ? { expiresAt: data.expiresAt } : {}),
-    ...(data.machineCostContinues === true ? { machineCostContinues: true } : {}),
-    kind: data.kind === 'elicitation' ? 'elicitation' : 'permission',
-    prompt: typeof data.prompt === 'string' ? data.prompt : 'Agent request',
-    options: Array.isArray(data.options) ? data.options.flatMap((option) => {
-      if (!option || typeof option !== 'object') return []
-      const record = option as Record<string, unknown>
-      return typeof record.id === 'string' ? [{ id: record.id, label: typeof record.label === 'string' ? record.label : record.id }] : []
-    }) : [],
-    requestedSchema: data.requestedSchema && typeof data.requestedSchema === 'object'
-      ? data.requestedSchema as Record<string, unknown> : undefined,
-  }
-}
-
-function remoteRunStatus(parts: RoomMessagePart[] | undefined) {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-status')?.data
-  if (!data || typeof data.runId !== 'string' || typeof data.state !== 'string') return undefined
-  return { runId: data.runId, state: data.state,
-    ...(data.recoveryOutcome === 'restored' ? {recovered: true} : {}),
-    ...(typeof data.hardDeadlineAt === 'number' && Number.isFinite(data.hardDeadlineAt) ? { hardDeadlineAt: data.hardDeadlineAt } : {}),
-    retryable: data.retryable === true, retryClass: typeof data.retryClass === 'string' ? data.retryClass : undefined }
-}
-
-function remoteDriveStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteDrive'] {
-  const data = parts?.find(part => part.type === 'data-remote-agent-drive')?.data
-  if (!data) return undefined
-  // Data parts add a stable projection key; the wire status itself is strict.
-  const { key: _key, ...status } = data
-  void _key
-  const parsed = driveSyncStatusSchema.safeParse(status)
-  return parsed.success ? parsed.data : undefined
-}
-
-export type RemoteAgentCommand = { name: string; description?: string; inputHint?: string }
-
-/** Slash commands the connected agent advertised for its session, if any. */
-export function remoteAgentCommands(parts: RoomMessagePart[] | undefined): RemoteAgentCommand[] {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-commands')?.data
-  const commands = data && Array.isArray(data.commands) ? data.commands : []
-  return commands.flatMap((command) => {
-    if (!command || typeof command !== 'object') return []
-    const record = command as Record<string, unknown>
-    if (typeof record.name !== 'string' || record.name.trim().length === 0) return []
-    return [{
-      name: record.name,
-      ...(typeof record.description === 'string' && record.description ? { description: record.description } : {}),
-      ...(typeof record.inputHint === 'string' && record.inputHint ? { inputHint: record.inputHint } : {}),
-    }]
-  })
 }
 
 export type RoomMessageRecord = {
@@ -214,16 +150,6 @@ function stripAttachmentSummary(text: string): string {
   return text.replace(ATTACHMENT_SUMMARY, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/**
- * While the agent waits for the person's answer to a permission or input card, what it produced after asking is not shown:
- * the transcript stops at the card and picks up in order once it is answered. Without this, output from the rest of the turn
- * kept appearing above the card, as though the agent had not stopped to ask.
- */
-export function partsUntilPendingRequest(parts: RoomMessagePart[] | undefined): RoomMessagePart[] | undefined {
-  const pending = parts?.findIndex((part) => part.type === 'data-remote-agent-request' && part.data?.state === 'pending') ?? -1
-  return parts && pending >= 0 ? parts.slice(0, pending) : parts
-}
-
 function displayParts(parts: RoomMessagePart[] | undefined): RoomMessagePart[] | undefined {
   if (!parts?.length) return parts
   return parts
@@ -289,22 +215,9 @@ export function toRoomMessageView({
   const mine = isOwnRoomMessage(message, currentPrincipalId)
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const { bodyText, docNames } = splitUserDisplayText(stripAttachmentSummary(message.content ?? ''))
-  const remoteQueue = remoteQueueStatus(message.parts)
-  const remoteRun = remoteRunStatus(message.parts)
   const blocks: AssistantVisualBlock[] = (() => {
     if (!isAgent) return []
-    // While a connected agent's computer wakes up the row reads like a tool call that is running ("Connecting to
-    // computer", shimmering) instead of the stored "Waiting for <name>" text.
-    if (remoteQueue) return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }]
-    const sequence = buildAssistantVisualSequence(displayParts(partsUntilPendingRequest(message.parts)))
-    const environmentName = message.parts?.find(part => part.type === 'data-remote-agent-status')?.data?.environmentName
-    const waitingText = typeof environmentName === 'string' ? `Waiting for ${environmentName}` : undefined
-    const onlyWaitingText = waitingText && (sequence.length === 0 ? bodyText === waitingText
-      : sequence.length === 1 && sequence[0]?.kind === 'text' && sequence[0].text === waitingText)
-    if (onlyWaitingText && (remoteRun?.state === 'recoverable' || remoteRun?.state === 'recovering')) {
-      return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer',
-        state: remoteRun.state === 'recoverable' ? 'output-error' : 'input-available' }]
-    }
+    const sequence = buildAssistantVisualSequence(displayParts(message.parts))
     if (sequence.length > 0) return sequence
     return bodyText ? [{ kind: 'text', text: bodyText }] : []
   })()
@@ -335,19 +248,16 @@ export function toRoomMessageView({
     documentNames: docNames,
     mentions,
     askedBy: askedBy(message),
-    remoteQueue,
+    ...(isAgent ? folderSavesOf(message) : {}),
     nativeApproval: message.authorKind === 'agent' && message.status === 'generating'
       ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
       : undefined,
     nativeInput: nativeInputRequest(message),
     plan: message.agentPlan,
     planPhase: nativeInputRequest(message) ? 'waiting' : message.status === 'generating' ? 'active' : 'ended',
-    generationError: isAgent && message.status === 'error' && !remoteRun
+    generationError: isAgent && message.status === 'error'
       ? readNativeAgentError(message.parts)?.message ?? errorLabel(new Error(persistedGenerationErrorMessage(message.content))) ?? undefined
       : undefined,
-    remoteRequest: remoteRequest(message.parts),
-    remoteRun,
-    remoteDrive: remoteDriveStatus(message.parts),
     // Assistant rows are inserted with status 'generating' at turn start and
     // patched through settle, so createdAt→updatedAt brackets the run.
     workedDurationMs: isAgent && message.updatedAt && message.updatedAt > message.createdAt

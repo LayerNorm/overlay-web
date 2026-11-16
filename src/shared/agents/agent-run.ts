@@ -1,7 +1,4 @@
 import type { HarnessDiagnostic } from '@overlay/agent-runtime/harness-diagnostic'
-import type { RemoteRunLiveness } from './remote-run-liveness'
-import type { RemoteRunState } from './remote-run'
-import type { RemoteRunStreamStats } from './remote-run-stream-stats'
 import type { HarnessAuthorizationPause } from '@overlay/agent-runtime/harness-state'
 
 /**
@@ -20,6 +17,7 @@ export type AgentRunMode = (typeof AGENT_RUN_MODES)[number]
  */
 export const ROOM_AGENT_RUN_LEASE_MS = 30 * 60 * 1_000
 
+/** `remote` remains only on historical third-party agent runs, which no longer start. */
 export const AGENT_RUN_RUNNERS = ['tool_loop', 'workflow', 'remote'] as const
 export type AgentRunRunner = (typeof AGENT_RUN_RUNNERS)[number]
 
@@ -85,8 +83,6 @@ export type AgentRunMetrics = {
 }
 
 export type AgentRun = {
-  /** Only remote runs select the versioned lifecycle; personal Work mode is unchanged. */
-  remoteLifecycle?: RemoteRunState
   id: string
   conversationId: string
   turnId: string
@@ -98,9 +94,6 @@ export type AgentRun = {
   agentPrincipalId?: string
   /** The human who requested delegated work; distinct from the agent author. */
   initiatorPrincipalId?: string
-  environmentId?: string
-  bindingId?: string
-  remoteSessionId?: string
   mode: AgentRunMode
   runner: AgentRunRunner
   executionEngine?: 'overlay_harness'
@@ -119,9 +112,6 @@ export type AgentRun = {
   plan?: Array<{ id: string; title: string; status: string }>
   authorizationPause?: HarnessAuthorizationPause
   metrics?: AgentRunMetrics
-  /** Connected-agent transport counters; remote runs only. */
-  streamStats?: RemoteRunStreamStats
-  liveness?: RemoteRunLiveness
   createdAt: number
   updatedAt: number
 }

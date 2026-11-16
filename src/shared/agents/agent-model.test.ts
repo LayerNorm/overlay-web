@@ -1,19 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { byoModelId, codexModelId, parseByoModelId, parseCodexModel } from './agent-model'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { isRetiredHarnessModelId, nativeAgentModelId } from './agent-model'
 
-test('a connected agent keeps its model after the byo sentinel', () => {
-  assert.equal(byoModelId('codex'), 'byo/codex')
-  assert.equal(byoModelId('codex', ''), 'byo/codex')
-  assert.equal(byoModelId('codex', 'gpt-6-sol[high]'), 'byo/codex#gpt-6-sol[high]')
-  assert.deepEqual(parseByoModelId('byo/codex'), { adapterId: 'codex', model: null })
-  assert.deepEqual(parseByoModelId('byo/claude-code#opus[1m]'), { adapterId: 'claude-code', model: 'opus[1m]' })
-  assert.equal(parseByoModelId('anthropic/claude-sonnet'), null)
+test('agents saved with a retired third-party harness model run on the default model', () => {
+  assert.equal(isRetiredHarnessModelId('byo/codex#gpt-5'), true)
+  assert.equal(nativeAgentModelId('byo/codex#gpt-5'), DEFAULT_MODEL_ID)
+  assert.equal(nativeAgentModelId('byo/claude-code'), DEFAULT_MODEL_ID)
 })
 
-test('a Codex model id carries its reasoning effort', () => {
-  assert.equal(codexModelId('gpt-6-sol', 'high'), 'gpt-6-sol[high]')
-  assert.deepEqual(parseCodexModel('gpt-6-sol[high]'), { slug: 'gpt-6-sol', effort: 'high' })
-  assert.deepEqual(parseCodexModel('gpt-5.5'), { slug: 'gpt-5.5', effort: 'medium' })
-  assert.equal(parseCodexModel(null), null)
+test('ordinary model ids are kept', () => {
+  assert.equal(isRetiredHarnessModelId('anthropic/claude-sonnet-4.6'), false)
+  assert.equal(nativeAgentModelId('anthropic/claude-sonnet-4.6'), 'anthropic/claude-sonnet-4.6')
 })

@@ -57,7 +57,15 @@ the retained focus-yield helper. Transparent corners and display-change clamping
 are native window behavior; no full-screen renderer mask is needed.
 
 Settings → Desktop (Lucide `Laptop` in the settings sidebar) groups its controls into Dictation,
-Local models, Floating panels, Agent host and About sections, matching the Shortcuts page layout.
+Local models, Floating panels, This Mac, Agent host and About sections, matching the Shortcuts page layout.
+This Mac (bridge capability `localComputer`, macOS only) connects the Mac as an Overlay Computer in one
+click: it creates an enrollment code, starts the embedded host with `agentHost.start({localTools: true})`
+and no harness, matches the phrase the host printed (`localComputer.status`) to its pending enrollment and
+approves the folders the user entered. `localComputer.requestPermission` shows the macOS prompt and opens the
+Screen Recording or Accessibility pane; the host's access is this app's permission. "Keep available"
+(`localComputer.setKeepAvailable`) restarts the saved local-tools host from its `config.json` at launch once
+the session is verified; sign-out turns it off and stops the host. Unpackaged builds may set
+`OVERLAY_DESKTOP_DEV_HOST_PACKAGE` to a packed host tarball for QA; packaged builds always use the pin.
 Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
 press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
 The Agent host row shows its state and keeps the harness, connection code and Start controls in the

@@ -13,7 +13,6 @@ import {
   ListEnd,
   MousePointerClick,
   Plus,
-  Slash,
   Video,
   X,
   type LucideIcon,
@@ -24,8 +23,6 @@ import { DelayedTooltip } from './DelayedTooltip'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { markComposerReady } from '../lib/realtime-baseline'
 import { MentionInput } from './chat-interface/MentionInput'
-import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
-import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
 import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
@@ -139,7 +136,7 @@ export function ChatComposer(props: ChatComposerProps) {
           ) : (
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
-          {viewProps.mode === 'chat' ? (
+          {viewProps.afterComposerContent ? viewProps.afterComposerContent : viewProps.mode === 'chat' ? (
             <p className="mt-2 text-center text-[11px] text-(--muted-light)">
               Overlay can make mistakes. Check important info.
             </p>
@@ -156,11 +153,9 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
   }, [props.isSendBlocked])
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
-  const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)
 
   const handleComposerKeyDown = (event: ReactKeyboardEvent) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return
-    if (slash.handleKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       if (props.queue?.running) {
@@ -177,13 +172,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
     <PromptInput>
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <PromptInputBody>
-        {slash.open ? (
-          <AgentSlashMenu
-            commands={slash.commands}
-            highlightedIndex={slash.index}
-            onSelect={slash.select}
-          />
-        ) : null}
         <AttachmentPreviewTray {...props} />
         {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
@@ -245,7 +233,6 @@ type ComposerControlsProps = ComposerViewProps & {
 
 function ComposerControls(props: ComposerControlsProps) {
   const mentionTooltip = mentionReferenceLabel(props)
-  const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <PromptInputFooter>
       {props.textOnly ? null : <AttachMenu {...props} />}
@@ -254,19 +241,6 @@ function ComposerControls(props: ComposerControlsProps) {
           <AtSign size={16} strokeWidth={1.75} />
         </PromptInputButton>
       </DelayedTooltip>}
-      {hasAgentCommands ? (
-        <DelayedTooltip label="Agent slash commands" side="top">
-          <PromptInputButton
-            onClick={() => {
-              if (!props.hasComposerText) props.onInputChange('/')
-              props.textareaRef.current?.focus()
-            }}
-            aria-label="Agent slash commands"
-          >
-            <Slash size={16} strokeWidth={1.75} />
-          </PromptInputButton>
-        </DelayedTooltip>
-      ) : null}
       <PromptInputTools>
         {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">

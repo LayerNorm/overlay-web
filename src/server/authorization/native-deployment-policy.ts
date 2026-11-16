@@ -6,7 +6,6 @@ import { loadOverlayConfig, type LoadOverlayConfigOptions } from '@/server/confi
 import { deploymentEnv } from '@/server/env/deployment-env'
 import { resolveConvexUrl } from '@/server/database/convex-url'
 import { withObservabilityProviderCapabilities } from '@/server/capabilities'
-import { connectedAgentRolloutConfigFromEnv, parseConnectedAgentRolloutStage } from '@/shared/agents/connected-agent-rollout'
 import {
   NATIVE_POLICY_RESPONSE_MAX_BYTES,
   nativePolicySnapshotSchema,
@@ -19,16 +18,12 @@ export async function resolveNativeDeploymentPolicy(options: LoadOverlayConfigOp
   const backend = resolveConvexUrl(env)
   if (!backend.url || backend.invalid) throw new Error('NATIVE_POLICY_UNAVAILABLE')
   const capabilities = withObservabilityProviderCapabilities(deriveOverlayCapabilities(config), config)
-  const rollout = connectedAgentRolloutConfigFromEnv(env)
   const policy = {
     version: 1 as const,
     backendUrl: backend.url,
     features: { ...capabilities, workspaceHandles: env.OVERLAY_WORKSPACE_HANDLE_WRITES_ENABLED === 'true' },
-    rollout: {
-      stage: parseConnectedAgentRolloutStage(rollout.stage),
-      internalWorkspaceIds: rollout.internalWorkspaceIds ?? '',
-      invitedWorkspaceIds: rollout.invitedWorkspaceIds ?? '',
-    },
+    // The third-party agent rollout was removed; the field stays fixed until the snapshot shape drops it.
+    rollout: { stage: 'off' as const, internalWorkspaceIds: '', invitedWorkspaceIds: '' },
   }
   return nativePolicySnapshotSchema.parse({
     ...policy,

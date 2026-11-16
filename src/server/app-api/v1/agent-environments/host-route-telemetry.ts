@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { withObservabilityContext } from '@/server/observability/context'
 import { logger } from '@/server/observability/logger'
 
-export type AgentHostRoute = 'commands.poll' | 'events.upload' | 'commands.ack' | 'heartbeat' | 'drive'
+export type AgentHostRoute = 'commands.poll' | 'events.upload' | 'commands.ack' | 'heartbeat' | 'drive' | 'local-tools.poll' | 'local-tools.result'
+
+/** Long-poll routes wait on purpose; their duration is not a slowness signal. */
+const LONG_POLL_ROUTES: ReadonlySet<AgentHostRoute> = new Set(['local-tools.poll'])
 
 /** Requests slower than this are logged even when they succeed. */
 export const SLOW_AGENT_HOST_REQUEST_MS = 3_000
@@ -31,7 +34,7 @@ export async function withAgentHostRouteTelemetry(
       logger.error('[agent-host] request failed', { hostRoute: route, status: response.status, durationMs })
     } else if (response.status >= 400) {
       logger.warn('[agent-host] request rejected', { hostRoute: route, status: response.status, durationMs })
-    } else if (durationMs >= SLOW_AGENT_HOST_REQUEST_MS) {
+    } else if (durationMs >= SLOW_AGENT_HOST_REQUEST_MS && !LONG_POLL_ROUTES.has(route)) {
       logger.warn('[agent-host] slow request', { hostRoute: route, status: response.status, durationMs })
     }
     return response

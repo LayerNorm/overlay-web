@@ -66,6 +66,7 @@ async function freshTooling(call: NativeToolCall) {
     entitlements: authority.entitlements, paid: authority.paid,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
+    ...(call.context.work ? { work: call.context.work } : {}),
     idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText,
     memoryEnabled: call.context.memoryEnabled, requestFingerprint: call.context.requestFingerprint,
     turnId: call.access.turnId, workspaceId: call.access.workspaceId,
@@ -330,9 +331,6 @@ export async function dispatchNativeHarnessAgentRequest(
     workspaceId: string
   }) => {
     const invocations = await resolveWorkspaceAgentInvocations(args)
-    if (invocations.some(invocation => invocation.externalAgent || invocation.remoteTarget || invocation.harness !== 'overlay')) {
-      throw new Error("External agents can't be asked from this run yet.")
-    }
     const started: Array<{ agentId: string; turnId: string }> = []
     for (const invocation of invocations) {
       const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({
