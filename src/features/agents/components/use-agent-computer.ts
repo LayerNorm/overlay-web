@@ -10,14 +10,12 @@ import { COMPUTER_TOOL_IDS, enabledAgentToolGroupIds } from '@/shared/agents/too
 import { toast } from '@overlay/ui/primitives'
 import { changeAgentComputerControl } from '../lib/agent-computer-control'
 import { AgentComputerCoordinator } from './agent-computer-coordinator'
-import type { AgentType } from './AgentEditorForm'
 
 export function useAgentComputer({
 
   computersAvailable,
   activeWorkspaceId,
   agent,
-  agentType,
   enabledToolGroups,
   setEnabledToolGroups,
   markDirty,
@@ -26,7 +24,6 @@ export function useAgentComputer({
   computersAvailable: boolean
   activeWorkspaceId: string | null
   agent: WorkspaceAgentDirectoryItem | null
-  agentType: AgentType
   enabledToolGroups: Set<string>
   setEnabledToolGroups: Dispatch<SetStateAction<Set<string>>>
   markDirty(): void
@@ -47,7 +44,7 @@ export function useAgentComputer({
   const [loadedFor, setLoadedFor] = useState<string | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const initialLoading = Boolean(
-    computersAvailable && activeWorkspaceId && agent && agentType === 'overlay' && loadedFor !== scopeKey,
+    computersAvailable && activeWorkspaceId && agent && loadedFor !== scopeKey,
   )
   const currentAgentComputer = agentComputer?.workspaceId === activeWorkspaceId
     && agentComputer.ownerType === 'agent' && agentComputer.ownerId === agent?.id ? agentComputer : null
@@ -61,11 +58,11 @@ export function useAgentComputer({
     return () => coordinator.invalidate()
   }, [coordinator, scopeKey])
 
-  // This agent's computer, live (edit mode, Overlay agents, capability on): lifecycle and control changes from any
+  // This agent's computer, live (edit mode, capability on): lifecycle and control changes from any
   // tab, the sidebar or the provider arrive without polling. A bound machine implies the Computer tool group: on the
   // first read it is forced on so the merged toggle never shows "off" above a live machine.
   const liveComputers = useLiveComputers()
-  const active = Boolean(computersAvailable && activeWorkspaceId && agent && agentType === 'overlay')
+  const active = Boolean(computersAvailable && activeWorkspaceId && agent)
   useEffect(() => {
     if (!active || !agent || liveComputers === undefined || !coordinator.acceptSnapshot(scopeKey)) return
     const firstRead = loadedFor !== scopeKey

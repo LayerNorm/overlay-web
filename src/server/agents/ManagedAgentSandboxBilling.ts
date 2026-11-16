@@ -14,7 +14,6 @@ import {
 import type {
   ConnectedAgentRepository,
   ConnectedAgentSandboxLeasePayer,
-  RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import { E2B_COMPUTE_PRICE, meterExecutionUsage, type ExecutionMeterCursor } from './sandbox-execution-accounting'
@@ -196,12 +195,10 @@ export class ManagedAgentSandboxBilling {
     return { outcome: 'checked' }
   }
 
-  /** True when a run on the lease's environment has not finished. A failed lookup counts as running (keep it up, retry). */
+  /** Environment leases served third-party agent runs, which no longer start; only a recorded active window keeps one up. */
   private async environmentHasActiveRuns(lease: AgentSandboxLease): Promise<boolean> {
     if (!lease.environmentId) return false
-    const repository = this.dependencies.repository
-    if (typeof repository.environmentHasActiveRuns !== 'function') return finiteNumber(lease.usage?.activeUntil) > this.now()
-    return await repository.environmentHasActiveRuns({ environmentId: lease.environmentId }).catch((_error) => true)
+    return finiteNumber(lease.usage?.activeUntil) > this.now()
   }
 
   /** Nothing has happened for the whole idle window (plus `graceMs`) and no run is going. */
@@ -476,40 +473,6 @@ export class ManagedAgentSandboxBilling {
       ...(result.budgetLow ? { budgetLow: true } : {}),
       ...(result.spendLimitReached ? { spendLimitReached: true } : {}),
     }
-  }
-
-  /** A run ended: its final meter tick charges observed usage since the last tick, then the idle window starts. */
-  async settle(settlement: RemoteAgentUsageSettlement): Promise<void> {
-    const billing = settlement.sandboxBilling
-    if (!billing || !settlement.userId) return
-    const lease = await this.dependencies.repository.getSandboxLease({
-      workspaceId: settlement.workspaceId,
-      leaseId: billing.leaseId,
-    }).catch((_error) => null)
-    // A lease that was never metered adopts its counters on its first tick; there is nothing to settle yet.
-    if (!lease || !hasMeterCursor(lease.usage)) return
-    // A run just ended: bill it, but do not idle-stop here (the idle window starts now, via the timer set below).
-    const tick = await this.meterLeaseWithRetry(lease, { idleStop: 'none' })
-    const stop = await this.budgetStopReason(lease, tick)
-    if (stop) await this.killLease(lease, stop).catch((_error) => undefined)
-    await this.dependencies.repository.patchSandboxLeaseUsage({
-      workspaceId: settlement.workspaceId,
-      leaseId: billing.leaseId,
-      patch: {
-        lastActiveAt: this.now(),
-        activeUntil: 0,
-        lastSettlement: {
-          agentId: settlement.agentId,
-          environmentId: settlement.environmentId,
-          runId: settlement.runId,
-          providerCostUsd: tick.applied ? tick.chargedUsd ?? 0 : 0,
-          settledAt: this.now(),
-        },
-      },
-      now: this.now(),
-      // The run is over: the machine stops one idle window from now unless something else starts first.
-      idleCheckInMs: idleWindowMs(lease.usage),
-    })
   }
 
   /**
@@ -892,9 +855,6 @@ function sandboxLeasePayer(
   }
 }
 
-function hasMeterCursor(usage: Record<string, unknown> | undefined) {
-  return Boolean(usage && usage.meteredUsage !== undefined && typeof usage.meteredUsage === 'object')
-}
 
 function usageDelta(baseline: Record<string, unknown>, current: SandboxUsage, fallbackWallTimeMs: number): SandboxUsage {
   const baselineWall = finiteNumber(baseline.wallTimeMs)

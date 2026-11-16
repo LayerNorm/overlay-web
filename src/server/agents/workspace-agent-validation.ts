@@ -4,8 +4,7 @@ import type {
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { WORKSPACE_AGENT_CREATURE_SHAPES, WORKSPACE_AGENT_REASONING_LEVELS } from '@overlay/workspace-contracts'
-import { parseByoModelId } from '@/shared/agents/agent-model'
-import { isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
+import { isRetiredHarnessModelId } from '@/shared/agents/agent-model'
 
 export class WorkspaceAgentServiceError extends Error {
   constructor(
@@ -49,7 +48,8 @@ export function workspaceAgentUpdateModelFields(
   }
 }
 
-const SUPPORTED_WORKSPACE_AGENT_HARNESSES = ['overlay', 'claude-code', 'codex'] as const
+/** Overlay runs only its own harness. Records saved for a removed third-party harness keep reading as `overlay`. */
+const SUPPORTED_WORKSPACE_AGENT_HARNESSES = ['overlay'] as const
 type SupportedWorkspaceAgentHarness = (typeof SUPPORTED_WORKSPACE_AGENT_HARNESSES)[number]
 
 export function assertSupportedWorkspaceAgentHarness(value: string): asserts value is SupportedWorkspaceAgentHarness {
@@ -60,9 +60,8 @@ export function assertSupportedWorkspaceAgentHarness(value: string): asserts val
 
 export function assertSupportedAgentConfiguration(modelId: string, harness: string): void {
   assertSupportedWorkspaceAgentHarness(harness)
-  const byo = parseByoModelId(modelId)
-  if (byo && !isSupportedAgentProviderId(byo.adapterId)) {
-    throw new WorkspaceAgentServiceError('validation', 'Unsupported connected agent adapter')
+  if (isRetiredHarnessModelId(modelId)) {
+    throw new WorkspaceAgentServiceError('validation', 'Choose an Overlay model for this agent')
   }
 }
 

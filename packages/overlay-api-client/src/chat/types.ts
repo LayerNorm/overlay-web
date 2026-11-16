@@ -1,4 +1,3 @@
-import type { RemoteRunLiveness } from '@overlay/workspace-contracts'
 import type { ConversationMessage, ConversationSummary } from '@overlay/app-core'
 import type { PaginationQuery } from '../shared/types'
 import type { HarnessAuthorizationPause } from '@overlay/agent-runtime/harness-state'
@@ -86,7 +85,6 @@ export type AgentRunResource = {
   assistantMessageId: string
   mode: 'chat' | 'work' | 'room'
   runner: 'tool_loop' | 'workflow' | 'remote'
-  liveness?: RemoteRunLiveness
   status: 'queued' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'failed' | 'cancelled'
   variantIndex?: number
   workflowRunId?: string

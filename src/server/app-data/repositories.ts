@@ -63,14 +63,10 @@ import {
   type WorkspaceConnectorRepository,
 } from '@/server/integrations'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
-import type { AgentProfileRepository } from '@/server/agents/profiles/AgentProfileRepository'
-import { ConvexAgentProfileRepository } from '@/server/agents/profiles/ConvexAgentProfileRepository'
 import type { McpGrantRepository } from '@/server/mcp/McpGrantRepository'
 import { ConvexMcpGrantRepository } from '@/server/mcp/ConvexMcpGrantRepository'
 import type { CloudAgentProvisionRepository } from '@/server/agents/cloud/CloudAgentProvisionRepository'
 import { ConvexCloudAgentProvisionRepository } from '@/server/agents/cloud/ConvexCloudAgentProvisionRepository'
-import type { AgentProviderAccountRepository } from '@/server/agents/provider-accounts/AgentProviderAccountRepository'
-import { ConvexAgentProviderAccountRepository } from '@/server/agents/provider-accounts/ConvexAgentProviderAccountRepository'
 import { ConvexConnectedAgentRepository } from '@/server/agents/ConvexConnectedAgentRepository'
 import {
   ConvexProviderConnectionRepository,
@@ -84,10 +80,8 @@ import type { WorkRepository } from '@/server/work/WorkRepository'
 import { ConvexWorkRepository } from '@/server/work/ConvexWorkRepository'
 
 export interface AppDataRepositories {
-  agentProviderAccounts: AgentProviderAccountRepository
   cloudAgentProvisions: CloudAgentProvisionRepository
   mcpGrants: McpGrantRepository
-  agentProfiles: AgentProfileRepository
   apiKeys: ApiKeyRepository
   audit: AuditRepository
   authorization: AuthorizationRepositories
@@ -125,10 +119,8 @@ export interface AppDataContext {
 export function createAppDataContext(): AppDataContext {
   return {
     repositories: {
-      agentProviderAccounts: new ConvexAgentProviderAccountRepository(),
       cloudAgentProvisions: new ConvexCloudAgentProvisionRepository(),
       mcpGrants: new ConvexMcpGrantRepository(),
-      agentProfiles: new ConvexAgentProfileRepository(),
       apiKeys: new ConvexApiKeyRepository(),
       audit: new ConvexAuditRepository(),
       authorization: createConvexAuthorizationRepositories(),

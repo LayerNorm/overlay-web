@@ -2,7 +2,7 @@ import type { InlineNavItem } from '../types'
 
 const SETTINGS_GROUPS: ReadonlyArray<{ label: string; ids: readonly string[] }> = [
   { label: 'Personal', ids: ['general', 'customization', 'shortcuts', 'memories', 'archived'] },
-  { label: 'Workspace', ids: ['profile', 'workspace', 'agent-accounts', 'agent-environments', 'computers', 'models', 'providers'] },
+  { label: 'Workspace', ids: ['profile', 'workspace', 'agent-accounts', 'computers', 'models', 'providers'] },
   { label: 'Integrations', ids: ['connected-apps', 'webhooks'] },
   { label: 'Support', ids: ['contact'] },
 ]
@@ -18,8 +18,7 @@ const SETTINGS_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   providers: ['api key', 'byok', 'openai', 'anthropic', 'openrouter'],
   models: ['model catalog', 'default model', 'llm'],
   webhooks: ['events', 'callbacks', 'http'],
-  'agent-environments': ['environments', 'sandbox', 'secrets', 'variables'],
-  'agent-accounts': ['agents', 'connected agents', 'working details'],
+  'agent-accounts': ['agents', 'working details'],
   'connected-apps': ['mcp', 'oauth', 'tokens', 'apps', 'clients'],
   computers: ['computer', 'desktop', 'machine', 'cloud computer'],
   archived: ['archived chats', 'archive', 'restore'],

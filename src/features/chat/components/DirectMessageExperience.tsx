@@ -32,6 +32,7 @@ import {
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 
 function RoomComposerArea({
   safety,
@@ -380,7 +381,6 @@ export function DirectMessageExperience({
               composerProps={{
                 composer,
                 mentionCategories: vm.mentionCategories,
-                agentCommands: vm.agentCommands,
                 capabilities,
                 participantsHaveAgent: roster.participants.some((participant) => participant.principalType === 'agent'),
                 memoryEnabled: room.memoryEnabled,
@@ -388,6 +388,9 @@ export function DirectMessageExperience({
                 setMentions: room.setMentions,
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
+                footer: agentId && activeWorkspaceId && !guided
+                  ? <ThreadWorkFooter workspaceId={activeWorkspaceId} agentId={agentId} conversationId={conversationId} />
+                  : undefined,
                 queue: room.composerQueue,
               }}
             />

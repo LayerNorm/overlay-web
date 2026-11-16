@@ -7,7 +7,6 @@ import type { CapabilityCheck } from '@overlay/app-core'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
-import type { RemoteAgentCommand } from './collaboration/room-message-view'
 import type { ChatComposerQueueControls } from './ChatComposerQueue'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
@@ -27,6 +26,8 @@ export type ChatComposerRuntime = {
   composerNotice: string | null
   /** Contextual confirmation or warning rendered immediately above the composer. */
   beforeComposerContent?: ReactNode
+  /** Replaces the disclaimer under the composer, e.g. an agent thread's computer and folder pickers. */
+  afterComposerContent?: ReactNode
   billingPromptContent?: ReactNode
   isSendBlocked: boolean
   isActiveLoading: boolean
@@ -63,8 +64,6 @@ export type ChatComposerSurface = {
   placeholder?: string
   /** Additional mention targets, such as workspace people and named agents. */
   mentionCategories?: MentionCategory[]
-  /** Slash commands the connected agent advertised over ACP, if any. */
-  agentCommands?: RemoteAgentCommand[]
   /** Model and video sub-mode controls rendered before the send button. */
   modelControl?: ReactNode
   contextUsage?: { usedTokens: number; contextWindow: number } | null

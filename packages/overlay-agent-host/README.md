@@ -8,7 +8,7 @@ Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned No
 when the machine's default `node` is older:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.5.0 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
@@ -17,6 +17,14 @@ npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
 
 The machine needs outbound HTTPS access to Overlay and durable storage for the state directory.
 It does not need an inbound port.
+
+## Local tools: this machine as an Overlay Computer
+
+Add `--local-tools` to let Overlay's own agents use this machine's shell, files, terminal sessions,
+screen, input and an Overlay Chrome profile, within the folders you approve. With no `--adapter`, the
+host starts no third-party agent at all; `config.json` then has `"localTools": true` and `"adapters": []`.
+On macOS, screenshots and input need the Screen Recording and Accessibility permissions of the app or
+terminal that starts the host. Overlay Desktop does this from Settings → Desktop → This Mac.
 
 Browser enrollment writes a restartable `config.json` beside the private connection state. The
 credential remains in the mode-0600 connection store rather than the JSON file:
@@ -70,7 +78,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.5.0 \
   overlay-agent-host connect <enrollment-code> \
   --server https://getoverlay.io \
   --kind vps \
@@ -94,9 +102,9 @@ Terminal closes and returns after login or process failure. Use the exact config
 `connect`:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.5.0 \
   overlay-agent-host service install --config "$HOME/.overlay/agent-host/config.json"
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.4.3 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.5.0 \
   overlay-agent-host service status --config "$HOME/.overlay/agent-host/config.json"
 ```
 

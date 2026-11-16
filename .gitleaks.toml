@@ -25,6 +25,12 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Generated mockup bundles: minified production code built by internal/plans/mockups/overlay-app/build.mjs"
+paths = [
+  '''internal/plans/mockups/(overlay-app|local-cloud-continuity|files-on-computers|thread-folders)\.html$''',
+]
+
+[[allowlists]]
 description = "Minified mockup bundle: a font-atlas counter (`keyCount,m=d.atlasCount`) reads as key=value to generic-api-key"
 regexTarget = "match"
 regexes = [

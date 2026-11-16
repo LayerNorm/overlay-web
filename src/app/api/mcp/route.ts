@@ -6,7 +6,7 @@ export const maxDuration = 300
 /**
  * Overlay's MCP server for outside AI apps. Auth is an OAuth access token or personal
  * token the person granted, not the session cookie, so it sits outside the BFF
- * wrapper like `/api/agent-mcp`.
+ * wrapper.
  */
 export async function POST(request: NextRequest) {
   const { handleOverlayMcpRequest } = await import('@/server/mcp/overlay-mcp-server')

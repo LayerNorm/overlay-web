@@ -1,26 +1,20 @@
 import 'server-only'
 
 import type {
-  AgentApprovalRequest,
-  AgentArtifact,
-  AgentBinding,
   AgentEnrollmentSession,
   AgentEnvironment,
   AgentEnvironmentCredential,
   AgentEnvironmentEnrollmentView,
   AgentEnvironmentProofChallenge,
-  AgentHarnessSession,
-  AgentRemoteSession,
-  AgentRunCommand,
   AgentSandboxLease,
 } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
-  ApplyRemoteEventsResult, ComputerActivityClaim, ComputerMaintenanceClaim, ConnectedAgentRepository,
+  ComputerActivityClaim, ComputerMaintenanceClaim, ConnectedAgentRepository,
 } from './ConnectedAgentRepository'
 
-const PREFIX = 'agents/connectedAgents'
+const PREFIX = 'agents/machineLeases'
 const CONTROL_PREFIX = 'agents/environmentControlPlane'
 
 export class ConvexConnectedAgentRepository implements ConnectedAgentRepository {
@@ -69,81 +63,6 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   updateEnvironmentCapabilities(input: Parameters<ConnectedAgentRepository['updateEnvironmentCapabilities']>[0]) {
     return controlMutationNullable<AgentEnvironment | null>('updateEnvironmentCapabilitiesByServer', input)
   }
-  createEnvironment(input: Parameters<ConnectedAgentRepository['createEnvironment']>[0]) {
-    return mutation<AgentEnvironment>('createEnvironmentByServer', input)
-  }
-  createBinding(input: Parameters<ConnectedAgentRepository['createBinding']>[0]) {
-    return mutation<AgentBinding>('createBindingByServer', input)
-  }
-  upsertBinding(input: Parameters<ConnectedAgentRepository['upsertBinding']>[0]) {
-    return mutation<AgentBinding>('upsertBindingByServer', input)
-  }
-  listBindings(input: Parameters<ConnectedAgentRepository['listBindings']>[0]) {
-    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['listBindings']>>>('listBindingsByServer', input)
-  }
-  disableBindingsForAgent(input: Parameters<ConnectedAgentRepository['disableBindingsForAgent']>[0]) {
-    return mutation<boolean>('disableBindingsForAgentByServer', input)
-  }
-  findInvocationTarget(input: Parameters<ConnectedAgentRepository['findInvocationTarget']>[0]) {
-    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['findInvocationTarget']>>>('findInvocationTargetByServer', input)
-  }
-  startRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['startRemoteAgentTurn']>[0]) {
-    return mutation<Awaited<ReturnType<ConnectedAgentRepository['startRemoteAgentTurn']>>>('startRemoteAgentTurnByServer', input)
-  }
-  controlRemoteAgentTurn(input: Parameters<ConnectedAgentRepository['controlRemoteAgentTurn']>[0]) {
-    return mutation<Awaited<ReturnType<ConnectedAgentRepository['controlRemoteAgentTurn']>>>('controlRemoteAgentTurnByServer', input)
-  }
-  createRemoteSession(input: Parameters<ConnectedAgentRepository['createRemoteSession']>[0]) {
-    return mutation<AgentRemoteSession>('createRemoteSessionByServer', input)
-  }
-  getRemoteSessionForRun(input: Parameters<ConnectedAgentRepository['getRemoteSessionForRun']>[0]) {
-    return connectedQuery<Awaited<ReturnType<ConnectedAgentRepository['getRemoteSessionForRun']>>>('getRemoteSessionForRunByServer', input)
-  }
-  enqueueCommand(input: Parameters<ConnectedAgentRepository['enqueueCommand']>[0]) {
-    return mutation<AgentRunCommand>('enqueueCommandByServer', input)
-  }
-  claimCommands(input: Parameters<ConnectedAgentRepository['claimCommands']>[0]) {
-    return mutation<AgentRunCommand[]>('claimCommandsByServer', input)
-  }
-  commandResolutionFloor(input: Parameters<ConnectedAgentRepository['commandResolutionFloor']>[0]) {
-    return connectedQuery<number>('commandResolutionFloorByServer', input)
-  }
-  acknowledgeCommand(input: Parameters<ConnectedAgentRepository['acknowledgeCommand']>[0]) {
-    return mutation<boolean>('acknowledgeCommandByServer', input)
-  }
-  createApprovalRequest(input: Parameters<ConnectedAgentRepository['createApprovalRequest']>[0]) {
-    return mutation<AgentApprovalRequest>('createApprovalRequestByServer', input)
-  }
-  requestMcpApproval(input: Parameters<ConnectedAgentRepository['requestMcpApproval']>[0]) {
-    return mutation<Awaited<ReturnType<ConnectedAgentRepository['requestMcpApproval']>>>('requestMcpApprovalByServer', input)
-  }
-  resolveApprovalRequest(input: Parameters<ConnectedAgentRepository['resolveApprovalRequest']>[0]) {
-    return mutation<AgentApprovalRequest | null>('resolveApprovalRequestByServer', input)
-  }
-  resolveRemoteRequest(input: Parameters<ConnectedAgentRepository['resolveRemoteRequest']>[0]) {
-    return mutation<Awaited<ReturnType<ConnectedAgentRepository['resolveRemoteRequest']>>>('resolveRemoteRequestByServer', input)
-  }
-  createArtifact(input: Parameters<ConnectedAgentRepository['createArtifact']>[0]) {
-    return mutation<AgentArtifact>('createArtifactByServer', input)
-  }
-  getArtifact(input: Parameters<ConnectedAgentRepository['getArtifact']>[0]) {
-    return connectedQuery<AgentArtifact | null>('getArtifactByServer', input)
-  }
-  getArtifactForDownload(input: Parameters<ConnectedAgentRepository['getArtifactForDownload']>[0]) {
-    return connectedQuery<AgentArtifact | null>('getArtifactForDownloadByServer', input)
-  }
-  finalizeArtifact(input: Parameters<ConnectedAgentRepository['finalizeArtifact']>[0]) {
-    return mutation<AgentArtifact | null>('finalizeArtifactByServer', input)
-  }
-  listArtifactsForCleanup(input: Parameters<ConnectedAgentRepository['listArtifactsForCleanup']>[0]) {
-    return connectedQuery<AgentArtifact[]>('listArtifactsForCleanupByServer', input)
-  }
-  markArtifactDeleted(input: Parameters<ConnectedAgentRepository['markArtifactDeleted']>[0]) {
-    return mutation<boolean>('markArtifactDeletedByServer', input)
-  }
-  sweepRemoteRuns(input: Parameters<ConnectedAgentRepository['sweepRemoteRuns']>[0]) {
-    return mutation<Awaited<ReturnType<ConnectedAgentRepository['sweepRemoteRuns']>>>('sweepRemoteRunsByServer', input)
-  }
   createSandboxLease(input: Parameters<ConnectedAgentRepository['createSandboxLease']>[0]) {
     return mutation<AgentSandboxLease>('createSandboxLeaseByServer', input)
   }
@@ -186,12 +105,6 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   computerHasActiveRuns(input: Parameters<NonNullable<ConnectedAgentRepository['computerHasActiveRuns']>>[0]) {
     return connectedQuery<boolean>('computerHasActiveRunsByServer', input)
   }
-  environmentHasActiveExecution(input: { environmentId: string }) {
-    return connectedQuery<boolean>('environmentHasActiveExecutionByServer', input)
-  }
-  environmentHasActiveRuns(input: Parameters<ConnectedAgentRepository['environmentHasActiveRuns']>[0]) {
-    return connectedQuery<boolean>('environmentHasActiveRunsByServer', input)
-  }
   patchSandboxLeaseUsage(input: Parameters<ConnectedAgentRepository['patchSandboxLeaseUsage']>[0]) {
     return mutationNullable<AgentSandboxLease | null>('patchSandboxLeaseUsageByServer', input)
   }
@@ -203,29 +116,8 @@ export class ConvexConnectedAgentRepository implements ConnectedAgentRepository 
   stopSandboxLease(input: Parameters<ConnectedAgentRepository['stopSandboxLease']>[0]) {
     return mutationNullable<AgentSandboxLease | null>('stopSandboxLeaseByServer', input)
   }
-  getHarnessSession(input: Parameters<ConnectedAgentRepository['getHarnessSession']>[0]) {
-    return connectedQuery<AgentHarnessSession | null>('getHarnessSessionByServer', input)
-  }
-  upsertHarnessSession(input: Parameters<ConnectedAgentRepository['upsertHarnessSession']>[0]) {
-    return mutation<AgentHarnessSession>('upsertHarnessSessionByServer', input)
-  }
-  deleteHarnessSessionsForBinding(input: Parameters<ConnectedAgentRepository['deleteHarnessSessionsForBinding']>[0]) {
-    return mutation<number>('deleteHarnessSessionsForBindingByServer', {
-      bindingId: input.bindingId,
-      workspaceId: input.workspaceId,
-    })
-  }
-  applyRemoteEvents(input: Parameters<ConnectedAgentRepository['applyRemoteEvents']>[0]) {
-    return mutation<ApplyRemoteEventsResult>('applyRemoteEventsByServer', input)
-  }
-  recordRejectedEventBatch(input: { workspaceId: string; environmentId: string; runId: string }) {
-    return mutation<boolean>('recordRemoteEventBatchRejectionByServer', input)
-  }
   revokeEnvironment(input: Parameters<ConnectedAgentRepository['revokeEnvironment']>[0]) {
     return mutation<boolean>('revokeEnvironmentByServer', input)
-  }
-  async deleteWorkspaceData(input: Parameters<ConnectedAgentRepository['deleteWorkspaceData']>[0]) {
-    await mutation('deleteWorkspaceDataByServer', input)
   }
 }
 

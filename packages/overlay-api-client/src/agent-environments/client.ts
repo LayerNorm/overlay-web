@@ -1,8 +1,6 @@
 import type {
-  AgentBinding,
   AgentEnvironment,
   AgentFilesystemGrant,
-  BuiltInUserOwnedAcpAdapterId,
 } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 
@@ -28,10 +26,10 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  createEnrollment(workspaceId: string, input?: { adapterId?: BuiltInUserOwnedAcpAdapterId }, init?: RequestInit) {
+  createEnrollment(workspaceId: string, init?: RequestInit) {
     return this.http.json<{ enrollmentSessionId: string; code: string; command: string; expiresAt: number }>(
       '/api/v1/agent-environments/enrollment-sessions',
-      this.http.jsonRequest(input ?? {}, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+      this.http.jsonRequest({}, { ...workspaceInit(workspaceId, init), method: 'POST' }),
     )
   }
 
@@ -49,6 +47,14 @@ export class AgentEnvironmentsClient {
     )
   }
 
+  /** Copies a folder on the person's own Mac into Overlay Files, once. */
+  copyToFiles(workspaceId: string, environmentId: string, body: { path: string; scope?: 'personal' | 'workspace' }, init?: RequestInit) {
+    return this.http.json<{ folderId: string; copied: number; skipped: string[] }>(
+      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/copy-to-files`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
   revoke(workspaceId: string, environmentId: string, init?: RequestInit) {
     return this.http.json<{ revoked: true; environmentId: string }>(
       `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/revoke`,
@@ -56,43 +62,4 @@ export class AgentEnvironmentsClient {
     )
   }
 
-  listBindings(workspaceId: string, agentId?: string, init?: RequestInit) {
-    const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''
-    return this.http.json<{ bindings: AgentBinding[]; launchEnabled: boolean }>(
-      `/api/v1/agent-bindings${query}`, workspaceInit(workspaceId, init),
-    )
-  }
-
-  /**
-   * Live desktop ticket for an Overlay Cloud environment's machine — the
-   * environment's sandbox doubles as the bound agent's computer.
-   */
-  openDesktop(workspaceId: string, environmentId: string, mode?: 'webrtc' | 'vnc', init?: RequestInit) {
-    return this.http.json<{ url: string; mode: 'webrtc' | 'vnc' | 'other'; expiresAt: number | null }>(
-      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/desktop`,
-      this.http.jsonRequest({ mode }, { ...workspaceInit(workspaceId, init), method: 'POST' }),
-    )
-  }
-
-  upsertBinding(workspaceId: string, input: {
-    agentId: string
-    environmentId: string
-    adapterId: string
-    workingDirectory: string
-    model?: string
-    modelBilling?: 'overlay' | 'byok'
-    byokConnectionId?: string
-  }, init?: RequestInit) {
-    return this.http.json<{ binding: AgentBinding }>(
-      '/api/v1/agent-bindings',
-      this.http.jsonRequest(input, { ...workspaceInit(workspaceId, init), method: 'PUT' }),
-    )
-  }
-
-  disableBindings(workspaceId: string, agentId: string, init?: RequestInit) {
-    return this.http.json<{ disabled: boolean }>(
-      `/api/v1/agent-bindings?agentId=${encodeURIComponent(agentId)}`,
-      workspaceInit(workspaceId, { ...init, method: 'DELETE' }),
-    )
-  }
 }

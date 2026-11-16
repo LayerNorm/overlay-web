@@ -45,11 +45,6 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     multiTenant: false,
     // Connected agents launch behind independent server-side kill switches.
     // Keep these disabled until their respective release gates pass.
-    connectedAgentControlPlane: false,
-    externalAgents: false,
-    remoteAgentRuns: false,
-    connectedAgentArtifacts: false,
-    connectedAgentDrive: false,
     overlayCloudEnvironments: false,
     // Hosted Overlay Cloud agents are retired; this legacy key is inert.
     managedHarnessAgents: false,

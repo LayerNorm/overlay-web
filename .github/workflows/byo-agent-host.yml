@@ -1,4 +1,4 @@
-name: BYO Agent Host compatibility
+name: Agent Host (local tools) compatibility
 
 on:
   pull_request:
