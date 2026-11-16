@@ -78,7 +78,7 @@ export function embeddedHostPackageSpec(
   return EMBEDDED_HOST_PACKAGE_SPEC
 }
 
-/** Connects this Mac with local tools only; the host never starts a third-party harness. */
+/** Connects this computer with local tools only; the host never starts a third-party harness. */
 export function buildEmbeddedHostArgs(args: {
   code: string
   origin: string

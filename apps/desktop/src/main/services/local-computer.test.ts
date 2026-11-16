@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   LocalComputerPreference,
+  ensureLocalComputerWorkFolder,
+  localComputerEnvironmentId,
+  localComputerName,
   localComputerPermissions,
   requestLocalComputerPermission,
   type LocalComputerSystem
@@ -51,5 +54,30 @@ describe('this Mac as a Computer', () => {
     expect(preference.keepAvailable).toBe(true)
     preference.keepAvailable = false
     expect(preference.keepAvailable).toBe(false)
+  })
+})
+
+describe('this computer\'s identity', () => {
+  it('uses the name the owner gave the computer, and falls back to the host name', () => {
+    expect(localComputerName('darwin', () => 'Sam’s MacBook Pro\n')).toBe('Sam’s MacBook Pro')
+    expect(localComputerName('darwin', () => { throw new Error('no scutil') })).not.toBe('')
+    expect(localComputerName('linux', () => 'ignored')).not.toBe('ignored')
+  })
+
+  it('creates the work folder in the home folder', () => {
+    const home = mkdtempSync(join(tmpdir(), 'overlay-home-'))
+    const folder = ensureLocalComputerWorkFolder(home)
+    expect(folder).toBe(join(home, 'Overlay Files'))
+    expect(existsSync(folder)).toBe(true)
+  })
+
+  it('reads the connected environment from the host\'s saved connection', () => {
+    const state = mkdtempSync(join(tmpdir(), 'overlay-host-'))
+    expect(localComputerEnvironmentId(state)).toBeNull()
+    mkdirSync(state, { recursive: true })
+    writeFileSync(join(state, 'config.json'), JSON.stringify({ environmentId: 'env_123', localTools: true }))
+    expect(localComputerEnvironmentId(state)).toBe('env_123')
+    writeFileSync(join(state, 'config.json'), 'not json')
+    expect(localComputerEnvironmentId(state)).toBeNull()
   })
 })

@@ -41,8 +41,12 @@ import { desktopPanels } from './desktop-panels'
 import { embeddedHostService } from './embedded-host-service'
 import {
   LocalComputerPreference,
+  ensureLocalComputerWorkFolder,
+  localComputerEnvironmentId,
   localComputerHome,
+  localComputerName,
   localComputerPermissions,
+  localComputerWorkFolder,
   requestLocalComputerPermission,
   type LocalComputerSystem
 } from './local-computer'
@@ -120,7 +124,7 @@ export function clearNativeSession(): void {
   cancelPendingNativeAuth()
   safeStorageService.clearAuthSession()
   embeddedHostService.stopImmediately()
-  // Signing out stops this Mac serving tools until the user turns it on again.
+  // Signing out stops this computer serving tools until the user turns it on again.
   try { localComputerPreference().keepAvailable = false } catch { /* best effort */ }
   desktopPanels.closeAll()
   clearNotifications()
@@ -146,10 +150,13 @@ function localComputerStatus(): Results['localComputer.status'] {
     verificationPhrase: host.verificationPhrase,
     keepAvailable: localComputerPreference().keepAvailable,
     homeDirectory: localComputerHome(),
+    computerName: localComputerName(),
+    environmentId: localComputerEnvironmentId(embeddedHostService.stateDirectory()),
+    workFolder: localComputerWorkFolder(),
     permissions: localComputerPermissions(localComputerSystem())
   }
 }
-/** "Keep this Mac available": after the session is verified, restart the saved local-tools host. */
+/** "Keep this computer available": after the session is verified, restart the saved local-tools host. */
 export async function resumeLocalComputer(): Promise<void> {
   if (process.platform !== 'darwin' || !localComputerPreference().keepAvailable) return
   try {
@@ -531,14 +538,31 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
   'agentHost.status': () => embeddedHostService.getStatus(),
   'agentHost.start': async ({ enrollmentCode }) => {
     await authenticated()
-    if (process.platform !== 'darwin') throw new Error('This Mac is available on macOS only.')
-    return embeddedHostService.start({ code: enrollmentCode })
+    if (process.platform !== 'darwin') throw new Error('Working on this computer is available on macOS only.')
+    // The host needs somewhere to run before any folder is chosen.
+    ensureLocalComputerWorkFolder()
+    return embeddedHostService.start({ code: enrollmentCode, name: localComputerName() })
   },
   'localComputer.status': () => localComputerStatus(),
   'localComputer.requestPermission': async ({ permission }) => {
     await authenticated()
     await requestLocalComputerPermission(localComputerSystem(), permission)
     return localComputerStatus()
+  },
+  'localComputer.chooseFolder': async () => {
+    await authenticated()
+    const { dialog } = await import('electron')
+    const options: Electron.OpenDialogOptions = {
+      title: 'Choose a folder',
+      message: 'Agents can read and change files in this folder. Nothing is uploaded.',
+      buttonLabel: 'Use this folder',
+      defaultPath: localComputerHome(),
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const parent = getMainWindow()
+    const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
+    const path = result.canceled ? undefined : result.filePaths[0]
+    return path ? { path } : null
   },
   'localComputer.setKeepAvailable': async ({ enabled }) => {
     await authenticated()

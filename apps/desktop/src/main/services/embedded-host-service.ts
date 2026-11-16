@@ -20,9 +20,9 @@ export type EmbeddedHostState = 'idle' | 'starting' | 'running' | 'stopping' | '
 
 /**
  * Security posture (deliberate, review before widening):
- * - The host serves only Overlay's own tools on this Mac (local tools); it never
+ * - The host serves only Overlay's own tools on this computer (local tools); it never
  *   starts a third-party harness.
- * - The first start is user-initiated from Settings → This Mac. It restarts at
+ * - The first start is user-initiated from a thread or Settings → This computer. It restarts at
  *   launch only while the user keeps "Keep available" on, and the child dies
  *   with the app (see beginShutdown).
  * - argv is built from validated fields only — never a shell string — and the
@@ -42,7 +42,7 @@ export interface EmbeddedHostExit {
 
 export interface EmbeddedHostStatus {
   state: EmbeddedHostState
-  /** The host serves Overlay's own tools on this Mac. */
+  /** The host serves Overlay's own tools on this computer. */
   localTools: boolean
   /** Printed by a host waiting for approval; matched in-app against its enrollment. */
   verificationPhrase: string | null
@@ -94,7 +94,7 @@ class EmbeddedHostService {
     }
   }
 
-  async start(input: { code: string }): Promise<EmbeddedHostStatus> {
+  async start(input: { code: string; name?: string }): Promise<EmbeddedHostStatus> {
     const code = typeof input.code === 'string' ? input.code.trim() : ''
     if (!ENROLLMENT_CODE_PATTERN.test(code)) throw new Error('Invalid enrollment code.')
     const origin = serverProfileService.getActiveOrigin()
@@ -106,7 +106,7 @@ class EmbeddedHostService {
         code,
         origin,
         stateDir,
-        name: `${hostname()} (Desktop)`,
+        name: input.name?.trim() || hostname(),
         packageSpec: embeddedHostPackageSpec(process.env, app.isPackaged),
         ...(process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE
           ? { hostingAuthFile: process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE }
@@ -138,7 +138,7 @@ class EmbeddedHostService {
     const npxPath = resolveNpxPath()
     if (!npxPath) {
       throw new Error(
-        'Node.js (npx) was not found on this Mac. Install Node.js 22+ or run the connection command in a terminal instead.'
+        'Node.js (npx) was not found on this computer. Install Node.js 22 or newer, then try again.'
       )
     }
     this.enrollmentCode = input.code

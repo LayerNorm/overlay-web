@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * "This Mac" as an Overlay Computer. The embedded host serves Overlay's own
+ * This computer as an Overlay Computer. The embedded host serves Overlay's own
  * tools here (no third-party harness). macOS attributes the host's screen and
  * input access to this app, so the permissions are this app's permissions.
  */
@@ -36,7 +37,7 @@ export async function requestLocalComputerPermission(
   system: LocalComputerSystem,
   permission: LocalComputerPermission
 ): Promise<void> {
-  if (system.platform !== 'darwin') throw new Error('This Mac permission is available on macOS only.')
+  if (system.platform !== 'darwin') throw new Error('This permission is available on macOS only.')
   if (permission === 'accessibility') {
     if (system.isTrustedAccessibilityClient(true)) return
   } else {
@@ -46,7 +47,7 @@ export async function requestLocalComputerPermission(
   await system.openExternal(PRIVACY_PANES[permission])
 }
 
-/** "Keep this Mac available": restart the local-tools host when Overlay opens. Stored per device. */
+/** "Keep this computer available": restart the local-tools host when Overlay opens. Stored per device. */
 export class LocalComputerPreference {
   constructor(private readonly path: string) {}
 
@@ -69,4 +70,46 @@ export class LocalComputerPreference {
 
 export function localComputerHome(): string {
   return homedir()
+}
+
+/**
+ * The computer's own name, as its owner set it ("Sam's MacBook Pro"), which reads better than a network host name.
+ */
+export function localComputerName(
+  platform: NodeJS.Platform = process.platform,
+  read: () => string = () => execFileSync('/usr/sbin/scutil', ['--get', 'ComputerName'], { encoding: 'utf8', timeout: 2_000 })
+): string {
+  if (platform === 'darwin') {
+    try {
+      const name = read().trim()
+      if (name) return name.slice(0, 80)
+    } catch {
+      // Fall through to the host name.
+    }
+  }
+  return hostname().replace(/\.local$/, '').slice(0, 80) || 'This computer'
+}
+
+/**
+ * Where a thread without a folder works, and where Overlay Files folders are copied. It is the first folder
+ * approved for this computer, so the host always has somewhere to run.
+ */
+export function ensureLocalComputerWorkFolder(home: string = homedir()): string {
+  const path = join(home, 'Overlay Files')
+  mkdirSync(path, { recursive: true })
+  return path
+}
+
+export function localComputerWorkFolder(home: string = homedir()): string {
+  return join(home, 'Overlay Files')
+}
+
+/** The environment this computer connected as, read from the host's saved connection. */
+export function localComputerEnvironmentId(hostStateDirectory: string): string | null {
+  try {
+    const config = JSON.parse(readFileSync(join(hostStateDirectory, 'config.json'), 'utf8')) as { environmentId?: unknown }
+    return typeof config.environmentId === 'string' && config.environmentId ? config.environmentId : null
+  } catch {
+    return null
+  }
 }

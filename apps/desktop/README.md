@@ -36,8 +36,10 @@ npm run test:e2e
   Local WhisperKit and Parakeet models run offline after download; cloud
   dictation uses your Overlay account. No provider key is stored on the Mac.
 - **Panels.** Command+. opens chat and Command+/ opens notes.
-- **Agent Host.** Started only by the user; the server still approves any
-  filesystem access.
+- **This computer.** Agent threads can run on this computer, in folders chosen in
+  the system's folder dialog. The app starts a bundled Agent Host for this, only
+  when the user chooses it; it serves Overlay's own tools and the server still
+  approves every folder. It needs Node.js 22 or newer installed.
 - **Upgrades from the old app.** Old transcripts and native preferences are
   exported to the app's data folder once; nothing is uploaded or deleted.
 
