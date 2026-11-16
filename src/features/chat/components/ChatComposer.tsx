@@ -355,6 +355,7 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
+          {props.attachMenuExtra?.(() => props.setShowAttachMenu(false))}
           {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
             const active = selectedToolIdSet.has(tool.id)
             const Icon = tool.Icon

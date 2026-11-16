@@ -15,6 +15,7 @@ import {
   normalizeAgentToolGrant,
   overlayToolIdsFromGrant,
   type AgentToolCapability,
+  localThreadComputerToolIds,
 } from '@/shared/agents/tool-groups'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
@@ -192,12 +193,15 @@ export async function buildWorkspaceAgentTooling(args: {
   ])
   // An assigned task's thread carries the tools to work that task, scoped to it below.
   const assignmentToolIds = assignedTaskId ? assignedTaskToolIdsToAdd(overlayToolIds) : []
+  // The Local computer group applies to a thread its owner set to run on their own computer. It is separate from
+  // the Cloud computer group, so an agent without a cloud machine can still work locally.
+  const localThreadToolIds = localThreadComputerToolIds(args.work, capabilities)
   const tooling = await prepareActTooling({
     accessToken: args.accessToken,
     // The agent's overlay grant enters as account policy, which the pipeline
     // only ever intersects — so a grant can never widen what the workspace
     // already allows.
-    accountAllowedToolIds: [...overlayToolIds, ...assignmentToolIds],
+    accountAllowedToolIds: [...overlayToolIds, ...assignmentToolIds, ...localThreadToolIds],
     agentId: args.grant.agentId,
     agentPrincipalId: args.agentPrincipalId,
     baseUrl: getInternalApiBaseUrl(),

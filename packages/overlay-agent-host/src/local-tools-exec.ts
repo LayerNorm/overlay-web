@@ -64,7 +64,7 @@ export async function runLocalExec(grant: FilesystemGrant, input: { command: str
       truncated: stdout.truncated || stderr.truncated,
     }
   } catch (_error) {
-    throw new LocalToolFailure('exec_failed', 'The command could not be started on this Mac.')
+    throw new LocalToolFailure('exec_failed', 'The command could not be started on this computer.')
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', kill)

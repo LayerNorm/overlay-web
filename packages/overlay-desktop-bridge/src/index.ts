@@ -100,7 +100,7 @@ export const methodSchemas = {
     })
     .strict(),
   "agentHost.status": empty,
-  /** Connects this Mac as an Overlay Computer: the host serves Overlay's own tools, never a third-party harness. */
+  /** Connects this computer as an Overlay Computer: the host serves Overlay's own tools, never a third-party harness. */
   "agentHost.start": z
     .object({
       enrollmentCode: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/),
@@ -116,6 +116,8 @@ export const methodSchemas = {
   "localComputer.setKeepAvailable": z
     .object({ enabled: z.boolean() })
     .strict(),
+  /** Opens the system's folder dialog. Choosing a folder is the person's consent to let agents work in it. */
+  "localComputer.chooseFolder": empty,
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -136,13 +138,19 @@ export type HostStatus = {
   pid: number | null;
   logTail: string[];
 };
-/** This Mac as an Overlay Computer: host state, the enrollment phrase it printed, and macOS permissions. */
+/** This computer as an Overlay Computer: host state, the enrollment phrase it printed, and system permissions. */
 export type LocalComputerStatus = {
   hostState: string;
   localTools: boolean;
   verificationPhrase: string | null;
   keepAvailable: boolean;
   homeDirectory: string;
+  /** The computer's own name, as its owner sees it in system settings. */
+  computerName: string;
+  /** The environment this computer connected as, once it has connected. */
+  environmentId: string | null;
+  /** Where threads without a folder work and where Overlay Files folders are copied. Always approved first. */
+  workFolder: string;
   permissions: { accessibility: boolean; screenRecording: boolean };
 };
 export type UpdateStatus = {
@@ -192,6 +200,7 @@ export type Results = {
   "localComputer.status": LocalComputerStatus;
   "localComputer.requestPermission": LocalComputerStatus;
   "localComputer.setKeepAvailable": LocalComputerStatus;
+  "localComputer.chooseFolder": { path: string } | null;
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;

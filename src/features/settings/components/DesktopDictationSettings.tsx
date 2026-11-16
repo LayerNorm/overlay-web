@@ -44,7 +44,7 @@ export function DesktopDictationSettings({
     <>
       <DesktopSection
         title="Dictation"
-        description="Speak into any app on your Mac."
+        description="Speak into any app on this computer."
       >
         <SettingsGroup>
           {shortcut ? (
@@ -56,7 +56,7 @@ export function DesktopDictationSettings({
           ) : null}
           <DesktopRow
             title="Model"
-            description="Cloud is billed to your workspace. Local models run on this Mac, even offline."
+            description="Cloud is billed to your workspace. Local models run on this computer, even offline."
             control={
               <ListboxSelect
                 className="w-48"

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import {
-  CLOUD_WORK_FOLDER, CLOUD_WORK_ROOT, MAC_WORK_FOLDER, folderLabel, isExcludedWorkPath, workDirectoryName,
+  CLOUD_WORK_FOLDER, CLOUD_WORK_ROOT, MAC_WORK_FOLDER, folderLabel, isExcludedWorkPath, localWorkBase, workDirectoryName,
   type ThreadComputer, type ThreadFolder, type ThreadWork,
 } from '@/shared/agents/thread-work'
 import type { FolderSavesData } from '@/shared/agents/folder-saves'
@@ -47,7 +47,7 @@ type MachineAccess =
   | { ok: true; operate<T>(work: (machine: WorkMachine) => Promise<T>): Promise<T> }
   | { ok: false; error: string }
 
-/** The computer a thread runs on, reduced to what copying needs. Only the thread owner's own Mac is ever used. */
+/** The computer a thread runs on, reduced to what copying needs. Only the thread owner's own computer is ever used. */
 async function machineFor(run: Pick<ThreadRun, 'actorUserId' | 'workspaceId' | 'agentId'>, computer: ThreadComputer): Promise<MachineAccess> {
   const resolved = await computerInstanceFor({
     userId: run.actorUserId, workspaceId: run.workspaceId, agentId: run.agentId, computerApprovalContext: 'work',
@@ -59,8 +59,8 @@ async function machineFor(run: Pick<ThreadRun, 'actorUserId' | 'workspaceId' | '
     const mac = await getOverlayServerContext().localComputerService.findForUser({
       workspaceId: run.workspaceId, userId: run.actorUserId, environmentId: computer.environmentId,
     })
-    if (!mac) return { ok: false, error: 'The Mac this thread runs on is offline.' }
-    base = `${(mac.roots?.[0] ?? mac.capability.homeDirectory).replace(/\/$/, '')}/${MAC_WORK_FOLDER}`
+    if (!mac) return { ok: false, error: 'The computer this thread runs on is offline.' }
+    base = localWorkBase(mac.roots?.[0], mac.capability.homeDirectory)
   }
   return {
     ok: true,
@@ -98,11 +98,11 @@ export function directoryNames(folders: ThreadFolder[]): Map<string, string> {
   return names
 }
 
-/** Where the agent finds each chosen folder. The Mac's copy folder is only known once the Mac is reached. */
+/** Where the agent finds each chosen folder. The computer's copy folder is only known once it is reached. */
 export function folderLocation(folder: ThreadFolder, computer: ThreadComputer, names: Map<string, string>, macBase?: string): string {
   if (folder.source === 'mac') return folder.path
   const name = names.get(folder.source === 'overlay' ? folder.fileId : folder.repository) ?? folderLabel(folder)
-  if (computer.kind === 'mac') return `${macBase ?? `<first approved folder>/${MAC_WORK_FOLDER}`}/${name}`
+  if (computer.kind === 'mac') return `${macBase ?? `~/${MAC_WORK_FOLDER}`}/${name}`
   return `${CLOUD_WORK_ROOT}/${name}`
 }
 
@@ -314,10 +314,10 @@ export async function copyMacFolderToFiles(args: {
   if (!path.startsWith('/') || path.length > 1024) throw new ThreadWorkError('invalid_path', 'Choose a folder by its full path.')
   const access = await machineFor({ actorUserId: args.userId, workspaceId: args.workspaceId, agentId: '' }, { kind: 'mac', environmentId: args.environmentId })
   // The tool-facing reason is written for the agent; people get plain words.
-  if (!access.ok) throw new ThreadWorkError('mac_unavailable', 'That Mac is offline. Open Overlay on it and try again.')
+  if (!access.ok) throw new ThreadWorkError('mac_unavailable', 'That computer is offline. Open Overlay on it and try again.')
   return await access.operate(async (machine) => {
     const listed = await machine.run(listingScript(), path)
-    if (listed.exitCode !== 0) throw new ThreadWorkError('folder_unavailable', 'That folder couldn’t be read on the Mac. Check that it is one of the Mac’s approved folders.')
+    if (listed.exitCode !== 0) throw new ThreadWorkError('folder_unavailable', 'That folder couldn’t be read on the computer. Check that it is one of its folders in Settings → Desktop.')
     if (!isCompleteListing(listed.stdout)) throw new ThreadWorkError('folder_too_large', 'That folder has too many files to copy at once. Choose a smaller folder.')
     const listing = [...parseListing(listed.stdout).entries()].filter(([relative]) => !isExcludedWorkPath(relative))
     const name = workDirectoryName(path.slice(path.lastIndexOf('/') + 1))

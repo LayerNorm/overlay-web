@@ -157,7 +157,7 @@ test('the loop runs each call once, reports expired calls without running them a
     await new LocalToolLoop(client, f.executor).run(controller.signal)
     const byId = new Map(results.map((result) => [result.callId, result.outcome]))
     assert.equal(byId.get('fresh')?.ok, true)
-    assert.deepEqual(byId.get('late'), { ok: false, error: { code: 'expired', message: 'The tool call expired before this Mac received it.' } })
+    assert.deepEqual(byId.get('late'), { ok: false, error: { code: 'expired', message: 'The tool call expired before this computer received it.' } })
     assert.equal(await readFile(marker, 'utf8'), 'ran\n')
   } finally { await f.cleanup() }
 })
@@ -165,4 +165,24 @@ test('the loop runs each call once, reports expired calls without running them a
 test('JPEG frame size is read from the header', () => {
   const header = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x03, 0x3f, 0x05, 0x00, 0x03])
   assert.deepEqual(jpegSize(header), { width: 1280, height: 831 })
+})
+
+test('a folder approved a moment ago works on the next call, without waiting for the grant to renew', { skip: posixShellOnly }, async () => {
+  const f = await fixture()
+  try {
+    let grant: FilesystemGrant = { mode: 'selected_roots', roots: [f.root] }
+    let refreshes = 0
+    const executor = new LocalToolExecutor({
+      stateDirectory: join(f.base, 'state-2'), grant: () => grant, platform: 'linux',
+      // Overlay answers with the folders approved now, which include the one just added.
+      refreshGrant: async () => { refreshes += 1; grant = { mode: 'selected_roots', roots: [f.root, f.outside] } },
+    })
+    const added = await executor.execute(call({ kind: 'read_file', path: join(f.outside, 'secret.txt'), maxBytes: 1_000 }))
+    assert.equal(added.ok, true)
+    assert.equal(refreshes, 1)
+    // A path that is still outside is refused, and asking again is rate limited.
+    const refused = await executor.execute(call({ kind: 'read_file', path: join(f.base, 'elsewhere.txt'), maxBytes: 1_000 }))
+    assert.deepEqual(refused.ok ? null : refused.error.code, 'outside_approved_folders')
+    assert.equal(refreshes, 1)
+  } finally { await f.cleanup() }
 })

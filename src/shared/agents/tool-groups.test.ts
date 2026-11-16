@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   AGENT_TOOL_GROUPS,
+  COMPUTER_TOOL_IDS,
+  localThreadComputerToolIds,
   AGENT_TOOL_PRESETS,
   agentToolPresetFor,
   agentToolCapabilities,
@@ -161,4 +163,28 @@ test('tool presets never include computer and are recognised from their groups',
   assert.equal(agentToolPresetFor(new Set(AGENT_TOOL_PRESETS.everything)), 'everything')
   assert.equal(agentToolPresetFor(new Set([...AGENT_TOOL_PRESETS.standard, 'computer'])), 'standard')
   assert.equal(agentToolPresetFor(new Set(['knowledge'])), null)
+})
+
+test('a thread on the person’s own computer gets the computer tools; a cloud thread adds none', () => {
+  const local = new Set<'local_computer'>(['local_computer'])
+  assert.deepEqual(localThreadComputerToolIds({ computer: { kind: 'mac' } }, local), COMPUTER_TOOL_IDS)
+  assert.deepEqual(localThreadComputerToolIds({ computer: { kind: 'cloud' } }, local), [])
+  assert.deepEqual(localThreadComputerToolIds({}, local), [])
+  assert.deepEqual(localThreadComputerToolIds(undefined, local), [])
+  // Without the Local computer group the thread's computer is out of reach.
+  assert.deepEqual(localThreadComputerToolIds({ computer: { kind: 'mac' } }, new Set()), [])
+})
+
+test('Local computer is its own group, on by default and separate from Cloud computer', () => {
+  const groups = Object.fromEntries(AGENT_TOOL_GROUPS.map((group) => [group.id, group]))
+  assert.equal(groups.computer?.label, 'Cloud computer')
+  assert.equal(groups.local_computer?.label, 'Local computer')
+  assert.ok(DEFAULT_AGENT_TOOL_GROUP_IDS.includes('local_computer'))
+  assert.ok(!DEFAULT_AGENT_TOOL_GROUP_IDS.includes('computer'))
+  const localOnly = toolIdsForEnabledGroups(new Set(['local_computer']))
+  assert.deepEqual(localOnly, [agentToolCapabilityGrantId('local_computer')])
+  assert.deepEqual([...enabledAgentToolGroupIds(localOnly)], ['local_computer'])
+  assert.ok(agentToolCapabilities(localOnly).has('local_computer'))
+  // The cloud group alone does not let an agent use someone's own computer.
+  assert.ok(!agentToolCapabilities(toolIdsForEnabledGroups(new Set(['computer']))).has('local_computer'))
 })
