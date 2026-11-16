@@ -2,23 +2,22 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
-import { ConvexError } from 'convex/values'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
-import {
-  isAvailableToSharedSurface,
-  sharedSurfaceAgentContext,
-  type SharedSurfaceAgentContext,
-} from '@/server/agents/shared-surface-agent-policy'
 import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
+import { sharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
-import { cancelHarnessWorkflow } from './workflow-cancellation'
-import { cancelPersonalHarnessWorkflows } from './personal-cancellation'
+import {
+  assertNativeAgentRequest,
+  assertNativeAskTargetAccess,
+  nativeSurfaceTriggerForRoot,
+  resolveNativeAssignment,
+} from './native-agent-request-guards'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess } from './native-access'
 import { logger } from '@/server/observability/logger'
@@ -314,61 +313,6 @@ async function recordNativeToolResultEvidence(call: NativeToolCall, result: unkn
 }
 
 executeNativeHarnessTool.maxRetries = 0
-
-async function resolveNativeAssignment(access: NativeHarnessAccess, values: Record<string, unknown>, repository: ConvexHarnessRepository) {
-  if (typeof values.assignmentId !== 'string' || typeof values.attemptId !== 'string'
-    || !['accept', 'exclude', 'cancel'].includes(String(values.action))
-    || (values.reason !== undefined && typeof values.reason !== 'string')) throw new FatalError('Invalid assignment resolution.')
-  let resolution: Awaited<ReturnType<ConvexHarnessRepository['resolveAssignment']>>
-  try {
-    resolution = await repository.resolveAssignment({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
-      parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: access.executionGeneration ?? 0,
-      assignmentId: values.assignmentId, attemptId: values.attemptId, action: values.action as 'accept' | 'exclude' | 'cancel', reason: values.reason as string | undefined })
-  } catch (error) {
-    const feedback = error instanceof ConvexError ? error.data : null
-    if (!feedback || typeof feedback !== 'object' || feedback.code !== 'ASSIGNMENT_RESOLUTION_REJECTED'
-      || typeof feedback.error !== 'string' || typeof feedback.hint !== 'string') throw error
-    return { success: false, code: feedback.code, error: feedback.error, hint: feedback.hint,
-      ...(typeof feedback.currentAttemptId === 'string' ? { currentAttemptId: feedback.currentAttemptId } : {}) }
-  }
-  for (const workflowRunId of resolution.workflows) await cancelHarnessWorkflow(workflowRunId)
-  if (resolution.cancellationRoot) await cancelPersonalHarnessWorkflows(resolution.cancellationRoot)
-  return { assignmentId: resolution.assignmentId, attemptId: resolution.attemptId, disposition: resolution.disposition, reason: resolution.reason }
-}
-
-function assertNativeAgentRequest(toolCallId: string, toolName: string) {
-  if (!toolCallId || toolCallId.length > 256 || !['list_agents', 'ask_agent', 'post_message', 'resolve_assignment'].includes(toolName)) {
-    throw new FatalError('Invalid native agent request.')
-  }
-}
-
-async function assertNativeAskTargetAccess(
-  server: ReturnType<typeof getOverlayServerContext>,
-  actorUserId: string,
-  workspaceId: string,
-  target: string,
-  sharedSurfaceContext: SharedSurfaceAgentContext | undefined,
-): Promise<void> {
-  const directory = await server.workspaceAgentService.list({ actorUserId, workspaceId })
-  const normalizedTarget = target.trim().toLocaleLowerCase()
-  const targetAgent = directory.agents.find(agent => agent.id === target.trim()
-    || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
-  if (!targetAgent || (sharedSurfaceContext && !isAvailableToSharedSurface(targetAgent))) return
-  if (targetAgent.harness !== 'overlay') {
-    throw new FatalError("External agents can't be asked from this run yet.")
-  }
-}
-
-function nativeSurfaceTriggerForRoot(
-  surfaceExecution: Awaited<ReturnType<typeof refreshNativeHarnessAccess>>['surfaceExecution'],
-  access: NativeHarnessAccess,
-  parent: HarnessSnapshot,
-) {
-  return surfaceExecution && parent.runId === parent.rootRunId
-    && access.runId === surfaceExecution.harnessRunId && parent.workflowRunId === surfaceExecution.workflowRunId
-    ? surfaceExecution
-    : undefined
-}
 
 export async function dispatchNativeHarnessAgentRequest(
   access: NativeHarnessToolsInput['access'],
