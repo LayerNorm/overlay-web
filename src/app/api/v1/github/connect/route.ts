@@ -5,11 +5,13 @@ import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import { getBaseUrl } from '@/server/web/app-url'
 import { sanitizeReturnTo } from '@/server/surfaces/slack-oauth'
-import { githubAppConfigured, installUrl, sealGitHubConnectState } from '@/server/integrations/github/github-app'
+import { authorizeUrl, githubAppConfigured, installPageUrl, sealGitHubConnectState } from '@/server/integrations/github/github-app'
 
 /**
- * Starts installing Overlay's GitHub App (internal/develop/thread-folders.md). A browser navigation, so it ends in
- * a redirect rather than JSON. The sealed state carries the person and workspace through GitHub and back.
+ * Starts connecting GitHub (internal/develop/thread-folders.md): GitHub asks the person to sign in and returns to this
+ * deployment's callback, which connects the app installations they can see. `?install=1` instead opens the app's
+ * install page. A browser navigation, so it ends in a redirect rather than JSON. The sealed state carries the person
+ * and workspace through GitHub and back.
  */
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' } as const
 
@@ -33,12 +35,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(signIn.toString(), { headers: NO_STORE })
   }
   if (!githubAppConfigured()) return back(returnTo, { githubError: 'not_configured' })
+  if (params.get('install') === '1') return NextResponse.redirect(installPageUrl(), { headers: NO_STORE })
   try {
     const access = await getOverlayServerContext().workspaceService.resolveActiveWorkspace(
       session.user.id, params.get('workspaceId')?.trim() || undefined,
     )
     const state = sealGitHubConnectState({ userId: session.user.id, workspaceId: access.workspace.id, ...(returnTo ? { returnTo } : {}) })
-    return NextResponse.redirect(installUrl(state), { headers: NO_STORE })
+    return NextResponse.redirect(authorizeUrl(state, `${getBaseUrl()}/api/v1/github/callback`), { headers: NO_STORE })
   } catch (_error) {
     return back(returnTo, { githubError: 'workspace' })
   }
