@@ -105,6 +105,24 @@ describe('thread work', () => {
     expect(options.macs[0]!.roots).toEqual(['/Users/bob/code'])
   })
 
+  test('options say whether the agent has the Local computer tool group', async () => {
+    const { convex, as } = await seed()
+    const read = async () => (await as('alice').query(fn('agents/threadWork:options', 'query'), { workspaceId, agentId: 'atlas' }) as { localComputer: boolean }).localComputer
+    const grant = async (allowedToolIds: string[], isDefault = false) => convex.run(async (ctx) => {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'atlas')).unique()
+      await ctx.db.patch(agent!._id, { allowedToolIds, isDefault } as never)
+    })
+    expect(await read()).toBe(false)
+    await grant(['capability:local_computer'])
+    expect(await read()).toBe(true)
+    // The cloud computer group alone does not include the person's own computer.
+    await grant(['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'])
+    expect(await read()).toBe(false)
+    // The default agent holds every group without listing them.
+    await grant([], true)
+    expect(await read()).toBe(true)
+  })
+
   test('a folder copy lists readable files, and saving back is claimed once', async () => {
     const { convex, folderId, privateFolder } = await seed()
     const subtree = await convex.query(fn('files/folderCopies:subtreeByServer', 'query'), { serverSecret: secret, userId: 'bob', workspaceId, folderId }) as { rows: Array<{ name: string }> }

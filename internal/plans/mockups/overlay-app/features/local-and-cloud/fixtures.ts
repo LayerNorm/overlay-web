@@ -40,6 +40,7 @@ function installThreadWork() {
     'agents/threadWork:get': ({ conversationId }: Record<string, unknown>) => work.get(String(conversationId)) ?? { folders: [] },
     'agents/threadWork:options': () => ({
       cloud: { status: 'ready', name: null },
+      localComputer: true,
       macs: usable().map((environment) => ({
         environmentId: environment.id, name: environment.name, status: environment.status, lastSeenAt: environment.lastSeenAt,
         roots: environment.filesystemGrant?.roots ?? [], allFiles: false,

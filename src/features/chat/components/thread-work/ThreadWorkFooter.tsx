@@ -166,11 +166,12 @@ export function ThreadWorkFooter({ controls }: { controls: ThreadWorkControls })
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
           <MenuLabel>Runs on</MenuLabel>
-          <DropdownMenuItem onSelect={() => void controls.chooseThisComputer()} className="gap-2 text-xs">
+          <DropdownMenuItem disabled={!options?.localComputer} onSelect={() => void controls.chooseThisComputer()} className="gap-2 text-xs">
             <Row
               icon={<Laptop size={14} strokeWidth={1.75} />}
               title="This computer"
-              detail={thisComputer.environmentId ? `${thisComputer.name ?? 'This computer'} · continues only here` : 'Connects this computer to Overlay'}
+              detail={!options?.localComputer ? 'Turn on Local computer in the agent’s settings'
+                : thisComputer.environmentId ? `${thisComputer.name ?? 'This computer'} · continues only here` : 'Connects this computer to Overlay'}
               selected={local}
             />
           </DropdownMenuItem>
@@ -178,7 +179,7 @@ export function ThreadWorkFooter({ controls }: { controls: ThreadWorkControls })
             <Row
               icon={<Cloud size={14} strokeWidth={1.75} />}
               title="Cloud"
-              detail={options?.cloud ? 'Continues on any device' : 'Turn on Computer in the agent’s settings'}
+              detail={options?.cloud ? 'Continues on any device' : 'Turn on Cloud computer in the agent’s settings'}
               selected={!local}
             />
           </DropdownMenuItem>

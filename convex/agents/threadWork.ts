@@ -6,6 +6,7 @@ import { requireServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { threadWorkValidator } from '../lib/threadWork'
 import { visibleRow } from './directory'
+import { agentToolCapabilities, normalizeAgentToolGrant } from '../../src/shared/agents/tool-groups'
 import { THREAD_WORK_LOCKED, sameThreadWork, threadWorkProblem, type ThreadFolder, type ThreadWork } from '../../src/shared/agents/thread-work'
 
 /**
@@ -136,8 +137,8 @@ async function folderOptions(ctx: QueryCtx, workspaceId: string, userId: string)
 }
 
 /**
- * What a thread can pick: the agent's cloud Computer, the viewer's own Macs (never a teammate's) with their approved
- * folders, Overlay folders, and whether GitHub is connected.
+ * What a thread can pick: the agent's cloud Computer, the viewer's own computers (never a teammate's) with their
+ * approved folders when the agent has the Local computer tool group, Overlay folders, and whether GitHub is connected.
  */
 export const options = query({
   args: { workspaceId: v.string(), agentId: v.string() },
@@ -162,8 +163,14 @@ export const options = query({
         allFiles: (row.filesystemGrant as { mode?: string } | undefined)?.mode === 'all_user_files',
       }))
     const github = await ctx.db.query('githubInstallations').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect()
+    // The default agent holds every tool group without listing them; other agents list theirs.
+    const grant = agentRow?.allowedToolIds ?? []
+    const localComputer = (agentRow?.isDefault === true && grant.length === 0)
+      || agentToolCapabilities(normalizeAgentToolGrant(grant)).has('local_computer')
     return {
       cloud: computer ? { status: computer.status, name: computer.name ?? null } : null,
+      /** Whether the agent has the Local computer tool group, so a thread can run on the viewer's own computer. */
+      localComputer,
       macs,
       folders: await folderOptions(ctx, args.workspaceId, viewer.userId),
       githubConnected: github.some(row => row.removedAt === undefined),

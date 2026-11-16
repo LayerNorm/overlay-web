@@ -57,10 +57,10 @@ export function useThreadWork(args: { workspaceId: string | null; agentId: strin
   const defaulted = useRef<string | null>(null)
   useEffect(() => {
     if (!current || started || current.computer || current.folders.length > 0) return
-    if (!thisComputer.environmentId || defaulted.current === conversationId) return
+    if (!options?.localComputer || !thisComputer.environmentId || defaulted.current === conversationId) return
     defaulted.current = conversationId
     update({ computer: { kind: 'mac', environmentId: thisComputer.environmentId }, folders: [] })
-  }, [conversationId, current, started, thisComputer.environmentId, update])
+  }, [conversationId, current, options?.localComputer, started, thisComputer.environmentId, update])
 
   const chooseCloud = useCallback(() => {
     if (current) update(applyComputerChoice(current, { kind: 'cloud' }))
