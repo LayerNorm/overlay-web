@@ -343,7 +343,8 @@ export function useNotebookEditor({
       const { selection } = currentEditor.state
       const { $from } = selection
       const textBefore = $from.parent.textContent.slice(0, $from.parentOffset)
-      const slashQueryMatch = textBefore.match(/(?:^|\s)\/([^\s/]*)$/)
+      // Up to three words after "/", so filters like "heading 3" and "to-do list" keep the menu open.
+      const slashQueryMatch = textBefore.match(/(?:^|\s)\/((?:[^\s/]+(?: [^\s/]*){0,2})?)$/)
 
       if (slashQueryMatch) {
         const coords = currentEditor.view.coordsAtPos(selection.from)
@@ -351,7 +352,7 @@ export function useNotebookEditor({
         const nextTop = Math.max(8, Math.min(coords.bottom + 8, window.innerHeight - 340))
 
         setSlashMenuPosition({ top: nextTop, left: nextLeft })
-        setSlashMenuFilter(slashQueryMatch[1])
+        setSlashMenuFilter(slashQueryMatch[1].trim())
         setShowSlashMenu(true)
       } else {
         setShowSlashMenu(false)
