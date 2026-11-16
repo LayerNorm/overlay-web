@@ -86,6 +86,16 @@ const computerBrowserUrlSchema = z.string().url().refine(
   (value) => /^https?:\/\//i.test(value),
   'URL must use HTTP or HTTPS.',
 )
+/** Optional on every computer tool: run on the cloud Computer or on the user's own connected Mac. */
+const computerTargetSchema = z.enum(['cloud', 'local']).optional().describe(
+  'Where to run: "local" is the user\'s own Mac (their files, apps and signed-in browser), "cloud" is the cloud Computer. '
+  + 'Omit to use the default for this conversation. Use "local" when the user asks for their Mac or their own files.',
+)
+function withoutTarget<T extends { target?: unknown }>(input: T): Omit<T, 'target'> {
+  const { target: _target, ...rest } = input
+  void _target
+  return rest
+}
 const computerInputVariants = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('click'),
@@ -140,8 +150,9 @@ const computerInputSchema = z.object({
   direction: z.enum(['up', 'down', 'left', 'right']).optional(),
   amount: z.number().int().min(1).max(25).optional(),
   ms: z.number().int().min(0).max(10000).optional(),
+  target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
-  const parsed = computerInputVariants.safeParse(input)
+  const parsed = computerInputVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -190,8 +201,9 @@ const computerBrowserSchema = z.object({
   amount: z.number().int().min(1).max(25).optional(),
   keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']).optional(),
   index: z.number().int().min(0).max(49).optional(),
+  target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
-  const parsed = computerBrowserVariants.safeParse(input)
+  const parsed = computerBrowserVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -224,8 +236,9 @@ const computerTerminalSchema = z.object({
   offset: z.number().int().min(0).optional(),
   maxBytes: z.number().int().min(1).max(65536).optional(),
   signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
+  target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
-  const parsed = computerTerminalVariants.safeParse(input)
+  const parsed = computerTerminalVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -954,6 +967,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .max(300_000)
           .optional()
           .describe('Max run time in ms (default 60s, max 5m)'),
+        target: computerTargetSchema,
       }),
       ...(options.computerApprovalContext !== undefined
         ? { needsApproval: () => toolRequiresApproval('computer_exec', {}, { approvalMode: options.approvalMode }) }
@@ -975,6 +989,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description: 'Read a text file from the bound computer’s filesystem (up to 256KB).',
       inputSchema: z.object({
         path: z.string().describe('Absolute path of the file to read'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_read_file')
@@ -989,6 +1004,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         path: z.string().describe('Absolute path of the file to write'),
         contents: z.string().describe('Full text contents to write'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_write_file')
@@ -1008,6 +1024,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           mimeType: z.string().min(1).max(255).describe('MIME type of the file'),
           parentId: z.string().optional().describe('Optional destination folder ID'),
           scope: z.enum(['personal', 'workspace']).describe('Destination visibility'),
+          target: computerTargetSchema,
         }).strict(),
         execute: async input => {
           assertToolAllowed('computer_publish_file')
@@ -1022,6 +1039,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description: 'List directory entries on the bound computer’s filesystem.',
       inputSchema: z.object({
         path: z.string().optional().describe('Directory to list (default: the user home directory)'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_list_files')
@@ -1039,6 +1057,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         'The user can watch the desktop live via Open desktop.',
       inputSchema: z.object({
         url: computerBrowserUrlSchema.describe('The HTTP or HTTPS URL to open in the computer’s browser'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_open_url')
@@ -1050,10 +1069,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_screenshot')) {
       tools.computer_screenshot = tool({
         description: 'Capture the visible screen on the bound computer and return it as an image.',
-        inputSchema: z.object({}).strict(),
-        execute: async () => {
+        inputSchema: z.object({ target: computerTargetSchema }).strict(),
+        execute: async (input) => {
           assertToolAllowed('computer_screenshot')
-          return executeComputerScreenshot(options)
+          return executeComputerScreenshot(options, input)
         },
         toModelOutput: ({ output }) => {
           if (!output.success) {
@@ -1069,7 +1088,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
               {
                 type: 'file',
                 data: { type: 'data', data: output.image },
-                mediaType: 'image/png',
+                mediaType: output.mediaType ?? 'image/png',
               },
             ],
           }
@@ -1092,12 +1111,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_input')
-          const parsed = computerInputVariants.parse(input)
+          const parsed = computerInputVariants.parse(withoutTarget(input))
           return await executeComputerActionWithApproval(
             options,
             'computer_input',
             parsed,
-            () => executeComputerInput(options, parsed),
+            () => executeComputerInput(options, { ...parsed, target: input.target }),
           )
         },
       })
@@ -1118,12 +1137,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_browser')
-          const parsed = computerBrowserVariants.parse(input)
+          const parsed = computerBrowserVariants.parse(withoutTarget(input))
           return await executeComputerActionWithApproval(
             options,
             'computer_browser',
             parsed,
-            () => executeComputerBrowser(options, parsed),
+            () => executeComputerBrowser(options, { ...parsed, target: input.target }),
           )
         },
         toModelOutput: ({ output }) => ({
@@ -1148,12 +1167,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_terminal')
-          const parsed = computerTerminalVariants.parse(input) as ComputerTerminalAction
+          const parsed = computerTerminalVariants.parse(withoutTarget(input)) as ComputerTerminalAction
           return await executeComputerActionWithApproval(
             options,
             'computer_terminal',
             parsed,
-            () => executeComputerTerminal(options, parsed),
+            () => executeComputerTerminal(options, { ...parsed, target: input.target }),
           )
         },
       })

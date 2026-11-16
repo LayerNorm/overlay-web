@@ -1,20 +1,18 @@
 # Overlay MCP access for other AI apps
 
-Overlay is an MCP server for the person's own workspace, so ChatGPT, Claude (web and desktop), Cursor, Claude Code, Codex, and any other MCP client can read and write their notes, files, memory, and knowledge. `/api/agent-mcp` (per-run tokens for connected agents) is a separate server that shares the protocol code.
+Overlay is an MCP server for the person's own workspace, so ChatGPT, Claude (web and desktop), Cursor, Claude Code, Codex, and any other MCP client can read and write their notes, files, memory, and knowledge.
 
-## Two servers, at a glance
+## The server, at a glance
 
-Overlay runs **two MCP servers inside the Next.js app**, plus it is an **MCP client** for the person's own servers.
+| | `/api/mcp` |
+| --- | --- |
+| For | Outside AI apps (ChatGPT, Claude, Cursor, local agents) |
+| Sign-in | OAuth 2.1 (dynamic registration, PKCE, rotating refresh) or a personal token (`ovmcu_p_…`) |
+| Who it acts as | The person who connected it, in one workspace, at one access level |
+| Tools | Read / Read and write / Everything (see `tool-catalog.md`) |
+| Approvals | Refused with an explanation (no Overlay conversation to show a card) |
 
-| | `/api/mcp` | `/api/agent-mcp` |
-| --- | --- | --- |
-| For | Outside AI apps (ChatGPT, Claude, Cursor, local agents) | Claude Code / Codex agents on user-owned hosts connected through Agent Host |
-| Sign-in | OAuth 2.1 (dynamic registration, PKCE, rotating refresh) or a personal token (`ovmcu_p_…`) | A per-run token (`ovmcp_…`) the Agent Host hands the agent; stops working when the run ends |
-| Who it acts as | The person who connected it, in one workspace, at one access level | The person who summoned the agent, limited to the agent's grant |
-| Tools | Read / Read and write / Everything (see `tool-catalog.md`) | The agent's grant, same pipeline as a native agent |
-| Approvals | Refused with an explanation (no Overlay conversation to show a card) | A real approval card in the conversation |
-
-Both speak MCP over **Streamable HTTP**, stateless, JSON responses: `initialize`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get` (the person's skills are offered as prompts). `GET` and `DELETE` are 405. There are no MCP resources. Shared code: `src/server/mcp/mcp-jsonrpc.ts`, `mcp-http.ts`; tools are the native pipeline adapted by `adaptToolsForMcp` (`src/server/agents/agent-mcp-tools.ts`).
+It speaks MCP over **Streamable HTTP**, stateless, JSON responses: `initialize`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get` (the person's skills are offered as prompts). `GET` and `DELETE` are 405. There are no MCP resources. Code: `src/server/mcp/mcp-jsonrpc.ts`, `mcp-http.ts`; tools are the native pipeline adapted by `adaptToolsForMcp` (`src/server/mcp/mcp-tool-adapter.ts`).
 
 **Overlay as an MCP client**: the person connects their own MCP servers in settings; chats and agents reach them through `search_mcp_tools` and `call_mcp_tool` (`src/server/tools/mcp-tools.ts`), with per-tool approval policy. An MCP server a member shares with the workspace (scope `workspace`) is usable by every member's chats and agents; it is called with its creator's credentials from Overlay's server, members and models never receive them, and archiving or disabling it withdraws it from everyone.
 
@@ -39,7 +37,7 @@ Consent binds one person, one workspace (personal or team), and one **access lev
 | Read and write | read, plus notes, files, memory, skills writes and web search. |
 | Everything | write, plus automations, connected apps, the person's MCP servers, image and video generation. |
 
-A level is a tool grant in the same shape an Overlay agent holds (`mcpToolGrantFor`, `src/shared/mcp/access.ts`), so the app gets the same tools through the same pipeline (`prepareActTooling`), policy, and entitlements as an Overlay agent with that grant: a level only narrows what the workspace allows. Never offered at any level: computer tools, agent editing (`create_agent`/`update_agent`, which would let an outside app rewrite what Overlay's agents may do), `present_generated_ui`, and tools that need an Overlay conversation (`draft_*_from_chat`). Tools whose server policy needs approval are refused with an explanation: an outside app has no Overlay conversation to show Overlay's approval card in (connected agents, which do, get a real approval round trip; see `bring-your-own-agents.md`). Memory belongs to the person, so every connected app shares it.
+A level is a tool grant in the same shape an Overlay agent holds (`mcpToolGrantFor`, `src/shared/mcp/access.ts`), so the app gets the same tools through the same pipeline (`prepareActTooling`), policy, and entitlements as an Overlay agent with that grant: a level only narrows what the workspace allows. Never offered at any level: computer tools, agent editing (`create_agent`/`update_agent`, which would let an outside app rewrite what Overlay's agents may do), `present_generated_ui`, and tools that need an Overlay conversation (`draft_*_from_chat`).Memory belongs to the person, so every connected app shares it.
 
 Use the address Settings shows (`https://www.getoverlay.io/api/mcp` on production): the apex redirects to `www`, and strict OAuth clients compare the resource they were told with the address they called. The advertised URLs are built from the host the request arrived on, limited to the app's own host and its `www` twin.
 

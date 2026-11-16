@@ -34,7 +34,7 @@ jobs:
           cache: npm
       - run: npm install --global npm@11.11.0
       - run: npm ci
-      - run: npm run check:byo-agents:release
+      - run: npm run check:local-computer:release
       - name: Verify requested version
         env:
           REQUESTED_VERSION: ${{ inputs.version }}

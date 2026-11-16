@@ -7,7 +7,8 @@ crons.interval('native deployment policy refresh', { minutes: 1 }, internal.plat
 
 crons.interval('Harness continuation reconciliation', { minutes: 1 }, internal.harness.continuations.dispatchDue, {})
 
-crons.interval('expired connected-agent MCP results', { hours: 1 }, internal.agents.mcpCalls.cleanupExpired)
+
+crons.interval('expired local tool calls', { minutes: 15 }, internal.agents.localToolCalls.cleanupExpired)
 
 crons.interval(
   'expired harness context artifacts',
@@ -40,35 +41,14 @@ crons.interval(
   internal.chat.conversations.expireToolLoopAgentRunLeases,
 )
 
-crons.interval(
-  'connected agent run supervision',
-  { minutes: 1 },
-  // Generated API types are refreshed on the next Convex codegen/deploy.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).agents.connectedAgents.sweepRemoteRunsInternal,
-)
-
+// Meters cloud Computer machine leases and runs their idle checks through the BFF reconcile route.
+// The cron name is kept so the deployment updates the existing job instead of adding a second one.
 crons.interval(
   'connected agent settlement reconciliation',
   { minutes: 1 },
   // Provider credentials remain in the BFF rather than the Convex deployment.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).agents.settlementReconciliation.runReconciliationTick,
-)
-
-crons.interval(
-  'connected agent event rate window cleanup',
-  { minutes: 5 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).agents.connectedAgents.pruneEventRateWindowsInternal,
-)
-
-crons.interval(
-  'connected agent artifact cleanup',
-  { minutes: 15 },
-  // Generated API types are refreshed on the next Convex codegen/deploy.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).agents.artifactCleanup.runCleanupTick,
 )
 
 // Removes conversations that were created (e.g. user opened a new chat) but never
@@ -200,5 +180,8 @@ crons.interval('teams sync maintenance', { minutes: 1 }, internal.sync.teamsLink
 // Counts yesterday (UTC) for the admin console's growth panel. Runs a little
 // after midnight so late writes for the day have landed.
 crons.daily('growth daily totals', { hourUTC: 0, minuteUTC: 20 }, internal.platform.growth.startDaily)
+
+// Folder copy records for agent runs are kept a week (internal/develop/thread-folders.md).
+crons.daily('prune folder copies', { hourUTC: 3, minuteUTC: 40 }, internal.files.folderCopies.prune)
 
 export default crons

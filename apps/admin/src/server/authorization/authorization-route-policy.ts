@@ -104,10 +104,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: authenticated() },
   },
   {
-    path: '/api/v1/agent-environments/cloud',
-    methods: { POST: authenticated() },
-  },
-  {
     path: '/api/v1/agent-environments/:environmentId/approve',
     methods: { POST: authenticated() },
   },
@@ -119,27 +115,15 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },
   },
-  // Owner/admin is enforced in the handler.
-  { path: '/api/v1/agent-environments/:environmentId/desktop', methods: { POST: authenticated() } },
-  {
-    path: '/api/v1/agent-bindings',
-    methods: { GET: authenticated(), PUT: authenticated(), DELETE: authenticated() },
-  },
   { path: '/api/v1/agent-environments/enroll', methods: { POST: publicPolicy() } },
-  { path: '/api/v1/agent-profiles/upload', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-asks', methods: { POST: authenticated() } },
   { path: '/api/v1/agents/:agentId/profile', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/credentials/refresh', methods: { POST: publicPolicy() } },
-  { path: '/api/v1/agent-environments/:environmentId/run-credentials', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/heartbeat', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/:environmentId/capabilities', methods: { PUT: publicPolicy() } },
-  { path: '/api/v1/agent-environments/:environmentId/commands', methods: { GET: publicPolicy() } },
-  { path: '/api/v1/agent-environments/:environmentId/commands/:commandId/ack', methods: { POST: publicPolicy() } },
-  { path: '/api/v1/agent-environments/:environmentId/events', methods: { POST: publicPolicy() } },
-  { path: '/api/v1/agent-environments/:environmentId/artifacts', methods: { POST: publicPolicy() } },
-  { path: '/api/v1/agent-environments/:environmentId/artifacts/:artifactId/complete', methods: { POST: publicPolicy() } },
-  { path: '/api/v1/agent-environments/artifacts/cleanup', methods: { POST: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/local-tool-calls', methods: { GET: publicPolicy() } },
+  { path: '/api/v1/agent-environments/:environmentId/local-tool-calls/:callId/result', methods: { POST: publicPolicy() } },
   { path: '/api/v1/agent-environments/operations/reconcile', methods: { POST: publicPolicy() } },
   {
     path: '/api/v1/shares',
@@ -361,18 +345,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
   },
   {
-    path: '/api/v1/conversations/run/remote',
-    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
-  },
-  {
-    path: '/api/v1/conversations/run/remote/request',
-    methods: { POST: resource('conversation', 'edit', {}, 'conversations.edit') },
-  },
-  {
-    path: '/api/v1/conversations/run/remote/artifacts/:artifactId',
-    methods: { GET: capability('conversations.read') },
-  },
-  {
     path: '/api/v1/conversations/run/metrics',
     methods: { GET: capability('conversations.read') },
   },
@@ -453,17 +425,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   { path: '/api/v1/providers/connections/test', methods: { POST: authenticated() } },
-  // Agent provider accounts (Claude Code / Codex credentials) are scoped to the caller's own user id.
-  {
-    path: '/api/v1/provider-accounts',
-    methods: {
-      GET: authenticated(),
-      POST: authenticated(),
-      PATCH: authenticated(),
-      DELETE: authenticated(),
-    },
-  },
-  { path: '/api/v1/provider-accounts/codex-sign-in', methods: { POST: authenticated() } },
   // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
