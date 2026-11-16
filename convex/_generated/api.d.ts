@@ -22,6 +22,7 @@ import type * as agents_localToolCalls from "../agents/localToolCalls.js";
 import type * as agents_machineLeases from "../agents/machineLeases.js";
 import type * as agents_providerInventory from "../agents/providerInventory.js";
 import type * as agents_settlementReconciliation from "../agents/settlementReconciliation.js";
+import type * as agents_threadTurns from "../agents/threadTurns.js";
 import type * as agents_threads from "../agents/threads.js";
 import type * as agents_threadWork from "../agents/threadWork.js";
 import type * as auth_accountBrowse from "../auth/accountBrowse.js";
@@ -218,6 +219,7 @@ declare const fullApi: ApiFromModules<{
   "agents/machineLeases": typeof agents_machineLeases;
   "agents/providerInventory": typeof agents_providerInventory;
   "agents/settlementReconciliation": typeof agents_settlementReconciliation;
+  "agents/threadTurns": typeof agents_threadTurns;
   "agents/threads": typeof agents_threads;
   "agents/threadWork": typeof agents_threadWork;
   "auth/accountBrowse": typeof auth_accountBrowse;
