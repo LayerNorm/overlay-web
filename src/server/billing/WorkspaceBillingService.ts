@@ -259,9 +259,14 @@ export class WorkspaceBillingService {
 
   /** PR previews only: owners and admins make a workspace paid for testing, without a card. */
   async grantPreviewTestPlan(args: { actorUserId: string; workspaceId: string }): Promise<{ granted: boolean }> {
-    const { workspaceId } = await this.requireAccountManager(args)
     if (!this.deps.repository.grantPreviewTestPlan) this.fail('Preview test plans are unavailable.', 404)
-    return await this.deps.repository.grantPreviewTestPlan({ workspaceId })
+    // A new workspace has no wallet yet; create it the same way Upgrade does, then grant the plan.
+    const access = await this.requireManager(args)
+    await this.deps.repository.ensureWorkspaceBillingAccount({
+      primaryBillingContactUserId: args.actorUserId,
+      workspaceId: access.workspace.id,
+    })
+    return await this.deps.repository.grantPreviewTestPlan({ workspaceId: access.workspace.id })
   }
 
   private async requireManager(args: { actorUserId: string; workspaceId: string }) {
