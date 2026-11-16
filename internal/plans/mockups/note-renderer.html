@@ -652,9 +652,10 @@ function openSlash(editor, block) {
   renderSlash();
   positionNear(slash, block, editor.page);
 }
+const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 function renderSlash() {
   const { items, index, query } = active;
-  slash.innerHTML = (query ? `<div class="q">Filter: <b>${query}</b></div>` : '') + (items.length ? `<div class="label">Basic blocks</div>` + items.map((c, i) => `
+  slash.innerHTML = (query ? `<div class="q">Filter: <b>${escapeHtml(query)}</b></div>` : '') + (items.length ? `<div class="label">Basic blocks</div>` + items.map((c, i) => `
     <button type="button" class="item${i === index ? ' active' : ''}" data-cmd="${c.id}" role="option">
       <span class="tile">${icon(c.icon)}</span>
       <span class="tl"><b>${c.label}</b><small>${c.hint}</small></span>
@@ -722,9 +723,11 @@ blockmenu.addEventListener('click', (e) => {
   if (it.dataset.act === 'dup') block.after(block.cloneNode(true));
   if (it.dataset.act === 'del') block.remove();
   if (it.dataset.turn) {
-    const text = (block.querySelector('.li-text') || block).innerHTML;
+    const source = block.querySelector('.li-text') || block;
+    const nodes = [...source.childNodes];
     active = { editor, block }; applyCommand(it.dataset.turn);
-    const sel = getSelection(); const b = blockFor(editor.doc, sel.anchorNode); if (b && it.dataset.turn !== 'hr') b.innerHTML = text;
+    const sel = getSelection(); const b = blockFor(editor.doc, sel.anchorNode);
+    if (b && it.dataset.turn !== 'hr') (b.querySelector('.li-text') || b).replaceChildren(...nodes);
   }
   touched(); closeMenus();
 });
