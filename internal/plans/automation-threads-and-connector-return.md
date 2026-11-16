@@ -1,6 +1,6 @@
 # Connector return and automations as threads
 
-Status: Proposed. Nothing implemented yet.
+Status: Section 2 phases (a) and (b) merged to main in PR #524 (merge commit `426f39ff`); production deployment and production Convex sync not yet verified, production acceptance not done. Section 1 is implemented in PR #523 (preview QA done, not merged). Phase (c) not started.
 Mockups, both using production UI and fixture data:
 
 - Automation thread: `internal/plans/mockups/overlay-app.html#/app/agents?agent=agent_chief&id=k17convinboxtriage00000000000000`. It is the real Agents thread view. Each scheduled run appears as an ordinary user message, and the sidebar shows the thread's Needs you status. Nothing new is drawn.
@@ -33,3 +33,19 @@ Mockups, both using production UI and fixture data:
 **Phases.** (a) Thread binding plus the message-injection runner behind a flag, with existing automations migrated to a bound thread. (b) Chat thread status parity. (c) Remove the old runner, routes and fields, and update `internal/develop/tool-catalog.md` and the API route catalogs.
 
 **Decided (2026-11-15).** Each automation has exactly one thread. Every run is appended to it, and the existing context compaction keeps it within the model's window. The sidebar lists that thread, not a separate automation entry.
+
+**Progress (section 2).**
+
+| Phase | State | Notes |
+| --- | --- | --- |
+| (a) Thread binding and message-injection runner | Merged in PR #524; Run now accepted on its preview; production not verified | No flag: the new path replaces the workflow start outright so there is one execution path. Creation binds the thread; older automations bind lazily on their next run (a still-valid owned thread is reused and unhidden; the source chat is never reused, and agent automations whose old thread was a personal chat get a new agent thread). Agent threads post through `collaboration.addMessage` + `startWorkspaceAgentTurns`; chats call the act entry point in-process under the existing automation harness authority, fenced by the ledger owner token. The ledger stores `messageId` and settles from that message's agent run on the minute tick; a run waiting for input stays open, so skip-if-running holds until the owner answers. |
+| (b) Chat status parity | Merged in PR #524; Working and Ready seen on its preview; production not verified | Chat summaries carry `activity` (Working, Needs you, Ready while unread, Failed) and the Chats sidebar shows the same indicator as agent threads. Agent sidebars list an automation as its thread. |
+| (c) Remove old runner, routes and fields | Not started | `automation-run.ts`, `automation-agent-turn.ts`, `automation-harness-steps.ts`, the automation branch of `automation-turn-runner.ts`, the approve, stream and events routes, graph/run-visualization fields, and workflow event projection are now unreachable from runs but still present. Update `tool-catalog.md` and both route catalogs when they go. |
+
+Not done in (a): the "Scheduled · 9:00 AM" label on the injected message (no message marker yet; the message is plain user text), and the one-line "this message was scheduled" note reaches only chat turns (through the existing `automationExecution` instruction), not agent threads.
+
+Preview QA (PR #524, head `0b5ce559`): Run now on an agent automation and a chat automation each posted the instructions as a user message in the bound thread, the turn replied, and the minute tick settled the ledger run (completed; an earlier run that failed authorization settled as failed). The agent sidebar lists the automation as a thread under its agent, and the Chats sidebar showed Working, then Ready with an unread count.
+
+Owner decision (2026-11-15): editing an automation posts nothing into its thread. The "Automation updated: …" notes were removed on PR #524 (the builder, the repository write and their tests); configuration changes apply from the next run. Automations are scheduled user messages in one thread, with context set by origin: an agent thread for agent automations, otherwise a normal chat.
+
+Untested so far: a run that waits for approval or input (Needs you), skip-if-running while waiting, and a scheduled (cron) tick rather than Run now.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { hasThreadActivity, resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
+import { hasThreadActivity, resolveChatActivity, resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
 
 test('active work and actionable pauses use different indicators', () => {
   for (const status of ['queued', 'running', 'waiting_for_children']) {
@@ -47,4 +47,15 @@ test('agent summaries count actionable states and omit idle or reviewed threads'
   assert.deepEqual(summarizeThreadActivity(statuses.map((status, i) => ({ conversationId: String(i), status })))
     .map(item => `${item.count} ${item.label}`), ['2 working', '1 ready', '1 needs you'])
   assert.deepEqual(summarizeThreadActivity([]), [])
+})
+
+test('chats show the same Working and Needs you as agent threads, and Ready only while unread', () => {
+  assert.equal(resolveChatActivity(null, false), 'idle')
+  assert.equal(resolveChatActivity({ status: 'running', updatedAt: 20 }, false), 'working')
+  assert.equal(resolveChatActivity({ status: 'waiting_for_approval', updatedAt: 20 }, false), 'needs_input')
+  assert.equal(resolveChatActivity({ status: 'waiting_for_input', updatedAt: 20 }, true), 'needs_input')
+  assert.equal(resolveChatActivity({ status: 'completed', completedAt: 20, updatedAt: 20 }, true), 'ready')
+  assert.equal(resolveChatActivity({ status: 'completed', completedAt: 20, updatedAt: 20 }, false), 'completed')
+  assert.equal(resolveChatActivity({ status: 'failed', updatedAt: 20 }, true), 'failed')
+  assert.equal(resolveChatActivity({ status: 'cancelled', updatedAt: 20 }, false), 'completed')
 })

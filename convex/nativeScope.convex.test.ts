@@ -110,7 +110,7 @@ test('legacy personal chats need no participant but removed participants cannot 
   await expect(user.query(personalChat, args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
 })
 
-test('legacy automation bindings stay owner-only and leave chat kind when deleted', async () => {
+test('automation-bound chats are ordinary chats; legacy automation-owned threads stay owner-only', async () => {
   const { t, user, args } = await fixture()
   const summary = makeFunctionReference<'query'>('chat/personal:getSummary')
   const role = await t.run(ctx => ctx.db.insert('authorizationRoles', {
@@ -119,12 +119,16 @@ test('legacy automation bindings stay owner-only and leave chat kind when delete
   expect(role).toBeTruthy()
   await t.run(ctx => ctx.db.insert('authorizationUserRoles', { roleId: 'scope-reader', userId: 'user-a', createdAt: 1 }))
   expect(await user.query(summary, args)).toMatchObject({ kind: 'personal' })
-  const automationId = await t.run(ctx => ctx.db.insert('automations', {
+  // An automation is a schedule on its thread: binding it leaves the chat a chat.
+  await t.run(ctx => ctx.db.insert('automations', {
     workspaceId: args.workspaceId, userId: 'user-a', conversationId: args.conversationId,
     createdAt: 1, updatedAt: 1,
   }))
+  expect(await user.query(summary, args)).toMatchObject({ kind: 'personal' })
+  // Threads the retired automation runner created keep their automation kind until rebound.
+  await t.run(ctx => ctx.db.patch(args.conversationId, { isAutomation: true }))
   expect(await user.query(summary, args)).toMatchObject({ kind: 'automation' })
   await expect(t.withIdentity({ subject: 'user-b' }).query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
-  await t.run(ctx => ctx.db.patch(automationId, { deletedAt: 0 }))
+  await t.run(ctx => ctx.db.patch(args.conversationId, { isAutomation: undefined }))
   expect(await user.query(summary, args)).toMatchObject({ kind: 'personal' })
 })

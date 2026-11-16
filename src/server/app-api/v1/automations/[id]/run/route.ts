@@ -5,8 +5,8 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { logger } from '@/server/observability/logger'
 
-// POST /api/v1/automations/{id}/run — start a manual run through the same
-// durable run workflow scheduled runs use.
+// POST /api/v1/automations/{id}/run — post the automation's instructions into
+// its thread now, the same way a scheduled run does.
 export async function POST(_request: NextRequest, context?: AppApiRouteContext) {
   try {
     const automationId = (await context?.params ?? {})['id'] as string | undefined
@@ -20,6 +20,7 @@ export async function POST(_request: NextRequest, context?: AppApiRouteContext) 
       automationId,
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
+      routeContext: context,
     }))
   } catch (error) {
     if (!(error instanceof Error && error.name === 'AutomationServiceError')) {

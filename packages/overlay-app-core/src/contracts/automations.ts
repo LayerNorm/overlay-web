@@ -126,6 +126,8 @@ export interface AutomationRunSummary {
   finishedAt?: number
   conversationId?: string
   turnId?: string
+  /** The user message this run posted into its automation's thread. */
+  messageId?: string
   error?: string
   errorCode?: string
   errorMessage?: string

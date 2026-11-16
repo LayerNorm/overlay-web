@@ -130,13 +130,12 @@ export function AutomationEditorPanel({
     setTestState('running')
     setTestMessage(null)
     try {
-      // Durable path: trigger via the per-automation run endpoint, capture
-      // the workflowRunId for live visualization, then open the chat.
+      // The run posts the instructions into the automation's thread; its
+      // progress shows there like any other turn, so open the thread.
       const res = await overlayAppClient.automations.runDurableResponse(
         automation._id,
       )
       const data = (await res.json().catch(() => ({}))) as {
-        workflowRunId?: string
         runId?: string
         conversationId?: string
         error?: string
@@ -145,17 +144,9 @@ export function AutomationEditorPanel({
       if (!res.ok) {
         throw new Error(data.message || data.error || 'Failed to test automation')
       }
-      if (data.workflowRunId) {
-        setLiveWorkflowRunId(data.workflowRunId)
-      }
       setTestState('success')
-      setTestMessage('Durable run started. Live status available in Run Visualization below.')
-      // Don't navigate away immediately — let the user watch live status.
-      // The user can click "Open" in run history to view the chat.
-      if (data.conversationId) {
-        // Optionally navigate after a short delay to let the user see live status
-        window.setTimeout(() => onTested(data.conversationId!), 3000)
-      }
+      setTestMessage('Run started in its thread.')
+      if (data.conversationId) onTested(data.conversationId)
     } catch (error) {
       setTestState('error')
       setTestMessage(error instanceof Error ? error.message : 'Failed to test automation')
