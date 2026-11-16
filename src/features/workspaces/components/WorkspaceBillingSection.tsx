@@ -14,11 +14,15 @@ import {
   TOP_UP_MIN_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
 import { formatBytes } from '@/shared/storage/storage-limits'
+import { publicEnv } from '@/shared/env/public-env'
 import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
 
+
+/** PR previews (pr-<n>.preview.getoverlay.io) offer a card-free paid plan for testing; the server enforces it too. */
+const IS_PR_PREVIEW = /^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(publicEnv.appUrl ?? '')
 
 type BillingState =
   | { status: 'loading' }
@@ -184,6 +188,12 @@ function WorkspaceBillingLoaded({
           canManage={summary.canManage}
           busy={busy}
           onUpgrade={() => billing.setUpgradeDialogOpen(true)}
+          onPreviewTestPlan={IS_PR_PREVIEW && client.grantPreviewTestPlan
+            ? () => void billing.run('preview-plan', async () => {
+              await client.grantPreviewTestPlan!(workspaceId)
+              return summary
+            })
+            : undefined}
         />
       ) : (
         <WalletOverview client={client} workspaceId={workspaceId} summary={summary} billing={billing} />
@@ -204,10 +214,12 @@ function WalletSetupCard({
   canManage,
   busy,
   onUpgrade,
+  onPreviewTestPlan,
 }: {
   canManage: boolean
   busy: string | null
   onUpgrade: () => void
+  onPreviewTestPlan?: () => void
 }) {
   return (
     <div className="rounded-xl border border-(--border) p-5">
@@ -216,7 +228,12 @@ function WalletSetupCard({
           <p className="text-sm font-medium text-(--foreground)">Workspace setup</p>
           <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Set up your workspace before payment. Model execution starts after the $8/month usage credit is active; bring your own model credentials if you prefer.</p>
         </div>
-        {canManage ? <Button size="sm" disabled={busy !== null} onClick={onUpgrade}><WalletCards size={13} />Upgrade</Button> : null}
+        {canManage ? (
+          <div className="flex shrink-0 gap-2">
+            {onPreviewTestPlan ? <Button size="sm" variant="secondary" disabled={busy !== null} onClick={onPreviewTestPlan}>{busy === 'preview-plan' ? <Loader2 size={13} className="animate-spin" /> : null}Make paid for testing</Button> : null}
+            <Button size="sm" disabled={busy !== null} onClick={onUpgrade}><WalletCards size={13} />Upgrade</Button>
+          </div>
+        ) : null}
       </div>
     </div>
   )

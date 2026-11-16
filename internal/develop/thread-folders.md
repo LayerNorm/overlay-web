@@ -50,7 +50,9 @@ workspace computers) is in `todos.md`.
   limited to that repository that expires within an hour. The token sits in `/tmp/overlay-github/<owner>/<repo>.token`, one per repository, for a
   git credential helper and is removed when the run's folders are saved. The agent is told to branch and open a pull
   request, never push to the default branch; the summary card lists pull requests the app opened during the run.
-  Installing is verified: the callback saves an installation only if GitHub says the signed-in person can see it.
+  Connecting is a GitHub sign-in that returns to the deployment that started it (`redirect_uri`); the callback connects
+  every installation of the app GitHub lists for that person (`/user/installations`), so nobody can connect someone
+  else's. Installing is a separate step on GitHub ("Install on GitHub"), after which the person connects again.
 - **Computer tools default to the thread's computer.** A thread set to a Mac sends computer tools to that Mac
   (`localEnvironmentId`); offline or not-yours fails with a message telling the agent not to retry.
 
@@ -64,9 +66,15 @@ workspace computers) is in `todos.md`.
 ## Settings
 
 GitHub App: `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`,
-`GITHUB_APP_CLIENT_SECRET`. The app needs Contents and Pull requests (read and write) and Metadata (read), "Request
-user authorization (OAuth) during installation" on, and the callback URL `<origin>/api/v1/github/callback`. Without
+`GITHUB_APP_CLIENT_SECRET`. The app needs Contents and Pull requests (read and write) and Metadata (read), the
+callback URL `<origin>/api/v1/github/callback`, no webhook, and "Request user authorization (OAuth) during
+installation" off: with it on, GitHub always returns installs to the first callback URL, which breaks previews. Without
 these settings the picker lists no repositories and connecting reports that GitHub isn't set up.
+
+Production and PR previews use separate apps, so preview builds never hold a credential for customers' repositories:
+`overlay-agents` (callback `https://www.getoverlay.io/api/v1/github/callback`, Production settings) and
+`overlay-agents-preview` (callback `https://preview.getoverlay.io/api/v1/github/callback` with wildcard matching, so
+every `pr-<n>.preview.getoverlay.io` is accepted; Preview settings; installed only on LayerNorm test repositories).
 
 ## QA
 
