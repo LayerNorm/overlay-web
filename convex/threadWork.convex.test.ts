@@ -123,6 +123,29 @@ describe('thread work', () => {
     expect(await read()).toBe(true)
   })
 
+  test('the one-time update turns Local computer on for existing agents that can edit files, once', async () => {
+    const { convex } = await seed()
+    const ids = await convex.run(async (ctx) => {
+      const make = (agentId: string, allowedToolIds: string[]) => ctx.db.insert('workspaceAgentDefinitions', {
+        agentId, workspaceId, principalId: `p-${agentId}`, name: agentId, instructions: 'x', harness: 'overlay', visibility: 'workspace',
+        modelId: 'm', allowedToolIds, invocationPolicy: 'mention', createdByPrincipalId: 'p-alice', createdAt: now, updatedAt: now,
+      } as never)
+      return {
+        editor: await make('editor', ['write_file', 'create_folder', 'capability:web_search']),
+        reader: await make('reader', ['search_knowledge', 'capability:web_search']),
+        already: await make('already', ['write_file', 'capability:local_computer']),
+      }
+    })
+    const migrate = makeFunctionReference<'mutation'>('migrations/grantLocalComputer:run')
+    const grants = () => convex.run(async (ctx) => Object.fromEntries(await Promise.all(Object.entries(ids).map(async ([name, id]) =>
+      [name, ((await ctx.db.get(id)) as { allowedToolIds: string[] }).allowedToolIds.filter((entry) => entry === 'capability:local_computer').length]))))
+    expect(await convex.mutation(migrate, { dryRun: true })).toEqual({ granted: 1, isDone: true })
+    expect(await grants()).toEqual({ editor: 0, reader: 0, already: 1 })
+    expect(await convex.mutation(migrate, {})).toEqual({ granted: 1, isDone: true })
+    expect(await grants()).toEqual({ editor: 1, reader: 0, already: 1 })
+    expect(await convex.mutation(migrate, {})).toEqual({ granted: 0, isDone: true })
+  })
+
   test('a folder copy lists readable files, and saving back is claimed once', async () => {
     const { convex, folderId, privateFolder } = await seed()
     const subtree = await convex.query(fn('files/folderCopies:subtreeByServer', 'query'), { serverSecret: secret, userId: 'bob', workspaceId, folderId }) as { rows: Array<{ name: string }> }

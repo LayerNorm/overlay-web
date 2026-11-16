@@ -82,7 +82,9 @@ workspace computers) is in `todos.md`.
   the person's own computer, costs nothing and is on for new agents and the default agent. It grants the computer
   tools only to a thread its owner set to run on their own computer (`localThreadComputerToolIds`); workspace policy
   and approvals still apply. Without it "This computer" is disabled in Runs on. Agents saved before the group existed
-  have it off until someone turns it on.
+  don't name it: after the Convex sync that ships it, run `npx convex run migrations/grantLocalComputer:run` once on
+  that deployment (idempotent, self-continuing; `'{"dryRun":true}'` first). It turns the group on for every agent that
+  can already edit files and leaves read-only agents alone.
 - **Computer tools default to the thread's computer.** A local thread sends computer tools to its computer
   (`localEnvironmentId`); offline or not-yours fails with a message telling the agent not to retry.
 

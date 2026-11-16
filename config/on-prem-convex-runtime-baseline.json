@@ -584,6 +584,7 @@
     "convex/knowledge/memoryExtractorNode.ts",
     "convex/lib/workDependencies.ts",
     "convex/migrations/backfillAuditWorkspaceIds.ts",
+    "convex/migrations/grantLocalComputer.ts",
     "convex/migrations/purgeConnectedAgents.ts",
     "convex/platform/growth.ts",
     "convex/platform/nativePolicy.ts",
