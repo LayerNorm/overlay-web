@@ -1,8 +1,8 @@
 'use client'
-import { Button, Input } from '@overlay/ui/primitives'
-import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
-import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, PanelRightOpen, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Maximize2, MessageCircle, MoveHorizontal, PanelRightOpen, Plus, Trash2 } from 'lucide-react'
 import type { NotebookNote } from '@overlay/app-core'
 import {
   AppScreenHeader,
@@ -26,12 +26,18 @@ export interface NotebookHeaderProps {
   leading?: ReactNode
   hideBackButton?: boolean
   hideActions?: boolean
+  /** Whether the page uses the full surface width instead of the centered reading column. */
+  fullWidth?: boolean
+  onToggleFullWidth?: () => void
   onDeleteNote?: () => void
   onBackToFiles: () => void
   onCreateNote: () => void
-  onTitleChange: (event: ChangeEvent<HTMLInputElement>) => void
-  onTitleBlur: () => void
-  onTitleKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
+  /** @deprecated The title is edited on the note page; kept so existing hosts still type-check. */
+  onTitleChange?: (event: ChangeEvent<HTMLInputElement>) => void
+  /** @deprecated See `onTitleChange`. */
+  onTitleBlur?: () => void
+  /** @deprecated See `onTitleChange`. */
+  onTitleKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void
   onToggleAgentPanel: () => void
 }
 
@@ -48,12 +54,11 @@ export function NotebookHeader({
   leading,
   hideBackButton,
   hideActions,
+  fullWidth,
+  onToggleFullWidth,
   onDeleteNote,
   onBackToFiles,
   onCreateNote,
-  onTitleChange,
-  onTitleBlur,
-  onTitleKeyDown,
   onToggleAgentPanel,
 }: NotebookHeaderProps) {
   // AppScreenHeader's base padding is `px-3 sm:px-6` and cn() concatenates rather
@@ -98,16 +103,8 @@ export function NotebookHeader({
             <ArrowLeft size={compact ? 13 : 17} />
           </NotebookHeaderIconButton>
         ) : null}
-        <AppBreadcrumbs title={<Input
-          type="text"
-          aria-label="Note title"
-          value={title}
-          onChange={onTitleChange}
-          onBlur={onTitleBlur}
-          onKeyDown={onTitleKeyDown}
-          placeholder="Note title..."
-          className={unstyledInput('min-w-0 w-full bg-transparent text-sm font-medium text-(--foreground) outline-hidden placeholder:text-(--muted)')}
-        />} />
+        {/* The title is edited on the page itself; the breadcrumb only names it. */}
+        <AppBreadcrumbs title={<span className="block min-w-0 truncate text-sm font-medium text-(--foreground)">{title || 'Untitled'}</span>} />
         {!hideActions ? (
           <NotebookHeaderActions
             compact={compact}
@@ -115,6 +112,8 @@ export function NotebookHeader({
             isDirty={isDirty}
             agentPanelOpen={agentPanelOpen}
             exportMenu={exportMenu}
+            fullWidth={fullWidth}
+            onToggleFullWidth={onToggleFullWidth}
             onDeleteNote={onDeleteNote}
             onToggleAgentPanel={onToggleAgentPanel}
           />
@@ -156,6 +155,8 @@ interface NotebookHeaderActionsProps {
   isDirty?: boolean
   agentPanelOpen?: boolean
   exportMenu?: ReactNode
+  fullWidth?: boolean
+  onToggleFullWidth?: () => void
   onDeleteNote?: () => void
   onToggleAgentPanel: () => void
 }
@@ -166,6 +167,8 @@ function NotebookHeaderActions({
   isDirty,
   agentPanelOpen,
   exportMenu,
+  fullWidth,
+  onToggleFullWidth,
   onDeleteNote,
   onToggleAgentPanel,
 }: NotebookHeaderActionsProps) {
@@ -178,6 +181,17 @@ function NotebookHeaderActions({
         </span>
       )}
       {isDirty && <span className="text-[11px] text-(--muted-light)">Unsaved</span>}
+      {onToggleFullWidth ? (
+        <NotebookHeaderIconButton
+          label={fullWidth ? 'Use reading width' : 'Use full width'}
+          title={fullWidth ? 'Reading width' : 'Full width'}
+          compact={compact}
+          active={fullWidth}
+          onClick={onToggleFullWidth}
+        >
+          <MoveHorizontal size={compact ? 13 : 16} />
+        </NotebookHeaderIconButton>
+      ) : null}
       {onDeleteNote ? (
         <NotebookHeaderIconButton label="Delete note" title="Delete note" compact={compact} onClick={onDeleteNote}>
           <Trash2 size={compact ? 13 : 15} />

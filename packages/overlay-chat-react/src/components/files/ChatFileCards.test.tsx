@@ -6,7 +6,7 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { MarkdownMessage } from '../MarkdownMessage'
 import { ToolCallRowWithReasoning } from '../exchange/tool-call-rows'
 import { collectCreatedFileIds } from '../markdown/tool-resource-links'
-import { ChatFileCardStrip } from './ChatFileCards'
+import { ChatFileCardStrip, noteActivityLabel, notePeekLines } from './ChatFileCards'
 import { ChatFilesProvider, fileIdFromContentHref, type ChatFileSummary, type ChatFilesHost } from './chat-files-context'
 
 const files: ChatFileSummary[] = [
@@ -83,4 +83,37 @@ test('tool rows say what the call did', () => {
   const created = withHost(<ToolCallRowWithReasoning block={block('computer_publish_file',
     { name: 'day-01.mp4' }, { success: true, artifact: { fileId: 'vid1' } })} />)
   assert.match(created, /<button[^>]*>.*day-01\.mp4/)
+})
+
+test('a note card peeks at the page: the repeated title line is dropped and short lines read as headings', () => {
+  const lines = notePeekLines('ARMS discovery brief', 'ARMS discovery brief\nStatus and scope\nResearch proposal only. No compound has been tested.\n- First step')
+  assert.deepEqual(lines, [
+    { kind: 'heading', text: 'Status and scope' },
+    { kind: 'text', text: 'Research proposal only. No compound has been tested.' },
+    { kind: 'text', text: '• First step' },
+  ])
+  const html = withHost(<ChatFileCardStrip fileIds={['note1']} />)
+  assert.match(html, /Render notes/)
+  assert.match(html, /Note/)
+})
+
+test('note activity says created for a fresh note and updated once it changed later', () => {
+  const now = Date.UTC(2026, 10, 15, 12)
+  assert.equal(noteActivityLabel({ createdAt: now - 10_000, updatedAt: now - 5_000 }, now), 'Created just now')
+  assert.equal(noteActivityLabel({ createdAt: now - 3_600_000, updatedAt: now - 300_000 }, now), 'Updated 5m ago')
+  assert.equal(noteActivityLabel({}, now), null)
+})
+
+test('three or more notes from one turn collapse into one list, and the open note looks selected', () => {
+  const many: ChatFileSummary[] = ['a', 'b', 'c'].map(id => ({ _id: id, name: `Note ${id}`, kind: 'note' }))
+  const listHost: ChatFilesHost = {
+    useFileSummaries: (ids) => new Map(many.filter(file => ids.includes(file._id)).map(file => [file._id, file])),
+    openFile: () => undefined,
+    activeFileId: 'b',
+  }
+  const html = renderToStaticMarkup(<ChatFilesProvider value={listHost}><ChatFileCardStrip fileIds={['a', 'b', 'c']} /></ChatFilesProvider>)
+  assert.equal((html.match(/border-t border-\(--border\)/g) ?? []).length, 2)
+  assert.doesNotMatch(html, /h-32/)
+  const single = renderToStaticMarkup(<ChatFilesProvider value={listHost}><ChatFileCardStrip fileIds={['b']} /></ChatFilesProvider>)
+  assert.match(single, /aria-current="true"/)
 })

@@ -1,8 +1,8 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button, Dialog, DialogContent, DialogTitle } from '@overlay/ui/primitives'
-import { Download, File, FileText, PanelRight, Play } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowUpRight, ChevronRight, Download, File, FileText, PanelRight, Play } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import {
   chatFileKind,
   fileContentUrl,
@@ -113,34 +113,145 @@ function VideoCaption({ name, caption }: { name: string; caption?: string }) {
   )
 }
 
-/** A note or document: icon, title and a two-line preview. */
-export function ChatDocumentCard({ file }: { file: ChatFileSummary }) {
+type PeekLine = { kind: 'heading' | 'text'; text: string }
+
+const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/**
+ * The note's opening lines shaped like a page: short unpunctuated lines read as section headings, the rest as text.
+ * The preview arrives as plain text, so a leading line that repeats the title is dropped.
+ */
+export function notePeekLines(title: string, previewText: string | undefined, limit = 5): PeekLine[] {
+  const lines = (previewText ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+  const titleKey = normalize(title)
+  if (lines[0] && titleKey) {
+    const firstKey = normalize(lines[0])
+    if (firstKey && (titleKey.includes(firstKey) || firstKey.includes(titleKey))) lines.shift()
+  }
+  return lines.slice(0, limit).map(text => ({
+    kind: text.length <= 60 && !/[.:;!?,)\]]$/.test(text) && !text.startsWith('- ') ? 'heading' : 'text',
+    text: text.startsWith('- ') ? `• ${text.slice(2)}` : text,
+  }))
+}
+
+function relativeTime(timestamp: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - timestamp) / 1000))
+  if (seconds < 60) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/** "Created just now" for a fresh note, "Updated 5m ago" once it has been edited since. */
+export function noteActivityLabel(file: Pick<ChatFileSummary, 'createdAt' | 'updatedAt'>, now = Date.now()): string | null {
+  const { createdAt, updatedAt } = file
+  if (!createdAt && !updatedAt) return null
+  const edited = Boolean(createdAt && updatedAt && updatedAt - createdAt > 60_000)
+  return edited ? `Updated ${relativeTime(updatedAt!, now)}` : `Created ${relativeTime((createdAt ?? updatedAt)!, now)}`
+}
+
+const documentCardClass = (active: boolean) => `group/doc my-1.5 block w-full max-w-[440px] overflow-hidden whitespace-normal rounded-xl border bg-(--surface-elevated) text-left transition-colors ${
+  active ? 'border-[color-mix(in_srgb,var(--foreground)_40%,transparent)]' : 'border-(--border) hover:border-(--muted-light)'
+}`
+
+function DocumentCardShell({ file, active, children }: { file: ChatFileSummary; active: boolean; children: ReactNode }) {
   const { openFile } = useChatFilesHost()
-  const isNote = chatFileKind(file) === 'note'
-  const Icon = isNote ? FileText : File
-  const body = (
-    <>
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-(--surface-subtle) text-(--muted)">
-        <Icon size={15} />
-      </span>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-[13px] font-medium leading-[19px] text-(--foreground)">{file.name}</span>
-        <span className="line-clamp-2 text-xs leading-[18px] text-(--muted)">
-          {file.previewText?.trim() || (isNote ? 'Note' : 'Document')}
-        </span>
-      </span>
-    </>
-  )
-  const className = 'my-1 flex w-full max-w-[460px] items-start gap-3 whitespace-normal rounded-xl border border-(--border) px-3.5 py-3 transition-colors hover:border-(--muted-light) hover:bg-transparent'
   if (openFile) {
     return (
-      <Button variant="ghost" type="button" onClick={() => openFile({ id: file._id, name: file.name, kind: file.kind, mimeType: file.mimeType })}
-        className={unstyledButton(`h-auto text-left font-normal ${className}`)}>
-        {body}
+      <Button variant="ghost" type="button" aria-current={active ? 'true' : undefined}
+        onClick={() => openFile({ id: file._id, name: file.name, kind: file.kind, mimeType: file.mimeType })}
+        className={cardButton(`h-auto rounded-xl hover:bg-(--surface-elevated) ${documentCardClass(active)}`)}>
+        {children}
       </Button>
     )
   }
-  return <a href={fileContentUrl(file._id)} target="_blank" rel="noopener noreferrer" className={`${className} no-underline!`}>{body}</a>
+  return <a href={fileContentUrl(file._id)} target="_blank" rel="noopener noreferrer" className={`${documentCardClass(active)} no-underline!`}>{children}</a>
+}
+
+function DocumentCardFooter({ file, caption }: { file: ChatFileSummary; caption: string }) {
+  const Icon = chatFileKind(file) === 'note' ? FileText : File
+  return (
+    <span className="flex items-center gap-2.5 py-2.5 pl-3.5 pr-3">
+      <Icon size={16} className="shrink-0 text-(--muted)" />
+      <span className="flex min-w-0 flex-1 flex-col gap-px">
+        <span className="truncate text-[13px] font-medium leading-[18px] text-(--foreground)">{file.name || 'Untitled'}</span>
+        <span className="truncate text-xs leading-4 text-(--muted)">{caption}</span>
+      </span>
+      <ArrowUpRight size={16} className="shrink-0 text-(--muted-light) transition-[color,transform] group-hover/doc:-translate-y-px group-hover/doc:translate-x-px group-hover/doc:text-(--foreground)" />
+    </span>
+  )
+}
+
+/**
+ * A note as a small page peek: its title and opening sections on a sheet, then one line saying what happened.
+ * Other documents keep a single row with their type.
+ */
+export function ChatDocumentCard({ file }: { file: ChatFileSummary }) {
+  const { activeFileId } = useChatFilesHost()
+  const isNote = chatFileKind(file) === 'note'
+  const active = activeFileId === file._id
+  const activity = noteActivityLabel(file)
+  if (!isNote) {
+    return (
+      <DocumentCardShell file={file} active={active}>
+        <DocumentCardFooter file={file} caption={file.previewText?.trim().split('\n')[0] || 'Document'} />
+      </DocumentCardShell>
+    )
+  }
+  const lines = notePeekLines(file.name, file.previewText)
+  return (
+    <DocumentCardShell file={file} active={active}>
+      <span aria-hidden="true" className="relative block h-32 overflow-hidden border-b border-(--border) bg-(--surface-muted) px-7 pt-4 dark:bg-[#0c0c0e]">
+        <span className="block h-full overflow-hidden rounded-t-lg border border-b-0 border-(--border) bg-(--surface-elevated) px-[18px] py-3.5 transition-transform duration-200 ease-[cubic-bezier(.2,.8,.2,1)] [mask-image:linear-gradient(to_bottom,#000_55%,transparent)] group-hover/doc:-translate-y-[3px] dark:border-[#2e2e33] dark:bg-[#19191c]">
+          <span className="mb-1.5 block truncate text-[13px] font-semibold leading-4 tracking-[-0.005em] text-(--foreground)">{file.name || 'Untitled'}</span>
+          {lines.length ? lines.map((line, index) => line.kind === 'heading'
+            ? <span key={index} className="mb-[3px] mt-[7px] block truncate text-[9.5px] font-semibold leading-3 text-(--foreground)">{line.text}</span>
+            : <span key={index} className="line-clamp-2 block text-[9px] leading-[1.5] text-(--muted)">{line.text}</span>)
+            : <span className="block text-[9px] text-(--muted-light)">Empty note</span>}
+        </span>
+      </span>
+      <DocumentCardFooter file={file} caption={['Note', activity].filter(Boolean).join(' · ')} />
+    </DocumentCardShell>
+  )
+}
+
+/** Three or more notes and documents from one turn: one quiet list instead of a wall of cards. */
+function ChatDocumentList({ files }: { files: ChatFileSummary[] }) {
+  const { openFile, activeFileId } = useChatFilesHost()
+  return (
+    <span className="my-1.5 block w-full max-w-[440px] overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)">
+      {files.map((file, index) => {
+        const Icon = chatFileKind(file) === 'note' ? FileText : File
+        const activity = chatFileKind(file) === 'note' ? noteActivityLabel(file) : null
+        const row = (
+          <>
+            <Icon size={16} className="shrink-0 text-(--muted)" />
+            <span className="flex min-w-0 flex-1 items-baseline gap-2">
+              <span className="truncate text-[13px] font-medium text-(--foreground)">{file.name || 'Untitled'}</span>
+              {activity ? <span className="shrink-0 text-xs text-(--muted)">{activity.split(' ')[0]}</span> : null}
+            </span>
+            <ChevronRight size={15} className="shrink-0 text-(--muted-light)" />
+          </>
+        )
+        const rowClass = `flex w-full items-center gap-2.5 py-2.5 pl-3.5 pr-3 text-left transition-colors hover:bg-(--surface-subtle) ${
+          index > 0 ? 'border-t border-(--border)' : ''
+        } ${activeFileId === file._id ? 'bg-(--surface-subtle)' : ''}`
+        return openFile ? (
+          <Button key={file._id} variant="ghost" type="button"
+            onClick={() => openFile({ id: file._id, name: file.name, kind: file.kind, mimeType: file.mimeType })}
+            className={unstyledButton(`h-auto rounded-none font-normal ${rowClass}`)}>
+            {row}
+          </Button>
+        ) : (
+          <a key={file._id} href={fileContentUrl(file._id)} target="_blank" rel="noopener noreferrer" className={`${rowClass} no-underline!`}>{row}</a>
+        )
+      })}
+    </span>
+  )
 }
 
 /** One Overlay file as the card for its type. */
@@ -177,7 +288,9 @@ export function ChatFileCardStrip({ fileIds }: { fileIds: readonly string[] }) {
           {images.map(file => <ChatImageThumb key={file._id} src={fileContentUrl(file._id)} name={file.name} fileId={file._id} />)}
         </div>
       ) : null}
-      {documents.map(file => <ChatDocumentCard key={file._id} file={file} />)}
+      {documents.length >= 3
+        ? <ChatDocumentList files={documents} />
+        : documents.map(file => <ChatDocumentCard key={file._id} file={file} />)}
     </div>
   )
 }
