@@ -15,7 +15,7 @@
  */
 import { COMPUTER_TOOL_IDS } from '@overlay/tools-core/policy'
 
-export type AgentToolCapability = 'web_search' | 'integrations' | 'mcp'
+export type AgentToolCapability = 'web_search' | 'integrations' | 'mcp' | 'local_computer'
 
 /**
  * The computer group's tool ids — canonical list lives in
@@ -24,6 +24,19 @@ export type AgentToolCapability = 'web_search' | 'integrations' | 'mcp'
  * the deployment's `computers` capability is off.
  */
 export { COMPUTER_TOOL_IDS }
+
+/**
+ * Computer tools a thread gets from where it runs (internal/develop/thread-folders.md). The Cloud computer group gives
+ * an agent a cloud machine; the Local computer group lets it use the person's own computer, and applies only to a
+ * thread its owner set to run there. The two are independent, so an agent without a cloud computer can still work
+ * locally. Workspace policy still applies on top.
+ */
+export function localThreadComputerToolIds(
+  work: { computer?: { kind: string } } | null | undefined,
+  capabilities: ReadonlySet<AgentToolCapability>,
+): readonly string[] {
+  return work?.computer?.kind === 'mac' && capabilities.has('local_computer') ? COMPUTER_TOOL_IDS : []
+}
 
 export interface AgentToolGroup {
   id: string
@@ -135,10 +148,18 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
   },
   {
     id: 'computer',
-    label: 'Computer',
+    label: 'Cloud computer',
     description:
       'Give this agent a persistent cloud desktop — it keeps files, signed-in apps, and a live screen between sessions.',
     toolIds: COMPUTER_TOOL_IDS,
+  },
+  {
+    id: 'local_computer',
+    label: 'Local computer',
+    description:
+      'Let this agent work on your own computer, in threads you run on it from the desktop app and in the folders you choose. Overlay asks before it runs commands.',
+    toolIds: [],
+    capability: 'local_computer',
   },
   {
     id: 'agent_chat',
@@ -254,9 +275,10 @@ export function overlayToolIdsFromGrant(allowedToolIds: readonly string[]): stri
 
 /**
  * What a newly created agent is granted by default: every group except
- * `computer`. Agents should be fully capable out of the box — the computer
- * group stays opt-in because toggling it on provisions a persistent paid
- * machine on save, not just a tool grant.
+ * `computer`. Agents should be fully capable out of the box — the cloud
+ * computer group stays opt-in because toggling it on provisions a persistent
+ * paid machine on save, not just a tool grant. Local computer is included: it
+ * costs nothing and only applies to threads their owner runs on their own computer.
  */
 export const DEFAULT_AGENT_TOOL_GROUP_IDS: readonly string[] = AGENT_TOOL_GROUPS
   .map((group) => group.id)
@@ -272,7 +294,7 @@ export type AgentToolPreset = 'everything' | 'standard' | 'readonly'
 /** One-click tool sets for the new-agent dialog. None includes `computer`, which is its own explicit opt-in. */
 export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly string[]> = {
   everything: DEFAULT_AGENT_TOOL_GROUP_IDS,
-  standard: ['memory', 'knowledge', 'files', 'web_search', 'notes'],
+  standard: ['memory', 'knowledge', 'files', 'web_search', 'notes', 'local_computer'],
   readonly: ['knowledge', 'web_search'],
 }
 

@@ -46,7 +46,8 @@ test('connected agents: the only tools withheld are the computer group and the U
   const otherWithheld = [...HARNESS_WITHHELD_TOOL_IDS].filter((id) => !computer.toolIds.includes(id) && id !== 'present_generated_ui')
   assert.deepEqual(otherWithheld, [], 'a new withheld tool needs a reason in MCP_GROUP_COVERAGE')
   for (const [group, entry] of Object.entries(MCP_GROUP_COVERAGE.connectedAgents)) {
-    if (group !== 'computer') assert.equal(entry.exposed, true, `${group} should reach connected agents`)
+    // Both computer groups stay with Overlay's own threads: the cloud machine, and the person's own computer.
+    if (group !== 'computer' && group !== 'local_computer') assert.equal(entry.exposed, true, `${group} should reach connected agents`)
   }
 })
 

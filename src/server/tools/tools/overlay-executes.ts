@@ -1020,19 +1020,19 @@ function computerErrorResult(err: unknown, fallback: string) {
 }
 
 const LOCAL_TARGET_UNAVAILABLE =
-  "The user's Mac is not connected to Overlay right now. Do not retry with target \"local\". "
-  + 'Ask the user to open Overlay on their Mac (Settings → Desktop → This Mac), or use the cloud Computer.'
+  "The user's computer is not connected to Overlay right now. Do not retry with target \"local\". "
+  + 'Ask the user to open the Overlay desktop app on their computer (Settings → Desktop → This computer), or use the cloud Computer.'
 
 const PINNED_MAC_UNAVAILABLE =
-  'This thread runs on a Mac that is offline, or that belongs to someone else. Do not retry computer tools. '
-  + 'Tell the user: open Overlay on that Mac, or switch the thread to another computer under the message box. '
-  + 'Only the person who connected a Mac can run a thread on it.'
+  'This thread runs on a computer that is offline, or that belongs to someone else. Do not retry computer tools. '
+  + 'Tell the user: open Overlay on that computer, or start a new thread in the cloud. '
+  + 'Only the person who connected a computer can run a thread on it.'
 
 /** Resolves the user's own Mac for computer tools, or why it cannot be used for this turn. */
 async function localComputerFor(options: OverlayToolsOptions, toolName: string) {
   if (!options.workspaceId) return { ok: false as const, error: 'Computers need a workspace context.' }
   if (options.computerApprovalContext === 'automation') {
-    return { ok: false as const, error: "Automations cannot use the user's Mac. Use the cloud Computer instead." }
+    return { ok: false as const, error: "Automations cannot use the user's computer. Use the cloud Computer instead." }
   }
   const service = getOverlayServerContext().localComputerService
   if (!service) return { ok: false as const, error: LOCAL_TARGET_UNAVAILABLE }
@@ -1127,8 +1127,8 @@ async function cloudComputerInstanceFor(
         ok: false,
         unbound: true,
         error:
-          'No computer is bound to this owner and the user\'s Mac is not connected — do not retry other computer tools. ' +
-          'Ask the user to enable a computer for this agent in the agent editor (Computer toggle), or to open Overlay on their Mac.',
+          'No computer is bound to this owner and the user\'s own computer is not connected — do not retry other computer tools. ' +
+          'Ask the user to enable a computer for this agent in the agent editor (Computer toggle), or to open the Overlay desktop app on their computer.',
       }
     }
     return { ok: false, error: computerErrorResult(err, 'Computer unavailable').error ?? 'Computer unavailable' }
@@ -1343,7 +1343,7 @@ export async function executeComputerOpenUrl(
       opened: input.url,
       openedWith: result.openedWith,
       note: resolved.computer.location === 'local'
-        ? `Opened on ${resolved.computer.name}, the user's own Mac.`
+        ? `Opened on ${resolved.computer.name}, the user's own computer.`
         : result.openedWith === 'browser'
         ? 'Opened in the persistent browser on the visible desktop. The user can watch it live via Open desktop.'
         : 'Opened with the desktop URL handler because the browser driver is unavailable. The user can watch it live via Open desktop.',

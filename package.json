@@ -38,7 +38,7 @@
     "check:p1": "npm run test:p1:unit && npm run test:p1:redis && npm run check:on-prem-convex-boundaries",
     "test:p2:unit": "NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/shared/agents/agent-run.test.ts src/server/conversations/tool-loop-run-registry.test.ts",
     "test:local-computer:convex": "vitest run convex/environmentControlPlane.convex.test.ts convex/localToolCalls.convex.test.ts convex/purgeConnectedAgents.convex.test.ts",
-    "test:local-computer:security": "NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/agents/ConnectedAgentControlPlaneService.test.ts src/server/agents/ManagedAgentSandboxBilling.test.ts src/server/app-api/public-route-security.test.ts src/server/computers/local/local-computer.test.ts",
+    "test:local-computer:security": "OVERLAY_USAGE_MARKUP_BPS=2500 NODE_OPTIONS=--require=./scripts/ci/register-server-only.cjs tsx --test src/server/agents/ConnectedAgentControlPlaneService.test.ts src/server/agents/ManagedAgentSandboxBilling.test.ts src/server/app-api/public-route-security.test.ts src/server/computers/local/local-computer.test.ts",
     "check:local-computer": "npm run test:local-computer:convex && npm run test:local-computer:security && npm run test:agent-bridge-protocol && npm run test:agent-host",
     "check:local-computer:release": "npm run check:local-computer && npm run verify:agent-host-release && npm run pack:agent-host-release && npm run smoke:agent-host-release",
     "test:agent-bridge-protocol": "npm --prefix packages/overlay-agent-bridge-protocol test",

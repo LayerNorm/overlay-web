@@ -69,6 +69,23 @@ describe('thread work', () => {
     await expect(as('bob').mutation(set, { ...args, work: own })).rejects.toThrow(/THREAD_WORK_MAC_UNAVAILABLE/)
   })
 
+  test('the computer and folder are fixed after the first message', async () => {
+    const { convex, as, args, folderId, conversationId } = await seed()
+    const set = fn('agents/threadWork:set', 'mutation')
+    const chosen = { computer: { kind: 'cloud' }, folders: [{ source: 'overlay', fileId: folderId, name: 'Launch' }] }
+    await expect(as('alice').mutation(set, { ...args, work: chosen })).resolves.toEqual(chosen)
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('conversationMessages', {
+        conversationId, userId: 'alice', turnId: 'turn-1', role: 'user', mode: 'act', content: 'Go', contentType: 'text',
+        parts: [{ type: 'text', text: 'Go' }], createdAt: now,
+      } as never)
+    })
+    // Saving the same choice again is harmless; any change is refused.
+    await expect(as('alice').mutation(set, { ...args, work: chosen })).resolves.toEqual(chosen)
+    await expect(as('alice').mutation(set, { ...args, work: { computer: { kind: 'cloud' }, folders: [] } })).rejects.toThrow(/can’t be changed after its first message/)
+    await expect(as('alice').mutation(set, { ...args, work: { computer: { kind: 'mac', environmentId: 'mac-alice' }, folders: [] } })).rejects.toThrow(/can’t be changed after its first message/)
+  })
+
   test('folders must be readable and the combination must make sense', async () => {
     const { as, args, folderId, privateFolder } = await seed()
     const set = fn('agents/threadWork:set', 'mutation')
@@ -76,7 +93,7 @@ describe('thread work', () => {
     await expect(as('alice').mutation(set, { ...args, work: { folders: [{ source: 'overlay', fileId: privateFolder, name: 'Bob only' }] } }))
       .rejects.toThrow(/THREAD_WORK_FOLDER_UNAVAILABLE/)
     await expect(as('alice').mutation(set, { ...args, work: { computer: { kind: 'cloud' }, folders: [{ source: 'mac', environmentId: 'mac-alice', path: '/Users/alice/code' }] } }))
-      .rejects.toThrow(/only be used by a thread that runs on that Mac/)
+      .rejects.toThrow(/only be used by a thread that runs on that computer/)
     await expect(as('alice').mutation(set, { ...args, work: { folders: [{ source: 'github', repository: 'acme/web', installationId: 5 }] } }))
       .rejects.toThrow(/THREAD_WORK_REPOSITORY_UNAVAILABLE/)
   })
@@ -86,6 +103,47 @@ describe('thread work', () => {
     const options = await as('bob').query(fn('agents/threadWork:options', 'query'), { workspaceId, agentId: 'atlas' }) as { macs: Array<{ environmentId: string; roots: string[] }> }
     expect(options.macs.map(mac => mac.environmentId)).toEqual(['mac-bob'])
     expect(options.macs[0]!.roots).toEqual(['/Users/bob/code'])
+  })
+
+  test('options say whether the agent has the Local computer tool group', async () => {
+    const { convex, as } = await seed()
+    const read = async () => (await as('alice').query(fn('agents/threadWork:options', 'query'), { workspaceId, agentId: 'atlas' }) as { localComputer: boolean }).localComputer
+    const grant = async (allowedToolIds: string[], isDefault = false) => convex.run(async (ctx) => {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'atlas')).unique()
+      await ctx.db.patch(agent!._id, { allowedToolIds, isDefault } as never)
+    })
+    expect(await read()).toBe(false)
+    await grant(['capability:local_computer'])
+    expect(await read()).toBe(true)
+    // The cloud computer group alone does not include the person's own computer.
+    await grant(['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'])
+    expect(await read()).toBe(false)
+    // The default agent holds every group without listing them.
+    await grant([], true)
+    expect(await read()).toBe(true)
+  })
+
+  test('the one-time update turns Local computer on for existing agents that can edit files, once', async () => {
+    const { convex } = await seed()
+    const ids = await convex.run(async (ctx) => {
+      const make = (agentId: string, allowedToolIds: string[]) => ctx.db.insert('workspaceAgentDefinitions', {
+        agentId, workspaceId, principalId: `p-${agentId}`, name: agentId, instructions: 'x', harness: 'overlay', visibility: 'workspace',
+        modelId: 'm', allowedToolIds, invocationPolicy: 'mention', createdByPrincipalId: 'p-alice', createdAt: now, updatedAt: now,
+      } as never)
+      return {
+        editor: await make('editor', ['write_file', 'create_folder', 'capability:web_search']),
+        reader: await make('reader', ['search_knowledge', 'capability:web_search']),
+        already: await make('already', ['write_file', 'capability:local_computer']),
+      }
+    })
+    const migrate = makeFunctionReference<'mutation'>('migrations/grantLocalComputer:run')
+    const grants = () => convex.run(async (ctx) => Object.fromEntries(await Promise.all(Object.entries(ids).map(async ([name, id]) =>
+      [name, ((await ctx.db.get(id)) as { allowedToolIds: string[] }).allowedToolIds.filter((entry) => entry === 'capability:local_computer').length]))))
+    expect(await convex.mutation(migrate, { dryRun: true })).toEqual({ granted: 1, isDone: true })
+    expect(await grants()).toEqual({ editor: 0, reader: 0, already: 1 })
+    expect(await convex.mutation(migrate, {})).toEqual({ granted: 1, isDone: true })
+    expect(await grants()).toEqual({ editor: 1, reader: 0, already: 1 })
+    expect(await convex.mutation(migrate, {})).toEqual({ granted: 0, isDone: true })
   })
 
   test('a folder copy lists readable files, and saving back is claimed once', async () => {

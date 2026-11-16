@@ -72,9 +72,12 @@ async function prepareNativeRoomInputs(
   run: AgentRun,
   execution: SurfaceTurnExecution | null,
   inheritedSharedRoom: boolean,
+  work: ThreadWork | undefined,
 ): Promise<PreparedWorkspaceInputs> {
   const isSurfaceRoot = execution?.agentRunId === run.id
   return await prepareWorkspaceAgentInputs({
+    // The thread's computer decides which tools the model is offered, not only where they run.
+    ...(work ? { work } : {}),
     actorUserId: run.userId,
     agentId: run.agentId!,
     conversationId: run.conversationId,
@@ -189,12 +192,12 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
     restrictionLookup,
   ])
   const inheritedSharedRoom = roomRestrictions.inheritedSharedRoom
-  const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution, inheritedSharedRoom)
-  assertPreparedRoomIdentity(args, run, prepared)
   // Slack turns and threads without choices keep today's behavior.
   // A thread whose choices can't be read runs as before, without folders, rather than failing the turn.
   const work = surfaceExecution ? undefined
     : chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId).catch((_error: unknown) => null))
+  const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution, inheritedSharedRoom, work)
+  assertPreparedRoomIdentity(args, run, prepared)
   const workBlock = work ? await threadWorkInstructions({ work, workspaceId: args.workspaceId, actorUserId: run.userId }) : ''
   return buildNativeWorkflowInput(args, run, surfaceExecution, prepared, inheritedSharedRoom, work, workBlock)
 }
