@@ -371,6 +371,9 @@ export class FileService {
     parentId?: string | null
     userId: string
     workspaceId?: string
+    /** Matches the folder it lands in; default personal. */
+    scope?: 'personal' | 'workspace'
+    byAgent?: boolean
   }): Promise<{ id: string }> {
     const name = args.name.replace(/[/\\]/g, '').slice(0, 240).trim()
     if (!name) serviceError({ error: 'name required' }, 400)
@@ -395,6 +398,8 @@ export class FileService {
         ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         name,
         ...(args.parentId ? { parentId: sanitizeConvexIdParam(args.parentId) } : {}),
+        ...(args.scope ? { scope: args.scope } : {}),
+        ...(args.byAgent ? { byAgent: true } : {}),
         r2Key,
         sizeBytes,
         mimeType,
@@ -497,6 +502,19 @@ export class FileService {
     }
     if (!id) serviceError({ error: 'Failed to create file' }, 500)
     return id
+  }
+
+  /**
+   * The stored bytes of a file this person may read, for copying it onto a computer. Convex only returns readable
+   * files, and the object must belong to the file's owner. Null when the file keeps no stored object.
+   */
+  async readFileBytes(args: { fileId: string; userId: string; maximumBytes?: number }): Promise<Uint8Array | null> {
+    const file = await this.deps.repository.getFile({ fileId: args.fileId, userId: args.userId })
+    if (!file) serviceError({ error: 'Not found' }, 404)
+    const owner = typeof file.userId === 'string' ? file.userId : null
+    if (!owner || typeof file.r2Key !== 'string' || !isOwnedStorageKey(owner, file.r2Key)) return null
+    const bytes = await this.storage.downloadBuffer(file.r2Key, args.maximumBytes)
+    return bytes ? new Uint8Array(bytes) : null
   }
 
   /** The full text of a file kept in object storage, or null when the file keeps its text inline. */

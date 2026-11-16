@@ -46,32 +46,15 @@ export function withObservabilityProviderCapabilities(
 ): CapabilityCheck {
   const analyticsProvider = runtimeConfig.providers.analytics?.provider ?? 'posthog'
   const errorReportingProvider = runtimeConfig.providers.errorReporting?.provider ?? 'sentry'
-  const externalAgentsEnabled = runtimeConfig.features?.externalAgents === true
-    && runtimeConfig.features?.connectedAgentControlPlane === true
-    && runtimeConfig.features?.remoteAgentRuns === true
   return {
     ...capabilities,
     analytics: capabilities.analytics && analyticsProvider === 'posthog',
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
-    connectedAgents: externalAgentsEnabled,
-    externalAgents: externalAgentsEnabled,
-    cloudAgents: false,
     computers: runtimeConfig.features?.computers === true
       && computerRuntimeForProvider(computerProviderFromEnv()) !== undefined,
   }
 }
 
-export function withWorkspaceExternalAgentCapabilities(
-  capabilities: CapabilityCheck,
-  launchEnabled: boolean,
-): CapabilityCheck {
-  return {
-    ...capabilities,
-    connectedAgents: capabilities.connectedAgents && launchEnabled,
-    externalAgents: capabilities.externalAgents && launchEnabled,
-    cloudAgents: false,
-  }
-}
 
 export function capabilityDisabledResponse(capability: OverlayCapability): NextResponse {
   return NextJsonResponse.json(

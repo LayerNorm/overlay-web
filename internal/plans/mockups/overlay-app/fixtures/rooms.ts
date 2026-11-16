@@ -2,10 +2,10 @@ import { defineMutations, defineQueries } from './convex'
 import { route } from './fetch'
 import { AGENTS, PEOPLE, VIEWER_PRINCIPAL } from './agents'
 
-const NOW = Date.now()
-const MIN = 60_000
-const HOUR = 60 * MIN
-const DAY = 24 * HOUR
+export const NOW = Date.now()
+export const MIN = 60_000
+export const HOUR = 60 * MIN
+export const DAY = 24 * HOUR
 
 type Part = Record<string, unknown>
 type Message = {
@@ -39,7 +39,7 @@ export type Room = {
 }
 
 let sequence = 0
-function message(room: string, author: string, ago: number, content: string, parts?: Part[], extra: Partial<Message> = {}): Message {
+export function message(room: string, author: string, ago: number, content: string, parts?: Part[], extra: Partial<Message> = {}): Message {
   sequence += 1
   const person = PEOPLE.find((entry) => entry.principalId === author)
   return {
@@ -57,9 +57,9 @@ function message(room: string, author: string, ago: number, content: string, par
   }
 }
 
-const tool = (id: string, toolName: string, toolInput: Record<string, unknown>, toolOutput: unknown = { success: true }, state = 'output-available'): Part =>
+export const tool = (id: string, toolName: string, toolInput: Record<string, unknown>, toolOutput: unknown = { success: true }, state = 'output-available'): Part =>
   ({ type: 'tool-invocation', toolInvocation: { toolCallId: id, toolName, state, toolInput, toolOutput } })
-const text = (value: string): Part => ({ type: 'text', text: value })
+export const text = (value: string): Part => ({ type: 'text', text: value })
 const reasoning = (value: string): Part => ({ type: 'reasoning', text: value, state: 'done' })
 
 const PRICING_REPLY = `Here's where Northwind's pricing sits against the five closest competitors.
@@ -85,7 +85,7 @@ I'll check in each morning and flag anything that slips.`
 
 const rooms: Room[] = []
 
-function agentRoom(id: string, agentId: string, title: string, ago: number, activity: Room['activity'], messages: (room: string, agent: string) => Message[], extra: Partial<Room> = {}): Room {
+export function agentRoom(id: string, agentId: string, title: string, ago: number, activity: Room['activity'], messages: (room: string, agent: string) => Message[], extra: Partial<Room> = {}): Room {
   const agent = AGENTS.find((entry) => entry.id === agentId)!
   return { id, kind: 'agent', title, agentId, participants: [VIEWER_PRINCIPAL, agent.principalId as string], lastModified: NOW - ago, createdAt: NOW - ago - 2 * DAY, activity, messages: messages(id, agent.principalId as string), ...extra }
 }

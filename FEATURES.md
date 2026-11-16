@@ -14,7 +14,7 @@ Living inventory of product surfaces, release switches and providers. Update thi
 
 ## Overlay-only launch
 
-Native Overlay agents and their computers stay available. Hosted third-party runtimes in Overlay Cloud are retired; external harnesses such as Claude Code and Codex remain BYOM on user-owned machines through Agent Host. Choosing a Claude/OpenAI model inside an Overlay agent is **not** an external runtime. Work, chats, files, automations, integrations and collaboration are unchanged.
+Overlay runs only its own agent harness. The connected-agent feature that ran Claude Code, Codex and other harnesses over ACP is removed, along with its data; see `internal/develop/local-computer.md`. Choosing a Claude/OpenAI model inside an Overlay agent is a model choice, not a separate runtime. Work, chats, files, automations, integrations and collaboration are unchanged.
 
 Native tool calls persist successful output and terminal failures across streamed steps. Invalid tool names or malformed inputs are recorded as errors instead of remaining in progress, and recovery guidance names only tools exposed in the current turn.
 
@@ -22,25 +22,11 @@ Native tool calls persist successful output and terminal failures across streame
 | --- | --- | --- | --- |
 | Native Overlay agents | Enabled | UI `agents`; no external-runtime dependency | Overlay agent runtime, configured model gateway, Convex |
 | Native agent computers | Enabled, credentials required | `computers` / `COMPUTERS` | Boat (`box`), `OVERLAY_COMPUTER_PROVIDER=box`, `BOAT_API_KEY` (legacy `BOX_API_KEY` fallback) |
-| External runtimes, all hosting modes | Disabled for launch | `externalAgents` / `EXTERNAL_AGENTS` | Master release gate above the existing switches below |
-| Connect own machine/VPS, enrollment, bindings, agent accounts | Disabled for launch | `connectedAgentControlPlane` / `CONNECTED_AGENT_CONTROL_PLANE` plus master gate | Overlay Agent Host; external harnesses such as Claude Code and Codex; not native model BYOK |
-| External execution: chat, mentions, delegation, schedules, queued starts | Disabled for launch | `remoteAgentRuns` / `REMOTE_AGENT_RUNS` plus control plane/master/rollout | Host adapters; external records never fall back to native execution |
+| This Mac (user's own computer as a Computer) | Follows `computers` | `computers` / `COMPUTERS` | Overlay Desktop or the local-tools Agent Host; see `internal/develop/local-computer.md` |
 | Hosted third-party runtimes in Overlay Cloud | Retired, permanently unavailable | `overlayCloudEnvironments` is inert-false compatibility only; no environment override | Legacy records remain readable; cleanup and settlement only |
-| Connected-agent artifacts | Disabled, security release gate pending | `connectedAgentArtifacts` / `CONNECTED_AGENT_ARTIFACTS` | Object storage; requires malware scanning/content validation before release |
-| Connected-agent drive | Disabled, opt-in | `connectedAgentDrive` / `CONNECTED_AGENT_DRIVE` | Connected host/drive integration; not native Files or computer storage |
 | Legacy managed harness agents | Retired, inert compatibility flag | `managedHarnessAgents` / `MANAGED_HARNESS_AGENTS` | Historical records remain inert; no hosted replacement |
 
-Hosted Cloud creation and restart controls are retired. The existing connect flow remains available for BYOM setup. Native Model, Tools and Computer controls remain. Existing hosted records/history are retained, with new execution rejected. Authorized cancellation, revocation, cleanup and usage settlement remain available; read access does not imply permission to restart a runtime.
-
-### Re-enable external agents later
-
-1. Complete the provider/host and security acceptance for user-owned Agent Hosts in [Bring Your Own Agents](internal/develop/bring-your-own-agents.md), including isolated-preview enroll, approve, bind, run, cancel, revoke and cost settlement. Do not enable hosted Cloud runtimes.
-2. On an isolated preview first, set `OVERLAY_FEATURE_EXTERNAL_AGENTS=true`, `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=true` and `OVERLAY_FEATURE_REMOTE_AGENT_RUNS=true`.
-3. Set `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE=internal` and populate `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`. Later use `invited` with `OVERLAY_CONNECTED_AGENTS_INVITED_WORKSPACE_IDS`, then `general`. Missing/invalid stage defaults to `off`; internal workspaces remain eligible during invited rollout.
-4. Do not enable or configure hosted Cloud runtimes. `overlayCloudEnvironments` is permanently false; shared sandbox provider configuration remains for supported Computer and cleanup/reconciliation paths.
-5. Enable artifacts/drive separately only after their own acceptance. Do not change native `COMPUTERS`, general `SANDBOXES`, model provider connections or app-shell `agents` to release external agents.
-6. Redeploy, verify the exact revision and isolated backend, then test eligible and ineligible workspaces plus direct API denial. Promote through the [Development Workflow](internal/develop/Development%20Workflow.md); production activation is a separate release action.
-7. To withdraw external availability, set `OVERLAY_FEATURE_EXTERNAL_AGENTS=false` and redeploy. Retain credentials needed to stop/clean up existing resources and settle usage. Existing individual kill switches and rollout `off` remain additional controls.
+Hosted Cloud creation and restart controls are retired. Native Model, Tools and Computer controls remain. Retired cloud machines keep cleanup and usage settlement.
 
 ## Product and platform inventory
 

@@ -12,6 +12,7 @@ export const capabilities = [
   "capture",
   "notifications",
   "agentHost",
+  "localComputer",
   "updates",
   "diagnostics",
 ] as const;
@@ -99,14 +100,22 @@ export const methodSchemas = {
     })
     .strict(),
   "agentHost.status": empty,
+  /** Connects this Mac as an Overlay Computer: the host serves Overlay's own tools, never a third-party harness. */
   "agentHost.start": z
     .object({
-      adapter: z.enum(["claude-code", "codex", "hermes"]),
       enrollmentCode: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/),
+      localTools: z.literal(true),
     })
     .strict(),
   "agentHost.stop": empty,
   "agentHost.logs": empty,
+  "localComputer.status": empty,
+  "localComputer.requestPermission": z
+    .object({ permission: z.enum(["accessibility", "screen_recording"]) })
+    .strict(),
+  "localComputer.setKeepAvailable": z
+    .object({ enabled: z.boolean() })
+    .strict(),
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -124,9 +133,17 @@ export type Handshake = {
 };
 export type HostStatus = {
   state: string;
-  adapterId: string | null;
   pid: number | null;
   logTail: string[];
+};
+/** This Mac as an Overlay Computer: host state, the enrollment phrase it printed, and macOS permissions. */
+export type LocalComputerStatus = {
+  hostState: string;
+  localTools: boolean;
+  verificationPhrase: string | null;
+  keepAvailable: boolean;
+  homeDirectory: string;
+  permissions: { accessibility: boolean; screenRecording: boolean };
 };
 export type UpdateStatus = {
   state: string;
@@ -172,6 +189,9 @@ export type Results = {
   "agentHost.start": HostStatus;
   "agentHost.stop": HostStatus;
   "agentHost.logs": string[];
+  "localComputer.status": LocalComputerStatus;
+  "localComputer.requestPermission": LocalComputerStatus;
+  "localComputer.setKeepAvailable": LocalComputerStatus;
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;

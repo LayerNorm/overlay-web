@@ -21,13 +21,10 @@ import {
   AccessSelector,
   AgentComputerSection,
   AgentMemoriesSection,
-  AgentTypeSelector,
-  ByoAgentFields,
   DangerZone,
   OverlayAgentPermissionsField,
 } from './AgentEditorForm'
 import { AgentSurfacesField } from './AgentSurfacesField'
-import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import type { ReactNode } from 'react'
 import type { useAgentEditorController } from './AgentEditorPage'
@@ -112,119 +109,56 @@ export function AgentSidebarTools({ editor }: { editor: Controller }) {
 }
 
 export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller }) {
-  const { form, runtime, agent, computer, surfaces } = editor
-  const overlaySettings = runtime.agentType === 'overlay' && !runtime.cloudAgent
+  const { form, agent, computer, surfaces } = editor
 
   return (
     <div className="space-y-[22px]">
-      {!runtime.cloudAgent ? (
+      <section>
+        <OverlayAgentPermissionsField
+          value={form.permissionMode}
+          onChange={(value) => { form.setPermissionMode(value); form.markDirty() }}
+        />
+      </section>
+      <section>
+        <SectionHeading>Mentions</SectionHeading>
+        <p className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3 text-xs leading-5 text-(--muted)">
+          Mention-first is enforced. One-to-one agent DMs invoke implicitly. Group DMs require a human mention or reply in the agent&apos;s thread.
+        </p>
+      </section>
+      {editor.computersAvailable ? (
         <section>
-          <AgentTypeSelector
-            hidden={editor.isDefaultMaster || !editor.connectedAgentsEnabled}
-            value={runtime.agentType}
-            onChange={(value) => {
-              runtime.setAgentType(value)
-              form.markDirty()
-            }}
-          />
-        </section>
-      ) : null}
-      {runtime.cloudAgent || runtime.legacyHostedRuntime ? (
-        <section>
-          <SectionHeading>Retired runtime</SectionHeading>
-          <p className="mt-2 text-sm text-(--muted)">This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p>
-        </section>
-      ) : null}
-      {runtime.agentType === 'byo' && !runtime.cloudAgent && !runtime.legacyHostedRuntime ? (
-        <section>
-          <SectionHeading>Connected agent</SectionHeading>
-          <div className="mt-2 space-y-3 rounded-[10px] bg-(--surface-subtle) p-3">
-            {agent && editor.connectedAgentsEnabled ? (
-              <ConnectedAgentSettings
-                key={agent.id}
-                agentId={agent.id}
-                modelId={agent.modelId}
-                permissionMode={agent.permissionMode}
-                effort={agent.effort}
-              />
-            ) : null}
-            <ByoAgentFields
-              adapterId={editor.byo.adapterId}
-              harnessOptions={editor.byo.harnessOptions}
-              onHarnessChange={(value) => { editor.byo.chooseHarness(value); form.markDirty() }}
-              choice={editor.byo.environmentChoice}
-              onChoiceChange={(value) => { editor.byo.setEnvironmentChoice(value); form.markDirty() }}
-              compatibleEnvironments={editor.byo.compatibleEnvironments}
-              environmentsLoading={editor.byo.environmentsLoading}
-              environmentId={editor.byo.environmentId}
-              onEnvironmentChange={(value) => { editor.byo.chooseEnvironment(value); form.markDirty() }}
-              workingDirectory={editor.byo.workingDirectory}
-              onWorkingDirectoryChange={(value) => { editor.byo.setWorkingDirectory(value); form.markDirty() }}
-              selectedHarnessConnectable={Boolean(editor.byo.selectedHarness?.connectable)}
-              environmentBusy={editor.byo.environmentBusy}
-              environmentError={editor.byo.environmentError}
-              command={editor.byo.command}
-              copied={editor.byo.copied}
-              onCopyCommand={editor.byo.copyCommand}
-              onBeginConnection={editor.byo.beginConnection}
-              setupEnvironment={editor.byo.setupEnvironment}
-              setupRoots={editor.byo.setupRoots}
-              onSetupRootsChange={(value) => { editor.byo.setSetupRoots(value); form.markDirty() }}
-              onApproveSetup={editor.byo.approveSetupEnvironment}
+          <SectionHeading>Computer</SectionHeading>
+          <div className="mt-2">
+            <AgentComputerSection
+              enabled={form.enabledToolGroups.has('computer')}
+              size={computer.computerSize}
+              onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
+              computer={computer.agentComputer}
+              currentUserId={computer.currentUserId}
+              agentName={form.name}
+              openBusy={computer.computerOpenBusy}
+              lifecycleBusy={computer.computerLifecycleBusy}
+              onOpenDesktop={() => void computer.openAgentComputer()}
+              onControl={() => void computer.controlAgentComputer()}
+              onTogglePower={() => void computer.toggleAgentComputerPower()}
+              onDelete={() => void computer.deleteAgentComputer()}
+              loadError={computer.computerLoadError}
+              provisionError={computer.computerProvisionError}
+              onRetryLoad={computer.retryComputerLoad}
+              disabled={false}
             />
           </div>
         </section>
       ) : null}
-      {overlaySettings ? (
-        <>
-          <section>
-            <OverlayAgentPermissionsField
-              value={form.permissionMode}
-              onChange={(value) => { form.setPermissionMode(value); form.markDirty() }}
-            />
-          </section>
-          <section>
-            <SectionHeading>Mentions</SectionHeading>
-            <p className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3 text-xs leading-5 text-(--muted)">
-              Mention-first is enforced. One-to-one agent DMs invoke implicitly. Group DMs require a human mention or reply in the agent&apos;s thread.
-            </p>
-          </section>
-          {editor.computersAvailable ? (
-            <section>
-              <SectionHeading>Computer</SectionHeading>
-              <div className="mt-2">
-                <AgentComputerSection
-                  enabled={form.enabledToolGroups.has('computer')}
-                  size={computer.computerSize}
-                  onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
-                  computer={computer.agentComputer}
-                  currentUserId={computer.currentUserId}
-                  agentName={form.name}
-                  openBusy={computer.computerOpenBusy}
-                  lifecycleBusy={computer.computerLifecycleBusy}
-                  onOpenDesktop={() => void computer.openAgentComputer()}
-                  onControl={() => void computer.controlAgentComputer()}
-                  onTogglePower={() => void computer.toggleAgentComputerPower()}
-                  onDelete={() => void computer.deleteAgentComputer()}
-                  loadError={computer.computerLoadError}
-                  provisionError={computer.computerProvisionError}
-                  onRetryLoad={computer.retryComputerLoad}
-                  disabled={false}
-                />
-              </div>
-            </section>
-          ) : null}
-          <section>
-            <div className="mt-2">
-              <AgentSurfacesField
-                agentName={form.name}
-                hasAgent={Boolean(agent)}
-                surfaces={surfaces}
-              />
-            </div>
-          </section>
-        </>
-      ) : null}
+      <section>
+        <div className="mt-2">
+          <AgentSurfacesField
+            agentName={form.name}
+            hasAgent={Boolean(agent)}
+            surfaces={surfaces}
+          />
+        </div>
+      </section>
       {!agent?.agentRole || agent.agentRole === 'agent' ? <section>
         <div className="rounded-[10px] bg-(--surface-subtle) p-3">
           <AccessSelector

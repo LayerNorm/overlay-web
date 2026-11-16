@@ -18,51 +18,30 @@ import {
   type AgentEnvironmentCredential,
   type AgentEnvironmentCredentialMethod,
   type AgentFilesystemGrant,
-  type AgentSandboxLease,
 } from '@overlay/workspace-contracts'
-import type { ObjectStore } from '@overlay/app-core'
 import {
-  streamingCapabilitiesSchema,
   MAX_HOST_REQUEST_BYTES,
-  MAX_COMMAND_BYTES,
   canonicalEnrollmentProof,
   canonicalHostRequestProof,
-  agentHostCommandSchema,
   filesystemGrantSchema,
   hostRequestProofHeadersSchema,
   type EnvironmentCredentialResponse,
   type EnrollmentRequest,
-  type CommandAcknowledgement,
-  type EventBatch,
   type HostCapabilities,
-  type ArtifactUploadRequest,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AuditService } from '@/server/admin'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import type { AgentRemoteSessionLookup, ConnectedAgentRepository, RemoteAgentUsageSettlement } from './ConnectedAgentRepository'
+import type { ConnectedAgentRepository } from './ConnectedAgentRepository'
 import type { ConnectedAgentPolicyEntitlements, ConnectedAgentPolicyLimits } from './ConnectedAgentPolicy'
-import { connectedAgentPolicyEntitlementsSchema } from './ConnectedAgentPolicy'
-import { managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
-import type { ProviderConnectionRepository } from '@/server/ai/provider-connections/ProviderConnectionRepository'
-import { describeFailure } from '@/server/observability/failure-classification'
-import { logger } from '@/server/observability/logger'
-import { mintAgentMcpToken, verifyAgentMcpToken } from './agent-mcp-token'
-import { type AgentProviderAccountService } from './provider-accounts/AgentProviderAccountService'
-import { AGENT_AUTH_FAILURE_CODE, isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
-import { externalAgentLaunchEnabled } from './external-agent-policy'
 
+/** How long after expiry a host may still renew its credential, e.g. after a Mac slept overnight. */
+const EXPIRED_CREDENTIAL_RENEWAL_MS = 30 * 24 * 60 * 60_000
 const ENROLLMENT_TTL_MS = 10 * 60_000
-/** Convex refusals that mean the batch itself was unusable, not that the run or policy refused it. */
-const REFUSED_BATCH_PATTERN = /AGENT_EVENT_BATCH_|AGENT_EVENT_SCOPE_MISMATCH|AGENT_REMOTE_REQUEST_INVALID|AGENT_ARTIFACT_NOT_VALIDATED/
 const PROOF_CHALLENGE_TTL_MS = 15 * 60_000
 const CREDENTIAL_TTL_MS = 15 * 60_000
 const REQUEST_CLOCK_SKEW_MS = 60_000
 const PROOF_NONCE_TTL_MS = 2 * 60_000
-const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
-const ARTIFACT_UPLOAD_TTL_MS = 5 * 60_000
-const ARTIFACT_RETENTION_MS = 30 * 24 * 60 * 60_000
-const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
 export { AGENT_ENVIRONMENT_ONLINE_WINDOW_MS } from '@/shared/agents/environment-status'
 
 const PHRASE_WORDS = [
@@ -93,29 +72,10 @@ export class ConnectedAgentControlPlaneService {
     audit: AuditService
     repository: ConnectedAgentRepository
     workspaces: WorkspaceService
-    objectStore?: ObjectStore
-    /** For BYOK harness bindings — validates the actor owns the connection. */
-    providerConnections?: Pick<ProviderConnectionRepository, 'get'>
-    /** Legacy account records remain readable; they are not delivered to hosts. */
-    agentProviderAccounts?: Pick<AgentProviderAccountService, 'requireUsable' | 'resolveRunEnvironment' | 'markNeedsReauth'>
     now?: () => number
+    /** Whether this deployment lets members connect their own machines (This Mac). */
     isEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
-    launchEnabled?: (workspaceId?: string) => boolean | Promise<boolean>
-    artifactsEnabled?: () => boolean | Promise<boolean>
-    driveEnabled?: () => boolean | Promise<boolean>
-    /** Only the canonical billing-backed policy may consume the backend projection. */
-    policyProjectionEnabled?: boolean
     policyLimits?: (input: { userId: string; workspaceId: string; entitlements?: ConnectedAgentPolicyEntitlements }) => Promise<ConnectedAgentPolicyLimits>
-    settleUsage?: (input: RemoteAgentUsageSettlement) => Promise<void>
-    onTerminalMessage?: (input: RemoteAgentUsageSettlement) => Promise<void>
-    /**
-     * Final usage read for a lease whose sandbox is about to be deleted.
-     * Providers publish cumulative counters only after a session stops, so
-     * callers stop the instance first; this meters the tail before teardown.
-     */
-    meterSandboxLease?: (lease: AgentSandboxLease) => Promise<unknown>
-    /** Injectable for tests; production resolves the provider from env. */
-    managedRuntime?: typeof managedSandboxRuntimeFromEnv
   }) {}
 
   async createEnrollmentSession(args: { actorUserId: string; workspaceId: string }) {
@@ -264,7 +224,13 @@ export class ConnectedAgentControlPlaneService {
     filesystemGrant: AgentFilesystemGrant
   }) {
     await this.assertEnabled(args.workspaceId)
-    await this.requireManager(args.actorUserId, args.workspaceId)
+    // The person who connected a Mac can change its folders (internal/develop/thread-folders.md); otherwise a manager.
+    const access = await this.dependencies.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    if (!canManageWorkspace(access.membership.role)) {
+      const own = (await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId }))
+        .some(entry => entry.id === args.environmentId && entry.approvedByUserId === args.actorUserId && entry.revokedAt === undefined)
+      if (!own) throw controlPlaneError('Workspace owner or admin access is required', 403, 'workspace_manager_required')
+    }
     const grant = validateFilesystemGrant(args.filesystemGrant)
     const environment = await this.dependencies.repository.updateEnvironmentFilesystemGrant({
       workspaceId: args.workspaceId,
@@ -281,16 +247,6 @@ export class ConnectedAgentControlPlaneService {
     return publicEnvironment(environment)
   }
 
-  /** Internal Cloud policy migration. Local/VPS roots remain exclusively owner-approved. */
-  async prepareDriveEnvironment(args: { workspaceId: string; environmentId: string }): Promise<void> {
-    await this.assertEnabled(args.workspaceId)
-    if (!await this.dependencies.driveEnabled?.()) throw controlPlaneError('Connected-agent drive is disabled', 404, 'capability_disabled')
-    const environment = await this.dependencies.repository.getEnvironment(args)
-    if (!environment || ['revoked', 'pending'].includes(environment.status) || !environment.filesystemGrant)
-      throw controlPlaneError('Agent filesystem policy is unavailable', 409, 'drive_unavailable')
-    if (environment.kind === 'overlay_cloud') throw controlPlaneError('Hosted Overlay Cloud agents are retired', 410, 'hosted_runtime_retired')
-  }
-
   async revokeEnvironment(args: { actorUserId: string; workspaceId: string; environmentId: string }) {
     await this.requireManager(args.actorUserId, args.workspaceId)
     const revoked = await this.dependencies.repository.revokeEnvironment({
@@ -303,314 +259,6 @@ export class ConnectedAgentControlPlaneService {
       workspaceId: args.workspaceId,
       environmentId: args.environmentId,
     }, args.environmentId)
-  }
-
-  async listBindings(args: { actorUserId: string; workspaceId: string; agentId?: string }) {
-    await this.requireManager(args.actorUserId, args.workspaceId)
-    return await this.dependencies.repository.listBindings({
-      workspaceId: args.workspaceId,
-      ...(args.agentId ? { agentId: args.agentId } : {}),
-    })
-  }
-
-  async upsertBinding(args: {
-    actorUserId: string
-    workspaceId: string
-    agentId: string
-    environmentId: string
-    adapterId: string
-    workingDirectory: string
-    /** The account (Claude Code or Codex credentials) this binding runs on, owned by the actor. */
-    providerAccountId?: string
-  }) {
-    await this.assertEnabled(args.workspaceId)
-    await this.requireManager(args.actorUserId, args.workspaceId)
-    if (!args.agentId.trim() || args.agentId.length > 256 ||
-      !args.environmentId.trim() || args.environmentId.length > 256 ||
-      !args.adapterId.trim() || args.adapterId.length > 128 ||
-      !args.workingDirectory.trim() || args.workingDirectory.length > 4_096) {
-      throw controlPlaneError('Agent binding fields are invalid', 400, 'binding_invalid')
-    }
-    if (!isSupportedAgentProviderId(args.adapterId)) {
-      throw controlPlaneError('The selected agent adapter is not supported', 409, 'adapter_unavailable')
-    }
-    const environment = await this.dependencies.repository.getEnvironment({
-      workspaceId: args.workspaceId,
-      environmentId: args.environmentId,
-    })
-    if (!environment || environment.status === 'pending' || environment.status === 'revoked' || !environment.approvedAt) {
-      throw controlPlaneError('Environment is unavailable', 409, 'environment_unavailable')
-    }
-    if (environment.kind === 'overlay_cloud') {
-      throw controlPlaneError('Hosted Overlay Cloud agents are retired', 410, 'hosted_runtime_retired')
-    }
-    this.assertWorkingDirectory(environment, args.workingDirectory)
-    const adapters = Array.isArray(environment.capabilities.adapters)
-      ? environment.capabilities.adapters as Array<Record<string, unknown>> : []
-    const adapter = adapters.find((candidate) => candidate.id === args.adapterId)
-    if (!adapter || adapter.protocol !== 'acp') {
-      throw controlPlaneError('The selected agent adapter is not installed on this environment', 409, 'adapter_unavailable')
-    }
-    const now = this.now()
-    const adapterConfig: Record<string, unknown> = { adapterId: args.adapterId, workingDirectory: args.workingDirectory }
-    if (args.providerAccountId) {
-      const accounts = this.dependencies.agentProviderAccounts
-      if (!accounts || !isSupportedAgentProviderId(args.adapterId)) {
-        throw controlPlaneError('This agent cannot run on a provider account', 400, 'provider_account_unsupported')
-      }
-      try {
-        await accounts.requireUsable({ userId: args.actorUserId, accountId: args.providerAccountId, provider: args.adapterId })
-      } catch (error) {
-        const detail = error as { message?: string; statusCode?: number }
-        throw controlPlaneError(detail.message ?? 'Account is unavailable', detail.statusCode ?? 400, 'provider_account_invalid')
-      }
-      adapterConfig.providerAccountId = args.providerAccountId
-      adapterConfig.providerAccountOwnerUserId = args.actorUserId
-    }
-    const binding = await this.dependencies.repository.upsertBinding({
-      id: randomUUID(),
-      workspaceId: args.workspaceId,
-      agentId: args.agentId,
-      environmentId: args.environmentId,
-      protocolAdapter: 'acp',
-      adapterConfig,
-      enabled: true,
-      now,
-    })
-    await this.audit('agent_binding.upserted', 'user', args.actorUserId, {
-      workspaceId: args.workspaceId,
-      agentId: args.agentId,
-      environmentId: args.environmentId,
-      adapterId: args.adapterId,
-      workingDirectory: args.workingDirectory,
-    }, binding.id, 'agent_binding')
-    return binding
-  }
-
-  async disableBindings(args: { actorUserId: string; workspaceId: string; agentId: string }) {
-    await this.requireManager(args.actorUserId, args.workspaceId)
-    const disabled = await this.dependencies.repository.disableBindingsForAgent({
-      workspaceId: args.workspaceId,
-      agentId: args.agentId,
-      now: this.now(),
-    })
-    if (disabled) {
-      await this.audit('agent_binding.disabled', 'user', args.actorUserId, {
-        workspaceId: args.workspaceId,
-        agentId: args.agentId,
-      }, args.agentId, 'agent_binding')
-    }
-    return disabled
-  }
-
-  async controlRemoteTurn(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-    runId: string
-    controlRequestId?: string
-    action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
-  }) {
-    const retiredCloudRun = await this.isRetiredCloudRun(args)
-    if (retiredCloudRun && args.action !== 'cancel') {
-      throw controlPlaneError('Hosted Overlay Cloud agents are retired', 410, 'hosted_runtime_retired')
-    }
-    if (args.action !== 'cancel') {
-      await this.assertEnabled(args.workspaceId)
-    }
-    const now = this.now()
-    // Old Convex validators reject unknown arguments during web-first rollout.
-    // Enable the optional control extension only after the v2 backend is live.
-    const { controlRequestId, ...control } = args
-    const result = await this.dependencies.repository.controlRemoteAgentTurn({
-      ...control,
-      ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' && controlRequestId ? { controlRequestId } : {}),
-      now,
-      queueExpiresAt: now + INTERACTIVE_QUEUE_TTL_MS,
-    })
-    if (!result.applied) {
-      const reason = result.reason ?? 'conflicting_state'
-      const errors = {
-        missing: [404, 'The remote run was not found.'],
-        forbidden: [403, 'You cannot control this remote run.'],
-        conflicting_state: [409, 'This remote run cannot accept that control in its current state.'],
-        unsupported_recovery: [409, 'This host cannot restore the interrupted execution. Inspect the original process before starting another attempt.'],
-        expired_deadline: [409, 'This task reached its hard deadline. Start a new task.'],
-      } as const
-      throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
-    }
-    if (result.terminal && this.dependencies.settleUsage &&
-      (result.terminal.modelUsageBilling === 'overlay' || result.terminal.sandboxBilling)) {
-      await this.settleWithAudit(result.terminal)
-    }
-    await this.audit(`agent_remote_run.${args.action}`, 'user', args.actorUserId, {
-      workspaceId: args.workspaceId, conversationId: args.conversationId, runId: args.runId,
-      commandId: result.commandId,
-    }, args.runId, 'agent_remote_run')
-    return result
-  }
-
-  private async isRetiredCloudRun(args: { workspaceId: string; runId: string }) {
-    const environments = await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId })
-    for (const environment of environments) {
-      const session = await this.dependencies.repository.getRemoteSessionForRun({ workspaceId: args.workspaceId, environmentId: environment.id, runId: args.runId })
-      if (session && environment.kind === 'overlay_cloud') return true
-    }
-    return false
-  }
-
-  async resolveRemoteRequest(args: {
-    actorUserId: string
-    workspaceId: string
-    conversationId: string
-    runId: string
-    requestKey: string
-    decision: string
-    response?: Record<string, unknown>
-  }) {
-    await this.assertEnabled(args.workspaceId)
-    const result = await this.dependencies.repository.resolveRemoteRequest({ ...args, now: this.now() })
-    if (!result.applied) throw controlPlaneError('This agent request is no longer pending or you are not authorized to resolve it', 409, 'remote_request_not_pending')
-    await this.audit('agent_remote_request.resolved', 'user', args.actorUserId, {
-      workspaceId: args.workspaceId, conversationId: args.conversationId, runId: args.runId,
-      requestKey: args.requestKey, decision: args.decision,
-    }, args.requestKey, 'agent_remote_request')
-    return result
-  }
-
-  async createArtifactUpload(auth: HostAuthentication, input: ArtifactUploadRequest) {
-    await this.assertArtifactsEnabled()
-    const objectStore = this.requireObjectStore()
-    const now = this.now()
-    const name = safeArtifactName(input.name)
-    const mediaType = safeArtifactMediaType(input.mediaType)
-    if (input.size < 1 || input.size > MAX_ARTIFACT_BYTES) throw controlPlaneError('Artifact size is outside the allowed range', 413, 'artifact_size_invalid')
-    const session = await this.dependencies.repository.getRemoteSessionForRun({
-      workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, runId: input.runId,
-    })
-    if (!session || ['completed', 'failed', 'cancelled'].includes(session.status)) throw controlPlaneError('Remote session is not active', 409, 'remote_session_inactive')
-    const artifactId = `artifact_${randomUUID()}`
-    const objectKey = `workspaces/${encodeURIComponent(auth.credential.workspaceId)}/agent-artifacts/${encodeURIComponent(auth.environment.id)}/${encodeURIComponent(input.runId)}/${artifactId}`
-    const billing = session.capabilitySnapshot?.billing
-    const billingUserId = billing && typeof billing === 'object' && typeof (billing as Record<string, unknown>).userId === 'string'
-      ? String((billing as Record<string, unknown>).userId) : ''
-    const limits = this.dependencies.policyLimits && billingUserId
-      ? await this.dependencies.policyLimits({ userId: billingUserId, workspaceId: auth.credential.workspaceId })
-      : undefined
-    let artifact
-    try {
-      artifact = await this.dependencies.repository.createArtifact({
-        id: artifactId, workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id,
-        runId: input.runId, remoteSessionId: session.id, name, mediaType, size: input.size,
-        sha256: input.sha256, objectKey, status: 'pending_upload', expiresAt: now + ARTIFACT_UPLOAD_TTL_MS,
-        createdAt: now, updatedAt: now,
-        ...(limits ? { maxWorkspaceArtifactBytes: limits.maxArtifactBytes } : {}),
-      })
-    } catch (error) {
-      throw translatePolicyError(error)
-    }
-    const checksum = Buffer.from(input.sha256, 'hex').toString('base64')
-    const upload = await objectStore.getUploadUrl(objectKey, mediaType, {
-      expiresIn: ARTIFACT_UPLOAD_TTL_MS / 1_000, contentLength: input.size, checksumSha256: input.sha256,
-    })
-    return { protocolVersion: 1 as const, artifactId: artifact.id, uploadReference: artifact.id,
-      uploadUrl: upload.url, headers: { 'content-type': mediaType, 'x-amz-checksum-sha256': checksum },
-      expiresAt: now + ARTIFACT_UPLOAD_TTL_MS }
-  }
-
-  async completeArtifactUpload(auth: HostAuthentication, uploadReference: string) {
-    await this.assertArtifactsEnabled()
-    const objectStore = this.requireObjectStore()
-    const now = this.now()
-    const artifact = await this.dependencies.repository.getArtifact({
-      workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id, artifactId: uploadReference,
-    })
-    if (!artifact) throw controlPlaneError('Artifact upload was not found', 404, 'artifact_not_found')
-    if (artifact.status === 'clean' || artifact.status === 'linked') return artifact
-    if (artifact.status !== 'pending_upload' || artifact.createdAt + ARTIFACT_UPLOAD_TTL_MS < now) {
-      throw controlPlaneError('Artifact upload is no longer completable', 409, 'artifact_upload_expired')
-    }
-    if (!objectStore.headObject || !objectStore.downloadBuffer) throw controlPlaneError('Object store cannot validate agent artifacts', 503, 'artifact_validation_unavailable')
-    const metadata = await objectStore.headObject(artifact.objectKey)
-    if (!metadata || metadata.sizeBytes !== artifact.size || normalizeMediaType(metadata.contentType) !== normalizeMediaType(artifact.mediaType)) {
-      await this.rejectArtifact(artifact, 'metadata_mismatch')
-      throw controlPlaneError('Uploaded artifact metadata does not match the intent', 409, 'artifact_metadata_mismatch')
-    }
-    const bytes = await objectStore.downloadBuffer(artifact.objectKey, MAX_ARTIFACT_BYTES)
-    const checksum = createHash('sha256').update(bytes).digest('hex')
-    if (checksum !== artifact.sha256) {
-      await this.rejectArtifact(artifact, 'checksum_mismatch')
-      throw controlPlaneError('Uploaded artifact checksum does not match the intent', 409, 'artifact_checksum_mismatch')
-    }
-    const scan = scanArtifact(bytes, artifact.mediaType)
-    if (!scan.clean) {
-      await this.rejectArtifact(artifact, scan.result)
-      throw controlPlaneError('Uploaded artifact failed malware validation', 422, 'artifact_malware_rejected')
-    }
-    const finalized = await this.dependencies.repository.finalizeArtifact({
-      workspaceId: artifact.workspaceId, environmentId: artifact.environmentId, artifactId: artifact.id,
-      status: 'clean', scanResult: scan.result, expiresAt: now + ARTIFACT_RETENTION_MS, now,
-    })
-    if (!finalized) throw controlPlaneError('Artifact state changed while validating', 409, 'artifact_state_conflict')
-    return finalized
-  }
-
-  async getArtifactDownload(args: { actorUserId: string; workspaceId: string; artifactId: string }) {
-    await this.assertArtifactsEnabled()
-    const artifact = await this.dependencies.repository.getArtifactForDownload(args)
-    if (!artifact) throw controlPlaneError('Artifact was not found', 404, 'artifact_not_found')
-    return { artifact, url: await this.requireObjectStore().getDownloadUrl(artifact.objectKey) }
-  }
-
-  async cleanupArtifacts(limit = 100) {
-    const now = this.now()
-    const artifacts = await this.dependencies.repository.listArtifactsForCleanup({ now, limit })
-    let failed = 0
-    await Promise.all(artifacts.map(async (artifact) => {
-      try {
-        await this.requireObjectStore().deleteObject(artifact.objectKey)
-        await this.dependencies.repository.markArtifactDeleted({ artifactId: artifact.id, now })
-      } catch (error) {
-        failed += 1
-        logger.error('Connected-agent artifact cleanup failed', {
-          workspaceId: artifact.workspaceId,
-          environmentId: artifact.environmentId,
-          runId: artifact.runId,
-          artifactId: artifact.id,
-          error,
-        })
-        await this.dependencies.audit.record({
-          action: 'agent_artifact.cleanup_failed', actorType: 'service', outcome: 'failure',
-          resourceType: 'agent_artifact', resourceId: artifact.id,
-          metadata: { workspaceId: artifact.workspaceId, environmentId: artifact.environmentId,
-            runId: artifact.runId, remoteSessionId: artifact.remoteSessionId },
-        }).catch((_error) => undefined)
-      }
-    }))
-    return { deleted: artifacts.length - failed, ...(failed > 0 ? { failed } : {}) }
-  }
-
-  async sweepRemoteRuns(options: { abandonEnvironmentId?: string } = {}) {
-    const now = this.now()
-    const result = await this.dependencies.repository.sweepRemoteRuns({
-      now, hostOfflineBefore: now - 90_000, limit: 100,
-      ...(options.abandonEnvironmentId ? { abandonEnvironmentId: options.abandonEnvironmentId } : {}),
-    })
-    if (this.dependencies.settleUsage) {
-      await Promise.all(result.settlements
-        .filter((settlement) => settlement.modelUsageBilling === 'overlay' || settlement.sandboxBilling)
-        .map((settlement) => this.settleWithAudit(settlement).catch((_error) => undefined)))
-    }
-    await Promise.all(result.alerts.map((alert) => {
-      logger.warn('Connected-agent operational alert', alert)
-      return this.dependencies.audit.record({
-        action: `agent_operations.${alert.code}`, actorType: 'service', outcome: 'failure',
-        resourceType: alert.runId ? 'agent_run' : 'agent_environment',
-        resourceId: alert.runId ?? alert.environmentId ?? alert.workspaceId,
-        metadata: alert,
-      }).catch((_error) => undefined)
-    }))
-    return result
   }
 
   async issueInitialCredential(args: {
@@ -680,7 +328,12 @@ export class ConnectedAgentControlPlaneService {
     }
     const tokenHash = sha256(token)
     const credential = await this.dependencies.repository.findEnvironmentCredential({ tokenHash })
-    const expired = Boolean(credential && credential.expiresAt <= now)
+    // A Mac that slept past its 15-minute credential may still renew it: the refresh route alone accepts an expired,
+    // unrevoked credential for 30 days, still behind the device-key signature and a single-use nonce, and renewing
+    // revokes it. Every other route needs a live credential.
+    const renewal = args.requiredMethod === 'agent:credentials:refresh'
+    const expired = Boolean(credential && credential.expiresAt <= now
+      && !(renewal && credential.expiresAt > now - EXPIRED_CREDENTIAL_RENEWAL_MS))
     if (!credential || credential.revokedAt || expired ||
       credential.audience !== AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE ||
       credential.environmentId !== args.environmentId ||
@@ -709,6 +362,7 @@ export class ConnectedAgentControlPlaneService {
       nonceHash: sha256(headers.data.nonce),
       expiresAt: now + PROOF_NONCE_TTL_MS,
       now,
+      ...(renewal ? { expiredGraceMs: EXPIRED_CREDENTIAL_RENEWAL_MS } : {}),
     })
     if (!consumed) throw controlPlaneError('Device request proof was already used', 409, 'proof_replayed')
     return { credential, environment }
@@ -750,252 +404,6 @@ export class ConnectedAgentControlPlaneService {
     return publicEnvironment(environment)
   }
 
-  async pollCommands(auth: HostAuthentication, limit: number) {
-    const launchEnabled = this.dependencies.launchEnabled
-      ? await this.dependencies.launchEnabled(auth.credential.workspaceId)
-      : await externalAgentLaunchEnabled(auth.credential.workspaceId)
-    const [claimedCommands, resolvedThroughSequence] = await Promise.all([
-      this.dependencies.repository.claimCommands({
-        workspaceId: auth.credential.workspaceId,
-        environmentId: auth.credential.environmentId,
-        now: this.now(),
-        leaseMs: 30_000,
-        limit: Math.max(1, Math.min(limit, 50)),
-      }),
-      auth.environment.capabilities.remoteLifecycleVersion === 2
-        ? this.dependencies.repository.commandResolutionFloor({
-          workspaceId: auth.credential.workspaceId,
-          environmentId: auth.credential.environmentId,
-        }) : Promise.resolve(undefined),
-    ])
-    const commands = launchEnabled
-      ? claimedCommands
-      : claimedCommands.map((command) => ['cancel', 'shutdown', 'observe'].includes(command.type)
-        ? command
-        : {
-            ...command,
-            type: 'shutdown' as const,
-            payload: { reason: 'External agent runtimes are disabled.' },
-          })
-    const parsedCommands = commands.map((command) => {
-      if (new TextEncoder().encode(JSON.stringify(command)).byteLength > MAX_COMMAND_BYTES) {
-        throw controlPlaneError('Queued command exceeds the bridge protocol byte limit', 413, 'command_too_large')
-      }
-      const parsed = agentHostCommandSchema.safeParse({
-        protocolVersion: 1,
-        ...(command.attemptId ? { execution: { attemptId: command.attemptId, generation: command.executionGeneration } } : {}),
-        commandId: command.id,
-        environmentId: command.environmentId,
-        workspaceId: command.workspaceId,
-        runId: command.runId,
-        sequence: command.sequence,
-        issuedAt: command.createdAt,
-        type: command.type,
-        payload: command.payload,
-      })
-      if (!parsed.success) {
-        throw controlPlaneError('Queued command does not conform to bridge protocol', 409, 'command_invalid')
-      }
-      if (parsed.data.type === 'start') {
-        this.assertWorkingDirectory(auth.environment, parsed.data.payload.workingDirectory)
-        // Per-command negotiation: older servers never request the new preparation event.
-        if (parsed.data.execution) parsed.data.payload.metadata.overlayPreparation = 1
-        const mcp = parsed.data.payload.metadata.overlayMcp
-        if (mcp !== undefined) {
-          if (!mcp || typeof mcp !== 'object' || !('token' in mcp) || typeof mcp.token !== 'string')
-            throw controlPlaneError('Recovery tool credentials are invalid', 409, 'recovery_credentials_invalid')
-          const claims = verifyAgentMcpToken(mcp.token)
-          if (!claims || claims.runId !== command.runId || claims.workspaceId !== command.workspaceId
-            || claims.environmentId !== command.environmentId)
-            throw controlPlaneError('Recovery tool credentials expired or do not match this run', 409, 'recovery_credentials_invalid')
-          const { expiresAt, ...scope } = claims
-          // Bind every delivered start to its attempt without extending the signed grant.
-          const execution = parsed.data.execution
-          if (!execution && scope.execution) throw controlPlaneError('Recovery execution fence is missing', 409, 'recovery_credentials_invalid')
-          const token = mintAgentMcpToken({ ...scope,
-            ...(execution ? { sessionId: execution.attemptId, execution } : {}),
-            ttlMs: expiresAt - Date.now(), expiresAt })
-          if (!token) throw controlPlaneError('Recovery tool credentials unavailable', 409, 'recovery_credentials_invalid')
-          parsed.data.payload.metadata.overlayMcp = { ...mcp, token }
-        }
-      }
-      return parsed.data
-    })
-    const streaming = streamingCapabilitiesSchema.safeParse(auth.environment.capabilities.streaming)
-    return { commands: parsedCommands,
-      ...(streaming.success ? { streaming: streaming.data } : {}),
-      ...(auth.environment.capabilities.remoteLifecycleVersion === 2 ? { resolvedThroughSequence } : {}) }
-  }
-
-  async acknowledgeCommand(auth: HostAuthentication, acknowledgement: CommandAcknowledgement) {
-    if (acknowledgement.environmentId !== auth.environment.id) {
-      throw controlPlaneError('Command acknowledgement scope does not match credential', 403, 'command_scope_mismatch')
-    }
-    const updated = await this.dependencies.repository.acknowledgeCommand({
-      workspaceId: auth.credential.workspaceId,
-      environmentId: auth.credential.environmentId,
-      commandId: acknowledgement.commandId,
-      accepted: acknowledgement.accepted,
-      ...(acknowledgement.error ? { errorCode: acknowledgement.error.code, errorMessage: acknowledgement.error.message } : {}),
-      now: this.now(),
-    })
-    if (!updated) throw controlPlaneError('Command was not found or is no longer acknowledgeable', 409, 'command_acknowledgement_rejected')
-  }
-
-  /** Best effort: a diagnostics write must never turn a refused batch into a different failure. */
-  async recordRejectedEventBatch(auth: HostAuthentication, runId: string): Promise<void> {
-    try {
-      await this.dependencies.repository.recordRejectedEventBatch?.({
-        workspaceId: auth.credential.workspaceId, environmentId: auth.credential.environmentId, runId,
-      })
-    } catch (error) {
-      logger.warn('Connected-agent rejected-batch counter failed', describeFailure(error))
-    }
-  }
-
-  async applyEvents(auth: HostAuthentication, batch: EventBatch) {
-    if (batch.environmentId !== auth.environment.id) {
-      throw controlPlaneError('Event batch scope does not match credential', 403, 'event_scope_mismatch')
-    }
-    const session = await this.dependencies.repository.getRemoteSessionForRun({
-      workspaceId: auth.credential.workspaceId,
-      environmentId: auth.credential.environmentId,
-      runId: batch.runId,
-    })
-    if (!session) throw controlPlaneError('Remote session was not found', 404, 'remote_session_not_found')
-    const limits = await this.eventPolicyLimits(auth, session)
-    // A batch carries one event stream: after a start_fresh the host still owes events
-    // from the previous attempt, which live on that attempt's session row with its own
-    // event cursor. Route by the declared attemptId so stale-stream batches reach their
-    // cursor (and the stale-attempt fence) instead of deadlocking on the new cursor.
-    const batchSessionId = batch.events.find((event) => event.execution?.attemptId)?.execution?.attemptId ?? session.id
-    let result
-    try {
-      result = await this.dependencies.repository.applyRemoteEvents({
-        workspaceId: auth.credential.workspaceId,
-        environmentId: auth.credential.environmentId,
-        sessionId: batchSessionId,
-        events: batch.events,
-        ...(limits ? { maxEventsPerMinute: limits.maxEventsPerMinute } : {}),
-        now: this.now(),
-      })
-    } catch (error) {
-      if (error instanceof Error && REFUSED_BATCH_PATTERN.test(error.message)) {
-        await this.recordRejectedEventBatch(auth, batch.runId)
-      }
-      throw translatePolicyError(error)
-    }
-    if (!result.accepted) {
-      logger.warn('Connected-agent cursor gap', {
-        workspaceId: auth.credential.workspaceId, environmentId: auth.environment.id,
-        runId: batch.runId, remoteSessionId: session.id, eventCursor: session.eventCursor,
-        expectedSequence: result.expectedSequence,
-      })
-      await this.audit('agent_remote_run.cursor_gap', 'service', undefined, {
-        workspaceId: auth.credential.workspaceId, agentId: billingAgentId(session.capabilitySnapshot),
-        environmentId: auth.environment.id, runId: batch.runId, remoteSessionId: session.id,
-        eventCursor: session.eventCursor, expectedSequence: result.expectedSequence,
-      }, batch.runId, 'agent_run')
-      return result
-    }
-    if (result.stale) {
-      // Events fenced out by the durable lifecycle (dead attempt, superseded boot, or
-      // post-terminal leftovers) are acknowledged so the host drops them instead of
-      // retrying a batch that can never apply.
-      await this.audit('agent_remote_run.stale_events_swallowed', 'service', undefined, {
-        workspaceId: auth.credential.workspaceId, agentId: billingAgentId(session.capabilitySnapshot),
-        environmentId: auth.environment.id, runId: batch.runId, remoteSessionId: session.id,
-        eventCursor: result.acknowledgedSequence, eventCount: batch.events.length, stale: result.stale,
-      }, batch.runId, 'agent_run')
-      return result
-    }
-    await this.audit(
-      result.terminal ? `agent_remote_run.${result.terminal.outcome}` : 'agent_remote_run.events_applied',
-      'service', undefined, {
-        workspaceId: auth.credential.workspaceId,
-        agentId: result.terminal?.agentId || billingAgentId(session.capabilitySnapshot),
-        environmentId: auth.environment.id,
-        runId: batch.runId,
-        remoteSessionId: session.id,
-        sandboxProviderReference: result.terminal?.sandboxBilling?.providerReference,
-        eventCursor: result.acknowledgedSequence,
-        eventCount: batch.events.length,
-        duplicate: result.duplicate,
-      }, batch.runId, 'agent_run',
-    )
-    await this.flagRejectedProviderAccount(auth, session, batch)
-    if (result.terminal && this.dependencies.settleUsage &&
-      (result.terminal.modelUsageBilling === 'overlay' || result.terminal.sandboxBilling)) {
-      await this.settleWithAudit(result.terminal)
-    }
-    if (
-      result.terminal?.outcome === 'completed'
-      && result.terminal.memoryEnabled
-      && !result.duplicate
-      && this.dependencies.onTerminalMessage
-    ) {
-      await this.dependencies.onTerminalMessage(result.terminal).catch((error) => {
-        logger.warn('Connected-agent memory extraction enqueue failed', {
-          error,
-          runId: result.terminal?.runId,
-          workspaceId: result.terminal?.workspaceId,
-        })
-      })
-    }
-    return result
-  }
-
-  private async eventPolicyLimits(auth: HostAuthentication, session: AgentRemoteSessionLookup) {
-    let currentPolicy: ConnectedAgentPolicyEntitlements | undefined
-    if (this.dependencies.policyProjectionEnabled && session.policyEntitlements !== undefined) {
-      const parsed = connectedAgentPolicyEntitlementsSchema.safeParse(session.policyEntitlements)
-      if (!parsed.success) throw controlPlaneError('Connected-agent policy is unavailable', 503, 'policy_entitlements_unavailable')
-      currentPolicy = parsed.data
-    }
-    const billing = session.capabilitySnapshot?.billing
-    const billingUserId = billing && typeof billing === 'object' && typeof (billing as Record<string, unknown>).userId === 'string'
-      ? String((billing as Record<string, unknown>).userId) : ''
-    return this.dependencies.policyLimits && billingUserId
-      ? await this.dependencies.policyLimits({userId: billingUserId, workspaceId: auth.credential.workspaceId,
-        ...(currentPolicy ? {entitlements: currentPolicy} : {})})
-      : undefined
-  }
-
-  /** An agent that reports it could not sign in marks the account it ran on as needing a reconnect. */
-  private async flagRejectedProviderAccount(
-    auth: HostAuthentication,
-    session: { bindingId: string; capabilitySnapshot: Record<string, unknown> },
-    batch: EventBatch,
-  ) {
-    const accounts = this.dependencies.agentProviderAccounts
-    const rejected = batch.events.some((event) => {
-      const payload = event.payload as Record<string, unknown> | undefined
-      return event.type === 'failed' && payload?.code === AGENT_AUTH_FAILURE_CODE
-    })
-    if (!accounts || !rejected) return
-    try {
-      const agentId = billingAgentId(session.capabilitySnapshot)
-      const bindings = await this.dependencies.repository.listBindings({
-        workspaceId: auth.credential.workspaceId, ...(agentId ? { agentId } : {}),
-      })
-      const accountId = bindings.find((candidate) => candidate.id === session.bindingId)?.adapterConfig.providerAccountId
-      if (typeof accountId === 'string' && accountId) await accounts.markNeedsReauth(accountId, 'The agent reported that sign-in failed.')
-    } catch (error) {
-      logger.warn('[connected-agents] could not flag a rejected provider account', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
-  assertWorkingDirectory(environment: AgentEnvironment, workingDirectory: string): void {
-    const grant = environment.filesystemGrant
-    if (!grant) throw controlPlaneError('Environment has no filesystem grant', 403, 'filesystem_scope_required')
-    if (grant.mode === 'all_user_files') return
-    if (!grant.roots.some((root) => isPathInside(root, workingDirectory))) {
-      throw controlPlaneError('Command working directory is outside the approved roots', 403, 'filesystem_scope_denied')
-    }
-  }
-
   private async requireManager(userId: string, workspaceId: string) {
     const access = await this.dependencies.workspaces.resolveActiveWorkspace(userId, workspaceId)
     if (!canManageWorkspace(access.membership.role)) {
@@ -1004,73 +412,15 @@ export class ConnectedAgentControlPlaneService {
     return access
   }
 
+  /** Connecting a machine follows the Computers feature: a connected Mac is a Computer. */
   private async assertEnabled(workspaceId?: string) {
-    const controlPlaneEnabled = this.dependencies.isEnabled
+    const enabled = this.dependencies.isEnabled
       ? await this.dependencies.isEnabled(workspaceId)
-      : (await getOverlayRuntimeConfig()).features.connectedAgentControlPlane === true
-    if (!controlPlaneEnabled) {
-      throw controlPlaneError('Connected agent control plane is disabled', 404, 'feature_disabled')
-    }
-    const launchEnabled = this.dependencies.launchEnabled
-      ? await this.dependencies.launchEnabled(workspaceId)
-      : await externalAgentLaunchEnabled(workspaceId)
-    if (!launchEnabled) {
-      throw controlPlaneError('External agent runtimes are disabled', 404, 'feature_disabled')
-    }
-  }
-
-  private async assertArtifactsEnabled() {
-    if (await this.dependencies.artifactsEnabled?.() !== true) {
-      throw controlPlaneError(
-        'Connected-agent artifacts are unavailable until production malware scanning is enabled',
-        503,
-        'agent_artifacts_disabled',
-      )
-    }
+      : (await getOverlayRuntimeConfig()).features.computers === true
+    if (!enabled) throw controlPlaneError('Connecting a computer is disabled', 404, 'feature_disabled')
   }
 
   private now() { return this.dependencies.now?.() ?? Date.now() }
-
-  private requireObjectStore() {
-    if (!this.dependencies.objectStore) throw controlPlaneError('Object storage is unavailable', 503, 'object_storage_unavailable')
-    return this.dependencies.objectStore
-  }
-
-  private async rejectArtifact(artifact: { id: string; workspaceId: string; environmentId: string; objectKey: string }, result: string) {
-    await this.dependencies.repository.finalizeArtifact({ workspaceId: artifact.workspaceId,
-      environmentId: artifact.environmentId, artifactId: artifact.id, status: 'rejected', scanResult: result, now: this.now() })
-    await this.requireObjectStore().deleteObject(artifact.objectKey).catch((_error) => undefined)
-  }
-
-  async finalizeRemoteRunUsage(settlement: RemoteAgentUsageSettlement) {
-    await this.settleWithAudit(settlement)
-    await this.dependencies.onTerminalMessage?.(settlement)
-  }
-
-  private async settleWithAudit(settlement: RemoteAgentUsageSettlement) {
-    try {
-      await this.dependencies.settleUsage?.(settlement)
-      await this.audit('agent_remote_run.usage_settled', 'service', undefined, {
-        workspaceId: settlement.workspaceId, agentId: settlement.agentId,
-        environmentId: settlement.environmentId, runId: settlement.runId,
-        sandboxProviderReference: settlement.sandboxBilling?.providerReference,
-      }, settlement.runId, 'agent_run')
-    } catch (error) {
-      logger.error('Connected-agent settlement failed', {
-        workspaceId: settlement.workspaceId, agentId: settlement.agentId,
-        environmentId: settlement.environmentId, runId: settlement.runId,
-        error,
-      })
-      await this.dependencies.audit.record({
-        action: 'agent_remote_run.settlement_failed', actorType: 'service', outcome: 'failure',
-        resourceType: 'agent_run', resourceId: settlement.runId,
-        metadata: { workspaceId: settlement.workspaceId, agentId: settlement.agentId,
-          environmentId: settlement.environmentId, runId: settlement.runId,
-          sandboxProviderReference: settlement.sandboxBilling?.providerReference },
-      }).catch((_error) => undefined)
-      throw error
-    }
-  }
 
   private async audit(
     action: string,
@@ -1106,24 +456,15 @@ function translatePolicyError(error: unknown) {
   return error
 }
 
-function billingAgentId(snapshot: Record<string, unknown>) {
-  const billing = snapshot.billing && typeof snapshot.billing === 'object'
-    ? snapshot.billing as Record<string, unknown> : {}
-  return typeof billing.agentId === 'string' ? billing.agentId : ''
-}
-
 function createCredential(environment: AgentEnvironment, now: number) {
   const token = randomSecret()
-  const drive = environment.capabilities.drive
-  const driveCapable = Boolean(drive && typeof drive === 'object' && 'version' in drive && drive.version === 1)
   const credential: AgentEnvironmentCredential = {
     id: randomUUID(),
     workspaceId: environment.workspaceId,
     environmentId: environment.id,
     tokenHash: sha256(token),
     audience: AGENT_ENVIRONMENT_CREDENTIAL_AUDIENCE,
-    methods: AGENT_ENVIRONMENT_CREDENTIAL_METHODS.filter((method) =>
-      method !== 'agent:drive-credentials' || driveCapable && environment.kind !== 'overlay_cloud'),
+    methods: [...AGENT_ENVIRONMENT_CREDENTIAL_METHODS],
     tokenNonce: randomSecret(16),
     expiresAt: now + CREDENTIAL_TTL_MS,
     createdAt: now,
@@ -1183,15 +524,6 @@ function isFilesystemRoot(value: string) {
   return false
 }
 
-function isPathInside(root: string, candidate: string) {
-  const windows = win32.isAbsolute(root)
-  const path = windows ? win32 : posix
-  if (!path.isAbsolute(candidate)) return false
-  const normalizedRoot = path.resolve(root)
-  const normalizedCandidate = path.resolve(candidate)
-  const relative = path.relative(normalizedRoot, normalizedCandidate)
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
-}
 
 function assertEd25519PublicKey(publicKey: string) {
   try {
@@ -1215,31 +547,6 @@ function verifyDeviceSignature(publicKey: string | undefined, value: string, sig
 
 function randomSecret(bytes = 32) { return randomBytes(bytes).toString('base64url') }
 function sha256(value: string | Uint8Array) { return createHash('sha256').update(value).digest('hex') }
-function safeArtifactName(value: string) {
-  const name = value.trim()
-  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\') || /[\u0000-\u001f]/.test(name)) {
-    throw controlPlaneError('Artifact name is invalid', 400, 'artifact_name_invalid')
-  }
-  return name
-}
-function safeArtifactMediaType(value: string) {
-  const mediaType = normalizeMediaType(value)
-  if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(mediaType)
-    || ['application/x-msdownload', 'application/x-executable', 'application/x-sh'].includes(mediaType)) {
-    throw controlPlaneError('Artifact media type is not allowed', 400, 'artifact_media_type_invalid')
-  }
-  return mediaType
-}
-function normalizeMediaType(value: string | undefined) { return (value ?? '').split(';', 1)[0]!.trim().toLowerCase() }
-function scanArtifact(bytes: Uint8Array, mediaType: string): { clean: boolean; result: string } {
-  const prefix = bytes.slice(0, Math.min(bytes.byteLength, 8_192))
-  const text = new TextDecoder('utf-8', { fatal: false }).decode(prefix)
-  if (text.includes('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) return { clean: false, result: 'eicar_signature' }
-  const executableMagic = (prefix[0] === 0x4d && prefix[1] === 0x5a)
-    || (prefix[0] === 0x7f && prefix[1] === 0x45 && prefix[2] === 0x4c && prefix[3] === 0x46)
-  if (executableMagic && !normalizeMediaType(mediaType).includes('wasm')) return { clean: false, result: 'executable_binary' }
-  return { clean: true, result: 'signature_scan_clean' }
-}
 function verificationPhrase() {
   return Array.from({length: 3}, () => PHRASE_WORDS[randomInt(PHRASE_WORDS.length)]).join('-')
 }

@@ -43,9 +43,6 @@ test('overlay input trims fields and maps tool groups', () => {
     name: '  Scout  ',
     description: '',
     instructions: '  Find evidence.  ',
-    agentType: 'overlay',
-    harnessLabel: 'Codex',
-    adapterId: 'codex',
     modelId: '  test-model  ',
     reasoning: 'high',
     avatarColor: '#2563eb',
@@ -64,48 +61,14 @@ test('overlay input trims fields and maps tool groups', () => {
   assert.ok(Array.isArray(input.allowedToolIds))
 })
 
-test('byo input generates instructions, harness, and model from the adapter', () => {
-  const input = buildWorkspaceAgentInput({
-    name: 'Local Codex',
-    description: 'Works locally',
-    instructions: 'ignored for byo',
-    agentType: 'byo',
-    harnessLabel: 'Codex',
-    adapterId: 'codex',
-    modelId: 'test-model',
-    reasoning: 'high',
-    avatarColor: '#059669',
-    avatarShape: 'cloud',
-    enabledToolGroups: new Set(['memory']),
-    visibility: 'workspace',
-  })
-  assert.match(input.instructions, /Codex/)
-  assert.equal(input.harness, 'overlay')
-  assert.equal(input.modelId, 'byo/codex')
-  assert.equal(input.reasoning, undefined)
-  assert.deepEqual(input.allowedToolIds, [])
-  assert.equal(input.description, 'Works locally')
-})
-
-test('editor validity mirrors the save gate for both agent shapes', () => {
+test('editor validity mirrors the save gate', () => {
   const base = {
     name: 'Scout',
     instructions: 'Find evidence.',
     modelId: 'test-model',
-    legacyHostedRuntime: false,
-    connectedAgentsEnabled: true,
-    bindingValid: true,
   }
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'overlay' }), true)
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'overlay', name: '  ' }), false)
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'overlay', instructions: '' }), false)
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'overlay', modelId: '' }), false)
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'byo' }), true)
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'byo', bindingValid: false }), false)
-  assert.equal(
-    isAgentEditorValid({ ...base, agentType: 'byo', connectedAgentsEnabled: false }),
-    false,
-  )
-  // An agent whose hosted runtime was removed is read-only.
-  assert.equal(isAgentEditorValid({ ...base, agentType: 'overlay', legacyHostedRuntime: true }), false)
+  assert.equal(isAgentEditorValid(base), true)
+  assert.equal(isAgentEditorValid({ ...base, name: '  ' }), false)
+  assert.equal(isAgentEditorValid({ ...base, instructions: '' }), false)
+  assert.equal(isAgentEditorValid({ ...base, modelId: '' }), false)
 })

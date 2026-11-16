@@ -3,8 +3,6 @@
 import { useState } from 'react'
 import { useAgent, useAgentDirectory } from '@/hooks/use-agent-directory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { useConnectedAgentLaunchEnabled } from '@/hooks/use-connections'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 
 export function useAgentEditorBootstrap({
@@ -20,7 +18,6 @@ export function useAgentEditorBootstrap({
   activeWorkspaceId: string | null
   initial: ReturnType<typeof getInitialEditorState>
 }) {
-  const { capabilities } = useOverlayCapabilities()
   const live = useAgent(mode === 'edit' && activeWorkspaceId ? agentId ?? null : null)
   const directory = useAgentDirectory({ enabled: mode === 'new' })
   // A save answers before the live query does; prefer whichever copy is newer.
@@ -31,13 +28,8 @@ export function useAgentEditorBootstrap({
   const loading = mode === 'edit' ? live === undefined && !agent : directory.status === 'loading'
   const loadFailed = mode === 'edit' ? live === null && !agent : directory.status === 'unavailable'
   const canCreate = mode === 'edit' ? initial.canCreate : directory.canCreate
-  // Connected-agent availability gates the BYO type; live, so a rollout change shows without reopening the editor.
-  const launch = useConnectedAgentLaunchEnabled(activeWorkspaceId)
-  const connectedAgentsEnabled = capabilities.externalAgents === true && launch === true
-  /** Whether the connected-agents check has answered; the settings wait for it so the agent-type choice does not pop in. */
-  const connectedAgentsChecked = launch !== undefined || !activeWorkspaceId
 
-  return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
+  return { agent, setAgent, loading, loadFailed, canCreate }
 }
 
 function newerAgent(

@@ -39,12 +39,13 @@ describe('Convex agent-environment control plane', () => {
     expect(await convex.query(controlQuery('findEnvironmentCredentialByServer'), { serverSecret: secret, tokenHash: 'f'.repeat(64) })).toBeNull()
   })
 
-  test('rotation adds only a newly negotiated drive method without expanding other scopes', async () => {
+  test('rotation keeps or narrows the held methods and never widens them', async () => {
+    const all = [...AGENT_ENVIRONMENT_CREDENTIAL_METHODS]
+    const withoutTools = all.filter(method => method !== 'agent:commands:poll')
     for (const input of [
-      { capabilities: { drive: { version: 1 } }, omitEventWrite: false, accepted: true },
-      { capabilities: {}, omitEventWrite: false, accepted: false },
-      { capabilities: { drive: { version: 2 } }, omitEventWrite: false, accepted: false },
-      { capabilities: { drive: { version: 1 } }, omitEventWrite: true, accepted: false },
+      { held: all, requested: all, accepted: true },
+      { held: all, requested: withoutTools, accepted: true },
+      { held: withoutTools, requested: all, accepted: false },
     ]) {
       const convex = convexTest(schema, modules)
       const call = (operation: string, args: Record<string, unknown>) =>
@@ -54,20 +55,15 @@ describe('Convex agent-environment control plane', () => {
         environment: environmentInput({ kind: 'local' }), proofChallenge: proofChallengeInput() })
       await call('approveEnvironmentByServer', { workspaceId, environmentId, approvedByUserId: 'owner-user',
         filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] }, now: now + 1 })
-      const methods = AGENT_ENVIRONMENT_CREDENTIAL_METHODS.filter(method => method !== 'agent:drive-credentials'
-        && !(input.omitEventWrite && method === 'agent:events:write'))
       await call('issueEnvironmentCredentialByServer', { workspaceId, environmentId, proofChallengeId: 'challenge-owner',
-        proofChallengeHash: challengeHash, credential: credentialInput({ methods }), now: now + 2 })
-      await call('updateEnvironmentCapabilitiesByServer', { workspaceId, environmentId,
-        capabilities: { protocolVersion: 1, ...input.capabilities }, now: now + 3 })
+        proofChallengeHash: challengeHash, credential: credentialInput({ methods: input.held }), now: now + 2 })
       const rotated = await call('rotateEnvironmentCredentialByServer', { currentCredentialId: 'credential-owner',
         credential: credentialInput({ id: 'credential-rotated', tokenHash: 'f'.repeat(64), tokenNonce: 'rotated-nonce',
-          createdAt: now + 4 }), now: now + 4 })
+          createdAt: now + 4, methods: input.requested }), now: now + 4 })
       expect(rotated !== null).toBe(input.accepted)
       const old = await convex.query(controlQuery('findEnvironmentCredentialByServer'), {
         serverSecret: secret, tokenHash: 'c'.repeat(64) })
       expect(old.revokedAt).toBe(input.accepted ? now + 4 : undefined)
-      if (input.accepted) expect(rotated.methods).toContain('agent:drive-credentials')
     }
   })
 
@@ -168,11 +164,11 @@ describe('Convex agent-environment control plane', () => {
     })).toBe(false)
   })
 
-  test('rejects oversized protocol input and revocation stops commands, events, credentials and leases', async () => {
+  test('revocation stops the machine credentials and its leases', async () => {
     const convex = convexTest(schema, modules)
     const callControl = <T>(operation: string, args: Record<string, unknown>) =>
       convex.mutation(controlMutation(operation), { ...args, serverSecret: secret }) as Promise<T>
-    const callAgent = <T>(operation: string, args: Record<string, unknown>) =>
+    const callLeases = <T>(operation: string, args: Record<string, unknown>) =>
       convex.mutation(agentMutation(operation), { ...args, serverSecret: secret }) as Promise<T>
     const readControl = <T>(operation: string, args: Record<string, unknown>) =>
       convex.query(controlQuery(operation), { ...args, serverSecret: secret }) as Promise<T>
@@ -181,24 +177,8 @@ describe('Convex agent-environment control plane', () => {
     await callControl('redeemEnrollmentSessionByServer', { codeHash, now, environment: environmentInput(), proofChallenge: proofChallengeInput() })
     await callControl('approveEnvironmentByServer', { workspaceId, environmentId, approvedByUserId: 'owner-user', filesystemGrant: { mode: 'all_user_files' }, now: now + 1 })
     await callControl('issueEnvironmentCredentialByServer', { workspaceId, environmentId, proofChallengeId: 'challenge-owner', proofChallengeHash: challengeHash, credential: credentialInput(), now: now + 2 })
-
-    await callAgent('createBindingByServer', { id: 'binding-owner', workspaceId, agentId: 'agent-owner', environmentId, protocolAdapter: 'acp', adapterConfig: {}, enabled: true, now })
-    await callAgent('createRemoteSessionByServer', { id: 'session-owner', workspaceId, environmentId, bindingId: 'binding-owner', runId: 'run-owner', status: 'running', commandCursor: 0, eventCursor: 0, capabilitySnapshot: {}, now })
-    await expect(callAgent('enqueueCommandByServer', { id: 'too-large', workspaceId, environmentId, runId: 'run-owner', type: 'start', payload: { value: 'x'.repeat(129 * 1024) }, now })).rejects.toThrow(/AGENT_COMMAND_TOO_LARGE/)
-    const command = await callAgent<{ id: string }>('enqueueCommandByServer', { id: 'command-owner', workspaceId, environmentId, runId: 'run-owner', type: 'start', payload: {}, now })
-    await callAgent('claimCommandsByServer', { workspaceId, environmentId, now, leaseMs: 5_000, limit: 10 })
-    expect(await callAgent<boolean>('acknowledgeCommandByServer', { workspaceId, environmentId, commandId: command.id, accepted: false, now: now + 1 })).toBe(true)
-    expect(await callAgent('claimCommandsByServer', { workspaceId, environmentId, now: now + 6_000, leaseMs: 5_000, limit: 10 })).toEqual([])
-
-    await expect(callAgent('applyRemoteEventsByServer', {
-      workspaceId, environmentId, sessionId: 'session-owner', now,
-      events: [eventInput({ payload: { text: 'x'.repeat(513 * 1024) } })],
-    })).rejects.toThrow(/AGENT_EVENT_BATCH_TOO_LARGE/)
-    await callAgent('createSandboxLeaseByServer', { id: 'lease-owner', workspaceId, environmentId, provider: 'vercel', status: 'running', reservedUntil: now + 1_000_000, usage: {}, cleanupAttempts: 0, now })
-    await callAgent('enqueueCommandByServer', { id: 'command-pending', workspaceId, environmentId, runId: 'run-owner', type: 'prompt', payload: {}, now })
+    await callLeases('createSandboxLeaseByServer', { id: 'lease-owner', workspaceId, environmentId, provider: 'vercel', status: 'running', reservedUntil: now + 1_000_000, usage: {}, cleanupAttempts: 0, now })
     expect(await callControl<boolean>('revokeEnvironmentAccessByServer', { workspaceId, environmentId, now: now + 10 })).toBe(true)
-    expect(await callAgent('claimCommandsByServer', { workspaceId, environmentId, now: now + 11, leaseMs: 5_000, limit: 10 })).toEqual([])
-    await expect(callAgent('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-owner', now: now + 11, events: [eventInput()] })).rejects.toThrow(/AGENT_ENVIRONMENT_UNAVAILABLE/)
     const storedCredential = await readControl<{ revokedAt?: number }>('findEnvironmentCredentialByServer', { tokenHash: 'c'.repeat(64) })
     expect(storedCredential.revokedAt).toBe(now + 10)
     const lease = await convex.run(async ctx => ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', q => q.eq('leaseId', 'lease-owner')).unique())
@@ -226,10 +206,6 @@ function credentialInput(overrides: Record<string, unknown> = {}) {
     audience: 'overlay-agent-control-plane', methods: [...AGENT_ENVIRONMENT_CREDENTIAL_METHODS],
     tokenNonce: 'token-nonce-owner', expiresAt: now + 14 * 60_000, createdAt: now + 2, ...overrides }
 }
-function eventInput(overrides: Record<string, unknown> = {}) {
-  return { protocolVersion: 1, eventId: 'event-owner', environmentId, runId: 'run-owner', sourceSequence: 1,
-    type: 'text_checkpoint', occurredAt: now, payload: { text: 'ready' }, ...overrides }
-}
 function controlMutation(operation: string) { return makeFunctionReference<'mutation'>(`agents/environmentControlPlane:${operation}`) }
 function controlQuery(operation: string) { return makeFunctionReference<'query'>(`agents/environmentControlPlane:${operation}`) }
-function agentMutation(operation: string) { return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`) }
+function agentMutation(operation: string) { return makeFunctionReference<'mutation'>(`agents/machineLeases:${operation}`) }

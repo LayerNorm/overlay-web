@@ -39,8 +39,7 @@ Custom identity images use authenticated media routes, never public object URLs.
 Reads require active shared membership; writes require the matching account/member,
 or owner/admin access for workspace icons. Uploads accept PNG/JPEG/WebP up to 5 MB,
 authorize before decoding, and re-encode to bounded 512px WebP without metadata.
-Agent identity uses creature avatars. Workspace chiefs and unclassified legacy defaults use the Overlay mark; personal chiefs keep customizable creatures even when an adopted row retains `isDefault`. A personal chief's name, description and appearance are owner-only and global; scoped instructions, tools and histories remain independent. Work → Organization provides the appearance editor; see [Interface Design](./interface-design.md) and [Bring Your Own Agents](./bring-your-own-agents.md#chief-identities-and-scoped-bindings).
-
+Agent identity uses creature avatars. Workspace chiefs and unclassified legacy defaults use the Overlay mark; personal chiefs keep customizable creatures even when an adopted row retains `isDefault`. A personal chief's name, description and appearance are owner-only and global; scoped instructions, tools and histories remain independent. Work → Organization provides the appearance editor; see [Interface Design](./interface-design.md) and [Bring Your Own Agents](.
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 
 The default brand mark is the inline SVG O-with-eyes `OverlayMark` from
@@ -172,19 +171,7 @@ Use `featureFlags` for coarse product areas and `policyGates` for enterprise pol
 
 Capability gates are evaluated per registry entry. Memory management in Settings requires the `memory` capability only; `vectorSearch` controls semantic retrieval and search tooling independently, so disabling vector search must not hide saved-memory management.
 
-The default `agent-environments` settings section is gated by the `agents` feature flag and the
-server-derived `connectedAgents` capability. It is labeled `Environments`, uses a distinct server
-icon in settings navigation, and follows the standard elevated settings-card surface with compact
-subtle icon tiles. New local, VPS, customer-sandbox, and Overlay Cloud environments are created
-inside the Bring Your Own Agent branch of the agent editor. The Settings renderer is the fleet
-administration surface: it shows health and pending verification, collects or changes explicit
-project roots, and exposes revocation. For the production workspace rollout,
-the agent editor offers existing environments or one outbound connection command
-for a user-owned computer, VPS, or sandbox. Overlay Cloud is deliberately absent
-until the managed-environment release gates in `internal/develop/bring-your-own-agents.md` pass. The
-backend additionally requires
-`features.connectedAgentControlPlane`; the capability mirrors that server policy and cannot be
-enabled by a client assertion.
+Connected machines (This Mac) are managed in Settings → Desktop → This Mac in the desktop app; there is no separate environments settings section. See `local-computer.md`.
 
 ## Workspace Memories
 

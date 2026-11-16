@@ -6,6 +6,9 @@ import {
   type SandboxCommandResult,
   type SandboxInstance,
 } from '@overlay/sandbox-runtime'
+import type { LocalDriverCommand } from '@layernorm/overlay-agent-bridge-protocol'
+import { LocalComputerError } from './local/LocalComputerService'
+import { isLocalHostSandboxInstance, type LocalHostSandboxInstance } from './local/LocalHostSandboxInstance'
 
 const DRIVER_PATH = `/tmp/overlay-computer/driver-${DRIVER_VERSION}.py`
 const SCREENSHOT_PATH = '/tmp/overlay-computer/shot.png'
@@ -214,6 +217,7 @@ export async function runComputerDriverCommand(
     environment?: Record<string, string>
   } = {},
 ): Promise<Record<string, unknown>> {
+  if (isLocalHostSandboxInstance(instance)) return await runLocalDriverCommand(instance, command, args)
   const requireDesktop = options.requireDesktop !== false
   await ensureDriver(instance, requireDesktop)
   const request = command === 'terminal_start'
@@ -254,6 +258,25 @@ export async function runComputerDriverCommand(
   return response
 }
 
+/** The user's own computer runs the same commands through its host's native driver; no Python driver is installed. */
+async function runLocalDriverCommand(
+  instance: LocalHostSandboxInstance,
+  command: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  let response: Record<string, unknown>
+  try {
+    response = await instance.driver(command as LocalDriverCommand, args)
+  } catch (error) {
+    if (error instanceof LocalComputerError) throw new ComputerDesktopDriverError(error.code, error.message, error.missing, error.detail)
+    throw error
+  }
+  if (command !== 'screenshot') return response
+  const { imageBase64, ...rest } = response
+  if (typeof imageBase64 !== 'string') throw new ComputerDesktopDriverError('desktop_driver_failed', 'The screenshot could not be read.')
+  return { ...rest, image: new Uint8Array(Buffer.from(imageBase64, 'base64')) }
+}
+
 export async function run(
   instance: SandboxInstance,
   command: string,
@@ -265,7 +288,11 @@ export async function run(
 export async function openUrl(
   instance: SandboxInstance,
   url: string,
-): Promise<{ openedWith: 'browser' | 'xdg-open' }> {
+): Promise<{ openedWith: 'browser' | 'xdg-open' | 'default_browser' }> {
+  if (isLocalHostSandboxInstance(instance)) {
+    const result = await runLocalDriverCommand(instance, 'open_url', { url })
+    return { openedWith: result.openedWith === 'default_browser' ? 'default_browser' : 'browser' }
+  }
   if (!instance.capabilities.desktop) {
     throw new ComputerDesktopDriverError('desktop_unsupported', 'This computer does not have a desktop.')
   }

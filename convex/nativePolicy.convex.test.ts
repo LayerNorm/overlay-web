@@ -81,17 +81,12 @@ test('old expiry preserves a renewed lease but a hung refresh does not preserve 
   expect(row?.snapshot).toBeUndefined()
 })
 
-test('backend/source binding, disabled flags, workspace rollout and redaction remain enforced', async () => {
+test('backend/source binding, disabled flags and redaction remain enforced', async () => {
   const t = await fixture()
   const { sequence } = await t.mutation(begin, { challenge })
   await expect(t.mutation(publish, { issuedAt: Date.now(), sequence, challenge, snapshot: { ...snapshot, backendUrl: 'https://wrong.convex.cloud' } })).rejects.toThrow('NATIVE_POLICY_SOURCE_MISMATCH')
   await t.mutation(publish, { issuedAt: Date.now(), sequence, challenge, snapshot: { ...snapshot, features: { ...snapshot.features, skills: false } } })
   expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'skills'))).toBe(false)
-  expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'externalAgents', 'invited'))).toBe(true)
-  expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'externalAgents', 'other'))).toBe(false)
-  expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'externalAgents'))).toBe(false)
-  expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'connectedAgents', 'invited'))).toBe(true)
-  expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'connectedAgents', 'other'))).toBe(false)
   await expect(t.query(status, {})).rejects.toThrow('UNAUTHENTICATED')
   const result = await t.withIdentity({ subject: 'u' }).query(status, {})
   expect(Object.keys(result).sort()).toEqual(['features', 'ready'])

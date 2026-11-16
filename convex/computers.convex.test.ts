@@ -426,9 +426,9 @@ function queryRef(operation: string) {
 }
 
 function agentMutationRef(operation: string) {
-  return makeFunctionReference<'mutation'>(`agents/connectedAgents:${operation}`)
+  return makeFunctionReference<'mutation'>(`agents/machineLeases:${operation}`)
 }
 
 function agentQueryRef(operation: string) {
-  return makeFunctionReference<'query'>(`agents/connectedAgents:${operation}`)
+  return makeFunctionReference<'query'>(`agents/machineLeases:${operation}`)
 }

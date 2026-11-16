@@ -5,11 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { Computer } from '@overlay/workspace-contracts'
 import {
   AccessSelector,
-  AgentBehaviorFields,
   AgentComputerSection,
   AgentSurfacesSection,
-  AgentTypeSelector,
-  ByoAgentFields,
   OverlayAgentPermissionsField,
   resolveOverlayPermissionModeSelection,
   OverlayAgentFields,
@@ -35,12 +32,6 @@ test('access selector marks the active mode and explains its effect', () => {
   const onlyMe = renderToStaticMarkup(<AccessSelector value="creator" onChange={() => undefined} />)
   assert.match(onlyMe, /Only me/)
   assert.match(onlyMe, /Only you can see, chat with, or @-mention/)
-})
-
-test('agent type selector offers create-your-own and bring-your-own', () => {
-  const markup = renderToStaticMarkup(<AgentTypeSelector value="overlay" onChange={() => undefined} />)
-  assert.match(markup, /Create your own agent/)
-  assert.match(markup, /Bring your own agent/)
 })
 
 test('Overlay agent permissions default to Ask and explain both modes', () => {
@@ -82,37 +73,6 @@ test('overlay fields render instructions, tools, and the mention-first note', ()
   )
   assert.match(markup, /Agent instructions/)
   assert.match(markup, /Mention-first is enforced/)
-})
-
-test('byo fields render the harness picker and the empty-environment state', () => {
-  const markup = renderToStaticMarkup(
-    <ByoAgentFields
-      adapterId="codex"
-      harnessOptions={[{ id: 'codex', label: 'Codex', description: 'OpenAI coding agent', connectable: true }]}
-      onHarnessChange={() => undefined}
-      choice="existing"
-      onChoiceChange={() => undefined}
-      compatibleEnvironments={[]}
-      environmentsLoading={false}
-      environmentId=""
-      onEnvironmentChange={() => undefined}
-      workingDirectory=""
-      onWorkingDirectoryChange={() => undefined}
-      selectedHarnessConnectable
-      environmentBusy={null}
-      environmentError={null}
-      command=""
-      copied={false}
-      onCopyCommand={() => undefined}
-      onBeginConnection={() => undefined}
-      setupEnvironment={undefined}
-      setupRoots=""
-      onSetupRootsChange={() => undefined}
-      onApproveSetup={() => undefined}
-    />,
-  )
-  assert.match(markup, /Choose the coding agent Overlay will invoke/)
-  assert.match(markup, /No connected environment currently advertises this harness/)
 })
 
 const agentComputer: Computer = {
@@ -216,58 +176,6 @@ test('reachable platforms group channels by workspace without dividers or coming
   const empty = renderToStaticMarkup(<AgentSurfacesSection {...props} connections={[]} bindings={[]} />)
   assert.match(empty, /Not connected/)
   assert.match(empty, />Connect</)
-})
-
-const behaviorBase = {
-  connectedAgentsEnabled: true,
-  computersAvailable: false,
-  instructions: 'Do work.',
-  onInstructionsChange: () => undefined,
-  modelId: 'test-model',
-  onModelChange: () => undefined,
-  modelField,
-  enabledToolGroups: new Set<string>(),
-  onToggleToolGroup: () => undefined,
-  advanced: false,
-  onAdvancedChange: () => undefined,
-  legacyHostedRuntime: false,
-  adapterId: 'codex',
-  harnessOptions: [],
-  onHarnessChange: () => undefined,
-  environmentChoice: 'existing' as const,
-  onEnvironmentChoiceChange: () => undefined,
-  compatibleEnvironments: [],
-  environmentsLoading: false,
-  environmentId: '',
-  onEnvironmentChange: () => undefined,
-  workingDirectory: '',
-  onWorkingDirectoryChange: () => undefined,
-  selectedHarnessConnectable: false,
-  environmentBusy: null,
-  environmentError: null,
-  command: '',
-  copied: false,
-  onCopyCommand: () => undefined,
-  onBeginConnection: () => undefined,
-  setupRoots: '',
-  onSetupRootsChange: () => undefined,
-  onApproveSetup: () => undefined,
-}
-
-test('behavior fields show the Overlay agent form without a runtime picker', () => {
-  const markup = renderToStaticMarkup(
-    <AgentBehaviorFields {...behaviorBase} agentType="overlay" />,
-  )
-  assert.doesNotMatch(markup, /Hosted runtime/)
-  assert.match(markup, /Agent instructions/)
-})
-
-test('behavior fields hold an agent read-only when its hosted runtime was removed', () => {
-  const markup = renderToStaticMarkup(
-    <AgentBehaviorFields {...behaviorBase} agentType="overlay" legacyHostedRuntime />,
-  )
-  assert.match(markup, /no longer available/)
-  assert.doesNotMatch(markup, /aria-label="Agent model"/)
 })
 
 test('overlay fields render the computer accessory under its tool row', () => {

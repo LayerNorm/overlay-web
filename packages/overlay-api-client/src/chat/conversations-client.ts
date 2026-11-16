@@ -65,44 +65,6 @@ export class ConversationsClient {
     return this.http.request(path, init)
   }
 
-  controlRemoteQueue(input: {
-    controlRequestId?: string
-    workspaceId: string
-    conversationId: string
-    runId: string
-    action: 'cancel' | 'retry' | 'resume' | 'start_fresh'
-  }, init?: RequestInit) {
-    const headers = new Headers(init?.headers)
-    headers.set('x-overlay-workspace-id', input.workspaceId)
-    return this.http.json<{ applied: boolean; messageId?: string }>(
-      '/api/v1/conversations/run/remote',
-      this.http.jsonRequest({
-        conversationId: input.conversationId,
-        runId: input.runId,
-        action: input.action,
-        ...(input.controlRequestId ? { controlRequestId: input.controlRequestId } : {}),
-      }, { ...init, headers, method: 'POST' }),
-    )
-  }
-
-  resolveRemoteRequest(input: {
-    workspaceId: string
-    conversationId: string
-    runId: string
-    requestKey: string
-    decision: string
-    response?: Record<string, unknown>
-  }, init?: RequestInit) {
-    const headers = new Headers(init?.headers)
-    headers.set('x-overlay-workspace-id', input.workspaceId)
-    return this.http.json<{ applied: boolean; messageId?: string; commandId?: string }>(
-      '/api/v1/conversations/run/remote/request',
-      this.http.jsonRequest({ conversationId: input.conversationId, runId: input.runId,
-        requestKey: input.requestKey, decision: input.decision, response: input.response },
-      { ...init, headers, method: 'POST' }),
-    )
-  }
-
   create(body: CreateConversationRequest, init?: MutationRequestInit) {
     return this.http.json<CreateConversationResponse>(
       '/api/v1/conversations',
@@ -188,11 +150,6 @@ export class ConversationsClient {
 
   currentRun(conversationId: string, init?: RequestInit) {
     const path = this.http.appendQuery('/api/v1/conversations/run', { conversationId })
-    return this.http.json<{ run: AgentRunResource | null }>(path, init)
-  }
-
-  currentRemoteRun(input: { conversationId: string; runId: string }, init?: RequestInit) {
-    const path = this.http.appendQuery('/api/v1/conversations/run', { conversationId: input.conversationId, remoteRunId: input.runId })
     return this.http.json<{ run: AgentRunResource | null }>(path, init)
   }
 

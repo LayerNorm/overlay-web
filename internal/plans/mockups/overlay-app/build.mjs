@@ -1,5 +1,7 @@
 // Builds overlay-app.html: the real Overlay web app shell and pages, bundled with esbuild and fed fixture data.
 //   node internal/plans/mockups/overlay-app/build.mjs
+// A feature mockup builds the same app plus a proposed feature into its own file:
+//   MOCKUP_FEATURE=local-cloud-continuity node internal/plans/mockups/overlay-app/build.mjs
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +12,35 @@ import tailwind from '@tailwindcss/postcss'
 const root = fileURLToPath(new URL('../../../../', import.meta.url))
 const here = fileURLToPath(new URL('./', import.meta.url))
 const locationBanner = await readFile(path.join(here, 'shims/location-banner.js'), 'utf8')
+
+/**
+ * A feature (features/<name>/feature.mjs) names its output file and the source patches that place its proposed
+ * components into production modules at bundle time. Production files are never edited, and a patch whose text no
+ * longer appears exactly once stops the build, so a feature mockup cannot silently drift from the app.
+ */
+const featureName = process.env.MOCKUP_FEATURE
+const feature = featureName ? (await import(path.join(here, 'features', featureName, 'feature.mjs'))).default : null
+
+function featurePatchPlugin() {
+  const patches = new Map((feature?.patches ?? []).map((patch) => [path.join(root, patch.file), patch]))
+  return {
+    name: 'overlay-app-feature-patches',
+    setup(b) {
+      if (patches.size === 0) return
+      b.onLoad({ filter: /\.(tsx?|mts)$/ }, async (args) => {
+        const patch = patches.get(args.path)
+        if (!patch) return undefined
+        let contents = await readFile(args.path, 'utf8')
+        for (const [find, replace] of patch.replace) {
+          const count = contents.split(find).length - 1
+          if (count !== 1) throw new Error(`[mockup] ${patch.file}: expected one match for ${JSON.stringify(find.slice(0, 80))}, found ${count}`)
+          contents = contents.replace(find, () => replace)
+        }
+        return { contents: (patch.imports ?? '') + contents, loader: args.path.endsWith('x') ? 'tsx' : 'ts', resolveDir: path.dirname(args.path) }
+      })
+    },
+  }
+}
 
 const SHIMS = {
   'next/navigation': 'shims/next-navigation.ts',
@@ -51,7 +82,7 @@ const [css, bundle] = await Promise.all([
     format: 'iife',
     jsx: 'automatic',
     tsconfig: path.join(root, 'tsconfig.json'),
-    plugins: [shimPlugin()],
+    plugins: [shimPlugin(), featurePatchPlugin()],
     define: {
       'process.env.NODE_ENV': process.env.MOCKUP_DEV === '1' ? '"development"' : '"production"',
       'process.env.NEXT_PUBLIC_APP_ENV': '"mockup"',
@@ -85,6 +116,7 @@ async function inlinePublicAssets(source) {
 }
 const js = (await inlinePublicAssets(bundle.outputFiles.find((file) => file.path.endsWith('.js')).text)).replaceAll('</script>', '<\\/script>')
 const moduleCss = bundle.outputFiles.find((file) => file.path.endsWith('.css'))?.text ?? ''
-const out = path.join(here, '../overlay-app.html')
-await writeFile(out, `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Overlay | Web app mockup</title><style>${css}\n${moduleCss}</style></head><body><div id="root"></div><script>${js}</script></body></html>`)
+const out = path.join(here, '..', feature?.out ?? 'overlay-app.html')
+const title = feature?.title ?? 'Overlay | Web app mockup'
+await writeFile(out, `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>${css}\n${moduleCss}</style></head><body><div id="root"></div><script>${js}</script></body></html>`)
 console.log(`Built ${path.relative(root, out)}`)

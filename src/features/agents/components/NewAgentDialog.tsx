@@ -73,11 +73,6 @@ const COMPUTER_SIZE_OPTIONS = [
   { value: 'large', label: 'Large · 8 vCPU, 16 GB' },
 ] as const
 
-const TYPE_OPTIONS = [
-  { value: 'overlay', label: 'Overlay agent' },
-  { value: 'other', label: 'Connect your agent' },
-] as const
-
 const ACCESS_OPTIONS = [
   { value: 'creator', label: 'Only me' },
   { value: 'workspace', label: 'Everyone in this workspace' },
@@ -211,12 +206,11 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelField, computersAvailable, onOpenMachineSetup }: {
+export function NewAgentFields({ draft, onChange, modelField, computersAvailable }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
   modelField: AgentModelFieldProps
   computersAvailable: boolean
-  onOpenMachineSetup?(): void
 }) {
   return (
     <div className="space-y-3.5">
@@ -249,16 +243,6 @@ export function NewAgentFields({ draft, onChange, modelField, computersAvailable
           className="min-h-20 resize-none!"
         />
       </div>
-      {onOpenMachineSetup ? <div>
-        <FieldLabel info="Overlay agents are built into Overlay. Connect a user-owned Agent Host to use an external agent.">Type</FieldLabel>
-        <SegmentedControl
-          ariaLabel="Agent type"
-          layout="stretch"
-          value="overlay"
-          options={TYPE_OPTIONS}
-          onChange={(kind) => { if (kind === 'other') onOpenMachineSetup() }}
-        />
-      </div> : null}
       {computersAvailable ? <ComputerSection draft={draft} onChange={onChange} /> : null}
       <div>
         <FieldLabel info="Who can see, chat with, or @-mention this agent.">Access</FieldLabel>
@@ -322,9 +306,6 @@ async function createAgentFromDraft(
       name: draft.name,
       description: '',
       instructions: draft.instructions,
-      agentType: 'overlay',
-      harnessLabel: '',
-      adapterId: '',
       modelId: draft.modelId,
       reasoning: workspaceAgentReasoningForSave({
         modelId: draft.modelId,
@@ -354,14 +335,12 @@ async function createAgentFromDraft(
   return { agent: created.agent, computerError }
 }
 
-/** New-agent dialog for native Overlay agents, with a direct path to BYOM setup. */
-export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMachineSetup }: {
+/** New-agent dialog for native Overlay agents. */
+export function NewAgentDialog({ open, workspaceId, onClose, onCreated }: {
   open: boolean
   workspaceId: string | null
   onClose(): void
   onCreated(agent: WorkspaceAgentDirectoryItem, warning: string | null): void
-  /** Opens the full agent editor, where "Your machine" agents are connected. */
-  onOpenMachineSetup?(): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
@@ -422,7 +401,6 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
           onChange={update}
           modelField={modelField}
           computersAvailable={computersAvailable}
-          {...(capabilities.connectedAgents === true && onOpenMachineSetup ? { onOpenMachineSetup } : {})}
         />
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-(--border) px-5 py-3">
