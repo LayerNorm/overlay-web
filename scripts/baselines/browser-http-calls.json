@@ -241,17 +241,17 @@
     "src/features/knowledge/components/MemoriesView.tsx"
   ],
   "notes.create": [
-    "src/features/notebook/components/NotebookEditor.tsx"
+    "src/hooks/use-notebook-repository.ts"
   ],
   "notes.createResponse": [
     "src/components/layout/sidebar/useAppSidebarActions.ts"
   ],
   "notes.deleteResponse": [
-    "src/features/notebook/components/NotebookEditor.tsx",
-    "src/features/settings/lib/archived-actions.ts"
+    "src/features/settings/lib/archived-actions.ts",
+    "src/hooks/use-notebook-repository.ts"
   ],
   "notes.updateResponse": [
-    "src/features/notebook/components/NotebookEditor.tsx"
+    "src/hooks/use-notebook-repository.ts"
   ],
   "scope.archive": [
     "src/hooks/use-scope-item-actions.ts"

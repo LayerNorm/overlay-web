@@ -31,6 +31,13 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Minified mockup bundle: a font-atlas counter (`keyCount,m=d.atlasCount`) reads as key=value to generic-api-key"
+regexTarget = "match"
+regexes = [
+  '''keyCount,[A-Za-z_$][A-Za-z0-9_$]{0,2}=[A-Za-z_$][A-Za-z0-9_$]{0,2}\.atlasCount''',
+]
+
+[[allowlists]]
 description = "Build output directories are not source files"
 paths = [
   '''\.next/.*''',

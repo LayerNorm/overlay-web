@@ -91,6 +91,9 @@ them. Besides the canonical app mockup, this folder holds only:
   `id=k17convatlasiosshare000000000000` for a thread running on the Mac Studio.
   `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
   rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
+- `note-renderer.html`: the approved note page, block handle, block menu and
+  note card design that the notes editor implements. Delete it once the
+  redesign is accepted in production.
 - Brand source: `build-aligned-brand.py` generates `aligned-brand.*`,
   `overlay-brand-approved/` and the production `ApprovedBrand.tsx`;
   `export-brand-pngs.cjs` exports the raster assets. These are production

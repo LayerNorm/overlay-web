@@ -37,6 +37,8 @@ export interface FileViewerProps {
   /** Injected fetch implementation so the presentational module does not call global fetch directly. */
   fetchImpl?: typeof fetch
   resolveFileHref?: (href: string) => string | undefined
+  /** Markdown reads as a centered page (`page`) or fits a side panel (`panel`), like the note editor. */
+  markdownLayout?: 'page' | 'panel'
 }
 
 function previewSource(name: string, content: string, url?: string): string {
@@ -124,18 +126,26 @@ export function FileMarkdown({
   content,
   className,
   resolveFileHref,
+  document = false,
 }: {
   content: string
   className?: string
   resolveFileHref?: (href: string) => string | undefined
+  /** Render with the note page's document styles (headings, quiet table grid, lists) instead of compact prose. */
+  document?: boolean
 }) {
+  const base = document ? 'app-note-editor overlay-note-markdown' : FILE_MARKDOWN_PROSE_CLASS
   return (
-    <div className={[FILE_MARKDOWN_PROSE_CLASS, className].filter(Boolean).join(' ')}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href = '', children, title }) => {
-        const target = resolveFileHref ? resolveFileHref(href) : href
-        return target ? <a href={target} title={title}>{children}</a>
-          : <span aria-disabled="true" title="File link is unavailable">{children}</span>
-      } }}>{content}</ReactMarkdown>
+    <div className={[base, className].filter(Boolean).join(' ')}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+        a: ({ href = '', children, title }) => {
+          const target = resolveFileHref ? resolveFileHref(href) : href
+          return target ? <a href={target} title={title}>{children}</a>
+            : <span aria-disabled="true" title="File link is unavailable">{children}</span>
+        },
+        // Wide tables scroll sideways inside the page instead of squeezing their columns.
+        table: ({ children }) => <div className="tableWrapper"><table>{children}</table></div>,
+      }}>{content}</ReactMarkdown>
     </div>
   )
 }
@@ -246,11 +256,11 @@ function ViewerOperationButtons({
   )
 }
 
-export function FileViewer({ name, content, url, operations, fetchImpl, resolveFileHref }: FileViewerProps) {
+export function FileViewer({ name, content, url, operations, fetchImpl, resolveFileHref, markdownLayout = 'page' }: FileViewerProps) {
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
-  if (type === 'markdown') return <MarkdownViewer content={content} resolveFileHref={resolveFileHref} />
+  if (type === 'markdown') return <MarkdownViewer content={content} resolveFileHref={resolveFileHref} layout={markdownLayout} />
   if (type === 'text') return <TextViewer content={content} />
   if (type === 'html') return <HtmlViewer name={name} source={source} />
   if (type === 'csv') return <CsvViewer content={content} />
@@ -273,10 +283,14 @@ export function FileViewer({ name, content, url, operations, fetchImpl, resolveF
   return <BinaryViewer name={name} content={content} url={url} operations={operations} />
 }
 
-function MarkdownViewer({ content, resolveFileHref }: Pick<FileViewerProps, 'content' | 'resolveFileHref'>) {
+function MarkdownViewer({ content, resolveFileHref, layout }: Pick<FileViewerProps, 'content' | 'resolveFileHref'> & {
+  layout: 'page' | 'panel'
+}) {
   return (
-    <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto px-8 py-6">
-      <FileMarkdown content={content} resolveFileHref={resolveFileHref} />
+    <div className="overlay-file-viewer overlay-file-viewer--markdown flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="overlay-note-page" data-layout={layout}>
+        <FileMarkdown document content={content} resolveFileHref={resolveFileHref} />
+      </div>
     </div>
   )
 }

@@ -95,12 +95,37 @@ Week of November 9. Prepared by Overlay from Stripe, PostHog and HubSpot.
 3. Review the pricing test with Sales on Thursday.
 `
 
+const LAUNCH_NOTE = `## The short version
+
+Today we are launching a faster, simpler Northwind with clearer pricing for every team.
+
+## What changes for customers
+
+- Pages load twice as fast on mobile.
+- Starter, Team and Business now list every limit up front.
+- Existing plans keep their price until renewal.
+
+| Plan | Before | After |
+| --- | --- | --- |
+| Starter | $12 | $10 |
+| Team | $29 | $29 |
+| Business | $79 | $72 |
+
+## Launch checklist
+
+- [x] Final copy review with Sam
+- [ ] Schedule the email for Tuesday 9am
+- [ ] Update the pricing page screenshots
+`
+
+const LAUNCH_PREVIEW = 'The short version\nToday we are launching a faster, simpler Northwind with clearer pricing for every team.\nWhat changes for customers\n- Pages load twice as fast on mobile.'
+
 export const FILES = [
   file({ _id: 'k17folderlaunch00000000000000000', name: 'Launch', type: 'folder', kind: 'folder', sizeBytes: 0 }),
   file({ _id: 'k17folderresearch000000000000000', name: 'Research', type: 'folder', kind: 'folder', sizeBytes: 0 }),
   file({ _id: 'k17folderfinance0000000000000000', name: 'Finance', type: 'folder', kind: 'folder', sizeBytes: 0, scope: 'personal' }),
   file({ name: 'Pricing benchmark — November', kind: 'note', parentId: 'k17folderresearch000000000000000', previewText: 'Northwind sits below the median on Starter and Team and 22% above it on Business.', textContent: '# Pricing benchmark\n\nNorthwind sits below the median on Starter and Team and 22% above it on Business.' }),
-  file({ name: 'Launch announcement — v1', kind: 'note', parentId: 'k17folderlaunch00000000000000000', previewText: 'Today we are launching a faster, simpler Northwind with clearer pricing for every team.', textContent: '# Launch announcement\n\nToday we are launching a faster, simpler Northwind.' }),
+  file({ name: 'Launch announcement — v1', kind: 'note', parentId: 'k17folderlaunch00000000000000000', previewText: LAUNCH_PREVIEW, content: LAUNCH_NOTE, textContent: LAUNCH_NOTE }),
   file({ name: 'Weekly metrics digest', kind: 'note', previewText: 'Signups up 14%. Activation steady at 41%. Two Business accounts at risk.', content: WEEKLY_DIGEST, textContent: WEEKLY_DIGEST }),
   file({ name: 'Churn interviews — October.pdf', mimeType: 'application/pdf', parentId: 'k17folderresearch000000000000000', sizeBytes: 1_840_000 }),
   file({ name: 'Homepage hero.png', mimeType: 'image/png', parentId: 'k17folderlaunch00000000000000000', kind: 'output', outputSource: 'image_generation', outputStatus: 'completed', sizeBytes: 920_000 }),
@@ -183,6 +208,16 @@ const NOTIFICATIONS = [
 ].map(({ ago, read, ...row }) => ({ ...row, workspaceId: 'ws_northwind', recipientPrincipalId: VIEWER_PRINCIPAL, createdAt: NOW - ago, readAt: read ? NOW - ago + MIN : undefined }))
 
 export function installWorkspaceFixtures() {
+  // Note saves update the in-memory file so the editor's revision guard and "Saved" state behave as in production.
+  route('PATCH', /^\/api\/v1\/notes$/, ({ body }) => {
+    const { noteId, title, content } = body as { noteId: string; title?: string; content?: string }
+    const row = FILES.find((entry) => entry._id === noteId) as Record<string, unknown> | undefined
+    if (!row) return new Response(JSON.stringify({ error: 'Note not found' }), { status: 404 })
+    if (typeof title === 'string') row.name = title
+    if (typeof content === 'string') { row.content = content; row.textContent = content }
+    row.updatedAt = Date.now()
+    return { note: { _id: noteId, title: row.name, content: row.content ?? '', tags: [], createdAt: row.createdAt, updatedAt: row.updatedAt } }
+  })
   defineQueries({
     'collaboration/activity:notifications': NOTIFICATIONS,
     'chat/personal:list': ({ scope, archived, workspaceId }: { scope?: string; archived?: boolean; workspaceId: string }) => ({ page: archived ? [] : chats.filter((chat) => !scope || chat.scope === scope).map((chat) => chatSummary(chat, workspaceId)), isDone: true, continueCursor: '' }),
@@ -199,6 +234,7 @@ export function installWorkspaceFixtures() {
     'collaboration/management:view': ({ view }: { view: string }) => ({ canManage: true, currentPrincipalId: VIEWER_PRINCIPAL, currentRole: 'owner', items: peopleView(view), workspaceKind: 'team' }),
     'files/browse:list': ({ view }: { view?: string }) => (view === 'archived' ? [] : FILES.filter((entry) => !view || entry.scope === view)),
     'files/browse:get': ({ fileId }: { fileId: string }) => FILES.find((entry) => entry._id === fileId) ?? null,
+    'files/browse:summariesByIds': ({ ids }: { ids: string[] }) => FILES.filter((entry) => ids.includes(entry._id)),
     'knowledge/memoryBrowse:list': MEMORIES,
     'automations/browse:list': ({ view }: { view?: string }) => (view === 'archived' ? [] : AUTOMATIONS.filter((row) => !view || row.scope === view)),
     'automations/browse:get': ({ automationId }: { automationId: string }) => AUTOMATIONS.find((row) => row._id === automationId) ?? null,

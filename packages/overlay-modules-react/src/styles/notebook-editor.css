@@ -1,106 +1,182 @@
-/* Canonical rich-text notebook/editor styling shared by web and desktop. */
+/*
+ * Canonical note page and rich-text editor styling shared by web and desktop.
+ *
+ * One editable Markdown page renders notes everywhere: the Files/Notes page (a centered reading column) and the
+ * agent thread's right panel (`data-layout="panel"`). Every block here maps to GitHub-flavored Markdown.
+ */
 
-.app-note-editor table {
-  min-width: 100%;
-  width: auto;
+/* ---------- Page column ---------- */
+
+.overlay-note-page {
+  --note-size: 16px;
+  --note-gutter: 96px;
+  position: relative;
+  width: 100%;
+  max-width: calc(708px + 2 * var(--note-gutter));
+  margin: 0 auto;
+  padding: 64px var(--note-gutter) 160px;
+}
+
+.overlay-note-page[data-width='full'] {
   max-width: none;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-  table-layout: auto;
 }
 
-.app-note-editor th {
-  background: var(--surface-muted);
-  font-weight: 600;
-  text-align: left;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--border);
-  /* Keep column text from getting squished into tiny stacks when there are
-   * many columns; whitespace inside a cell still wraps normally, but each
-   * column reserves enough width to read 1–2 short words on one line. */
-  min-width: 7rem;
-  white-space: normal;
-  /* Override the ancestor `word-break: break-word` so compact header labels
-   * (e.g. "Nick Bostrom") stay on a single line when space is available. */
-  word-break: normal;
-  overflow-wrap: normal;
+.overlay-note-page[data-layout='panel'] {
+  --note-size: 14.5px;
+  --note-gutter: 44px;
+  max-width: none;
+  padding: 28px var(--note-gutter) 120px;
 }
 
-.app-note-editor td {
-  padding: 0.45rem 0.85rem;
-  border: 1px solid var(--border);
-  vertical-align: top;
-  min-width: 7rem;
-  white-space: normal;
-  word-break: normal;
-  overflow-wrap: normal;
+@media (max-width: 900px) {
+  .overlay-note-page:not([data-layout='panel']) {
+    --note-gutter: 56px;
+    padding-top: 40px;
+  }
 }
 
-.app-note-editor tr:nth-child(even) td {
-  background: var(--background);
+@media (max-width: 560px) {
+  .overlay-note-page:not([data-layout='panel']) {
+    --note-gutter: 24px;
+    padding-top: 28px;
+  }
+  .overlay-note-page[data-layout='panel'] {
+    --note-gutter: 28px;
+  }
 }
+
+.overlay-note-title {
+  /* Size, weight and color are utilities on the element; see NotePageTitle. */
+  field-sizing: content;
+}
+
+.overlay-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 28px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.overlay-note-page[data-layout='panel'] .overlay-note-meta {
+  margin-bottom: 20px;
+}
+
+.overlay-note-meta > [aria-hidden='true'] {
+  color: var(--muted-light);
+}
+
+/* ---------- Document ---------- */
 
 .app-note-editor {
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  font-size: 0.95rem;
-  line-height: 1.7;
   min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
   min-height: 300px;
   outline: none;
+  color: var(--foreground);
+  caret-color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--note-size, 16px);
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.app-note-editor > * {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .app-note-editor p {
-  margin: 0 0 0.8em;
+  margin: 0;
+  padding: 3px 0;
+}
+
+.app-note-editor h1,
+.app-note-editor h2,
+.app-note-editor h3,
+.app-note-editor h4 {
+  color: var(--foreground);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 0;
 }
 
 .app-note-editor h1 {
-  margin: 0 0 0.45em;
-  font-size: 2rem;
-  line-height: 1.15;
-  font-weight: 600;
+  font-size: 1.875em;
+  line-height: 1.25;
+  margin-top: 1.4em;
+  padding: 3px 0 2px;
 }
 
 .app-note-editor h2 {
-  margin: 0.4em 0 0.45em;
-  font-size: 1.45rem;
-  line-height: 1.2;
-  font-weight: 600;
+  font-size: 1.4em;
+  line-height: 1.3;
+  margin-top: 1.25em;
+  padding: 3px 0 2px;
 }
 
 .app-note-editor h3 {
-  margin: 0.4em 0 0.4em;
-  font-size: 1.15rem;
-  line-height: 1.3;
-  font-weight: 600;
+  font-size: 1.15em;
+  line-height: 1.35;
+  margin-top: 1em;
+  padding: 3px 0 1px;
 }
 
 .app-note-editor h4 {
-  margin: 0.35em 0 0.35em;
-  font-size: 1rem;
-  line-height: 1.3;
-  font-weight: 600;
+  font-size: 1em;
+  line-height: 1.4;
+  margin-top: 0.9em;
+  padding: 3px 0 1px;
 }
 
 .app-note-editor h5,
 .app-note-editor h6 {
-  margin: 0.3em 0 0.3em;
-  font-size: 0.9rem;
+  margin: 0.8em 0 0;
+  font-size: 0.9em;
   line-height: 1.4;
   font-weight: 600;
   color: var(--muted);
 }
 
+.app-note-editor > :first-child {
+  margin-top: 0;
+}
+
+.app-note-editor strong {
+  font-weight: 600;
+}
+
+.app-note-editor a {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.app-note-editor a:hover {
+  text-decoration-color: var(--foreground);
+}
+
 .app-note-editor ul,
 .app-note-editor ol {
-  margin: 0 0 0.9em 1.4em;
-  padding: 0;
+  margin: 2px 0;
+  padding-left: 1.6em;
 }
 
 .app-note-editor ul {
   list-style-type: disc;
+}
+
+.app-note-editor ul ul {
+  list-style-type: circle;
+}
+
+.app-note-editor ul ul ul {
+  list-style-type: square;
 }
 
 .app-note-editor ol {
@@ -108,54 +184,65 @@
 }
 
 .app-note-editor li {
-  margin: 0.2em 0;
+  margin: 0;
+  padding-left: 2px;
+}
+
+.app-note-editor li > p {
+  padding: 3px 0;
+}
+
+.app-note-editor li::marker {
+  color: var(--foreground);
 }
 
 .app-note-editor blockquote {
-  margin: 0 0 1em;
-  border-left: 3px solid var(--border);
-  padding-left: 0.9rem;
-  color: var(--muted);
+  margin: 6px 0;
+  padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--foreground);
+  color: var(--foreground);
+  font-size: 1.04em;
 }
 
-.app-note-editor pre {
-  margin: 0 0 1em;
-  overflow-x: auto;
-  border-radius: 12px;
-  background: var(--surface-subtle);
-  color: var(--foreground);
-  padding: 0.9rem 1rem;
-  font-size: 0.9rem;
-  line-height: 1.6;
+.app-note-editor hr {
+  height: 1px;
+  margin: 18px 0;
+  border: 0;
+  background: var(--border);
+}
+
+.app-note-editor hr.ProseMirror-selectednode {
+  background: var(--muted-light);
 }
 
 .app-note-editor code {
-  border-radius: 6px;
+  border-radius: 4px;
   background: var(--surface-subtle);
   color: var(--foreground);
-  padding: 0.1rem 0.35rem;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 0.9em;
+  padding: 0.15em 0.35em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace);
+  font-size: 0.85em;
+}
+
+.app-note-editor pre {
+  margin: 6px 0;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--foreground);
+  padding: 16px 18px;
+  font-size: 0.85em;
+  line-height: 1.6;
 }
 
 .app-note-editor pre code {
   background: transparent;
   padding: 0;
+  font-size: inherit;
 }
 
-.app-note-editor hr {
-  margin: 1.25rem 0;
-  border: 0;
-  border-top: 1px solid var(--border);
-}
-
-.app-note-editor a {
-  color: var(--link, var(--foreground));
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-}
-
-.app-note-editor p.is-editor-empty:first-child::before {
+.app-note-editor p.is-editor-empty:first-child::before,
+.app-note-editor .is-empty::before {
   content: attr(data-placeholder);
   color: var(--muted-light);
   pointer-events: none;
@@ -163,26 +250,138 @@
   height: 0;
 }
 
-.app-note-editor ul[data-type="taskList"] {
+/* To-do lists */
+.app-note-editor ul[data-type='taskList'] {
   list-style: none;
-  margin-left: 0;
   padding-left: 0;
 }
 
-.app-note-editor ul[data-type="taskList"] li {
+.app-note-editor ul[data-type='taskList'] li {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 10px;
+  padding-left: 0;
 }
 
-.app-note-editor ul[data-type="taskList"] li > label {
-  margin-top: 0.15rem;
+.app-note-editor ul[data-type='taskList'] li > label {
+  display: flex;
   flex-shrink: 0;
+  margin-top: calc((1.65em - 16px) / 2 + 3px);
+  user-select: none;
 }
 
-.app-note-editor ul[data-type="taskList"] li > div {
+.app-note-editor ul[data-type='taskList'] li > div {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.app-note-editor ul[data-type='taskList'] input[type='checkbox'] {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--muted-light);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s;
+}
+
+.app-note-editor ul[data-type='taskList'] input[type='checkbox']:checked {
+  border-color: var(--foreground);
+  background-color: var(--foreground);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-size: 11px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+[data-theme='dark'] .app-note-editor ul[data-type='taskList'] input[type='checkbox']:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111113' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
+.app-note-editor ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--muted-light);
+}
+
+/* Tables: a quiet grid with readable cells that scrolls sideways instead of crushing its columns. */
+.app-note-editor .tableWrapper {
+  margin: 8px 0 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.overlay-note-page[data-layout='panel'] .app-note-editor .tableWrapper {
+  margin-left: calc(-1 * var(--note-gutter));
+  margin-right: calc(-1 * var(--note-gutter));
+  padding: 0 var(--note-gutter) 6px;
+}
+
+.app-note-editor table {
+  width: auto;
+  min-width: 100%;
+  max-width: none;
+  margin: 0;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+.app-note-editor th,
+.app-note-editor td {
+  position: relative;
+  min-width: 150px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.overlay-note-page[data-layout='panel'] .app-note-editor th,
+.overlay-note-page[data-layout='panel'] .app-note-editor td {
+  min-width: 200px;
+}
+
+.app-note-editor th {
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 0.95em;
+  font-weight: 500;
+}
+
+.app-note-editor th > p,
+.app-note-editor td > p {
+  padding: 0;
+}
+
+.app-note-editor .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  pointer-events: none;
+}
+
+.app-note-editor .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 3px;
+  background: color-mix(in srgb, var(--foreground) 35%, transparent);
+  pointer-events: none;
+}
+
+.app-note-editor.resize-cursor {
+  cursor: col-resize;
 }
 
 .app-note-editor mark {
@@ -207,7 +406,7 @@
   color: var(--foreground);
   border-radius: 0.35rem;
   padding: 0.1rem 0.4rem;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace);
   font-size: 0.92em;
 }
 
@@ -231,16 +430,53 @@
 .app-note-editor img {
   max-width: 100%;
   height: auto;
-  border-radius: 0.85rem;
-  margin: 0.25rem 0 1rem;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+
+.app-note-editor img.ProseMirror-selectednode {
+  outline: 2px solid color-mix(in srgb, var(--foreground) 25%, transparent);
 }
 
 .app-note-editor iframe {
   width: 100%;
   min-height: 22rem;
   border: 0;
-  border-radius: 0.85rem;
-  margin: 0.25rem 0 1rem;
+  border-radius: 6px;
+  margin: 6px 0;
+}
+
+/* ---------- Block handle: insert (+) and drag/options grip ---------- */
+
+.overlay-note-handle {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.overlay-note-handle[data-visible='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-note-editor .ProseMirror-selectednode:not(img, hr) {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
+/* ProseMirror's drop cursor while a block is being dragged. */
+.ProseMirror-dropcursor {
+  border-radius: 2px;
+}
+
+@media (hover: none) {
+  .overlay-note-handle {
+    display: none;
+  }
 }
 
 /* Deterministic parity harness notebook states. */
@@ -252,3 +488,37 @@
 .file-parity-editor-card .app-note-editor { height: 385px; min-height: 0; overflow: auto; padding: 22px 24px; }
 .file-parity-editor-status { border: 1px solid var(--border); border-radius: 999px; color: var(--muted) !important; font-size: 9px !important; font-weight: 500 !important; padding: 4px 7px; text-transform: capitalize; }
 .file-parity-editor-status--conflicted { color: var(--danger) !important; }
+
+/* Read-only Markdown files (uploads, generated .md) share the note page's document styles. */
+.overlay-note-markdown {
+  min-height: 0;
+}
+
+.overlay-note-markdown > :first-child {
+  margin-top: 0;
+}
+
+.overlay-note-markdown ul.contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.overlay-note-markdown li.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.overlay-note-markdown li.task-list-item > input[type='checkbox'] {
+  margin-top: calc((1.65em - 14px) / 2 + 3px);
+  accent-color: var(--foreground);
+}
+
+.overlay-note-markdown li {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.overlay-note-markdown li > p {
+  padding: 0;
+}
