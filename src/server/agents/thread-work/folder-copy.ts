@@ -156,9 +156,11 @@ export async function copyFolderIn(args: {
     if (subtree.truncated) throw new Error('The folder has more than 2,000 files and folders. Choose a smaller folder.')
     const plan = planFolderCopy(subtree.rows, folder.fileId, machine)
     const directories = plan.folders.map(entry => join(root, entry.path))
-    const prepare = [
-      `mkdir -p -- ${directories.map(quote).join(' ')}`,
-    ].filter(Boolean).join(' && ')
+    // Start from an empty folder, so files left by an earlier run are never mistaken for the agent's new files.
+    if (!args.directoryName || args.directoryName.includes('/') || args.directoryName.startsWith('.')) {
+      throw new Error('The folder name can\'t be used on the computer.')
+    }
+    const prepare = `rm -rf -- ${quote(root)} && mkdir -p -- ${directories.map(quote).join(' ')}`
     const prepared = await machine.run(prepare)
     if (prepared.exitCode !== 0) throw new Error(`Couldn't create the folder on the computer: ${prepared.stderr.trim().slice(0, 300)}`)
     const entries: FolderCopyEntry[] = []
@@ -188,12 +190,23 @@ export function listingScript(): string {
     '  s=$(wc -c < "$f" | tr -d " "); h=$($H "$f" | cut -d " " -f 1)',
     '  printf "%s\\t%s\\t%s\\n" "$s" "$h" "${f#./}"',
     'done',
+    // Output can be cut off on the way back; without this last line the listing is treated as incomplete.
+    `printf '%s\\n' ${LISTING_END}`,
   ].join('\n')
+}
+
+const LISTING_END = '__overlay_listing_end__'
+
+/** True only when the listing arrived in full. An incomplete listing must never be read as files being deleted. */
+export function isCompleteListing(stdout: string): boolean {
+  return stdout.trimEnd().endsWith(LISTING_END)
 }
 
 export function parseListing(stdout: string): Map<string, { size: number; sha256: string }> {
   const listing = new Map<string, { size: number; sha256: string }>()
-  for (const line of stdout.split('\n')) {
+  // A cut-off listing can end in half a line; only whole lines count.
+  const whole = stdout.endsWith('\n') ? stdout : stdout.slice(0, stdout.lastIndexOf('\n') + 1)
+  for (const line of whole.split('\n')) {
     const [size, hash, ...rest] = line.split('\t')
     const path = rest.join('\t')
     if (!path || !hash || !/^[0-9a-f]{64}$/.test(hash)) continue
@@ -419,7 +432,11 @@ export async function saveFolderBack(args: {
     const changes = diffFolderCopy(copy.entries, parseListing(listed.stdout))
     for (const { entry, size } of changes.changed) await saveChanged(context, entry, size)
     for (const { path, size } of changes.added) await saveAdded(context, path, size)
-    for (const entry of changes.deleted) await saveDeleted(context, entry)
+    if (isCompleteListing(listed.stdout)) {
+      for (const entry of changes.deleted) await saveDeleted(context, entry)
+    } else if (changes.deleted.length > 0) {
+      summary.failed.push({ path: '', reason: 'The folder was too large to check for deleted files, so nothing was deleted from Files.' })
+    }
     await repository.updateCopy({ copyId: copy.copyId, status: 'saved', summary })
     return summary
   } catch (error) {

@@ -16,7 +16,7 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { ConvexThreadWorkRepository, type FolderCopyRecord, type ThreadWorkRepository } from './ConvexThreadWorkRepository'
 import {
-  copyFolderIn, createOverlayFile, listingScript, parseListing, quote, saveFolderBack,
+  copyFolderIn, createOverlayFile, isCompleteListing, listingScript, parseListing, quote, saveFolderBack,
   type FolderFiles, type FolderSaveSummary, type WorkMachine,
 } from './folder-copy'
 
@@ -113,17 +113,19 @@ async function workspaceInstallations(workspaceId: string): Promise<Set<number>>
   return new Set(rows.map(row => row.installationId))
 }
 
-/** Each installation's token goes to a file only git's helper reads; it expires on its own within an hour. */
-function credentialHelper(): string {
+/** Each repository's token goes to a file only git's helper reads; it expires on its own within an hour. */
+export function credentialHelper(directory = GITHUB_DIR): string {
   return [
     '#!/bin/sh',
     '[ "$1" = get ] || exit 0',
     'path=""',
     'while IFS= read -r line; do [ -z "$line" ] && break; case "$line" in path=*) path="${line#path=}";; esac; done',
-    'owner="${path%%/*}"',
-    `[ -f "${GITHUB_DIR}/$owner.token" ] || exit 0`,
+    // Tokens are limited to one repository, so they are kept per repository: <owner>/<repo>.token.
+    'repo="${path%.git}"; owner="${repo%%/*}"; rest="${repo#*/}"; name="${rest%%/*}"',
+    `file="${directory}/$owner/$name.token"`,
+    '[ -n "$owner" ] && [ -n "$name" ] && [ -f "$file" ] || exit 0',
     'echo username=x-access-token',
-    `echo "password=$(cat "${GITHUB_DIR}/$owner.token")"`,
+    'echo "password=$(cat "$file")"',
   ].join('\n') + '\n'
 }
 
@@ -148,17 +150,20 @@ async function cloneRepositories(machine: WorkMachine, run: ThreadRun, folders: 
       const [owner, repo] = folder.repository.split('/')
       const { token } = await installationToken(folder.installationId, [repo!])
       const { defaultBranch } = await getRepository(token, folder.repository)
-      await machine.write([{ path: `${GITHUB_DIR}/${owner}.token`, contents: encoder.encode(token) }])
+      const tokenFile = `${GITHUB_DIR}/${owner}/${repo}.token`
+      const madeOwner = await machine.run(`mkdir -p ${quote(`${GITHUB_DIR}/${owner}`)} && chmod 700 ${quote(`${GITHUB_DIR}/${owner}`)}`)
+      if (madeOwner.exitCode !== 0) throw new Error('couldn\'t set up git on the computer')
+      await machine.write([{ path: tokenFile, contents: encoder.encode(token) }])
       const directory = `${machine.base}/${names.get(folder.repository)}`
       const cloned = await machine.run([
         `mkdir -p ${quote(machine.base)}`,
-        `chmod 600 ${quote(`${GITHUB_DIR}/${owner}.token`)}`,
+        `chmod 600 ${quote(tokenFile)}`,
         `if [ -d ${quote(`${directory}/.git`)} ]; then git -C ${quote(directory)} fetch --quiet origin; else git clone --quiet https://github.com/${folder.repository}.git ${quote(directory)}; fi`,
         `git -C ${quote(directory)} config user.name ${quote(`${agentName} (Overlay)`)}`,
         `git -C ${quote(directory)} config user.email 'agent@getoverlay.io'`,
       ].join(' && '))
       if (cloned.exitCode !== 0) throw new Error(cloned.stderr.trim().slice(0, 300) || 'git clone failed')
-      notes.push(`${folder.repository} is cloned at ${directory} (default branch ${defaultBranch}). git push works with the run's token; to open a pull request, call the GitHub API with the token in ${GITHUB_DIR}/${owner}.token.`)
+      notes.push(`${folder.repository} is cloned at ${directory} (default branch ${defaultBranch}). git push works with the run's token; to open a pull request, call the GitHub API with the token in ${tokenFile}.`)
     } catch (error) {
       notes.push(`${folder.repository} couldn't be cloned: ${error instanceof Error ? error.message : String(error)}.`)
     }
@@ -313,6 +318,7 @@ export async function copyMacFolderToFiles(args: {
   return await access.operate(async (machine) => {
     const listed = await machine.run(listingScript(), path)
     if (listed.exitCode !== 0) throw new ThreadWorkError('folder_unavailable', 'That folder couldn’t be read on the Mac. Check that it is one of the Mac’s approved folders.')
+    if (!isCompleteListing(listed.stdout)) throw new ThreadWorkError('folder_too_large', 'That folder has too many files to copy at once. Choose a smaller folder.')
     const listing = [...parseListing(listed.stdout).entries()].filter(([relative]) => !isExcludedWorkPath(relative))
     const name = workDirectoryName(path.slice(path.lastIndexOf('/') + 1))
     const run = { userId: args.userId, workspaceId: args.workspaceId }
@@ -348,7 +354,7 @@ export async function copyMacFolderToFiles(args: {
 }
 
 export class ThreadWorkError extends Error {
-  constructor(readonly code: 'invalid_path' | 'mac_unavailable' | 'folder_unavailable', message: string) {
+  constructor(readonly code: 'invalid_path' | 'mac_unavailable' | 'folder_unavailable' | 'folder_too_large', message: string) {
     super(message)
     this.name = 'ThreadWorkError'
   }

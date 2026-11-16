@@ -29,6 +29,10 @@ workspace computers) is in `todos.md`.
 - **Saved back automatically** when the run ends: completed, failed, or stopped. The workflow saves after the reply
   is delivered; Stop cancels the workflow, so the stop route saves the run's copies in `after()`. Each copy is claimed
   once (`copied` → `saving`), so a second save does nothing. The summary is a `data-folder-saves` part on the reply.
+- **Each run starts from a clean copy.** Copy-in empties the folder's directory on the computer first, so files left
+  by an earlier run are never saved back as new. A continuation of the same run keeps its copy.
+- **Deletions need a complete listing.** The listing script ends with a marker line; when output is cut off (a Mac
+  returns at most 256 KiB per command), changes and new files are still saved but nothing is deleted from Files.
 - **Never copied either way:** `node_modules`, `.git`, `.next`, `.turbo`, `.venv`, `venv`, `__pycache__`, `.cache`,
   `dist`, `build`, `.DS_Store`, `.env` and `.env.*` (except `.env.example`).
 - **Limits.** Cloud: 1,000 files, 50 MB per file, 200 MB per folder. Mac: 300 files, 450 KB per file (the host's
@@ -43,7 +47,7 @@ workspace computers) is in `todos.md`.
   from the thread (`PATCH roots` now allows the machine's owner, not only managers). The Mac picks up a new folder
   when it next renews its access, within 15 minutes.
 - **GitHub repositories are cloned on the cloud computer only**, into `~/workspace/<repo>`, with an installation token
-  limited to that repository that expires within an hour. The token sits in `/tmp/overlay-github/<owner>.token` for a
+  limited to that repository that expires within an hour. The token sits in `/tmp/overlay-github/<owner>/<repo>.token`, one per repository, for a
   git credential helper and is removed when the run's folders are saved. The agent is told to branch and open a pull
   request, never push to the default branch; the summary card lists pull requests the app opened during the run.
   Installing is verified: the callback saves an installation only if GitHub says the signed-in person can see it.

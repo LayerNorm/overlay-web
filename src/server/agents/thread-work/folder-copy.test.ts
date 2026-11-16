@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { FileServiceError } from '@/server/files/FileServiceErrors'
 import type { FolderCopyRecord, FolderSubtree, ThreadWorkRepository } from './ConvexThreadWorkRepository'
 import {
-  copyFolderIn, diffFolderCopy, listingScript, parseListing, planFolderCopy, saveFolderBack,
+  copyFolderIn, diffFolderCopy, isCompleteListing, listingScript, parseListing, planFolderCopy, saveFolderBack,
   type FolderFiles, type WorkMachine,
 } from './folder-copy'
 
@@ -28,6 +28,11 @@ test('the listing script reports size, hash and path, and skips dependency folde
     const listing = parseListing(stdout)
     assert.deepEqual([...listing.keys()].sort(), ['notes/Launch FAQ.md', 'with space.txt'])
     assert.deepEqual(listing.get('notes/Launch FAQ.md'), { size: 6, sha256: sha('# FAQ\n') })
+    assert.equal(isCompleteListing(stdout), true)
+    // Cut off partway through: incomplete, and the half line is ignored.
+    const cut = stdout.slice(0, stdout.indexOf('with space') + 4)
+    assert.equal(isCompleteListing(cut), false)
+    assert.ok(![...parseListing(cut).keys()].some(path => path.startsWith('with')))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -66,13 +71,18 @@ test('changes are new, changed or deleted relative to what was copied', () => {
 /** An in-memory computer and Files service, enough to run a copy in and a save back. */
 function harness() {
   const disk = new Map<string, Uint8Array>()
+  const output = { cutOff: false }
   const machine: WorkMachine = {
     target: 'cloud', base: '/workspace', ...limits,
     run: async (script, cwd) => {
+      const removed = /^rm -rf -- '([^']+)'/.exec(script)?.[1]
+      if (removed) for (const path of [...disk.keys()]) if (path.startsWith(`${removed}/`)) disk.delete(path)
       if (!script.includes('find .')) return { exitCode: 0, stdout: '', stderr: '' }
       const prefix = `${cwd}/`
-      const stdout = [...disk.entries()].filter(([path]) => path.startsWith(prefix)).map(([path, bytes]) =>
-        `${bytes.byteLength}\t${createHash('sha256').update(bytes).digest('hex')}\t${path.slice(prefix.length)}`).join('\n')
+      const lines = [...disk.entries()].filter(([path]) => path.startsWith(prefix)).map(([path, bytes]) =>
+        `${bytes.byteLength}\t${createHash('sha256').update(bytes).digest('hex')}\t${path.slice(prefix.length)}\n`)
+      // A cut-off listing loses its last line, its end marker and half of the line before.
+      const stdout = output.cutOff ? lines.slice(0, -1).join('') : `${lines.join('')}__overlay_listing_end__\n`
       return { exitCode: 0, stdout, stderr: '' }
     },
     write: async (files) => { for (const file of files) disk.set(file.path, file.contents) },
@@ -136,7 +146,7 @@ function harness() {
       return { updated: true, status: patch.status }
     },
   }
-  return { disk, machine, rows, files, repository, calls, record: () => record! }
+  return { disk, output, machine, rows, files, repository, calls, record: () => record!, reset: () => { record = null } }
 }
 
 const run = { agentRunId: 'run1', conversationId: 'c1', workspaceId: 'w1', userId: 'u1', agentId: 'a1', agentName: 'Atlas', messageId: 'm1' }
@@ -173,4 +183,24 @@ test('saving back updates, creates and deletes through Files, and never overwrit
   assert.equal(h.record().status, 'saved')
   // A second save of the same run does nothing.
   assert.equal(await saveFolderBack({ repository: h.repository, files: h.files, machine: h.machine, copy: h.record(), agentName: 'Atlas', scope: 'workspace' }), null)
+})
+
+test('a copy in starts from an empty folder, so files left by an earlier run are not saved as new', async () => {
+  const h = harness()
+  h.disk.set('/workspace/Launch/left over.txt', encoder.encode('from an earlier run'))
+  await copyFolderIn({ repository: h.repository, files: h.files, machine: h.machine, run, folder: { fileId: 'root', name: 'Launch' }, directoryName: 'Launch' })
+  assert.equal(h.disk.has('/workspace/Launch/left over.txt'), false)
+  const summary = await saveFolderBack({ repository: h.repository, files: h.files, machine: h.machine, copy: h.record(), agentName: 'Atlas', scope: 'workspace' })
+  assert.deepEqual(summary?.saved, [])
+})
+
+test('a listing that was cut off never deletes files from Files', async () => {
+  const h = harness()
+  await copyFolderIn({ repository: h.repository, files: h.files, machine: h.machine, run, folder: { fileId: 'root', name: 'Launch' }, directoryName: 'Launch' })
+  h.output.cutOff = true
+  const summary = await saveFolderBack({ repository: h.repository, files: h.files, machine: h.machine, copy: h.record(), agentName: 'Atlas', scope: 'workspace' })
+  assert.ok(summary)
+  assert.ok(!h.calls.some(call => call.startsWith('delete:')))
+  assert.equal(summary.saved.length, 0)
+  assert.match(summary.failed[0]?.reason ?? '', /nothing was deleted/)
 })
