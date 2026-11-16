@@ -265,60 +265,74 @@ export function NoteBlockHandle({ editor, containerRef }: { editor: Editor | nul
       >
         <Plus size={16} strokeWidth={1.75} />
       </Button>
-      <DropdownMenu open={menuOpen} onOpenChange={(open) => { setMenuOpen(open); if (!open) setBlock(null) }} modal={false}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            type="button"
-            className={`${HANDLE_BUTTON_CLASS} w-[18px] cursor-grab active:cursor-grabbing`}
-            data-grip=""
-            draggable
-            aria-label="Drag to move, click for block options"
-            title="Drag to move · Click for options"
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            // Radix opens on pointer down, which would steal the drag; open on click instead.
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => setMenuOpen((open) => !open)}
+      <span className="relative inline-flex">
+        {/* The grip is not the menu trigger: Radix opens triggers on pointer down, and cancelling that pointer down
+            would also stop the browser from starting the native drag. It opens the controlled menu on click. */}
+        <Button
+          variant="ghost"
+          type="button"
+          className={`${HANDLE_BUTTON_CLASS} w-[18px] cursor-grab active:cursor-grabbing`}
+          data-grip=""
+          draggable
+          aria-label="Drag to move, click for block options"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title="Drag to move · Click for options"
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <GripVertical size={16} strokeWidth={1.75} />
+        </Button>
+        <DropdownMenu open={menuOpen} onOpenChange={(open) => { setMenuOpen(open); if (!open) setBlock(null) }} modal={false}>
+          <DropdownMenuTrigger asChild>
+            <span aria-hidden="true" tabIndex={-1} className="pointer-events-none absolute inset-0" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            side="bottom"
+            className="w-56 p-1"
+            onCloseAutoFocus={(event) => event.preventDefault()}
+            // A click on the grip toggles the menu itself; don't let the outside-press dismissal reopen it.
+            onPointerDownOutside={(event) => {
+              if ((event.target as HTMLElement | null)?.closest?.('[data-grip]')) event.preventDefault()
+            }}
           >
-            <GripVertical size={16} strokeWidth={1.75} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="bottom" className="w-56 p-1" onCloseAutoFocus={(event) => event.preventDefault()}>
-          <div className="px-2 pb-1 pt-1.5 text-[11.5px] font-medium text-(--muted)">Turn into</div>
-          {TURN_INTO.map(({ kind: target, label, icon: Icon }) => (
-            <DropdownMenuItem key={target} className={MENU_ITEM_CLASS} onSelect={() => turnInto(target)}>
-              <Icon size={15} strokeWidth={1.75} />
-              <span className="flex-1">{label}</span>
-              {target === kind ? <Check size={14} strokeWidth={2} /> : null}
+            <div className="px-2 pb-1 pt-1.5 text-[11.5px] font-medium text-(--muted)">Turn into</div>
+            {TURN_INTO.map(({ kind: target, label, icon: Icon }) => (
+              <DropdownMenuItem key={target} className={MENU_ITEM_CLASS} onSelect={() => turnInto(target)}>
+                <Icon size={15} strokeWidth={1.75} />
+                <span className="flex-1">{label}</span>
+                {target === kind ? <Check size={14} strokeWidth={2} /> : null}
+              </DropdownMenuItem>
+            ))}
+            <div className="my-1 h-px bg-(--border)" role="separator" />
+            <DropdownMenuItem
+              className={MENU_ITEM_CLASS}
+              onSelect={() => {
+                editor.chain().focus().insertContentAt(block.pos + block.node.nodeSize, block.node.toJSON()).run()
+              }}
+            >
+              <CopyPlus size={15} strokeWidth={1.75} />Duplicate
             </DropdownMenuItem>
-          ))}
-          <div className="my-1 h-px bg-(--border)" role="separator" />
-          <DropdownMenuItem
-            className={MENU_ITEM_CLASS}
-            onSelect={() => {
-              editor.chain().focus().insertContentAt(block.pos + block.node.nodeSize, block.node.toJSON()).run()
-            }}
-          >
-            <CopyPlus size={15} strokeWidth={1.75} />Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={MENU_ITEM_CLASS}
-            onSelect={() => { void navigator.clipboard?.writeText(blockMarkdown(editor, block.node)).catch(() => undefined) }}
-          >
-            <Copy size={15} strokeWidth={1.75} />Copy as Markdown
-          </DropdownMenuItem>
-          <div className="my-1 h-px bg-(--border)" role="separator" />
-          <DropdownMenuItem
-            className={`${MENU_ITEM_CLASS} text-red-600 dark:text-red-400 [&_svg]:text-red-600 dark:[&_svg]:text-red-400`}
-            onSelect={() => {
-              editor.chain().focus().deleteRange({ from: block.pos, to: block.pos + block.node.nodeSize }).run()
-            }}
-          >
-            <Trash2 size={15} strokeWidth={1.75} />Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuItem
+              className={MENU_ITEM_CLASS}
+              onSelect={() => { void navigator.clipboard?.writeText(blockMarkdown(editor, block.node)).catch(() => undefined) }}
+            >
+              <Copy size={15} strokeWidth={1.75} />Copy as Markdown
+            </DropdownMenuItem>
+            <div className="my-1 h-px bg-(--border)" role="separator" />
+            <DropdownMenuItem
+              className={`${MENU_ITEM_CLASS} text-red-600 dark:text-red-400 [&_svg]:text-red-600 dark:[&_svg]:text-red-400`}
+              onSelect={() => {
+                editor.chain().focus().deleteRange({ from: block.pos, to: block.pos + block.node.nodeSize }).run()
+              }}
+            >
+              <Trash2 size={15} strokeWidth={1.75} />Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
     </div>
   )
 }
