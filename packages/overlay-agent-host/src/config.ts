@@ -22,7 +22,7 @@ export const agentHostConfigSchema = z.object({
 export type AgentHostConfig = z.infer<typeof agentHostConfigSchema> & { credential?: string }
 
 export const RETIRED_HARNESS_CONFIG_MESSAGE =
-  'This host was set up to run a third-party agent, which Overlay no longer supports. Connect it again from Overlay (Settings → Desktop → This Mac, or a new connection command).'
+  'This host was set up to run a third-party agent, which Overlay no longer supports. Connect it again from Overlay (Settings → Desktop → This computer, or a new connection command).'
 
 export async function loadAgentHostConfig(path: string): Promise<AgentHostConfig> {
   const raw = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>

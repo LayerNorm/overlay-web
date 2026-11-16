@@ -6,12 +6,14 @@ import { requireServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { threadWorkValidator } from '../lib/threadWork'
 import { visibleRow } from './directory'
-import { threadWorkProblem, type ThreadFolder, type ThreadWork } from '../../src/shared/agents/thread-work'
+import { agentToolCapabilities, normalizeAgentToolGrant } from '../../src/shared/agents/tool-groups'
+import { THREAD_WORK_LOCKED, sameThreadWork, threadWorkProblem, type ThreadFolder, type ThreadWork } from '../../src/shared/agents/thread-work'
 
 /**
  * Where an agent thread works: its computer and chosen folders (internal/develop/thread-folders.md).
- * Any active member of the thread can read and change it, but a Mac can only be chosen by the person who
- * connected it, and a run uses that Mac only when its owner started the run.
+ * Any active member of the thread can read it and choose it before the thread's first message; after that it is
+ * fixed. A person's own computer can only be chosen by the person who connected it, and a run uses that computer
+ * only when its owner started the run.
  */
 
 const threadArgs = { workspaceId: v.string(), agentId: v.string(), conversationId: v.id('conversations') }
@@ -87,6 +89,11 @@ export const set = mutation({
     const problem = threadWorkProblem(work)
     if (problem) throw new ConvexError(problem)
     const current = storedWork(conversation)
+    if (sameThreadWork(current, work)) return current
+    // Where a thread runs and its folder are part of how it started: a run already copied or used them.
+    const started = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', q => q.eq('conversationId', conversation._id)).first()
+    if (started) throw new ConvexError(THREAD_WORK_LOCKED)
     // A Mac already chosen by its owner stays usable by the thread; a newly chosen Mac must be the viewer's own.
     if (work.computer?.kind === 'mac') {
       const unchanged = current.computer?.kind === 'mac' && current.computer.environmentId === work.computer.environmentId
@@ -130,8 +137,8 @@ async function folderOptions(ctx: QueryCtx, workspaceId: string, userId: string)
 }
 
 /**
- * What a thread can pick: the agent's cloud Computer, the viewer's own Macs (never a teammate's) with their approved
- * folders, Overlay folders, and whether GitHub is connected.
+ * What a thread can pick: the agent's cloud Computer, the viewer's own computers (never a teammate's) with their
+ * approved folders when the agent has the Local computer tool group, Overlay folders, and whether GitHub is connected.
  */
 export const options = query({
   args: { workspaceId: v.string(), agentId: v.string() },
@@ -156,8 +163,14 @@ export const options = query({
         allFiles: (row.filesystemGrant as { mode?: string } | undefined)?.mode === 'all_user_files',
       }))
     const github = await ctx.db.query('githubInstallations').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect()
+    // The default agent holds every tool group without listing them; other agents list theirs.
+    const grant = agentRow?.allowedToolIds ?? []
+    const localComputer = (agentRow?.isDefault === true && grant.length === 0)
+      || agentToolCapabilities(normalizeAgentToolGrant(grant)).has('local_computer')
     return {
       cloud: computer ? { status: computer.status, name: computer.name ?? null } : null,
+      /** Whether the agent has the Local computer tool group, so a thread can run on the viewer's own computer. */
+      localComputer,
       macs,
       folders: await folderOptions(ctx, args.workspaceId, viewer.userId),
       githubConnected: github.some(row => row.removedAt === undefined),

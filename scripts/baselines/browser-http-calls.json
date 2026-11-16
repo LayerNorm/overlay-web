@@ -2,17 +2,8 @@
   "account.desktopLinkResponse": [
     "src/app/app/account/account-handoffs.ts"
   ],
-  "agentEnvironments.approve": [
-    "src/features/settings/components/DesktopLocalComputerSettings.tsx"
-  ],
   "agentEnvironments.copyToFiles": [
-    "src/features/chat/components/thread-work/AddThreadFolderDialog.tsx"
-  ],
-  "agentEnvironments.createEnrollment": [
-    "src/features/settings/components/DesktopLocalComputerSettings.tsx"
-  ],
-  "agentEnvironments.updateRoots": [
-    "src/features/chat/components/thread-work/AddThreadFolderDialog.tsx"
+    "src/features/chat/components/thread-work/useThreadWork.ts"
   ],
   "agents.archive": [
     "src/features/agents/components/use-agent-editor-actions.ts"
@@ -177,13 +168,10 @@
     "src/features/knowledge/adapters/webKnowledgeFilePort.ts"
   ],
   "github.connectUrl": [
-    "src/features/chat/components/thread-work/AddThreadFolderDialog.tsx"
-  ],
-  "github.installUrl": [
-    "src/features/chat/components/thread-work/AddThreadFolderDialog.tsx"
+    "src/features/chat/components/thread-work/useThreadWork.ts"
   ],
   "github.repositories": [
-    "src/features/chat/components/thread-work/ThreadWorkFooter.tsx"
+    "src/features/chat/components/thread-work/useThreadWork.ts"
   ],
   "integrations.connectResponse": [
     "src/app/_components/onboarding/OnboardingTools.tsx",
