@@ -48,7 +48,12 @@ revokes its credentials. Connecting a machine follows the Computers feature
   interface, so every `computer_*` tool runs unchanged; desktop and terminal
   commands go to the host's native driver instead of the cloud Python driver.
   Each tool takes an optional `target` (`cloud` or `local`); without it a bound
-  cloud Computer wins and the Mac is the fallback. Approvals, risky-click
+  cloud Computer wins and the Mac is the fallback. An agent thread set to run on
+  one of the person's Macs sends tools to that Mac by default and never falls back
+  to another (`localEnvironmentId`; `internal/develop/thread-folders.md`).
+- **Several Macs.** A person can connect any number of Macs. Without a thread
+  choice, `local` means the one seen most recently. Each Mac stays personal: a
+  workspace agent never uses a teammate's Mac. Approvals, risky-click
   confirmation and tool rows match cloud Computers. Cloud gateway credentials
   are never sent to the machine.
 - **Host executor** (`packages/overlay-agent-host/src/local-tools*.ts`). Shell
@@ -60,6 +65,10 @@ revokes its credentials. Connecting a machine follows the Computers feature
   the app that started the host. Typing pastes through the clipboard and
   restores plain-text clipboard content. The browser is a dedicated Overlay
   Chrome profile on loopback DevTools, never the user's everyday profile.
+- **Folders.** The person who connected a Mac, or a workspace owner or admin,
+  can change its approved folders (`PATCH roots`); the host applies the change
+  when it next renews its credential, within 15 minutes. `POST copy-to-files`
+  copies one of them into Overlay Files once.
 - **Folders are a scope, not a sandbox.** Use a restricted account, container or
   VM when strict isolation is needed.
 

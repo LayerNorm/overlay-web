@@ -25,6 +25,8 @@ export type ChatComposerRuntime = {
   composerNotice: string | null
   /** Contextual confirmation or warning rendered immediately above the composer. */
   beforeComposerContent?: ReactNode
+  /** Replaces the disclaimer under the composer, e.g. an agent thread's computer and folder pickers. */
+  afterComposerContent?: ReactNode
   billingPromptContent?: ReactNode
   isSendBlocked: boolean
   isActiveLoading: boolean

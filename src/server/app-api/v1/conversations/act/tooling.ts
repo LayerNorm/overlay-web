@@ -31,6 +31,7 @@ import {
   allowedOverlayToolIdsForTurn,
 } from '@/server/tools/tools/exposure-policy'
 import { createWebTools } from '@/server/web/web-tools'
+import type { ComputerTarget } from '@/server/tools/tools/types'
 import {
   summarizeErrorForLog,
   summarizeToolIndexMapForLog,
@@ -135,6 +136,9 @@ export async function prepareActTooling(params: {
   automationMode?: boolean
   automationId?: string
   computerApprovalContext?: 'work' | 'automation'
+  /** Where computer tools run by default, and the Mac a thread is set to (internal/develop/thread-folders.md). */
+  computerTarget?: ComputerTarget
+  localEnvironmentId?: string
   approvalMode?: 'ask' | 'auto'
   findPersonalComputer?: (workspaceId: string, userId: string) => Promise<unknown | null>
   baseUrl: string
@@ -251,6 +255,8 @@ export async function prepareActTooling(params: {
         turnId: params.turnId,
         automationId: params.automationId,
         computerApprovalContext: params.computerApprovalContext,
+        ...(params.computerTarget ? { computerTarget: params.computerTarget } : {}),
+        ...(params.localEnvironmentId ? { localEnvironmentId: params.localEnvironmentId } : {}),
         approvalMode: params.approvalMode,
         baseUrl: params.baseUrl,
         allowedToolIds: allowedOverlayToolIds,

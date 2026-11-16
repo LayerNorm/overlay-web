@@ -38,6 +38,7 @@ export {
   AgentEnvironmentsClient,
   type AgentEnvironmentResource,
 } from './agent-environments/client'
+export { GitHubClient, type GitHubRepositoryResource } from './github/client'
 export {
   CloudAgentsClient,
   type CloudAgentStatusResource,

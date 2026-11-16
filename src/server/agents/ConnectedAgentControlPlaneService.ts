@@ -222,7 +222,13 @@ export class ConnectedAgentControlPlaneService {
     filesystemGrant: AgentFilesystemGrant
   }) {
     await this.assertEnabled(args.workspaceId)
-    await this.requireManager(args.actorUserId, args.workspaceId)
+    // The person who connected a Mac can change its folders (internal/develop/thread-folders.md); otherwise a manager.
+    const access = await this.dependencies.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
+    if (!canManageWorkspace(access.membership.role)) {
+      const own = (await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId }))
+        .some(entry => entry.id === args.environmentId && entry.approvedByUserId === args.actorUserId && entry.revokedAt === undefined)
+      if (!own) throw controlPlaneError('Workspace owner or admin access is required', 403, 'workspace_manager_required')
+    }
     const grant = validateFilesystemGrant(args.filesystemGrant)
     const environment = await this.dependencies.repository.updateEnvironmentFilesystemGrant({
       workspaceId: args.workspaceId,

@@ -4,6 +4,13 @@ import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
 import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import { NATIVE_AGENT_INPUT_PART, readNativeAgentInput } from '@/shared/agents/native-agent-input'
 import { readNativeAgentError } from '@/shared/agents/native-agent-error'
+import { FOLDER_SAVES_PART, readFolderSaves } from '@/shared/agents/folder-saves'
+
+/** What the run saved back to Files, shown as a card under the reply (internal/develop/thread-folders.md). */
+function folderSavesOf(message: { parts?: RoomMessagePart[] }): Pick<RoomMessageView, 'folderSaves'> {
+  const data = readFolderSaves(message.parts?.find((part) => part.type === FOLDER_SAVES_PART)?.data)
+  return data ? { folderSaves: data } : {}
+}
 
 function nativeInputRequest(message: RoomMessageRecord): RoomMessageView['nativeInput'] {
   if (message.authorKind !== 'agent' || message.status !== 'generating') return undefined
@@ -241,6 +248,7 @@ export function toRoomMessageView({
     documentNames: docNames,
     mentions,
     askedBy: askedBy(message),
+    ...(isAgent ? folderSavesOf(message) : {}),
     nativeApproval: message.authorKind === 'agent' && message.status === 'generating'
       ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
       : undefined,

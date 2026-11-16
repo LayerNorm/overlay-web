@@ -57,6 +57,30 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
       audit: 'surface.slack.connected workspace audit event',
     },
   },
+  '/api/v1/github/connect': {
+    methods: ['GET'],
+    reason: 'Browser navigation that must end in a redirect to the GitHub App install page, not a JSON envelope.',
+    controls: {
+      authentication: 'Overlay session required; unauthenticated callers are redirected to sign-in',
+      authorization: 'resolveActiveWorkspace: the caller must be an active member of the workspace the install is for',
+      rateLimit: 'endpoint-specific IP limit',
+      csrf: 'read-only redirect; nothing is saved until GitHub returns to the callback with a matching sealed state',
+      idempotency: 'not-applicable-redirect-only',
+      audit: 'the successful callback writes integration.github.connected',
+    },
+  },
+  '/api/v1/github/callback': {
+    methods: ['GET'],
+    reason: 'GitHub App install redirect target; the response must redirect back into the app.',
+    controls: {
+      authentication: 'HMAC-sealed state (10-minute TTL) plus a live Overlay session for the same user',
+      authorization: 'GitHub user authorization code must show the installation is visible to the signing-in person',
+      rateLimit: 'endpoint-specific IP limit',
+      csrf: 'sealed state must match the completing session user',
+      idempotency: 'installations upsert by workspace and installation id',
+      audit: 'integration.github.connected workspace audit event',
+    },
+  },
   '/api/v1/webhooks/slack': {
     methods: ['POST'],
     reason: 'Slack Events API ingress; Slack calls it without an Overlay session.',

@@ -36,7 +36,7 @@ export const AGENTS = [
   agent({ id: 'agent_overlay', principalId: 'p_overlay', name: 'Overlay', description: 'Your chief of staff. Plans the work, delegates to your team and keeps everything moving.', agentRole: 'workspace_chief', chiefScope: 'workspace', isDefault: true, modelId: 'anthropic/claude-opus-5.5', roomCount: 6 }),
   agent({ id: 'agent_chief', principalId: 'p_chief', name: 'Overlay', description: 'Your personal chief of staff for email, calendar and private work.', agentRole: 'personal_chief', chiefScope: 'personal', visibility: 'private', isDefault: true, modelId: 'anthropic/claude-opus-5.5', roomCount: 1, instructions: 'Keep my week organized. Draft replies in my voice and ask before sending anything external.' }),
   agent({ id: 'agent_scout', principalId: 'p_scout', name: 'Scout', description: 'Market and customer research with cited sources.', instructions: 'Research markets, competitors and customers. Cite every source and say how confident you are.', avatarShape: 'blob', avatarColor: '#7c8db5', modelId: 'openai/gpt-6.1-sol' }),
-  agent({ id: 'agent_atlas', principalId: 'p_atlas', name: 'Atlas', description: 'Ships code changes, reviews pull requests and runs tests.', avatarShape: 'hexagon', avatarColor: '#5b8c6e', harness: 'claude-code', modelId: 'anthropic/claude-opus-5.5' }),
+  agent({ id: 'agent_atlas', principalId: 'p_atlas', name: 'Atlas', description: 'Ships code changes, reviews pull requests and runs tests.', avatarShape: 'hexagon', avatarColor: '#5b8c6e', modelId: 'anthropic/claude-opus-5.5' }),
   agent({ id: 'agent_quill', principalId: 'p_quill', name: 'Quill', createdByPrincipalId: 'p_sam', createdByDisplayName: 'Sam Okafor', canEdit: false, description: 'Writes launch posts, release notes and customer emails in the Northwind voice.', avatarShape: 'droplet', avatarColor: '#c48a5a' }),
   agent({ id: 'agent_ledger', principalId: 'p_ledger', name: 'Ledger', createdByPrincipalId: 'p_priya', createdByDisplayName: 'Priya Nair', canEdit: false, description: 'Reconciles invoices, tracks spend and prepares the monthly finance pack.', avatarShape: 'squircle', avatarColor: '#8a6fb0', modelId: 'google/gemini-4-argon' }),
 ]
@@ -70,10 +70,8 @@ export function installAgentFixtures() {
     'agents/directory:list': { agents: AGENTS, canCreate: true, viewerPrincipalId: VIEWER_PRINCIPAL },
     'agents/directory:get': ({ agentId }: { agentId: string }) => AGENTS.find((entry) => entry.id === agentId) ?? null,
     'providers/browse:connections': [],
-    'agents/environmentsBrowse:launchEnabled': true,
     'agents/environmentsBrowse:list': [],
     'computers/browse:list': [],
     'surfaces/browse:forAgent': { connections: [], bindings: [], canBind: true },
-    'agents/environmentsBrowse:bindings': [],
   })
 }

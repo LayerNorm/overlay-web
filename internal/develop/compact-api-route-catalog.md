@@ -76,6 +76,7 @@ For a description of what each route does and its associated implementation file
 
 - `POST /api/v1/harness/continuation`
 - `POST /api/v1/agent-environments/[environmentId]/approve`
+- `POST /api/v1/agent-environments/[environmentId]/copy-to-files`
 - `PUT /api/v1/agent-environments/[environmentId]/capabilities`
 - `GET /api/v1/agent-environments/[environmentId]/local-tool-calls`
 - `POST /api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result`
@@ -173,6 +174,9 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST, PUT /api/v1/extensions/[extensionId]/[...path]`
 - `POST /api/v1/imports/slack/process`
 - `GET, POST /api/v1/imports/slack`
+- `GET /api/v1/github/callback`
+- `GET /api/v1/github/connect`
+- `GET /api/v1/github/repositories`
 - `GET, POST /api/v1/integrations`
 - `POST /api/v1/mcp/authorize`
 - `GET /api/v1/mcp/client`

@@ -41,6 +41,8 @@ import type { RunPlanPhase, RunPlanStep } from '@overlay/chat-react/exchange'
 import { NativeAgentInputCard } from './NativeAgentInputCard'
 import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import type { NativeAgentInput } from '@/shared/agents/native-agent-input'
+import type { FolderSavesData } from '@/shared/agents/folder-saves'
+import { FolderSavesCard } from '../thread-work/FolderSavesCard'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -94,6 +96,8 @@ export type RoomMessageView = {
   askedBy?: { name: string; hop: number; parentConversationId?: string }
   nativeApproval?: NativeAgentApproval
   nativeInput?: NativeAgentInput
+  /** What the run saved back to Files and the pull requests it opened. */
+  folderSaves?: FolderSavesData
   plan?: readonly RunPlanStep[]
   planPhase?: RunPlanPhase
   generationError?: string
@@ -740,6 +744,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
       {/* The avatar beside the name shows activity; no second indicator under the reply. */}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
+      {message.folderSaves ? <FolderSavesCard data={message.folderSaves} /> : null}
       {message.generationError ? <p className="mt-2 text-sm text-destructive" role="alert">{message.generationError}</p> : null}
     </>
   )

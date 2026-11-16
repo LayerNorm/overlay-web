@@ -1023,6 +1023,11 @@ const LOCAL_TARGET_UNAVAILABLE =
   "The user's Mac is not connected to Overlay right now. Do not retry with target \"local\". "
   + 'Ask the user to open Overlay on their Mac (Settings → Desktop → This Mac), or use the cloud Computer.'
 
+const PINNED_MAC_UNAVAILABLE =
+  'This thread runs on a Mac that is offline, or that belongs to someone else. Do not retry computer tools. '
+  + 'Tell the user: open Overlay on that Mac, or switch the thread to another computer under the message box. '
+  + 'Only the person who connected a Mac can run a thread on it.'
+
 /** Resolves the user's own Mac for computer tools, or why it cannot be used for this turn. */
 async function localComputerFor(options: OverlayToolsOptions, toolName: string) {
   if (!options.workspaceId) return { ok: false as const, error: 'Computers need a workspace context.' }
@@ -1031,8 +1036,13 @@ async function localComputerFor(options: OverlayToolsOptions, toolName: string) 
   }
   const service = getOverlayServerContext().localComputerService
   if (!service) return { ok: false as const, error: LOCAL_TARGET_UNAVAILABLE }
-  const computer = await service.findForUser({ workspaceId: options.workspaceId, userId: options.userId })
-  if (!computer) return { ok: false as const, error: LOCAL_TARGET_UNAVAILABLE }
+  const computer = await service.findForUser({
+    workspaceId: options.workspaceId, userId: options.userId,
+    ...(options.localEnvironmentId ? { environmentId: options.localEnvironmentId } : {}),
+  })
+  if (!computer) {
+    return { ok: false as const, error: options.localEnvironmentId ? PINNED_MAC_UNAVAILABLE : LOCAL_TARGET_UNAVAILABLE }
+  }
   const instance = new LocalHostSandboxInstance(computer, service, {
     userId: options.userId, ...(options.agentId ? { agentId: options.agentId } : {}), toolName,
   })

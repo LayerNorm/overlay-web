@@ -66,6 +66,7 @@ async function freshTooling(call: NativeToolCall) {
     entitlements: authority.entitlements, paid: authority.paid,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
+    ...(call.context.work ? { work: call.context.work } : {}),
     idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText,
     memoryEnabled: call.context.memoryEnabled, requestFingerprint: call.context.requestFingerprint,
     turnId: call.access.turnId, workspaceId: call.access.workspaceId,

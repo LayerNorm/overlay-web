@@ -18,6 +18,7 @@ import {
 } from '@/shared/agents/tool-groups'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
+import type { ThreadWork } from '@/shared/agents/thread-work'
 
 /** Web-search tools, which have no overlay tool id to filter on. */
 const WEB_SEARCH_TOOL_IDS = ['web_search', 'deep_search', 'web_fetch'] as const
@@ -157,6 +158,8 @@ export async function buildWorkspaceAgentTooling(args: {
   accessToken?: string
   approvalMode?: 'ask' | 'auto'
   computerApprovalContext?: 'work' | 'automation'
+  /** The thread's computer: computer tools default to it (internal/develop/thread-folders.md). */
+  work?: ThreadWork
   actorUserId: string
   agentPrincipalId: string
   conversationId: string
@@ -201,6 +204,9 @@ export async function buildWorkspaceAgentTooling(args: {
     conversationId: args.conversationId,
     approvalMode: args.approvalMode ?? 'ask',
     computerApprovalContext: args.computerApprovalContext,
+    ...(args.work?.computer?.kind === 'mac'
+      ? { computerTarget: 'local' as const, localEnvironmentId: args.work.computer.environmentId }
+      : args.work?.computer?.kind === 'cloud' ? { computerTarget: 'cloud' as const } : {}),
     effectiveModelId: args.effectiveModelId,
     entitlements: args.entitlements,
     idempotencyKey: args.idempotencyKey,

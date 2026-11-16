@@ -80,6 +80,19 @@ export async function POST(
       recordMetrics(runId, resourceUserId, cancellationAcknowledgedAt).catch((_error) => undefined)))
     const schedule = dependencies?.schedule ?? after
     const cancelHarnessWorkflows = dependencies?.cancelHarnessWorkflows ?? cancelPersonalHarnessWorkflows
+    // A stopped agent run still saves the folders it copied (internal/develop/thread-folders.md).
+    if (!dependencies) {
+      for (const runId of cancelled.cancelledRunIds) {
+        schedule(async () => {
+          try {
+            const { saveThreadWorkForRun } = await import('@/server/agents/thread-work/thread-work-service')
+            await saveThreadWorkForRun(runId)
+          } catch (error) {
+            logger.warn('[conversations/stop POST] Failed to save folders for a stopped run', { runId, error })
+          }
+        })
+      }
+    }
     for (const root of cancelled.cancelledHarnessRoots ?? []) {
       schedule(async () => {
         try {

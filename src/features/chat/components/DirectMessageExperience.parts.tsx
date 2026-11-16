@@ -720,6 +720,7 @@ export function RoomComposer({
   onOpenAttachmentPreview,
   onOpenFilePreview,
   guided,
+  footer,
 }: {
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
@@ -731,6 +732,8 @@ export function RoomComposer({
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
+  /** Shown under the message box instead of the disclaimer: an agent thread's computer and folder pickers. */
+  footer?: ReactNode
 }) {
   recordRender('RoomComposer')
   useEffect(() => {
@@ -768,6 +771,7 @@ export function RoomComposer({
         isActiveLoading: false,
         isTemporaryChat: false,
         blockedComposerContent: null,
+        ...(footer && !guided ? { afterComposerContent: footer } : {}),
       }}
       inputState={{
         replyContext: composer.replyContext,

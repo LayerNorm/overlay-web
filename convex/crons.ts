@@ -164,4 +164,7 @@ crons.interval(
 // after midnight so late writes for the day have landed.
 crons.daily('growth daily totals', { hourUTC: 0, minuteUTC: 20 }, internal.platform.growth.startDaily)
 
+// Folder copy records for agent runs are kept a week (internal/develop/thread-folders.md).
+crons.daily('prune folder copies', { hourUTC: 3, minuteUTC: 40 }, internal.files.folderCopies.prune)
+
 export default crons

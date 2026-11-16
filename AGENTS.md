@@ -113,6 +113,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `docs/developer/contribute/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
 | `internal/develop/external-imports.md` | Any change to the external import architecture, canonical import model, adapter interface, or Slack/Teams/Discord/Telegram import implementation. |
 | `internal/develop/traversing-agent-conversations.md` | Any change to how Devin CLI or Codex sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db` or Codex JSONL files. |
+| `internal/develop/thread-folders.md` | Any change to where an agent thread works: its computer and folder choice, copying folders onto a computer and saving them back, the summary card, Mac folders or the GitHub App. |
 | `internal/develop/local-computer.md` | Any change to This Mac: the local-tools Agent Host, its enrollment and credentials, the local tool call channel, how computer tools reach a user's machine, or the removed-connected-agent data purge. |
 | `internal/develop/retire-overlay-cloud-agents.md` | Any change to hosted-runtime retirement, production inventory/drain gates, retained disks, cleanup or rollback. |
 | `internal/develop/workspace-billing.md` | Any change to workspace billing accounts, reservations and subject limits, the billing activation gate, or reservation reconciliation. |

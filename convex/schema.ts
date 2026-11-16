@@ -8,6 +8,7 @@ import { userMessageMetadata } from './lib/userMessageMetadata'
 import { v } from 'convex/values'
 import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
 import { threadPullRequestValidator } from './lib/threadPullRequests'
+import { folderCopyEntryValidator, folderCopyFolderValidator, threadWorkValidator } from './lib/threadWork'
 
 const runPlanStepValidator = v.object({
   id: v.string(),
@@ -1282,6 +1283,8 @@ export default defineSchema({
     // chats and on automation-owned threads.
     agentId: v.optional(v.string()),
     pullRequests: v.optional(v.array(threadPullRequestValidator)),
+    // Agent threads: the computer that runs the thread and the folders chosen for it (internal/develop/thread-folders.md).
+    work: v.optional(threadWorkValidator),
     dmIdentityKey: v.optional(v.string()),
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
@@ -1564,7 +1567,7 @@ export default defineSchema({
             }),
           }),
           v.object({
-            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-remote-agent-drive'), v.literal('data-agent-lineage')),
+            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-remote-agent-drive'), v.literal('data-agent-lineage'), v.literal('data-folder-saves')),
             data: v.any(),
           }),
           v.object({
@@ -2765,6 +2768,50 @@ export default defineSchema({
    * tools). At most once: a host claims a call before running it, and a call
    * past its deadline is expired instead of delivered. Rows are short-lived.
    */
+  // Overlay folders copied onto a computer for one agent run, and what was saved back
+  // (internal/develop/thread-folders.md). One row per run and folder; deleted after a week.
+  threadFolderCopies: defineTable({
+    copyId: v.string(),
+    agentRunId: v.string(),
+    conversationId: v.string(),
+    workspaceId: v.string(),
+    userId: v.string(),
+    agentId: v.string(),
+    agentName: v.optional(v.string()),
+    // The agent's reply, where the summary card goes.
+    messageId: v.optional(v.string()),
+    target: v.union(v.literal('cloud'), v.literal('mac')),
+    environmentId: v.optional(v.string()),
+    folderId: v.string(),
+    folderName: v.string(),
+    root: v.string(),
+    entries: v.array(folderCopyEntryValidator),
+    folders: v.array(folderCopyFolderValidator),
+    skipped: v.array(v.string()),
+    status: v.union(v.literal('copying'), v.literal('copied'), v.literal('saving'), v.literal('saved'), v.literal('failed')),
+    summary: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_copyId', ['copyId'])
+    .index('by_agentRunId', ['agentRunId'])
+    .index('by_status_updatedAt', ['status', 'updatedAt'])
+    .index('by_createdAt', ['createdAt']),
+
+  // GitHub App installations a workspace member connected, verified against their GitHub account.
+  githubInstallations: defineTable({
+    workspaceId: v.string(),
+    installationId: v.number(),
+    accountLogin: v.string(),
+    accountType: v.string(),
+    connectedByUserId: v.string(),
+    repositorySelection: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    removedAt: v.optional(v.number()),
+  }).index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_installationId', ['workspaceId', 'installationId']),
+
   agentLocalToolCalls: defineTable({
     callId: v.string(), workspaceId: v.string(), environmentId: v.string(), requestedByUserId: v.string(),
     agentId: v.optional(v.string()), toolName: v.string(), request: v.any(),

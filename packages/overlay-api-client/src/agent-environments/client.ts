@@ -47,6 +47,14 @@ export class AgentEnvironmentsClient {
     )
   }
 
+  /** Copies a folder on the person's own Mac into Overlay Files, once. */
+  copyToFiles(workspaceId: string, environmentId: string, body: { path: string; scope?: 'personal' | 'workspace' }, init?: RequestInit) {
+    return this.http.json<{ folderId: string; copied: number; skipped: string[] }>(
+      `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/copy-to-files`,
+      this.http.jsonRequest(body, { ...workspaceInit(workspaceId, init), method: 'POST' }),
+    )
+  }
+
   revoke(workspaceId: string, environmentId: string, init?: RequestInit) {
     return this.http.json<{ revoked: true; environmentId: string }>(
       `/api/v1/agent-environments/${encodeURIComponent(environmentId)}/revoke`,

@@ -25,6 +25,8 @@ export type LocalComputer = {
   name: string
   ownerUserId: string
   capability: LocalToolsCapability
+  /** The folders the machine's owner approved; absent means all of the user's files. */
+  roots?: string[]
 }
 
 export class LocalComputerError extends Error {
@@ -85,12 +87,13 @@ export class LocalComputerService {
    * The user's own connected machine in this workspace that serves local tools,
    * most recently seen first. Only the person who approved the machine can use it.
    */
-  async findForUser(input: { workspaceId: string; userId: string; includeOffline?: boolean }): Promise<LocalComputer | null> {
+  async findForUser(input: { workspaceId: string; userId: string; includeOffline?: boolean; environmentId?: string }): Promise<LocalComputer | null> {
     const now = this.now()
     const candidates = (await this.dependencies.listEnvironments({ workspaceId: input.workspaceId }))
       .filter((environment) => environment.kind === 'local'
         && environment.approvedByUserId === input.userId
         && environment.revokedAt === undefined && environment.status !== 'revoked' && environment.status !== 'pending'
+        && (input.environmentId === undefined || environment.id === input.environmentId)
         && (input.includeOffline || effectiveAgentEnvironmentStatus(environment, now) === 'online')
         && localToolsCapabilityOf(environment) !== null)
       .sort((left, right) => (right.lastSeenAt ?? 0) - (left.lastSeenAt ?? 0))
@@ -99,6 +102,7 @@ export class LocalComputerService {
     return {
       environmentId: environment.id, workspaceId: environment.workspaceId, name: environment.name,
       ownerUserId: input.userId, capability: localToolsCapabilityOf(environment)!,
+      ...(environment.filesystemGrant?.mode === 'selected_roots' ? { roots: [...environment.filesystemGrant.roots] } : {}),
     }
   }
 

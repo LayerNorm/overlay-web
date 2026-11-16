@@ -12,6 +12,15 @@ import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { assertPersistedSurfaceSource } from './surface-access'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
+import type { ThreadWork } from '@/shared/agents/thread-work'
+import { threadWorkInstructions } from '@/server/agents/thread-work/thread-work-prompt'
+
+import { ConvexThreadWorkRepository } from '@/server/agents/thread-work/ConvexThreadWorkRepository'
+
+/** The computer and folders an agent thread chose, if any (internal/develop/thread-folders.md). */
+function chosenWork(work: ThreadWork | null): ThreadWork | undefined {
+  return work && (work.computer || work.folders.length > 0) ? work : undefined
+}
 
 type NativeInputArgs = {
   actorUserId: string
@@ -101,6 +110,8 @@ function buildNativeWorkflowInput(
   run: AgentRun,
   surfaceExecution: SurfaceTurnExecution | null,
   prepared: PreparedWorkspaceInputs,
+  work: ThreadWork | undefined,
+  workBlock: string,
 ): NativeHarnessWorkflowInput {
   const room = prepared.room
   const sharedRoom = isSharedRoom({
@@ -128,6 +139,7 @@ function buildNativeWorkflowInput(
       memoryEnabled: args.memoryEnabled,
       sharedRoom,
       requestFingerprint: prepared.requestFingerprint,
+      ...(work ? { work, agentName: prepared.agent.name } : {}),
     },
     definitions: prepared.toolDefinitions,
     instructions: buildAgentSystemPrompt({
@@ -139,7 +151,7 @@ function buildNativeWorkflowInput(
       hasTools: prepared.toolDefinitions.length > 0,
       instructions: prepared.agent.instructions,
       isDefaultMaster: Boolean(prepared.agent.isDefault),
-    }),
+    }) + (workBlock ? `\n\n${workBlock}` : ''),
     messages: prepared.turnContext.messages,
     ...(settings ? { settings } : {}),
   }
@@ -156,5 +168,8 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
   const surfaceExecution = await loadSurfaceExecution(args, run)
   const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution)
   assertPreparedRoomIdentity(args, run, prepared)
-  return buildNativeWorkflowInput(args, run, surfaceExecution, prepared)
+  // Slack turns and threads without choices keep today's behavior.
+  const work = surfaceExecution ? undefined : chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId))
+  const workBlock = work ? await threadWorkInstructions({ work, workspaceId: args.workspaceId, actorUserId: run.userId }) : ''
+  return buildNativeWorkflowInput(args, run, surfaceExecution, prepared, work, workBlock)
 }

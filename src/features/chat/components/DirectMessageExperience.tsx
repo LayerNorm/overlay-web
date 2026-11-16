@@ -32,6 +32,7 @@ import {
   RoomTranscript,
 } from './DirectMessageExperience.parts'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 
 function RoomComposerArea({
   safety,
@@ -387,6 +388,9 @@ export function DirectMessageExperience({
                 setMentions: room.setMentions,
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
+                footer: agentId && activeWorkspaceId && !guided
+                  ? <ThreadWorkFooter workspaceId={activeWorkspaceId} agentId={agentId} conversationId={conversationId} />
+                  : undefined,
               }}
             />
           </AppScreenBody>

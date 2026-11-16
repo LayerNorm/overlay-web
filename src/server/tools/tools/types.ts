@@ -26,6 +26,11 @@ export interface OverlayToolsOptions {
    * to the Mac.
    */
   computerTarget?: ComputerTarget
+  /**
+   * The Mac an agent thread was set to run on (internal/develop/thread-folders.md). Local computer tools use this
+   * machine instead of the most recently seen one, and fail when it is offline or belongs to someone else.
+   */
+  localEnvironmentId?: string
   /** Approval-capable durable execution context for consequential computer actions. */
   computerApprovalContext?: 'work' | 'automation'
   workspaceId?: string

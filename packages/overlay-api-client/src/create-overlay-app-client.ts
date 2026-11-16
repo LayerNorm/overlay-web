@@ -4,6 +4,7 @@ import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
 import { AgentsClient } from './agents/client'
 import { AgentEnvironmentsClient } from './agent-environments/client'
+import { GitHubClient } from './github/client'
 import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
@@ -62,6 +63,7 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),
+    github: new GitHubClient(http),
     computers: new ComputersClient(http),
     cloudAgents: new CloudAgentsClient(http),
     mcpAccess: new McpAccessClient(http),

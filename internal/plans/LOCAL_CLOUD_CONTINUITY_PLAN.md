@@ -130,6 +130,11 @@ on a real Mac (edits files, runs tests, drives the browser), with approvals,
 human takeover, tool rows and billing matching a cloud Computer run. Sign-out,
 sleep/wake and host restart settle in-flight tool calls.
 
+Proposed design for Phases 2–4: `internal/plans/mockups/local-cloud-continuity.html` (not yet approved). A thread
+bound to a project shows where it runs, its folder and branch under the composer, with one "Continue in cloud" or
+"Bring back to Mac" action. Handoffs appear as dividers in the transcript, delegated cloud tasks as one compact group
+with Review, and the agent's project and context package as a Details row.
+
 ### Phase 2: Projects and context packages
 
 - A project binds an agent or thread to a local folder (a git repository or a
