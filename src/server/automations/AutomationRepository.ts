@@ -13,8 +13,6 @@ export type AutomationRecord = AutomationSummary & {
   workspaceId?: string
 }
 
-export type AutomationForUpdateNote = AutomationRecord
-
 export type AutomationRunTarget = AutomationRecord
 
 export type AutomationExecutionPayload = {
@@ -23,6 +21,17 @@ export type AutomationExecutionPayload = {
   }
   automation: AutomationRunTarget
 }
+
+export type AutomationThreadBinding = {
+  conversationId: string
+  /** An agent thread for agent-owned automations, otherwise an ordinary chat. */
+  kind: 'agent' | 'chat'
+  workspaceId: string
+}
+
+export type AutomationThreadRunOutcome =
+  | { status: 'pending' }
+  | { status: 'completed' | 'failed' | 'cancelled'; error?: string }
 
 export type CreateAutomationInput = {
   userId: string
@@ -66,11 +75,7 @@ export interface AutomationRepository {
     automationId: string
     userId: string
     workspaceId?: string
-  }): Promise<AutomationForUpdateNote | null>
-  getAutomationRunTarget(args: {
-    automationId: string
-    userId: string
-  }): Promise<AutomationRunTarget | null>
+  }): Promise<AutomationRecord | null>
   createAutomation(args: CreateAutomationInput): Promise<string>
   updateAutomation(args: UpdateAutomationInput): Promise<void>
   attachOwnedConversation(args: {
@@ -103,12 +108,6 @@ export interface AutomationRepository {
     userId: string
   }): Promise<string | null>
   removeConversation(args: {
-    conversationId: string
-    userId: string
-  }): Promise<void>
-  appendAutomationUpdateNote(args: {
-    automationId: string
-    content: string
     conversationId: string
     userId: string
   }): Promise<void>
@@ -155,12 +154,23 @@ export interface AutomationRepository {
   getRunForExecution(args: {
     runId: string
   }): Promise<AutomationExecutionPayload | null>
+  /** The automation's one thread, created when it has none that fits. */
+  bindThread(args: {
+    automationId: string
+    userId: string
+  }): Promise<AutomationThreadBinding>
+  linkRunMessage(args: {
+    runId: string
+    userId: string
+    expectedWorkflowRunId: string
+    messageId: string
+  }): Promise<void>
+  /** The outcome of the thread turn a run's message started. */
+  getThreadRunOutcome(args: {
+    runId: string
+  }): Promise<AutomationThreadRunOutcome>
   updateRunWorkflowRunId?(args: {
     runId: string
     workflowRunId: string
-  }): Promise<void>
-  updateSchedulerWorkflowRunId?(args: {
-    automationId: string
-    schedulerWorkflowRunId: string | null
   }): Promise<void>
 }

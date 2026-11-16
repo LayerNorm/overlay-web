@@ -1,7 +1,4 @@
-import { driveUploadFields } from './lib/agentDriveUploadSchema'
-import { remoteLifecycleValidator } from './agents/remoteRunModel'
-import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
-import { agentMcpCallState } from './lib/agentMcpCallSchema'
+import { remoteLifecycleValidator } from './lib/retiredConnectedAgentSchema'
 import { growthTables } from './lib/growthSchema'
 import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
 import { harnessDiagnosticValidator } from './lib/harnessDiagnosticValidator'
@@ -10,6 +7,8 @@ import { defineSchema, defineTable } from 'convex/server'
 import { userMessageMetadata } from './lib/userMessageMetadata'
 import { v } from 'convex/values'
 import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
+import { threadPullRequestValidator } from './lib/threadPullRequests'
+import { folderCopyEntryValidator, folderCopyFolderValidator, threadWorkValidator } from './lib/threadWork'
 
 const runPlanStepValidator = v.object({
   id: v.string(),
@@ -258,26 +257,6 @@ export default defineSchema({
     .index('by_connectionId', ['connectionId'])
     .index('by_userId', ['userId']),
 
-  // Historical provider-account metadata. Provider/model adapters may still
-  // use these records; retired Cloud runtimes cannot receive credentials.
-  agentProviderAccounts: defineTable({
-    userId: v.string(),
-    provider: v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor')),
-    method: v.union(v.literal('subscription'), v.literal('api_key')),
-    label: v.string(),
-    credentialRef: v.string(),
-    status: v.union(v.literal('active'), v.literal('needs_reauth')),
-    lastError: v.optional(v.string()),
-    lastUsedAt: v.optional(v.number()),
-    /** Held while one server refreshes a rotating sign-in (a Codex subscription), so two never use the same refresh token. */
-    refreshLockOwner: v.optional(v.string()),
-    refreshLockUntil: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_userId', ['userId'])
-    .index('by_userId_provider', ['userId', 'provider']),
-
   // A version of an Overlay Cloud agent's imported harness config (CLAUDE.md, skills, commands, subagents, MCP
   // servers). The cleaned bundle lives in `agentProfileChunks`; secret values are never in either.
   /** How many questions one person's message (rootKey) and one agent turn (turnKey) have asked other agents. */
@@ -291,46 +270,6 @@ export default defineSchema({
     workspaceId: v.string(), dispatchId: v.string(), rootKey: v.string(), turnKey: v.string(),
     state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
   }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
-
-  agentProfiles: defineTable({
-    workspaceId: v.string(),
-    agentId: v.string(),
-    userId: v.string(),
-    harness: v.union(v.literal('claude-code'), v.literal('codex')),
-    version: v.number(),
-    status: v.union(
-      v.literal('awaiting_upload'), v.literal('staged'), v.literal('active'), v.literal('superseded'), v.literal('discarded'),
-    ),
-    // A one-time code (hashed) a person's computer uploads with; cleared when used.
-    codeHash: v.optional(v.string()),
-    codeExpiresAt: v.optional(v.number()),
-    summary: v.optional(v.any()),
-    meta: v.optional(v.any()),
-    digest: v.optional(v.string()),
-    chunkCount: v.optional(v.number()),
-    hooksEnabled: v.boolean(),
-    createdAt: v.number(),
-    uploadedAt: v.optional(v.number()),
-    appliedAt: v.optional(v.number()),
-  })
-    .index('by_agentId', ['agentId'])
-    .index('by_codeHash', ['codeHash']),
-
-  agentProfileChunks: defineTable({
-    profileId: v.id('agentProfiles'),
-    index: v.number(),
-    data: v.string(),
-  }).index('by_profileId', ['profileId']),
-
-  // Values an agent's imported config asked for (an MCP server's token). The value is in the credential vault.
-  agentSecrets: defineTable({
-    workspaceId: v.string(),
-    agentId: v.string(),
-    userId: v.string(),
-    name: v.string(),
-    credentialRef: v.string(),
-    updatedAt: v.number(),
-  }).index('by_agentId', ['agentId']),
 
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
@@ -1081,7 +1020,6 @@ export default defineSchema({
     // instructions, tools, and environment through its thread.
     agentId: v.optional(v.string()),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
-    schedulerWorkflowRunId: v.optional(v.string()),
     // Legacy automation fields kept so existing production rows continue to validate.
     conversationId: v.optional(v.id('conversations')),
     failureStreak: v.optional(v.number()),
@@ -1121,7 +1059,6 @@ export default defineSchema({
     .index('by_agentId', ['agentId'])
     .index('by_conversationId_deletedAt', ['conversationId', 'deletedAt'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
-    .index('by_schedulerWorkflowRunId', ['schedulerWorkflowRunId'])
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
@@ -1150,6 +1087,9 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
     turnId: v.optional(v.string()),
+    // The user message a run posted into its automation's thread. The thread's
+    // agent run for this message decides the run's outcome.
+    messageId: v.optional(v.id('conversationMessages')),
     error: v.optional(v.string()),
     workflowRunId: v.optional(v.string()),
     workflowProjectionCursor: v.optional(v.string()),
@@ -1365,6 +1305,9 @@ export default defineSchema({
     // them and the chat list can keep them out of Chats. Absent on ordinary
     // chats and on automation-owned threads.
     agentId: v.optional(v.string()),
+    pullRequests: v.optional(v.array(threadPullRequestValidator)),
+    // Agent threads: the computer that runs the thread and the folders chosen for it (internal/develop/thread-folders.md).
+    work: v.optional(threadWorkValidator),
     dmIdentityKey: v.optional(v.string()),
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
@@ -1732,7 +1675,7 @@ export default defineSchema({
             }),
           }),
           v.object({
-            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-remote-agent-drive'), v.literal('data-agent-lineage')),
+            type: v.union(v.literal('data-remote-agent-request'), v.literal('data-remote-agent-plan'), v.literal('data-remote-agent-diff'), v.literal('data-remote-agent-terminal'), v.literal('data-remote-agent-commands'), v.literal('data-remote-agent-drive'), v.literal('data-agent-lineage'), v.literal('data-folder-saves')),
             data: v.any(),
           }),
           v.object({
@@ -2048,28 +1991,6 @@ export default defineSchema({
     .index('by_userId_status', ['userId', 'status'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
-
-  agentDriveRetiredObjects: defineTable({
-    purpose: v.union(v.literal('version'), v.literal('staging'), v.literal('uncommitted')),
-    ownerUserId: v.string(), sizeBytes: v.number(), retiredAt: v.number(), nextAttemptAt: v.number(),
-    source: v.union(v.object({ kind: v.literal('object'), key: v.string() }),
-      v.object({ kind: v.literal('convex'), storageId: v.id('_storage') })),
-    state: v.union(v.object({ kind: v.literal('waiting') }),
-      v.object({ kind: v.literal('deleting'), claim: v.string() })),
-  }).index('by_nextAttemptAt', ['nextAttemptAt']),
-
-  agentDriveUploads: defineTable(driveUploadFields).index('by_uploadId', ['uploadId']).index('by_runId_requestId', ['runId', 'requestId'])
-    .index('by_expiresAt', ['expiresAt']).index('by_retireAt', ['retireAt']),
-
-  agentDriveWriteBudgets: defineTable({ runId: v.string(), uploads: v.number(), bytes: v.number(), expiresAt: v.number() })
-    .index('by_runId', ['runId']).index('by_expiresAt', ['expiresAt']),
-
-  agentDriveMetadataReceipts: defineTable({
-    runId: v.string(), sessionId: v.string(), requestId: v.string(),
-    attemptId: v.optional(v.string()), generation: v.optional(v.number()),
-    fingerprint: v.string(), result: v.object({ fileId: v.id('files'), updatedAt: v.number() }),
-    createdAt: v.number(), retireAt: v.optional(v.number()),
-  }).index('by_runId_requestId', ['runId', 'requestId']).index('by_retireAt', ['retireAt']),
 
   files: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
@@ -2950,112 +2871,64 @@ export default defineSchema({
     .index('by_credentialId_expiresAt', ['credentialId', 'expiresAt'])
     .index('by_expiresAt', ['expiresAt']),
 
-  agentBindings: defineTable({
-    bindingId: v.string(), workspaceId: v.string(), agentId: v.string(), environmentId: v.string(),
-    protocolAdapter: v.string(), adapterConfig: v.any(), enabled: v.boolean(),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_bindingId', ['bindingId'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
-    .index('by_environmentId', ['environmentId']),
-
-  agentRunCommands: defineTable({
-    commandId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
-    type: v.string(), sequence: v.number(), payload: v.any(), status: v.string(),
-    attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
-    claimedAt: v.optional(v.number()), claimExpiresAt: v.optional(v.number()),
-    acknowledgedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_commandId', ['commandId'])
-    .index('by_runId', ['runId'])
-    .index('by_environmentId_sequence', ['environmentId', 'sequence'])
-    .index('by_environmentId_status_sequence', ['environmentId', 'status', 'sequence'])
-    .index('by_environmentId_status_claimExpiresAt', ['environmentId', 'status', 'claimExpiresAt'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_status_updatedAt', ['status', 'updatedAt']),
-
-  agentRemoteSessions: defineTable({
-    sessionId: v.string(), workspaceId: v.string(), environmentId: v.string(), bindingId: v.string(),
-    runId: v.string(), remoteSessionId: v.optional(v.string()), status: v.string(),
-    attemptId: v.optional(v.string()), executionGeneration: v.optional(v.number()),
-    restorationCommandId: v.optional(v.string()), preparationRetryCount: v.optional(v.number()),
-    lastPreparationStopAt: v.optional(v.number()),
-    nativeStartAdmission: v.optional(nativeStartAdmissionValidator),
-    nativeStartAdmissionRequired: v.optional(v.literal(true)),
-    hostBootId: v.optional(v.string()), lastHealthAt: v.optional(v.number()), lastProgressAt: v.optional(v.number()),
-    checkpointReference: v.optional(v.string()), recoveryCause: v.optional(v.string()), recoveryResult: v.optional(v.string()),
-    hardDeadlineAt: v.optional(v.number()), claimDeadlineAt: v.optional(v.number()), executionLeaseExpiresAt: v.optional(v.number()),
-    commandCursor: v.number(), eventCursor: v.number(), capabilitySnapshot: v.any(),
-    stopConfirmedAt: v.optional(v.number()),
-    startedAt: v.optional(v.number()), endedAt: v.optional(v.number()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_sessionId', ['sessionId'])
-    .index('by_runId', ['runId'])
-    .index('by_runId_attemptId', ['runId', 'attemptId'])
-    .index('by_environmentId_status', ['environmentId', 'status'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_status', ['workspaceId', 'status']),
-
-  agentRemoteRunIntents: defineTable({
-    intentId: v.string(), runId: v.string(), kind: v.union(v.literal('start'), v.literal('signal'), v.literal('control'), v.literal('finalize')),
-    revision: v.number(), status: v.string(), operationId: v.optional(v.string()), action: v.optional(v.string()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_intentId', ['intentId'])
-    .index('by_kind_status_updatedAt', ['kind', 'status', 'updatedAt'])
+  /**
+   * Request/response tool calls Overlay sends to a user's own machine (local
+   * tools). At most once: a host claims a call before running it, and a call
+   * past its deadline is expired instead of delivered. Rows are short-lived.
+   */
+  // Overlay folders copied onto a computer for one agent run, and what was saved back
+  // (internal/develop/thread-folders.md). One row per run and folder; deleted after a week.
+  threadFolderCopies: defineTable({
+    copyId: v.string(),
+    agentRunId: v.string(),
+    conversationId: v.string(),
+    workspaceId: v.string(),
+    userId: v.string(),
+    agentId: v.string(),
+    agentName: v.optional(v.string()),
+    // The agent's reply, where the summary card goes.
+    messageId: v.optional(v.string()),
+    target: v.union(v.literal('cloud'), v.literal('mac')),
+    environmentId: v.optional(v.string()),
+    folderId: v.string(),
+    folderName: v.string(),
+    root: v.string(),
+    entries: v.array(folderCopyEntryValidator),
+    folders: v.array(folderCopyFolderValidator),
+    skipped: v.array(v.string()),
+    status: v.union(v.literal('copying'), v.literal('copied'), v.literal('saving'), v.literal('saved'), v.literal('failed')),
+    summary: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_copyId', ['copyId'])
+    .index('by_agentRunId', ['agentRunId'])
     .index('by_status_updatedAt', ['status', 'updatedAt'])
-    .index('by_runId', ['runId']),
+    .index('by_createdAt', ['createdAt']),
 
-  agentEventRateWindows: defineTable({
-    environmentId: v.string(), workspaceId: v.string(), windowStartedAt: v.number(),
-    eventCount: v.number(), updatedAt: v.number(),
-  }).index('by_environmentId_windowStartedAt', ['environmentId', 'windowStartedAt'])
-    .index('by_workspaceId_windowStartedAt', ['workspaceId', 'windowStartedAt'])
-    .index('by_windowStartedAt', ['windowStartedAt']),
+  // GitHub App installations a workspace member connected, verified against their GitHub account.
+  githubInstallations: defineTable({
+    workspaceId: v.string(),
+    installationId: v.number(),
+    accountLogin: v.string(),
+    accountType: v.string(),
+    connectedByUserId: v.string(),
+    repositorySelection: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    removedAt: v.optional(v.number()),
+  }).index('by_workspaceId', ['workspaceId'])
+    .index('by_workspaceId_installationId', ['workspaceId', 'installationId']),
 
-  agentWorkspacePolicyUsage: defineTable({
-    workspaceId: v.string(), activeArtifactBytes: v.number(), updatedAt: v.number(),
-  }).index('by_workspaceId', ['workspaceId']),
-
-  agentMcpCalls: defineTable({
-    callId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(), sessionId: v.string(),
-    execution: v.optional(v.object({ attemptId: v.string(), generation: v.number() })),
-    clientSessionId: v.string(), rpcId: v.string(), toolName: v.string(), argumentsJson: v.string(), requestKey: v.string(),
-    state: agentMcpCallState, expiresAt: v.number(), retireAt: v.number(), createdAt: v.number(),
-    elicitationAnsweredAt: v.optional(v.number()),
+  agentLocalToolCalls: defineTable({
+    callId: v.string(), workspaceId: v.string(), environmentId: v.string(), requestedByUserId: v.string(),
+    agentId: v.optional(v.string()), toolName: v.string(), request: v.any(),
+    status: v.union(v.literal('pending'), v.literal('claimed'), v.literal('completed'), v.literal('expired')),
+    outcome: v.optional(v.any()), deadlineAt: v.number(), claimedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_callId', ['callId'])
-    .index('by_session_rpc', ['sessionId', 'clientSessionId', 'rpcId'])
-    .index('by_retireAt', ['retireAt']),
-
-  agentMcpResultChunks: defineTable({ callId: v.string(), index: v.number(), data: v.bytes() })
-    .index('by_callId_index', ['callId', 'index']),
-
-  agentMcpCallBudgets: defineTable({ runId: v.string(), calls: v.number(), bytes: v.number(), retireAt: v.number() })
-    .index('by_runId', ['runId']).index('by_retireAt', ['retireAt']),
-
-  agentApprovalRequests: defineTable({
-    approvalId: v.string(), workspaceId: v.string(), runId: v.string(), remoteSessionId: v.string(),
-    requestKey: v.string(), kind: v.optional(v.union(v.literal('permission'), v.literal('elicitation'))),
-    prompt: v.string(), options: v.array(v.string()), payload: v.any(),
-    requestedAt: v.number(), resolution: v.optional(v.object({
-      decision: v.string(), response: v.optional(v.any()), resolvedByPrincipalId: v.string(), resolvedAt: v.number(),
-    })),
-  }).index('by_approvalId', ['approvalId'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_remoteSessionId_requestKey', ['remoteSessionId', 'requestKey'])
-    .index('by_workspaceId_runId', ['workspaceId', 'runId'])
-    .index('by_requestedAt', ['requestedAt']),
-
-  agentArtifacts: defineTable({
-    artifactId: v.string(), workspaceId: v.string(), environmentId: v.string(), runId: v.string(),
-    remoteSessionId: v.string(), name: v.string(), mediaType: v.string(), size: v.number(),
-    sha256: v.string(), objectKey: v.string(), status: v.string(), scanResult: v.optional(v.string()),
-    expiresAt: v.number(), linkedAt: v.optional(v.number()), deletedAt: v.optional(v.number()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_artifactId', ['artifactId'])
-    .index('by_objectKey', ['objectKey'])
-    .index('by_runId_status', ['runId', 'status'])
-    .index('by_status_expiresAt', ['status', 'expiresAt'])
-    .index('by_workspaceId_environmentId', ['workspaceId', 'environmentId'])
-    .index('by_workspaceId_status', ['workspaceId', 'status']),
+    .index('by_environmentId_status_createdAt', ['environmentId', 'status', 'createdAt'])
+    .index('by_createdAt', ['createdAt']),
 
   agentSandboxLeases: defineTable({
     leaseId: v.string(), workspaceId: v.string(), environmentId: v.optional(v.string()), computerId: v.optional(v.string()), runId: v.optional(v.string()),
@@ -3072,26 +2945,6 @@ export default defineSchema({
     .index('by_provider_providerReference', ['provider', 'providerReference'])
     .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
     .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
-
-  agentSandboxSettlements: defineTable({
-    reservationId: v.string(), workspaceId: v.string(), environmentId: v.string(),
-    runId: v.string(), leaseId: v.string(), status: v.string(),
-    settledAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_reservationId', ['reservationId'])
-    .index('by_status_updatedAt', ['status', 'updatedAt'])
-    .index('by_workspaceId', ['workspaceId']),
-
-  // Durable HarnessAgent session state per binding + conversation. The opaque
-  // resumeState carries the harness's native resume payload so a later turn
-  // can continue without replaying transcript history.
-  agentHarnessSessions: defineTable({
-    harnessSessionId: v.string(), workspaceId: v.string(), bindingId: v.string(),
-    conversationId: v.string(), harnessId: v.string(),
-    sessionId: v.optional(v.string()), resumeState: v.optional(v.any()),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_harnessSessionId', ['harnessSessionId'])
-    .index('by_bindingId_conversationId', ['bindingId', 'conversationId'])
-    .index('by_workspaceId', ['workspaceId']),
 
   slackImportMappings: defineTable({
     importJobId: v.id('slackImportJobs'),
@@ -3286,6 +3139,51 @@ export default defineSchema({
     appliedRevision: v.number(),
     createdAt: v.number(),
   }).index('by_runId_operationId', ['runId', 'operationId']),
+
+  harnessDiagnosticIndex: defineTable({
+    diagnosticId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.optional(v.string()),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    sourceType: v.union(v.literal('conversation'), v.literal('note'), v.literal('unknown')),
+    sourceId: v.optional(v.string()),
+    operationId: v.optional(v.string()),
+    code: v.string(),
+    stage: v.string(),
+    retryability: v.string(),
+    safeMessage: v.string(),
+    nextAction: v.string(),
+    occurredAt: v.number(),
+    indexedAt: v.number(),
+  }).index('by_diagnosticId', ['diagnosticId'])
+    .index('by_runId_diagnosticId', ['runId', 'diagnosticId']),
+
+  harnessToolFailures: defineTable({
+    runId: v.string(),
+    toolCallId: v.string(),
+    workflowRunId: v.optional(v.string()),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    sourceType: v.union(v.literal('conversation'), v.literal('note'), v.literal('unknown')),
+    sourceId: v.optional(v.string()),
+    toolName: v.string(),
+    phase: v.union(v.literal('pre_dispatch'), v.literal('execution')),
+    causeClass: v.union(v.literal('abort_error'), v.literal('convex_error'), v.literal('error'),
+      v.literal('range_error'), v.literal('schema_validation'), v.literal('timeout_error'),
+      v.literal('type_error'), v.literal('unknown_error'), v.literal('zod_error')),
+    causeCode: v.union(v.literal('ABORT_ERR'), v.literal('EAI_AGAIN'), v.literal('ECONNREFUSED'),
+      v.literal('ECONNRESET'), v.literal('ENOTFOUND'), v.literal('ETIMEDOUT'), v.literal('INVALID_TOOL_INPUT'),
+      v.literal('TOOL_EXECUTION_FAILED'), v.literal('ZOD_ERROR_DURING_EXECUTION')),
+    safeSummary: v.union(v.literal('Tool input was rejected before execution.'),
+      v.literal('Tool execution failed; its effect may be uncertain.')),
+    validationIssues: v.optional(v.array(v.object({ path: v.array(v.string()), code: v.union(
+      v.literal('custom'), v.literal('invalid_element'), v.literal('invalid_format'), v.literal('invalid_input'),
+      v.literal('invalid_key'), v.literal('invalid_type'), v.literal('invalid_union'), v.literal('invalid_value'),
+      v.literal('not_multiple_of'), v.literal('too_big'), v.literal('too_small'), v.literal('unrecognized_keys'),
+    ) }))),
+    createdAt: v.number(),
+  }).index('by_runId_toolCallId', ['runId', 'toolCallId']),
 
   harnessCheckpoints: defineTable({
     runId: v.string(),

@@ -13,6 +13,7 @@ import {
 } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
+import type { QueuedMessage } from '@/shared/chat/conversation-queue'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { ChatModel, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import { getEffectiveReasoningByModel } from '@overlay/chat-core'
@@ -51,6 +52,20 @@ import { sendTextTurn } from './chat-send-text'
 import { getBlockedSendNotice } from './chat-composer-blocking'
 
 export { TEMPORARY_CHAT_ID, PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
+
+type SubmittedDraft = {
+  text: string
+  attachedImages: AttachedImage[]
+  pendingChatDocuments: PendingChatDocument[]
+  mentions: MentionItem[]
+  replyContext: ReplyContext
+}
+
+/** A queued message carries only its own text and mentions; the live draft belongs to what the person is typing now. */
+function submittedDraft(queued: QueuedMessage | undefined, live: SubmittedDraft): SubmittedDraft {
+  if (!queued) return live
+  return { text: queued.text, attachedImages: [], pendingChatDocuments: [], mentions: queued.mentions, replyContext: null }
+}
 
 export function useChatSendController({
   ensureWritable,
@@ -365,15 +380,16 @@ export function useChatSendController({
     completeSession(chatId, active)
   }, [completeSession, createNewChat, pendingFirstSendRef, tryActivatePendingFirstSend])
 
-  const handleSend = useCallback(async () => {
-    if (nativeThreadReadOnly) return
+  const submit = useCallback(async (queued?: QueuedMessage): Promise<boolean> => {
+    if (nativeThreadReadOnly) return false
     if (!userId && !authUser) {
       try { sessionStorage.setItem('overlay:guest-draft', inputRef.current) } catch { /* ignore */ }
       requireAuth('send')
-      return
+      return false
     }
-    const replyCtxSnapshot = replyContext
-    const submittedInput = inputRef.current
+    const draft = submittedDraft(queued, { text: inputRef.current, attachedImages, pendingChatDocuments, mentions, replyContext })
+    const replyCtxSnapshot = draft.replyContext
+    const submittedInput = draft.text
     const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
@@ -381,9 +397,9 @@ export function useChatSendController({
       activeChatTitle,
       selectedImageModels,
       selectedVideoModels,
-      attachedImages,
-      pendingChatDocuments,
-      mentions,
+      attachedImages: draft.attachedImages,
+      pendingChatDocuments: draft.pendingChatDocuments,
+      mentions: draft.mentions,
       isTemporaryChat,
       mode,
       selectedToolIds,
@@ -391,6 +407,7 @@ export function useChatSendController({
       text: submittedInput.trim(),
     })
     const clearSubmittedComposer = () => {
+      if (queued) return
       textareaRef.current?.clear()
       setInput('')
       setMentions([])
@@ -400,29 +417,30 @@ export function useChatSendController({
       setReplyContext(null)
       resetComposerToolIds(snapshot.temporaryChatSnapshot)
     }
-    if (isActiveLoading) return
+    if (isActiveLoading) return false
+    if (queued && effectiveGenType) return false
 
     const sendValidationError = getSendValidationError(snapshot, effectiveGenType)
     if (sendValidationError === 'uploading-documents') {
       setAttachmentError('Wait for documents to finish indexing.')
-      return
+      return false
     }
     if (sendValidationError === 'failed-documents') {
       setAttachmentError('Remove failed documents before sending.')
-      return
+      return false
     }
-    if (sendValidationError === 'empty') return
+    if (sendValidationError === 'empty') return false
     if (isSendBlocked) {
-      if (billingAccessNotice) return
+      if (billingAccessNotice) return false
       setComposerNotice(getBlockedSendNotice({
         connectionUnavailable,
         isBudgetExhaustedPaid,
         premiumModelBlocked,
       }))
-      return
+      return false
     }
 
-    if (preflightInFlight.current) return
+    if (preflightInFlight.current) return false
     const originalChatId = activeChatIdRef.current
     const originalTemporary = isTemporaryChatRef.current
     const sendIntentId = ++sendIntentGeneration.current
@@ -437,14 +455,17 @@ export function useChatSendController({
     }
     const isCurrentSendScope = () => isCurrentScope()
       && (!nativePersonalEnabled || sendIntentGeneration.current === sendIntentId)
+    function liveDraftChanged() {
+      if (queued) return false
+      return inputRef.current !== submittedInput || latestComposerStateRef.current !== submittedComposerState
+    }
     function sendIntentChanged() {
       return !isCurrentSendScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
-      || inputRef.current !== submittedInput
-      || latestComposerStateRef.current !== submittedComposerState
+      || liveDraftChanged()
     }
-    if (!writable || sendIntentChanged()) return
+    if (!writable || sendIntentChanged()) return false
 
     beginTtftClientTurn({
       model: snapshot.selectedActModelSnapshot,
@@ -462,6 +483,7 @@ export function useChatSendController({
       if (!isCurrentSendScope() || activeChatIdRef.current !== originalChatId) return
       setIsOptimisticLoading(false)
       setComposerNotice('Could not save your message. Retry to send it.')
+      if (queued) return
       const currentComposer = latestComposerStateRef.current
       if (
         inputRef.current === ''
@@ -520,8 +542,9 @@ export function useChatSendController({
         })
       } catch {
         restoreFailedSubmission()
+        return false
       }
-      return
+      return true
     }
 
     clearSubmittedComposer()
@@ -563,7 +586,9 @@ export function useChatSendController({
       })
     } catch {
       restoreFailedSubmission()
+      return false
     }
+    return true
   }, [
     addAssistantNote,
     nativeThreadReadOnly,
@@ -638,9 +663,14 @@ export function useChatSendController({
     videoSubMode,
   ])
 
+  const handleSend = useCallback(async () => {
+    await submit()
+  }, [submit])
+
   return {
     completeSessionForStream,
     createNewChat,
     handleSend,
+    sendQueuedMessage: submit,
   }
 }

@@ -31,6 +31,31 @@ export function isConvexIdShape(id: string): boolean {
   return /^[0-9a-z]{20,40}$/.test(id)
 }
 
+function getMessagesQueryArgs({
+  canQuery,
+  canRead,
+  wellFormed,
+  parallelReads,
+  summaryInScope,
+  workspaceId,
+  conversationId,
+}: {
+  canQuery: boolean
+  canRead: boolean
+  wellFormed: boolean
+  parallelReads: boolean
+  summaryInScope: boolean
+  workspaceId: string | null
+  conversationId: string | null
+}) {
+  if (!(canQuery && canRead && wellFormed && (parallelReads || summaryInScope))) return 'skip'
+  return {
+    workspaceId: workspaceId!,
+    conversationId: conversationId as Id<'conversations'>,
+    ...(parallelReads ? { unavailableAsEmpty: true } : {}),
+  }
+}
+
 export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, pathname, routeId }: {
   workspaceId: string | null
   canQuery: boolean
@@ -51,8 +76,12 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
   const summaryInScope = Boolean(selectedSummary && selectedSummary._id === conversationId
     && selectedSummary.workspaceId === workspaceId)
   const canReadMessages = canQuery && canRead && summaryInScope
+  const settings = useQuery(api.platform.uiSettings.mine, canQuery && canRead ? {} : 'skip')
+  const parallelReads = settings?.personalChatParallelReadsRevision === 'parallel-reads-v1'
   const messages = usePaginatedQuery(api.chat.personal.getMessages,
-    canReadMessages ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> } : 'skip',
+    getMessagesQueryArgs({
+      canQuery, canRead, wellFormed, parallelReads, summaryInScope, workspaceId, conversationId,
+    }),
     { initialNumItems: 50 })
   const generatingMessageIds = messages.results
     .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')

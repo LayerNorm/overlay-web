@@ -51,7 +51,7 @@ const parent = {
 }
 const invocation = {
   agentId: 'target', agentName: 'Target', agentPrincipalId: 'target-principal', invocationNonce: 'nonce',
-  modelId: 'model', harness: 'overlay', externalAgent: false, turnId: 'target-turn',
+  modelId: 'model', harness: 'overlay', turnId: 'target-turn',
 }
 
 beforeEach(() => {
@@ -278,26 +278,6 @@ test('a descendant dispatch uses the original root workflow for surface preparat
   expect(mocks.build).toHaveBeenCalledWith(expect.objectContaining({
     conversationId: 'target-room', surfaceRootRunId: root.runId, expectedSurfaceWorkflowRunId: 'source-workflow',
   }))
-})
-
-test('native asks reject external directory targets before asking or creating a delivery', async () => {
-  mocks.directory.mockResolvedValue({ agents: [{ ...invocation, id: 'external', name: 'External', harness: 'claude-code' }] })
-  await expect(dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
-    agent: 'External', message: 'inspect this',
-  })).rejects.toThrow("External agents can't be asked from this run yet.")
-  expect(mocks.ask).not.toHaveBeenCalled()
-  expect(mocks.startTurn).not.toHaveBeenCalled()
-  expect(mocks.apply).not.toHaveBeenCalled()
-})
-
-test('native asks reject remote bindings before asking or creating an assignment', async () => {
-  mocks.bindings.mockResolvedValue([{ bindingId: 'remote-binding' }])
-  await expect(dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
-    agent: 'Target', message: 'inspect this',
-  })).rejects.toThrow("External agents can't be asked from this run yet.")
-  expect(mocks.ask).not.toHaveBeenCalled()
-  expect(mocks.startTurn).not.toHaveBeenCalled()
-  expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('assignment resolution uses trusted execution identity and the existing cancellation machinery', async () => {

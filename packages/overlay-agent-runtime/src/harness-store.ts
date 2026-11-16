@@ -15,6 +15,24 @@ import type {
 } from './harness-state'
 import type { HarnessDiagnostic } from './harness-diagnostic'
 
+export type HarnessToolFailureIssue = {
+  path: string[]
+  code: 'custom' | 'invalid_element' | 'invalid_format' | 'invalid_input' | 'invalid_key' | 'invalid_type'
+    | 'invalid_union' | 'invalid_value' | 'not_multiple_of' | 'too_big' | 'too_small' | 'unrecognized_keys'
+}
+
+export type HarnessToolFailure = {
+  toolCallId: string
+  toolName: string
+  phase: 'pre_dispatch' | 'execution'
+  causeClass: 'abort_error' | 'convex_error' | 'error' | 'range_error' | 'schema_validation'
+    | 'timeout_error' | 'type_error' | 'unknown_error' | 'zod_error'
+  causeCode: 'ABORT_ERR' | 'EAI_AGAIN' | 'ECONNREFUSED' | 'ECONNRESET' | 'ENOTFOUND' | 'ETIMEDOUT'
+    | 'INVALID_TOOL_INPUT' | 'TOOL_EXECUTION_FAILED' | 'ZOD_ERROR_DURING_EXECUTION'
+  safeSummary: 'Tool input was rejected before execution.' | 'Tool execution failed; its effect may be uncertain.'
+  validationIssues?: HarnessToolFailureIssue[]
+}
+
 export type HarnessSource = { conversationId: string; noteId?: never } | { noteId: string; conversationId?: never }
 
 export type HarnessAdmission = {
@@ -33,6 +51,7 @@ export type HarnessOperation =
   | { type: 'replace_plan'; steps: HarnessPlanInput[] }
   | { type: 'transition_step'; id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string }
   | { type: 'record_evidence'; evidence: HarnessEvidence }
+  | { type: 'record_tool_failure'; failure: HarnessToolFailure }
   | { type: 'record_verification'; verification: import('./harness-state').HarnessVerification }
   | { type: 'set_compaction'; compaction: HarnessCompaction }
   | { type: 'record_receipt'; receipt: HarnessReceipt }
@@ -107,6 +126,8 @@ export type HarnessTranscriptStep = {
   sequence: number
   executionGeneration?: number
   persistence: HarnessTranscriptPersistence
+  fullPersistenceUrl?: string | null
+  fullPersistenceDigest?: string
 }
 
 export type HarnessTranscriptPage = {

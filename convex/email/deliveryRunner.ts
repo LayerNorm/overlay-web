@@ -209,6 +209,7 @@ function parseEvent(payloadJson: string): LifecycleEmailEvent {
     'automation.failed',
     'api_key.changed',
     'workspace.invitation_sent',
+    'workspace.billing_requested',
     'workspace.mention',
     'workspace.dm_received',
     'billing.auto_topup_limit_reached',

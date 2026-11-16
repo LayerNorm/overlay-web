@@ -10,9 +10,11 @@ import {
   listAgentAutomations,
   listAgentThreads,
   listArchivedAgentThreads,
+  resolveLatestActivityAgentThread,
   resolveMainAgentThread,
   setAgentThreadArchived,
 } from './agentThreads'
+import { branchAgentThread, deleteAgentThreadTurn } from './threadTurns'
 
 const agentArgs = { workspaceId: v.string(), agentId: v.string() }
 
@@ -84,6 +86,15 @@ export const resolveMain = mutation({
   },
 })
 
+/** Opens the latest-activity accessible thread for implicit Agents entry, with main-thread fallback. */
+export const resolveLatestActivity = mutation({
+  args: agentArgs,
+  handler: async (ctx, args) => {
+    const { viewer } = await visibleAgent(ctx, args)
+    return await resolveLatestActivityAgentThread(ctx, { ...args, userId: viewer.userId })
+  },
+})
+
 export const create = mutation({
   args: { ...agentArgs, title: v.optional(v.string()) },
   handler: async (ctx, args) => {
@@ -111,5 +122,25 @@ export const remove = mutation({
     if (conversation?.workspaceId !== args.workspaceId) throw new Error('THREAD_NOT_FOUND')
     await deleteAgentThread(ctx, { ...args, userId: viewer.userId })
     return null
+  },
+})
+
+const turnArgs = { ...agentArgs, conversationId: v.id('conversations'), messageId: v.id('conversationMessages') }
+
+/** Deletes one exchange (the member's message and the agent's replies) from the member's agent thread. */
+export const deleteTurn = mutation({
+  args: turnArgs,
+  handler: async (ctx, args) => {
+    const { viewer } = await visibleAgent(ctx, args)
+    return await deleteAgentThreadTurn(ctx, { ...args, userId: viewer.userId })
+  },
+})
+
+/** Copies the member's agent thread up to a message into a new thread with the same agent. */
+export const branch = mutation({
+  args: turnArgs,
+  handler: async (ctx, args) => {
+    const { viewer } = await visibleAgent(ctx, args, { live: true })
+    return await branchAgentThread(ctx, { ...args, userId: viewer.userId })
   },
 })

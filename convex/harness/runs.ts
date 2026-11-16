@@ -11,6 +11,7 @@ import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
+import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
 import { readActivePublicStreams } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import { isSharedRoom } from '../../src/shared/agents/room-access'
@@ -55,7 +56,9 @@ import type {
   HarnessWaitRequest,
   HarnessTranscriptPage,
   HarnessTranscriptPersistence,
+  HarnessTranscriptStep,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
+import { appendHarnessDiagnosticIndex, persistHarnessToolFailure } from './diagnosticIndex'
 import { ConvexError, v } from 'convex/values'
 
 const MAX_ID_LENGTH = 256
@@ -110,8 +113,10 @@ const policyValidator = v.object({
   deadlineAt: v.number(),
   taskDeadlineAt: v.optional(v.number()),
   maxCostMicros: v.number(),
-  maxParallelChildren: v.number(),
-  maxDepth: v.number(),
+  // Retired sub-agent caps. Accepted and ignored until web and Convex both run
+  // without them; the workspace budget is the only limit. Delete after rollout.
+  maxParallelChildren: v.optional(v.number()),
+  maxDepth: v.optional(v.number()),
 })
 
 const sourceValidator = v.union(
@@ -220,6 +225,29 @@ const operationValidator = v.union(
   }),
   v.object({ type: v.literal('record_evidence'), evidence: evidenceValidator }),
   v.object({
+    type: v.literal('record_tool_failure'),
+    failure: v.object({
+      toolCallId: v.string(),
+      toolName: v.string(),
+      phase: v.union(v.literal('pre_dispatch'), v.literal('execution')),
+      causeClass: v.union(v.literal('abort_error'), v.literal('convex_error'), v.literal('error'),
+        v.literal('range_error'), v.literal('schema_validation'), v.literal('timeout_error'),
+        v.literal('type_error'), v.literal('unknown_error'), v.literal('zod_error')),
+      causeCode: v.union(v.literal('ABORT_ERR'), v.literal('EAI_AGAIN'), v.literal('ECONNREFUSED'),
+        v.literal('ECONNRESET'), v.literal('ENOTFOUND'), v.literal('ETIMEDOUT'), v.literal('INVALID_TOOL_INPUT'),
+        v.literal('TOOL_EXECUTION_FAILED'), v.literal('ZOD_ERROR_DURING_EXECUTION')),
+      safeSummary: v.union(v.literal('Tool input was rejected before execution.'),
+        v.literal('Tool execution failed; its effect may be uncertain.')),
+      validationIssues: v.optional(v.array(v.object({
+        path: v.array(v.string()),
+        code: v.union(v.literal('custom'), v.literal('invalid_element'), v.literal('invalid_format'),
+          v.literal('invalid_input'), v.literal('invalid_key'), v.literal('invalid_type'), v.literal('invalid_union'),
+          v.literal('invalid_value'), v.literal('not_multiple_of'), v.literal('too_big'), v.literal('too_small'),
+          v.literal('unrecognized_keys')),
+      }))),
+    }),
+  }),
+  v.object({
     type: v.literal('record_verification'),
     verification: v.object({
       attemptId: v.string(),
@@ -265,7 +293,8 @@ const operationValidator = v.union(
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
-        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
+        v.literal('MODEL_UNAVAILABLE'), v.literal('BACKEND_UNAVAILABLE'), v.literal('INTERNAL_ERROR'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
         v.literal('persistence'), v.literal('delivery')),
       operationId: v.optional(v.string()),
@@ -282,7 +311,8 @@ const operationValidator = v.union(
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
-        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
+        v.literal('MODEL_UNAVAILABLE'), v.literal('BACKEND_UNAVAILABLE'), v.literal('INTERNAL_ERROR'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
         v.literal('persistence'), v.literal('delivery')),
       operationId: v.optional(v.string()),
@@ -320,7 +350,8 @@ const operationValidator = v.union(
       code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
-        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
+        v.literal('MODEL_UNAVAILABLE'), v.literal('BACKEND_UNAVAILABLE'), v.literal('INTERNAL_ERROR'), v.literal('UNKNOWN')),
       stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
         v.literal('persistence'), v.literal('delivery')),
       operationId: v.optional(v.string()),
@@ -447,12 +478,7 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || !Number.isFinite(input.policy.deadlineAt)
     || (input.policy.taskDeadlineAt !== undefined && !Number.isFinite(input.policy.taskDeadlineAt))
     || !Number.isSafeInteger(input.policy.maxCostMicros)
-    || input.policy.maxCostMicros < 0
-    || !Number.isSafeInteger(input.policy.maxParallelChildren)
-    || input.policy.maxParallelChildren < 0
-    || !Number.isSafeInteger(input.policy.maxDepth)
-    || input.policy.maxDepth < 0
-    || input.policy.maxDepth > MAX_HARNESS_DEPTH) {
+    || input.policy.maxCostMicros < 0) {
     throw new Error('Invalid harness policy.')
   }
   if ((input.policy.executionPolicyVersion === 2
@@ -580,6 +606,23 @@ function assertBoundedOperation(operation: HarnessOperation) {
           && (!Number.isSafeInteger(operation.evidence.resource.page) || operation.evidence.resource.page < 1))
       )) throw new Error('Harness evidence resource identity exceeds its bounds.')
       break
+    case 'record_tool_failure': {
+      const failure = operation.failure
+      const preDispatch = failure.phase === 'pre_dispatch'
+      if (!failure.toolCallId.trim() || failure.toolCallId.length > MAX_ID_LENGTH
+        || !failure.toolName.trim() || failure.toolName.length > MAX_ID_LENGTH
+        || (preDispatch && (failure.causeClass !== 'schema_validation' || failure.causeCode !== 'INVALID_TOOL_INPUT'
+          || failure.safeSummary !== 'Tool input was rejected before execution.'))
+        || (!preDispatch && (failure.causeClass === 'schema_validation' || failure.causeCode === 'INVALID_TOOL_INPUT'
+          || failure.safeSummary !== 'Tool execution failed; its effect may be uncertain.'
+          || (failure.validationIssues?.length ?? 0) > 0))
+        || (failure.validationIssues?.length ?? 0) > 8
+        || failure.validationIssues?.some(issue => issue.path.length > 6
+          || issue.path.some(part => part.length > 64 || !(/^[A-Za-z][A-Za-z0-9_]*$/.test(part) || /^#[0-9]{1,9}$/.test(part) || part === '<field>')))) {
+        throw new Error('Native tool failure exceeds its safe diagnostic bounds.')
+      }
+      break
+    }
     case 'record_verification':
       if (!operation.verification.attemptId.trim() || operation.verification.attemptId.length > 256
         || !operation.verification.candidateDigest.trim() || operation.verification.candidateDigest.length > 128
@@ -1139,6 +1182,7 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
   })
   await settleAssignmentAttempt(ctx, run.runId)
   if (snapshot.status === 'cancelled' || snapshot.status === 'failed') await cancelPendingAssignmentLaunches(ctx, run.runId)
+  if (snapshot.diagnostic) await appendHarnessDiagnosticIndex(ctx, run, snapshot)
   if (isTerminalStatus(snapshot.status)) {
     const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
     const artifacts = await ctx.db.query('harnessContextArtifacts')
@@ -1293,8 +1337,6 @@ function childAdmission(
       spendingMode: parent.policy.spendingMode!,
     } : {}),
     maxCostMicros: 0,
-    maxParallelChildren: parent.policy.maxParallelChildren,
-    maxDepth: parent.policy.maxDepth,
   }
   return {
     runId: operation.child.id,
@@ -1410,6 +1452,8 @@ async function applyReducer(
         evidenceToPersist: operation.evidence,
       }
     }
+    case 'record_tool_failure':
+      return { snapshot: current }
     case 'record_verification':
       return { snapshot: recordHarnessVerification(current, operation.verification, now) }
     case 'set_compaction':
@@ -1891,6 +1935,7 @@ export const writeTranscriptStep = mutation({
     persistence: v.object({ content: v.string(), parts: v.array(v.any()), outputLimitReached: v.optional(v.literal(true)) }),
     fullPersistenceStorageId: v.optional(v.id('_storage')),
     fullPersistenceDigest: v.optional(v.string()),
+    reconcileToolResults: v.optional(v.boolean()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1924,15 +1969,36 @@ export const writeTranscriptStep = mutation({
       || args.fullPersistenceStorageId && !await ctx.db.system.get(args.fullPersistenceStorageId)) {
       throw new Error('Invalid full harness transcript payload.')
     }
+    if (args.reconcileToolResults && (!args.fullPersistenceStorageId || !args.fullPersistenceDigest)) {
+      throw new Error('Invalid reconciled harness transcript payload.')
+    }
     const existing = await ctx.db.query('harnessTranscriptSteps')
       .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
       .unique()
     if (existing) {
-      if (existing.stepNumber !== args.stepNumber || existing.persistenceJson !== persistenceJson
-        || existing.fullPersistenceDigest && existing.fullPersistenceDigest !== args.fullPersistenceDigest) {
+      if (existing.stepNumber !== args.stepNumber) throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+      if (existing.persistenceJson === persistenceJson
+        && (!existing.fullPersistenceDigest || existing.fullPersistenceDigest === args.fullPersistenceDigest)
+        && (!args.reconcileToolResults || existing.fullPersistenceDigest === args.fullPersistenceDigest)) {
+        return { persisted: false }
+      }
+      if (!args.reconcileToolResults) throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+      const current = parseJson<HarnessTranscriptPersistence>(existing.persistenceJson)
+      const merged = reconcileToolInvocationOutcomes(current, args.persistence as HarnessTranscriptPersistence)
+      const safePreview = stableJson(compactTranscriptSnapshot(merged.persistence))
+      if (existing.persistenceJson !== persistenceJson && (!merged.changed || safePreview !== persistenceJson)) {
         throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
       }
-      return { persisted: false }
+      await ctx.db.patch(existing._id, {
+        persistenceJson,
+        fullPersistenceStorageId: args.fullPersistenceStorageId,
+        fullPersistenceDigest: args.fullPersistenceDigest,
+      })
+      if (existing.fullPersistenceStorageId && existing.fullPersistenceStorageId !== args.fullPersistenceStorageId) {
+        await ctx.storage.delete(existing.fullPersistenceStorageId)
+      }
+      await projectNativePersonalProgress(ctx, run, lineage[0]!.metadata, Number(sequenceMatch[1]))
+      return { persisted: true }
     }
     await ctx.db.insert('harnessTranscriptSteps', {
       runId: run.runId,
@@ -2251,15 +2317,71 @@ export const listTranscriptSteps = query({
       .order('desc')
       .paginate(args.paginationOpts)
     return {
-      steps: page.page.map(row => ({
+      steps: await Promise.all(page.page.map(async row => ({
         receiptId: row.receiptId,
         stepNumber: row.stepNumber,
         sequence: row.sequence,
         executionGeneration: row.executionGeneration ?? 0,
         persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
-      })),
+        ...(row.fullPersistenceStorageId ? {
+          fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
+          fullPersistenceDigest: row.fullPersistenceDigest,
+        } : {}),
+      }))),
       cursor: page.continueCursor,
       isDone: page.isDone,
+    }
+  },
+})
+
+export const getTranscriptStepForReconciliation = query({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    receiptId: v.string(),
+    stepNumber: v.number(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<HarnessTranscriptStep | null> => {
+    requireHarnessServerSecret(args.serverSecret)
+    const sequenceMatch = /^model:(\d+)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !sequenceMatch || !Number.isSafeInteger(Number(sequenceMatch[1]))
+      || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0) {
+      throw new Error('Invalid harness transcript step lookup.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    }
+    const receipt = await ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (!receipt || parseJson<HarnessReceipt>(receipt.receiptJson).id !== args.receiptId) {
+      throw new Error('HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND')
+    }
+    const row = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (!row) return null
+    if (row.stepNumber !== args.stepNumber || row.sequence !== Number(sequenceMatch[1])) {
+      throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+    }
+    return {
+      receiptId: row.receiptId,
+      stepNumber: row.stepNumber,
+      sequence: row.sequence,
+      executionGeneration: row.executionGeneration ?? 0,
+      persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
+      ...(row.fullPersistenceStorageId ? {
+        fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
+        fullPersistenceDigest: row.fullPersistenceDigest,
+      } : {}),
     }
   },
 })
@@ -2340,7 +2462,10 @@ export const apply = mutation({
       && operation.evidence.kind === 'tool_result'
       && metadata.status === 'cancelled'
       && !terminalAncestor
-    if (terminalRun && !isLateReceipt && !isLateToolResult) throw new Error('The harness run is terminal.')
+    const isLateToolFailure = operation.type === 'record_tool_failure'
+      && metadata.status === 'cancelled'
+      && !terminalAncestor
+    if (terminalRun && !isLateReceipt && !isLateToolResult && !isLateToolFailure) throw new Error('The harness run is terminal.')
 
     const extraEvidenceRefs = operation.type === 'transition_step' ? operation.evidenceRefs ?? [] : []
     const hydrateExistingStepRefs = operation.type === 'transition_step' && operation.evidenceRefs === undefined
@@ -2378,13 +2503,6 @@ export const apply = mutation({
       }
     }
 
-    if (operation.type === 'admit_child') {
-      const root = lineage.at(-1)!
-      if (root.run.activeDescendantCount >= root.metadata.policy.maxParallelChildren) {
-        throw new Error('The root child concurrency budget is exhausted.')
-      }
-    }
-
     const now = Date.now()
     let result: Awaited<ReturnType<typeof applyReducer>>
     try {
@@ -2396,6 +2514,9 @@ export const apply = mutation({
       })
     }
     const next = result.snapshot
+    if (operation.type === 'record_tool_failure') {
+      await persistHarnessToolFailure(ctx, run, current, operation.failure, now)
+    }
     const changed = next.revision !== current.revision
     const becameTerminal = !isTerminalStatus(metadata.status) && isTerminalStatus(next.status)
     if (result.evidenceToPersist) {
@@ -2427,6 +2548,11 @@ export const apply = mutation({
       await persistChildren(ctx, run.runId, current.children, next.children)
     }
     if (operation.type === 'terminate' && next.status === 'cancelled') await cancelOutstandingAssignments(ctx, run.runId, args.serverSecret)
+    const operationDiagnostic = operation.type === 'record_diagnostic' || operation.type === 'block' || operation.type === 'terminate'
+      ? operation.diagnostic : undefined
+    if (operationDiagnostic) {
+      await appendHarnessDiagnosticIndex(ctx, run, { ...next, diagnostic: operationDiagnostic }, operationDiagnostic)
+    }
     if (run.deliveryAgentRunId && operation.type === 'pause_for_authorization') {
       const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
       if (delivery && delivery.harnessRunId === run.runId && delivery.workflowRunId === workflowRunId) {

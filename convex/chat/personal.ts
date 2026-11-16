@@ -19,6 +19,7 @@ import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/na
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { publicPersonalRun } from '../lib/nativePersonalExecution'
 import { readActivePublicStreams } from '../lib/publicStreamRead'
+import { resolveChatActivity } from '@/shared/agents/thread-activity'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 const chatScope = v.union(v.literal('personal'), v.literal('workspace'))
@@ -34,12 +35,22 @@ const summaryValidator = v.object({
   archivedAt: v.optional(v.number()), lastReadAt: v.optional(v.number()),
   markedUnreadAt: v.optional(v.number()), lastMessageId: v.optional(v.id('conversationMessages')),
   lastMessageAt: v.optional(v.number()), unread: v.boolean(),
+  activity: v.union(v.literal('idle'), v.literal('working'), v.literal('needs_input'), v.literal('ready'),
+    v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
 })
 
 async function summary(ctx: QueryCtx, access: Access) {
   const { conversation, participant } = access
-  const latest = await ctx.db.query('conversationMessages')
-    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversation._id)).order('desc').first()
+  const [latest, latestRun] = await Promise.all([
+    ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversation._id)).order('desc').first(),
+    ctx.db.query('conversationAgentRuns')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversation._id)).order('desc').first(),
+  ])
+  // The same Working / Needs you / Ready status agent threads show.
+  const run = latestRun && latestRun.userId === conversation.userId && latestRun.mode !== 'room' ? latestRun : null
+  const unread = participant?.markedUnreadAt !== undefined
+    || Boolean(latest && latest.role === 'assistant' && latest.createdAt > (participant?.lastReadAt ?? conversation.createdAt))
   return {
     _id: conversation._id,
     workspaceId: access.workspaceId,
@@ -57,8 +68,8 @@ async function summary(ctx: QueryCtx, access: Access) {
     markedUnreadAt: participant?.markedUnreadAt,
     lastMessageId: latest?._id,
     lastMessageAt: latest?.createdAt,
-    unread: participant?.markedUnreadAt !== undefined
-      || Boolean(latest && latest.role === 'assistant' && latest.createdAt > (participant?.lastReadAt ?? conversation.createdAt)),
+    unread,
+    activity: resolveChatActivity(run, unread),
   }
 }
 
@@ -115,10 +126,13 @@ export const getExecution = query({
 })
 
 export const getMessages = query({
-  args: { ...resourceArgs, paginationOpts: paginationOptsValidator },
+  args: { ...resourceArgs, paginationOpts: paginationOptsValidator, unavailableAsEmpty: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const access = await requireNativePersonalChat(ctx, args)
-    await requireNativeCapability(ctx, access.userId, 'conversations.read')
+    const access = args.unavailableAsEmpty
+      ? await optionalMessageAccess(ctx, args)
+      : await requireNativePersonalChat(ctx, args)
+    if (!access) return { page: [], isDone: true, continueCursor: '' }
+    if (!args.unavailableAsEmpty) await requireNativeCapability(ctx, access.userId, 'conversations.read')
     const result = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', args.conversationId))
       .order('desc').paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(100, args.paginationOpts.numItems)) })
@@ -140,6 +154,12 @@ export const getMessages = query({
     })) }
   },
 })
+
+async function optionalMessageAccess(ctx: QueryCtx, args: { workspaceId: string; conversationId: Id<'conversations'> }) {
+  const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+  await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
+  return nativePersonalChatScope(ctx, viewer, await ctx.db.get(args.conversationId))
+}
 
 export const activePublicStreams = query({
   args: { ...resourceArgs, messageIds: v.array(v.id('conversationMessages')) },

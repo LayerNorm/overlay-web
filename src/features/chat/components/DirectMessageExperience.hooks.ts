@@ -1,6 +1,7 @@
 'use client'
 
 import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
+import { useTranscriptHasContentBelow } from './collaboration/useTranscriptHasContentBelow'
 import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -64,17 +65,21 @@ import { defaultMemoryEnabled } from '@/shared/chat/tool-requests'
 import { prefetchTitle } from '@/features/chat/lib/generate-title'
 import {
   compareRoomMessageRecords,
+  captureRoomScrollAnchor,
+  createRoomScrollIntent,
+  holdRoomScrollAnchor,
+  isRoomAgentResponding,
   mergeRoomMessages,
-  remoteAgentCommands,
-  roomMessageDomId,
-  type RemoteAgentCommand,
+  roomMessageDomId, scrollRoomMessageIntoView,
   type RoomMessageRecord,
+  type RoomScrollAnchor,
 } from './collaboration/room-message-view'
 import type { RoomPanelKind } from './collaboration/RoomSidePanels'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatAttachments } from './useChatAttachments'
+import { useAgentTurnScroll } from './collaboration/useAgentTurnScroll'
 import { useComposerTextState } from './chat/useComposerTextState'
 import { useNativeThreadSafety } from './chat/useNativeThreadSafety'
 import {
@@ -84,7 +89,11 @@ import {
   type NativeThreadSafetyStatus,
 } from '@/shared/chat/native-thread-safety'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
+import { useComposerQueue, useComposerQueueControls } from './chat/useComposerQueue'
+import type { QueuedMessage } from '@/shared/chat/conversation-queue'
+import { roomScrollReadKey } from './room-scroll-read-key'
 import { createHandoffConversation } from './chat/chat-send-create'
+import { useAgentThreadTurnActions, type AgentThreadTurnActions } from './collaboration/useAgentThreadTurnActions'
 
 export type OptimisticMessage = RoomMessageRecord
 export type RoomSendResult = {
@@ -185,13 +194,16 @@ export function useReadMarkers({
   const [newMessageCount, setNewMessageCount] = useState(0)
   const unreadBoundaryInitializedRef = useRef(false)
   const readMarkInFlightRef = useRef(false)
+  /** Transcript state last marked read from scrolling; later scrolls over it add nothing. */
+  const scrollReadKeyRef = useRef<string | null>(null)
 
   const clearCollaborationNotifications = useCallback(() => {
     markConversationRead(conversationId)
   }, [conversationId, markConversationRead])
 
-  const markVisibleRead = useCallback(async () => {
+  const markVisibleRead = useCallback(async (scrollReadKey?: string) => {
     if (document.visibilityState !== 'visible') return
+    if (scrollReadKey !== undefined && scrollReadKey === scrollReadKeyRef.current) return
     if (readMarkInFlightRef.current) return
     readMarkInFlightRef.current = true
     try {
@@ -200,6 +212,7 @@ export function useReadMarkers({
       // badges stuck after the user switched into a DM or channel.
       if (!roomArgs) return
       await updateMyState({ ...roomArgs, markRead: true })
+      scrollReadKeyRef.current = scrollReadKey ?? null
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
       clearCollaborationNotifications()
@@ -267,6 +280,7 @@ export function useRoomCollaboration({ room }: { room: RoomStateApi }) {
 export function useRoomTranscript({
   conversationId,
   rosterReady,
+  anchorAgentTurns = false,
 
 
   agentResponding,
@@ -275,10 +289,11 @@ export function useRoomTranscript({
 }: {
   conversationId: string
   rosterReady: boolean
+  anchorAgentTurns?: boolean
 
 
   agentResponding: string | null
-  markVisibleRead: () => Promise<void>
+  markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
 }) {
   const [messages, setMessages] = useState<OptimisticMessage[]>(
@@ -296,14 +311,24 @@ export function useRoomTranscript({
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
   const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
-  const [stickToBottom, setStickToBottom] = useState(true)
+  const [stickToBottom, updateStickToBottom] = useState(true)
+  const [scrollIntent] = useState(createRoomScrollIntent)
+  const setStickToBottom = useCallback((latest: boolean) => {
+    scrollIntent.navigate(latest)
+    updateStickToBottom(latest)
+  }, [scrollIntent])
   const listRef = useRef<HTMLDivElement>(null)
+  const turnScroll = useAgentTurnScroll({ enabled: anchorAgentTurns, conversationId, messages, listRef })
+  const { spacerRef: turnSpacerRef } = turnScroll
+  const hasContentBelow = useTranscriptHasContentBelow(listRef, turnSpacerRef)
   /** Latest messages for callbacks that must not close over a stale render. */
   const messagesRef = useRef<OptimisticMessage[]>(messages)
   useEffect(() => {
     messagesRef.current = messages
   })
-  const prependScrollRef = useRef<{ height: number; top: number } | null>(null)
+  /** Where the reader was when older history was requested, and the oldest row then loaded. */
+  const prependScrollRef = useRef<{ anchor: RoomScrollAnchor | null; height: number; top: number; oldestId?: string } | null>(null)
+  const releasePrependAnchorRef = useRef<(() => void) | null>(null)
   const skipNextMessageGrowthRef = useRef(false)
   const previousMessageCountRef = useRef(messages.length)
   const generatingMessages = messages.filter((message) => message.status === 'generating')
@@ -322,7 +347,14 @@ export function useRoomTranscript({
     if (paging.loadingMore || !paging.hasMore) return
     const node = listRef.current
     if (node) {
-      prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
+      releasePrependAnchorRef.current?.()
+      releasePrependAnchorRef.current = null
+      prependScrollRef.current = {
+        anchor: captureRoomScrollAnchor(node),
+        height: node.scrollHeight,
+        top: node.scrollTop,
+        oldestId: messagesRef.current[0]?.id,
+      }
       skipNextMessageGrowthRef.current = true
     }
     paging.loadMore()
@@ -372,13 +404,25 @@ export function useRoomTranscript({
     })
   }, [loading, messages.length, setNewMessageCount, stickToBottom])
 
+  const oldestMessageId = messages[0]?.id
   useLayoutEffect(() => {
     const node = listRef.current
-    const anchor = prependScrollRef.current
-    if (!node || !anchor) return
-    node.scrollTop = anchor.top + (node.scrollHeight - anchor.height)
+    const pending = prependScrollRef.current
+    // Wait for the older page itself: a live message arriving first must not consume the anchor.
+    if (!node || !pending || oldestMessageId === pending.oldestId) return
     prependScrollRef.current = null
-  }, [messages.length])
+    if (pending.anchor && document.getElementById(roomMessageDomId(pending.anchor.messageId))) {
+      releasePrependAnchorRef.current = holdRoomScrollAnchor(node, pending.anchor)
+    } else {
+      node.scrollTop = pending.top + (node.scrollHeight - pending.height)
+    }
+  }, [messages.length, oldestMessageId])
+
+  useEffect(() => () => {
+    releasePrependAnchorRef.current?.()
+    releasePrependAnchorRef.current = null
+    prependScrollRef.current = null
+  }, [conversationId])
 
   // Pin to latest after the initial transcript paint (and when stick-to-bottom).
   // Double rAF waits for layout of markdown/images so open-room no longer starts
@@ -389,25 +433,39 @@ export function useRoomTranscript({
     const node = listRef.current
     if (!node) return
     const pin = () => {
-      node.scrollTop = node.scrollHeight
+      if (scrollIntent.followsLatest() && !turnScroll.anchored.current) node.scrollTop = node.scrollHeight
     }
     pin()
+    let secondFrame: number | undefined
     const frame = window.requestAnimationFrame(() => {
       pin()
-      window.requestAnimationFrame(pin)
+      secondFrame = window.requestAnimationFrame(pin)
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, stickToBottom])
+    return () => {
+      window.cancelAnimationFrame(frame)
+      if (secondFrame !== undefined) window.cancelAnimationFrame(secondFrame)
+    }
+  }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, scrollIntent, stickToBottom, turnScroll.anchored])
+
+  useEffect(() => {
+    const node = listRef.current
+    if (!node) return
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+    for (const event of events) node.addEventListener(event, scrollIntent.onUserInput, { capture: true, passive: true })
+    return () => {
+      for (const event of events) node.removeEventListener(event, scrollIntent.onUserInput, { capture: true })
+    }
+  }, [scrollIntent])
 
   const handleTranscriptScroll = useCallback(() => {
     const node = listRef.current
     if (node) {
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-      setStickToBottom(distanceFromBottom <= 96)
+      updateStickToBottom(scrollIntent.onScroll(!turnScroll.anchored.current && distanceFromBottom <= 96))
       if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
     }
-    void markVisibleRead()
-  }, [hasMoreMessages, loadOlderMessages, markVisibleRead])
+    void markVisibleRead(roomScrollReadKey(conversationId, messagesRef.current))
+  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent, turnScroll.anchored])
 
   return {
     messages,
@@ -419,6 +477,9 @@ export function useRoomTranscript({
     setConversationTitle,
     surfacePlatform,
     listRef,
+    turnSpacerRef,
+    hasContentBelow,
+    releaseTurnAnchor: turnScroll.release,
     messagesRef,
     stickToBottom,
     setStickToBottom,
@@ -575,19 +636,15 @@ function useRoomMessageDerivations({
   messages,
   unreadBoundarySequence,
   threadRootId,
+  hideDeleted,
 }: {
   messages: OptimisticMessage[]
   unreadBoundarySequence: number | null
   threadRootId: string | null
+  /** Agent threads drop deleted turns like a chat instead of leaving a "Message deleted" row. */
+  hideDeleted: boolean
 }) {
-  const mainMessages = messages.filter((message) => !message.threadRootMessageId)
-  const agentCommands = useMemo<RemoteAgentCommand[]>(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const commands = remoteAgentCommands(messages[index]?.parts)
-      if (commands.length > 0) return commands
-    }
-    return []
-  }, [messages])
+  const mainMessages = messages.filter((message) => !message.threadRootMessageId && !(hideDeleted && message.deletedAt))
   const threadRoot = messages.find((message) => message.id === threadRootId)
   const threadReplies = messages.filter((message) => (
     Boolean(threadRootId) && message.threadRootMessageId === threadRootId
@@ -618,7 +675,7 @@ function useRoomMessageDerivations({
     }
     return latest
   }, [messages])
-  return { mainMessages, agentCommands, threadRoot, threadReplies, unreadBoundaryMessageId, replyCounts, threadTeasers }
+  return { mainMessages, threadRoot, threadReplies, unreadBoundaryMessageId, replyCounts, threadTeasers }
 }
 
 export function useRoomViewModels({
@@ -663,13 +720,12 @@ export function useRoomViewModels({
   const currentParticipant = participants.find((participant) => participant.principalId === currentPrincipalId)
   const {
     mainMessages,
-    agentCommands,
     threadRoot,
     threadReplies,
     unreadBoundaryMessageId,
     replyCounts,
     threadTeasers,
-  } = useRoomMessageDerivations({ messages, unreadBoundarySequence, threadRootId })
+  } = useRoomMessageDerivations({ messages, unreadBoundarySequence, threadRootId, hideDeleted: Boolean(soloAgentParticipant) })
 
   const participantMentions = useMemo(() => participants.map((participant) => {
     const agent = participant.principalType === 'agent'
@@ -726,7 +782,6 @@ export function useRoomViewModels({
     online,
     currentParticipant,
     mainMessages,
-    agentCommands,
     threadRoot,
     threadReplies,
     unreadBoundaryMessageId,
@@ -1463,55 +1518,115 @@ export function useRoomComposer({
   }
 }
 
-export function useRemoteAgentControls({
+/**
+ * Queue and steer for an agent room's main composer. A response counts as
+ * running while an agent reply in the main transcript is pending or generating;
+ * steering stops those replies, including one that appears after the request.
+ */
+export function useRoomComposerQueue({
   activeWorkspaceId,
   conversationId,
-  setMessages,
-  setAttachmentError,
+  composer,
+  sendMessage,
+  mentions,
+  setMentions,
+  messages,
+  agentResponding,
+  stopAgentResponse,
+  disabled,
 }: {
   activeWorkspaceId: string | null | undefined
   conversationId: string
-  setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
-  setAttachmentError: Dispatch<SetStateAction<string | null>>
+  composer: ReturnType<typeof useRoomComposer>
+  sendMessage: SendMessage
+  mentions: MentionItem[]
+  setMentions: Dispatch<SetStateAction<MentionItem[]>>
+  messages: OptimisticMessage[]
+  agentResponding: string | null
+  stopAgentResponse: (messageId: string) => Promise<void>
+  disabled: boolean
 }) {
-  const pendingControls = useRef(new Set<string>())
-  async function controlRemoteQueue(runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') {
-    const controlKey = `${conversationId}:${runId}:${action}`
-    if (!activeWorkspaceId || pendingControls.current.has(controlKey)) return
-    pendingControls.current.add(controlKey)
-    setMessages(current => current.map(message => ({ ...message,
-      parts: message.parts?.map(part => part.type === 'data-remote-agent-status' && part.data?.runId === runId
-        ? { ...part, data: { ...part.data, state: action === 'cancel' ? 'cancelling' : 'recovering' } } : part),
-    })))
-    try {
-      await overlayAppClient.conversations.controlRemoteQueue({
-        workspaceId: activeWorkspaceId,
-        conversationId,
-        runId,
-        action,
-        controlRequestId: crypto.randomUUID(),
-      })
-    } catch (value) {
-      setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
-    } finally {
-      pendingControls.current.delete(controlKey)
-    }
+  const mainMessages = messages.filter((message) => !message.threadRootMessageId)
+  const running = !disabled && isRoomAgentResponding(mainMessages, agentResponding)
+  const generatingKey = mainMessages
+    .filter((message) => message.authorKind === 'agent' && message.status === 'generating' && !message.id.startsWith('optimistic_'))
+    .map((message) => message.id)
+    .join(',')
+  const [stopRequested, setStopRequested] = useState(false)
+  const [wasRunning, setWasRunning] = useState(running)
+  if (wasRunning !== running) {
+    setWasRunning(running)
+    if (!running && stopRequested) setStopRequested(false)
   }
-
-  async function resolveRemoteRequest(
-    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
-    decision: string,
-    response?: Record<string, unknown>,
-  ) {
-    if (!activeWorkspaceId) return
-    try {
-      await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
-        conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
-    } catch (value) {
-      setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
+  const stoppedIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!stopRequested) return
+    for (const messageId of generatingKey ? generatingKey.split(',') : []) {
+      if (stoppedIdsRef.current.has(messageId)) continue
+      stoppedIdsRef.current.add(messageId)
+      void stopAgentResponse(messageId)
     }
-  }
+  }, [generatingKey, stopAgentResponse, stopRequested])
 
+  const sendQueued = useCallback(async (item: QueuedMessage) => {
+    const turnId = `human_${crypto.randomUUID()}`
+    const payload = buildTextTurnPayload({
+      text: item.text,
+      attachedImages: [],
+      pendingChatDocuments: [],
+      mentions: item.mentions,
+      replyContext: null,
+      turnId,
+    })
+    const result = await sendMessage(item.text, {
+      existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
+      parts: payload.partsForModel,
+      attachmentNames: [],
+    })
+    return result.accepted
+  }, [sendMessage])
+
+  const queue = useComposerQueue({
+    scope: disabled ? null : { workspaceId: activeWorkspaceId, conversationId },
+    running,
+    send: sendQueued,
+    stop: () => setStopRequested(true),
+  })
+  const controls = useComposerQueueControls({
+    queue,
+    running,
+    readDraft: () => ({ text: composer.inputRef.current ?? composer.input, mentions }),
+    clearDraft: () => {
+      composer.setInput('')
+      composer.composerRef.current?.clear()
+      setMentions([])
+      clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+    },
+    loadDraft: (draft) => {
+      composer.setInput(draft.text)
+      composer.composerRef.current?.setPlainText(draft.text)
+      setMentions(draft.mentions)
+      writeDraft({ workspaceId: activeWorkspaceId, conversationId }, draft.text)
+      composer.composerRef.current?.focus()
+    },
+    blockedReason: () => composer.attachedImages.length > 0 || composer.pendingChatDocuments.length > 0 || composer.replyContext
+      ? 'Only text messages can wait in the queue. Send this one when the response finishes.'
+      : null,
+    notify: composer.setAttachmentError,
+  })
+  const stop = useCallback(() => {
+    queue.pause()
+    setStopRequested(true)
+  }, [queue])
+  const stopMessage = useCallback((messageId: string) => {
+    queue.pause()
+    return stopAgentResponse(messageId)
+  }, [queue, stopAgentResponse])
+  return { controls, running, stop, stopMessage }
+}
+
+/** Stops an agent reply that is still being written. */
+export function useRemoteAgentControls({ conversationId }: { conversationId: string }) {
   async function stopAgentResponse(messageId: string) {
     try {
       await overlayAppClient.conversations.stopResponse({ conversationId, messageId })
@@ -1520,7 +1635,7 @@ export function useRemoteAgentControls({
     }
   }
 
-  return { controlRemoteQueue, resolveRemoteRequest, stopAgentResponse }
+  return { stopAgentResponse }
 }
 
 export function useMessageActions({
@@ -1643,6 +1758,7 @@ export function useMessageActions({
 export function useMessageNavigation({
   listRef,
   messagesRef,
+  releaseTurnAnchor,
   setStickToBottom,
   markVisibleRead,
   setNewMessageCount,
@@ -1652,8 +1768,9 @@ export function useMessageNavigation({
 }: {
   listRef: RefObject<HTMLDivElement | null>
   messagesRef: RefObject<OptimisticMessage[]>
-  setStickToBottom: Dispatch<SetStateAction<boolean>>
-  markVisibleRead: () => Promise<void>
+  setStickToBottom: (latest: boolean) => void
+  releaseTurnAnchor?: () => void
+  markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
   setThreadRootId: Dispatch<SetStateAction<string | null>>
   setRoomPanel: Dispatch<SetStateAction<RoomPanelKind | null>>
@@ -1678,24 +1795,24 @@ export function useMessageNavigation({
       setRoomPanel(null)
     }
     setHighlightedMessageId(messageId)
+    setStickToBottom(false)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        document.getElementById(roomMessageDomId(messageId))?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        })
+        const element = document.getElementById(roomMessageDomId(messageId))
+        if (element) scrollRoomMessageIntoView(element)
       })
     })
-  }, [messagesRef, setRoomPanel, setThreadRootId])
+  }, [messagesRef, setRoomPanel, setStickToBottom, setThreadRootId])
 
   const jumpToLatest = useCallback(() => {
     const node = listRef.current
     if (!node) return
+    releaseTurnAnchor?.()
     setStickToBottom(true)
     node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
     setNewMessageCount(0)
     void markVisibleRead()
-  }, [listRef, markVisibleRead, setNewMessageCount, setStickToBottom])
+  }, [listRef, markVisibleRead, setNewMessageCount, setStickToBottom, releaseTurnAnchor])
 
   useEffect(() => {
     const target = typeof window === 'undefined'
@@ -1907,6 +2024,8 @@ export type RoomMessageContext = {
   isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   conversationType: 'dm' | 'channel'
+  /** Chat-style turn actions; set only in the member's own agent thread. */
+  agentThreadTurns: AgentThreadTurnActions | null
   currentPrincipalId: string
   participants: ConversationParticipant[]
   directoryAgentsByPrincipal: ReadonlyMap<string, AgentDirectoryEntry>
@@ -1940,12 +2059,6 @@ export type RoomMessageContext = {
   onOpenAttachmentPreview: (preview: AttachmentPreview, options?: AttachmentPreviewOpenOptions) => void
   copyMessagePermalink: (messageId: string) => Promise<void>
   stopAgentResponse: (messageId: string) => Promise<void>
-  controlRemoteQueue: (runId: string, action: 'cancel' | 'retry' | 'resume' | 'start_fresh') => Promise<void>
-  resolveRemoteRequest: (
-    request: NonNullable<import('./collaboration/RoomMessageItem').RoomMessageView['remoteRequest']>,
-    decision: string,
-    response?: Record<string, unknown>,
-  ) => Promise<void>
   highlightedMessageId: string | null
 }
 
@@ -1974,11 +2087,13 @@ export function buildRoomMessageContext({
   sendMessage,
   navigation,
   remoteControls,
+  agentThreadTurns,
   onOpenAttachmentPreview,
 }: {
   isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
   conversationType: 'dm' | 'channel'
+  agentThreadTurns: AgentThreadTurnActions | null
   roster: ReturnType<typeof useRoomRoster>
   collab: ReturnType<typeof useRoomCollaboration>
   thread: ReturnType<typeof useThreadPanel>
@@ -1995,6 +2110,7 @@ export function buildRoomMessageContext({
     isReadOnlyMessage,
     conversationId,
     conversationType,
+    agentThreadTurns,
     currentPrincipalId: roster.currentPrincipalId,
     participants: roster.participants,
     directoryAgentsByPrincipal,
@@ -2021,8 +2137,6 @@ export function buildRoomMessageContext({
     onOpenAttachmentPreview,
     copyMessagePermalink: actions.copyMessagePermalink,
     stopAgentResponse: remoteControls.stopAgentResponse,
-    controlRemoteQueue: remoteControls.controlRemoteQueue,
-    resolveRemoteRequest: remoteControls.resolveRemoteRequest,
     highlightedMessageId: navigation.highlightedMessageId,
   }
 }
@@ -2123,6 +2237,7 @@ export function useDirectMessageRoom({
   const transcript = useRoomTranscript({
     conversationId,
     rosterReady: roster.ready,
+    anchorAgentTurns: conversationType === 'dm' && roster.participants.some(participant => participant.principalType === 'agent'),
 
 
     agentResponding,
@@ -2192,11 +2307,18 @@ export function useDirectMessageRoom({
     setMentions,
     readOnly: Boolean(transcript.surfacePlatform) || nativeThreadSafety.readOnly,
   })
-  const remoteControls = useRemoteAgentControls({
+  const remoteControls = useRemoteAgentControls({ conversationId })
+  const composerQueue = useRoomComposerQueue({
     activeWorkspaceId,
     conversationId,
-    setMessages: transcript.setMessages,
-    setAttachmentError: composer.setAttachmentError,
+    composer,
+    sendMessage,
+    mentions,
+    setMentions,
+    messages: transcript.messages,
+    agentResponding,
+    stopAgentResponse: remoteControls.stopAgentResponse,
+    disabled: Boolean(transcript.surfacePlatform) || nativeThreadSafety.readOnly,
   })
   const isReadOnlyMessage = (messageId: string) => {
     const message = transcript.messages.find((row) => row.id === messageId)
@@ -2214,6 +2336,7 @@ export function useDirectMessageRoom({
   const navigation = useMessageNavigation({
     listRef: transcript.listRef,
     messagesRef: transcript.messagesRef,
+    releaseTurnAnchor: transcript.releaseTurnAnchor,
     setStickToBottom: transcript.setStickToBottom,
     markVisibleRead: readMarkers.markVisibleRead,
     setNewMessageCount: readMarkers.setNewMessageCount,
@@ -2319,6 +2442,16 @@ export function useDirectMessageRoom({
     room,
     setMenuOpen,
   })
+  const agentThreadTurns = useAgentThreadTurnActions({
+    workspaceId: activeWorkspaceId,
+    agentId: vm.soloAgentParticipant
+      ? directoryAgentsByPrincipal.get(vm.soloAgentParticipant.principalId)?.id ?? nativeThreadSafety.agentId
+      : null,
+    conversationId,
+    mainMessages: vm.mainMessages,
+    sendMessage,
+    router,
+  })
   const messageCtx = buildRoomMessageContext({
     isReadOnlyMessage,
     conversationId,
@@ -2332,7 +2465,8 @@ export function useDirectMessageRoom({
     composer,
     sendMessage,
     navigation,
-    remoteControls,
+    remoteControls: { ...remoteControls, stopAgentResponse: composerQueue.stopMessage },
+    agentThreadTurns,
     onOpenAttachmentPreview,
   })
 
@@ -2361,6 +2495,7 @@ export function useDirectMessageRoom({
     vm,
     sendMessage,
     composer,
+    composerQueue,
     remoteControls,
     actions,
     navigation,

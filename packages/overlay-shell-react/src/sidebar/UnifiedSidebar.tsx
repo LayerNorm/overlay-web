@@ -436,7 +436,7 @@ export function UnifiedSidebar({
       style={{ '--sidebar-resized-width': `${width}px` } as CSSProperties}
       className={cn('border-r-0', collapsed ? 'w-14' : 'w-(--sidebar-resized-width)', className, resizing && 'transition-none')}
     >
-      {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
+      {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} livePreview minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
       <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} activityOnly={activityOnly} onToggleActivity={settingsNav ? undefined : onToggleActivity} />
       {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
       {settingsNav ? (

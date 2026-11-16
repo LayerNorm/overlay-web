@@ -20,6 +20,9 @@ import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-ap
 import type { OverlayToolsOptions } from './types'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import { publishComputerFile } from '@/server/files/computer-publication'
+import { LocalComputerError } from '@/server/computers/local/LocalComputerService'
+import { LocalHostSandboxInstance, isLocalHostSandboxInstance } from '@/server/computers/local/LocalHostSandboxInstance'
+import type { ComputerTarget } from './types'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -785,6 +788,12 @@ export async function executeDeleteAutomation(options: OverlayToolsOptions, inpu
   }
 }
 
+/** Generated outputs are `files` rows; the id and content URL let chat render a file card. */
+function generatedFileFields(outputId: unknown): { fileId?: string; url?: string } {
+  if (typeof outputId !== 'string' || !outputId) return {}
+  return { fileId: outputId, url: `/api/v1/files/${encodeURIComponent(outputId)}/content` }
+}
+
 export async function executeGenerateImage(
   options: OverlayToolsOptions,
   input: {
@@ -822,6 +831,7 @@ export async function executeGenerateImage(
     return {
       success: true,
       outputId: data.outputId,
+      ...generatedFileFields(data.outputId),
       modelUsed: data.modelUsed,
       message: `Image generated successfully with ${data.modelUsed}. OutputId: ${data.outputId}`,
     }
@@ -917,6 +927,7 @@ export async function executeGenerateVideo(
         success: true,
         status: 'completed',
         outputId: finalResult.outputId,
+        ...generatedFileFields(finalResult.outputId),
         modelUsed: finalResult.modelUsed,
         message: `Video generated successfully with ${finalResult.modelUsed}. OutputId: ${finalResult.outputId}`,
       }
@@ -978,6 +989,14 @@ function truncateOutput(value: string): { text: string; truncated: boolean } {
 }
 
 function computerErrorResult(err: unknown, fallback: string) {
+  if (err instanceof LocalComputerError) {
+    return {
+      success: false as const,
+      error: err.message,
+      code: err.code,
+      ...(err.missing.length ? { missing: err.missing } : {}),
+    }
+  }
   if (err instanceof ComputerServiceError) {
     return { success: false as const, error: err.message, code: err.code }
   }
@@ -1000,18 +1019,72 @@ function computerErrorResult(err: unknown, fallback: string) {
   return { success: false as const, error: err instanceof Error ? err.message : fallback }
 }
 
+const LOCAL_TARGET_UNAVAILABLE =
+  "The user's Mac is not connected to Overlay right now. Do not retry with target \"local\". "
+  + 'Ask the user to open Overlay on their Mac (Settings → Desktop → This Mac), or use the cloud Computer.'
+
+const PINNED_MAC_UNAVAILABLE =
+  'This thread runs on a Mac that is offline, or that belongs to someone else. Do not retry computer tools. '
+  + 'Tell the user: open Overlay on that Mac, or switch the thread to another computer under the message box. '
+  + 'Only the person who connected a Mac can run a thread on it.'
+
+/** Resolves the user's own Mac for computer tools, or why it cannot be used for this turn. */
+async function localComputerFor(options: OverlayToolsOptions, toolName: string) {
+  if (!options.workspaceId) return { ok: false as const, error: 'Computers need a workspace context.' }
+  if (options.computerApprovalContext === 'automation') {
+    return { ok: false as const, error: "Automations cannot use the user's Mac. Use the cloud Computer instead." }
+  }
+  const service = getOverlayServerContext().localComputerService
+  if (!service) return { ok: false as const, error: LOCAL_TARGET_UNAVAILABLE }
+  const computer = await service.findForUser({
+    workspaceId: options.workspaceId, userId: options.userId,
+    ...(options.localEnvironmentId ? { environmentId: options.localEnvironmentId } : {}),
+  })
+  if (!computer) {
+    return { ok: false as const, error: options.localEnvironmentId ? PINNED_MAC_UNAVAILABLE : LOCAL_TARGET_UNAVAILABLE }
+  }
+  const instance = new LocalHostSandboxInstance(computer, service, {
+    userId: options.userId, ...(options.agentId ? { agentId: options.agentId } : {}), toolName,
+  })
+  return {
+    ok: true as const,
+    computer: { id: `local:${computer.environmentId}`, name: computer.name, controlledByUserId: undefined, location: 'local' as const },
+    // The person at the Mac is always in control of it; there is no takeover state to re-read.
+    operate: <T>(operation: (instance: SandboxInstance, current: Pick<Computer, 'controlledByUserId'>) => Promise<T>) =>
+      operation(instance, { controlledByUserId: undefined }),
+  }
+}
+
+/**
+ * Resolves the computer a tool call runs on. An explicit target wins, then the
+ * turn's default; with neither, the cloud Computer is used when one is bound
+ * and the user's own Mac otherwise.
+ */
 export async function computerInstanceFor(
+  options: OverlayToolsOptions,
+  selection: { target?: ComputerTarget; toolName?: string } = {},
+): ReturnType<typeof cloudComputerInstanceFor> {
+  const target = selection.target ?? options.computerTarget
+  const toolName = selection.toolName ?? 'computer'
+  if (target === 'local') return await localComputerFor(options, toolName)
+  const cloud = await cloudComputerInstanceFor(options)
+  if (cloud.ok || target === 'cloud' || !cloud.unbound) return cloud
+  const local = await localComputerFor(options, toolName)
+  return local.ok ? local : cloud
+}
+
+async function cloudComputerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
   | {
       ok: true
-      computer: Pick<Computer, 'id' | 'name' | 'controlledByUserId'>
+      computer: Pick<Computer, 'id' | 'name' | 'controlledByUserId'> & { location?: 'cloud' | 'local' }
       operate<T>(
         operation: (instance: SandboxInstance, computer: Pick<Computer, 'controlledByUserId'>) => Promise<T>,
         actionDeadlineMs?: number,
       ): Promise<T>
     }
-  | { ok: false; error: string }
+  | { ok: false; error: string; unbound?: boolean }
 > {
   if (!options.workspaceId) {
     return { ok: false, error: 'Computers need a workspace context.' }
@@ -1052,9 +1125,10 @@ export async function computerInstanceFor(
     if (err instanceof ComputerServiceError && err.code === 'not_found') {
       return {
         ok: false,
+        unbound: true,
         error:
-          'No computer is bound to this owner — do not retry other computer tools. ' +
-          'Ask the user to enable a computer for this agent in the agent editor (Computer toggle).',
+          'No computer is bound to this owner and the user\'s Mac is not connected — do not retry other computer tools. ' +
+          'Ask the user to enable a computer for this agent in the agent editor (Computer toggle), or to open Overlay on their Mac.',
       }
     }
     return { ok: false, error: computerErrorResult(err, 'Computer unavailable').error ?? 'Computer unavailable' }
@@ -1070,22 +1144,24 @@ export async function executeComputerPublishFile(
     mimeType: string
     parentId?: string
     scope: 'personal' | 'workspace'
+    target?: ComputerTarget
   },
 ) {
+  const { target, ...publication } = input
   return await publishComputerFile({
-    request: { ...input, scope: roomListScope(options, input.scope) ?? input.scope },
+    request: { ...publication, scope: roomListScope(options, publication.scope) ?? publication.scope },
     authority: options.artifactPublicationAuthority,
     userId: options.userId,
     workspaceId: options.workspaceId,
-    resolveComputer: () => computerInstanceFor(options),
+    resolveComputer: () => computerInstanceFor(options, { target, toolName: 'computer_publish_file' }),
   })
 }
 
 export async function executeComputerExec(
   options: OverlayToolsOptions,
-  input: { command: string; cwd?: string; timeoutMs?: number },
+  input: { command: string; cwd?: string; timeoutMs?: number; target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_exec' })
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const timeoutMs = Math.min(
@@ -1125,9 +1201,9 @@ export async function executeComputerExec(
 
 export async function executeComputerReadFile(
   options: OverlayToolsOptions,
-  input: { path: string },
+  input: { path: string; target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_read_file' })
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const bytes = await resolved.operate((instance) => instance.readFile(input.path))
@@ -1150,19 +1226,62 @@ export async function executeComputerReadFile(
   }
 }
 
+/** Old files larger than this are rewritten without line counts. */
+const COMPUTER_DIFF_MAX_BYTES = 1024 * 1024
+
+function splitLines(text: string): string[] {
+  if (!text) return []
+  const lines = text.split('\n')
+  if (text.endsWith('\n')) lines.pop()
+  return lines
+}
+
+function countLines(text: string): number {
+  return splitLines(text).length
+}
+
+/**
+ * Lines added and removed between two versions, counted as a multiset difference. It matches a diff's counts for
+ * ordinary edits; moved lines count as unchanged.
+ */
+export function lineChanges(before: string, after: string): { linesAdded: number; linesRemoved: number } {
+  const remaining = new Map<string, number>()
+  for (const line of splitLines(before)) remaining.set(line, (remaining.get(line) ?? 0) + 1)
+  let linesAdded = 0
+  for (const line of splitLines(after)) {
+    const left = remaining.get(line) ?? 0
+    if (left > 0) remaining.set(line, left - 1)
+    else linesAdded++
+  }
+  let linesRemoved = 0
+  for (const left of remaining.values()) linesRemoved += left
+  return { linesAdded, linesRemoved }
+}
+
 export async function executeComputerWriteFile(
   options: OverlayToolsOptions,
-  input: { path: string; contents: string },
+  input: { path: string; contents: string; target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_write_file' })
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const bytes = new TextEncoder().encode(input.contents)
-    await resolved.operate((instance) => instance.writeFiles([{ path: input.path, contents: bytes }]))
+    const previous = await resolved.operate(async (instance) => {
+      // Read the old text first so the row can say "Created" or "Edited +a −b". A failed read only drops the counts.
+      const before = await instance.readFile(input.path).catch((_error) => undefined)
+      await instance.writeFiles([{ path: input.path, contents: bytes }])
+      return before
+    })
+    const changes = previous === undefined ? {}
+      : previous === null ? { created: true, linesAdded: countLines(input.contents), linesRemoved: 0 }
+        : previous.length <= COMPUTER_DIFF_MAX_BYTES
+          ? { created: false, ...lineChanges(new TextDecoder().decode(previous), input.contents) }
+          : { created: false }
     return {
       success: true,
       path: input.path,
       bytes: bytes.length,
+      ...changes,
       computerId: resolved.computer.id,
     }
   } catch (err) {
@@ -1172,13 +1291,16 @@ export async function executeComputerWriteFile(
 
 export async function executeComputerListFiles(
   options: OverlayToolsOptions,
-  input: { path?: string },
+  input: { path?: string; target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_list_files' })
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
-    const path = input.path ?? '/home/user'
-    const entries = await resolved.operate((instance) => instance.listFiles(path))
+    let path = input.path ?? '/home/user'
+    const entries = await resolved.operate((instance) => {
+      if (!input.path && isLocalHostSandboxInstance(instance)) path = instance.homeDirectory
+      return instance.listFiles(path)
+    })
     return {
       success: true,
       path,
@@ -1196,9 +1318,9 @@ export async function executeComputerListFiles(
 
 export async function executeComputerOpenUrl(
   options: OverlayToolsOptions,
-  input: { url: string },
+  input: { url: string; target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_open_url' })
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
     const result = await executeComputerActionWithTakeover(
@@ -1220,7 +1342,9 @@ export async function executeComputerOpenUrl(
       success: true,
       opened: input.url,
       openedWith: result.openedWith,
-      note: result.openedWith === 'browser'
+      note: resolved.computer.location === 'local'
+        ? `Opened on ${resolved.computer.name}, the user's own Mac.`
+        : result.openedWith === 'browser'
         ? 'Opened in the persistent browser on the visible desktop. The user can watch it live via Open desktop.'
         : 'Opened with the desktop URL handler because the browser driver is unavailable. The user can watch it live via Open desktop.',
       computerId: resolved.computer.id,
@@ -1230,8 +1354,8 @@ export async function executeComputerOpenUrl(
   }
 }
 
-export async function executeComputerScreenshot(options: OverlayToolsOptions) {
-  const resolved = await computerInstanceFor(options)
+export async function executeComputerScreenshot(options: OverlayToolsOptions, input: { target?: ComputerTarget } = {}) {
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_screenshot' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
   try {
     const result = await executeComputerActionWithTakeover(
@@ -1256,6 +1380,7 @@ export async function executeComputerScreenshot(options: OverlayToolsOptions) {
       width: result.width,
       height: result.height,
       image: result.image,
+      mediaType: result.mediaType === 'image/jpeg' ? 'image/jpeg' as const : 'image/png' as const,
       computerId: resolved.computer.id,
     }
   } catch (err) {
@@ -1357,11 +1482,12 @@ export async function executeComputerActionWithApproval<T>(
 
 export async function executeComputerBrowser(
   options: OverlayToolsOptions,
-  input: ComputerBrowserAction,
+  input: ComputerBrowserAction & { target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_browser' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const { action, ...args } = input
+  const { action, target: _target, ...args } = input
+  void _target
   try {
     const output = await executeComputerActionWithTakeover(
       resolved.computer.controlledByUserId,
@@ -1393,11 +1519,12 @@ export async function executeComputerBrowser(
 
 export async function executeComputerInput(
   options: OverlayToolsOptions,
-  input: ComputerInputAction,
+  input: ComputerInputAction & { target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_input' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const { action, ...inputArgs } = input
+  const { action, target: _target, ...inputArgs } = input
+  void _target
   const command = action === 'double_click' || action === 'right_click' ? 'click' : action
   const args: Record<string, unknown> = { ...inputArgs }
   if (action === 'double_click') args.count = 2
@@ -1430,11 +1557,12 @@ export async function executeComputerInput(
 
 export async function executeComputerTerminal(
   options: OverlayToolsOptions,
-  input: ComputerTerminalAction,
+  input: ComputerTerminalAction & { target?: ComputerTarget },
 ) {
-  const resolved = await computerInstanceFor(options)
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_terminal' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const { action, ...args } = input
+  const { action, target: _target, ...args } = input
+  void _target
   const environment = action === 'start'
     ? agentGatewayExecEnv({
         workspaceId: options.workspaceId!,

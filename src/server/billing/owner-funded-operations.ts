@@ -37,11 +37,6 @@ export const OWNER_FUNDED_OPERATIONS = [
     path: '/api/v1/generate-video',
   },
   {
-    id: 'agent.notebook',
-    method: 'POST',
-    path: '/api/v1/notebook-agent',
-  },
-  {
     id: 'audio.transcribe',
     method: 'POST',
     path: '/api/v1/transcribe',

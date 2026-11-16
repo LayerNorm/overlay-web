@@ -4,6 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
+import { threadPullRequestValidator } from '../lib/threadPullRequests'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { resolveThreadActivity } from '../../src/shared/agents/thread-activity'
 
@@ -15,6 +16,7 @@ const threadView = v.object({
   lastModified: v.number(),
   createdAt: v.number(),
   archivedAt: v.optional(v.number()),
+  pullRequests: v.optional(v.array(threadPullRequestValidator)),
   isMain: v.boolean(),
 })
 
@@ -343,8 +345,7 @@ export async function resolveMainAgentThread(ctx: MutationCtx, args: { workspace
 
   // Archived agents still resolve their existing main thread so history
   // stays viewable from Settings → Archived; they just cannot adopt or create.
-  // A thread the caller archived is never the one an agent opens into: archiving
-  // a thread must not leave the agent opening onto it, nor make the agent look archived.
+  // A caller-archived thread is not eligible to resolve as main.
   // requireLiveAgent is skipped when a main thread resolves — ordering required.
   // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
   const threads = await listThreadDocs(ctx, { ...args })
@@ -405,7 +406,7 @@ export async function listAgentThreads(ctx: Ctx, args: { workspaceId: string; ag
     thread,
     archivedAt: await callerArchivedAt(ctx, thread._id, actor.principalId),
   })))
-  // The main thread is the oldest one the caller has not archived (the one the agent opens into).
+  // The main-thread marker remains oldest-first; implicit landing uses activity ordering.
   const mainThreadId = withArchive
     .filter((item) => !item.archivedAt)
     .map((item) => item.thread)
@@ -416,9 +417,25 @@ export async function listAgentThreads(ctx: Ctx, args: { workspaceId: string; ag
     lastModified: thread.lastModified,
     createdAt: thread.createdAt,
     archivedAt,
+    ...(thread.pullRequests?.length ? { pullRequests: thread.pullRequests } : {}),
     isMain: thread._id === mainThreadId,
   }))
   return views.sort((a, b) => b.lastModified - a.lastModified)
+}
+
+export async function resolveLatestActivityAgentThread(
+  ctx: MutationCtx,
+  args: { workspaceId: string; agentId: string; userId: string },
+) {
+  const latest = (await listAgentThreads(ctx, args))
+    .filter((thread) => !thread.archivedAt)
+    .sort((a, b) =>
+      b.lastModified - a.lastModified
+      || b.createdAt - a.createdAt
+      || String(b.conversationId).localeCompare(String(a.conversationId)),
+    )[0]
+  if (latest) return { conversationId: latest.conversationId, title: latest.title }
+  return resolveMainAgentThread(ctx, args)
 }
 
 export async function listArchivedAgentThreads(ctx: Ctx, args: { workspaceId: string; userId: string }) {

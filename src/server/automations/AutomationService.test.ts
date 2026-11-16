@@ -1,26 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AutomationService, AutomationServiceError, buildAutomationUpdateNote } from './AutomationService'
+import { AutomationService, AutomationServiceError } from './AutomationService'
 import {
   PaidPlanAutomationEntitlementPolicy,
   type AutomationEntitlementPolicy,
 } from './AutomationEntitlementPolicy'
 import type { AutomationRepository } from './AutomationRepository'
+import { WorkspaceExecutionError, requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 import { LifecycleEventPublisher, LIFECYCLE_EVENT_TOPIC } from '@/server/lifecycle-events'
 import type { EventBus } from '@overlay/app-core'
-import { WorkspaceExecutionError, requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
-
-class CapturingEventBus implements EventBus {
-  readonly events: Array<{ payload: unknown; topic: string }> = []
-
-  async publish(topic: string, payload: unknown): Promise<void> {
-    this.events.push({ topic, payload })
-  }
-
-  subscribe(): () => void {
-    return () => {}
-  }
-}
+import type { AutomationThreadTurnInput } from './AutomationService'
 
 test('owner-fenced settlement retains the repository instance for its server credentials', async () => {
   const repository = createRepository({
@@ -41,21 +30,18 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
   failedRuns: Array<Record<string, unknown>>
   startedRuns: Array<Record<string, unknown>>
   completedRuns: Array<Record<string, unknown>>
-  updateNotes: Array<Record<string, unknown>>
   updatedAutomations: Array<Record<string, unknown>>
 } {
   const createdAutomations: Array<Record<string, unknown>> = []
   const failedRuns: Array<Record<string, unknown>> = []
   const startedRuns: Array<Record<string, unknown>> = []
   const completedRuns: Array<Record<string, unknown>> = []
-  const updateNotes: Array<Record<string, unknown>> = []
   const updatedAutomations: Array<Record<string, unknown>> = []
   return {
     createdAutomations,
     failedRuns,
     startedRuns,
     completedRuns,
-    updateNotes,
     updatedAutomations,
     async listAutomations() {
       return []
@@ -75,15 +61,6 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
         conversationId: 'conversation_owned',
       } as never
     },
-    async getAutomationRunTarget() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Automation',
-        instructions: 'Do the task',
-        sourceConversationId: 'conversation_1',
-      } as never
-    },
     async createAutomation(args) {
       createdAutomations.push(args)
       return 'automation_1'
@@ -98,9 +75,6 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async requestRunCancellation() { return true },
     async retryRun() { return 'run_retry_1' },
     async removeConversation() {},
-    async appendAutomationUpdateNote(args) {
-      updateNotes.push(args)
-    },
     async createManualRun() {
       return 'run_1' as never
     },
@@ -113,9 +87,16 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
     async markManualRunFailed(args) {
       failedRuns.push(args)
     },
+    async bindThread() {
+      return { conversationId: 'conversation_thread', kind: 'chat', workspaceId: 'workspace_1' }
+    },
+    async linkRunMessage() {},
+    async getThreadRunOutcome() {
+      return { status: 'pending' }
+    },
     async getRunForExecution() {
       return {
-        run: { status: 'running', scheduledFor: 1_700_000_000_000 },
+        run: { _id: 'run_1', userId: 'user_1', status: 'running', scheduledFor: 1_700_000_000_000 },
         automation: {
           _id: 'automation_1',
           userId: 'user_1',
@@ -135,39 +116,54 @@ function createService(
   entitlementPolicy: AutomationEntitlementPolicy = new PaidPlanAutomationEntitlementPolicy(
     async () => 'paid',
   ),
-  lifecycleEvents?: LifecycleEventPublisher,
   requireExecution: typeof requireWorkspaceExecution = async () => ({ billingEnabled: false }) as never,
+  threadTurnStarter?: (input: AutomationThreadTurnInput) => Promise<{ messageId: string }>,
 ) {
-  const finishedEvents: Array<Record<string, unknown>> = []
-  const failedEvents: Array<Record<string, unknown>> = []
+  const startedTurns: AutomationThreadTurnInput[] = []
   return {
-    finishedEvents,
-    failedEvents,
+    startedTurns,
     service: new AutomationService({
       entitlementPolicy,
       repository,
       requireExecution,
       clock: { now: () => 1_700_000_000_000 },
-      events: {
-        finished: (event) => finishedEvents.push(event),
-        failed: (event) => failedEvents.push(event),
-      },
-      lifecycleEvents: lifecycleEvents ? () => lifecycleEvents : undefined,
-      executor: async () => ({ conversationId: 'conversation_result' as never }),
+      threadTurnStarter: threadTurnStarter ?? (async (input) => {
+        startedTurns.push(input)
+        return { messageId: 'message_1' }
+      }),
     }),
   }
 }
 
-test('a new durable scheduled run persists and returns a workspace payment refusal', async () => {
+const routeContext = { auth: { userId: 'user_1', authType: 'service' } } as never
+
+/** A repository that records the thread-run ledger writes. */
+function threadRunRepository(overrides: Partial<AutomationRepository> = {}) {
+  const writes: Array<[string, Record<string, unknown>]> = []
+  const repository = createRepository({
+    async updateRunWorkflowRunId(args) { writes.push(['owner', args]) },
+    async bindThread(args) {
+      writes.push(['bind', args])
+      return { conversationId: 'conversation_thread', kind: 'agent', workspaceId: 'workspace_1' }
+    },
+    async markManualRunStarted(args) { writes.push(['started', args]) },
+    async linkRunMessage(args) { writes.push(['message', args]) },
+    async settleManualRun(args) { writes.push(['settle', args]); return true },
+    ...overrides,
+  })
+  return { repository, writes }
+}
+
+test('a new scheduled run persists and returns a workspace payment refusal', async () => {
   const repository = createRepository()
-  const { service } = createService(repository, undefined, undefined, async (input) => {
+  const { service, startedTurns } = createService(repository, undefined, async (input) => {
     assert.equal(input.userId, 'user_1')
     assert.equal(input.workspaceId, 'workspace_1')
     throw new WorkspaceExecutionError({ state: 'payment_pending', canExecute: false }, true)
   })
 
   await assert.rejects(
-    service.startDurableScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', baseUrl: 'https://app.example' }),
+    service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', routeContext }),
     (error: unknown) => error instanceof AutomationServiceError
       && error.statusCode === 402
       && error.payload.code === 'payment_pending',
@@ -177,32 +173,38 @@ test('a new durable scheduled run persists and returns a workspace payment refus
     repository.failedRuns[0]?.error,
     'Your payment has not been confirmed yet. Your draft is saved.',
   )
+  assert.deepEqual(startedTurns, [])
 })
 
-test('an existing durable workflow replay skips new workspace admission', async () => {
-  const repository = createRepository({
+test('a duplicate delivery of a run that is still posting its message is refused without side effects', async () => {
+  const { repository, writes } = threadRunRepository({
     async getRunForExecution() {
       return {
-        run: { _id: 'run_1', status: 'running', workflowRunId: 'workflow_existing' },
-        automation: { _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1' },
+        run: { _id: 'run_1', userId: 'user_1', status: 'running', workflowRunId: 'automation-thread:run_1' },
+        automation: { _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', instructions: 'Do the task' },
       } as never
     },
   })
-  const { service } = createService(repository, undefined, undefined, async () => {
-    throw new Error('replay should not recheck new-run admission')
+  const { service, startedTurns } = createService(repository, undefined, async () => {
+    throw new Error('a duplicate delivery should not recheck admission')
   })
 
-  assert.deepEqual(await service.startDurableScheduledRun({
-    runId: 'run_1',
-    serviceUserId: 'user_1',
-    baseUrl: 'https://app.example',
-  }), {
-    ok: true,
-    durable: true,
-    runId: 'run_1',
-    workflowRunId: 'workflow_existing',
-  })
-  assert.equal(repository.failedRuns.length, 0)
+  await assert.rejects(
+    service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 409,
+  )
+  assert.deepEqual(writes, [])
+  assert.deepEqual(startedTurns, [])
+})
+
+test('a scheduled run for another user is refused', async () => {
+  const { repository, writes } = threadRunRepository()
+  const { service } = createService(repository)
+  await assert.rejects(
+    service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_2', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 401,
+  )
+  assert.deepEqual(writes, [])
 })
 
 test('AutomationService.createAutomation preserves paid-plan requirement', async () => {
@@ -290,48 +292,6 @@ test('AutomationService.createAutomation parses a stringified schedule before pe
   assert.equal(repository.createdAutomations[0]?.workspaceId, 'workspace_1')
 })
 
-test('buildAutomationUpdateNote preserves update note wording', () => {
-  const note = buildAutomationUpdateNote({
-    _id: 'automation_1' as never,
-    userId: 'user_1',
-    name: 'Old name',
-    description: 'Old description',
-    instructions: 'Old instructions',
-    enabled: true,
-    modelId: 'old-model',
-    createdAt: 1,
-    updatedAt: 1,
-  }, {
-    name: 'New name',
-    description: 'New description',
-    instructions: 'New instructions',
-    enabled: false,
-    modelId: 'new-model',
-  })
-
-  assert.equal(
-    note,
-    'Automation updated: name changed to "New name"; description updated; instructions updated; paused; model changed to new-model.',
-  )
-})
-
-test('AutomationService.updateAutomation appends update note best effort', async () => {
-  const repository = createRepository()
-  const { service } = createService(repository)
-
-  await service.updateAutomation({
-    userId: 'user_1',
-    workspaceId: 'workspace_1',
-    body: {
-      automationId: 'automation_1',
-      name: 'New name',
-    },
-  })
-
-  assert.equal(repository.updateNotes.length, 1)
-  assert.equal(repository.updateNotes[0]?.content, 'Automation updated: name changed to "New name".')
-})
-
 test('AutomationService.updateAutomation parses a stringified schedule before persistence', async () => {
   const repository = createRepository()
   const { service } = createService(repository)
@@ -380,91 +340,173 @@ test('AutomationService exposes durable run cancellation and retry actions', asy
   assert.deepEqual(retried, ['run_2'])
 })
 
-test('AutomationService.testAutomation marks run failed and emits failure on executor error', async () => {
-  const repository = createRepository()
-  const failedEvents: Array<Record<string, unknown>> = []
-  const eventBus = new CapturingEventBus()
-  const service = new AutomationService({
-    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
-    repository,
-    clock: { now: () => 1_700_000_000_000 },
-    events: {
-      finished: () => {},
-      failed: (event) => failedEvents.push(event),
-    },
-    lifecycleEvents: () => new LifecycleEventPublisher({ eventBus }),
-    executor: async () => {
-      throw new Error('executor failed')
+test('a scheduled run posts its instructions into the bound thread under its owner token', async () => {
+  const { repository, writes } = threadRunRepository({
+    async getRunForExecution() {
+      return {
+        run: { _id: 'run_1', userId: 'user_1', status: 'running', scheduledFor: 1_700_000_000_000 },
+        automation: {
+          _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', name: 'Automation',
+          instructions: '  Do the task  ', modelId: 'model_1', agentId: 'agent_1',
+        },
+      } as never
     },
   })
+  const { service, startedTurns } = createService(repository)
 
-  await assert.rejects(
-    () => service.testAutomation({ userId: 'user_1', automationId: 'automation_1' }),
-    /executor failed/,
-  )
-
-  assert.equal(repository.failedRuns.length, 1)
-  assert.equal(repository.failedRuns[0]?.error, 'executor failed')
-  assert.equal(failedEvents.length, 1)
-  assert.equal(failedEvents[0]?.error, 'executor failed')
-  assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
-  assert.deepEqual(eventBus.events[0]?.payload, {
-    attributes: { execution: 'manual', automationName: 'Automation', failureClass: 'unknown' },
-    classification: 'operational',
-    destinations: ['analytics', 'audit', 'email', 'metrics', 'notification'],
-    eventId: (eventBus.events[0]?.payload as { eventId: string }).eventId,
-    idempotencyKey: 'automation.failed:run_1',
-    name: 'automation.failed',
-    occurredAt: (eventBus.events[0]?.payload as { occurredAt: number }).occurredAt,
-    resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
-    schemaVersion: 1,
-    userId: 'user_1',
+  assert.deepEqual(await service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', routeContext }), {
+    ok: true, runId: 'run_1', conversationId: 'conversation_thread', threadKind: 'agent', agentId: 'agent_1',
   })
-})
-
-test('AutomationService publishes successful run metadata without automation content', async () => {
-  const eventBus = new CapturingEventBus()
-  const { service } = createService(
-    createRepository(),
-    new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
-    new LifecycleEventPublisher({ eventBus }),
-  )
-
-  await service.testAutomation({ userId: 'user_1', automationId: 'automation_1' })
-
-  assert.equal(eventBus.events[0]?.topic, LIFECYCLE_EVENT_TOPIC)
-  assert.deepEqual(
-    eventBus.events.map((event) => {
-      const payload = event.payload as { attributes: unknown; name: string; resource: unknown }
-      return { attributes: payload.attributes, name: payload.name, resource: payload.resource }
-    }),
-    [{
-      attributes: { execution: 'manual', automationName: 'Automation' },
-      name: 'automation.succeeded',
-      resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
+  assert.deepEqual(startedTurns, [{
+    automationId: 'automation_1', runId: 'run_1', owner: 'automation-thread:run_1',
+    turnId: 'automation-run:run_1', userId: 'user_1', instructions: 'Do the task', modelId: 'model_1',
+    scheduledFor: 1_700_000_000_000,
+    thread: { conversationId: 'conversation_thread', kind: 'agent', workspaceId: 'workspace_1' },
+    routeContext,
+  }])
+  assert.deepEqual(writes, [
+    ['owner', { runId: 'run_1', workflowRunId: 'automation-thread:run_1' }],
+    ['bind', { automationId: 'automation_1', userId: 'user_1' }],
+    ['started', {
+      runId: 'run_1', userId: 'user_1', conversationId: 'conversation_thread', turnId: 'automation-run:run_1',
+      expectedWorkflowRunId: 'automation-thread:run_1', now: 1_700_000_000_000,
     }],
-  )
+    ['message', { runId: 'run_1', userId: 'user_1', expectedWorkflowRunId: 'automation-thread:run_1', messageId: 'message_1' }],
+  ])
 })
 
-// ---------------------------------------------------------------------------
-// Durable execution helpers — used by POST /api/v1/automations/{id}/run
-// ---------------------------------------------------------------------------
-
-test('AutomationService.createManualRunForDurableExecution delegates to repository.createManualRun', async () => {
-  const repository = createRepository({
+test('a manual run creates its ledger row, then posts into the thread the same way', async () => {
+  const createdRuns: Array<Record<string, unknown>> = []
+  const { repository, writes } = threadRunRepository({
     async createManualRun(args) {
-      return `durable_${args.automationId}_${args.userId}` as never
+      createdRuns.push(args)
+      return 'run_manual' as never
+    },
+    async getRunForExecution(args) {
+      assert.equal(args.runId, 'run_manual')
+      return {
+        run: { _id: 'run_manual', userId: 'user_1', status: 'queued', scheduledFor: 1_700_000_000_000 },
+        automation: { _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', instructions: 'Old instructions' },
+      } as never
     },
   })
-  const { service } = createService(repository)
+  const { service, startedTurns } = createService(repository)
 
-  const runId = await service.createManualRunForDurableExecution({
-    automationId: 'automation_1',
-    userId: 'user_1',
-  })
-
-  assert.equal(runId, 'durable_automation_1_user_1')
+  assert.deepEqual(await service.startManualRun({
+    automationId: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', routeContext,
+  }), { ok: true, runId: 'run_manual', conversationId: 'conversation_thread', threadKind: 'agent' })
+  assert.deepEqual(createdRuns, [{ automationId: 'automation_1', userId: 'user_1', scheduledFor: 1_700_000_000_000 }])
+  assert.equal(startedTurns[0]?.turnId, 'automation-run:run_manual')
+  assert.equal(startedTurns[0]?.instructions, 'Old instructions')
+  assert.deepEqual(writes.map(([kind]) => kind), ['owner', 'bind', 'started', 'message'])
 })
+
+test('a manual run refuses an automation from another workspace before creating a run', async () => {
+  let created = 0
+  const { service } = createService(createRepository({
+    async createManualRun() { created += 1; return 'run_1' as never },
+    async getAutomation() {
+      return { _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_other', instructions: 'x' } as never
+    },
+  }))
+  await assert.rejects(
+    service.startManualRun({ automationId: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 404,
+  )
+  assert.equal(created, 0)
+})
+
+test('a run whose thread turn cannot start is settled as failed under its owner token', async () => {
+  const { repository, writes } = threadRunRepository()
+  const { service } = createService(repository, undefined, undefined, async () => {
+    throw new Error('The chat turn did not start (503)')
+  })
+  await assert.rejects(
+    service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', routeContext }),
+    /The chat turn did not start/,
+  )
+  assert.deepEqual(writes.at(-1), ['settle', {
+    runId: 'run_1', userId: 'user_1', expectedWorkflowRunId: 'automation-thread:run_1', expectedStatus: 'running',
+    expectedTurnId: 'automation-run:run_1', status: 'failed', error: 'The chat turn did not start (503)',
+  }])
+  assert.equal(writes.some(([kind]) => kind === 'message'), false)
+})
+
+test('a run that has posted its message settles from its thread turn, and waits while the turn is open', async () => {
+  let outcome: Awaited<ReturnType<AutomationRepository['getThreadRunOutcome']>> = { status: 'pending' }
+  const { repository, writes } = threadRunRepository({
+    async getRunForExecution() {
+      return {
+        run: {
+          _id: 'run_1', userId: 'user_1', status: 'running', workflowRunId: 'automation-thread:run_1',
+          turnId: 'automation-run:run_1', conversationId: 'conversation_thread', messageId: 'message_1',
+        },
+        automation: { _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', instructions: 'Do the task' },
+      } as never
+    },
+    async getThreadRunOutcome() { return outcome },
+  })
+  const { service, startedTurns } = createService(repository)
+
+  assert.deepEqual(await service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', routeContext }), {
+    ok: true, runId: 'run_1', settled: false,
+  })
+  assert.deepEqual(writes, [])
+
+  outcome = { status: 'failed', error: 'Model refused' }
+  assert.deepEqual(await service.dispatchScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', routeContext }), {
+    ok: true, runId: 'run_1', settled: true, status: 'failed',
+  })
+  assert.deepEqual(writes, [['settle', {
+    runId: 'run_1', userId: 'user_1', expectedWorkflowRunId: 'automation-thread:run_1', expectedStatus: 'running',
+    expectedTurnId: 'automation-run:run_1', status: 'failed', conversationId: 'conversation_thread', error: 'Model refused',
+  }]])
+  assert.deepEqual(startedTurns, [])
+})
+
+test('a manual run refuses a missing, deleted or empty automation before creating a run', async () => {
+  let created = 0
+  const base = { async createManualRun() { created += 1; return 'run_1' as never } }
+  await assert.rejects(
+    createService(createRepository(base)).service.startManualRun({ userId: 'user_1', workspaceId: 'workspace_1', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 400,
+  )
+  await assert.rejects(
+    createService(createRepository({ ...base, async getAutomation() { return null } }))
+      .service.startManualRun({ automationId: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 404,
+  )
+  await assert.rejects(
+    createService(createRepository({ ...base, async getAutomation() {
+      return { _id: 'automation_1', userId: 'user_1', instructions: 'x', deletedAt: 1 } as never
+    } })).service.startManualRun({ automationId: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 404,
+  )
+  await assert.rejects(
+    createService(createRepository({ ...base, async getAutomation() {
+      return { _id: 'automation_1', userId: 'user_1', instructions: '   ' } as never
+    } })).service.startManualRun({ automationId: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1', routeContext }),
+    (error: unknown) => error instanceof AutomationServiceError && error.statusCode === 400,
+  )
+  assert.equal(created, 0)
+})
+
+test('enabling an automation checks the plan of the workspace it is created in', async () => {
+  const checked: Array<Record<string, unknown>> = []
+  const { service } = createService(createRepository(), {
+    async assertCanEnable(args) { checked.push(args) },
+  })
+  await service.createAutomation({
+    userId: 'user_1',
+    workspaceId: 'workspace_team',
+    body: { name: 'A', description: 'B', instructions: 'C', schedule: { kind: 'interval', intervalMinutes: 60 } },
+  })
+  assert.deepEqual(checked, [{ enabledCount: 0, userId: 'user_1', workspaceId: 'workspace_team' }])
+})
+
+// ---------------------------------------------------------------------------
+// Durable execution helpers
+// ---------------------------------------------------------------------------
 
 test('AutomationService.getAutomationForExecution delegates to repository.getAutomation', async () => {
   const repository = createRepository({
@@ -499,7 +541,6 @@ test('AutomationService syncs durable run lifecycle status through the repositor
     runId: 'run_1',
     userId: 'user_1',
     conversationId: 'conversation_1',
-    turnId: 'turn_1',
   })
   await service.markRunCompleted({
     runId: 'run_1',
@@ -516,7 +557,7 @@ test('AutomationService syncs durable run lifecycle status through the repositor
     runId: 'run_1',
     userId: 'user_1',
     conversationId: 'conversation_1',
-    turnId: 'turn_1',
+    turnId: 'automation-run:run_1',
     now: 1_700_000_000_000,
   }])
   assert.deepEqual(repository.completedRuns, [{
@@ -626,196 +667,34 @@ test('AutomationService.markRunCompleted passes the conversationId when provided
 // the active scheduler workflow.
 // ---------------------------------------------------------------------------
 
-test('AutomationService.deleteAutomation cancels the scheduler workflow before deleting', async () => {
-  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
-  const cancelCalled = false
-  const repository = createRepository({
-    async getAutomation() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Test automation',
-        description: '',
-        instructions: 'Do things',
-        schedule: { kind: 'interval', intervalMinutes: 60 },
-        schedulerWorkflowRunId: 'wfrun_scheduler_1',
-        conversationId: 'conv_1',
-      } as never
-    },
-    async updateSchedulerWorkflowRunId(args) {
-      schedulerUpdates.push(args)
-    },
-  })
-  // Mock the workflow/api module
-  const originalImport = await import('workflow/api').catch(() => null)
-  // We can't easily mock the dynamic import in node:test, so we test that
-  // the service calls updateSchedulerWorkflowRunId(null) even if cancel fails
-  const { service } = createService(repository)
-
-  await service.deleteAutomation({
-    automationId: 'automation_1',
-    userId: 'user_1',
-  })
-
-  // The scheduler workflow run ID should have been cleared
-  assert.equal(schedulerUpdates.length, 1)
-  assert.equal(schedulerUpdates[0]?.schedulerWorkflowRunId, null)
-})
-
-test('AutomationService.deleteAutomation does not attempt scheduler cancellation when no schedulerWorkflowRunId', async () => {
-  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
-  const repository = createRepository({
-    async getAutomation() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Test automation',
-        description: '',
-        instructions: 'Do things',
-        schedule: { kind: 'interval', intervalMinutes: 60 },
-        // No schedulerWorkflowRunId
-        conversationId: 'conv_1',
-      } as never
-    },
-    async updateSchedulerWorkflowRunId(args) {
-      schedulerUpdates.push(args)
-    },
-  })
-  const { service } = createService(repository)
-
-  await service.deleteAutomation({
-    automationId: 'automation_1',
-    userId: 'user_1',
-  })
-
-  // Should not have tried to clear the scheduler workflow run ID
-  assert.equal(schedulerUpdates.length, 0)
-})
-
-test('AutomationService.updateAutomation with pause action cancels the scheduler workflow', async () => {
-  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
-  let pauseCalled = false
-  const repository = createRepository({
-    async getAutomation() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Test automation',
-        description: '',
-        instructions: 'Do things',
-        schedule: { kind: 'interval', intervalMinutes: 60 },
-        schedulerWorkflowRunId: 'wfrun_scheduler_1',
-        enabled: true,
-      } as never
-    },
-    async pauseAutomation() {
-      pauseCalled = true
-    },
-    async updateSchedulerWorkflowRunId(args) {
-      schedulerUpdates.push(args)
-    },
-  })
-  const { service } = createService(repository)
-
-  await service.updateAutomation({
-    body: { action: 'pause', automationId: 'automation_1' },
-    userId: 'user_1',
-  })
-
-  assert.equal(pauseCalled, true)
-  // The scheduler workflow run ID should have been cleared
-  assert.equal(schedulerUpdates.length, 1)
-  assert.equal(schedulerUpdates[0]?.schedulerWorkflowRunId, null)
-})
-
-test('AutomationService.updateAutomation with enabled=false cancels the scheduler workflow', async () => {
-  const schedulerUpdates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
-  const repository = createRepository({
-    async getAutomation() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Test automation',
-        description: '',
-        instructions: 'Do things',
-        schedule: { kind: 'interval', intervalMinutes: 60 },
-        schedulerWorkflowRunId: 'wfrun_scheduler_1',
-        enabled: true,
-      } as never
-    },
-    async updateSchedulerWorkflowRunId(args) {
-      schedulerUpdates.push(args)
-    },
-  })
-  const { service } = createService(repository)
-
-  await service.updateAutomation({
-    body: { automationId: 'automation_1', enabled: false },
-    userId: 'user_1',
-  })
-
-  // The scheduler workflow run ID should have been cleared
-  assert.equal(schedulerUpdates.length, 1)
-  assert.equal(schedulerUpdates[0]?.schedulerWorkflowRunId, null)
-})
-
-test('AutomationService.updateSchedulerWorkflowRunId delegates to repository when supported', async () => {
-  const updates: Array<{ automationId: string; schedulerWorkflowRunId: string | null }> = []
-  const repository = createRepository({
-    async updateSchedulerWorkflowRunId(args) {
-      updates.push(args)
-    },
-  })
-  const { service } = createService(repository)
-
-  await service.updateSchedulerWorkflowRunId({
-    automationId: 'automation_1',
-    schedulerWorkflowRunId: 'wfrun_abc',
-  })
-
-  assert.equal(updates.length, 1)
-  assert.equal(updates[0]?.automationId, 'automation_1')
-  assert.equal(updates[0]?.schedulerWorkflowRunId, 'wfrun_abc')
-})
-
-// ---------------------------------------------------------------------------
-// Conversation ownership: sourceConversationId is provenance, never deleted;
-// conversationId is the automation-owned thread.
-// ---------------------------------------------------------------------------
-
-test('AutomationService.updateAutomation posts update notes to the owned thread', async () => {
+test('AutomationService.updateAutomation writes no message to the automation thread', async () => {
   const repository = createRepository()
-  const { service } = createService(repository)
-
-  await service.updateAutomation({
-    userId: 'user_1',
-    body: { automationId: 'automation_1', name: 'New name' },
-  })
-
-  assert.equal(repository.updateNotes.length, 1)
-  assert.equal(repository.updateNotes[0]?.conversationId, 'conversation_owned')
-})
-
-test('AutomationService.updateAutomation skips update note when no owned thread exists', async () => {
-  const repository = createRepository({
-    async getAutomation() {
-      return {
-        _id: 'automation_1',
-        userId: 'user_1',
-        name: 'Old name',
-        instructions: 'Old instructions',
-        sourceConversationId: 'conversation_source',
-      } as never
+  const calls: string[] = []
+  const recorded = new Proxy(repository, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        calls.push(String(property))
+        return value.apply(target, args)
+      }
     },
   })
-  const { service } = createService(repository)
+  const { service } = createService(recorded)
 
   await service.updateAutomation({
     userId: 'user_1',
-    body: { automationId: 'automation_1', name: 'New name' },
+    body: {
+      automationId: 'automation_1',
+      name: 'New name',
+      instructions: 'New instructions',
+      schedule: { kind: 'daily', hourUTC: 10, minuteUTC: 0 },
+      modelId: 'new-model',
+    },
   })
 
-  assert.equal(repository.updateNotes.length, 0)
+  assert.deepEqual(calls, ['getAutomation', 'updateAutomation'])
+  assert.equal(repository.updatedAutomations[0]?.instructions, 'New instructions')
 })
 
 test('AutomationService.deleteAutomation removes only the owned conversation, never the source', async () => {
@@ -875,48 +754,6 @@ test('AutomationService.deleteAutomation never deletes a shared source thread (l
   assert.deepEqual(result.linkedConversationIds, [])
 })
 
-test('AutomationService.testAutomation targets only the owned conversation', async () => {
-  const executorInputs: Array<{ conversationId?: string }> = []
-  const repository = createRepository()
-  const service = new AutomationService({
-    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
-    repository,
-    clock: { now: () => 1_700_000_000_000 },
-    executor: async (input) => {
-      executorInputs.push(input)
-      return { conversationId: 'conversation_result' as never }
-    },
-  })
-
-  await service.testAutomation({ userId: 'user_1', automationId: 'automation_1' })
-
-  // getAutomationRunTarget returns only sourceConversationId — it must NOT
-  // leak into the run target.
-  assert.equal(executorInputs.length, 1)
-  assert.equal(executorInputs[0]?.conversationId, undefined)
-})
-
-test('AutomationService.runAutomation targets only the owned conversation', async () => {
-  const executorInputs: Array<{ conversationId?: string }> = []
-  const repository = createRepository()
-  const service = new AutomationService({
-    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
-    repository,
-    clock: { now: () => 1_700_000_000_000 },
-    executor: async (input) => {
-      executorInputs.push(input)
-      return { conversationId: 'conversation_result' as never }
-    },
-  })
-
-  await service.runAutomation({ runId: 'run_1', serviceUserId: 'user_1' })
-
-  // getRunForExecution returns automation with only sourceConversationId —
-  // it must NOT leak into the run target.
-  assert.equal(executorInputs.length, 1)
-  assert.equal(executorInputs[0]?.conversationId, undefined)
-})
-
 test('AutomationService.updateAutomation refuses a save from an older version before any side effect', async () => {
   const repository = createRepository()
   const { service } = createService(repository)
@@ -929,5 +766,70 @@ test('AutomationService.updateAutomation refuses a save from an older version be
     (error: unknown) => (error as { statusCode?: number }).statusCode === 409,
   )
   assert.equal(repository.updatedAutomations.length, 0)
-  assert.equal(repository.updateNotes.length, 0)
+})
+
+// ---------------------------------------------------------------------------
+// Run outcome lifecycle events (failure email, audit, metrics)
+// ---------------------------------------------------------------------------
+
+class CapturingEventBus implements EventBus {
+  readonly events: Array<{ payload: unknown; topic: string }> = []
+  async publish(topic: string, payload: unknown): Promise<void> { this.events.push({ topic, payload }) }
+  subscribe(): () => void { return () => {} }
+}
+
+function settlingService(settled: boolean, triggerSource?: string) {
+  const eventBus = new CapturingEventBus()
+  const repository = createRepository({
+    async settleManualRun() { return settled },
+    async getRunForExecution() {
+      return {
+        run: { _id: 'run_1', userId: 'user_1', status: 'failed', scheduledFor: 1, ...(triggerSource ? { triggerSource } : {}) },
+        automation: { _id: 'automation_1', userId: 'user_1', name: 'Daily digest', instructions: 'secret instructions' },
+      } as never
+    },
+  })
+  const service = new AutomationService({
+    entitlementPolicy: new PaidPlanAutomationEntitlementPolicy(async () => 'paid'),
+    repository,
+    lifecycleEvents: () => new LifecycleEventPublisher({ eventBus }),
+  })
+  const settle = (status: 'completed' | 'failed' | 'cancelled' | 'skipped') => service.settleRun({
+    runId: 'run_1', userId: 'user_1', expectedWorkflowRunId: 'workflow', expectedStatus: 'running', status,
+  })
+  const published = () => eventBus.events.filter(e => e.topic === LIFECYCLE_EVENT_TOPIC).map(e => {
+    const p = e.payload as { name: string; attributes: unknown; resource: unknown; idempotencyKey: string }
+    return { name: p.name, attributes: p.attributes, resource: p.resource, idempotencyKey: p.idempotencyKey }
+  })
+  return { settle, published }
+}
+
+test('a failed run publishes automation.failed once settled, without automation content', async () => {
+  const { settle, published } = settlingService(true)
+  assert.equal(await settle('failed'), true)
+  assert.deepEqual(published(), [{
+    name: 'automation.failed',
+    attributes: { execution: 'scheduled', automationName: 'Daily digest', failureClass: 'unknown' },
+    resource: { automationId: 'automation_1', id: 'run_1', type: 'automation_run' },
+    idempotencyKey: 'automation.failed:run_1',
+  }])
+  assert.ok(!JSON.stringify(published()).includes('secret instructions'))
+})
+
+test('a completed manual run publishes automation.succeeded', async () => {
+  const { settle, published } = settlingService(true, 'manual')
+  await settle('completed')
+  assert.deepEqual(published().map(e => [e.name, e.attributes]), [
+    ['automation.succeeded', { execution: 'manual', automationName: 'Daily digest' }],
+  ])
+})
+
+test('no event when settlement lost its owner fence, or for cancelled and skipped runs', async () => {
+  const lost = settlingService(false)
+  assert.equal(await lost.settle('failed'), false)
+  assert.deepEqual(lost.published(), [])
+  const other = settlingService(true)
+  await other.settle('cancelled')
+  await other.settle('skipped')
+  assert.deepEqual(other.published(), [])
 })

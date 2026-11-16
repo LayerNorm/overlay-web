@@ -4,6 +4,7 @@ import { Trace, TraceIcon, TraceLine, TraceTitle } from '@overlay/ui/ai'
 import { ChevronRight } from 'lucide-react'
 
 import { TraceMark } from './tool-rail'
+import { DiffStats } from './tool-call-description-line'
 
 /** "Worked for 12s" / "Worked for 1m 5s" — the settled-turn label. */
 export function formatWorkDuration(ms: number): string {
@@ -25,12 +26,15 @@ export function WorkedForGroup({
   toolCallCount = 0,
   expanded,
   onToggle,
+  diff,
 }: {
   /** Measured turn time; absent on reloaded messages, which read "Worked". */
   durationMs?: number | null
   toolCallCount?: number
   expanded: boolean
   onToggle: () => void
+  /** Lines the turn's file edits added and removed, when any edit reported counts. */
+  diff?: { added: number; removed: number } | null
 }) {
   const label =
     (durationMs != null ? `Worked for ${formatWorkDuration(durationMs)}` : 'Worked') +
@@ -47,6 +51,7 @@ export function WorkedForGroup({
         <TraceLine>
           <TraceMark />
           <TraceTitle>{label}</TraceTitle>
+          {diff ? <DiffStats added={diff.added} removed={diff.removed} /> : null}
           <TraceIcon className={`transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}>
             <ChevronRight />
           </TraceIcon>

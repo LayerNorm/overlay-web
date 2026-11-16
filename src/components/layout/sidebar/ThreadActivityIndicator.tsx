@@ -14,12 +14,17 @@ export function ThreadActivityIndicator({ status }: { status?: ThreadActivitySta
   </span></DelayedTooltip>
 }
 
-export function AgentActivitySummary({ activity, fallback }: { activity?: ThreadActivity[]; fallback?: string }) {
+/**
+ * Subtitle under an agent name. Only in-progress statuses (working, ready,
+ * needs you, failed) render; an agent with nothing going on shows just its name.
+ */
+export function AgentActivitySummary({ activity }: { activity?: ThreadActivity[] }) {
   const summary = summarizeThreadActivity(activity ?? [])
-  const label = summary.map(item => `${item.count} ${item.label}`).join(' · ') || fallback || (activity ? 'No active tasks' : '')
+  if (!summary.length) return null
+  const label = summary.map(item => `${item.count} ${item.label}`).join(' · ')
   return <span className="block truncate text-[11px] leading-4 text-(--muted)" title={label}>
-    {summary.length ? summary.map((item, index) => <span key={item.status}>
+    {summary.map((item, index) => <span key={item.status}>
       {index > 0 ? ' · ' : ''}<span className="agent-activity-count" data-status={item.status}>{item.count} {item.label}</span>
-    </span>) : label}
+    </span>)}
   </span>
 }

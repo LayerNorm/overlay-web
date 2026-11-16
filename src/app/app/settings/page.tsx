@@ -32,8 +32,6 @@ import { renderExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
-import { AgentEnvironmentSettings } from '@/features/settings/components/AgentEnvironmentSettings'
-import { AgentAccountSettings } from '@/features/settings/components/AgentAccountSettings'
 import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
 import { ArchivedSettings } from '@/features/settings/components/ArchivedSettings'
 import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
@@ -145,7 +143,6 @@ function AgentsSettingsSection({
           onChange={() => void updateSettings({ collapseAgentWork: settings.collapseAgentWork === false })}
         />
       </SettingsGroup>
-      <AgentAccountSettings />
     </div>
   )
 }
@@ -326,7 +323,6 @@ function SettingsSectionContent({
   if (section === 'providers') return <ProviderConnectionsSetting />
   if (section === 'desktop') return <DesktopSettings />
   if (section === 'webhooks') return <WebhookSettings />
-  if (section === 'agent-environments') return <AgentEnvironmentSettings />
   if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
   if (section === 'connected-apps') return <ConnectedAppsSettings />
   if (section === 'computers') return <ComputerSettings />
@@ -358,7 +354,7 @@ function SettingsPage() {
     [capabilities],
   )
   const desktop = useDesktopBridge()
-  const sections = useMemo(() => desktop ? [...appShell.settingsSections, { id: 'desktop', label: 'Desktop', icon: 'Monitor' }] : appShell.settingsSections, [appShell.settingsSections, desktop])
+  const sections = useMemo(() => desktop ? [...appShell.settingsSections, { id: 'desktop', label: 'Desktop', icon: 'laptop' }] : appShell.settingsSections, [appShell.settingsSections, desktop])
   const settingsPanels = appShell.settingsPanels
   const defaultSectionId = sections[0]?.id ?? 'general'
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])

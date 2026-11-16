@@ -8,6 +8,7 @@ import type { useAgentEditorController } from './AgentEditorPage'
 import { AgentComputerTabView } from './AgentComputerTab.parts'
 import { AgentSidebarDetails } from './AgentSidebarDetails'
 import { AgentLibraryTab } from './AgentRightSidebar.parts'
+import { AgentLibraryPreview } from './AgentLibraryPreview'
 import { AgentSidebarHero } from './AgentSidebarHero.parts'
 import type { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
@@ -25,8 +26,13 @@ export function AgentRightSidebar({
   computerAccess,
   onTakeControl,
   onReleaseControl,
+  previewFileId,
+  onPreviewFileChange,
 }: {
   conversationId: string
+  /** A Library file shown in place of the panel's tabs, or null for the tabs. */
+  previewFileId: string | null
+  onPreviewFileChange(fileId: string | null): void
   activeTab: string
   onTabChange(id: string): void
   onClose(): void
@@ -86,7 +92,7 @@ export function AgentRightSidebar({
     {
       id: 'library',
       label: 'Library',
-      content: selectedTab === 'library' ? <AgentLibraryTab conversationId={conversationId} /> : null,
+      content: selectedTab === 'library' ? <AgentLibraryTab conversationId={conversationId} onOpenFile={onPreviewFileChange} /> : null,
     },
     {
       id: 'computer',
@@ -118,6 +124,16 @@ export function AgentRightSidebar({
       ) : null,
     },
   ]
+
+  if (previewFileId) {
+    return (
+      <AgentLibraryPreview
+        fileId={previewFileId}
+        onBack={() => onPreviewFileChange(null)}
+        onClose={() => { onPreviewFileChange(null); onClose() }}
+      />
+    )
+  }
 
   return (
     <RightSidebar

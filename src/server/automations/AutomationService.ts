@@ -2,23 +2,53 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { LifecycleEventPublisher } from '@/server/lifecycle-events'
-import { withObservabilityContext } from '@/server/observability/context'
-import { runActTurnForScheduledAutomation, type ScheduledAutomationTurn } from '@/server/agent/run-act-turn'
-import { emitAutomationFailed, emitAutomationFinished } from '@/server/shared/webhooks'
 import type {
-  AutomationForUpdateNote,
+  AutomationExecutionPayload,
   AutomationRepository,
   AutomationSchedule,
+  AutomationThreadBinding,
 } from './AutomationRepository'
 import type { AutomationSummary } from '@overlay/app-core'
 import {
   AutomationEntitlementError,
   type AutomationEntitlementPolicy,
 } from './AutomationEntitlementPolicy'
-import type { AutomationScheduleWorkflowInput } from '@/server/workflows/automation-schedule'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { automationRunTurnId, automationThreadRunOwner } from '@/shared/automations/run-identity'
 import { requireWorkspaceExecution, WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const MIN_INTERVAL_MINUTES = 15
+
+/** What a run needs to post its instructions into its thread and start the turn. */
+export type AutomationThreadTurnInput = {
+  automationId: string
+  runId: string
+  /** The owner token stamped on the ledger row. */
+  owner: string
+  turnId: string
+  userId: string
+  instructions: string
+  modelId?: string
+  scheduledFor: number
+  thread: AutomationThreadBinding
+  /** The request the dispatch arrived on, for the composer entry point. */
+  routeContext: AppApiRouteContext
+}
+
+export type AutomationThreadRunStarted = {
+  ok: true
+  runId: string
+  conversationId: string
+  threadKind: AutomationThreadBinding['kind']
+  agentId?: string
+}
+
+export type AutomationThreadRunSettlement = {
+  ok: true
+  runId: string
+  settled: boolean
+  status?: 'completed' | 'failed' | 'cancelled'
+}
 
 export class AutomationServiceError extends Error {
   constructor(
@@ -35,33 +65,11 @@ type AutomationServiceClock = {
   now(): number
 }
 
-type AutomationServiceEvents = {
-  finished(params: {
-    automationId: string
-    conversationId: string
-    runId: string
-    userId: string
-  }): void
-  failed(params: {
-    automationId: string
-    error: string
-    runId: string
-    userId: string
-  }): void
-}
-
-export type AutomationExecutor = (input: ScheduledAutomationTurn) => Promise<{
-  conversationId: string
-}>
-
 export type AutomationServiceDeps = {
-  automationWorkflowStarter?: (
-    input: AutomationScheduleWorkflowInput,
-  ) => Promise<{ runId: string }>
+  /** Posts a run's instructions into its thread and starts the thread's turn. */
+  threadTurnStarter?: (input: AutomationThreadTurnInput) => Promise<{ messageId: string }>
   clock?: AutomationServiceClock
-  events?: AutomationServiceEvents
   entitlementPolicy: AutomationEntitlementPolicy
-  executor?: AutomationExecutor
   lifecycleEvents?: () => LifecycleEventPublisher
   repository: AutomationRepository
   requireExecution?: typeof requireWorkspaceExecution
@@ -111,15 +119,6 @@ function serviceError(payload: Record<string, unknown>, statusCode: number): nev
   throw new AutomationServiceError(payload, statusCode)
 }
 
-function summarizeError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  try {
-    return JSON.stringify(error)
-  } catch (_error) {
-    return 'Unknown automation error'
-  }
-}
 
 function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean {
   return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
@@ -140,135 +139,11 @@ function normalizeScheduleValue(schedule: unknown): AutomationSchedule {
   return schedule as AutomationSchedule
 }
 
-function stableScheduleKey(schedule: AutomationSchedule | undefined): string {
-  if (!schedule) return ''
-  if (schedule.kind === 'interval') return `interval:${schedule.intervalMinutes ?? ''}`
-  if (schedule.kind === 'daily') return `daily:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
-  if (schedule.kind === 'weekly') return `weekly:${schedule.dayOfWeekUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
-  return `monthly:${schedule.dayOfMonthUTC ?? ''}:${schedule.hourUTC ?? ''}:${schedule.minuteUTC ?? ''}`
-}
-
-const UTC_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'UTC',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-const UTC_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'UTC',
-  weekday: 'long',
-})
-
-function formatLocalTime(date: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
-  } catch (_error) {
-    return UTC_TIME_FORMATTER.format(date)
-  }
-}
-
-function weekdayName(date: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      weekday: 'long',
-    }).format(date)
-  } catch (_error) {
-    return UTC_WEEKDAY_FORMATTER.format(date)
-  }
-}
-
-function dateForUtcSchedule(hourUTC = 9, minuteUTC = 0, dayOffset = 0): Date {
-  const now = new Date()
-  return new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + dayOffset,
-    hourUTC,
-    minuteUTC,
-  ))
-}
-
-function formatSchedule(schedule: AutomationSchedule | undefined, timezone: string | undefined): string {
-  if (!schedule) return 'unscheduled'
-  const zone = timezone?.trim() || 'UTC'
-  if (schedule.kind === 'interval') {
-    const minutes = schedule.intervalMinutes ?? 60
-    if (minutes % 1440 === 0) return `every ${minutes / 1440} day${minutes === 1440 ? '' : 's'}`
-    if (minutes % 60 === 0) return `every ${minutes / 60} hour${minutes === 60 ? '' : 's'}`
-    return `every ${minutes} minutes`
-  }
-  if (schedule.kind === 'daily') {
-    return `daily at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
-  }
-  if (schedule.kind === 'weekly') {
-    const today = new Date().getUTCDay()
-    const target = schedule.dayOfWeekUTC ?? 1
-    const dayOffset = (target - today + 7) % 7
-    const date = dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC, dayOffset)
-    return `weekly on ${weekdayName(date, zone)} at ${formatLocalTime(date, zone)} ${zone}`
-  }
-  const day = schedule.dayOfMonthUTC ?? 1
-  return `monthly on day ${day} at ${formatLocalTime(dateForUtcSchedule(schedule.hourUTC, schedule.minuteUTC), zone)} ${zone}`
-}
-
-export function buildAutomationUpdateNote(
-  before: AutomationForUpdateNote,
-  after: {
-    name?: string
-    description?: string
-    instructions?: string
-    enabled?: boolean
-    schedule?: AutomationSchedule
-    timezone?: string
-    modelId?: string
-  },
-): string | null {
-  const changes: string[] = []
-  const beforeName = (before.name || before.title || 'Untitled automation').trim()
-  const afterName = after.name !== undefined ? after.name.trim() : beforeName
-  if (after.name !== undefined && afterName !== beforeName) changes.push(`name changed to "${afterName || beforeName}"`)
-
-  if (after.description !== undefined && after.description.trim() !== (before.description || '').trim()) {
-    changes.push('description updated')
-  }
-  if (after.instructions !== undefined && after.instructions.trim() !== (before.instructions || '').trim()) {
-    changes.push('instructions updated')
-  }
-  const nextTimezone = after.timezone !== undefined ? after.timezone.trim() || 'UTC' : before.timezone
-  if (after.schedule !== undefined && stableScheduleKey(after.schedule) !== stableScheduleKey(before.schedule)) {
-    changes.push(`schedule changed to ${formatSchedule(after.schedule, nextTimezone)}`)
-  } else if (after.timezone !== undefined && nextTimezone !== (before.timezone || 'UTC')) {
-    changes.push(`timezone changed to ${nextTimezone}`)
-  }
-  if (after.enabled !== undefined && after.enabled !== (before.enabled ?? true)) {
-    changes.push(after.enabled ? 'enabled' : 'paused')
-  }
-  if (after.modelId !== undefined && (after.modelId.trim() || '') !== (before.modelId || '')) {
-    changes.push(`model changed to ${after.modelId.trim() || 'default'}`)
-  }
-
-  if (changes.length === 0) return null
-  return `Automation updated: ${changes.join('; ')}.`
-}
-
-const defaultEvents: AutomationServiceEvents = {
-  finished: emitAutomationFinished,
-  failed: emitAutomationFailed,
-}
-
 export class AutomationService {
   private readonly clock: AutomationServiceClock
-  private readonly events: AutomationServiceEvents
-  private readonly executor: AutomationExecutor
 
   constructor(private readonly deps: AutomationServiceDeps) {
     this.clock = deps.clock ?? { now: () => Date.now() }
-    this.events = deps.events ?? defaultEvents
-    this.executor = deps.executor ?? runActTurnForScheduledAutomation
   }
 
   async getAutomations(args: {
@@ -314,7 +189,7 @@ export class AutomationService {
     const schedule = normalizeScheduleValue(body.schedule)
     this.assertScheduleAllowed(schedule)
     if (body.enabled !== false) {
-      await this.assertCanEnable(args.userId)
+      await this.assertCanEnable(args.userId, args.workspaceId)
     }
 
     const id = await this.deps.repository.createAutomation({
@@ -368,7 +243,7 @@ export class AutomationService {
     const schedule = body.schedule ? normalizeScheduleValue(body.schedule) : body.schedule
     this.assertScheduleAllowed(schedule)
     if (body.action === 'resume' || body.enabled === true) {
-      await this.assertCanEnable(args.userId)
+      await this.assertCanEnable(args.userId, args.workspaceId)
     }
 
     const automationId = body.automationId
@@ -379,17 +254,10 @@ export class AutomationService {
       serviceError({ error: AUTOMATION_CONFLICT_MESSAGE, conflict: true }, 409)
     }
     if (body.action === 'pause') {
-      // Cancel any active scheduler workflow before pausing
-      await this.cancelSchedulerWorkflow(idArgs)
       await this.deps.repository.pauseAutomation(idArgs)
     } else if (body.action === 'resume') {
       await this.deps.repository.resumeAutomation(idArgs)
     } else {
-      const before = existingAutomation
-      // If the update disables the automation, cancel its scheduler workflow
-      if (body.enabled === false && before?.schedulerWorkflowRunId) {
-        await this.cancelSchedulerWorkflow(idArgs)
-      }
       try {
         await this.deps.repository.updateAutomation({
           ...idArgs,
@@ -411,17 +279,6 @@ export class AutomationService {
           serviceError({ error: AUTOMATION_CONFLICT_MESSAGE, conflict: true }, 409)
         }
         throw error
-      }
-      if (before) {
-        await this.appendUpdateNoteBestEffort(before, {
-          name: body.name,
-          description: body.description,
-          instructions: body.instructions,
-          enabled: body.enabled,
-          schedule,
-          timezone: body.timezone,
-          modelId: body.modelId,
-        }, args.userId)
       }
     }
     return { success: true }
@@ -453,14 +310,6 @@ export class AutomationService {
     const linkedConversationIds = [ownedConversationId]
       .filter((id, index, ids): id is string => Boolean(id && ids.indexOf(id) === index))
 
-    // Cancel any active scheduler workflow before deleting the automation
-    if (automation?.schedulerWorkflowRunId) {
-      await this.cancelSchedulerWorkflow({
-        automationId,
-        userId: args.userId,
-      })
-    }
-
     // Cancel any active individual runs (queued or running)
     if (this.deps.repository.requestActiveRunCancellation) {
       await this.deps.repository.requestActiveRunCancellation({
@@ -487,228 +336,84 @@ export class AutomationService {
     return { success: true, linkedConversationIds }
   }
 
-  async testAutomation(args: {
-    automationId?: string
+  /**
+   * Start a manual ("Run now" / "Test") run: create the ledger row, then post
+   * the instructions into the automation's thread exactly as a scheduled run
+   * does. The thread's turn decides the outcome.
+   */
+  async startManualRun(args: {
+    automationId?: string | null
     userId: string
-    baseUrl?: string
-  }): Promise<{ success: true; runId: string; conversationId: string }> {
-    let runId: string | null = null
-    let automationId: string | null = null
-    let automationName: string | undefined
-    try {
-      if (!args.automationId) {
-        serviceError({ error: 'automationId required' }, 400)
-      }
-      automationId = args.automationId
-      const automation = await this.deps.repository.getAutomationRunTarget({
-        automationId,
-        userId: args.userId,
-      })
-      if (!automation) serviceError({ error: 'Automation not found' }, 404)
-
-      const name = (automation.name || automation.title || 'Untitled automation').trim()
-      automationName = name
-      const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
-      if (!instructions) {
-        serviceError({ error: 'Automation has no instructions to test' }, 400)
-      }
-
-      const scheduledFor = this.clock.now()
-      const turnId = `automation-test-${automationId}-${scheduledFor}`
-      const conversationId = automation.conversationId
-
-      runId = await this.deps.repository.createManualRun({
-        automationId,
-        userId: args.userId,
-        scheduledFor,
-      })
-      if (!runId) {
-        throw new Error('Automation manual run create returned no id')
-      }
-      const executionRunId = runId
-      const executionAutomationId = automationId
-
-      await this.deps.repository.markManualRunStarted({
-        runId: executionRunId,
-        userId: args.userId,
-        conversationId,
-        turnId,
-        now: this.clock.now(),
-      })
-
-      const result = await withObservabilityContext({
-        provider: 'automation',
-        runId: executionRunId,
-      }, async () => await this.executor({
-        automationId: executionAutomationId,
-        runId: executionRunId,
-        userId: args.userId,
-        name,
-        description: automation.description || '',
-        instructions,
-        modelId: automation.modelId,
-        conversationId,
-        turnId,
-        scheduledFor,
-        baseUrl: args.baseUrl,
-      }))
-
-      await this.deps.repository.markManualRunCompleted({
-        runId,
-        userId: args.userId,
-        conversationId: result.conversationId,
-        now: this.clock.now(),
-      })
-
-      this.events.finished({
-        userId: args.userId,
-        automationId,
-        runId,
-        conversationId: result.conversationId,
-      })
-      await this.publishAutomationLifecycleEvent({
-        automationId,
-        automationName: name,
-        execution: 'manual',
-        name: 'automation.succeeded',
-        runId,
-        userId: args.userId,
-      })
-
-      return { success: true, runId, conversationId: result.conversationId }
-    } catch (error) {
-      await this.failManualRunBestEffort({
-        error,
-        runId,
-        userId: args.userId,
-        automationId,
-        automationName,
-      })
-      throw error
+    workspaceId: string
+    routeContext: AppApiRouteContext
+  }): Promise<AutomationThreadRunStarted> {
+    if (!args.automationId) serviceError({ error: 'automationId required' }, 400)
+    const automation = await this.deps.repository.getAutomation({
+      automationId: args.automationId,
+      userId: args.userId,
+    })
+    if (!automation || automation.deletedAt) serviceError({ error: 'Automation not found' }, 404)
+    if (!(automation.instructions || automation.instructionsMarkdown || '').trim()) {
+      serviceError({ error: 'Automation has no instructions to run' }, 400)
     }
-  }
-
-  async runAutomation(args: {
-    runId?: string
-    serviceUserId: string
-    baseUrl?: string
-  }): Promise<{ success: true; conversationId: string }> {
-    let automationId: string | undefined
-    let userId: string | undefined
-    let automationName: string | undefined
-    try {
-      if (!args.runId) serviceError({ error: 'runId required' }, 400)
-      const executionRunId = args.runId
-      const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
-      if (!payload || payload.run.status !== 'running') {
-        serviceError({ error: 'Automation run is not executable' }, 409)
-      }
-      const { run, automation } = payload
-      automationId = automation._id
-      userId = automation.userId
-      const displayName = automation.name || automation.title || 'Untitled automation'
-      automationName = displayName
-      if (automation.userId !== args.serviceUserId) {
-        serviceError({ error: 'Unauthorized' }, 401)
-      }
-      if ((payload as { agentArchived?: boolean }).agentArchived) {
-        serviceError({ error: 'Automation run is not executable' }, 409)
-      }
-      const turnId = run.turnId || `automation-${args.runId}-${this.clock.now()}`
-      const conversationId = run.conversationId || automation.conversationId
-
-      const result = await withObservabilityContext({
-        provider: 'automation',
-        runId: executionRunId,
-      }, async () => await this.executor({
-        automationId: automation._id,
-        runId: executionRunId,
-        userId: automation.userId,
-        name: displayName,
-        description: automation.description || '',
-        instructions: automation.instructions || automation.instructionsMarkdown || '',
-        modelId: automation.modelId,
-        conversationId,
-        turnId,
-        scheduledFor: run.scheduledFor,
-        baseUrl: args.baseUrl,
-      }))
-
-      this.events.finished({
-        userId: automation.userId,
-        automationId: automation._id,
-        runId: args.runId,
-        conversationId: result.conversationId,
-      })
-      await this.publishAutomationLifecycleEvent({
-        automationId: automation._id,
-        automationName,
-        execution: 'scheduled',
-        name: 'automation.succeeded',
-        runId: args.runId,
-        userId: automation.userId,
-      })
-
-      return { success: true, conversationId: result.conversationId }
-    } catch (error) {
-      if (args.runId && automationId && userId) {
-        this.events.failed({
-          userId,
-          automationId,
-          runId: args.runId,
-          error: summarizeError(error).slice(0, 1000),
-        })
-        await this.publishAutomationLifecycleEvent({
-          automationId,
-          automationName,
-          execution: 'scheduled',
-          failureClass: classifyAutomationFailure(error),
-          name: 'automation.failed',
-          runId: args.runId,
-          userId,
-        })
-      }
-      throw error
+    if (automation.workspaceId && automation.workspaceId !== args.workspaceId) {
+      serviceError({ error: 'Automation not found' }, 404)
     }
-  }
 
-  // -------------------------------------------------------------------------
-  // Durable execution helpers — used by the POST /api/v1/automations/{id}/run
-  // route to start a workflow-based automation run.
-  // -------------------------------------------------------------------------
+    const runId = await this.deps.repository.createManualRun({
+      automationId: automation._id,
+      userId: args.userId,
+      scheduledFor: this.clock.now(),
+    })
+    if (!runId) serviceError({ error: 'Failed to create automation run' }, 500)
+    const payload = await this.deps.repository.getRunForExecution({ runId })
+    if (!payload) serviceError({ error: 'Failed to create automation run' }, 500)
+    return await this.startThreadRun(payload, args.routeContext)
+  }
 
   /**
-   * Dispatch a scheduler-claimed run through the durable one-shot automation
-   * workflow. The Convex runner marks the run 'running' before POSTing, so the
-   * run must be in that state and belong to the service-auth user. The
-   * workflow's own steps settle run status — callers must not mark completion
-   * on dispatch.
+   * Act on a scheduler-claimed run for its owner (service auth). A run that
+   * has not posted its message yet starts in its thread; a run that has is
+   * settled from the outcome of the turn its message started. Convex delivers
+   * at least once, so both are idempotent.
    */
-  async startDurableScheduledRun(args: {
+  async dispatchScheduledRun(args: {
     runId?: string
     serviceUserId: string
-    baseUrl: string
-  }): Promise<{ ok: true; durable: true; runId: string; workflowRunId: string }> {
+    routeContext: AppApiRouteContext
+  }): Promise<AutomationThreadRunStarted | AutomationThreadRunSettlement> {
     if (!args.runId) serviceError({ error: 'runId required' }, 400)
     const payload = await this.deps.repository.getRunForExecution({ runId: args.runId })
     if (!payload || payload.run.status !== 'running') {
       serviceError({ error: 'Automation run is not executable' }, 409)
     }
-    const { run, automation } = payload
-    if (automation.userId !== args.serviceUserId) {
+    if (payload.automation.userId !== args.serviceUserId || payload.run.userId !== args.serviceUserId) {
       serviceError({ error: 'Unauthorized' }, 401)
     }
-
-    // Idempotent replay: Convex scheduled actions are at-least-once, so a
-    // duplicate dispatch must return the existing workflow instead of
-    // starting a second execution for the same run.
-    if (run.workflowRunId) {
-      return { ok: true, durable: true, runId: run._id, workflowRunId: run.workflowRunId }
+    if (payload.run.messageId) return await this.settleThreadRun(payload)
+    if (payload.run.workflowRunId) {
+      // A duplicate delivery while the first is still posting the message.
+      serviceError({ error: 'Automation run is already being dispatched' }, 409)
     }
+    return await this.startThreadRun(payload, args.routeContext)
+  }
 
+  /**
+   * Bind the thread, stamp this dispatch as the run's owner, post the
+   * instructions as a user message and start the thread's own turn through
+   * the entry point its composer uses. A failure before the message is
+   * linked fails the run.
+   */
+  private async startThreadRun(
+    payload: AutomationExecutionPayload,
+    routeContext: AppApiRouteContext,
+  ): Promise<AutomationThreadRunStarted> {
+    const { run, automation } = payload
+    const userId = automation.userId
+    const instructions = (automation.instructions || automation.instructionsMarkdown || '').trim()
     if (!automation.workspaceId) {
       const message = 'Automation is missing its workspace billing scope.'
-      await this.markRunFailed({ runId: run._id, userId: automation.userId, error: message })
+      await this.markRunFailed({ runId: run._id, userId, error: message })
       serviceError({
         error: 'workspace_execution_required',
         code: 'workspace_execution_required',
@@ -718,69 +423,82 @@ export class AutomationService {
     }
     try {
       await (this.deps.requireExecution ?? requireWorkspaceExecution)({
-        userId: automation.userId,
+        userId,
         workspaceId: automation.workspaceId,
       })
     } catch (error) {
       if (error instanceof WorkspaceExecutionError) {
-        await this.markRunFailed({ runId: run._id, userId: automation.userId, error: error.message })
+        await this.markRunFailed({ runId: run._id, userId, error: error.message })
         throw new AutomationServiceError(error.payload, error.statusCode)
       }
       throw error
     }
-
-    const scheduleInput: AutomationScheduleWorkflowInput = {
-      automationId: automation._id,
-      userId: automation.userId,
-      name: automation.name || automation.title || 'Untitled automation',
-      description: automation.description || '',
-      instructions: automation.instructions || automation.instructionsMarkdown || '',
-      modelId: automation.modelId,
-      conversationId:
-        run.conversationId ||
-        automation.conversationId,
-      schedule: automation.schedule ?? { kind: 'interval' as const, intervalMinutes: 60 },
-      oneShot: true,
-      baseUrl: args.baseUrl,
-      runId: run._id,
-      scheduledFor: run.scheduledFor,
+    if (!this.deps.threadTurnStarter) {
+      serviceError({ error: 'Automation thread dispatch is not configured' }, 503)
     }
 
-    // Injected rather than imported: AutomationService sits inside the
-    // workflow's own import graph (its steps call this service), so a static
-    // workflow import would be a module cycle.
-    if (!this.deps.automationWorkflowStarter) {
-      serviceError({ error: 'Durable automation dispatch is not configured' }, 503)
-    }
-    let workflowRun: { runId: string }
+    const owner = automationThreadRunOwner(run._id)
+    const turnId = automationRunTurnId(run._id)
+    await this.updateRunWorkflowRunId({ runId: run._id, workflowRunId: owner })
     try {
-      workflowRun = await this.deps.automationWorkflowStarter(scheduleInput)
-    } catch (error) {
-      await this.markRunFailed({
+      const thread = await this.deps.repository.bindThread({ automationId: automation._id, userId })
+      await this.markRunStarted({
         runId: run._id,
-        userId: automation.userId,
-        error: error instanceof Error ? error.message : 'Failed to start automation workflow',
-      }).catch((_error) => null)
+        userId,
+        conversationId: thread.conversationId,
+        expectedWorkflowRunId: owner,
+      })
+      const { messageId } = await this.deps.threadTurnStarter({
+        automationId: automation._id,
+        runId: run._id,
+        owner,
+        turnId,
+        userId,
+        instructions,
+        modelId: automation.modelId,
+        scheduledFor: run.scheduledFor,
+        thread,
+        routeContext,
+      })
+      await this.deps.repository.linkRunMessage({ runId: run._id, userId, expectedWorkflowRunId: owner, messageId })
+      return {
+        ok: true,
+        runId: run._id,
+        conversationId: thread.conversationId,
+        threadKind: thread.kind,
+        ...(automation.agentId ? { agentId: automation.agentId } : {}),
+      }
+    } catch (error) {
+      await this.settleRun({
+        runId: run._id,
+        userId,
+        expectedWorkflowRunId: owner,
+        expectedStatus: 'running',
+        expectedTurnId: turnId,
+        status: 'failed',
+        error: (error instanceof Error ? error.message : 'Automation run could not start in its thread.').slice(0, 1000),
+      }).catch((_error) => false)
       throw error
     }
-
-    await this.updateRunWorkflowRunId({
-      runId: run._id,
-      workflowRunId: workflowRun.runId,
-    })
-
-    return { ok: true, durable: true, runId: run._id, workflowRunId: workflowRun.runId }
   }
 
-  async createManualRunForDurableExecution(args: {
-    automationId: string
-    userId: string
-  }): Promise<string | null> {
-    return await this.deps.repository.createManualRun({
-      automationId: args.automationId,
-      userId: args.userId,
-      scheduledFor: this.clock.now(),
+  private async settleThreadRun(payload: AutomationExecutionPayload): Promise<AutomationThreadRunSettlement> {
+    const { run } = payload
+    const outcome = await this.deps.repository.getThreadRunOutcome({ runId: run._id })
+    if (outcome.status === 'pending' || !run.workflowRunId) {
+      return { ok: true, runId: run._id, settled: false }
+    }
+    const settled = await this.settleRun({
+      runId: run._id,
+      userId: run.userId,
+      expectedWorkflowRunId: run.workflowRunId,
+      expectedStatus: 'running',
+      expectedTurnId: run.turnId,
+      status: outcome.status,
+      conversationId: run.conversationId,
+      error: outcome.error,
     })
+    return { ok: true, runId: run._id, settled, status: outcome.status }
   }
 
   async getAutomationForExecution(args: {
@@ -808,57 +526,17 @@ export class AutomationService {
     await this.deps.repository.updateRunWorkflowRunId?.(args)
   }
 
-  async updateSchedulerWorkflowRunId(args: {
-    automationId: string
-    schedulerWorkflowRunId: string | null
-  }): Promise<void> {
-    await this.deps.repository.updateSchedulerWorkflowRunId?.(args)
-  }
-
-  /**
-   * Cancel the long-lived scheduler workflow for an automation.
-   * Called when the automation is deleted or paused. Best-effort — if the
-   * workflow run ID is missing or the workflow is already gone, this is a no-op.
-   */
-  async cancelSchedulerWorkflow(args: {
-    automationId: string
-    userId: string
-  }): Promise<void> {
-    const automation = await this.deps.repository.getAutomation({
-      automationId: args.automationId,
-      userId: args.userId,
-    })
-    const workflowRunId = automation?.schedulerWorkflowRunId
-    if (!workflowRunId) return
-
-    try {
-      const { getRun } = await import('workflow/api')
-      await getRun(workflowRunId).cancel()
-    } catch (error) {
-      logger.warn('[automations] Failed to cancel scheduler workflow', { automationId: args.automationId, workflowRunId, error })
-    }
-
-    // Clear the stored workflow run ID regardless of whether cancellation succeeded
-    await this.deps.repository.updateSchedulerWorkflowRunId?.({
-      automationId: args.automationId,
-      schedulerWorkflowRunId: null,
-    }).catch((error) => {
-      logger.warn('[automations] Failed to clear schedulerWorkflowRunId', { automationId: args.automationId, error })
-    })
-  }
-
   async markRunStarted(args: {
     runId: string
     userId: string
     conversationId?: string
-    turnId?: string
     expectedWorkflowRunId?: string
   }): Promise<void> {
     await this.deps.repository.markManualRunStarted({
       runId: args.runId,
       userId: args.userId,
       conversationId: args.conversationId,
-      turnId: args.turnId ?? `automation-${args.runId}-${Date.now()}`,
+      turnId: automationRunTurnId(args.runId),
       ...(args.expectedWorkflowRunId ? { expectedWorkflowRunId: args.expectedWorkflowRunId } : {}),
       now: this.clock.now(),
     })
@@ -913,7 +591,40 @@ export class AutomationService {
     userId: string
   }): Promise<boolean> {
     if (!this.deps.repository.settleManualRun) throw new Error('Owner-fenced automation settlement is unavailable.')
-    return await this.deps.repository.settleManualRun(args)
+    const settled = await this.deps.repository.settleManualRun(args)
+    if (settled && (args.status === 'completed' || args.status === 'failed')) {
+      await this.publishRunOutcome(args.runId, args.status)
+    }
+    return settled
+  }
+
+  /**
+   * The one place a run's outcome becomes a lifecycle event (failure email,
+   * audit, metrics). Every run settles through settleRun, so scheduled runs,
+   * Run now and /test all report. Best effort: the run is already settled.
+   */
+  private async publishRunOutcome(runId: string, status: 'completed' | 'failed'): Promise<void> {
+    const publisher = this.deps.lifecycleEvents?.()
+    if (!publisher) return
+    try {
+      const payload = await this.deps.repository.getRunForExecution({ runId })
+      if (!payload) return
+      const { run, automation } = payload
+      const automationName = automation.name || automation.title
+      await publisher.publish({
+        attributes: {
+          execution: run.triggerSource === 'manual' ? 'manual' : 'scheduled',
+          ...(automationName ? { automationName } : {}),
+          ...(status === 'failed' ? { failureClass: 'unknown' as const } : {}),
+        },
+        idempotencyKey: `${status === 'completed' ? 'automation.succeeded' : 'automation.failed'}:${runId}`,
+        name: status === 'completed' ? 'automation.succeeded' : 'automation.failed',
+        resource: { automationId: automation._id, id: runId, type: 'automation_run' },
+        userId: run.userId,
+      })
+    } catch (error) {
+      logger.warn('[automations] run outcome lifecycle event failed', { runId, error })
+    }
   }
 
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {
@@ -922,11 +633,11 @@ export class AutomationService {
     }
   }
 
-  private async assertCanEnable(userId: string): Promise<void> {
+  private async assertCanEnable(userId: string, workspaceId?: string): Promise<void> {
     const existing = await this.deps.repository.listAutomations({ userId })
     const enabledCount = existing.filter((item) => item.enabled !== false).length
     try {
-      await this.deps.entitlementPolicy.assertCanEnable({ enabledCount, userId })
+      await this.deps.entitlementPolicy.assertCanEnable({ enabledCount, userId, workspaceId })
     } catch (error) {
       if (error instanceof AutomationEntitlementError) {
         serviceError({ error: error.publicMessage }, 403)
@@ -935,97 +646,5 @@ export class AutomationService {
     }
   }
 
-  private async appendUpdateNoteBestEffort(
-    automation: AutomationForUpdateNote,
-    after: Parameters<typeof buildAutomationUpdateNote>[1],
-    userId: string,
-  ): Promise<void> {
-    const updateNote = buildAutomationUpdateNote(automation, after)
-    const conversationId = automation.conversationId
-    if (!updateNote || !conversationId) return
-    await this.deps.repository.appendAutomationUpdateNote({
-      automationId: automation._id,
-      userId,
-      conversationId,
-      content: updateNote,
-    }).catch((error) => {
-      logger.warn('[automations PATCH] Failed to append automation update note', error)
-    })
-  }
-
-  private async failManualRunBestEffort(args: {
-    automationId: string | null
-    automationName?: string
-    error: unknown
-    runId: string | null
-    userId: string
-  }): Promise<void> {
-    const message = summarizeError(args.error).slice(0, 1000)
-    if (args.runId) {
-      await this.deps.repository.markManualRunFailed({
-        runId: args.runId,
-        userId: args.userId,
-        error: message,
-        now: this.clock.now(),
-      }).catch((_error) => null)
-    }
-    if (args.runId && args.automationId) {
-      this.events.failed({
-        userId: args.userId,
-        automationId: args.automationId,
-        runId: args.runId,
-        error: message,
-      })
-      await this.publishAutomationLifecycleEvent({
-        automationId: args.automationId,
-        automationName: args.automationName,
-        execution: 'manual',
-        failureClass: classifyAutomationFailure(args.error),
-        name: 'automation.failed',
-        runId: args.runId,
-        userId: args.userId,
-      })
-    }
-  }
-
-  private async publishAutomationLifecycleEvent(args: {
-    automationId: string
-    automationName?: string
-    execution: 'manual' | 'scheduled'
-    failureClass?: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
-    name: 'automation.failed' | 'automation.succeeded'
-    runId: string
-    userId: string
-  }): Promise<void> {
-    await this.deps.lifecycleEvents?.().publish({
-      attributes: {
-        execution: args.execution,
-        ...(args.automationName ? { automationName: args.automationName } : {}),
-        ...(args.failureClass ? { failureClass: args.failureClass } : {}),
-      },
-      idempotencyKey: `${args.name}:${args.runId}`,
-      name: args.name,
-      resource: {
-        automationId: args.automationId,
-        id: args.runId,
-        type: 'automation_run',
-      },
-      userId: args.userId,
-    })
-  }
 }
 
-function classifyAutomationFailure(
-  error: unknown,
-): 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation' {
-  if (error instanceof AutomationServiceError) {
-    if (error.statusCode === 401 || error.statusCode === 403) return 'authorization'
-    if (error.statusCode >= 400 && error.statusCode < 500) return 'validation'
-  }
-  if (error instanceof Error) {
-    const name = error.name.toLowerCase()
-    if (name.includes('timeout') || name.includes('network')) return 'transient'
-    if (name.includes('provider') || name.includes('gateway')) return 'provider'
-  }
-  return 'unknown'
-}

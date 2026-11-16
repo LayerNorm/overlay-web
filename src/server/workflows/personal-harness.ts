@@ -1,5 +1,5 @@
 import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
-import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import { harnessDiagnosticForFailure, logHarnessFailure } from '@/server/harness/harness-diagnostics'
 import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { readHarnessTranscriptForDelivery } from '@/server/harness/harness-transcript'
 import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
@@ -34,6 +34,7 @@ import {
   projectCurrentHarnessOwner,
   projectHarnessExecutionResult,
 } from './harness-workflow-projection'
+export { workflowStreamTransportProbe } from './workflow-stream-transport-probe'
 
 function hasChildExecutionIdentity(parent: PersonalHarnessAccess, input: PersonalHarnessWorkflowInput): boolean {
   return input.access.actorUserId === parent.actorUserId
@@ -176,6 +177,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       }),
       delegate: async (delegation, toolCallId) => {
         const child = await admitPersonalHarnessChild(execution, delegation, toolCallId)
+        if ('rejected' in child) return child
         const snapshot = await readHarnessChild(access, child.id)
         await startPersonalHarnessChild(access, input.context, personalHarnessChildInput(input, snapshot))
         return child
@@ -217,6 +219,10 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
       const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot, new Error(result.snapshot.blocker?.question ?? ''), 'model')
+      // The blocker question is model output; log only which kind of blocker ended the run.
+      logHarnessFailure(access.runId, diagnostic, Object.assign(
+        new Error(`The run ended while blocked (${result.snapshot.blocker?.kind ?? 'none'}, ${result.snapshot.status}).`),
+        { name: 'HarnessBlockedFinalization' }))
       const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason, diagnostic,
@@ -237,6 +243,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       }
     }
     const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, (error as { code?: string })?.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model')
+    logHarnessFailure(access.runId, diagnostic, error)
     const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
     const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
     const snapshot = isTerminalHarnessStatus(state.status) ? state

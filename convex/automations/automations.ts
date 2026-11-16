@@ -13,6 +13,10 @@ import {
   DEFAULT_SCHEDULE as SHARED_DEFAULT_SCHEDULE,
   MIN_INTERVAL_MINUTES as SHARED_MIN_INTERVAL_MINUTES,
 } from '../../src/shared/automations/schedule'
+import { AUTOMATION_THREAD_RUN_OWNER_PREFIX, automationRunTurnId } from '../../src/shared/automations/run-identity'
+import { createAgentThread } from '../agents/agentThreads'
+import { recordConversationEvent } from '../collaboration/events'
+import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 const automationSchedule = v.object({
   kind: v.union(
@@ -289,7 +293,7 @@ export const create = mutation({
       schedule: args.schedule,
     })
     const schedule = normalizeSchedule(args.schedule)
-    return await ctx.db.insert('automations', {
+    const automationId = await ctx.db.insert('automations', {
       userId: args.userId,
       workspaceId: args.workspaceId,
       scope,
@@ -310,6 +314,11 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    // Every automation is a schedule on one thread: bind it now so the
+    // thread is listed in the sidebar before the first run.
+    const created = await ctx.db.get(automationId)
+    if (created?.workspaceId) await bindAutomationThread(ctx, created)
+    return automationId
   },
 })
 
@@ -588,6 +597,9 @@ export const markManualRunStarted = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
+    if (args.turnId !== automationRunTurnId(args.runId)) {
+      throw new Error('Automation run turn ID must be derived from its run')
+    }
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) return null
     if (args.expectedWorkflowRunId !== undefined && run.workflowRunId !== args.expectedWorkflowRunId) {
@@ -801,6 +813,178 @@ export const attachConversationByServer = mutation({
   },
 })
 
+// ---------------------------------------------------------------------------
+// Thread binding. An automation is a schedule attached to exactly one thread:
+// an agent thread when it belongs to an agent, otherwise an ordinary chat.
+// Each run appends its instructions to that thread as a user message.
+// ---------------------------------------------------------------------------
+
+type ThreadKind = 'agent' | 'chat'
+
+function isBoundThread(automation: Doc<'automations'>, conversation: Doc<'conversations'> | null): conversation is Doc<'conversations'> {
+  if (!conversation || conversation.deletedAt !== undefined || conversation.userId !== automation.userId
+    || conversation.workspaceId !== automation.workspaceId
+    || conversation._id === automation.sourceConversationId) return false
+  if (automation.agentId) {
+    return conversation.agentId === automation.agentId && conversation.conversationType === 'dm'
+  }
+  return (conversation.conversationType ?? 'personal') === 'personal' && !conversation.agentId
+    && !conversation.externalPlatform && !conversation.surfaceBindingId
+}
+
+async function insertAutomationChat(ctx: MutationCtx, automation: Doc<'automations'>, title: string) {
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', automation.workspaceId!).eq('userId', automation.userId))
+    .unique()
+  if (!principal || principal.type !== 'human' || principal.archivedAt) throw new Error('WORKSPACE_ACCESS_DENIED')
+  const now = Date.now()
+  const modelId = automation.modelId || DEFAULT_MODEL_ID
+  const conversationId = await ctx.db.insert('conversations', {
+    workspaceId: automation.workspaceId, userId: automation.userId, clientId: `automation:${automation._id}`,
+    title, askModelIds: [modelId], actModelId: modelId, lastMode: 'act',
+    conversationType: 'personal', scope: automation.scope === 'workspace' ? 'workspace' : 'personal',
+    createdByPrincipalId: principal.principalId, createdAt: now, updatedAt: now, lastModified: now,
+  })
+  await recordConversationEvent(ctx, { conversationId, workspaceId: automation.workspaceId,
+    userId: automation.userId, type: 'conversation.created' })
+  return conversationId
+}
+
+/** Returns the automation's thread, creating it when the automation has none that fits. */
+async function bindAutomationThread(ctx: MutationCtx, automation: Doc<'automations'>): Promise<{
+  conversationId: Id<'conversations'>
+  kind: ThreadKind
+  workspaceId: string
+}> {
+  if (!automation.workspaceId) throw new Error('AUTOMATION_WORKSPACE_REQUIRED')
+  const workspaceId = automation.workspaceId
+  const kind: ThreadKind = automation.agentId ? 'agent' : 'chat'
+  const current = automation.conversationId ? await ctx.db.get(automation.conversationId) : null
+  if (isBoundThread(automation, current)) {
+    // Threads owned by the retired automation runner were hidden from the
+    // sidebar. A bound thread is an ordinary thread, so it is listed.
+    if (current.isAutomation) await ctx.db.patch(current._id, { isAutomation: undefined })
+    return { conversationId: current._id, kind, workspaceId }
+  }
+  const title = (automation.name || automation.title || 'Automation').slice(0, 120)
+  const conversationId = automation.agentId
+    ? (await createAgentThread(ctx, { workspaceId, agentId: automation.agentId, userId: automation.userId, title })).conversationId
+    : await insertAutomationChat(ctx, automation, title)
+  await ctx.db.patch(automation._id, { conversationId, updatedAt: Date.now() })
+  return { conversationId, kind, workspaceId }
+}
+
+export const bindThreadByServer = mutation({
+  args: {
+    automationId: v.id('automations'),
+    userId: v.string(),
+    serverSecret: v.string(),
+  },
+  returns: v.object({
+    conversationId: v.id('conversations'),
+    kind: v.union(v.literal('agent'), v.literal('chat')),
+    workspaceId: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const automation = await ctx.db.get(args.automationId)
+    if (!automation || automation.userId !== args.userId || automation.deletedAt) throw new Error('Unauthorized')
+    return await bindAutomationThread(ctx, automation)
+  },
+})
+
+export const linkRunMessageByServer = mutation({
+  args: {
+    runId: v.id('automationRuns'),
+    userId: v.string(),
+    serverSecret: v.string(),
+    expectedWorkflowRunId: v.string(),
+    messageId: v.id('conversationMessages'),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.userId !== args.userId || run.workflowRunId !== args.expectedWorkflowRunId
+      || run.status !== 'running') throw new Error('Automation run ownership changed')
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== run.conversationId || message.role !== 'user') {
+      throw new Error('Automation run message does not belong to its thread')
+    }
+    if (run.messageId === args.messageId) return null
+    if (run.messageId) throw new Error('Automation run message already linked')
+    await ctx.db.patch(args.runId, { messageId: args.messageId, updatedAt: Date.now() })
+    return null
+  },
+})
+
+// A run whose message never produced a turn (the start failed before the
+// thread recorded one) settles as failed after this long.
+const THREAD_RUN_START_TIMEOUT_MS = 15 * 60_000
+const TERMINAL_THREAD_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+type ThreadRunOutcome =
+  | { status: 'pending' }
+  | { status: 'completed' | 'failed' | 'cancelled'; error?: string }
+
+async function threadRunOutcome(ctx: QueryCtx, run: Doc<'automationRuns'>, now: number): Promise<ThreadRunOutcome> {
+  const startedAt = run.startedAt ?? run.createdAt
+  if (!run.messageId || !run.conversationId) {
+    return now - startedAt > THREAD_RUN_START_TIMEOUT_MS
+      ? { status: 'failed', error: 'The automation message was not delivered to its thread.' }
+      : { status: 'pending' }
+  }
+  const recent = await ctx.db.query('conversationAgentRuns')
+    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', run.conversationId!).gte('createdAt', startedAt))
+    .take(50)
+  const agentRun = recent.find(candidate => candidate.userMessageId === run.messageId)
+  if (!agentRun) {
+    return now - startedAt > THREAD_RUN_START_TIMEOUT_MS
+      ? { status: 'failed', error: 'The thread did not start a turn for the automation message.' }
+      : { status: 'pending' }
+  }
+  if (!TERMINAL_THREAD_RUN_STATUSES.has(agentRun.status)) return { status: 'pending' }
+  return {
+    status: agentRun.status as 'completed' | 'failed' | 'cancelled',
+    ...(agentRun.terminalError?.message ? { error: agentRun.terminalError.message } : {}),
+  }
+}
+
+export const getThreadRunOutcomeByServer = query({
+  args: { runId: v.id('automationRuns'), serverSecret: v.string() },
+  returns: v.union(
+    v.object({ status: v.literal('pending') }),
+    v.object({
+      status: v.union(v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
+      error: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    const run = await ctx.db.get(args.runId)
+    if (!run || run.status !== 'running') return { status: 'pending' as const }
+    return await threadRunOutcome(ctx, run, Date.now())
+  },
+})
+
+/** Thread runs whose turn has ended and whose ledger row still says running. */
+export const listSettleableThreadRuns = internalQuery({
+  args: { now: v.number(), limit: v.optional(v.number()) },
+  returns: v.array(v.object({ runId: v.id('automationRuns'), userId: v.string() })),
+  handler: async (ctx, args) => {
+    const running = await ctx.db.query('automationRuns')
+      .withIndex('by_status_scheduledFor', q => q.eq('status', 'running'))
+      .take(clampInteger(args.limit ?? 100, 1, 200, 100))
+    const settleable: Array<{ runId: Id<'automationRuns'>; userId: string }> = []
+    for (const run of running) {
+      if (!run.workflowRunId?.startsWith(AUTOMATION_THREAD_RUN_OWNER_PREFIX)) continue
+      const outcome = await threadRunOutcome(ctx, run, args.now)
+      if (outcome.status !== 'pending') settleable.push({ runId: run._id, userId: run.userId })
+    }
+    return settleable
+  },
+})
+
 export const updateRunWorkflowRunIdByServer = mutation({
   args: {
     runId: v.id('automationRuns'),
@@ -820,25 +1004,6 @@ export const updateRunWorkflowRunIdByServer = mutation({
     }
     await ctx.db.patch(args.runId, {
       workflowRunId: args.workflowRunId,
-      updatedAt: Date.now(),
-    })
-    return null
-  },
-})
-
-export const updateSchedulerWorkflowRunIdByServer = mutation({
-  args: {
-    automationId: v.id('automations'),
-    serverSecret: v.string(),
-    schedulerWorkflowRunId: v.union(v.string(), v.null()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
-    const automation = await ctx.db.get(args.automationId)
-    if (!automation) return null
-    await ctx.db.patch(args.automationId, {
-      schedulerWorkflowRunId: args.schedulerWorkflowRunId ?? undefined,
       updatedAt: Date.now(),
     })
     return null
@@ -1025,11 +1190,11 @@ export const getRunForExecutionByServer = query({
   },
 })
 
+// The scheduler only claims the run. The run workflow binds the thread and
+// stamps the turn ID (automationRunTurnId) when it starts, as for manual runs.
 export const markRunStarted = internalMutation({
   args: {
     runId: v.id('automationRuns'),
-    conversationId: v.optional(v.id('conversations')),
-    turnId: v.string(),
     now: v.number(),
   },
   returns: v.null(),
@@ -1039,8 +1204,6 @@ export const markRunStarted = internalMutation({
     await ctx.db.patch(args.runId, {
       status: 'running',
       startedAt: args.now,
-      conversationId: args.conversationId,
-      turnId: args.turnId,
       updatedAt: args.now,
     })
     return null

@@ -9,13 +9,13 @@ import {
   FileText,
   House,
   Keyboard,
+  Laptop,
   Plug,
   LayoutDashboard,
   Mail,
   Monitor,
   Palette,
   ScrollText,
-  Server,
   Settings,
   User,
   UserCog,
@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import type { OverlayNavigationItem, OverlaySidebarAction } from '@overlay/app-core'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
 import {
   NEW_CHANNEL_EVENT,
@@ -61,13 +62,13 @@ export const SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   providers: Cloud,
   models: Bot,
   computers: Monitor,
-  'agent-environments': Server,
   'agent-accounts': UserCog,
   'connected-apps': Plug,
   webhooks: Webhook,
   contact: Mail,
   workspace: UsersRound,
   archived: Archive,
+  desktop: Laptop,
 }
 
 /** Sidebar navigation chords stay inert while typing and ignore key repeat. */
@@ -393,6 +394,7 @@ function pushNavDestination(
   },
 ) {
   const destination = ctx.destination(href)
+  beginNavigationIntent(destination)
   ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
   ctx.router.push(destination)
 }

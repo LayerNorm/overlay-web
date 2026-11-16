@@ -20,6 +20,7 @@ import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { automationService } from '@/server/automations/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildSecondarySystemPromptExtension } from '@/server/agent/operator-system-prompt'
+import { resolveNotebookNote } from '@/server/knowledge/mention-resolver'
 import {
   summarizeErrorForLog,
 } from '@/shared/security/safe-log'
@@ -72,11 +73,19 @@ import {
   personalHarnessConversationClientId,
   startPersonalHarnessTurn,
 } from './personal-harness-turn'
-import { actRoutePolicyResponse, decidePersonalActRoute } from './act-route-policy'
+import { actRoutePolicyResponse, decideAutomationActRoute, decidePersonalActRoute } from './act-route-policy'
+import { automationRunTurnId } from '@/shared/automations/run-identity'
 
 export interface ActRouteDependencies {
   authorizationService?: AuthorizationService
   entitlementService?: Pick<ActEntitlementService, 'gateModelAccess'>
+  /**
+   * In-process only: a scheduled or Run now automation turn posted into its
+   * bound chat. HTTP callers can never supply it, so the act route still
+   * refuses automation flags in request bodies. The turn runs under the
+   * automation's authority, fenced by its ledger row's owner token.
+   */
+  automationRun?: { automationId: string; runId: string; owner: string }
 }
 
 function recordActPhase(phase: string, requestId: string, startedAt: number) {
@@ -149,11 +158,17 @@ export async function executeActTurn(
       mediaToolIntent,
       requestedToolIds: rawRequestedToolIds,
       memoryEnabled: rawMemoryEnabled,
+      notebookNoteId,
       actAbortTimeoutMs,
       harnessBudget,
       mentions: rawMentions,
       reasoning: rawReasoning,
     } = bodyResult.data
+    const { automationRun } = dependencies
+    if (automationRun && (turnId !== automationRunTurnId(automationRun.runId) || !conversationId
+      || automationMode === true || automationExecution === true || mode === 'automate')) {
+      return NextResponse.json({ error: 'invalid_automation_turn' }, { status: 400 })
+    }
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'messages required' }, { status: 400 })
     }
@@ -161,17 +176,19 @@ export async function executeActTurn(
     const overlayContext = getOverlayServerContext()
     const { auth } = context
     const userId = auth.userId
-    const personalWorkflowEligible = isPersonalHarnessRouteEligible({
+    const personalWorkflowEligible = Boolean(automationRun) || isPersonalHarnessRouteEligible({
       authType: auth.authType,
       automationExecution,
       automationMode,
     })
-    const eligibility = decidePersonalActRoute({
-      authType: auth.authType,
-      automationExecution,
-      automationMode,
-      mode,
-    })
+    const eligibility = automationRun
+      ? decideAutomationActRoute({ authType: auth.authType })
+      : decidePersonalActRoute({
+          authType: auth.authType,
+          automationExecution,
+          automationMode,
+          mode,
+        })
     if (eligibility.kind !== 'admit') {
       return actRoutePolicyResponse(eligibility.kind, requestId)
     }
@@ -180,8 +197,8 @@ export async function executeActTurn(
     const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
     const billingProgrammaticSubjectId = getBillingProgrammaticSubjectId(
       context,
-      automationExecution === true && auth.authType === 'service' && automationId
-        ? `automation:${automationId}`
+      automationRun
+        ? `automation:${automationRun.automationId}`
         : mentionedAgent
           ? `agent:${mentionedAgent.id}`
           : undefined,
@@ -218,6 +235,7 @@ export async function executeActTurn(
       memoryEnabled,
       mentions: rawMentions,
       requestedToolIds,
+      notebook: Boolean(notebookNoteId),
     })
     if (dynamicAuthorization) return dynamicAuthorization
     let modelGate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>>
@@ -240,13 +258,15 @@ export async function executeActTurn(
       runtimeEntitlements,
     } = modelGate
     recordActPhase('authorization', requestId, authorizationStartedAt)
-    const readiness = decidePersonalActRoute({
-      authType: auth.authType,
-      automationExecution,
-      automationMode,
-      harnessReady: isHarnessBackendReady(appSettings),
-      mode,
-    })
+    const readiness = automationRun
+      ? decideAutomationActRoute({ authType: auth.authType, harnessReady: isHarnessBackendReady(appSettings) })
+      : decidePersonalActRoute({
+          authType: auth.authType,
+          automationExecution,
+          automationMode,
+          harnessReady: isHarnessBackendReady(appSettings),
+          mode,
+        })
     if (readiness.kind !== 'admit') {
       return actRoutePolicyResponse(readiness.kind, requestId)
     }
@@ -283,6 +303,12 @@ export async function executeActTurn(
       requestModelId = effectiveModelId
     }
     if (_ttftDebug) _tAuth = performance.now()
+    const notebookNote = notebookNoteId
+      ? await resolveNotebookNote({ noteId: notebookNoteId, userId: conversationUserId, workspaceId: billingWorkspaceId, serverSecret })
+      : undefined
+    if (notebookNoteId && !notebookNote) {
+      return NextResponse.json({ error: 'note_not_found', message: 'The note is unavailable.' }, { status: 404 })
+    }
 
     const {
       latestUserContent,
@@ -313,6 +339,7 @@ export async function executeActTurn(
         repository: actConversationRepository,
         conversationClientId: durableClientId,
         scope,
+        ...(notebookNote ? { title: notebookNote.title } : {}),
         entitlements: runtimeEntitlements,
         askModelIds,
         actModelId: effectiveModelId,
@@ -487,9 +514,9 @@ export async function executeActTurn(
 		        accountAllowedConnectorIds,
 		        accountAllowedToolIds,
 		        accessToken,
-	        automationExecution: automationExecution === true,
+	        automationExecution: automationExecution === true || Boolean(automationRun),
 	        automationMode: automationMode === true,
-	        automationId,
+	        automationId: automationRun?.automationId ?? automationId,
 	        computerApprovalContext: 'work',
 	        baseUrl: getInternalApiBaseUrl(request),
 	        conversationId: cid,
@@ -504,6 +531,7 @@ export async function executeActTurn(
 	        preloadTasks: toolPreloadTasks,
 	        requestFingerprint: context.requestFingerprint,
 	        requestedToolIds,
+	        notebookNoteId: notebookNote?.id,
 	        serverSecret,
 	        turnId: tid,
 	        userId,
@@ -539,8 +567,9 @@ export async function executeActTurn(
       requestedToolIds,
       skillsContext,
       userSystemPromptExtension,
-      automationExecution: automationExecution === true,
+      automationExecution: automationExecution === true || Boolean(automationRun),
       automationMode: automationMode === true,
+      notebookNote,
     })
 
     if (!agentRun || !cid) throw new Error('Personal harness requires an admitted AgentRun.')
@@ -549,6 +578,14 @@ export async function executeActTurn(
     const admissionResponse = await startPersonalHarnessTurn({
         agentRun: personalAgentRun,
         auth,
+        ...(automationRun ? {
+          authentication: {
+            type: 'automation' as const,
+            automationId: automationRun.automationId,
+            automationRunId: automationRun.runId,
+            originWorkflowRunId: automationRun.owner,
+          },
+        } : {}),
         budget: {
           durationMs: harnessBudget?.durationMs
             ?? (actAbortTimeoutMs !== undefined
@@ -593,9 +630,15 @@ export async function executeActTurn(
           mode: mode ?? 'chat',
           requestFingerprint: context.requestFingerprint,
           requestedToolIds: [...requestedToolIds],
+          ...(notebookNote ? { notebookNoteId: notebookNote.id } : {}),
           turnId: tid,
           userId,
           workspaceId: billingWorkspaceId,
+          ...(automationRun ? {
+            automationExecution: true,
+            automationId: automationRun.automationId,
+            automationRunId: automationRun.runId,
+          } : {}),
         },
         workspaceId: billingWorkspaceId,
       })

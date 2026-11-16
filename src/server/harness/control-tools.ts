@@ -176,7 +176,18 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         constraints: z.array(z.string().min(1).max(2_000)).max(32),
         allowedToolIds: z.array(id).max(512),
       }),
-      execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
+      execute: async (input, { toolCallId }) => {
+        const child = await ports.delegate(input, toolCallId)
+        if ('rejected' in child) {
+          return {
+            success: false,
+            code: 'delegation_rejected',
+            error: child.reason,
+            hint: 'Fix the step or the granted tools and try again, or do this step yourself.',
+          }
+        }
+        return child
+      },
     }),
     harness_read_child: tool({
       description: 'Read an assignment by assignmentId, or join an admitted child by childRunId. Pass exactly one. Bound children wait durably while working; assignments awaiting launch return launch_pending so you can read again shortly. Start independent children before joining them.',
@@ -186,8 +197,15 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         if (resolved.feedback) return resolved.feedback
         const childRunId = resolved.childRunId!
         const parent = await ports.read()
-        if (!parent.children.some(child => child.id === childRunId)) return { success: false, error: 'Unknown child handle for this run.',
-          childRunIds: parent.children.map(child => child.id), hint: 'Use an actual childRunId, or use assignmentId from your assignment obligations. A missing child handle does not mean launch will not occur.' }
+        if (!parent.children.some(child => child.id === childRunId)) {
+          return {
+            success: false,
+            code: 'unknown_child',
+            error: 'This run did not delegate that child.',
+            childRunIds: parent.children.map(child => child.id),
+            hint: `Use a childRunId returned by harness_delegate (${parent.children.map(child => child.id).join(', ') || 'none yet'}), or use assignmentId from your assignment obligations. A missing child handle does not mean launch will not occur.`,
+          }
+        }
         let child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
         let assignment = await ports.readAssignmentResult?.(childRunId)

@@ -16,8 +16,6 @@ function makeSnapshot(status: 'running' | 'waiting_for_resources' | 'waiting_for
         requiresPlan: false,
         maxCostMicros: 0,
         deadlineAt: Date.now() + 60_000,
-        maxDepth: 1,
-        maxParallelChildren: 1,
         executionPolicyVersion: 2,
         spendingMode: 'workspace',
         workspaceId: 'workspace-1',

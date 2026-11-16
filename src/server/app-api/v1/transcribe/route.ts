@@ -5,6 +5,7 @@ import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, 
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { isPaidPlan } from '@/server/billing/billing-runtime'
+import { billingPayerErrorResponse } from '@/server/billing/billing-payer-error-response'
 import {
   transcriptionProviderCostUsd,
   trustedTranscriptionDurationSeconds,
@@ -115,6 +116,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       { status: 500 }
     )
   } catch (error) {
+    const billingRefusal = billingPayerErrorResponse(error)
+    if (billingRefusal) return billingRefusal
     logger.error('[Transcribe API] Error:', error)
     return NextResponse.json({ error: 'Failed to transcribe audio' }, { status: 500 })
   }

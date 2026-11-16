@@ -19,6 +19,7 @@ import { signOutToLanding } from './sidebar/appSidebarNav'
 import { rememberPanelScope } from '@/hooks/use-panel-scope'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from '@overlay/shell-react'
@@ -105,6 +106,7 @@ export default function AppSidebar({
   renderWorkSection,
   workspace,
 }: AppSidebarProps) {
+  recordRender('AppSidebar')
   const s = useAppSidebarState({
     collaborationNotifications,
 
@@ -327,7 +329,7 @@ export default function AppSidebar({
           }}
           onSearch={() => s.openGlobalSearch(null)}
           account={desktopAccountSlot}
-          className={classicLayout ? 'hidden md:flex' : `hidden h-full transition-[width,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className={classicLayout ? 'hidden md:flex' : `hidden h-full md:flex ${s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           {panelChildren}
         </SelectedSidebar>

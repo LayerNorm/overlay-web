@@ -43,7 +43,7 @@ const context: NativeHarnessContext = { modelId: 'fixture/model', memoryEnabled:
 const snapshot = () => ({ ...createHarnessSnapshot({
   runId: access.runId, goal: 'Answer the question', constraints: [], policy: {
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, allowedToolIds: ['read_file', 'call_mcp_tool'],
-    requiresPlan: false, maxCostMicros: 1_000_000, deadlineAt: Date.now() + 60_000, maxDepth: 2, maxParallelChildren: 3,
+    requiresPlan: false, maxCostMicros: 1_000_000, deadlineAt: Date.now() + 60_000,
   },
 }, Date.now()), workflowRunId: access.workflowRunId })
 const delivery = () => ({

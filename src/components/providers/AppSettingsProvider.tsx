@@ -248,6 +248,16 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       }
     }
     prevPresetVarsRef.current = applied
+
+    // Publish the app background as the page theme colour. The Mac app follows it so
+    // its window frame matches the app theme instead of the system appearance.
+    let themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    if (!themeColor) {
+      themeColor = document.createElement('meta')
+      themeColor.name = 'theme-color'
+      document.head.appendChild(themeColor)
+    }
+    themeColor.content = toHexColor(getComputedStyle(document.body).backgroundColor) ?? (settings.theme === 'dark' ? '#0a0a0a' : '#fafafa')
   }, [settings.theme, settings.lightThemePreset, settings.darkThemePreset])
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
@@ -324,4 +334,15 @@ export function useOptionalAppSettings() {
 /** For the live settings sync inside the Convex provider. */
 export function useAppSettingsSync() {
   return useContext(AppSettingsSyncContext)
+}
+
+/** Normalizes any CSS colour (including oklch) to #rrggbb by painting one pixel. */
+function toHexColor(color: string): string | null {
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return null
+  context.fillStyle = '#000'
+  context.fillStyle = color
+  context.fillRect(0, 0, 1, 1)
+  const [r, g, b] = context.getImageData(0, 0, 1, 1).data
+  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
 }

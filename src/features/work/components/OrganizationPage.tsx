@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { LockKeyhole, Pin } from 'lucide-react'
+import { Pin } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { Button } from '@overlay/ui/primitives'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePanelScope } from '@/hooks/use-panel-scope'
@@ -17,18 +18,19 @@ import { OrganizationAgentDetails } from './OrganizationAgentDetails'
 
 type Agent = WorkspaceAgentDirectoryItem
 
-function AgentNode({ agent, owner, pinned, selected, onSelect }: {
-  agent: Agent; owner: string; pinned: boolean; selected: boolean; onSelect(): void
+/** One agent: a flat, fill-only card (no resting border). Selection tints the fill and adds a quiet ring. */
+function AgentNode({ agent, owner, pinned, selected, detail, onSelect, className = '' }: {
+  agent: Agent; owner: string; pinned: boolean; selected: boolean; detail?: string; onSelect(): void; className?: string
 }) {
+  const role = chiefRoleLabel(agent)
   return (
-    <Button variant="outline" onClick={onSelect} aria-pressed={selected}
-      aria-label={`${agent.name}, ${owner}, ${chiefRoleLabel(agent)}`}
-      className={`h-auto min-h-24 w-60 max-w-full justify-start gap-3 whitespace-normal rounded-xl p-4 text-left shadow-none ${selected ? 'border-(--foreground)' : 'border-(--border)'} bg-(--background)`}>
-      <AgentCreature agent={agent} isDefault={agent.isDefault} size={34} />
-      <span className="min-w-0 flex-1 space-y-1">
-        <span className="flex items-center gap-1.5"><span className="truncate text-sm font-medium">{agent.name}</span>{pinned ? <Pin size={12} className="shrink-0 text-(--muted)" aria-label="Pinned" /> : null}</span>
-        <span className="block truncate text-xs font-normal text-(--muted)">{owner}</span>
-        <span className="block text-[11px] font-normal text-(--muted)">{chiefRoleLabel(agent)}</span>
+    <Button variant="ghost" type="button" onClick={onSelect} aria-pressed={selected}
+      aria-label={`${agent.name}, ${owner}, ${role}`}
+      className={unstyledButton(`flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-(--surface-muted) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border) ${selected ? 'bg-(--surface-muted) ring-1 ring-(--foreground)/15' : ''} ${className}`)}>
+      <AgentCreature agent={agent} isDefault={agent.isDefault} size={30} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5"><span className="truncate text-[13px] font-medium text-(--foreground)">{agent.name}</span>{pinned ? <Pin size={11} className="shrink-0 text-(--muted-light)" aria-label="Pinned" /> : null}</span>
+        <span className="mt-0.5 block truncate text-xs text-(--muted)">{detail ?? owner}</span>
       </span>
     </Button>
   )
@@ -51,14 +53,14 @@ export function OrganizationPage() {
   const selected = selection?.key === key ? agents.find(a => a.id === selection.id) : undefined
   const owner = (agent: Agent) => agent.agentRole === 'workspace_chief' ? activeWorkspace?.name || 'Workspace'
     : `${agent.createdByDisplayName || 'Member'}${agent.createdByPrincipalId === data?.viewerPrincipalId ? ' · You' : ''}`
-  const node = (agent: Agent) => <AgentNode agent={agent} owner={owner(agent)} pinned={isPinnedChief(agent, data?.viewerPrincipalId)} selected={selected?.id === agent.id} onSelect={() => setSelection({ key, id: agent.id })} />
+  const node = (agent: Agent, detail?: string) => <AgentNode agent={agent} owner={owner(agent)} detail={detail} pinned={isPinnedChief(agent, data?.viewerPrincipalId)} selected={selected?.id === agent.id} onSelect={() => setSelection({ key, id: agent.id })} />
   return (
     <AppScreenShell
       header={<AppScreenHeader title="Organization" breadcrumbs={[{ label: 'Work', href: href(activeWorkspaceId, '/app/work', scope) }]} />}
       rightPanel={selected ? <OrganizationAgentDetails key={`${key}:${selected.id}`} agent={selected} owner={owner(selected)} onClose={() => setSelection(null)} /> : null}
       rightPanelOpen={Boolean(selected)} onRightPanelClose={() => setSelection(null)} rightPanelWidth={320} rightPanelOverlayLabel="Close agent details">
       <AppScreenBody padding="none" maxWidth="none" className="min-w-0 overflow-auto">
-        <div className="mx-auto flex min-h-full max-w-5xl flex-col items-center px-5 py-10 md:px-8">
+        <div className="mx-auto flex min-h-full max-w-4xl flex-col items-center px-5 py-10 md:px-8">
           <h1 className="text-lg font-medium">{scope === 'workspace' ? activeWorkspace?.name || 'Workspace' : 'Your organization'}</h1>
           <p className="mt-2 text-center text-sm text-(--muted)">{scope === 'workspace' ? 'Workspace agents and member chiefs of staff.' : 'Your chief of staff and personal agents.'}</p>
           {!isLoading && !capabilities.work ? <p className="mt-12 text-sm text-(--muted)">Work is unavailable for this deployment.</p>
@@ -66,12 +68,18 @@ export function OrganizationPage() {
               : !data ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p></div>
                 : !root ? <p className="mt-12 text-sm text-(--muted)">No chief of staff is available in this scope.</p> : (
                   <section aria-label="Agent organization" className="mt-10 flex w-full flex-col items-center">
-                    {node(root)}
-                    {children.length ? <><div aria-hidden className="h-9 border-l border-(--border)" /><ul className="grid w-full list-none grid-cols-1 justify-items-center gap-x-6 gap-y-5 border-t border-(--border) sm:grid-cols-2 lg:grid-cols-3">
-                      {children.map(agent => <li key={agent.id} className="flex w-full min-w-0 flex-col items-center"><div aria-hidden className="h-7 border-l border-(--border)" />{node(agent)}{scope === 'workspace' && agent.agentRole === 'personal_chief' ? <span className="mt-3 flex items-center gap-1.5 text-[11px] text-(--muted)"><LockKeyhole size={12} />Personal agents are private</span> : null}</li>)}
-                    </ul></> : null}
-                    <p className="mt-10 text-center text-xs text-(--muted)">Lines show coordination, not access permissions.</p>
-                    {scope === 'workspace' ? <p className="mt-2 text-center text-xs text-(--muted)">Personal agents and private threads are not exposed here.</p> : null}
+                    <div className="w-full max-w-xs rounded-2xl bg-(--surface-subtle) p-1.5">
+                      {node(root, chiefRoleLabel(root))}
+                    </div>
+                    {children.length ? <>
+                      <div aria-hidden className="h-6 w-px bg-(--border)" />
+                      <ul aria-label={`Coordinated by ${root.name}`} className="grid w-full list-none grid-cols-1 gap-1 rounded-2xl bg-(--surface-subtle) p-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                        {children.map(agent => <li key={agent.id} className="min-w-0">{node(agent, agent.agentRole === 'personal_chief' ? `${chiefRoleLabel(agent)} · ${owner(agent)}` : undefined)}</li>)}
+                      </ul>
+                    </> : null}
+                    <p className="mt-6 text-center text-xs text-(--muted-light)">
+                      {scope === 'workspace' ? 'Shows coordination, not access. Personal agents and private threads stay private.' : 'Shows coordination, not access permissions.'}
+                    </p>
                   </section>
                 )}
         </div>

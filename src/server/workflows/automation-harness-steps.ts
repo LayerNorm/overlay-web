@@ -167,7 +167,6 @@ async function startAutomationRunStep(input: {
       runId: input.runId,
       userId: input.userId,
       conversationId: input.conversationId,
-      turnId: input.turnId,
       expectedWorkflowRunId: input.workflowRunId,
     })
   }
@@ -178,7 +177,6 @@ async function startAutomationRunStep(input: {
     runId: input.runId,
     conversationId: input.conversationId,
     workspaceId: input.workspaceId,
-    turnId: input.turnId,
   })
 }
 
@@ -249,27 +247,6 @@ async function chargeAutomationWorkflowRunStep(input: AutomationAgentTurnInput &
     userId: input.userId,
     workspaceId: input.workspaceId,
   })
-}
-
-/**
- * Safety-net status check for the scheduling loop — reads the automation row
- * directly instead of the old self-HTTP call.
- */
-export async function checkAutomationEnabled(input: {
-  automationId: string
-  userId: string
-}): Promise<{ enabled: boolean; deleted: boolean }> {
-  'use step'
-  try {
-    const automation = await automationService.getAutomationForExecution({
-      automationId: input.automationId,
-      userId: input.userId,
-    })
-    if (!automation) return { enabled: false, deleted: true }
-    return { enabled: automation.enabled === true, deleted: false }
-  } catch (_error) {
-    return { enabled: true, deleted: false }
-  }
 }
 
 export {

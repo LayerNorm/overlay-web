@@ -1,10 +1,16 @@
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { buildAssistantVisualSequence, splitUserDisplayText, errorLabel, persistedGenerationErrorMessage } from '@overlay/chat-core'
 import type { RoomMessageAttachment, RoomMessageView } from './RoomMessageItem'
-import { driveSyncStatusSchema } from '@layernorm/overlay-agent-bridge-protocol'
 import { NATIVE_AGENT_APPROVAL_PART, readNativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import { NATIVE_AGENT_INPUT_PART, readNativeAgentInput } from '@/shared/agents/native-agent-input'
 import { readNativeAgentError } from '@/shared/agents/native-agent-error'
+import { FOLDER_SAVES_PART, readFolderSaves } from '@/shared/agents/folder-saves'
+
+/** What the run saved back to Files, shown as a card under the reply (internal/develop/thread-folders.md). */
+function folderSavesOf(message: { parts?: RoomMessagePart[] }): Pick<RoomMessageView, 'folderSaves'> {
+  const data = readFolderSaves(message.parts?.find((part) => part.type === FOLDER_SAVES_PART)?.data)
+  return data ? { folderSaves: data } : {}
+}
 
 function nativeInputRequest(message: RoomMessageRecord): RoomMessageView['nativeInput'] {
   if (message.authorKind !== 'agent' || message.status !== 'generating') return undefined
@@ -31,76 +37,6 @@ function askedBy(message: { authorKind?: string; parts?: RoomMessagePart[] }): R
     hop: data.hop,
     ...(typeof data.parentConversationId === 'string' && data.parentConversationId ? { parentConversationId: data.parentConversationId } : {}),
   }
-}
-
-function remoteQueueStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteQueue'] {
-  const part = parts?.find((candidate) => candidate.type === 'data-remote-agent-status')
-  const data = part?.data
-  if (!data || data.state !== 'waiting' || typeof data.runId !== 'string' || typeof data.environmentName !== 'string') {
-    return undefined
-  }
-  return {
-    runId: data.runId,
-    environmentName: data.environmentName,
-    queueExpiresAt: typeof data.queueExpiresAt === 'number' ? data.queueExpiresAt : 0,
-  }
-}
-
-function remoteRequest(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteRequest'] {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-request' && ['pending', 'decision_pending'].includes(String(part.data?.state)))?.data
-  if (!data || !['pending', 'decision_pending'].includes(String(data.state)) || typeof data.runId !== 'string' || typeof data.requestKey !== 'string') return undefined
-  return {
-    runId: data.runId, requestKey: data.requestKey,
-    ...(data.state === 'decision_pending' ? { pendingDelivery: true } : {}),
-    ...(typeof data.expiresAt === 'number' ? { expiresAt: data.expiresAt } : {}),
-    ...(data.machineCostContinues === true ? { machineCostContinues: true } : {}),
-    kind: data.kind === 'elicitation' ? 'elicitation' : 'permission',
-    prompt: typeof data.prompt === 'string' ? data.prompt : 'Agent request',
-    options: Array.isArray(data.options) ? data.options.flatMap((option) => {
-      if (!option || typeof option !== 'object') return []
-      const record = option as Record<string, unknown>
-      return typeof record.id === 'string' ? [{ id: record.id, label: typeof record.label === 'string' ? record.label : record.id }] : []
-    }) : [],
-    requestedSchema: data.requestedSchema && typeof data.requestedSchema === 'object'
-      ? data.requestedSchema as Record<string, unknown> : undefined,
-  }
-}
-
-function remoteRunStatus(parts: RoomMessagePart[] | undefined) {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-status')?.data
-  if (!data || typeof data.runId !== 'string' || typeof data.state !== 'string') return undefined
-  return { runId: data.runId, state: data.state,
-    ...(data.recoveryOutcome === 'restored' ? {recovered: true} : {}),
-    ...(typeof data.hardDeadlineAt === 'number' && Number.isFinite(data.hardDeadlineAt) ? { hardDeadlineAt: data.hardDeadlineAt } : {}),
-    retryable: data.retryable === true, retryClass: typeof data.retryClass === 'string' ? data.retryClass : undefined }
-}
-
-function remoteDriveStatus(parts: RoomMessagePart[] | undefined): RoomMessageView['remoteDrive'] {
-  const data = parts?.find(part => part.type === 'data-remote-agent-drive')?.data
-  if (!data) return undefined
-  // Data parts add a stable projection key; the wire status itself is strict.
-  const { key: _key, ...status } = data
-  void _key
-  const parsed = driveSyncStatusSchema.safeParse(status)
-  return parsed.success ? parsed.data : undefined
-}
-
-export type RemoteAgentCommand = { name: string; description?: string; inputHint?: string }
-
-/** Slash commands the connected agent advertised for its session, if any. */
-export function remoteAgentCommands(parts: RoomMessagePart[] | undefined): RemoteAgentCommand[] {
-  const data = parts?.find((part) => part.type === 'data-remote-agent-commands')?.data
-  const commands = data && Array.isArray(data.commands) ? data.commands : []
-  return commands.flatMap((command) => {
-    if (!command || typeof command !== 'object') return []
-    const record = command as Record<string, unknown>
-    if (typeof record.name !== 'string' || record.name.trim().length === 0) return []
-    return [{
-      name: record.name,
-      ...(typeof record.description === 'string' && record.description ? { description: record.description } : {}),
-      ...(typeof record.inputHint === 'string' && record.inputHint ? { inputHint: record.inputHint } : {}),
-    }]
-  })
 }
 
 export type RoomMessageRecord = {
@@ -214,16 +150,6 @@ function stripAttachmentSummary(text: string): string {
   return text.replace(ATTACHMENT_SUMMARY, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/**
- * While the agent waits for the person's answer to a permission or input card, what it produced after asking is not shown:
- * the transcript stops at the card and picks up in order once it is answered. Without this, output from the rest of the turn
- * kept appearing above the card, as though the agent had not stopped to ask.
- */
-export function partsUntilPendingRequest(parts: RoomMessagePart[] | undefined): RoomMessagePart[] | undefined {
-  const pending = parts?.findIndex((part) => part.type === 'data-remote-agent-request' && part.data?.state === 'pending') ?? -1
-  return parts && pending >= 0 ? parts.slice(0, pending) : parts
-}
-
 function displayParts(parts: RoomMessagePart[] | undefined): RoomMessagePart[] | undefined {
   if (!parts?.length) return parts
   return parts
@@ -289,22 +215,9 @@ export function toRoomMessageView({
   const mine = isOwnRoomMessage(message, currentPrincipalId)
   const isAgent = message.authorKind === 'agent' || message.authorKind === 'model'
   const { bodyText, docNames } = splitUserDisplayText(stripAttachmentSummary(message.content ?? ''))
-  const remoteQueue = remoteQueueStatus(message.parts)
-  const remoteRun = remoteRunStatus(message.parts)
   const blocks: AssistantVisualBlock[] = (() => {
     if (!isAgent) return []
-    // While a connected agent's computer wakes up the row reads like a tool call that is running ("Connecting to
-    // computer", shimmering) instead of the stored "Waiting for <name>" text.
-    if (remoteQueue) return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }]
-    const sequence = buildAssistantVisualSequence(displayParts(partsUntilPendingRequest(message.parts)))
-    const environmentName = message.parts?.find(part => part.type === 'data-remote-agent-status')?.data?.environmentName
-    const waitingText = typeof environmentName === 'string' ? `Waiting for ${environmentName}` : undefined
-    const onlyWaitingText = waitingText && (sequence.length === 0 ? bodyText === waitingText
-      : sequence.length === 1 && sequence[0]?.kind === 'text' && sequence[0].text === waitingText)
-    if (onlyWaitingText && (remoteRun?.state === 'recoverable' || remoteRun?.state === 'recovering')) {
-      return [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer',
-        state: remoteRun.state === 'recoverable' ? 'output-error' : 'input-available' }]
-    }
+    const sequence = buildAssistantVisualSequence(displayParts(message.parts))
     if (sequence.length > 0) return sequence
     return bodyText ? [{ kind: 'text', text: bodyText }] : []
   })()
@@ -335,19 +248,16 @@ export function toRoomMessageView({
     documentNames: docNames,
     mentions,
     askedBy: askedBy(message),
-    remoteQueue,
+    ...(isAgent ? folderSavesOf(message) : {}),
     nativeApproval: message.authorKind === 'agent' && message.status === 'generating'
       ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
       : undefined,
     nativeInput: nativeInputRequest(message),
     plan: message.agentPlan,
     planPhase: nativeInputRequest(message) ? 'waiting' : message.status === 'generating' ? 'active' : 'ended',
-    generationError: isAgent && message.status === 'error' && !remoteRun
+    generationError: isAgent && message.status === 'error'
       ? readNativeAgentError(message.parts)?.message ?? errorLabel(new Error(persistedGenerationErrorMessage(message.content))) ?? undefined
       : undefined,
-    remoteRequest: remoteRequest(message.parts),
-    remoteRun,
-    remoteDrive: remoteDriveStatus(message.parts),
     // Assistant rows are inserted with status 'generating' at turn start and
     // patched through settle, so createdAt→updatedAt brackets the run.
     workedDurationMs: isAgent && message.updatedAt && message.updatedAt > message.createdAt
@@ -360,4 +270,123 @@ export function toRoomMessageView({
 /** The scroll target for pin and thread jumps. */
 export function roomMessageDomId(messageId: string): string {
   return `room-message-${messageId}`
+}
+
+const JUMP_CENTER_TOLERANCE_PX = 24
+const JUMP_SETTLE_TIMEOUT_MS = 1_200
+const JUMP_CANCEL_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+
+export function createRoomScrollIntent() {
+  let following = true
+  let targetingMessage = false
+  return {
+    followsLatest: () => following,
+    navigate: (latest: boolean) => {
+      following = latest
+      targetingMessage = !latest
+    },
+    onUserInput: () => { targetingMessage = false },
+    onScroll: (nearBottom: boolean) => {
+      if (!targetingMessage) following = nearBottom
+      return following
+    },
+  }
+}
+
+/**
+ * Centres a room message in its scroller. Off-screen rows keep estimated heights
+ * until they render, so keep the target centred through bounded layout settling
+ * unless the user takes over.
+ */
+export function scrollRoomMessageIntoView(element: HTMLElement): void {
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const view = element.ownerDocument.defaultView
+  const scroller = view ? scrollParent(element, view) : null
+  if (!view || !scroller) return
+  let frame: number | undefined
+  const cleanup = () => {
+    view.clearTimeout(timer)
+    if (frame !== undefined) view.cancelAnimationFrame(frame)
+    scroller.removeEventListener('scrollend', start)
+    for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, cleanup, { capture: true })
+  }
+  const correct = () => {
+    if (element.isConnected && Math.abs(centerOffset(element, scroller)) > JUMP_CENTER_TOLERANCE_PX) {
+      element.scrollIntoView({ behavior: 'instant', block: 'center' })
+    }
+  }
+  const settle = () => {
+    correct()
+    frame = view.requestAnimationFrame(settle)
+  }
+  const start = () => {
+    scroller.removeEventListener('scrollend', start)
+    settle()
+  }
+  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, cleanup, { capture: true, passive: true })
+  scroller.addEventListener('scrollend', start)
+  const timer = view.setTimeout(() => { correct(); cleanup() }, JUMP_SETTLE_TIMEOUT_MS)
+}
+
+function scrollParent(element: HTMLElement, view: Window): HTMLElement | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const { overflowY } = view.getComputedStyle(node)
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) return node
+  }
+  return null
+}
+
+function centerOffset(element: HTMLElement, scroller: HTMLElement): number {
+  const target = element.getBoundingClientRect()
+  const frame = scroller.getBoundingClientRect()
+  return (target.top + target.bottom) / 2 - (frame.top + frame.bottom) / 2
+}
+
+const ANCHOR_HOLD_TIMEOUT_MS = 1_000
+
+/** The first row visible at the top of the scroller and its offset from that edge. */
+export type RoomScrollAnchor = { messageId: string; offset: number }
+
+export function captureRoomScrollAnchor(scroller: HTMLElement): RoomScrollAnchor | null {
+  const top = scroller.getBoundingClientRect().top
+  for (const row of scroller.querySelectorAll<HTMLElement>('[data-room-message]')) {
+    const rect = row.getBoundingClientRect()
+    const messageId = row.getAttribute('data-room-message')
+    if (messageId && rect.bottom > top) return { messageId, offset: rect.top - top }
+  }
+  return null
+}
+
+/**
+ * Keeps the anchored message where the reader left it after older history is
+ * prepended. Off-screen rows start at an estimated height and change size as
+ * they render, so a scrollHeight delta alone can land far from the reader's
+ * place. Corrects from the anchor row's measured position, then for a bounded
+ * settle period unless the user takes over. Returns a function that stops it.
+ */
+export function holdRoomScrollAnchor(scroller: HTMLElement, anchor: RoomScrollAnchor): () => void {
+  const document = scroller.ownerDocument
+  const correct = () => {
+    const element = document.getElementById(roomMessageDomId(anchor.messageId))
+    if (!element?.isConnected) return
+    const drift = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.offset
+    if (Math.abs(drift) >= 1) scroller.scrollTop += drift
+  }
+  correct()
+  const view = document.defaultView
+  if (!view) return () => {}
+  let frame: number | undefined
+  const settle = () => {
+    correct()
+    frame = view.requestAnimationFrame(settle)
+  }
+  const stop = () => {
+    view.clearTimeout(timer)
+    if (frame !== undefined) view.cancelAnimationFrame(frame)
+    for (const type of JUMP_CANCEL_EVENTS) view.removeEventListener(type, stop, { capture: true })
+  }
+  for (const type of JUMP_CANCEL_EVENTS) view.addEventListener(type, stop, { capture: true, passive: true })
+  frame = view.requestAnimationFrame(settle)
+  const timer = view.setTimeout(stop, ANCHOR_HOLD_TIMEOUT_MS)
+  return stop
 }

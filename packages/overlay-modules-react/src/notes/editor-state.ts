@@ -46,6 +46,8 @@ import { noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-
 import type { SlashMenuItem } from './slash-menu'
 import { createSlashMenuItems } from './slash-menu-items'
 import {
+  agentReviewBase,
+  getPendingDiffs,
   InlineDiffExtension,
   INLINE_DIFF_CSS,
 } from './inline-diff-extension'
@@ -58,6 +60,9 @@ import type {
 
 type TiptapEditor = ReturnType<typeof useEditor>
 type FlushSaveRef = MutableRefObject<() => Promise<void> | void>
+/** The note before the assistant's unresolved edits, kept while its turn runs or its changes await review. */
+export type NotebookAgentReview = { noteId: string; baseBlocks: Record<string, unknown>[]; running: boolean }
+type AgentReviewRef = MutableRefObject<NotebookAgentReview | null>
 
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
@@ -94,6 +99,7 @@ export function useEditorLifecycle({
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
   const [title, setTitle] = useState('')
   const [isDirty, setIsDirty] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
   const [editorConflict, setEditorConflict] = useState<NotebookEditorConflict | undefined>()
   const activeNoteRef = useRef<NotebookNote | null>(null)
   const titleRef = useRef('')
@@ -152,6 +158,7 @@ export function useEditorLifecycle({
   useEffect(() => lifecycleControllerRef.current?.subscribe((snapshot) => {
     setIsDirty(snapshot.dirty)
     setEditorConflict(snapshot.conflict)
+    setSaveFailed(Boolean(snapshot.error) && snapshot.dirty && !snapshot.saving)
   }), [])
 
   useEffect(() => {
@@ -206,6 +213,7 @@ export function useEditorLifecycle({
     title,
     setTitle,
     isDirty,
+    saveFailed,
     editorConflict,
     lifecycleController: lifecycleControllerRef,
     activeNoteRef,
@@ -257,9 +265,13 @@ export function useNotebookEditor({
         codeBlock: false,
         link: false,
         underline: false,
+        dropcursor: { color: 'var(--note-drop-indicator, #3b82f6)', width: 3 },
       }),
       Placeholder.configure({
-        placeholder: 'Start writing... (type / for commands)',
+        placeholder: ({ node }) => {
+          if (node.type.name === 'heading') return `Heading ${String(node.attrs.level ?? 1)}`
+          return "Type '/' for commands"
+        },
         showOnlyWhenEditable: true,
         showOnlyCurrent: true,
         includeChildren: true,
@@ -331,7 +343,8 @@ export function useNotebookEditor({
       const { selection } = currentEditor.state
       const { $from } = selection
       const textBefore = $from.parent.textContent.slice(0, $from.parentOffset)
-      const slashQueryMatch = textBefore.match(/(?:^|\s)\/([^\s/]*)$/)
+      // Up to three words after "/", so filters like "heading 3" and "to-do list" keep the menu open.
+      const slashQueryMatch = textBefore.match(/(?:^|\s)\/((?:[^\s/]+(?: [^\s/]*){0,2})?)$/)
 
       if (slashQueryMatch) {
         const coords = currentEditor.view.coordsAtPos(selection.from)
@@ -339,7 +352,7 @@ export function useNotebookEditor({
         const nextTop = Math.max(8, Math.min(coords.bottom + 8, window.innerHeight - 340))
 
         setSlashMenuPosition({ top: nextTop, left: nextLeft })
-        setSlashMenuFilter(slashQueryMatch[1])
+        setSlashMenuFilter(slashQueryMatch[1].trim())
         setShowSlashMenu(true)
       } else {
         setShowSlashMenu(false)
@@ -348,7 +361,7 @@ export function useNotebookEditor({
     },
     editorProps: {
       attributes: {
-        class: 'typeset app-note-editor',
+        class: 'app-note-editor',
       },
       handlePaste(view, event) {
         const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith('image/'))
@@ -426,14 +439,17 @@ export function useSlashMenu({
   const slashMenuItems = useMemo<SlashMenuItem[]>(() => createSlashMenuItems(editor), [editor])
 
   const filteredSlashItems = useMemo(() => {
-    if (!slashMenuFilter) return slashMenuItems
+    // Table commands only make sense with the cursor in a table; elsewhere they bury the blocks.
+    const inTable = showSlashMenu && Boolean(editor?.isActive('table'))
+    const available = inTable ? slashMenuItems : slashMenuItems.filter((item) => item.category !== 'table')
+    if (!slashMenuFilter) return available
     const query = slashMenuFilter.toLowerCase()
-    return slashMenuItems.filter(
+    return available.filter(
       (item) =>
         item.title.toLowerCase().includes(query) ||
         item.description.toLowerCase().includes(query),
     )
-  }, [slashMenuFilter, slashMenuItems])
+  }, [editor, showSlashMenu, slashMenuFilter, slashMenuItems])
 
   const executeSlashCommand = useCallback(
     (item: SlashMenuItem) => {
@@ -511,6 +527,7 @@ export function useNotebookNotes({
   setTitle,
   hydratingEditorRef,
   editor,
+  agentReviewRef,
 }: {
   noteId: string | null
   /** The open note as the host's subscription sees it; null once it is deleted or unreadable. */
@@ -526,6 +543,7 @@ export function useNotebookNotes({
   setTitle: (title: string) => void
   hydratingEditorRef: MutableRefObject<boolean>
   editor: TiptapEditor | null
+  agentReviewRef: AgentReviewRef
 }) {
   const openNote = useCallback((note: NotebookNote) => {
     lifecycleController.current?.select({
@@ -594,9 +612,15 @@ export function useNotebookNotes({
       id: note._id, title: note.title, content: note.content, revision: String(note.updatedAt), updatedAt: note.updatedAt,
     })
     if (!adopted) return
+    const review = agentReviewRef.current
+    const reviewing = review?.noteId === note._id && (review.running || getPendingDiffs(editor).length > 0)
+    if (review && !reviewing) agentReviewRef.current = null
     hydratingEditorRef.current = true
     editor.commands.setContent(noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(note.content)))
     migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+    // The assistant's edits are already saved; show each one so it can be kept or reverted.
+    if (reviewing) editor.commands.showAgentEdits(review.baseBlocks)
+    else editor.commands.clearAllDiffs()
     hydratingEditorRef.current = false
     setActiveNote(note)
     setTitle(note.title)
@@ -745,7 +769,6 @@ export function useNoteMutations({
 
 async function readAgentStream(
   res: Response,
-  editor: TiptapEditor | null,
   setAgentItems: React.Dispatch<React.SetStateAction<NotebookAgentUiItem[]>>,
 ) {
   const reader = res.body?.getReader()
@@ -768,12 +791,6 @@ async function readAgentStream(
       const evt = parseNotebookAgentStreamLine(trimmed)
       if (!evt) continue
 
-      if (evt.type === 'edit_proposal') {
-        const edit = evt.edit
-        if (edit) editor?.chain().focus().addDiffProposal(edit).run()
-        continue
-      }
-
       const item = notebookAgentEventToUiItem(evt)
       if (item) setAgentItems((prev) => [...prev, item])
     }
@@ -789,7 +806,9 @@ export function useNotebookAgent({
   flushSaveRef,
   controlledAgentPanelOpen,
   onAgentPanelOpenChange,
+  agentReviewRef,
 }: {
+  agentReviewRef: AgentReviewRef
   runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
   editor: TiptapEditor | null
   activeNote: NotebookNote | null
@@ -816,9 +835,10 @@ export function useNotebookAgent({
   useEffect(() => {
     notebookAgentAbortRef.current?.abort()
     notebookAgentAbortRef.current = null
+    agentReviewRef.current = null
     setAgentRunning(false)
     setAgentItems([])
-  }, [activeNoteId])
+  }, [activeNoteId, agentReviewRef])
 
   useEffect(() => {
     if (controlledAgentPanelOpen === undefined) return
@@ -862,8 +882,12 @@ export function useNotebookAgent({
     if (!editor || !activeNote || agentRunning) return
     const message = agentInput.trim()
     if (!message) return
+    await flushSaveRef.current()
     const noteContent = noteContentFromEditor(editor)
     const modelId = selectedModelId
+    agentReviewRef.current = { noteId: activeNote._id, baseBlocks: agentReviewBase(editor), running: true }
+    // The assistant saves its edits to the note; typing meanwhile would conflict with them.
+    editor.setEditable(false, false)
 
     setAgentItems((prev) => [...prev, { type: 'user', text: message }])
     const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
@@ -876,6 +900,7 @@ export function useNotebookAgent({
 
     try {
       const res = await runAgent({
+        noteId: activeNote._id,
         noteContent,
         noteTitle: normalizeNotebookTitle(title),
         message,
@@ -899,16 +924,21 @@ export function useNotebookAgent({
         return
       }
 
-      await readAgentStream(res, editor, setAgentItems)
+      await readAgentStream(res, setAgentItems)
     } catch (e) {
       if (ac.signal.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
       setAgentItems((prev) => [...prev, { type: 'error', text: msg }])
     } finally {
       notebookAgentAbortRef.current = null
+      const review = agentReviewRef.current
+      if (review?.noteId === activeNote._id) {
+        agentReviewRef.current = getPendingDiffs(editor).length > 0 ? { ...review, running: false } : null
+      }
+      if (!editor.isDestroyed) editor.setEditable(true, false)
       setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, setAgentMentions, title])
+  }, [activeNote, agentInput, agentReviewRef, agentRunning, editor, flushSaveRef, runAgent, selectedModelId, setAgentMentions, title])
 
   return {
     agentPanelOpen,

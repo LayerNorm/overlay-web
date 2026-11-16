@@ -4,7 +4,7 @@ import type { ConversationUiState } from '../chat-interface/types'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GenerationResult } from '../chat-interface/types'
 import type { PersonalPendingTurn, PersonalTranscriptMessage, PersonalTranscriptRow } from './personal-transcript'
-import { projectPersonalTranscript } from './personal-transcript'
+import { createPersonalMessageProjector, personalMessageToUi, projectPersonalTranscript } from './personal-transcript'
 import {
   ACTIVE_AGENT_RUN_STATUSES,
   isTerminalAgentRunStatus,
@@ -63,6 +63,7 @@ export function projectScopedNativeTranscript({
   rows,
   pendingTurns,
   sdkMessages,
+  projectMessage = personalMessageToUi,
 }: {
   enabled: boolean
   conversationId: string | null
@@ -72,6 +73,7 @@ export function projectScopedNativeTranscript({
   rows: readonly PersonalTranscriptRow[]
   pendingTurns: readonly PersonalPendingTurn[]
   sdkMessages: readonly UIMessage[]
+  projectMessage?: typeof personalMessageToUi
 }) {
   const scopeMatches = Boolean(enabled && conversationId
     && summaryConversationId === conversationId
@@ -102,13 +104,14 @@ export function projectScopedNativeTranscript({
   return {
     scopeMatches,
     localOnlyScope,
-    projection: projectPersonalTranscript(scopeMatches ? rows : [], localPending),
+    projection: projectPersonalTranscript(scopeMatches ? rows : [], localPending, projectMessage),
   }
 }
 
 export function useNativePersonalTranscript({
   enabled,
   conversationId,
+  scopeKey,
   summaryConversationId,
   transcriptConversationId,
   pendingFirstConversationId,
@@ -123,6 +126,7 @@ export function useNativePersonalTranscript({
 }: {
   enabled: boolean
   conversationId: string | null
+  scopeKey?: string
   summaryConversationId: string | null
   transcriptConversationId: string | null
   pendingFirstConversationId?: string | null
@@ -135,6 +139,9 @@ export function useNativePersonalTranscript({
   onJournalChange(): void
   isCurrentScope?: () => boolean
 }) {
+  const messageProjection = useMemo(() => ({
+    scopeKey, conversationId, project: createPersonalMessageProjector(),
+  }), [scopeKey, conversationId])
   const { scopeMatches, localOnlyScope, projection } = useMemo(
     () => {
       void runtimeHydrationVersion
@@ -147,10 +154,12 @@ export function useNativePersonalTranscript({
       rows,
       pendingTurns: [...journal.values()],
       sdkMessages,
+      projectMessage: messageProjection.project,
       })
     },
     [
       conversationId,
+      messageProjection,
       enabled,
       journal,
       rows,

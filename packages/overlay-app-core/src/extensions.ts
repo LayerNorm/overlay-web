@@ -588,3 +588,5 @@ export function filterExtensionCatalog(
     return text.includes(q)
   })
 }
+
+export * from './extension-catalog'

@@ -106,8 +106,6 @@ export type HarnessPolicy = {
   taskDeadlineAt?: number
   /** Always 0. Kept because stored runs carry it; the workspace budget is the only spending limit. */
   maxCostMicros: number
-  maxParallelChildren: number
-  maxDepth: number
 }
 
 export function effectiveHarnessDeadlineAt(policy: Pick<HarnessPolicy, 'deadlineAt' | 'taskDeadlineAt'>): number {
@@ -234,10 +232,9 @@ function validateHarnessSnapshotExecutionPolicy(policy: HarnessPolicy): void {
 }
 
 function harnessSnapshotDepth(input: HarnessSnapshotInput): number {
-  if (!Number.isSafeInteger(input.policy.maxParallelChildren) || input.policy.maxParallelChildren < 0
-    || !Number.isSafeInteger(input.policy.maxDepth) || input.policy.maxDepth < 0) throw new Error('Invalid child limits.')
+  // Sub-agents have no count or nesting cap: the workspace budget is the only limit.
   const depth = input.depth ?? 0
-  if (!Number.isSafeInteger(depth) || depth < 0 || depth > input.policy.maxDepth) throw new Error('Invalid child depth.')
+  if (!Number.isSafeInteger(depth) || depth < 0) throw new Error('Invalid child depth.')
   return depth
 }
 
@@ -649,9 +646,6 @@ function validateHarnessChildAdmission(state: HarnessSnapshot, child: HarnessChi
   const step = state.plan.find(candidate => candidate.id === child.stepId)
   if (!step || step.childRunId || ['done', 'skipped'].includes(step.status)) throw new Error('Delegate an unfinished unassigned milestone.')
   if (step.dependsOn.some(id => !['done', 'skipped'].includes(state.plan.find(candidate => candidate.id === id)!.status))) throw new Error('Finish dependencies before delegating a milestone.')
-  if (state.depth >= state.policy.maxDepth) throw new Error('The child depth budget is exhausted.')
-  const active = state.children.filter(candidate => candidate.status === 'running')
-  if (active.length >= state.policy.maxParallelChildren) throw new Error('The child concurrency budget is exhausted.')
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) throw new Error('Child capabilities cannot exceed the parent.')
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
 }
@@ -684,10 +678,6 @@ export function admitHarnessNamedChild(
   if (state.plan.length >= 128) throw new Error('A harness plan may contain at most 128 milestones.')
   if (!step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) {
     throw new Error('Each milestone needs an identity, title and acceptance criteria.')
-  }
-  if (state.depth >= state.policy.maxDepth) throw new Error('The child depth budget is exhausted.')
-  if (state.children.filter(candidate => candidate.status === 'running').length >= state.policy.maxParallelChildren) {
-    throw new Error('The child concurrency budget is exhausted.')
   }
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) {
     throw new Error('Child capabilities cannot exceed the parent.')
@@ -946,9 +936,7 @@ function assertChildDelegatedAuthority(state: HarnessSnapshot, child: HarnessChi
     || childState.policy.allowedToolIds.some(id => !child.allowedToolIds.includes(id))
     || (state.policy.executionPolicyVersion !== 2 && childState.policy.deadlineAt > state.policy.deadlineAt)
     || (childState.policy.taskDeadlineAt !== undefined
-      && (state.policy.taskDeadlineAt === undefined || childState.policy.taskDeadlineAt > state.policy.taskDeadlineAt))
-    || childState.policy.maxDepth > state.policy.maxDepth
-      || childState.policy.maxParallelChildren > state.policy.maxParallelChildren) throw new Error('The child exceeds its delegated authority.')
+      && (state.policy.taskDeadlineAt === undefined || childState.policy.taskDeadlineAt > state.policy.taskDeadlineAt))) throw new Error('The child exceeds its delegated authority.')
 }
 
 function assertChildSettlementComplete(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {

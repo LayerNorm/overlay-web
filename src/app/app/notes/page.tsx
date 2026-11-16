@@ -1,27 +1,11 @@
-import { AppRouteSessionRecovery } from '../_components/AppRouteSessionRecovery'
 import { Suspense } from 'react'
-import dynamic from 'next/dynamic'
-import { getOverlaySession } from '@/server/auth/session'
+import { NotesRouteClient } from '../_components/ClientSessionRoutes'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
-
-const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
-  loading: () => (
-    <div className="h-full min-h-[40vh] w-full" aria-busy="true">
-      <span className="sr-only">Loading notes</span>
-    </div>
-  ),
-})
-
-async function NotesRouteContent() {
-  const session = await getOverlaySession()
-  if (!session) return <AppRouteSessionRecovery />
-  return <NotebookEditor userId={session.user.id} />
-}
 
 export default function NotesPage() {
   return (
     <Suspense fallback={<ChatRouteSkeleton />}>
-      <NotesRouteContent />
+      <NotesRouteClient />
     </Suspense>
   )
 }

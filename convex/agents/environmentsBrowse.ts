@@ -1,7 +1,6 @@
 import { v } from 'convex/values'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
-import { nativeDeploymentFeatureEnabled } from '../lib/nativeDeploymentPolicy'
 
 function safe<T extends Record<string, unknown>>(row: T) {
   const { _id, _creationTime, publicKey, ...rest } = row as T & { _id?: unknown; _creationTime?: unknown; publicKey?: unknown }
@@ -12,7 +11,7 @@ function safe<T extends Record<string, unknown>>(row: T) {
 }
 
 /**
- * The workspace's connected-agent environments, live, for every member. Heartbeats and lifecycle changes re-run the
+ * The workspace's connected machines (This Mac), live, for every member. Heartbeats and lifecycle changes re-run the
  * query; the browser applies the online window to `lastSeenAt` itself (`effectiveAgentEnvironmentStatus`), since a
  * stale heartbeat writes nothing. Public keys and credential hashes never appear; a pending environment carries its
  * verification phrase so the person enrolling can compare it.
@@ -32,41 +31,5 @@ export const list = query({
       const enrollment = await ctx.db.query('agentEnrollmentSessions').withIndex('by_environmentId', q => q.eq('environmentId', row.environmentId)).unique()
       return enrollment ? { ...environment, verificationPhrase: enrollment.verificationPhrase, enrollmentExpiresAt: enrollment.expiresAt } : environment
     }))
-  },
-})
-
-/** Agent-to-environment bindings, live, for workspace owners and admins (as on the server). Null for others. */
-export const bindings = query({
-  args: { workspaceId: v.string(), agentId: v.optional(v.string()) },
-  handler: async (ctx, { workspaceId, agentId }) => {
-    try {
-      const viewer = await requireNativeWorkspace(ctx, workspaceId)
-      if (viewer.membership.role !== 'owner' && viewer.membership.role !== 'admin') return null
-    } catch {
-      return null
-    }
-    const rows = agentId
-      ? await ctx.db.query('agentBindings').withIndex('by_workspaceId_agentId', q => q.eq('workspaceId', workspaceId).eq('agentId', agentId)).take(200)
-      : await ctx.db.query('agentBindings').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).take(200)
-    return rows.sort((a, b) => b.updatedAt - a.updatedAt).map(row => ({ ...safe(row), id: row.bindingId }))
-  },
-})
-
-/**
- * Whether the viewer may connect their own agents here: an owner or admin (connections and bindings are managed by
- * them, as on the server), on a deployment with external agents on and this workspace in the rollout. False for other
- * members; null without workspace access.
- */
-export const launchEnabled = query({
-  args: { workspaceId: v.string() },
-  handler: async (ctx, { workspaceId }) => {
-    let viewer
-    try {
-      viewer = await requireNativeWorkspace(ctx, workspaceId)
-    } catch {
-      return null
-    }
-    if (viewer.membership.role !== 'owner' && viewer.membership.role !== 'admin') return false
-    return await nativeDeploymentFeatureEnabled(ctx, 'externalAgents', workspaceId)
   },
 })

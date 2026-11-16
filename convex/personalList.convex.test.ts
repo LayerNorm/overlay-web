@@ -228,13 +228,15 @@ test('native lists converge on rename, archive and restore; repeats do not dupli
   await expect(t.withIdentity({ subject: 'other' }).mutation(rename, { ...args, title: 'Spoof' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
 
-test('pagination preserves its cursor across excluded rows, equal timestamps and legacy automation bindings', async () => {
+test('pagination preserves its cursor across excluded rows, equal timestamps and legacy automation threads', async () => {
   const { t, user, args, page } = await fixture()
   await t.run(async ctx => {
     for (let i = 0; i < 4; i++) {
       await ctx.db.insert('conversations', { workspaceId: 'ws', userId: 'u', title: `Eligible ${i}`, askModelIds: [], actModelId: 'model', lastMode: 'act', createdAt: 1, lastModified: 1 })
     }
     await ctx.db.insert('automations', { workspaceId: 'ws', userId: 'u', conversationId: args.conversationId, createdAt: 1, updatedAt: 1 })
+    // Owned by the retired automation runner, which hid its threads from chat lists.
+    await ctx.db.patch(args.conversationId, { isAutomation: true })
   })
   const ids: string[] = []
   let cursor: string | null = null
@@ -248,7 +250,7 @@ test('pagination preserves its cursor across excluded rows, equal timestamps and
   expect(ids).toHaveLength(4)
   expect(new Set(ids).size).toBe(4)
   expect(ids).not.toContain(args.conversationId)
-  // Automation threads stay out of chat lists, but their owner can still use them.
+  // Legacy automation threads stay out of chat lists, but their owner can still use them.
   await user.mutation(rename, { ...args, title: 'Automation' })
   expect(await user.query(getSummary, args)).toMatchObject({ title: 'Automation', kind: 'automation' })
 })

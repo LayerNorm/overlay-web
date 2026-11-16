@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantVisualBlock, DraftModalState } from '@overlay/chat-core'
 import {
   buildAssistantVisualSegments,
+  summarizeTurnDiff,
   collectWebSourcesFromBlocks,
   computeToolChainFlags,
   planAssistantWorkCollapse,
 } from '@overlay/chat-core'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { SourceCitationMap } from '../../lib/source-citations'
-import { collectToolResourceHrefs } from '../markdown/tool-resource-links'
+import { collectCreatedFileIds, collectToolResourceHrefs } from '../markdown/tool-resource-links'
+import { ChatFileCardStrip } from '../files/ChatFileCards'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
@@ -94,6 +96,8 @@ export function AssistantVisualBlocks({
   const toolChainFlags = useMemo(() => computeToolChainFlags(segments), [segments])
   const webSources = useMemo(() => collectWebSourcesFromBlocks(blocks), [blocks])
   const toolResourceHrefs = useMemo(() => collectToolResourceHrefs(blocks), [blocks])
+  const createdFileIds = useMemo(() => collectCreatedFileIds(blocks), [blocks])
+  const diff = useMemo(() => summarizeTurnDiff(blocks), [blocks])
   const lastTextBlockIndex = useMemo(() => {
     let idx = -1
     for (let i = 0; i < blocks.length; i++) {
@@ -164,6 +168,7 @@ export function AssistantVisualBlocks({
           toolCallCount={collapsePlan.collapsedToolCallCount}
           expanded={workExpanded}
           onToggle={() => setWorkExpanded((v) => !v)}
+          diff={diff}
         />
       )}
       {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
@@ -181,6 +186,7 @@ export function AssistantVisualBlocks({
           />
         )
       })}
+      {createdFileIds.length ? <ChatFileCardStrip fileIds={createdFileIds} /> : null}
       {plan?.length && !planSettled ? <RunPlan steps={plan} phase={planPhase} /> : null}
     </>
   )

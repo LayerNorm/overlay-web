@@ -18,12 +18,9 @@ export interface CapabilityCheck {
   vectorSearch: boolean
   automations: boolean
   multiTenant: boolean
-  connectedAgents: boolean
   /** External agent runtimes (Claude Code, Codex, etc.). */
-  externalAgents: boolean
   computers: boolean
   /** Permanently false compatibility field for retired hosted third-party agents. */
-  cloudAgents: boolean
   /** Work: tasks as a list, board and timeline. */
   work: boolean
 }
@@ -50,10 +47,7 @@ export const DEFAULT_OVERLAY_CAPABILITIES: CapabilityCheck = {
   vectorSearch: true,
   automations: true,
   multiTenant: false,
-  connectedAgents: false,
-  externalAgents: false,
   computers: false,
-  cloudAgents: false,
   work: false,
 }
 

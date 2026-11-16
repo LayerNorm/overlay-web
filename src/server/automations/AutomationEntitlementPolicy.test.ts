@@ -44,3 +44,17 @@ test('configured automation policy selects unlimited only when billing is disabl
   await assert.rejects(() => policy.assertCanEnable({ enabledCount: 0, userId: 'user_1' }))
   assert.equal(paidLookups, 1)
 })
+
+test('the plan of the workspace the automation is enabled in decides', async () => {
+  const asked: Array<[string, string | undefined]> = []
+  const policy = new PaidPlanAutomationEntitlementPolicy(async (userId, workspaceId) => {
+    asked.push([userId, workspaceId])
+    return workspaceId === 'paid_team' ? 'paid' : 'free'
+  })
+  await policy.assertCanEnable({ enabledCount: 0, userId: 'user_1', workspaceId: 'paid_team' })
+  await assert.rejects(
+    policy.assertCanEnable({ enabledCount: 0, userId: 'user_1', workspaceId: 'free_personal' }),
+    /require a paid plan/,
+  )
+  assert.deepEqual(asked, [['user_1', 'paid_team'], ['user_1', 'free_personal']])
+})

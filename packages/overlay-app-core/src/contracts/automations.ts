@@ -99,8 +99,6 @@ export interface AutomationSummary extends ScopedResourceFields {
   sourceConversationId?: string
   conversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
-  /** Workflow SDK run ID of the long-lived scheduler (sleep-loop). Used for cancellation. */
-  schedulerWorkflowRunId?: string
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -128,6 +126,8 @@ export interface AutomationRunSummary {
   finishedAt?: number
   conversationId?: string
   turnId?: string
+  /** The user message this run posted into its automation's thread. */
+  messageId?: string
   error?: string
   errorCode?: string
   errorMessage?: string

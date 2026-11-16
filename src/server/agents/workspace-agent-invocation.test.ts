@@ -2,14 +2,6 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import {
-  buildRemoteAgentPrompt,
-  permissionModeForConnectedHarness,
-  shouldPrepareConnectedAgentDrive,
-  startRemoteWorkspaceAgentTurn,
-  WorkspaceAgentInvocationError,
-} from './workspace-agent-invocation'
-import { isExternalAgentInvocation } from './external-agent-policy'
 import { filterSharedSurfaceAgents } from './shared-surface-agent-policy'
 
 const root = process.cwd()
@@ -21,74 +13,6 @@ function agentFixture(overrides: Partial<WorkspaceAgentDirectoryItem> = {}): Wor
     createdByPrincipalId: 'creator', createdAt: 0, updatedAt: 0, teamIds: [], roomCount: 0, ...overrides,
   }
 }
-
-test('native permission modes are not forwarded, while connected harness values are preserved', () => {
-  assert.equal(permissionModeForConnectedHarness('overlay', 'ask'), undefined)
-  assert.equal(permissionModeForConnectedHarness('overlay', 'auto'), undefined)
-  assert.equal(permissionModeForConnectedHarness('claude-code', 'auto'), 'auto')
-  assert.equal(permissionModeForConnectedHarness('claude-code', 'acceptEdits'), 'acceptEdits')
-})
-
-test('drive starts require rollout, host capability and opt-in, and never target retired Cloud', () => {
-  const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }
-  assert.equal(shouldPrepareConnectedAgentDrive(cloud), false)
-  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, enabled: false }), false)
-  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: {} }), false)
-  assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: { drive: { version: 2 } } }), false)
-  for (const environmentKind of ['local', 'vps', 'external']) {
-    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind }), false)
-    assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind, optedIn: true }), true)
-  }
-})
-
-test('direct Cloud-kind dispatch rejects before room context, memory, or the budget check', async () => {
-  let admissionChecked = false
-  await assert.rejects(
-    startRemoteWorkspaceAgentTurn({
-      actorUserId: 'user',
-      conversationId: 'conversation',
-      initiatorPrincipalId: 'principal',
-      invocation: { remoteTarget: { environmentKind: 'overlay_cloud' } } as never,
-      messageId: 'message',
-      memoryEnabled: true,
-      prompt: 'hello',
-      workspaceId: 'workspace',
-      requireExecution: async () => {
-        admissionChecked = true
-        throw new Error('retired targets must not reach paid admission')
-      },
-    }),
-    (error: unknown) => error instanceof WorkspaceAgentInvocationError
-      && error.reasonCode === 'hosted_runtime_retired',
-  )
-  assert.equal(admissionChecked, false)
-
-  const service = await readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8')
-  const start = service.slice(service.indexOf('export async function startRemoteWorkspaceAgentTurn'))
-  const guard = start.indexOf("environmentKind === 'overlay_cloud'")
-  const sideEffectsStart = start.indexOf('const server = getOverlayServerContext()')
-  assert.ok(guard >= 0)
-  assert.ok(sideEffectsStart > guard)
-  for (const sideEffect of ['getOverlayServerContext()', 'loadRoomTurnContext(args)', 'buildAgentTurnContext({', 'ensureBudgetNotLow({']) {
-    assert.ok(start.indexOf(sideEffect) > guard, `${sideEffect} must run after the retired-target guard`)
-  }
-  assert.match(start.slice(guard, sideEffectsStart), /hosted_runtime_retired/)
-})
-
-test('a legacy external agent with no usable target cannot be classified as native', () => {
-  assert.equal(isExternalAgentInvocation({
-    id: 'agent-legacy',
-    workspaceId: 'workspace-1',
-    harness: 'overlay',
-    modelId: 'openai/gpt-4.1',
-  }, true, false), true)
-  assert.equal(isExternalAgentInvocation({
-    id: 'agent-native',
-    workspaceId: 'workspace-1',
-    harness: 'overlay',
-    modelId: 'openai/gpt-4.1',
-  }, false, false), false)
-})
 
 test('shared-surface target eligibility is reapplied to fresh directory state and leaves ordinary access unchanged', () => {
   const workspace = agentFixture({ id: 'workspace', principalId: 'workspace-principal' })
@@ -234,41 +158,6 @@ test('an agent memory write is owned by the agent, not by whoever summoned it', 
   assert.match(memoryRoute, /Unknown agent memory owner/)
 })
 
-test('connected agents receive bounded memory and room context without confusing it for the request', () => {
-  const prompt = buildRemoteAgentPrompt({
-    contextBlock: 'Workspace memory: The launch is Friday.',
-    messages: [
-      { role: 'user', content: 'Maya: Keep the rollout reversible.' },
-      { role: 'assistant', content: 'I prepared a rollback checklist.' },
-    ],
-    prompt: 'What should we verify next?',
-  })
-
-  assert.match(prompt, /OVERLAY_CONTEXT_BEGIN/)
-  assert.match(prompt, /untrusted background data/)
-  assert.match(prompt, /The launch is Friday/)
-  assert.match(prompt, /Room participant: Maya/)
-  assert.match(prompt, /Agent: I prepared/)
-  assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nWhat should we verify next\?\nCURRENT_USER_MESSAGE_END/)
-
-  const oversized = buildRemoteAgentPrompt({
-    contextBlock: 'x'.repeat(200_000),
-    messages: [],
-    prompt: 'The current request must survive truncation.',
-  })
-  assert.match(oversized, /\[Overlay context truncated\]/)
-  assert.match(oversized, /The current request must survive truncation/)
-  // The start command must stay within what installed agent hosts accept.
-  assert.ok(new TextEncoder().encode(oversized).byteLength <= 120 * 1024)
-
-  // Room history keeps far more than the former 2,000 characters per message.
-  const long = buildRemoteAgentPrompt({
-    contextBlock: '', prompt: 'Next?', messages: [{ role: 'assistant', content: 'r'.repeat(40_000) }],
-  })
-  assert.ok(long.includes('r'.repeat(40_000)))
-  assert.doesNotMatch(long, /Overlay context truncated/)
-})
-
 test('room memory ingestion is owner-scoped and gated by the message toggle', async () => {
   const [route, preparation, workflowInput, delivery, contract, convexRoom, convexExtractor, convexMemoryQuery] = await Promise.all([
     Promise.all([
@@ -300,22 +189,3 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
 })
 
 // Convex rejects malformed Unicode before the command mutation handler runs.
-test('remote history truncation cannot break the next turn after an emoji reply', () => {
-  const prompt = buildRemoteAgentPrompt({
-    contextBlock: '',
-    messages: [{ role: 'assistant', content: 'a'.repeat(49_999) + '🙂' + 'tail'.repeat(300000) }],
-    prompt: 'Continue the task',
-  })
-  assert.equal(prompt.isWellFormed(), true)
-  assert.ok(prompt.includes('a'.repeat(49_999)))
-  assert.ok(prompt.includes('CURRENT_USER_MESSAGE_BEGIN\nContinue the task\nCURRENT_USER_MESSAGE_END'))
-})
-
-test('the total remote context limit counts UTF-8 bytes and preserves complete Unicode characters', () => {
-  const contextBlock = '🙂'.repeat(60_000)
-  const prompt = buildRemoteAgentPrompt({ contextBlock, messages: [], prompt: 'Continue' })
-  assert.equal(prompt.isWellFormed(), true)
-  assert.match(prompt, /Overlay context truncated/)
-  assert.ok(new TextEncoder().encode(prompt).byteLength <= 120 * 1024)
-  assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nContinue\nCURRENT_USER_MESSAGE_END/)
-})

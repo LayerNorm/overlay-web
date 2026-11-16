@@ -1,7 +1,4 @@
-/* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
-import { unstyledButton } from '@overlay/ui/control-reset'
-import { Button } from '@overlay/ui/primitives'
-import { lazy, Suspense, type ComponentProps, type ReactNode } from 'react'
+import { lazy, Suspense, type ComponentProps } from 'react'
 import type {
   AssistantVisualSegment,
   DraftModalState,
@@ -15,6 +12,8 @@ import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
 import { MarkdownMessage } from '../MarkdownMessage'
+import { ChatImageThumb, ChatVideoCard } from '../files/ChatFileCards'
+import { fileIdFromContentHref } from '../files/chat-files-context'
 import { MarkdownConnectorActionsContext } from '../markdown/connector-actions-context'
 import type {
   AttachmentPreview,
@@ -227,54 +226,17 @@ function SingleToolSegmentItem({
   )
 }
 
-function FilePreviewButton({
-  onOpen,
-  children,
-}: {
-  onOpen: () => void
-  children: ReactNode
-}) {
-  return (
-    <Button variant="ghost"
-      type="button"
-      onClick={onOpen}
-      className={unstyledButton(`rounded-xl outline-hidden transition-transform hover:scale-[1.005] focus-visible:ring-2 focus-visible:ring-(--foreground) focus-visible:ring-offset-2 focus-visible:ring-offset-(--background)`)}
-      title="Open attachment"
-    >
-      {children}
-    </Button>
-  )
-}
-
-function FileSegmentItem({ seg, ctx }: SegmentItemProps<'file'>) {
+function FileSegmentItem({ seg }: SegmentItemProps<'file'>) {
   const block = seg.block
   const isImg = (block.mediaType?.startsWith('image/') ?? true)
   const isVideo = block.mediaType?.startsWith('video/') ?? false
   if (!isImg && !isVideo) return null
-  const previewName = isImg ? 'generated-image.png' : 'generated-video.mp4'
-  const openPreview = () =>
-    ctx.onOpenAttachmentPreview?.({ name: previewName, content: block.url, url: block.url })
+  const fileId = fileIdFromContentHref(block.url) ?? undefined
   return (
     <div className="w-full px-1 py-1">
-      {isImg ? (
-        <FilePreviewButton onOpen={openPreview}>
-          <img
-            src={block.url}
-            alt="Generated"
-            className="max-h-[320px] max-w-full rounded-xl border border-(--border) object-contain"
-          />
-        </FilePreviewButton>
-      ) : (
-        <FilePreviewButton onOpen={openPreview}>
-          <video
-            src={block.url}
-            preload="metadata"
-            playsInline
-            aria-hidden="true"
-            className="pointer-events-none max-h-[320px] max-w-full rounded-xl border border-(--border) object-contain"
-          />
-        </FilePreviewButton>
-      )}
+      {isImg
+        ? <ChatImageThumb src={block.url} name="Generated image" fileId={fileId} />
+        : <span className="block max-w-[320px]"><ChatVideoCard src={block.url} name="Generated video" fileId={fileId} /></span>}
     </div>
   )
 }

@@ -89,6 +89,15 @@ export type WorkspaceTeamMember = {
   createdAt: number
 }
 
+export type WorkspaceInvitationPreviewResponse = {
+  status: WorkspaceInvitationStatus
+  workspaceName: string
+  inviterName: string | null
+  role: Exclude<WorkspaceMembershipRole, 'owner'>
+  invitedEmail: string
+  workspaceBilling: 'paid' | 'free'
+}
+
 export type WorkspaceInvitation = {
   id: string
   workspaceId: string
@@ -694,13 +703,25 @@ export type WorkspaceArchivedAgentThread = {
 }
 
 /** A chat thread nested under a workspace agent. */
+export type WorkspaceThreadPullRequest = {
+  owner: string
+  repo: string
+  number: number
+  title: string
+  url: string
+  state: 'draft' | 'open' | 'merged' | 'closed'
+  observedAt: number
+  updatedAt?: number
+}
+
 export type WorkspaceAgentThread = {
   conversationId: string
   title: string
   lastModified: number
   createdAt: number
   archivedAt?: number
-  /** The main thread is the oldest thread the caller has not archived; the agent opens into it. */
+  pullRequests?: WorkspaceThreadPullRequest[]
+  /** True for the oldest thread the caller has not archived (the main-thread designation). */
   isMain: boolean
 }
 

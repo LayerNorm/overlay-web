@@ -21,6 +21,7 @@
 # next.js
 /.next/
 /.next-analyze/
+/.perf/
 /.next.stale.*/
 apps/*/.next/
 apps/*/.next-analyze/

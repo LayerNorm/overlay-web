@@ -9,7 +9,7 @@ import type { HarnessExecutionPorts } from './ports'
 
 function fixture() {
   const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
-    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0 }
   let parent = createHarnessSnapshot({ runId: 'parent', goal: 'Read child findings', constraints: [], policy }, Date.now())
   parent = replaceHarnessPlan(parent, [{ id: 'work', title: 'Read child findings', dependsOn: [],
     acceptanceCriteria: ['Read the child result'], requiresVerification: false }], Date.now())
@@ -39,7 +39,7 @@ function noPlanState() {
     constraints: [],
     policy: {
       actorUserId: 'user', allowedToolIds: ['ask_agent'], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0,
     },
   }, Date.now())
 }
@@ -185,7 +185,7 @@ test('questions too long to store are returned to the model to shorten', async (
 test('a step is done when the model marks it done, with no evidence', async () => {
   const f = fixture()
   const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: false,
-    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0 }
   f.setParent(replaceHarnessPlan(
     createHarnessSnapshot({ runId: 'plain', goal: 'Do it', constraints: [], policy }, Date.now()),
     [{ id: 'work', title: 'Do it', dependsOn: [], acceptanceCriteria: ['Do it'], requiresVerification: false }],
@@ -226,7 +226,7 @@ test.each([false, true])('unknown step IDs return corrective guidance without ch
 test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {
   const f = fixture()
   const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: false,
-    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0 }
   const parent = replaceHarnessPlan(
     createHarnessSnapshot({ runId: 'dependencies', goal: 'Complete dependent work', constraints: [], policy }, Date.now()),
     [
@@ -319,4 +319,25 @@ test('denied artifact reads never create observations', async () => {
     { toolCallId: 'denied-read', messages: [] },
   )).rejects.toThrow('Source access revoked')
   expect(f.apply).not.toHaveBeenCalled()
+})
+
+test('a refused delegation is returned to the model instead of failing the run', async () => {
+  const f = fixture()
+  const delegate = vi.fn<HarnessExecutionPorts['delegate']>(async () => ({
+    rejected: true, reason: 'Finish dependencies before delegating a milestone.',
+  }))
+  const tool = createHarnessControlTools({ ...f.ports, delegate }).harness_delegate
+  const result = await tool.execute!({ stepId: 'work', goal: 'Scan one gap', constraints: [], allowedToolIds: [] },
+    { toolCallId: 'delegate-1', messages: [] })
+  expect(result).toMatchObject({
+    success: false, code: 'delegation_rejected', error: 'Finish dependencies before delegating a milestone.',
+  })
+})
+
+test('reading a child this run never delegated is returned to the model with the valid ids', async () => {
+  const f = fixture()
+  const tool = createHarnessControlTools(f.ports).harness_read_child
+  const result = await tool.execute!({ childRunId: 'not-a-child' }, { toolCallId: 'read-1', messages: [] })
+  expect(result).toMatchObject({ success: false, code: 'unknown_child', hint: expect.stringContaining('child') })
+  expect(f.readChild).not.toHaveBeenCalled()
 })

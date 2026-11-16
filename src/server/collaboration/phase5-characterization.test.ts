@@ -80,9 +80,7 @@ test('Phase 5 ships agent creation and explicit mention-first copy', async () =>
     readFile(`${root}/src/features/agents/components/AgentConversationWorkspace.tsx`, 'utf8'),
   ])
   assert.match(workspace, /Create agent/)
-  assert.match(form, /Create connection/)
-  assert.match(form, /Bring your own agent/)
+  assert.doesNotMatch(form, /Bring your own agent/)
   assert.doesNotMatch(form, /Create Overlay Cloud environment/)
-  assert.match(form, /computer, VPS, or sandbox/)
   assert.match(form, /Mention-first is enforced/)
 })

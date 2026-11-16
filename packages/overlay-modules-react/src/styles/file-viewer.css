@@ -9,6 +9,51 @@
   tab-size: 2;
 }
 
+/* Markdown lists. Tailwind preflight sets list-style: none and padding: 0 on
+   every ul/ol, and the viewer's prose-* classes have no typography plugin behind
+   them, so restore markers and indent here. Chat Markdown has its own rules. */
+.overlay-file-viewer--markdown ul {
+  list-style-type: disc;
+}
+
+.overlay-file-viewer--markdown ol {
+  list-style-type: decimal;
+}
+
+.overlay-file-viewer--markdown ul ul {
+  list-style-type: circle;
+}
+
+.overlay-file-viewer--markdown ul ul ul {
+  list-style-type: square;
+}
+
+.overlay-file-viewer--markdown :is(ul, ol) {
+  margin-block: 0.5em;
+  padding-inline-start: 1.5em;
+}
+
+.overlay-file-viewer--markdown li :is(ul, ol) {
+  margin-block: 0.25em;
+}
+
+.overlay-file-viewer--markdown li {
+  padding-inline-start: 0.25em;
+}
+
+.overlay-file-viewer--markdown li + li {
+  margin-block-start: 0.25em;
+}
+
+.overlay-file-viewer--markdown li::marker {
+  color: var(--muted);
+}
+
+.overlay-file-viewer--markdown ul.contains-task-list {
+  list-style-type: none;
+  padding-inline-start: 0.25em;
+}
+
 .overlay-file-viewer--csv table {
   border-collapse: collapse;
   font-size: 0.75rem;

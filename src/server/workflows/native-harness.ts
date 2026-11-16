@@ -14,12 +14,15 @@ import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/perso
 import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
-import { readHarnessTranscriptForDelivery } from '@/server/harness/harness-transcript'
-import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import {
+  readHarnessTranscriptForDelivery, reconcileSettledHarnessTranscriptForDelivery,
+} from '@/server/harness/harness-transcript'
+import { harnessDiagnosticForFailure, logHarnessFailure } from '@/server/harness/harness-diagnostics'
 import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
+import { instructionsWithWork, prepareThreadWork, saveThreadWorkIfChosen } from '@/server/harness/thread-work-steps'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
 import { readNativeAssignmentChild, readNativeAssignmentIssues } from '@/server/harness/native-assignment-steps'
@@ -79,6 +82,8 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
     if (owns) await attachNativeHarnessDelivery(access)
+    // The thread's chosen folders are copied onto its computer before the model starts.
+    const workNote = await prepareThreadWork(access, input.context, owns)
     const execution = { access, context: input.context }
     const ports = createNativeHarnessExecutionPorts(execution, {
       ...createHarnessWaitPorts({
@@ -97,6 +102,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       }),
       delegate: async (delegation, toolCallId) => {
         const child = await admitNativeHarnessChild(execution, delegation, toolCallId)
+        if ('rejected' in child) return child
         const snapshot = await readHarnessChild(access, child.id)
         await startNativeHarnessChild(access, nativeHarnessChildInput(input, snapshot))
         return child
@@ -113,7 +119,8 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     const tools = createNativeHarnessTools({ access, context: input.context, definitions: input.definitions })
     activeToolNames = new Set([...activeToolNames, ...Object.keys(tools)])
     result = await runOverlayHarness({
-      instructions: input.instructions, messages: input.messages, settings: input.settings,
+      instructions: instructionsWithWork(input.instructions, workNote),
+      messages: input.messages, settings: input.settings,
       continuation: input.continuation,
       model: { modelId: input.context.modelId, credentialOwnerId: access.actorUserId,
         sessionId: access.conversationId },
@@ -123,6 +130,10 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
       const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot, new Error(result.snapshot.blocker?.question ?? ''), 'model')
+      // The blocker question is model output; log only which kind of blocker ended the run.
+      logHarnessFailure(access.runId, diagnostic, Object.assign(
+        new Error(`The run ended while blocked (${result.snapshot.blocker?.kind ?? 'none'}, ${result.snapshot.status}).`),
+        { name: 'HarnessBlockedFinalization' }))
       const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason, diagnostic,
@@ -143,6 +154,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       }
     }
     const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, (error as { code?: string })?.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model')
+    logHarnessFailure(access.runId, diagnostic, error)
     const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
     const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
     const snapshot = isTerminalHarnessStatus(state.status) ? state
@@ -154,9 +166,14 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   if (currentProjection) return currentProjection
   if (owns) {
     const journal = await readHarnessTranscriptForDelivery(access, result)
-    const delivery = buildNativeHarnessDelivery(result, activeToolNames, journal)
+    const reconciledJournal = journal
+      ? await reconcileSettledHarnessTranscriptForDelivery(access, result, activeToolNames, journal)
+      : undefined
+    const delivery = buildNativeHarnessDelivery(result, activeToolNames, reconciledJournal)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
     await settleNativeAssignmentResult(access)
+    // Whatever the outcome, changes made in the copied folders are saved back to Files.
+    await saveThreadWorkIfChosen(access, input.context)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)
   return { runId: result.snapshot.runId, status: result.snapshot.status }

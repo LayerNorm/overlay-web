@@ -2,7 +2,6 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { DesktopComposerControls } from '@/components/desktop/DesktopComposerControls'
 import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit, PromptInputTools } from '@overlay/chat-react'
 import {
   AtSign,
@@ -11,24 +10,25 @@ import {
   FileText,
   Globe2,
   Image as ImageIcon,
+  ListEnd,
   MousePointerClick,
   Plus,
-  Slash,
   Video,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { markComposerReady } from '../lib/realtime-baseline'
 import { MentionInput } from './chat-interface/MentionInput'
-import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
-import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
 import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
+import { ComposerQueueTray, steerShortcutLabel } from './ChatComposerQueue'
 
 const DOCUMENT_FILE_ACCEPT = [
   '.pdf',
@@ -97,6 +97,7 @@ const TOOL_REQUEST_OPTIONS: Array<{
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
 export function ChatComposer(props: ChatComposerProps) {
+  recordRender('ChatComposer')
   const viewProps = toComposerViewProps(props)
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
@@ -109,7 +110,7 @@ export function ChatComposer(props: ChatComposerProps) {
       <div
         className={`flex min-h-0 flex-col ${
           viewProps.showCenteredEmptyChat ? 'min-h-0 flex-1' : 'shrink-0'
-        } px-3 pb-3 sm:px-4 sm:pb-4 ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
+        } ${viewProps.embedded ? '' : 'px-3 pb-3 sm:px-4 sm:pb-4'} ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
       >
         {/* A new chat or automation keeps the composer where it stays once the conversation starts: the greeting (and
             any automation intro) is centred in the free space, suggestions sit just above the composer. */}
@@ -129,12 +130,13 @@ export function ChatComposer(props: ChatComposerProps) {
         >
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
+          {viewProps.queue ? <ComposerQueueTray queue={viewProps.queue} canEdit={!viewProps.hasComposerText} /> : null}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading && viewProps.blockedComposerContent ? (
             viewProps.blockedComposerContent
           ) : (
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
-          {viewProps.mode === 'chat' ? (
+          {viewProps.afterComposerContent ? viewProps.afterComposerContent : viewProps.mode === 'chat' ? (
             <p className="mt-2 text-center text-[11px] text-(--muted-light)">
               Overlay can make mistakes. Check important info.
             </p>
@@ -146,15 +148,22 @@ export function ChatComposer(props: ChatComposerProps) {
 }
 
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
+  useEffect(() => {
+    if (!props.isSendBlocked) markComposerReady()
+  }, [props.isSendBlocked])
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
-  const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)
 
   const handleComposerKeyDown = (event: ReactKeyboardEvent) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return
-    if (slash.handleKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
+      if (props.queue?.running) {
+        if (!props.hasComposerText) return
+        if (event.metaKey || event.ctrlKey) props.queue.onSteerDraft()
+        else props.queue.onQueueDraft()
+        return
+      }
       if (!props.isSendBlocked && props.hasComposerText) void props.onSend()
     }
   }
@@ -163,13 +172,6 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
     <PromptInput>
       {props.replyContext && <ReplyContextBar replyContext={props.replyContext} setReplyContext={props.setReplyContext} />}
       <PromptInputBody>
-        {slash.open ? (
-          <AgentSlashMenu
-            commands={slash.commands}
-            highlightedIndex={slash.index}
-            onSelect={slash.select}
-          />
-        ) : null}
         <AttachmentPreviewTray {...props} />
         {/* eslint-disable-next-line no-restricted-syntax -- overlay:raw-control: Native file picker exposes the browser FileList. */}
         <input ref={props.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => event.target.files && props.onAddImages(event.target.files)} />
@@ -231,29 +233,14 @@ type ComposerControlsProps = ComposerViewProps & {
 
 function ComposerControls(props: ComposerControlsProps) {
   const mentionTooltip = mentionReferenceLabel(props)
-  const hasAgentCommands = Boolean(props.agentCommands?.length)
   return (
     <PromptInputFooter>
-      {!props.textOnly ? <DesktopComposerControls key={props.draftIdentity} onAppendText={props.onAppendText} onImages={props.onAddImages} /> : null}
       {props.textOnly ? null : <AttachMenu {...props} />}
       {props.textOnly ? null : <DelayedTooltip label={mentionTooltip} side="top">
         <PromptInputButton onClick={() => props.textareaRef.current?.openMentionPopup()} aria-label="Insert mention">
           <AtSign size={16} strokeWidth={1.75} />
         </PromptInputButton>
       </DelayedTooltip>}
-      {hasAgentCommands ? (
-        <DelayedTooltip label="Agent slash commands" side="top">
-          <PromptInputButton
-            onClick={() => {
-              if (!props.hasComposerText) props.onInputChange('/')
-              props.textareaRef.current?.focus()
-            }}
-            aria-label="Agent slash commands"
-          >
-            <Slash size={16} strokeWidth={1.75} />
-          </PromptInputButton>
-        </DelayedTooltip>
-      ) : null}
       <PromptInputTools>
         {props.capabilities.memory && props.capabilities.vectorSearch && !props.memoryEnabled && (
           <DelayedTooltip label="Memory is off for this message." side="top">
@@ -280,17 +267,38 @@ function ComposerControls(props: ComposerControlsProps) {
         })}
         {props.generationChip && <GenerationChip chip={props.generationChip} onClear={() => props.setGenerationChip(null)} />}
       </PromptInputTools>
+      {props.queue?.running ? <QueueShortcutHint /> : null}
       {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
       {props.modelControl}
-      <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
-        <PromptInputSubmit
-          status={props.isActiveLoading ? 'streaming' : 'ready'}
-          onStop={() => void props.onStop()}
-          onClick={() => void props.onSend()}
-          disabled={props.disabledSend || props.isSendBlocked}
-        />
-      </DelayedTooltip>
+      {props.queue?.running && props.hasComposerText ? (
+        <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
+          <Button variant="primary" size="icon" type="button" aria-label="Queue message" className="shrink-0" onClick={props.queue.onQueueDraft}>
+            <ListEnd size={17} strokeWidth={2} />
+          </Button>
+        </DelayedTooltip>
+      ) : (
+        <DelayedTooltip label={props.isActiveLoading ? 'Stop generating' : 'Send (↵) · new line (⇧↵)'} side="top">
+          <PromptInputSubmit
+            status={props.isActiveLoading ? 'streaming' : 'ready'}
+            onStop={() => void props.onStop()}
+            onClick={() => void props.onSend()}
+            disabled={props.disabledSend || props.isSendBlocked}
+          />
+        </DelayedTooltip>
+      )}
     </PromptInputFooter>
+  )
+}
+
+function QueueShortcutHint() {
+  return (
+    <span className="mr-1 flex shrink-0 items-center gap-1 text-[11px] text-(--muted-light) max-sm:hidden" aria-hidden>
+      <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">↵</kbd>
+      queue
+      <span className="px-0.5">·</span>
+      <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">{steerShortcutLabel()}↵</kbd>
+      steer
+    </span>
   )
 }
 

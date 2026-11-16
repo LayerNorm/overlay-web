@@ -33,7 +33,7 @@ const context: PersonalChatWorkToolingContext = {
 }
 const snapshot = () => ({ ...createHarnessSnapshot({ runId: 'harness', goal: 'Read a document', constraints: [], policy: {
   actorUserId: 'user', workspaceId: 'original-workspace', allowedToolIds: ['read_file', 'call_mcp_tool'], requiresPlan: false,
-  maxCostMicros: 1_000_000, deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
+  maxCostMicros: 1_000_000, deadlineAt: Date.now() + 60_000,
 } }, Date.now()), workflowRunId: 'workflow' })
 const agentRun = () => ({ id: 'agent-run', conversationId: 'conversation', userId: 'user', harnessRunId: 'harness', workflowRunId: 'workflow',
   runner: 'workflow', executionEngine: 'overlay_harness', mode: 'work', status: 'running' })
@@ -65,6 +65,12 @@ test('refreshes permissions and entitlements in the original workspace without e
   mocks.capability.mockReturnValue({ allowed: false })
   await expect(refreshPersonalHarnessAccess(access, context, 'read_file')).rejects.toThrow(/revoked/)
   expect(mocks.subject).toHaveBeenCalledTimes(2)
+})
+
+test('keeps the Notebook note on refreshed tool contexts so its note tools are rebuilt', async () => {
+  const refreshed = await refreshPersonalHarnessAccess(access, { ...context, notebookNoteId: 'note-1' }, 'read_file')
+  expect(refreshed).toMatchObject({ notebookNoteId: 'note-1' })
+  expect(await refreshPersonalHarnessAccess(access, context, 'read_file')).not.toHaveProperty('notebookNoteId')
 })
 
 test('rejects stale execution, cancelled delivery, changed principals and out-of-run tools', async () => {
@@ -216,4 +222,35 @@ test('automation web and generated-UI tools follow admission rules: allowed for 
   mocks.automationGrant.mockResolvedValue({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [], withheldToolIds: [] })
   mocks.filter.mockImplementation(async ({ resourceType, resourceIds }) => resourceType === 'tool' ? [] : resourceIds)
   await expect(refreshPersonalHarnessAccess(automationAccess, automationContext)).rejects.toThrow(/permissions have been revoked/)
+})
+
+test('an agent-bound automation runs every step as its agent, read fresh from the automation', async () => {
+  const automationAccess: PersonalHarnessAccess = {
+    ...access,
+    authentication: { type: 'automation', automationId: 'automation', automationRunId: 'automation-run', originWorkflowRunId: 'workflow' },
+  }
+  const automationContext: PersonalChatWorkToolingContext = {
+    ...context,
+    accountAllowedToolIds: ['read_file'], accountAllowedConnectorIds: [], integrationToolIds: [], requestedToolIds: [],
+    automationExecution: true, automationId: 'automation', automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  }
+  mocks.state.mockResolvedValue({ ...snapshot(), policy: { ...snapshot().policy, allowedToolIds: ['read_file'] } })
+  const agent = { agentId: 'agent_1', agentPrincipalId: 'agent-principal', memoryOwnerId: 'agent-memory:agent_1' }
+  mocks.automationGrant.mockResolvedValue({ approvalMode: 'auto', allowedToolIds: ['read_file'], allowedConnectorIds: [],
+    withheldToolIds: [], agent })
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext, 'read_file'))
+    .resolves.toMatchObject({ ...agent, approvalMode: 'auto', automationExecution: true })
+
+  // Without a bound agent the run acts as the owner: no agent identity at all.
+  mocks.automationGrant.mockResolvedValue({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [], withheldToolIds: [] })
+  const owner = await refreshPersonalHarnessAccess(automationAccess, automationContext, 'read_file')
+  expect(owner).not.toHaveProperty('memoryOwnerId')
+  expect(owner).not.toHaveProperty('agentId')
+
+  // A supplied identity is never trusted, for automations or personal turns.
+  for (const supplied of [{ memoryOwnerId: 'agent-memory:other' }, { agentId: 'other' }, { agentPrincipalId: 'other' }]) {
+    await expect(refreshPersonalHarnessAccess(automationAccess, { ...automationContext, ...supplied })).rejects.toThrow(/identity/)
+    await expect(refreshPersonalHarnessAccess(access, { ...context, ...supplied })).rejects.toThrow(/identity/)
+  }
 })

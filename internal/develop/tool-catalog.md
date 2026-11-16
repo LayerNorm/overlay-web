@@ -34,6 +34,30 @@ request selects these Computer tools; it cannot bypass Computer availability or
 approvals. Old saved browser-only grants do not automatically gain Computer
 permissions.
 
+Every `computer_*` tool also runs on the user's own connected Mac (Settings →
+Desktop → This Mac) through its Agent Host. Each takes an optional `target`:
+`local` for the Mac, `cloud` for the cloud Computer; without one a bound cloud
+Computer is used and the Mac is the fallback. A connected Mac also makes the
+computer tools available in personal chat. Approvals are the same on both;
+automations never use the Mac, and only the person who approved the Mac can use
+it. See `local-computer.md`.
+
+## How tool calls appear in chat
+
+Rows describe what a call did, built from its input and result by `describeToolCall`
+(`packages/overlay-chat-core/src/tool-call-description.ts`): "Ran `npm test`", "Read
+`auth.ts:1-50`", "Searched `src` for “x”", "Edited `a.ts` +20 −6", "Created `report.mp4`".
+Only simple, unpiped `rg`/`grep`/`cat`/`sed -n`/`head`/`tail`/`ls`/`find` commands are
+summarized; everything else is "Ran" with the first line of the command. Secret-looking values
+in commands are hidden on screen only. Results that feed this:
+
+- `computer_write_file` returns `created` and `linesAdded`/`linesRemoved` (read before the write;
+  omitted when the old file is over 1 MB or unreadable).
+- `generate_image`, `generate_video` and `animate_image` return `fileId` and `url`
+  (`/api/v1/files/<id>/content`) next to `outputId`.
+- Files a turn creates (`write_file`, `create_note`, `generate_*`, `computer_publish_file`) render
+  as cards after the reply unless the reply already embeds them.
+
 ## Scope on list tools
 
 `list_notes`, `list_files`, `list_skills`, `list_automations`, and `list_tasks` take an optional `scope`: `personal` (only yours),
@@ -51,8 +75,7 @@ server's name and tools, never the secret. Connectors work differently: the work
 An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
 than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
 and a private channel with one person, are not. The server decides this from the conversation
-(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared), for native agents and
-for Claude Code / Codex over `/api/agent-mcp` alike. In a shared room:
+(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared). In a shared room:
 
 - **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
   notes and memories, and their personal skills are not loaded; what the workspace shares still is.
@@ -73,7 +96,6 @@ purpose, but there is no per-message opt-in yet.
 | --- | --- |
 | **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Computer. |
-| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` and `present_generated_ui`. Tools that need approval show an approval card. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
 
 ## Native agent permissions
@@ -98,8 +120,12 @@ Older hosts retain the legacy retry flow until upgraded.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
 Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
-transaction; its optional revision is checked by Convex before any write. Conflicts require another read.
+transaction; its optional revision is checked by Convex before any write. Conflicts return the current task,
+revision and instructions to review newer edits before retrying, or to call `get_task` if the read failed.
 Comments also advance the task revision monotonically, so a same-tick comment cannot revive a stale write.
+`comment_on_task` reads back the task and returns its new revision for the next update. A failed readback
+does not turn a saved comment into a failure: the agent is told to read the task, not post a duplicate comment.
+Agents should serialize comments and updates on the same task; revision guards are never bypassed on retry.
 All Work mutations, including scope/archive/restore, require server authentication at the Convex boundary.
 Task tools never delete tasks or start an agent run. Agent turns supply activity attribution only through
 service-authenticated calls, including archive/restore scope requests; other callers cannot choose their event actor. Existing full-toolbox grants

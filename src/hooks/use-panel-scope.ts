@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
   listViewForScope,
@@ -96,12 +96,17 @@ export function usePanelScopeState(): { scope: PanelScope; known: boolean } {
     : null
   const param = parsePanelScope(params?.get(PANEL_SCOPE_PARAM)) ?? legacyScope
   // A scope arriving in the URL (a shared link, a deep link) becomes the remembered one, so links inside the page that
-  // carry no `scope` keep showing it.
+  // carry no `scope` keep showing it. It is remembered once per URL change, never in answer to the remembered value
+  // changing: two tabs showing different scopes would otherwise overwrite each other through storage events forever,
+  // and every tab whose URL names no scope would flip between them.
+  const rememberedRequestRef = useRef<PanelScope | null | undefined>(undefined)
   useEffect(() => {
     if (scopeLessHandleRoot || !savedKnown) return
     const requested = pathScope ?? param
-    if (requested && requested !== saved) rememberPanelScope(requested)
-  }, [param, pathScope, saved, savedKnown, scopeLessHandleRoot])
+    if (rememberedRequestRef.current === requested) return
+    rememberedRequestRef.current = requested
+    if (requested && requested !== savedSnapshot?.scope) rememberPanelScope(requested)
+  }, [param, pathScope, savedKnown, scopeLessHandleRoot])
   if (scopeLessHandleRoot) return { scope: 'personal', known: true }
   return {
     scope: resolvePanelScope({ pathScope, param, saved }),

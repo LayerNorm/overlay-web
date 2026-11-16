@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
-import { getOverlaySession } from '@/server/auth/session'
-import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
+import { ChatRouteClient } from '../_components/ClientSessionRoutes'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
@@ -20,27 +19,13 @@ function DisabledAutomationsRoute() {
   )
 }
 
-async function AutomationsRouteContent() {
-  const session = await getOverlaySession()
-
-  const userId = session?.user.id ?? null
-  const firstName = session?.user.firstName ?? undefined
-  return (
-    <ChatSuspenseBoundary
-      userId={userId}
-      firstName={firstName}
-      mode="automate"
-    />
-  )
-}
-
 export default function AutomationsPage() {
   const capabilities = getOverlayCapabilitiesSync()
   if (!capabilities.automations) return <DisabledAutomationsRoute />
 
   return (
     <Suspense fallback={<ChatRouteSkeleton mode="automate" />}>
-      <AutomationsRouteContent />
+      <ChatRouteClient mode="automate" />
     </Suspense>
   )
 }

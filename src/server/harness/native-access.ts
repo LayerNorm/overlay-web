@@ -4,6 +4,7 @@ import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
 import type { AgentRun } from '@/shared/agents/agent-run'
+import type { ThreadWork } from '@/shared/agents/thread-work'
 import { isSharedRoom } from '@/shared/agents/room-access'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -31,6 +32,9 @@ export type NativeHarnessAccess = HarnessExecutionReference & {
 
 export type NativeHarnessContext = {
   modelId: string
+  /** The thread's computer and chosen folders when the run started (internal/develop/thread-folders.md). */
+  work?: ThreadWork
+  agentName?: string
   memoryEnabled: boolean
   sharedRoom: boolean
   requestFingerprint: string

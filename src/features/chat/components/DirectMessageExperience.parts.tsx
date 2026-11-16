@@ -1,8 +1,6 @@
 'use client'
 
-import { appendDictatedText } from '@/components/desktop/composer-dictation'
 
-import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useSearchParams, type useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -33,6 +31,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import {
   roomMessageRowKey,
   toRoomMessageView,
@@ -53,6 +52,7 @@ import type {
   useRoomActions,
   useRoomCollaboration,
   useRoomComposer,
+  useRoomComposerQueue,
   useRoomPanels,
   useRoomRoster,
   useRoomTranscript,
@@ -377,11 +377,10 @@ function buildRoomMessageItemProps({
       message.status === 'generating' && !message.id.startsWith('optimistic_')
         ? () => void ctx.stopAgentResponse(message.id)
         : undefined,
-    onControlRemoteQueue: (runId: string, action: Parameters<RoomMessageContext['controlRemoteQueue']>[1]) => void ctx.controlRemoteQueue(runId, action),
-    onResolveRemoteRequest: (request: Parameters<RoomMessageContext['resolveRemoteRequest']>[0], decision: Parameters<RoomMessageContext['resolveRemoteRequest']>[1], response: Parameters<RoomMessageContext['resolveRemoteRequest']>[2]) => void ctx.resolveRemoteRequest(request, decision, response),
     highlighted: ctx.highlightedMessageId === message.id,
     grouped,
     personalChatStyle: ctx.conversationType !== 'channel',
+    chatActions: ctx.agentThreadTurns?.actionsFor(message, () => ctx.beginQuoteReply(message)),
   }
 }
 
@@ -429,10 +428,7 @@ export function RoomMessage({
     teaserMessage,
     teaserAuthor,
   })
-  return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} remoteStatus={view.streaming && view.remoteRun
-    ? <RemoteRunLiveness key={view.remoteRun.runId} conversationId={ctx.conversationId} runId={view.remoteRun.runId}
-        workspaceId={ctx.participants.find(participant => participant.principalId === ctx.currentPrincipalId)?.workspaceId} />
-    : null} />
+  return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} />
 }
 
 function RoomEmptyState({
@@ -488,11 +484,12 @@ export function RoomTranscript({
   const {
     listRef,
     handleTranscriptScroll: onScroll,
-    stickToBottom,
+    hasContentBelow,
     hasMoreMessages,
     loadingOlderMessages,
     loadOlderMessages,
     loading,
+    turnSpacerRef,
   } = transcript
   const { newMessageCount } = readMarkers
   const { jumpToLatest: onJumpToLatest } = navigation
@@ -500,7 +497,7 @@ export function RoomTranscript({
   const onLoadOlder = () => void loadOlderMessages()
   return (
     <div className="overlay-chat-surface relative min-h-0 flex-1">
-      {newMessageCount > 0 && !stickToBottom ? (
+      {hasContentBelow ? (
         <Button
           variant="ghost"
           type="button"
@@ -508,7 +505,7 @@ export function RoomTranscript({
           data-testid="jump-to-latest"
           className="absolute bottom-4 left-1/2 z-10 h-auto -translate-x-1/2 rounded-full bg-(--surface-elevated) px-3 py-1.5 text-xs font-medium text-(--foreground) shadow-lg transition-colors hover:bg-(--surface-subtle)"
         >
-          {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} ↓
+          {newMessageCount > 0 ? `${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'} ↓` : 'Jump to latest ↓'}
         </Button>
       ) : null}
       <div
@@ -516,7 +513,7 @@ export function RoomTranscript({
         onScroll={onScroll}
         className={`h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4 ${hideScrollbar ? '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''}`}
       >
-        <div data-chat-transcript className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
+        <div data-chat-transcript data-loaded-message-count={mainMessages.length} className={`mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-col gap-1 sm:gap-1.5 ${!loading && mainMessages.length === 0 ? 'justify-center' : 'justify-end'}`}>
           {hasMoreMessages ? (
             <Button
               variant="ghost"
@@ -579,6 +576,7 @@ export function RoomTranscript({
             })
           )}
           {footer}
+          <div ref={turnSpacerRef} aria-hidden className="shrink-0" />
         </div>
       </div>
     </div>
@@ -714,10 +712,8 @@ export type GuidedRoomComposer = {
 }
 
 export function RoomComposer({
-  conversationId,
   composer,
   mentionCategories,
-  agentCommands,
   capabilities,
   participantsHaveAgent,
   memoryEnabled,
@@ -726,11 +722,11 @@ export function RoomComposer({
   onOpenAttachmentPreview,
   onOpenFilePreview,
   guided,
+  footer,
+  queue,
 }: {
-  conversationId: string
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
-  agentCommands: import('./collaboration/room-message-view').RemoteAgentCommand[]
   capabilities: CapabilityCheck
   participantsHaveAgent: boolean
   memoryEnabled: boolean
@@ -739,7 +735,12 @@ export function RoomComposer({
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
+  /** Shown under the message box instead of the disclaimer: an agent thread's computer and folder pickers. */
+  footer?: ReactNode
+  queue?: ReturnType<typeof useRoomComposerQueue>
 }) {
+  recordRender('RoomComposer')
+  const activeQueue = guided ? undefined : queue
   useEffect(() => {
     if (guided?.focusRevision) composer.composerRef.current?.focus()
   }, [guided?.focusRevision, composer.composerRef])
@@ -753,10 +754,10 @@ export function RoomComposer({
         hideGenerationModes: true,
         placeholder: guided?.placeholder ?? 'What do you want to get done?',
         mentionCategories: guided ? [] : mentionCategories,
-        agentCommands: guided ? [] : agentCommands,
         textOnly: Boolean(guided),
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+      queue={activeQueue?.controls}
       attachments={{
         attachedImages: composer.attachedImages,
         setAttachedImages: composer.setAttachedImages,
@@ -773,13 +774,12 @@ export function RoomComposer({
       runtime={{
         composerNotice: null,
         isSendBlocked: guided?.disabled ?? false,
-        isActiveLoading: false,
+        isActiveLoading: activeQueue?.running ?? false,
         isTemporaryChat: false,
         blockedComposerContent: null,
+        ...(footer && !guided ? { afterComposerContent: footer } : {}),
       }}
       inputState={{
-        draftIdentity: conversationId,
-        onAppendText: text => composer.setInput(previous => appendDictatedText(previous, text)),
         replyContext: composer.replyContext,
         setReplyContext: composer.setReplyContext,
         textareaRef: composer.composerRef,
@@ -813,7 +813,7 @@ export function RoomComposer({
         onNavigateMode: () => {},
       }}
       actions={{
-        onStop: () => {},
+        onStop: activeQueue?.stop ?? (() => {}),
         onSend: guided ? () => { if (!guided.disabled) guided.onSubmit() } : () => void composer.handleSend(),
       }}
     />

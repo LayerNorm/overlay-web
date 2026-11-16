@@ -5,7 +5,6 @@ import { requireConversationAccess } from './directMessages'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
-import { parseByoModelId } from '../../src/shared/agents/agent-model'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import type { AssignmentExecution } from '../../src/shared/work/assignment-execution'
 import { scopeForConversationDetail } from '../../src/shared/chat/chat-view-navigation'
@@ -346,7 +345,7 @@ export const createAgentAssignment = mutation({
       requireActiveAgent(ctx, args.workspaceId, args.callerAgentId),
       requireActiveAgent(ctx, args.workspaceId, args.assignedAgentId),
     ])
-    if (target.agent.harness !== 'overlay' || parseByoModelId(target.agent.modelId) !== null) {
+    if (target.agent.harness !== 'overlay') {
       throw new Error('NATIVE_HARNESS_TARGET_REQUIRED')
     }
     visibleToRequester(caller.agent, requester.principalId, args.requesterUserId)

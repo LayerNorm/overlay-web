@@ -78,8 +78,7 @@ export class AccountDeletionService {
   }
 
   /**
-   * Removes every credential the user stored (model-provider keys and the
-   * Claude Code / Codex accounts) from the credential vault. Unlike the
+   * Removes every model-provider key the user stored from the credential vault. Unlike the
    * best-effort cleanups below, a failure stops the deletion: the vault
    * reference lives in the rows the deletion is about to remove, so leaving
    * the secret behind would orphan it permanently. Deleting is idempotent, so
@@ -89,7 +88,6 @@ export class AccountDeletionService {
     const repositories = this.ctx.appData.repositories
     const refs = [...new Set([
       ...await repositories.providerConnections.listCredentialRefs({ userId }),
-      ...await repositories.agentProviderAccounts.listCredentialRefs({ userId }),
     ])]
     const failures = (await Promise.all(refs.map(async (ref) => {
       try {

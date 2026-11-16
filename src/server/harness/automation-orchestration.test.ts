@@ -164,7 +164,6 @@ test('queued manual ACK starts before native Harness and never invokes the legac
     runId: 'run',
     expectedWorkflowRunId: 'workflow',
     conversationId: 'conversation',
-    turnId: 'automation-run:run',
   }))
   expect(mocks.startAgentRun).toHaveBeenCalledWith(expect.objectContaining({
     conversationId: 'conversation',
@@ -217,7 +216,7 @@ test('same-owner completed replay reads persisted delivery and reconciles the au
     runId: 'run', turnId: 'automation-run:run', originWorkflowRunId: 'workflow',
   })
   expect(mocks.markRunStarted).toHaveBeenCalledWith(expect.objectContaining({
-    turnId: 'automation-run:run',
+    runId: 'run',
     expectedWorkflowRunId: 'workflow',
   }))
   expect(mocks.harnessWorkflow).not.toHaveBeenCalled()

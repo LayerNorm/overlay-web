@@ -51,8 +51,20 @@ test('allows only normalized token counts and routing references across the dura
   expect(captureHarnessModelUsage(step, 'provider/requested')).toEqual({ modelId: 'provider/actual', provider: 'provider',
     inputTokens: 1_000, outputTokens: 100, reasoningTokens: 20, cacheReadTokens: 600, cacheWriteTokens: 200, generationId: 'gen_fixture' })
   expect(JSON.stringify(request())).not.toContain('fixture-do-not-store')
-  expect(() => captureHarnessModelUsage({ ...step, usage: { ...step.usage, inputTokens: undefined } }, 'provider/requested')).toThrow(/missing/)
-  expect(() => captureHarnessModelUsage({ ...step, usage: { ...step.usage, inputTokens: 700 } }, 'provider/requested')).toThrow(/cache counts/)
+})
+
+test.each([
+  ['missing input', { inputTokens: undefined }],
+  ['negative output', { outputTokens: -1 }],
+  ['fractional input', { inputTokens: 1.5 }],
+  ['cache above input', { inputTokens: 700 }],
+] as const)('records %s usage as zero instead of throwing into an open dispatch', (_label, patch) => {
+  const zero = { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+  expect(captureHarnessModelUsage({ ...step, usage: { ...step.usage, ...patch } }, 'provider/requested'))
+    .toMatchObject({ modelId: 'provider/actual', ...zero })
+  // A dropped stream ends with finishReason "error": the zero receipt is marked failed, so the run retries.
+  expect(captureHarnessModelUsage({ ...step, ...response('error', 'Partial'), usage: { ...step.usage, ...patch } },
+    'provider/requested')).toMatchObject({ ...zero, responseFailure: 'provider_error' })
 })
 
 test.each([

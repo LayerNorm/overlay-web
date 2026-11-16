@@ -3,7 +3,7 @@ import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { Button, Input } from '@overlay/ui/primitives'
 
 import { useState, useEffect } from "react";
-import { redirect, useRouter, useSearchParams } from 'next/navigation'
+import { redirect, useSearchParams } from 'next/navigation'
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { LandingAuthPageChrome } from "../../_components/AuthPageChrome";
@@ -19,7 +19,8 @@ import {
   marketingSubmitButton,
 } from "@/features/landing/lib/landingPageStyles";
 import { SsoProviderIcon } from "../../_components/useAuthUiOptions";
-import { CheckEmailScreen, postVerifyEmail, readAuthErrorMessage } from "../../_components/EmailVerification";
+import { CheckEmailScreen } from "../../_components/EmailVerification";
+import { useEmailPasswordSignIn } from "../../_components/useEmailPasswordSignIn";
 import type { ClientAuthUiOptions } from "../../_components/useAuthUiOptions";
 import { shouldReuseExistingWebSession } from "@/shared/auth/desktop-auth-handoff";
 
@@ -66,125 +67,6 @@ function useRedirectExistingSession({
   if (shouldRedirect) {
     redirect(redirectUrl);
   }
-}
-
-function useEmailPasswordSignIn({
-  email,
-  password,
-  redirectUrl,
-  setError,
-}: {
-  email: string;
-  password: string;
-  redirectUrl: string;
-  setError: (error: string | null) => void;
-}) {
-  const { refreshSession } = useAuth();
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [verificationTicket, setVerificationTicket] = useState<string | null>(null);
-  const [verificationCode, setVerificationCode] = useState("");
-  const [verifying, setVerifying] = useState(false);
-  const [resending, setResending] = useState(false);
-
-  const signIn = async () => {
-    // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
-    const response = await fetch("/api/auth/sign-in", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await response.json().catch(() => null);
-
-    if (data?.pendingEmailVerification) {
-      const ticket = typeof data.verificationTicket === "string" ? data.verificationTicket : "";
-      if (ticket) {
-        setVerificationTicket(ticket);
-      } else {
-        setError(readAuthErrorMessage(data, "Please verify your email before signing in."));
-      }
-      return;
-    }
-
-    if (!response.ok) {
-      setError(readAuthErrorMessage(data, "Sign in failed"));
-      return;
-    }
-
-    await refreshSession();
-    router.refresh();
-
-    if (redirectUrl.startsWith("overlay://")) {
-      window.location.href = redirectUrl;
-    } else {
-      router.replace(redirectUrl);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      await signIn();
-    } catch {
-      setError("An unexpected error occurred");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!verificationTicket) return;
-    setVerifying(true);
-    setError(null);
-    try {
-      const result = await postVerifyEmail(
-        { ticket: verificationTicket, code: verificationCode },
-        "Verification failed",
-      );
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setVerificationTicket(null);
-      setVerificationCode("");
-      await signIn();
-    } catch {
-      setError("An unexpected error occurred");
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  const handleResendCode = async () => {
-    if (!verificationTicket) return;
-    setResending(true);
-    setError(null);
-    const result = await postVerifyEmail(
-      { ticket: verificationTicket, action: "resend" },
-      "Failed to resend code",
-    );
-    if (result.error) setError(result.error);
-    setResending(false);
-  };
-
-  return {
-    handleSubmit,
-    loading,
-    verification: verificationTicket
-      ? {
-          code: verificationCode,
-          verifying,
-          resending,
-          onCodeChange: setVerificationCode,
-          onVerify: handleVerifyCode,
-          onResend: handleResendCode,
-        }
-      : null,
-  };
 }
 
 function useSsoSignIn({

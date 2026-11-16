@@ -10,5 +10,7 @@ export interface FileQuery extends PaginationQuery {
   page?: boolean
   type?: string
   summary?: boolean
+  /** Read text kept in object storage in full instead of its searchable prefix. */
+  fullText?: boolean
   view?: ResourceView
 }

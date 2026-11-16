@@ -84,6 +84,83 @@ test('removing a member, or signing out, ends access to their own chats', async 
   await expect(owner.query(summary, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
 
+test('parallel transcript reads return only authorized rows and preserve strict callers', async () => {
+  const { t, owner, member, ids } = await fixture()
+  const getMessages = query('chat/personal:getMessages')
+  const args = { workspaceId: 'ws', conversationId: ids.personal, paginationOpts: page, unavailableAsEmpty: true }
+  await owner.mutation(mutation('chat/personal:submit'), submitArgs(ids.personal, 'allowed'))
+  expect((await owner.query(getMessages, args)).page).toHaveLength(1)
+  expect(await member.query(getMessages, args)).toMatchObject({ page: [], isDone: true })
+  await expect(member.query(getMessages, { ...args, unavailableAsEmpty: false })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  for (const conversationId of [ids.agent, ids.dm]) {
+    expect(await owner.query(getMessages, { ...args, conversationId })).toMatchObject({ page: [], isDone: true })
+  }
+  await t.run(ctx => ctx.db.patch(ids.personal, { deletedAt: 2 }))
+  expect(await owner.query(getMessages, args)).toMatchObject({ page: [], isDone: true })
+})
+
+test('parallel transcript reads enforce conversation workspace even when viewer belongs to both workspaces', async () => {
+  const { t, owner } = await fixture()
+  const getMessages = query('chat/personal:getMessages')
+  const foreignConversationId = await t.run(async ctx => {
+    await ctx.db.insert('workspaces', {
+      workspaceId: 'ws-foreign', kind: 'organization', name: 'Foreign', slug: 'qa-foreign',
+      status: 'active', createdAt: 1, updatedAt: 1,
+    })
+    await ctx.db.insert('workspacePrincipals', {
+      workspaceId: 'ws-foreign', principalId: 'p-owner-foreign', userId: 'owner',
+      type: 'human', displayName: 'owner', createdAt: 1, updatedAt: 1,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      workspaceId: 'ws-foreign', principalId: 'p-owner-foreign', membershipId: 'm-owner-foreign',
+      role: 'member', status: 'active', joinedAt: 1, updatedAt: 1,
+    })
+    return ctx.db.insert('conversations', {
+      workspaceId: 'ws-foreign', userId: 'owner', title: 'Foreign chat', askModelIds: ['model'],
+      actModelId: 'model', lastMode: 'act', createdAt: 1, lastModified: 1, scope: 'personal',
+    } as never)
+  })
+
+  expect(await owner.query(summary, { workspaceId: 'ws-foreign', conversationId: foreignConversationId }))
+    .toMatchObject({ workspaceId: 'ws-foreign' })
+
+  const crossWorkspaceArgs = {
+    workspaceId: 'ws', conversationId: foreignConversationId, paginationOpts: page, unavailableAsEmpty: true,
+  }
+  expect(await owner.query(getMessages, crossWorkspaceArgs))
+    .toMatchObject({ page: [], isDone: true, continueCursor: '' })
+  await expect(owner.query(getMessages, { ...crossWorkspaceArgs, unavailableAsEmpty: false }))
+    .rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+})
+
+test('optional transcript reads return empty for a valid missing ID while strict callers deny it', async () => {
+  const { t, owner, ids } = await fixture()
+  const getMessages = query('chat/personal:getMessages')
+  await t.run(ctx => ctx.db.delete(ids.personal))
+
+  const args = { workspaceId: 'ws', conversationId: ids.personal, paginationOpts: page, unavailableAsEmpty: true }
+  expect(await owner.query(getMessages, args)).toMatchObject({ page: [], isDone: true, continueCursor: '' })
+  await expect(owner.query(getMessages, { ...args, unavailableAsEmpty: false }))
+    .rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+})
+
+test('optional transcript reads do not bypass authentication, membership or capability checks', async () => {
+  const { t, owner, ids } = await fixture()
+  const getMessages = query('chat/personal:getMessages')
+  const args = { workspaceId: 'ws', conversationId: ids.workspace, paginationOpts: page, unavailableAsEmpty: true }
+  await expect(t.query(getMessages, args)).rejects.toThrow('UNAUTHENTICATED')
+  await t.run(async ctx => {
+    const role = await ctx.db.query('authorizationRoles').withIndex('by_roleId', q => q.eq('roleId', 'member')).unique()
+    await ctx.db.patch(role!._id, { capabilities: [] })
+  })
+  await expect(owner.query(getMessages, args)).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
+  await t.run(async ctx => {
+    const membership = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'ws').eq('principalId', 'p-owner')).unique()
+    await ctx.db.patch(membership!._id, { status: 'suspended' })
+  })
+  await expect(owner.query(getMessages, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+})
+
 test('a new chat keeps the scope it was created in', async () => {
   const { owner } = await fixture()
   const { conversationId } = await owner.mutation(mutation('chat/personal:submit'), {

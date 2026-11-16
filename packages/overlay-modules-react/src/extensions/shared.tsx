@@ -1,11 +1,11 @@
 'use client'
 
 import { Fragment, cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from 'react'
-import { ChevronRight, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-  Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
+  Button,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Label, SelectRoot as Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch,
 } from '@overlay/ui'
@@ -31,31 +31,6 @@ export function FieldSelect({ id, value, onChange, options, 'aria-label': ariaLa
 
 export function ExtensionIcon({ children }: { children: ReactNode }) {
   return <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-(--surface-subtle) text-(--foreground)">{children}</div>
-}
-
-export function ExtensionCard({ icon, title, description, status, statusTone = 'muted', metadata, detail, onEdit, children }: {
-  icon: ReactNode; title: string; description?: string; status: string
-  statusTone?: 'muted' | 'active' | 'connected' | 'error'
-  metadata: ReactNode; detail: string; onEdit: () => void; children?: ReactNode
-}) {
-  const dot = { muted: 'bg-(--muted-light)', active: 'bg-(--foreground)', connected: 'bg-emerald-500', error: 'bg-red-500' }[statusTone]
-  return <Card className="gap-5 overflow-hidden pb-4 shadow-none">
-    <CardHeader>
-      <div className="flex items-center justify-between gap-3">
-        <ExtensionIcon>{icon}</ExtensionIcon>
-        <Badge variant="muted" className={`gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-normal ${statusTone === 'error' ? 'text-red-500' : ''}`}><span className={`size-1.5 rounded-full ${dot}`} />{status}</Badge>
-      </div>
-      <CardTitle className="mt-4 text-base">{title}</CardTitle>
-      <CardDescription className="mt-1 min-h-12 line-clamp-2 leading-6">{description}</CardDescription>
-    </CardHeader>
-    <CardContent className="mt-auto space-y-2 text-xs text-(--muted)">
-      <div className="flex flex-wrap items-center gap-1.5">{metadata}</div>{children}
-    </CardContent>
-    <CardFooter className="justify-between gap-2 pr-4">
-      <span className="truncate text-xs text-(--muted)" title={detail}>{detail}</span>
-      <Button variant="ghost" size="sm" className="text-(--foreground)" aria-label={`Manage ${title}`} onClick={onEdit}>Manage<ChevronRight size={14} /></Button>
-    </CardFooter>
-  </Card>
 }
 
 export function ExtensionDialog({ title, description, icon, onClose, enabled, onEnabledChange, activeDescription, busy, locked, scopeActions, scopeLabel, children, footer }: {

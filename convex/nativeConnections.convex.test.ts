@@ -133,24 +133,20 @@ test('Computers follow the server visibility rules and never carry provider refe
   expect(await as('stranger').query(computers, { workspaceId: 'ws' })).toBeNull()
 })
 
-test('environments never carry public keys, pending ones show their phrase, and bindings are for managers', async () => {
+test('environments never carry public keys and pending ones show their phrase', async () => {
   const { t, as } = await connectionFixture()
   const environments = makeFunctionReference<'query'>('agents/environmentsBrowse:list')
-  const bindings = makeFunctionReference<'query'>('agents/environmentsBrowse:bindings')
   await t.run(async ctx => {
     await ctx.db.patch((await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'ws').eq('principalId', 'p-alice')).unique())!._id, { role: 'admin' })
     await ctx.db.insert('agentEnvironments', { environmentId: 'env-1', workspaceId: 'ws', kind: 'local', name: 'Laptop', status: 'online', publicKey: 'pk', capabilities: {}, lastSeenAt: 5, createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('agentEnvironments', { environmentId: 'env-2', workspaceId: 'ws', kind: 'local', name: 'New', status: 'pending', capabilities: {}, createdAt: 2, updatedAt: 2 })
     await ctx.db.insert('agentEnrollmentSessions', { enrollmentSessionId: 'e', workspaceId: 'ws', createdByUserId: 'alice', codeHash: 'hash', verificationPhrase: 'blue fox', status: 'redeemed', environmentId: 'env-2', expiresAt: 9e15, createdAt: 2, updatedAt: 2 })
-    await ctx.db.insert('agentBindings', { bindingId: 'b', workspaceId: 'ws', agentId: 'a', environmentId: 'env-1', protocolAdapter: 'acp', adapterConfig: {}, enabled: true, createdAt: 1, updatedAt: 1 })
   })
   const rows = await as('bob').query(environments, { workspaceId: 'ws' }) as Array<Record<string, unknown>>
   expect(rows.map(r => r.id)).toEqual(['env-2', 'env-1'])
   expect(rows.find(r => r.id === 'env-1')).not.toHaveProperty('publicKey')
   expect(rows.find(r => r.id === 'env-2')).toMatchObject({ verificationPhrase: 'blue fox' })
   expect(JSON.stringify(rows)).not.toContain('hash')
-  expect(await as('bob').query(bindings, { workspaceId: 'ws' })).toBeNull()
-  expect((await as('alice').query(bindings, { workspaceId: 'ws', agentId: 'a' }) as Array<{ id: string }>).map(b => b.id)).toEqual(['b'])
   expect(await as('stranger').query(environments, { workspaceId: 'ws' })).toBeNull()
 })
 

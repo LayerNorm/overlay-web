@@ -66,7 +66,10 @@ function fixture(paid = true) {
       },
     },
     memories: { async get() { return null } },
-    workspaces: { async listInvitations() { return [] } },
+    workspaces: {
+      async listInvitations() { return [] },
+      async getOnboardingContext() { return { workspaceName: 'Acme', personal: true, invited: false, inviterName: null, billingContactName: null } },
+    },
     work: { async get() { throw new WorkServiceError('Task not found.', 404, 'work_not_found') } },
   }
   return {
@@ -483,4 +486,47 @@ test('GET recovers a completed final transcript outbox after a write failure', a
     'Review the launch plan',
     "Your first task is now in Work. I'll keep you updated there.",
   ])
+})
+
+test('start persists workspace-aware intro for member and admin invitees, including missing inviter fallback', async () => {
+  for (const member of [true, false]) {
+    for (const inviterName of ['Priya Shah', null]) {
+      const f = fixture()
+      f.effects.workspaces.getOnboardingContext = async () => ({ workspaceName: 'Acme', invited: true, personal: false, inviterName, billingContactName: inviterName ? 'Priya' : null })
+      const result = await f.service.start('user-1', 'workspace-1', { member })
+      assert.equal(result.session?.member, member)
+      assert.equal(f.messages[0].content, inviterName
+        ? 'Welcome to Acme. Priya Shah invited you to work here with Overlay.\n\nWhat should I call you?'
+        : "Welcome to Acme. I'll help you get set up here with Overlay.\n\nWhat should I call you?")
+      const restored = await currentSession(f)
+      assert.deepEqual(restored.workspaceContext, result.session?.workspaceContext)
+    }
+  }
+})
+
+test('personal onboarding keeps the existing persisted intro', async () => {
+  const f = fixture()
+  await start(f)
+  assert.equal(f.messages[0].content, "Hi, I'm Overlay, your chief of staff. I'll run your AI employees and keep your work moving.\n\nWhat should I call you?")
+})
+
+test('Open Work completes an unpaid saved draft without executing, validates ownership, and is replayable', async () => {
+  const f = fixture(false)
+  let result = await advanceToTask(f)
+  result = await act(f, { action: 'draft_task', revision: result.session!.revision, value: 'Review the launch plan' })
+  const task = { id: 'task-1', title: 'Review the launch plan', workspaceId: 'workspace-1', createdBy: 'user-1' }
+  f.effects.work.get = async () => task as never
+  await assert.rejects(act(f, { action: 'finish', revision: result.session!.revision, taskId: task.id, start: false }), /Save this draft/)
+  result = await act(f, { action: 'save_task', revision: result.session!.revision, taskId: task.id })
+  f.effects.work.get = async () => ({ ...task, createdBy: 'other' }) as never
+  await assert.rejects(act(f, { action: 'finish', revision: result.session!.revision, taskId: task.id, start: false }), /not available/)
+  f.effects.work.get = async () => task as never
+  const action = { action: 'finish' as const, runId: result.session!.runId, revision: result.session!.revision, taskId: task.id, start: false as const }
+  const completed = await f.service.act('user-1', 'workspace-1', action)
+  assert.equal(completed.completed, true)
+  assert.equal(completed.session?.taskDraft, task.title)
+  assert.equal(completed.session?.taskId, task.id)
+  assert.match(f.messages.at(-1)!.content, /Your draft is saved/)
+  assert.deepEqual(await f.service.act('user-1', 'workspace-1', action), completed)
+  assert.deepEqual(task, { id: 'task-1', title: 'Review the launch plan', workspaceId: 'workspace-1', createdBy: 'user-1' })
 })

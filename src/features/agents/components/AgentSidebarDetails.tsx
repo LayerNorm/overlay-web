@@ -80,10 +80,8 @@ export function AgentSidebarDetails({
   onRetry(): void
   onBlurSave(): void
 }) {
-  const { form, modelField, runtime } = editor
+  const { form, modelField } = editor
   const detailsLoading = editor.loading
-    || !editor.connectedAgentsChecked
-    || editor.byo.initialLoading
     || editor.computer.initialLoading
 
   if (detailsLoading) {
@@ -93,8 +91,6 @@ export function AgentSidebarDetails({
   if (editor.agent?.canEdit === false) {
     return <p className="text-xs leading-5 text-(--muted)">{editor.agent.agentRole === 'personal_chief' ? 'Only the owner can customize this personal Overlay.' : 'You do not have permission to edit this agent.'}</p>
   }
-
-  const overlaySettings = runtime.agentType === 'overlay' && !runtime.cloudAgent
 
   return (
     <div className="space-y-[22px]">
@@ -112,49 +108,40 @@ export function AgentSidebarDetails({
           </Button>
         </p>
       ) : null}
-      {overlaySettings && !runtime.legacyHostedRuntime ? (
-        <>
-          <DetailsDisclosure label="Model" summary={modelField.modelPickerLabel}>
-            <ChatModelPicker
-              placement="field"
-              modelPickerLabel={modelField.modelPickerLabel}
-              selectableTextModels={modelField.selectableTextModels}
-              selectedActModel={form.modelId}
-              reasoning={form.reasoning}
-              onReasoningChange={form.setReasoning}
-              reasoningByModel={form.reasoningByModel}
-              onModelReasoningChange={form.onModelReasoningChange}
-              onToggleTextModel={(value) => {
-                form.setModelId(value)
-                form.markDirty()
-              }}
-              favoriteScope={modelField.favoriteScope}
-              modelRecommendations={MODEL_RECOMMENDATIONS}
-              textModelsLoading={modelField.textModelsLoading}
-              generationMode="text"
-              lockedGenerationMode="text"
-            />
-          </DetailsDisclosure>
-          <DetailsDisclosure
-            label="Instructions"
-            summary={form.instructions.trim() || 'None'}
-          >
-            <AgentInstructionsField editor={editor} onBlurSave={onBlurSave} />
-          </DetailsDisclosure>
-          <DetailsDisclosure
-            label="Tools"
-            summary={`${getEnabledToolGroupCount(editor)} on`}
-          >
-            <AgentSidebarTools editor={editor} />
-          </DetailsDisclosure>
-        </>
-      ) : null}
-      {runtime.legacyHostedRuntime ? (
-        <p className="text-xs leading-5 text-(--muted)">
-          This agent ran on a hosted runtime that is no longer available. It is unchanged; recreate it as an Overlay agent, or connect an agent running on your own machine.
-        </p>
-      ) : null}
-      <DetailsDisclosure label="Advanced" summary={overlaySettings ? (form.permissionMode === 'auto' ? 'Auto' : 'Ask') : undefined}>
+      <DetailsDisclosure label="Model" summary={modelField.modelPickerLabel}>
+        <ChatModelPicker
+          placement="field"
+          modelPickerLabel={modelField.modelPickerLabel}
+          selectableTextModels={modelField.selectableTextModels}
+          selectedActModel={form.modelId}
+          reasoning={form.reasoning}
+          onReasoningChange={form.setReasoning}
+          reasoningByModel={form.reasoningByModel}
+          onModelReasoningChange={form.onModelReasoningChange}
+          onToggleTextModel={(value) => {
+            form.setModelId(value)
+            form.markDirty()
+          }}
+          favoriteScope={modelField.favoriteScope}
+          modelRecommendations={MODEL_RECOMMENDATIONS}
+          textModelsLoading={modelField.textModelsLoading}
+          generationMode="text"
+          lockedGenerationMode="text"
+        />
+      </DetailsDisclosure>
+      <DetailsDisclosure
+        label="Instructions"
+        summary={form.instructions.trim() || 'None'}
+      >
+        <AgentInstructionsField editor={editor} onBlurSave={onBlurSave} />
+      </DetailsDisclosure>
+      <DetailsDisclosure
+        label="Tools"
+        summary={`${getEnabledToolGroupCount(editor)} on`}
+      >
+        <AgentSidebarTools editor={editor} />
+      </DetailsDisclosure>
+      <DetailsDisclosure label="Advanced" summary={form.permissionMode === 'auto' ? 'Auto' : 'Ask'}>
         <AgentSidebarAdvancedSettings editor={editor} />
       </DetailsDisclosure>
     </div>

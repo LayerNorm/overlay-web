@@ -86,6 +86,16 @@ const computerBrowserUrlSchema = z.string().url().refine(
   (value) => /^https?:\/\//i.test(value),
   'URL must use HTTP or HTTPS.',
 )
+/** Optional on every computer tool: run on the cloud Computer or on the user's own connected Mac. */
+const computerTargetSchema = z.enum(['cloud', 'local']).optional().describe(
+  'Where to run: "local" is the user\'s own Mac (their files, apps and signed-in browser), "cloud" is the cloud Computer. '
+  + 'Omit to use the default for this conversation. Use "local" when the user asks for their Mac or their own files.',
+)
+function withoutTarget<T extends { target?: unknown }>(input: T): Omit<T, 'target'> {
+  const { target: _target, ...rest } = input
+  void _target
+  return rest
+}
 const computerInputVariants = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('click'),
@@ -140,8 +150,9 @@ const computerInputSchema = z.object({
   direction: z.enum(['up', 'down', 'left', 'right']).optional(),
   amount: z.number().int().min(1).max(25).optional(),
   ms: z.number().int().min(0).max(10000).optional(),
+  target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
-  const parsed = computerInputVariants.safeParse(input)
+  const parsed = computerInputVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -190,8 +201,9 @@ const computerBrowserSchema = z.object({
   amount: z.number().int().min(1).max(25).optional(),
   keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']).optional(),
   index: z.number().int().min(0).max(49).optional(),
+  target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
-  const parsed = computerBrowserVariants.safeParse(input)
+  const parsed = computerBrowserVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -224,8 +236,9 @@ const computerTerminalSchema = z.object({
   offset: z.number().int().min(0).optional(),
   maxBytes: z.number().int().min(1).max(65536).optional(),
   signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
+  target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
-  const parsed = computerTerminalVariants.safeParse(input)
+  const parsed = computerTerminalVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
   }
@@ -443,7 +456,8 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_automation')) {
     tools.create_automation = tool({
       description:
-        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first.',
+        'Create and enable a scheduled automation after the user explicitly confirms the draft. Do not call this for vague ideas; collect name, description, instructions, and schedule first. ' +
+        'Runs do not read this conversation, so make the instructions self-contained: include every fact, preference, account, link, and decision from this conversation that a run needs.',
       inputSchema: z.object({
         name: z.string().min(1),
         description: z.string().min(1),
@@ -967,6 +981,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .max(300_000)
           .optional()
           .describe('Max run time in ms (default 60s, max 5m)'),
+        target: computerTargetSchema,
       }),
       ...(options.computerApprovalContext !== undefined
         ? { needsApproval: () => toolRequiresApproval('computer_exec', {}, { approvalMode: options.approvalMode }) }
@@ -988,6 +1003,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description: 'Read a text file from the bound computer’s filesystem (up to 256KB).',
       inputSchema: z.object({
         path: z.string().describe('Absolute path of the file to read'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_read_file')
@@ -1002,6 +1018,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         path: z.string().describe('Absolute path of the file to write'),
         contents: z.string().describe('Full text contents to write'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_write_file')
@@ -1013,7 +1030,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_publish_file') && shouldExposeTool('write_file')) {
       tools.computer_publish_file = tool({
         description:
-          'Publish a binary file from the bound Computer into Overlay Files. Returns a relative downloadUrl; use it unchanged in a Markdown link when reporting the result, not just file or artifact IDs. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
+          'Publish a binary file from the bound Computer into Overlay Files. Returns a relative downloadUrl. The chat shows each published file as a card on its own; to place an image or video in your reply, embed it as ![name](downloadUrl), and link other files as [name](downloadUrl), unchanged, never just file or artifact IDs. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
         inputSchema: z.object({
           sourcePath: z.string().min(1).max(4096).describe('Absolute path of the finished binary on the Computer'),
           name: z.string().min(1).max(255).describe('Basename to use in Overlay Files'),
@@ -1021,6 +1038,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           mimeType: z.string().min(1).max(255).describe('MIME type of the file'),
           parentId: z.string().optional().describe('Optional destination folder ID'),
           scope: z.enum(['personal', 'workspace']).describe('Destination visibility'),
+          target: computerTargetSchema,
         }).strict(),
         execute: async input => {
           assertToolAllowed('computer_publish_file')
@@ -1035,6 +1053,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description: 'List directory entries on the bound computer’s filesystem.',
       inputSchema: z.object({
         path: z.string().optional().describe('Directory to list (default: the user home directory)'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_list_files')
@@ -1048,9 +1067,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description:
         'Open a URL in the browser on the bound computer’s graphical desktop, ' +
         'so signed-in sessions and web apps the user has set up there can be used. ' +
+        'Serve local HTML over a verified HTTP(S) origin; file:// URLs are unsupported. ' +
         'The user can watch the desktop live via Open desktop.',
       inputSchema: z.object({
         url: computerBrowserUrlSchema.describe('The HTTP or HTTPS URL to open in the computer’s browser'),
+        target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_open_url')
@@ -1062,10 +1083,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_screenshot')) {
       tools.computer_screenshot = tool({
         description: 'Capture the visible screen on the bound computer and return it as an image.',
-        inputSchema: z.object({}).strict(),
-        execute: async () => {
+        inputSchema: z.object({ target: computerTargetSchema }).strict(),
+        execute: async (input) => {
           assertToolAllowed('computer_screenshot')
-          return executeComputerScreenshot(options)
+          return executeComputerScreenshot(options, input)
         },
         toModelOutput: ({ output }) => {
           if (!output.success) {
@@ -1081,7 +1102,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
               {
                 type: 'file',
                 data: { type: 'data', data: output.image },
-                mediaType: 'image/png',
+                mediaType: output.mediaType ?? 'image/png',
               },
             ],
           }
@@ -1104,12 +1125,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_input')
-          const parsed = computerInputVariants.parse(input)
+          const parsed = computerInputVariants.parse(withoutTarget(input))
           return await executeComputerActionWithApproval(
             options,
             'computer_input',
             parsed,
-            () => executeComputerInput(options, parsed),
+            () => executeComputerInput(options, { ...parsed, target: input.target }),
           )
         },
       })
@@ -1121,6 +1142,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           'Control the signed-in browser visible on this computer. Prefer this tool for websites: take a snapshot, then act using its element refs. ' +
           'Typing, focus and navigation can replace page elements. Take a fresh snapshot after page changes and before reusing refs. ' +
           'If stale_browser_ref is returned, no action occurred: take a new snapshot and choose the current target, never retry the expired ref or guess a replacement. ' +
+          'Serve local HTML over a verified HTTP(S) origin; file:// URLs are unsupported. ' +
           'For a potentially consequential click, call click with confirm: true so the user can approve it. ' +
           'Use computer_screenshot and computer_input for non-browser apps or controls absent from a fresh snapshot. The user sees the same browser in Open desktop.',
         inputSchema: computerBrowserSchema,
@@ -1129,12 +1151,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_browser')
-          const parsed = computerBrowserVariants.parse(input)
+          const parsed = computerBrowserVariants.parse(withoutTarget(input))
           return await executeComputerActionWithApproval(
             options,
             'computer_browser',
             parsed,
-            () => executeComputerBrowser(options, parsed),
+            () => executeComputerBrowser(options, { ...parsed, target: input.target }),
           )
         },
         toModelOutput: ({ output }) => ({
@@ -1159,12 +1181,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           : {}),
         execute: async (input) => {
           assertToolAllowed('computer_terminal')
-          const parsed = computerTerminalVariants.parse(input) as ComputerTerminalAction
+          const parsed = computerTerminalVariants.parse(withoutTarget(input)) as ComputerTerminalAction
           return await executeComputerActionWithApproval(
             options,
             'computer_terminal',
             parsed,
-            () => executeComputerTerminal(options, parsed),
+            () => executeComputerTerminal(options, { ...parsed, target: input.target }),
           )
         },
       })
@@ -1339,7 +1361,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }
   if (shouldExposeTool('update_task')) {
     tools.update_task = tool({
-      description: 'Update task fields in Work. Include the revision from get_task to avoid overwriting newer changes.',
+      description: 'Update task fields in Work. Include the latest revision from get_task, update_task or comment_on_task to avoid overwriting newer changes. On a conflict, review the returned current task (or call get_task), then retry with its revision if the intended changes still apply. Never drop the revision to bypass a conflict.',
       inputSchema: z.object({
         taskId: taskIdSchema,
         revision: z.string().optional(),
@@ -1363,7 +1385,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }
   if (shouldExposeTool('comment_on_task')) {
     tools.comment_on_task = tool({
-      description: 'Add a comment to a task in Work.',
+      description: 'Add a comment to a task in Work. Comments advance its revision. Review the returned task and use its new revision for subsequent updates; call get_task if no revision is returned. Do not run a comment and an update on the same task in parallel.',
       inputSchema: z.object({ taskId: taskIdSchema, body: z.string().min(1) }).strict(),
       execute: async (input) => { assertToolAllowed('comment_on_task'); return executeCommentOnTask(options, input) },
     })

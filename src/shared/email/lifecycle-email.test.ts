@@ -2,6 +2,18 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { renderLifecycleEmail } from './lifecycle-email'
 
+test('invitation email includes optional inviter name and escapes HTML', () => {
+  const email = renderLifecycleEmail({
+    name: 'workspace.invitation_sent', userId: 'user_1', idempotencyKey: 'invite-name',
+    attributes: { workspaceName: 'Acme', role: 'admin', inviterName: 'Priya <Shah>' },
+    resource: { id: 'invite_1' },
+  }, 'https://getoverlay.io')
+  assert.match(email.text, /Priya <Shah> invited you to Acme on Overlay/)
+  assert.match(email.html, /Priya &lt;Shah&gt; invited you to Acme/)
+  assert.doesNotMatch(email.html, /<Shah>/)
+  assert.equal(email.subject, "You've been invited to Acme on Overlay")
+})
+
 test('invitation email uses Overlay brand treatment', () => {
   const email = renderLifecycleEmail({
     name: 'workspace.invitation_sent',
@@ -130,4 +142,19 @@ test('top-up limit email names the workspace and limit and links to workspace bi
   assert.match(email.text, /\$40 automatic top-up limit/)
   assert.match(email.text, /section=workspace&workspace_tab=billing/)
   assert.match(email.html, /monthly top-up limit reached/)
+})
+
+test('billing request email identifies requester and workspace and links to workspace billing', () => {
+  const email = renderLifecycleEmail({
+    name: 'workspace.billing_requested', userId: 'owner-1', idempotencyKey: 'billing-request',
+    attributes: { requesterName: 'Ada <L>', workspaceName: 'Acme', workspaceId: 'team-a' },
+    resource: { id: 'team-a' },
+  }, 'https://getoverlay.io')
+  assert.equal(email.subject, 'Ada <L> asked you to subscribe Acme on Overlay')
+  assert.match(email.text, /task ready in Acme/)
+  assert.match(email.text, /only start when they choose/)
+  assert.match(email.html, /Ada &lt;L&gt;/)
+  assert.match(email.html, /Open billing/)
+  assert.match(email.text, /\/app\/w\/team-a\/settings\?section=workspace&workspace_tab=billing/)
+  assert.doesNotMatch(email.text, /[—–]/)
 })

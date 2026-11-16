@@ -28,7 +28,7 @@ function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   }
 }
 
-function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false, editing = false) {
+function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, personalChatStyle = false, editing = false) {
   return (
     <RoomMessageItem
       message={toRoomMessageView({
@@ -58,71 +58,19 @@ function messageElement(message: RoomMessageRecord, authorName = 'Maya Chen', gr
       onRetrySend={() => undefined}
       onOpenAttachmentPreview={() => undefined}
       onCopyPermalink={() => undefined}
-      onControlRemoteQueue={() => undefined}
-      onResolveRemoteRequest={canResolve ? () => undefined : undefined}
       grouped={grouped}
-      remoteStatus={remoteStatus}
       onStopResponse={streaming ? () => undefined : undefined}
       personalChatStyle={personalChatStyle}
     />
   )
 }
 
-function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, canResolve = false, remoteStatus?: React.ReactNode, personalChatStyle = false, editing = false) {
-  return renderToStaticMarkup(messageElement(message, authorName, grouped, streaming, canResolve, remoteStatus, personalChatStyle, editing))
+function render(message: RoomMessageRecord, authorName = 'Maya Chen', grouped = false, streaming = false, personalChatStyle = false, editing = false) {
+  return renderToStaticMarkup(messageElement(message, authorName, grouped, streaming, personalChatStyle, editing))
 }
-
-function remoteMessage(state: string, retryable = false): RoomMessageRecord {
-  return record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Waiting for Computer',
-    parts: [
-      { type: 'text', text: 'Waiting for Computer' },
-      { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Computer',
-        queueExpiresAt: Date.now() + 120_000, state, retryable } },
-    ],
-  })
-}
-
-test('connecting uses only the hover-toolbar Stop control, which cancels the remote run', () => {
-  const element = messageElement(remoteMessage('waiting'))
-  const controls: unknown[] = []
-  const row = RoomMessageItem({ ...element.props, personalChatStyle: true,
-    onControlRemoteQueue: (runId, action) => controls.push([runId, action]) })
-  const html = renderToStaticMarkup(row)
-  assert.match(html, /Connecting to computer/)
-  assert.match(html, /chat-exchange-actions--hover/)
-  assert.match(html, /aria-label="Stop response"/)
-  assert.doesNotMatch(html, /Waiting up to|waiting window|>Cancel<|Retry connection/)
-  row.props.toolbar.props.onStop()
-  assert.deepEqual(controls, [['run-1', 'cancel']])
-})
-
-test('a failed connection exposes only the hover-toolbar Retry control and retries its run', () => {
-  const element = messageElement(remoteMessage('recoverable', true))
-  const controls: unknown[] = []
-  const row = RoomMessageItem({ ...element.props, personalChatStyle: true,
-    onControlRemoteQueue: (runId, action) => controls.push([runId, action]) })
-  const html = renderToStaticMarkup(row)
-  assert.match(html, /Computer connection failed/)
-  assert.match(html, /aria-label="Retry connection"/)
-  assert.match(html, /chat-exchange-actions--hover/)
-  assert.doesNotMatch(html, /Stop response|Waiting for Computer|>Resume<|>Start fresh<|>Retry</)
-  row.props.toolbar.props.onRetry()
-  assert.deepEqual(controls, [['run-1', 'retry']])
-})
-
-test('Retry is absent during recovery and for terminal or non-retryable runs', () => {
-  for (const state of ['waiting', 'running', 'recovering', 'cancelling', 'completed', 'cancelled', 'failed', 'needs_attention']) {
-    assert.doesNotMatch(render(remoteMessage(state, true)), /aria-label="Retry connection"/, state)
-  }
-  assert.doesNotMatch(render(remoteMessage('recoverable')), /aria-label="Retry connection"/)
-  const recovering = render(remoteMessage('recovering', true))
-  assert.match(recovering, /aria-label="Stop response"/)
-  assert.match(recovering, /Connecting to computer/)
-  assert.doesNotMatch(recovering, /Resuming…/)
-})
 
 test('streaming agent controls stay hidden until their own response is hovered or focused', () => {
-  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Working' }), 'Agent', false, true, false, undefined, true)
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Working' }), 'Agent', false, true, true)
   assert.match(html, /aria-label="Stop response"/)
   assert.match(html, /chat-exchange-actions--hover[^\"]*transition-opacity opacity-0 group-hover\/exchange:opacity-100/)
   assert.match(html, /focus-within:opacity-100/)
@@ -132,23 +80,17 @@ test('streaming agent controls stay hidden until their own response is hovered o
 test('a streaming agent reply shows one avatar, whose eyes move, and no second indicator', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Searching memory first.' }), 'Agent', false, true)
   assert.doesNotMatch(html, /animate-pulse rounded-full/)
-  assert.match(html, /aria-label="Agent is responding"/)
+  assert.doesNotMatch(html, /agent-response-pending/)
+  assert.doesNotMatch(html, /is responding/)
   const settled = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Agent')
   assert.doesNotMatch(settled, /is responding/)
 })
 
-test('provider Markdown paths use saved Files ids while source text and external links stay intact', () => {
-  const text = '[the briefing](briefing/INDEX.md) and [NASA](https://science.nasa.gov/earth/)'
-  const message = record({ authorKind: 'agent', authorPrincipalId: 'agent', content: text, parts: [
-    { type: 'text', text },
-    { type: 'data-remote-agent-drive', data: { state: 'saved', fileCount: 1, folderCount: 0,
-      entries: [{ fileId: 'report', path: 'briefing/INDEX.md', kind: 'file' }] } },
-  ] })
-  const html = render(message)
-  assert.match(html, /href="\/app\/files\?file=report">the briefing<\/a>/)
-  assert.doesNotMatch(html, /href="briefing\/INDEX.md"/)
-  assert.match(html, /href="https:\/\/science.nasa.gov\/earth\/"/)
-  assert.equal(toRoomMessageView({ message, currentPrincipalId: ME, authorName: 'Agent' }).text, text)
+test('an empty generating reply shows dots immediately below its author', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: '' }), 'Agent', false, true)
+  assert.match(html, /aria-label="Agent is preparing a response"/)
+  assert.match(html, /class="agent-response-pending"[^>]*><span><\/span><span><\/span><span><\/span>/)
+  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('agent-response-pending'))
 })
 
 test('a member’s own message is just the personal gray bubble', () => {
@@ -167,7 +109,7 @@ test('a member’s own message is just the personal gray bubble', () => {
 })
 
 test('message edits use a full-width textarea with labeled text actions', () => {
-  const html = render(record(), 'Maya Chen', false, false, false, undefined, false, true)
+  const html = render(record(), 'Maya Chen', false, false, false, true)
   assert.match(html, /data-slot="textarea"[^>]*rows="3"/)
   assert.match(html, /aria-label="Cancel edit"[^>]*>Cancel<\/button>/)
   assert.match(html, /aria-label="Save edit"[^>]*>Save<\/button>/)
@@ -320,28 +262,6 @@ test('attachment summaries become chips, not body text', () => {
   assert.equal(view.images.length, 1)
 })
 
-test('remote supervised state survives transcript reload as actionable view data', () => {
-  const view = toRoomMessageView({
-    message: record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',
-      parts: [
-        { type: 'text', text: 'I need a branch name.' },
-        { type: 'data-remote-agent-request', data: { runId: 'run-1', requestKey: 'input-1', kind: 'elicitation',
-          prompt: 'Choose branch', state: 'pending', options: [],
-          requestedSchema: { type: 'object', properties: { branch: { title: 'Branch' } }, required: ['branch'] } } },
-        { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'MacBook',
-          queueExpiresAt: 0, state: 'waiting_for_input' } },
-        { type: 'data-remote-agent-plan', data: { key: 'plan', entries: [{ id: 'one', title: 'Inspect', status: 'completed' }] } },
-      ] }),
-    currentPrincipalId: ME, authorName: 'Agent', streaming: true,
-  })
-  assert.deepEqual(view.remoteRequest, { runId: 'run-1', requestKey: 'input-1', kind: 'elicitation',
-    prompt: 'Choose branch', options: [], requestedSchema: { type: 'object', properties: { branch: { title: 'Branch' } }, required: ['branch'] } })
-  assert.deepEqual(view.remoteRun, { runId: 'run-1', state: 'waiting_for_input', retryable: false, retryClass: undefined })
-  // The plan came after the card, so it waits for the answer; what came before shows.
-  assert.ok(!view.blocks.some((block) => block.kind === 'tool' && block.name === 'remote_plan'))
-  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'I need a branch name.' }])
-})
-
 test('room reconciliation uses deterministic ordering and replaces optimistic duplicates', () => {
   const persisted = record({ id: 'message_real', createdAt: 20, clientNonce: 'nonce_1', content: 'saved' })
   const pending = record({ id: 'optimistic_nonce_1', createdAt: 19, clientNonce: 'nonce_1', content: 'pending', delivery: 'sending' })
@@ -359,71 +279,6 @@ test('optimistic and persisted copies of one send share one row key', () => {
   assert.equal(roomMessageRowKey(record({ id: 'message_x' })), 'room-message-row-message_x')
 })
 
-
-test('a lifecycle run needing attention exposes a deliberate fresh-start control', () => {
-  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Execution interrupted',
-    parts: [{ type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Host',
-      queueExpiresAt: 0, state: 'needs_attention' } }],
-  }))
-  assert.match(html, /Start fresh/)
-  assert.match(html, /Stop or isolate the original process/)
-  assert.doesNotMatch(html, />Resume</)
-})
-
-test('a cancelled empty remote reply remains visibly cancelled without control permission', () => {
-  const html = render(record({authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'completed', parts: [
-    {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state: 'cancelled'}},
-  ]}))
-  assert.match(html, /role="status">Cancelled<\/p>/)
-  assert.doesNotMatch(html, /Stop response|Start fresh|Task deadline|is responding/)
-})
-
-test('active lifecycle messages expose their canonical task deadline and terminal messages do not', () => {
-  const deadline = Date.parse('2026-10-17T13:05:00Z')
-  for (const state of ['waiting', 'starting', 'running', 'waiting_for_approval', 'recovering', 'needs_attention', 'cancelling', 'completed', 'failed', 'cancelled']) {
-    const message = record({authorKind: 'agent', authorPrincipalId: 'agent-1', content: 'Answer', parts: [
-      {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state, hardDeadlineAt: deadline}},
-    ]})
-    const html = render(message)
-    if (['completed', 'failed', 'cancelled'].includes(state)) assert.doesNotMatch(html, /Task deadline/)
-    else {
-      assert.match(html, /Task deadline/)
-      assert.match(html, /dateTime="2026-10-17T13:05:00.000Z"/i)
-      assert.match(html, /1:05 PM UTC/)
-    }
-  }
-})
-
-test('a reloaded MCP approval shows its recorded expiry and discloses billing only for a cloud machine', () => {
-  const expiresAt = Date.parse('2026-10-17T13:05:00Z')
-  for (const machineCostContinues of [true, false]) {
-    const message = record({ authorKind: 'agent', authorPrincipalId: 'agent-1', content: '', status: 'generating', parts: [
-      { type: 'data-remote-agent-request', data: { runId: 'run-1', requestKey: 'mcp_call:one', kind: 'permission',
-        prompt: 'Allow public read?', state: 'pending', expiresAt, machineCostContinues,
-        options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }] } },
-    ] })
-    const html = render(message, 'Agent', false, false, true)
-    assert.match(html, /Expires /)
-    assert.ok(html.includes(new Date(expiresAt).toLocaleString()))
-    assert.equal(html.includes('Machine time continues to be billed while waiting.'), machineCostContinues)
-    assert.equal((html.match(/>Allow<\/button>/g) ?? []).length, 1)
-    assert.equal((html.match(/>Deny<\/button>/g) ?? []).length, 1)
-  }
-})
-
-test('only confirmed native restoration remains visibly recovered after history reload, without control permission', () => {
-  for (const recoveryOutcome of [undefined, 'attached_live', 'restored', 'requires_new_attempt', 'unavailable']) {
-    const message = record({authorKind: 'agent', authorPrincipalId: 'agent-1', status: 'completed', content: 'Retained answer', parts: [
-      {type: 'data-remote-agent-status', data: {runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state: 'completed', recoveryOutcome}},
-    ]})
-    const html = render(message)
-    if (recoveryOutcome === 'restored') assert.match(html, /role="status">Recovered<\/p>/)
-    else assert.doesNotMatch(html, />Recovered</)
-    assert.match(html, /Retained answer/)
-  }
-})
-
-
 test('a live agent reply renders formatted chunks and one bottom dots row without character spans', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'generating',
     content: '# Result\n\n**Live formatted tail**',
@@ -432,40 +287,37 @@ test('a live agent reply renders formatted chunks and one bottom dots row withou
   assert.match(html, /<strong>Live formatted tail<\/strong>/)
   assert.ok(!html.includes('md-char'))
   assert.ok(!html.includes('overlay-stream-marker'))
-  assert.match(html, /aria-label="Agent is responding"/)
+  assert.doesNotMatch(html, /agent-response-pending/)
 })
 
-
-test('stopping an agent keeps its earlier narrative visible while tool details remain folded', () => {
-  const intro = '**Retained introduction**\n\n'
-  const tail = 'Retained buffered tail.'
-  const message = record({ authorKind: 'agent', authorPrincipalId: 'principal_agent', status: 'completed', content: intro + tail,
-    parts: [
-      { type: 'text', text: intro },
-      { type: 'tool-invocation', toolInvocation: { toolCallId: 't', toolName: 'remote_action', state: 'output-error', toolInput: { title: 'Research' }, toolOutput: { status: 'cancelled' } } },
-      { type: 'text', text: tail },
-      { type: 'data-remote-agent-status', data: { runId: 'r', state: 'cancelled', environmentName: 'QA', queueExpiresAt: 0 } },
-    ],
-  })
-  const html = render(message, 'Agent')
-  assert.match(html, /<strong>Retained introduction<\/strong>/)
-  assert.ok(html.includes('Retained buffered tail.'))
-  const view = toRoomMessageView({message, currentPrincipalId: ME, authorName: 'Agent'})
-  assert.ok(view.blocks.some(block => block.kind === 'tool' && block.toolInput?.title === 'Research'))
-  assert.match(html, />Cancelled<\/p>/)
-})
-
-
-test('final saving retains progress and deadline without stale native connection status', () => {
-  for (const state of ['running', 'finalizing']) {
-    const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent-1', status: 'generating', content: 'Retained answer', parts: [
-      { type: 'text', text: 'Retained answer' },
-      { type: 'data-remote-agent-status', data: { runId: 'run-1', environmentName: 'Host', queueExpiresAt: 0, state, hardDeadlineAt: Date.parse('2026-10-17T13:05:00Z') } },
-      { type: 'data-remote-agent-drive', data: { state: 'saving' } },
-    ] }), 'Agent', false, true, false, <span>Waiting for agent connection</span>)
-    assert.match(html, /Saving files/)
-    assert.match(html, /Task deadline/)
-    assert.match(html, /aria-label="Agent is responding"/)
-    assert.equal(html.includes('Waiting for agent connection'), state === 'running')
+test('agent-thread replies use the chat response actions instead of reactions and thread replies', () => {
+  const calls: string[] = []
+  const chatActions = {
+    onRegenerate: () => calls.push('retry'),
+    retryDisabled: false,
+    actionsLocked: false,
+    onDeleteTurn: () => calls.push('delete'),
+    onReply: () => calls.push('reply'),
+    onBranch: () => calls.push('branch'),
   }
+  const element = messageElement(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'The fix is ready.' }), 'Atlas', false, false, false, undefined, true)
+  const html = renderToStaticMarkup(<RoomMessageItem {...element.props} chatActions={chatActions} />)
+  for (const label of ['Copy response', 'Regenerate response', 'Delete this turn from history', 'Reply', 'Branch chat from here']) {
+    assert.match(html, new RegExp(`aria-label="${label}"`), label)
+  }
+  assert.doesNotMatch(html, /👍|Add reaction|Reply in thread|1 reply|Pin message|Save message|Report message/)
+
+  const mine = renderToStaticMarkup(<RoomMessageItem {...messageElement(record(), 'Me', false, false, false, undefined, true).props} chatActions={chatActions} />)
+  assert.match(mine, /aria-label="Copy message"/)
+  assert.doesNotMatch(mine, /👍|Regenerate response|Add reaction|1 reply/)
+
+  const streaming = renderToStaticMarkup(<RoomMessageItem {...messageElement(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Working' }), 'Atlas', false, true, false, undefined, true).props} chatActions={chatActions} />)
+  assert.doesNotMatch(streaming, /Regenerate response|Branch chat from here/)
 })
+
+test('channel messages keep reactions and thread replies', () => {
+  const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Atlas')
+  assert.match(html, /👍/)
+  assert.doesNotMatch(html, /Regenerate response|Branch chat from here/)
+})
+

@@ -4,13 +4,12 @@ import { SubscriptionClient } from './auth/subscription-client'
 import { TopUpsClient } from './auth/topups-client'
 import { AgentsClient } from './agents/client'
 import { AgentEnvironmentsClient } from './agent-environments/client'
+import { GitHubClient } from './github/client'
 import { AutomationRunsClient } from './automation-runs/client'
 import { AutomationsClient } from './automations/client'
 import { BootstrapClient } from './bootstrap/client'
 import { ChatAuxClient } from './chat/chat-aux-client'
 import { ComputersClient } from './computers/client'
-import { ProviderAccountsClient } from './provider-accounts/client'
-import { AgentProfilesClient } from './agent-profiles/client'
 import { CloudAgentsClient } from './cloud-agents/client'
 import { McpAccessClient } from './mcp-access/client'
 import { ConversationsClient } from './chat/conversations-client'
@@ -64,10 +63,9 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     workspaces: new WorkspacesClient(http),
     agents: new AgentsClient(http),
     agentEnvironments: new AgentEnvironmentsClient(http),
+    github: new GitHubClient(http),
     computers: new ComputersClient(http),
-    providerAccounts: new ProviderAccountsClient(http),
     cloudAgents: new CloudAgentsClient(http),
-    agentProfiles: new AgentProfilesClient(http),
     mcpAccess: new McpAccessClient(http),
     surfaces: new SurfacesClient(http),
     work: new WorkClient(http),

@@ -2,7 +2,10 @@ export type HarnessDiagnosticCode =
   | 'TASK_DEADLINE' | 'TASK_SPEND_LIMIT' | 'WORKSPACE_FUNDS'
   | 'PROVIDER_REJECTED' | 'PROVIDER_REQUEST_INVALID' | 'PROVIDER_ACCOUNT' | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
   | 'TOOL_FAILED' | 'TOOL_OUTCOME_UNKNOWN' | 'MODEL_OUTCOME_UNKNOWN'
-  | 'AUTHORIZATION_REVOKED' | 'PERSISTENCE_FAILED' | 'STAGNATION' | 'UNKNOWN'
+  | 'AUTHORIZATION_REVOKED' | 'PERSISTENCE_FAILED' | 'STAGNATION'
+  | 'MODEL_UNAVAILABLE' | 'BACKEND_UNAVAILABLE' | 'INTERNAL_ERROR'
+  /** Stored on runs that failed before every failure was classified. Never produced now. */
+  | 'UNKNOWN'
 
 export type HarnessDiagnostic = {
   diagnosticId: string
@@ -39,10 +42,13 @@ const descriptions: Record<HarnessDiagnosticCode, Pick<HarnessDiagnostic, 'safeM
   PROVIDER_ACCOUNT: { safeMessage: 'The model provider rejected the connected account or key, its access, or its billing.', nextAction: 'Reconnect the account or check the provider key, access and billing in Settings, then retry.', retryability: 'user_action' },
   TOOL_FAILED: { safeMessage: 'A tool could not complete its operation.', nextAction: 'Review the failed tool and saved work before continuing.', retryability: 'user_action' },
   TOOL_OUTCOME_UNKNOWN: { safeMessage: 'A tool operation ended without a confirmed outcome.', nextAction: 'Check whether the action took effect before retrying it.', retryability: 'reconcile' },
-  MODEL_OUTCOME_UNKNOWN: { safeMessage: 'A model request ended without confirmed usage.', nextAction: 'Reconcile the outstanding request before retrying it.', retryability: 'reconcile' },
+  MODEL_OUTCOME_UNKNOWN: { safeMessage: 'The model connection dropped before the response finished.', nextAction: 'Send your message again.', retryability: 'user_action' },
   AUTHORIZATION_REVOKED: { safeMessage: 'This task no longer has the authorization it needs.', nextAction: 'Check workspace membership and tool access before starting another task.', retryability: 'user_action' },
   PERSISTENCE_FAILED: { safeMessage: 'The task could not save or publish its latest progress.', nextAction: 'Reload to inspect saved work. Do not repeat completed actions to recover missing text.', retryability: 'reconcile' },
   STAGNATION: { safeMessage: 'The task paused because repeated attempts made no verifiable progress.', nextAction: 'Review the blocker and provide guidance to continue.', retryability: 'user_action' },
+  MODEL_UNAVAILABLE: { safeMessage: 'The selected model can no longer run this task.', nextAction: 'Choose another model and send your message again.', retryability: 'user_action' },
+  BACKEND_UNAVAILABLE: { safeMessage: 'Overlay could not reach the service that runs this task.', nextAction: 'Send your message again in a moment.', retryability: 'user_action' },
+  INTERNAL_ERROR: { safeMessage: 'Overlay hit an internal error and stopped this task.', nextAction: 'Send your message again. If it keeps happening, report the diagnostic ID; its cause is in the server logs.', retryability: 'user_action' },
   UNKNOWN: { safeMessage: 'The task stopped for an unclassified reason.', nextAction: 'Use the diagnostic ID to investigate before retrying actions.', retryability: 'reconcile' },
 }
 

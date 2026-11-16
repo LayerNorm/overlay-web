@@ -3,14 +3,18 @@ import { Button } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
 import { OverlayMark } from '@overlay/ui'
+import { TraceLine, TraceTitle } from '@overlay/ui/ai'
 import { Send } from 'lucide-react'
 import { AppScreenSidePanel } from '../shell'
+
+const NOTE_EDIT_TOOLS = new Set(['edit_note', 'replace_note_section', 'append_to_note', 'update_note'])
 
 export interface NotebookAgentPanelProps {
   items: readonly NotebookAgentUiItem[]
   running?: boolean
   header?: ReactNode
-  logo?: ReactNode
+  /** Shown below the latest response, e.g. Accept all / Reject all for the turn's edits. */
+  footer?: ReactNode
   composer: ReactNode
   renderMarkdownMessage: (text: string, isStreaming: boolean) => ReactNode
 }
@@ -19,7 +23,7 @@ export function NotebookAgentPanel({
   items,
   running,
   header,
-  logo,
+  footer,
   composer,
   renderMarkdownMessage,
 }: NotebookAgentPanelProps) {
@@ -70,30 +74,15 @@ export function NotebookAgentPanel({
           }
           if (item.type === 'tool_call') {
             const toolLabel = item.tool === 'search_knowledge' ? 'Searching knowledge' :
-              item.tool === 'read_note' ? 'Reading note' :
-              item.tool === 'propose_edit' ? 'Proposing edit' :
-              item.tool === 'finish' ? 'Done' : item.tool
+              item.tool === 'get_note' || item.tool === 'read_note' ? 'Reading note' :
+              NOTE_EDIT_TOOLS.has(item.tool) ? 'Editing note' : item.tool
             const isRunning = running && idx === items.length - 1
             return (
               // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-              <div
-                key={idx}
-                className='flex w-full max-w-[min(100%,36rem)] items-stretch gap-2.5 py-1 text-[13px] leading-snug'
-              >
-                <div className="relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                  <div className="relative z-1 shrink-0 rounded-full bg-(--background) p-px">
-                    {logo}
-                  </div>
-                </div>
-                <span
-                  className={
-                    isRunning
-                      ? 'tool-line-shimmer'
-                      : 'text-(--tool-line-label)'
-                  }
-                >
-                  {toolLabel}
-                </span>
+              <div key={idx} className="w-full max-w-[min(100%,36rem)] px-1 py-0.5">
+                <TraceLine status={isRunning ? 'running' : undefined} className="py-1">
+                  <TraceTitle className="whitespace-normal">{toolLabel}</TraceTitle>
+                </TraceLine>
               </div>
             )
           }
@@ -117,6 +106,7 @@ export function NotebookAgentPanel({
             </div>
           )
         })}
+        {footer}
       </div>
       <div className="shrink-0 bg-(--sidebar-surface) p-3">{composer}</div>
     </AppScreenSidePanel>

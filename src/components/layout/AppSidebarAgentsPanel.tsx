@@ -2,7 +2,7 @@
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { readWorkspacePathScope } from '@/shared/workspaces/routing'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronRight,
@@ -13,6 +13,7 @@ import {
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button, toast } from '@overlay/ui/primitives'
 import { announceArchived } from '@/shared/app/archive-toast'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { AgentCreature } from '@/components/orb/Creature'
 import { automationHref } from '@overlay/app-core/automations'
 import {
@@ -40,10 +41,10 @@ import {
   type AgentsPanelView,
 } from './sidebar-nav'
 import { AgentThreadRows } from './AppSidebarAgentThreads'
-import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
+import { isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
-import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
+import { useFlipReorder } from './sidebar/useFlipReorder'
 import { AgentThreadActivityProvider, useAgentActivityMap, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
 import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
 import { hasThreadActivity } from '@/shared/agents/thread-activity'
@@ -51,6 +52,23 @@ import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMutation, useQueries } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+
+/**
+ * Thread switches on the same page only change `?agent=`/`?id=`. Next's native
+ * history integration updates `useSearchParams` synchronously, so the thread
+ * swaps in without an RSC round trip or a route loading state. Other pages
+ * still use the router.
+ */
+function softNavigate(router: ReturnType<typeof useRouter>, href: string) {
+  if (typeof window !== 'undefined') {
+    const target = new URL(href, window.location.href)
+    if (target.origin === window.location.origin && target.pathname === window.location.pathname) {
+      window.history.pushState(null, '', `${target.pathname}${target.search}${target.hash}`)
+      return
+    }
+  }
+  router.push(href)
+}
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -139,6 +157,7 @@ function useAgentActions({
   activeAgentId,
   activeConversationId,
   sortedAgents,
+  onAgentUsed,
 }: {
   workspaceId: string | null
   baseHref: string
@@ -149,13 +168,12 @@ function useAgentActions({
   activeAgentId: string | null
   activeConversationId: string | null
   sortedAgents: WorkspaceAgentDirectoryItem[]
+  /** Re-sorts the list so the agent just used moves up right away. */
+  onAgentUsed: () => void
 }) {
   const router = useRouter()
-  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
   const createAgentThread = useMutation(api.agents.threads.create)
   const setAgentThreadArchived = useMutation(api.agents.threads.setArchived)
-  const removeAgentThread = useMutation(api.agents.threads.remove)
-  const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
   const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
 
@@ -163,25 +181,21 @@ function useAgentActions({
     setOpenError(null)
   }, [workspaceId])
 
-  const openAgent = useCallback(async (
+  const openAgent = useCallback((
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
     /** A thread just archived: the live list may not reflect it yet, so never open it. */
     skipConversationId?: string,
   ) => {
-    if (openingAgentId) return
-    setOpeningAgentId(agent.id)
-    try {
       if (!workspaceId) return
-      // A live thread list opens instantly; otherwise resolve (or create) the main thread once.
+      // The destination already resolves its main thread and owns cancellation/retry.
       const live = bundles[agent.id]
       const thread = (live && typeof live === 'object'
         ? live.threads.find((row) => !row.archivedAt && row.conversationId !== skipConversationId)
         : undefined)
-        ?? await resolveMainThread({ workspaceId, agentId: agent.id })
       rememberAgentOpened(workspaceId, agent.id)
       setOpenError(null)
-      dispatchChatCreated({
+      if (thread) dispatchChatCreated({
         chat: {
           _id: thread.conversationId,
           title: thread.title,
@@ -189,26 +203,31 @@ function useAgentActions({
           conversationType: 'dm',
         },
       })
-      const href = agentThreadHref(baseHref, agent.id, thread.conversationId, view)
+      const href = thread
+        ? agentThreadHref(baseHref, agent.id, thread.conversationId, view)
+        : agentHref(baseHref, agent.id, view)
+      beginNavigationIntent(href)
       if (navigation === 'replace') router.replace(href)
       else router.push(href)
       if (navigation === 'push') onNavigate?.()
-    } finally {
-      setOpeningAgentId(null)
-    }
-  }, [baseHref, bundles, onNavigate, openingAgentId, resolveMainThread, router, view, workspaceId])
+  }, [baseHref, bundles, onNavigate, router, view, workspaceId])
 
   const openThread = useCallback((
     agent: WorkspaceAgentDirectoryItem,
     conversationId: string,
   ) => {
+    const href = agentThreadHref(baseHref, agent.id, conversationId, view)
+    beginNavigationIntent(href)
     rememberAgentOpened(workspaceId, agent.id)
-    router.push(agentThreadHref(baseHref, agent.id, conversationId, view))
+    // Move the agent up in the same frame as the click, before the route commits.
+    onAgentUsed()
+    softNavigate(router, href)
     onNavigate?.()
-  }, [baseHref, onNavigate, router, view, workspaceId])
+  }, [baseHref, onAgentUsed, onNavigate, router, view, workspaceId])
 
   const openAutomation = useCallback((automationId: string) => {
     const href = automationHref({ _id: automationId })
+    beginNavigationIntent(buildWorkspaceHref(workspaceId, href, view))
     router.push(buildWorkspaceHref(workspaceId, href, view))
     onNavigate?.()
   }, [buildWorkspaceHref, onNavigate, router, view, workspaceId])
@@ -219,12 +238,13 @@ function useAgentActions({
     try {
       const thread = await createAgentThread({ workspaceId, agentId: agent.id })
       rememberAgentOpened(workspaceId, agent.id)
-      router.push(agentThreadHref(baseHref, agent.id, thread.conversationId, view))
+      onAgentUsed()
+      softNavigate(router, agentThreadHref(baseHref, agent.id, thread.conversationId, view))
       onNavigate?.()
     } finally {
       setCreatingThreadFor(null)
     }
-  }, [baseHref, createAgentThread, creatingThreadFor, onNavigate, router, view, workspaceId])
+  }, [baseHref, createAgentThread, creatingThreadFor, onAgentUsed, onNavigate, router, view, workspaceId])
 
   const archiveThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -257,37 +277,6 @@ function useAgentActions({
     }
   }, [activeConversationId, bundles, openAgent, setAgentThreadArchived, workspaceId])
 
-  const deleteThread = useCallback(async (
-    agent: WorkspaceAgentDirectoryItem,
-    conversationId: string,
-  ) => {
-    if (!workspaceId) return
-    try {
-      await removeAgentThread({ workspaceId, agentId: agent.id, conversationId: conversationId as Id<'conversations'> })
-      // Deleting the thread being viewed must bounce to the surviving main
-      // thread — otherwise the surface keeps rendering a deleted
-      // conversation. Bare `?agent=` is avoided because the surface's live
-      // directory cannot resolve archived agents.
-      if (activeConversationId === conversationId) {
-        const survivors = bundles[agent.id]
-        const next = survivors && survivors !== 'loading' && survivors !== 'error'
-          ? survivors.threads
-            .filter((thread) => thread.conversationId !== conversationId && !thread.archivedAt)
-            .sort((a, b) => a.createdAt - b.createdAt)[0]
-          : undefined
-        router.push(
-          next
-            ? agentThreadHref(baseHref, agent.id, next.conversationId, view)
-            : agentHref(baseHref, agent.id, view),
-        )
-      }
-    } catch (error) {
-      toast.error(error instanceof Error && error.message.includes('AGENT_LAST_THREAD')
-        ? 'An agent must keep at least one thread.'
-        : 'Could not delete this thread.')
-    }
-  }, [activeConversationId, baseHref, bundles, removeAgentThread, router, view, workspaceId])
-
   const openAgentById = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
@@ -310,7 +299,7 @@ function useAgentActions({
   }, [activeAgentId, openAgentById, sortedAgents, workspaceId])
 
   return {
-    openingAgentId,
+    openingAgentId: null,
     openError,
     creatingThreadFor,
     openAgentById,
@@ -318,7 +307,6 @@ function useAgentActions({
     openAutomation,
     createThread,
     archiveThread,
-    deleteThread,
     retryOpen,
   }
 }
@@ -326,7 +314,6 @@ function useAgentActions({
 function AgentListRow({
   agent,
   pinned,
-  ownerLabel,
   isExpanded,
   activityOnly = false,
   isActive,
@@ -336,16 +323,13 @@ function AgentListRow({
   activeConversationId,
   creatingThread,
   onToggleExpanded,
-  onOpenAgent,
   onOpenThread,
   onOpenAutomation,
   onCreateThread,
   onArchiveThread,
-  onDeleteThread,
 }: {
   agent: WorkspaceAgentDirectoryItem
   pinned: boolean
-  ownerLabel: string
   isExpanded: boolean
   activityOnly?: boolean
   isActive: boolean
@@ -355,26 +339,23 @@ function AgentListRow({
   activeConversationId: string | null
   creatingThread: boolean
   onToggleExpanded: (agentId: string) => void
-  onOpenAgent: (agent: WorkspaceAgentDirectoryItem) => void
   onOpenThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
   onOpenAutomation: (automationId: string) => void
   onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
-  onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
 }) {
   const activity = useAgentThreadActivity(agent.id)
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem data-agent-row={agent.id}>
       <div className="group/agent-row relative">
         <SidebarMenuButton
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className="h-12 text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
-          onClick={() => {
-            if (!isExpanded) onToggleExpanded(agent.id)
-            onOpenAgent(agent)
-          }}
+          className="h-10 text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
+          // The row only expands or collapses its threads; opening happens from a thread.
+          aria-expanded={isExpanded}
+          onClick={() => onToggleExpanded(agent.id)}
         >
           <span className="flex size-6 shrink-0 items-center justify-center">
             {isOpening
@@ -383,14 +364,14 @@ function AgentListRow({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5"><span className="truncate">{agent.name}</span>{pinned ? <Pin size={11} className="shrink-0 text-(--muted)" aria-label="Pinned chief of staff" /> : null}</span>
-            <AgentActivitySummary activity={activity} fallback={isChief(agent) ? ownerLabel : undefined} />
+            <AgentActivitySummary activity={activity} />
           </span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className="right-7 top-[14px]"
+          className="right-7 top-[10px]"
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)
@@ -400,7 +381,7 @@ function AgentListRow({
           {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
         </SidebarMenuAction>
         <SidebarMenuAction
-          className="top-[14px]"
+          className="top-[10px]"
           aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
           aria-expanded={isExpanded}
           onClick={(event) => {
@@ -421,7 +402,6 @@ function AgentListRow({
           onOpenThread={onOpenThread}
           onOpenAutomation={onOpenAutomation}
           onArchiveThread={onArchiveThread}
-          onDeleteThread={onDeleteThread}
         />
       ) : null}
     </SidebarMenuItem>
@@ -461,7 +441,6 @@ export function AgentsInlinePanel({
   const activeConversationId = searchParams?.get('id') ?? null
   // Member count is independent of the creator-relative Personal/Workspace views.
   const solo = useIsSoloWorkspace()
-  const workspaceName = useOptionalWorkspace()?.activeWorkspace?.name ?? 'Workspace'
   const buildWorkspaceHref = useWorkspaceHref()
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
@@ -496,10 +475,16 @@ export function AgentsInlinePanel({
   )
 
   // Most recently used first; agents with no recorded use stay alphabetical.
+  // Chiefs stay pinned on top, so a just-used agent lands right below them.
+  const [recencyVersion, setRecencyVersion] = useState(0)
+  const bumpRecency = useCallback(() => setRecencyVersion((version) => version + 1), [])
   const sortedAgents = useMemo(
-    () => pinChiefs(sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)), viewerPrincipalId),
-    [tabAgents, workspaceId, viewerPrincipalId],
+    // recencyVersion re-reads the stored open times after a thread click.
+    () => (void recencyVersion, pinChiefs(sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)), viewerPrincipalId)),
+    [tabAgents, workspaceId, viewerPrincipalId, recencyVersion],
   )
+  const listRef = useRef<HTMLUListElement>(null)
+  useFlipReorder(listRef, sortedAgents.map((agent) => agent.id).join('|'))
   const activityAgentIds = useMemo(() => sortedAgents.map(agent => agent.id), [sortedAgents])
   const expandedIds = useMemo(() => activityOnly ? activityAgentIds.filter((id) => !activityCollapsed.has(id)) : [...expanded], [activityOnly, activityAgentIds, activityCollapsed, expanded])
   const { bundles } = useAgentBundles(workspaceId, expandedIds)
@@ -517,12 +502,10 @@ export function AgentsInlinePanel({
     openingAgentId,
     openError,
     creatingThreadFor,
-    openAgentById,
     openThread,
     openAutomation,
     createThread,
     archiveThread,
-    deleteThread,
     retryOpen,
   } = useAgentActions({
     workspaceId,
@@ -534,6 +517,7 @@ export function AgentsInlinePanel({
     activeAgentId,
     activeConversationId,
     sortedAgents,
+    onAgentUsed: bumpRecency,
   })
 
   // Remember agents opened through direct links or refreshes so recency
@@ -572,7 +556,7 @@ export function AgentsInlinePanel({
 
   return (
     <AgentThreadActivityProvider workspaceId={workspaceId} agentIds={activityAgentIds}>
-    <SidebarMenu>
+    <SidebarMenu ref={listRef}>
       {loading ? (
         // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
         [0, 1, 2].map((index) => (
@@ -588,7 +572,6 @@ export function AgentsInlinePanel({
               agent={agent}
               activityOnly={activityOnly}
               pinned={isPinnedChief(agent, viewerPrincipalId)}
-              ownerLabel={agent.agentRole === 'workspace_chief' ? `${workspaceName} · Workspace` : `${agent.createdByDisplayName || 'Member'}${agent.createdByPrincipalId === viewerPrincipalId ? ' · You' : ''}`}
               isExpanded={isExpanded}
               isActive={activeAgentId === agent.id && !activeConversationId}
               anyOpening={Boolean(openingAgentId)}
@@ -597,15 +580,11 @@ export function AgentsInlinePanel({
               activeConversationId={activeConversationId}
               creatingThread={creatingThreadFor === agent.id}
               onToggleExpanded={toggleAgent}
-              onOpenAgent={(target) => void openAgentById(target)}
               onOpenThread={openThread}
               onOpenAutomation={openAutomation}
               onCreateThread={(target) => void createThread(target)}
               onArchiveThread={(target, conversationId, archived) => {
                 void archiveThread(target, conversationId, archived)
-              }}
-              onDeleteThread={(target, conversationId) => {
-                void deleteThread(target, conversationId)
               }}
             />
             </ActivityAgentRow>

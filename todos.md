@@ -14,6 +14,25 @@
 
 - [ ] **Measure first-reply time in production** (added 2026-11-06). Nothing reports how long a user waits for a reply's first text; `NEXT_PUBLIC_TTFT_DEBUG` and `TTFT_DEBUG` are off-by-default debug tools, and the server flag collects phases it never logs. Once the Convex-native chat work settles, send one PostHog event per reply with the time to first text, the model and whether it was a new chat, and no message content. Then compare typical and worst-case times over time.
 
+## UI performance
+
+Plan: the "Overlay web: UI snappiness plan (v2)" note. Baseline tooling: `internal/develop/perf-baseline.md`.
+
+- [ ] **Virtualize long DM histories** (added 2026-11-09, deferred from the perf plan, PR 8). `DirectMessageExperience.parts.tsx` renders every loaded message, so the DOM grows as older pages load. Window `mainMessages` with `@tanstack/react-virtual` (variable heights, reverse anchoring). Must keep: scroll position when older pages load, stick-to-bottom, unread-boundary and deep-link jumps, day dividers and grouping (they read the previous item), `role="log"` with `aria-setsize`/`aria-posinset`, and focus when a row is recycled. QA in Chrome, Safari, Firefox and the desktop webview. Use the `dm-scroll` baseline numbers to decide when.
+- [ ] **Add the desktop app to the perf suite** (added 2026-11-09). `npm run perf:baseline` only drives Chromium against the web app. Run the same four scenarios in the Overlay desktop app webview (cold start, thread switch, typing while streaming, DM scroll), so desktop gets the same targets and before/after numbers as web.
+
+## Files on every computer (later)
+
+Plan: `internal/plans/FILES_ON_COMPUTERS_PLAN.md`. The first version copies only a thread's chosen folders; these come after it.
+
+- [ ] **Mount Overlay Files at `/overlay` on cloud computers** (added 2026-11-15). Lets an agent see the whole workspace and edits made in the app during a run, without copying anything in first. Build a WebDAV endpoint over FileService (list, read, save, create, move, delete; a save based on an older version becomes a copy; large files through short-lived links) and mount it with `rclone mount --vfs-cache-mode full`. Each computer gets its own short-lived credential, limited to workspace files and revoked when the computer stops. Phase 0 results (`scripts/qa/fuse-mount-check.ts`, `scripts/qa/boat-stop-control.ts`):
+  - Boat computers support FUSE without extra privileges. List, search, reads, saves, rename, delete, a remount and a crash all work. Saves reach the server in about 6 s, and server changes show within about 5 s.
+  - Mount at `/tmp/overlay-mnt` and link `/overlay` to it. A mount at `/overlay` itself stops Boat from stopping the computer; under `/tmp`, stop and resume work and the mount comes back running.
+  - Start rclone in the background, not with `--daemon`, which breaks the control port. Keep that port on loopback so Overlay can tell the mount a file changed, and give a resumed computer a fresh credential through it.
+  - Keep copying code: many small files are 20 to 40 times slower over the mount.
+- [ ] **Personal and workspace computers** (added 2026-11-15). Today a Mac is a personal computer: only its owner's threads can run on it, and a workspace agent can't use a teammate's Mac. Give every computer a scope instead, personal or workspace, so a workspace can attach its own machines (a shared Mac mini, a VPS) that any member's workspace threads can run on. Needs: a scope on the computer record chosen when it is added, who may add and remove workspace computers, enrollment for headless machines without the desktop app, and the "Runs on" picker listing workspace computers to every member.
+- [ ] **Google Drive folders** (added 2026-11-15). Drive folders in Files that agents can work in, saved back to Drive with Drive's own version history, and Google Docs converted to and from Markdown. Use our own Google sign-in and Google's file picker; keep Composio for the agent's ordinary Drive tools. First check whether the non-sensitive `drive.file` permission covers the files inside a folder picked in the file picker; Google's docs don't say. This needs a test OAuth client and a Google account. If it doesn't, full Drive access needs Google's review and a yearly security assessment.
+
 ## Editor
 
 - [ ] **Editor "Agent not found" on expired sessions** — the side-panel editor
@@ -57,7 +76,6 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 - [x] Hosted third-party Overlay Cloud image provisioning retired. Do not rebuild or publish
   `infra/agent-image`; retain shared sandbox metering and provider cleanup infrastructure.
-  See `internal/develop/codex-subscription.md`.
 - [x] **Hermes on Overlay Cloud — dropped (2026-10-03).** Boat's lazy Hermes install fails, and pre-installing with `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` on the real disk did not help: the base layer's filesystem drops files while uv unpacks (`EXTERNALLY-MANAGED`, `_sysconfigdata_`, wheel `.dist-info` errors). Hermes stays hidden from the pickers (`SELECTABLE_AGENT_PROVIDER_IDS`); retry only if Boat's base layer changes.
 - [ ] **Cursor agent live test** — needs a `CURSOR_API_KEY`.
 - [ ] **Codex live test** — needs an approved ChatGPT device code; then two Codex agents on one account.
@@ -68,7 +86,7 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 ## Admin console
 
-- [ ] **Separate WorkOS environment for the admin console** (added 2026-10-14). Today the owner is the only operator, so `apps/admin` signs in through the existing WorkOS environment, gated by `ADMIN_ALLOWED_USER_IDS` and `administrativePrincipals`. Before anyone else gets operator access, move admin sign-in to its own WorkOS environment: SSO through company Google Workspace, MFA required, no password or magic link. Plan: `internal/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md`.
+- [ ] **Separate WorkOS environment for the admin console** (added 2026-10-14). Today the owner is the only operator, so `apps/admin` signs in through the existing WorkOS environment, gated by `ADMIN_ALLOWED_USER_IDS` and `administrativePrincipals`. Before anyone else gets operator access, move admin sign-in to its own WorkOS environment: SSO through company Google Workspace, MFA required, no password or magic link. See `internal/develop/admin-console.md`.
 - [ ] **Staff environment for other team members** (added 2026-10-14). When more people join, give them their own staff setup (accounts, roles in `administrativePrincipals`, access to the `overlay-admin` Vercel project) instead of sharing the owner's.
 
 ## Agent permission cards

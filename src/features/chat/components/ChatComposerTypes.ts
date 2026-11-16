@@ -7,7 +7,7 @@ import type { CapabilityCheck } from '@overlay/app-core'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
 import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
-import type { RemoteAgentCommand } from './collaboration/room-message-view'
+import type { ChatComposerQueueControls } from './ChatComposerQueue'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
 export type ChatComposerEmptyState = { showCenteredEmptyChat: boolean; greetingLine: string; belowEmptyComposer?: ReactNode }
@@ -26,6 +26,8 @@ export type ChatComposerRuntime = {
   composerNotice: string | null
   /** Contextual confirmation or warning rendered immediately above the composer. */
   beforeComposerContent?: ReactNode
+  /** Replaces the disclaimer under the composer, e.g. an agent thread's computer and folder pickers. */
+  afterComposerContent?: ReactNode
   billingPromptContent?: ReactNode
   isSendBlocked: boolean
   isActiveLoading: boolean
@@ -33,8 +35,6 @@ export type ChatComposerRuntime = {
   blockedComposerContent: ReactNode
 }
 export type ChatComposerInputState = {
-  draftIdentity: string
-  onAppendText: (text: string) => void
   replyContext: ReplyContext; setReplyContext: (context: ReplyContext) => void; textareaRef: RefObject<MentionInputHandle | null>
   input: string; inputRevision: number; onInputChange: (text: string) => void; onMentionsChange: (mentions: MentionItem[]) => void
   onPaste: ClipboardEventHandler; hasComposerText: boolean
@@ -57,13 +57,13 @@ export type ChatComposerActions = {
 }
 export type ChatComposerSurface = {
   textOnly?: boolean
+  /** Fills a side panel that already provides its own gutter. */
+  embedded?: boolean
   hideModeMenu?: boolean
   hideGenerationModes?: boolean
   placeholder?: string
   /** Additional mention targets, such as workspace people and named agents. */
   mentionCategories?: MentionCategory[]
-  /** Slash commands the connected agent advertised over ACP, if any. */
-  agentCommands?: RemoteAgentCommand[]
   /** Model and video sub-mode controls rendered before the send button. */
   modelControl?: ReactNode
   contextUsage?: { usedTokens: number; contextWindow: number } | null
@@ -73,11 +73,13 @@ export type ChatComposerProps = {
   runtime: ChatComposerRuntime; inputState: ChatComposerInputState; toolState: ChatComposerToolState
   modeState: ChatComposerModeState; actions: ChatComposerActions
   surface?: ChatComposerSurface
+  /** Queue and steer while a response runs. Composers without it keep plain send. */
+  queue?: ChatComposerQueueControls
 }
 export type ComposerViewProps = { mode: 'chat' | 'automate' }
   & ChatComposerEmptyState & ChatComposerAttachmentState & ChatComposerRuntime & ChatComposerInputState
   & ChatComposerToolState & ChatComposerModeState & ChatComposerActions
-  & ChatComposerSurface
+  & ChatComposerSurface & { queue?: ChatComposerQueueControls }
 
 export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps {
   return {
@@ -90,5 +92,6 @@ export function toComposerViewProps(props: ChatComposerProps): ComposerViewProps
     ...props.modeState,
     ...props.actions,
     ...props.surface,
+    queue: props.queue,
   }
 }

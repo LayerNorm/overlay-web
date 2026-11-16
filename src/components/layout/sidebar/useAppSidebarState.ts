@@ -47,6 +47,7 @@ import {
   selectSidebarNavItem,
   type SidebarNavItem,
 } from './appSidebarNav'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
@@ -92,7 +93,7 @@ function useSidebarNavConfig({ appShell, capabilities, allows,  user }: SidebarN
   )
   const desktop = useDesktopBridge()
   const settingsSections = useMemo(
-    () => [...appShell.settingsSections, ...(desktop ? [{ id: 'desktop', label: 'Desktop', icon: 'monitor' as const, order: 100 }] : [])].filter((section) => (
+    () => [...appShell.settingsSections, ...(desktop ? [{ id: 'desktop', label: 'Desktop', icon: 'laptop' as const, order: 100 }] : [])].filter((section) => (
       !user || allows(getSettingsSectionAuthorizationRequirement(section.id))
     )),
     [allows, appShell.settingsSections, desktop, user],
@@ -218,6 +219,7 @@ function useSidebarNavInteractions(args: {
     closeDrawer: closeMobileDrawer,
   })
   const beginSecondaryNavigation = (id: string) => {
+    beginNavigationIntent(`secondary:${currentRouteKey}:${id}`)
     setPendingSecondaryNav({ id, fromRouteKey: currentRouteKey })
   }
 

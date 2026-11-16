@@ -3,6 +3,7 @@ import 'server-only'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  executeCommentOnTask,
   executeCreateTask,
   executeListTasks,
   executeUpdateTask,
@@ -92,9 +93,99 @@ test('stale revisions conflict without writes', async () => {
   })
   try {
     const result = await executeUpdateTask(baseOptions, { taskId: 'task1', revision: '9', title: 'Changed' })
-    assert.deepEqual(result, { success: false, conflict: true, currentRevision: '10' })
+    assert.equal(result.success, false)
+    assert.ok('conflict' in result && result.conflict)
+    assert.ok('currentRevision' in result && result.currentRevision === '10')
+    assert.ok('task' in result && result.task?.title === 'Newer human edit')
+    assert.match('error' in result ? result.error : '', /retry update_task.*Do not omit the revision/)
     assert.equal(stored.title, 'Newer human edit')
+    assert.equal(api.requests.filter((request) => request.method === 'PATCH').length, 1)
     assert.equal(api.requests.find((request) => request.method === 'PATCH')?.body?.expectedUpdatedAt, 9)
+  } finally {
+    api.restore()
+  }
+})
+
+test('comment then review uses the returned revision and persists one comment', async () => {
+  let stored = { ...task, status: 'progress' }
+  let comments = 0
+  const api = mockApi((url, init, body) => {
+    if (url.pathname.endsWith('/context')) return contextBody
+    if (url.pathname.endsWith('/events') && init.method === 'POST') {
+      comments++
+      stored = { ...stored, updatedAt: stored.updatedAt + 1 }
+      return { success: true }
+    }
+    if (init.method === 'PATCH') {
+      if (body?.expectedUpdatedAt !== stored.updatedAt) return Response.json({ error: 'Read again.', code: 'work_conflict' }, { status: 409 })
+      stored = { ...stored, ...body, updatedAt: stored.updatedAt + 1 }
+    }
+    return { item: stored }
+  })
+  try {
+    const comment = await executeCommentOnTask(baseOptions, { taskId: ' task1 ', body: 'Ready for review.' })
+    assert.equal(comment.success, true)
+    assert.ok('revision' in comment)
+    assert.equal(comment.revision, '11')
+    assert.equal(comment.task?.status, 'progress')
+    const update = await executeUpdateTask(baseOptions, { taskId: 'task1', revision: comment.revision, status: 'review' })
+    assert.equal(update.success, true)
+    assert.equal(stored.status, 'review')
+    assert.equal(comments, 1)
+  } finally {
+    api.restore()
+  }
+})
+
+test('a saved comment remains successful when its readback fails', async () => {
+  for (const throws of [false, true]) {
+    const api = mockApi((_url, init) => {
+      if (init.method === 'POST') return { success: true }
+      if (throws) throw new Error('Network unavailable')
+      return Response.json({ error: 'Read unavailable' }, { status: 503 })
+    })
+    try {
+      const result = await executeCommentOnTask(baseOptions, { taskId: 'task1', body: 'Ready.' })
+      assert.equal(result.success, true)
+      assert.equal('revision' in result, false)
+      assert.match('nextStep' in result ? result.nextStep : '', /Call get_task.*Do not post this comment again/)
+      assert.equal(api.requests.filter((request) => request.method === 'POST').length, 1)
+    } finally {
+      api.restore()
+    }
+  }
+})
+
+test('a failed comment write does not read back or report success', async () => {
+  for (const throws of [false, true]) {
+    const api = mockApi((url, init) => {
+      assert.ok(url.pathname.endsWith('/events'))
+      assert.equal(init.method, 'POST')
+      if (throws) throw new Error('Network unavailable')
+      return Response.json({ error: 'Write unavailable' }, { status: 503 })
+    })
+    try {
+      const result = await executeCommentOnTask(baseOptions, { taskId: 'task1', body: 'Ready.' })
+      assert.equal(result.success, false)
+      assert.deepEqual(api.requests.map((request) => request.method), ['POST'])
+    } finally {
+      api.restore()
+    }
+  }
+})
+
+test('conflicts remain recoverable when the current task cannot be read', async () => {
+  const api = mockApi((url, init) => {
+    if (url.pathname.endsWith('/context')) return contextBody
+    if (init.method === 'PATCH') return Response.json({ error: 'Read again.', code: 'work_conflict' }, { status: 409 })
+    throw new Error('Read unavailable')
+  })
+  try {
+    const result = await executeUpdateTask(baseOptions, { taskId: 'task1', revision: '9', status: 'review' })
+    assert.ok('conflict' in result && result.conflict)
+    assert.match('error' in result ? result.error : '', /call get_task.*retry update_task/)
+    assert.equal('currentRevision' in result, false)
+    assert.equal(api.requests.filter((request) => request.method === 'PATCH').length, 1)
   } finally {
     api.restore()
   }

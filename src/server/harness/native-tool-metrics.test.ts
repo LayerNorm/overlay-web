@@ -33,8 +33,6 @@ test('native metrics count persisted non-control tool results and classify failu
       requiresPlan: false,
       deadlineAt: 1_000,
       maxCostMicros: 0,
-      maxParallelChildren: 1,
-      maxDepth: 1,
     },
   }, 1)
   for (const item of evidence) snapshot = recordHarnessEvidence(snapshot, item, item.createdAt)

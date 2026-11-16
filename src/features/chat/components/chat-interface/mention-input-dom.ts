@@ -43,8 +43,9 @@ export function markdownToEditorHtml(markdown: string): string {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
   const blocks: string[] = []
   let paragraph: string[] = []
-  let listItems: string[] = []
-  let listType: 'ul' | 'ol' | null = null
+  // Open list levels, outermost first. Each level holds its rendered items;
+  // the last item stays open so deeper points can nest inside it.
+  const listStack: Array<{ type: 'ul' | 'ol'; indent: number; items: string[] }> = []
   let codeLines: string[] = []
   let inCodeBlock = false
   const flushParagraph = () => {
@@ -52,10 +53,29 @@ export function markdownToEditorHtml(markdown: string): string {
     blocks.push(`<p>${paragraph.map(parseInlineMarkdown).join('<br />')}</p>`)
     paragraph = []
   }
+  const closeLevel = () => {
+    const level = listStack.pop()
+    if (!level) return
+    const html = `<${level.type}>${level.items.map((item) => `<li>${item}</li>`).join('')}</${level.type}>`
+    const parent = listStack[listStack.length - 1]
+    if (parent && parent.items.length) parent.items[parent.items.length - 1] += html
+    else blocks.push(html)
+  }
   const flushList = () => {
-    if (listType && listItems.length > 0) blocks.push(`<${listType}>${listItems.join('')}</${listType}>`)
-    listItems = []
-    listType = null
+    while (listStack.length) closeLevel()
+  }
+  const pushListItem = (type: 'ul' | 'ol', indent: number, text: string) => {
+    while (listStack.length && listStack[listStack.length - 1]!.indent > indent) closeLevel()
+    let top = listStack[listStack.length - 1]
+    if (top && top.indent === indent && top.type !== type) {
+      closeLevel()
+      top = listStack[listStack.length - 1]
+    }
+    if (!top || top.indent < indent) {
+      listStack.push({ type, indent, items: [] })
+      top = listStack[listStack.length - 1]!
+    }
+    top.items.push(parseInlineMarkdown(text))
   }
   const flushCode = () => {
     if (!inCodeBlock) return
@@ -96,20 +116,16 @@ export function markdownToEditorHtml(markdown: string): string {
       blocks.push(`<blockquote>${parseInlineMarkdown(quote[1]!)}</blockquote>`)
       continue
     }
-    const unordered = line.match(/^[-*]\s+(.+)$/)
+    const unordered = line.match(/^(\s*)[-*]\s+(.+)$/)
     if (unordered) {
       flushParagraph()
-      if (listType && listType !== 'ul') flushList()
-      listType = 'ul'
-      listItems.push(`<li>${parseInlineMarkdown(unordered[1]!)}</li>`)
+      pushListItem('ul', unordered[1]!.replace(/\t/g, '   ').length, unordered[2]!)
       continue
     }
-    const ordered = line.match(/^\d+\.\s+(.+)$/)
+    const ordered = line.match(/^(\s*)\d+\.\s+(.+)$/)
     if (ordered) {
       flushParagraph()
-      if (listType && listType !== 'ol') flushList()
-      listType = 'ol'
-      listItems.push(`<li>${parseInlineMarkdown(ordered[1]!)}</li>`)
+      pushListItem('ol', ordered[1]!.replace(/\t/g, '   ').length, ordered[2]!)
       continue
     }
     flushList()
@@ -154,13 +170,39 @@ function blockNodeToMarkdown(node: Node): string {
   if (/^H[1-3]$/.test(element.tagName)) return `${'#'.repeat(Number(element.tagName.slice(1)))} ${content}`
   if (element.tagName === 'PRE') return `\`\`\`\n${element.textContent ?? ''}\n\`\`\``
   if (element.tagName === 'BLOCKQUOTE') return content.split('\n').map((line) => `> ${line}`).join('\n')
-  if (element.tagName === 'UL' || element.tagName === 'OL') {
-    return Array.from(element.children).map((item, index) => {
-      const itemText = Array.from(item.childNodes).map(inlineNodeToMarkdown).join('')
-      return `${element.tagName === 'OL' ? `${index + 1}.` : '-'} ${itemText}`
-    }).join('\n')
-  }
+  if (element.tagName === 'UL' || element.tagName === 'OL') return listToMarkdown(element, '')
   return content
+}
+
+/**
+ * Serializes a list. Sub-points (nested <ul>/<ol>) are indented to the content
+ * column of their parent point, so `10. parent` nests its children under four
+ * spaces and `- parent` under two, as CommonMark requires.
+ */
+function listToMarkdown(list: HTMLElement, indent: string): string {
+  const lines: string[] = []
+  let index = 0
+  let childIndent = `${indent}   `
+  for (const item of Array.from(list.children)) {
+    if (item.tagName === 'UL' || item.tagName === 'OL') {
+      // Stray nested list directly under a list (legacy browser output).
+      lines.push(listToMarkdown(item as HTMLElement, childIndent))
+      continue
+    }
+    const own: Node[] = []
+    const nested: HTMLElement[] = []
+    for (const child of Array.from(item.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE && /^(UL|OL)$/.test((child as HTMLElement).tagName)) nested.push(child as HTMLElement)
+      else own.push(child)
+    }
+    index += 1
+    const marker = list.tagName === 'OL' ? `${index}.` : '-'
+    childIndent = indent + ' '.repeat(marker.length + 1)
+    const itemText = own.map(inlineNodeToMarkdown).join('').replace(/\n+$/, '')
+    lines.push(`${indent}${marker} ${itemText}`)
+    for (const child of nested) lines.push(listToMarkdown(child, childIndent))
+  }
+  return lines.join('\n')
 }
 
 export function extractMarkdownFromElement(el: HTMLDivElement): string {

@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Guard for ADMIN_CONSOLE_SEPARATION_PLAN stage 3c: the operator console lives
+// Guard for the admin console separation: the operator console lives
 // in apps/admin behind ADMIN_API_SECRET + Convex admin functions. The web app
 // must not resurrect admin routes, admin feature code, or the secret's env
 // var name inside src/** (or the published API client).
@@ -75,7 +75,7 @@ async function main() {
     console.error('Admin separation check failed:')
     for (const failure of failures) console.error(`  - ${failure}`)
     console.error(
-      'The admin console lives in apps/admin. See docs/plans/ADMIN_CONSOLE_SEPARATION_PLAN.md.',
+      'The admin console lives in apps/admin. See internal/develop/admin-console.md.',
     )
     process.exit(1)
   }

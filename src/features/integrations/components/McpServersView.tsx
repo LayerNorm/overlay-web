@@ -1,44 +1,56 @@
 'use client'
-import { Button } from '@overlay/ui/primitives'
+import { toast } from '@overlay/ui/primitives'
 
-// Compatibility wrapper: MCP contracts/controllers live in @overlay/app-core;
-// shared React presentation lives in @overlay/modules-react.
-import { useMemo, useState, type MouseEvent } from 'react'
-import { Plus } from 'lucide-react'
+// MCP contracts/controllers live in @overlay/app-core; shared React presentation lives in @overlay/modules-react.
+import { useMemo, useState } from 'react'
+import { Eye, Globe, Pencil, Server, Trash2 } from 'lucide-react'
 import {
   createMcpCreateRequest,
   createMcpSummaryFromForm,
   createMcpTestRequest,
   createMcpUpdateRequest,
-  filterMcpServers,
   formatMcpMutationError,
   formatMcpTestResult,
-  setMcpServerEnabled,
   type McpMutationResult,
   type McpServerFormValues,
   type McpServerSummary,
   type McpTestResultState,
   type TestMcpServerResponse,
 } from '@overlay/app-core'
-import { AppScreenShell } from '@overlay/modules-react/shell'
-import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
+import { MCP_CATALOG, MCP_CATEGORIES, groupExtensionCatalog, normalizeMcpServerUrl, type McpCatalogEntry } from '@overlay/app-core/extensions'
+import { ExtensionCatalogDeleteDialog, ExtensionCatalogPage, McpServerDialog, type ExtensionCatalogEntry } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useLiveMcpServers } from '@/hooks/use-connections'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
-import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { ExtensionsScreen } from '@/components/layout/extensions/ExtensionsScreen'
+import { useExtensionsIntent, useExtensionsRoute } from '@/hooks/use-extensions-route'
 
 interface DialogState {
   mode: 'create' | 'edit'
   server?: McpServerSummary
+  preset?: Partial<McpServerFormValues>
+}
+
+/** One-line state for a server that needs attention; healthy servers show none. */
+function serverStatus(server: McpServerSummary): ExtensionCatalogEntry['status'] {
+  if (!server.enabled) return { label: 'Off' }
+  if (server.toolCatalogError || server.oauthStatus === 'needs_reauth') return { label: 'Connection error', tone: 'error' }
+  if (server.authType === 'oauth' && server.oauthStatus !== 'connected') return { label: 'Not connected' }
+  return undefined
+}
+
+function serverHost(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
 }
 
 export default function McpServersView({ userId: _userId }: { userId: string }) {
   void _userId
   const [dialog, setDialog] = useState<DialogState | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [deleting, setDeleting] = useState<McpServerSummary | null>(null)
+  const route = useExtensionsRoute()
   const scope = usePanelScope()
   const listView = usePanelListView()
   const { canCreate } = useWorkspaceCreateAccess()
@@ -46,19 +58,18 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   // Live: configuration and connection state, including OAuth finished in another tab, arrive without reloading.
   const live = useLiveMcpServers(listView)
-  // A quick toggle shows at once and gives way to the live value when the server answers.
-  const [toggles, setToggles] = useState<ReadonlyMap<string, boolean>>(() => new Map())
-  const servers = useMemo<McpServerSummary[]>(() => (live ?? []).map((server) => (
-    toggles.has(server._id) ? setMcpServerEnabled(server, toggles.get(server._id)!) : server
-  )), [live, toggles])
+  const servers = useMemo<McpServerSummary[]>(() => live ?? [], [live])
   const loading = live === undefined
   // Servers this person may use but not change; their dialog opens view-only and the quick toggle does nothing.
   const readOnlyIds = useMemo(() => new Set((live ?? []).filter((server) => !server.canEdit).map((server) => server._id)), [live])
 
-  const filteredServers = useMemo(
-    () => filterMcpServers(servers, searchQuery),
-    [servers, searchQuery],
-  )
+  // Global search and other Extensions pages link here with ?id= (open that server) or ?add=1 (new server).
+  useExtensionsIntent<DialogState>(route, ({ add, id }) => {
+    if (add) return canAdd ? { mode: 'create' } : null
+    if (loading) return undefined
+    const server = servers.find((item) => item._id === id)
+    return server ? { mode: 'edit', server } : null
+  }, setDialog)
 
   async function failure(response: Response, fallback: string): Promise<McpMutationResult> {
     const payload = await response.json().catch(() => null) as { error?: unknown } | null
@@ -160,52 +171,67 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     }
   }
 
-  async function handleQuickToggle(server: McpServerSummary, event: MouseEvent) {
-    event.stopPropagation()
-    if (readOnlyIds.has(server._id)) return
-    const newEnabled = !server.enabled
-    setToggles((current) => new Map(current).set(server._id, newEnabled))
-    try {
-      await overlayAppClient.mcpServers.updateResponse({ mcpServerId: server._id, enabled: newEnabled })
-    } catch {
-      // The live value shows again below.
-    } finally {
-      setToggles((current) => {
-        const next = new Map(current)
-        next.delete(server._id)
-        return next
-      })
+  const serverEntry = (server: McpServerSummary, catalog?: McpCatalogEntry): ExtensionCatalogEntry => ({
+    id: catalog?.id ?? server._id,
+    name: server.name || catalog?.name || 'Untitled',
+    description: server.description || catalog?.description || serverHost(server.url),
+    logo: { kind: 'image', src: catalog?.logoUrl, darkSrc: catalog?.logoDarkUrl, invertInDark: catalog?.logoInvertInDark },
+    status: serverStatus(server),
+    onOpen: () => setDialog({ mode: 'edit', server }),
+    menu: readOnlyIds.has(server._id)
+      ? [{ label: 'View', icon: Eye, onSelect: () => setDialog({ mode: 'edit', server }) }]
+      : [{ label: 'Edit', icon: Pencil, onSelect: () => setDialog({ mode: 'edit', server }) }, { label: 'Delete', icon: Trash2, onSelect: () => setDeleting(server) }],
+  })
+
+  const findServer = (catalog: McpCatalogEntry) => servers.find((server) => normalizeMcpServerUrl(server.url) === normalizeMcpServerUrl(catalog.url))
+
+  const catalogEntry = (catalog: McpCatalogEntry): ExtensionCatalogEntry => {
+    const added = findServer(catalog)
+    if (added) return serverEntry(added, catalog)
+    const open = () => setDialog({
+      mode: 'create',
+      preset: { name: catalog.name, description: catalog.description, url: catalog.url, transport: catalog.transport, authType: catalog.authType },
+    })
+    return {
+      id: catalog.id,
+      name: catalog.name,
+      description: catalog.description,
+      logo: { kind: 'image', src: catalog.logoUrl, darkSrc: catalog.logoDarkUrl, invertInDark: catalog.logoInvertInDark },
+      onOpen: open,
+      onAdd: canAdd ? open : undefined,
     }
   }
 
+  const browse = groupExtensionCatalog(MCP_CATALOG, MCP_CATEGORIES, (catalog) => catalog.id)
+    .map((section) => ({ ...section, items: section.items.map(catalogEntry) }))
+  const catalogFor = (server: McpServerSummary) => MCP_CATALOG.find((catalog) => normalizeMcpServerUrl(catalog.url) === normalizeMcpServerUrl(server.url))
+  const fromCatalog = servers.filter((server) => catalogFor(server))
+  const custom = servers.filter((server) => !catalogFor(server))
+  const yours = [
+    { id: 'connected', title: 'Connected', items: fromCatalog.map((server) => serverEntry(server, catalogFor(server))) },
+    { id: 'created', title: scope === 'workspace' ? 'Shared in workspace' : 'Created by you', items: custom.map((server) => serverEntry(server)) },
+  ]
+  const openSection = route.category ? browse.find((section) => section.id === route.category) : undefined
+  const addServer = () => setDialog({ mode: 'create' })
+
   return (
-    <AppScreenShell
-      header={
-        <ExtensionPageHeader
-          title="MCP Servers"
-          tabs={<PageSubviewTabs />}
-          searchQuery={searchQuery}
-          searchPlaceholder="Search servers…"
-          searchTitle="Search servers"
-          action={canAdd ? (
-            <Button variant="primary" size="sm"
-              onClick={() => setDialog({ mode: 'create' })}
-            >
-              <Plus size={12} />
-              Add Server
-            </Button>
-          ) : undefined}
-          onSearchQueryChange={setSearchQuery}
-        />
-      }
-    >
-      <McpServersPanel
+    <ExtensionsScreen title="MCPs" sectionTitle={openSection?.title} overviewHref={route.overviewHref}>
+      <ExtensionCatalogPage
+        title="MCPs"
+        subtitle="Connect any MCP server to give agents new tools."
+        noun="MCP servers"
+        icon={Server}
+        yoursLabel={scope === 'workspace' ? 'Workspace' : 'Yours'}
         loading={loading}
-        servers={servers}
-        filteredServers={filteredServers}
-        onCreate={canAdd ? () => setDialog({ mode: 'create' }) : undefined}
-        onEdit={(server) => setDialog({ mode: 'edit', server })}
-        onToggle={(server, event) => void handleQuickToggle(server, event)}
+        browse={browse}
+        yours={yours}
+        yoursEmpty={{ title: 'No MCP servers yet', body: 'Connected and custom MCP servers will appear here.' }}
+        addOptions={canAdd ? [{ id: 'url', label: 'Remote server (URL)', icon: Globe, onSelect: addServer }] : undefined}
+        category={route.category}
+        onCategoryChange={route.openCategory}
+        noResults={canAdd
+          ? { body: 'Check the spelling, or add any server by its URL.', action: { label: 'Add a server', onSelect: addServer } }
+          : { body: 'Check the spelling and try again.' }}
       />
 
       {dialog ? (
@@ -229,6 +255,18 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
           ) : undefined}
         />
       ) : null}
-    </AppScreenShell>
+      {deleting ? (
+        <ExtensionCatalogDeleteDialog
+          name={deleting.name || 'this server'}
+          kind="server"
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => {
+            const server = deleting
+            setDeleting(null)
+            void handleDeleteServer(server).then((result) => result.ok ? toast(`${server.name || 'Server'} deleted`) : toast.error(result.error || 'Could not delete this MCP server.'))
+          }}
+        />
+      ) : null}
+    </ExtensionsScreen>
   )
 }

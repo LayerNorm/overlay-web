@@ -497,12 +497,6 @@
       "recordedAt": "2026-09-27T02:50:39.651Z"
     },
     {
-      "file": "src/server/app-api/v1/notebook-agent/route.ts",
-      "loc": 435,
-      "complexity": 41,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
       "file": "src/server/app-api/v1/providers/connections/route.ts",
       "loc": 454,
       "complexity": 131,
@@ -1773,13 +1767,6 @@
       "file": "src/app/api/v1/model-catalog/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 6,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/notebook-agent/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 7,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },

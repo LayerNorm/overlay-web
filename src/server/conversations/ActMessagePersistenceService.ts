@@ -2,6 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { StepResult, ToolSet } from 'ai'
+import { normalizeTranscriptAssistantParts } from '@overlay/chat-core'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
@@ -14,7 +15,10 @@ import {
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { AgentRunMetrics } from '@/shared/agents/agent-run'
-import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
+import {
+  linkifySourceCitationsMarkdown,
+  shouldLinkifyKnowledgeSourceCitations,
+} from '@/shared/knowledge/source-citations'
 import type { UIMessage } from '@/server/ai/sdk'
 import type { ActConversationRepository, ConversationId } from './ActConversationRepository'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -191,17 +195,10 @@ export class ActMessagePersistenceService {
     const totalOutputTokens = usage?.outputTokens ?? 0
 
     try {
-      let assistantPersistence = buildAssistantPersistenceFromSteps(
+      const assistantPersistence = buildAssistantPersistenceFromSteps(
         args.event.steps,
         args.event.text,
       )
-      if (args.sourceCitations && Object.keys(args.sourceCitations).length > 0) {
-        const sourceCitations = args.sourceCitations
-        assistantPersistence = mapAssistantTextForPersistence(
-          assistantPersistence,
-          (text) => linkifySourceCitationsMarkdown(text, sourceCitations),
-        )
-      }
       const { content: rawPersistContent, parts: persistParts } = assistantPersistence
       let persistContent = rawPersistContent
       let normalizedPersistParts = persistParts.map((part) => {
@@ -264,6 +261,19 @@ export class ActMessagePersistenceService {
         const sentinel = `\n\n[Request timed out after ${timedOutAfterSeconds}s. Continue?]`
         persistContent = persistContent.trimEnd() + sentinel
         normalizedPersistParts = [...normalizedPersistParts, { type: 'text', text: sentinel }]
+      }
+
+      const sourceCitations = args.sourceCitations
+      if (sourceCitations && Object.keys(sourceCitations).length > 0) {
+        const { blocks } = normalizeTranscriptAssistantParts(normalizedPersistParts)
+        if (shouldLinkifyKnowledgeSourceCitations(blocks)) {
+          const linked = mapAssistantTextForPersistence(
+            { content: persistContent, parts: normalizedPersistParts },
+            (text) => linkifySourceCitationsMarkdown(text, sourceCitations),
+          )
+          persistContent = linked.content
+          normalizedPersistParts = linked.parts
+        }
       }
 
       const compactedPersistence = compactAssistantPersistenceForConvex({

@@ -2,7 +2,7 @@ import React, { act } from 'react'
 import { createRequire } from 'node:module'
 import { afterEach, expect, test, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ directory: vi.fn(), mutate: vi.fn() }))
+const mocks = vi.hoisted(() => ({ directory: vi.fn(), mutate: vi.fn(), push: vi.fn(), replace: vi.fn() }))
 vi.mock('@/hooks/use-agent-directory', () => ({ useAgentDirectory: mocks.directory }))
 vi.mock('@/hooks/use-solo-workspace', () => ({ useIsSoloWorkspace: () => true }))
 vi.mock('@/hooks/use-workspace-href', () => ({ useWorkspaceHref: () => (_id: string | null, path: string) => path }))
@@ -10,13 +10,14 @@ vi.mock('@/contexts/WorkspaceContext', () => ({ useOptionalWorkspace: () => null
 vi.mock('@/components/orb/Creature', () => ({ AgentCreature: () => null }))
 vi.mock('@/shared/app/archive-toast', () => ({ announceArchived: vi.fn() }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: mocks.push, replace: mocks.replace }),
   usePathname: () => '/app/agents',
   useSearchParams: () => null,
 }))
 vi.mock('@overlay/ui/primitives', () => ({
   SidebarMenu: 'ul', SidebarMenuItem: 'li', SidebarMenuSkeleton: 'span',
-  SidebarMenuButton: 'button', SidebarMenuAction: 'button', Button: 'button', toast: { error: vi.fn() },
+  SidebarMenuButton: 'button', SidebarMenuAction: 'button', SidebarMenuSubButton: 'button',
+  SidebarMenuSubItem: 'li', Button: 'button', toast: { error: vi.fn() },
 }))
 vi.mock('convex/react', () => ({
   useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
@@ -36,6 +37,7 @@ const { create } = createRequire(import.meta.url)('react-test-renderer') as {
     update(element: React.ReactElement): void
     unmount(): void
     toJSON(): unknown
+    root: { findAllByType(type: string): Array<{ props: { className?: string; onClick?: () => void } }> }
   }
 }
 
@@ -59,4 +61,45 @@ test('loading, unavailable directories and workspace switches settle without a r
   } finally {
     if (renderer) await act(() => renderer.unmount())
   }
+})
+
+test('clicking an agent only expands its threads and never navigates', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('window', new EventTarget())
+  mocks.push.mockClear()
+  mocks.mutate.mockClear()
+  mocks.directory.mockReturnValue({
+    status: 'ready', viewerPrincipalId: 'viewer',
+    agents: ['alpha', 'beta'].map(id => ({ id, name: id, principalId: id, createdByPrincipalId: 'viewer' })),
+  })
+  let renderer!: ReturnType<typeof create>
+  try {
+    await act(() => { renderer = create(<AgentsInlinePanel workspaceId="workspace_1" />) })
+    const rows = () => renderer.root.findAllByType('button').filter(row => row.props.className?.includes('h-10'))
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('Loading alpha threads')
+    await act(() => { rows()[0].props.onClick?.() })
+    expect(JSON.stringify(renderer.toJSON())).toContain('Loading alpha threads')
+    await act(() => { rows()[1].props.onClick?.() })
+    expect(mocks.push).not.toHaveBeenCalled()
+    expect(mocks.replace).not.toHaveBeenCalled()
+    expect(mocks.mutate).not.toHaveBeenCalled()
+    // A second click collapses again.
+    await act(() => { rows()[0].props.onClick?.() })
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('Loading alpha threads')
+  } finally {
+    if (renderer) await act(() => renderer.unmount())
+  }
+})
+
+test('agents with no in-progress threads show no subtitle', async () => {
+  const { AgentActivitySummary } = await import('./sidebar/ThreadActivityIndicator')
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let renderer!: ReturnType<typeof create>
+  await act(() => { renderer = create(<AgentActivitySummary activity={[]} />) })
+  expect(renderer.toJSON()).toBeNull()
+  await act(() => renderer.update(<AgentActivitySummary activity={[{ conversationId: 'c', status: 'idle' } as never]} />))
+  expect(renderer.toJSON()).toBeNull()
+  await act(() => renderer.update(<AgentActivitySummary activity={[{ conversationId: 'c', status: 'working' } as never]} />))
+  expect(JSON.stringify(renderer.toJSON())).toContain('working')
+  await act(() => renderer.unmount())
 })

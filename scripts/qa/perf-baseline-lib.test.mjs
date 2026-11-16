@@ -1,0 +1,158 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { runInNewContext } from 'node:vm'
+import {
+  appPath, fixtureBackendUrl, frameReport, markdownReport, parseScenarios, percentile, perfOrigin,
+  positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize, installKeystrokeObserver,
+} from './perf-baseline-lib.mjs'
+
+function keystrokeObserver() {
+  const listeners = {}
+  const frames = []
+  const window = {}
+  const editor = { textContent: '', isConnected: true, addEventListener: (name, callback) => { listeners[name] = callback } }
+  const document = { querySelector: () => ({}) }
+  runInNewContext(`(${installKeystrokeObserver.toString()})(editor)`, {
+    editor, window, document, performance: { now: () => 50 },
+    requestAnimationFrame: callback => frames.push(callback), setTimeout: callback => callback(),
+  })
+  return { editor, window, document, frames, type(key, timeStamp) {
+    listeners.keydown({ key, timeStamp })
+    editor.textContent += key
+    listeners.input()
+  } }
+}
+
+test('coalesced keystrokes retain every latency instead of dropping slow frames', () => {
+  const observer = keystrokeObserver()
+  observer.type('a', 10)
+  observer.type('b', 20)
+  observer.frames.forEach(frame => frame())
+  assert.deepEqual(Array.from(observer.window.__perfKeyLatency), [40, 30])
+  assert.equal(observer.window.__perfKeyDiagnostics.coalesced, 1)
+  assert.equal(observer.window.__perfKeyDiagnostics.rejected, 0)
+})
+
+test('changed text, detached editors and settled streams never count as observed input', () => {
+  for (const invalidate of [
+    observer => { observer.editor.textContent = 'replacement' },
+    observer => { observer.editor.isConnected = false },
+    observer => { observer.document.querySelector = () => null },
+  ]) {
+    const observer = keystrokeObserver()
+    observer.type('a', 10)
+    invalidate(observer)
+    observer.frames.forEach(frame => frame())
+    assert.equal(observer.window.__perfKeyLatency.length, 0)
+    assert.equal(observer.window.__perfKeyDiagnostics.rejected, 1)
+  }
+})
+
+test('fixture mutations require a Preview origin and an exact deployment name, not an arbitrary URL', () => {
+  assert.equal(fixtureBackendUrl('https://pr-12.preview.getoverlay.io', 'synthetic-fixture-123'), 'https://synthetic-fixture-123.convex.cloud')
+  for (const backend of ['https://example.test', '../other', 'synthetic-fixture-123?key=x', undefined]) {
+    assert.throws(() => fixtureBackendUrl('https://pr-12.preview.getoverlay.io', backend))
+  }
+  assert.throws(() => fixtureBackendUrl('http://localhost:3000', 'synthetic-fixture-123'))
+})
+
+test('only PR previews and loopback production servers are accepted', () => {
+  assert.equal(perfOrigin('https://pr-12.preview.getoverlay.io/'), 'https://pr-12.preview.getoverlay.io')
+  assert.equal(perfOrigin('http://localhost:3000'), 'http://localhost:3000')
+  assert.equal(perfOrigin('http://127.0.0.1:4000/'), 'http://127.0.0.1:4000')
+  for (const origin of [
+    'https://getoverlay.io', 'https://www.getoverlay.io', 'http://pr-1.preview.getoverlay.io',
+    'https://pr-1.preview.getoverlay.io.evil.com', 'https://localhost:3000', 'http://example.com',
+    'http://user:secret@localhost:3000', 'http://localhost:3000/app', 'http://localhost:3000/?token=x',
+  ]) {
+    assert.throws(() => perfOrigin(origin), origin)
+  }
+})
+
+test('app paths must be relative', () => {
+  assert.equal(appPath('/app/chat?id=1'), '/app/chat?id=1')
+  for (const value of ['https://x.io', '//x.io', '/\\x', '/a\nb', undefined]) assert.throws(() => appPath(value))
+})
+
+test('scenario selection rejects unknown names', () => {
+  assert.equal(parseScenarios(undefined).length, 4)
+  assert.deepEqual(parseScenarios('dm-scroll, cold-start'), ['dm-scroll', 'cold-start'])
+  assert.throws(() => parseScenarios('cold-start,warp-speed'), /warp-speed/)
+  assert.throws(() => parseScenarios(' , '))
+  assert.throws(() => parseScenarios(''))
+})
+
+test('measurement configuration cannot silently run zero or unlimited samples', () => {
+  assert.equal(positiveInteger(undefined, 5), 5)
+  assert.equal(positiveInteger('3', 5), 3)
+  for (const value of ['', 'NaN', 'Infinity', '0', '-1', '1.5', '101']) assert.throws(() => positiveInteger(value, 5))
+})
+
+test('failed or missing stages invalidate the whole interaction', () => {
+  const sample = { action: 'completed', stages: {
+    localFeedback: { status: 'observed', ms: 5 }, contentVisible: { status: 'observed', ms: 15 },
+  } }
+  assert.equal(requireObservedInteraction(sample), sample)
+  assert.throws(() => requireObservedInteraction({ ...sample, action: 'failed' }))
+  for (const stages of [undefined, {}, { contentVisible: sample.stages.contentVisible },
+    { localFeedback: sample.stages.localFeedback }]) {
+    assert.throws(() => requireObservedInteraction({ action: 'completed', stages }))
+  }
+  for (const status of ['not-observed', 'invalid-precondition', 'unavailable']) {
+    assert.throws(() => requireObservedInteraction({ ...sample, stages: {
+      ...sample.stages, contentVisible: { status, ms: null },
+    } }))
+  }
+})
+
+test('percentiles use nearest rank and ignore non-finite samples', () => {
+  assert.equal(percentile([], 50), null)
+  assert.equal(percentile([5], 75), 5)
+  assert.equal(percentile([1, 2, 3, 4], 50), 2)
+  assert.equal(percentile([4, 1, 3, 2], 75), 3)
+  assert.equal(percentile([1, Number.NaN, 2, Infinity], 100), 2)
+  assert.deepEqual(summarize([10, 20, 30, 40]), { n: 4, median: 20, p75: 30, max: 40 })
+  assert.deepEqual(summarize([]), { n: 0, median: null, p75: null, max: null })
+})
+
+test('render deltas keep only components that rendered', () => {
+  assert.deepEqual(
+    renderDelta({ ChatExchange: 4, AppSidebar: 2 }, { ChatExchange: 10, AppSidebar: 2, ChatComposer: 3 }),
+    { ChatComposer: 3, ChatExchange: 6 },
+  )
+})
+
+test('streaming report normalizes renders per streamed update', () => {
+  const report = streamingRenderReport({
+    'ChatExchange(streaming)': 20, ChatExchange: 60, ChatComposer: 20, ChatTranscript: 20,
+  })
+  assert.equal(report.streamingUpdates, 20)
+  assert.equal(report.settledExchangeRenders, 60)
+  assert.equal(report.settledExchangeRendersPerUpdate, 3)
+  assert.equal(report.composerRendersPerUpdate, 1)
+  assert.equal(report.sidebarRendersPerUpdate, 0)
+  assert.equal(streamingRenderReport({}).composerRendersPerUpdate, null)
+})
+
+test('frame report counts hitches over two 60 Hz frames', () => {
+  const report = frameReport([0, 16, 32, 48, 100, 116])
+  assert.equal(report.frames, 6)
+  assert.equal(report.hitchIntervals, 1)
+  assert.equal(report.frameMax, 52)
+  assert.equal(report.fps, 43.1)
+  assert.equal(frameReport([1]).fps, null)
+})
+
+test('markdown report lists metrics, errors and render counts', () => {
+  const markdown = markdownReport({
+    revision: 'abc', originKind: 'local', throttle: 'none', runs: 1, capturedAt: 'now',
+    scenarios: {
+      'cold-start': { metrics: { composerReadyMs: { n: 1, median: 900, p75: 900, max: 900 } } },
+      'dm-scroll': { error: 'PERF_DM_PATH is required for this scenario' },
+      'typing-while-streaming': { metrics: {}, renders: { during: { ChatComposer: 1 } } },
+    },
+  })
+  assert.match(markdown, /\| cold-start \| composerReadyMs \| 1 \| 900 \| 900 \| 900 \|/)
+  assert.match(markdown, /dm-scroll \| error: PERF_DM_PATH/)
+  assert.match(markdown, /### typing-while-streaming/)
+})

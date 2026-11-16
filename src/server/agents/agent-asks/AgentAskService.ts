@@ -20,7 +20,6 @@ import type { ConversationMessageRow } from '@/server/conversations/ActConversat
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { filterSharedSurfaceAgents, type SharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
 import type { AgentRun } from '@/shared/agents/agent-run'
-import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { NativeAgentAssignmentContext } from './native-assignment-context'
 import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
@@ -70,7 +69,7 @@ type Caller = { agentId: string; conversationId: string; turnId: string }
 type Person = { actorUserId: string; actorPrincipalId: string; workspaceId: string }
 
 function assertAssignmentContext(args: { nativeAssignment?: NativeAgentAssignmentContext; caller?: Caller; assignmentId?: string }, target: WorkspaceAgentDirectoryItem) {
-  if (args.nativeAssignment && (target.harness !== 'overlay' || parseByoModelId(target.modelId) !== null)) {
+  if (args.nativeAssignment && target.harness !== 'overlay') {
     throw new AgentAskError("External agents can't be asked from this run yet.", 409, 'native_external_agent_unsupported')
   }
   if (args.nativeAssignment && !args.caller) throw new AgentAskError('Native assignment identity is missing.', 400, 'invalid_assignment')

@@ -79,6 +79,7 @@ export interface NotebookAgentMention {
 }
 
 export interface NotebookAgentRequest {
+  noteId: string
   noteContent: string
   noteTitle: string
   message: string

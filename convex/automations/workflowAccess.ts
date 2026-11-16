@@ -9,10 +9,7 @@ export async function readableWorkflowAutomation(
 ) {
   const run = await ctx.db.query('automationRuns')
     .withIndex('by_workflowRunId', q => q.eq('workflowRunId', args.workflowRunId)).unique()
-  const automation = run
-    ? await ctx.db.get(run.automationId)
-    : await ctx.db.query('automations')
-      .withIndex('by_schedulerWorkflowRunId', q => q.eq('schedulerWorkflowRunId', args.workflowRunId)).unique()
+  const automation = run ? await ctx.db.get(run.automationId) : null
   if (!automation || automation.deletedAt) return null
   return await getReadableRow(ctx, { row: automation, userId: args.userId, workspaceId: args.workspaceId })
 }

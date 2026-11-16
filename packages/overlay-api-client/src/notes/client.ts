@@ -4,7 +4,6 @@ import type {
   DeleteNoteResponse,
   KnowledgeFile,
   NoteDoc,
-  NotebookAgentRequest,
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@overlay/app-core'
@@ -57,10 +56,6 @@ export class NotesClient {
 
   deleteResponse(query: { noteId: string }, init?: RequestInit) {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
-  }
-
-  notebookAgentResponse(body: NotebookAgentRequest, init?: RequestInit) {
-    return this.http.request('/api/v1/notebook-agent', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
   parseDeleteResponse(response: Response) {

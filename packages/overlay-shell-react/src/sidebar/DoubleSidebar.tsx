@@ -56,6 +56,8 @@ export interface DoubleSidebarProps extends UnifiedSidebarProps {
   railBrand: ReactNode
 }
 
+const ignoreResizing = () => {}
+
 /** The rail stays mounted and usable while only the contextual panel collapses. */
 export function DoubleSidebar({
   railBrand, title, collapsed, onCollapsedChange, items, footerItems = [], panelKind,
@@ -65,7 +67,6 @@ export function DoubleSidebar({
 }: DoubleSidebarProps) {
   const { rememberScope } = useShellAdapter()
   const [width, setWidth] = useState(272)
-  const [resizing, setResizing] = useState(false)
   const railRef = useRef<HTMLElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const panelHadFocusRef = useRef(false)
@@ -132,7 +133,7 @@ export function DoubleSidebar({
         inert={collapsed}
         data-collapsed={collapsed}
         style={{ '--context-sidebar-width': `${width}px` } as CSSProperties}
-        className={cn('double-sidebar-panel overflow-visible border-0 bg-transparent transition-[width,opacity] duration-200 motion-reduce:transition-none', collapsed ? 'invisible w-0 opacity-0' : 'w-(--context-sidebar-width) opacity-100', resizing && 'transition-none')}
+        className={cn('double-sidebar-panel overflow-visible border-0 bg-transparent', collapsed ? 'invisible w-0 opacity-0' : 'w-(--context-sidebar-width) opacity-100')}
       >
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[inherit]">
           <div className="flex h-12 min-h-12 items-center gap-0.5 pl-3 pr-1.5">
@@ -156,7 +157,7 @@ export function DoubleSidebar({
             )}
           </SidebarContent>
         </div>
-        {resizable && !collapsed ? <PanelResizeHandle edge="right" placement="outside" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={360} label="Resize contextual sidebar" /> : null}
+        {resizable && !collapsed ? <PanelResizeHandle edge="right" placement="outside" width={width} onResize={setWidth} onResizingChange={ignoreResizing} livePreview minWidth={220} maxWidth={360} label="Resize contextual sidebar" /> : null}
       </Sidebar>
     </div>
   )

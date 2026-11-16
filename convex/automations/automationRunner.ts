@@ -2,7 +2,6 @@ import { fetchAppCallback } from '../lib/appCallback'
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
 import { internalAction } from '../_generated/server'
-import type { Id } from '../_generated/dataModel'
 
 const SERVICE_AUTH_HEADER = 'x-overlay-service-auth'
 const SERVICE_AUTH_AUDIENCE = 'overlay-internal-api'
@@ -112,18 +111,59 @@ async function buildServiceAuthToken(params: {
   return `${payloadSegment}.${bytesToBase64Url(new Uint8Array(signature))}`
 }
 
+const RUN_PATH = '/api/v1/automations/run'
+
+/**
+ * Asks the app to act on a run: start it when it has not posted its message
+ * yet, or settle it from its thread's outcome. Service auth names the owner.
+ */
+async function postRunToApp(userId: string, runId: string): Promise<Response> {
+  const serviceAuthToken = await buildServiceAuthToken({ userId, method: 'POST', path: RUN_PATH })
+  return await fetchAppCallback(`${getAutomationRunnerBaseUrl()}${RUN_PATH}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      [SERVICE_AUTH_HEADER]: serviceAuthToken,
+    },
+    body: JSON.stringify({ runId }),
+  })
+}
+
 export const runMinuteTick = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const runIds = await ctx.runMutation(internal.automations.automations.claimDueRuns, {
-      now: Date.now(),
-      limit: 25,
-    })
+    const now = Date.now()
+    const [runIds, settleable] = await Promise.all([
+      ctx.runMutation(internal.automations.automations.claimDueRuns, { now, limit: 25 }),
+      ctx.runQuery(internal.automations.automations.listSettleableThreadRuns, { now }),
+    ])
 
-    await Promise.all(runIds.map((runId) =>
-      ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, { runId })))
+    await Promise.all([
+      ...runIds.map((runId) =>
+        ctx.scheduler.runAfter(0, internal.automations.automationRunner.runAutomation, { runId })),
+      ...settleable.map((run) =>
+        ctx.scheduler.runAfter(0, internal.automations.automationRunner.settleThreadRun, run)),
+    ])
 
+    return null
+  },
+})
+
+// A run's thread turn ended: the app records its outcome on the ledger row
+// and publishes the run's lifecycle event. Retried by the next tick on failure.
+export const settleThreadRun = internalAction({
+  args: {
+    runId: v.id('automationRuns'),
+    userId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args) => {
+    const response = await postRunToApp(args.userId, args.runId)
+    if (!response.ok && response.status !== 409) {
+      const text = await response.text().catch(() => '')
+      console.warn('[automations] settling a thread run failed', { runId: args.runId, status: response.status, text: text.slice(0, 300) })
+    }
     return null
   },
 })
@@ -151,36 +191,15 @@ export const runAutomation = internalAction({
       })
       return null
     }
-    const turnId = `automation-${args.runId}-${now}`
-    // Runs always target the automation-owned thread. sourceConversationId is
-    // provenance only and is never an execution target.
-    const existingConversationId = automation.conversationId as
-      | Id<'conversations'>
-      | undefined
+    // The scheduler only claims the run. The app binds the automation's thread,
+    // posts the instructions into it and starts its turn, as for manual runs.
     await ctx.runMutation(internal.automations.automations.markRunStarted, {
       runId: args.runId,
-      conversationId: existingConversationId,
-      turnId,
       now,
     })
 
     try {
-      const runPath = '/api/v1/automations/run'
-      const serviceAuthToken = await buildServiceAuthToken({
-        userId: automation.userId,
-        method: 'POST',
-        path: runPath,
-      })
-      const response = await fetchAppCallback(`${getAutomationRunnerBaseUrl()}${runPath}`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          [SERVICE_AUTH_HEADER]: serviceAuthToken,
-        },
-        body: JSON.stringify({
-          runId: args.runId,
-        }),
-      })
+      const response = await postRunToApp(automation.userId, args.runId)
 
       if (!response.ok) {
         // 409 means the run is no longer in 'running' — already dispatched
@@ -191,19 +210,8 @@ export const runAutomation = internalAction({
         throw new Error(text || `Automation runner returned ${response.status}`)
       }
 
-      const result = await response.json().catch(() => ({})) as {
-        conversationId?: Id<'conversations'>
-        durable?: boolean
-      }
-      // Durable dispatches settle run status inside the workflow's own steps —
-      // marking completed here would finish the run while the turn still runs.
-      if (!result.durable) {
-        await ctx.runMutation(internal.automations.automations.markRunCompleted, {
-          runId: args.runId,
-          conversationId: result.conversationId ?? existingConversationId,
-          now: Date.now(),
-        })
-      }
+      // The run stays running while its thread turn works; the minute tick
+      // settles it once the turn ends.
     } catch (error) {
       await ctx.runMutation(internal.automations.automations.markRunFailed, {
         runId: args.runId,

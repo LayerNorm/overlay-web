@@ -470,6 +470,30 @@ export class WorkspaceService {
     throw notFound()
   }
 
+  async getOnboardingContext(args: { actorUserId: string; workspaceId: string }) {
+    const actor = await this.requireActiveMember(args)
+    const personal = actor.workspace.kind === 'personal'
+    const invited = !personal && actor.membership.role !== 'owner' && actor.workspace.createdByPrincipalId !== actor.principal.id
+    let inviterName: string | null = null
+    let billingContactName: string | null = null
+    if (invited) {
+      const invitations = await this.repository.listInvitations({ workspaceId: actor.workspace.id })
+      const accepted = invitations.filter(invitation => invitation.status === 'accepted' && invitation.acceptedByPrincipalId === actor.principal.id)
+        .sort((a, b) => (b.acceptedAt ?? b.updatedAt) - (a.acceptedAt ?? a.updatedAt))[0]
+      if (accepted) {
+        const [inviter, membership] = await Promise.all([
+          this.repository.getPrincipal(accepted.invitedByPrincipalId),
+          this.repository.getMembership({ workspaceId: actor.workspace.id, principalId: accepted.invitedByPrincipalId }),
+        ])
+        if (inviter?.workspaceId === actor.workspace.id) {
+          inviterName = inviter.displayName.trim() || null
+          if (inviter.type === 'human' && membership?.status === 'active' && canManageWorkspace(membership.role)) billingContactName = inviterName?.split(/\s+/)[0] ?? null
+        }
+      }
+    }
+    return { workspaceName: actor.workspace.name, personal, invited, inviterName, billingContactName }
+  }
+
   async listMembers(args: {
     actorUserId: string
     workspaceId: string
@@ -682,8 +706,11 @@ export class WorkspaceService {
     invitation: WorkspaceInvitation
     workspaceName: string
   }): Promise<void> {
-    await this.lifecycleEvents?.publish({
+    if (!this.lifecycleEvents) return
+    const inviter = await this.repository.getPrincipal(args.invitation.invitedByPrincipalId)
+    await this.lifecycleEvents.publish({
       attributes: {
+        ...(inviter?.displayName.trim() ? { inviterName: inviter.displayName.trim() } : {}),
         workspaceId: args.invitation.workspaceId,
         workspaceName: args.workspaceName,
         invitedEmail: args.invitation.email,

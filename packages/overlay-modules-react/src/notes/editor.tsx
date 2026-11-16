@@ -6,18 +6,21 @@ import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import {
   useEffect,
+  useImperativeHandle,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
   type Ref,
 } from 'react'
-import { OverlayMark } from '@overlay/ui'
 import { EditorContent } from '@tiptap/react'
 import {
   Check,
   ChevronDown,
 } from 'lucide-react'
 import { SlashMenu } from './slash-menu'
+import { NoteBlockHandle } from './block-handle'
+import { NotePageMeta, NotePageTitle } from './note-page'
 import {
   type NotebookEditorConflict,
   type NotebookNote,
@@ -43,6 +46,7 @@ import {
   useNoteMutations,
   useSlashMenu,
   useSlashMenuState,
+  type NotebookAgentReview,
 } from './editor-state'
 
 export interface NotebookEditorMention {
@@ -94,6 +98,8 @@ export interface NotebookEditorHeaderRenderProps {
   loading: boolean
   title: string
   isDirty: boolean
+  /** The last save failed and the draft is still unsaved (a retry happens on the next edit or flush). */
+  saveFailed?: boolean
   agentPanelOpen: boolean
   onCreateNote(): void
   onDeleteNote?(): void
@@ -101,6 +107,29 @@ export interface NotebookEditorHeaderRenderProps {
   onTitleBlur(): void
   onTitleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void
   onToggleAgentPanel(): void
+}
+
+const FULL_WIDTH_KEY = 'overlay_note_full_width'
+
+function readFullWidth(): boolean {
+  try { return localStorage.getItem(FULL_WIDTH_KEY) === '1' } catch { return false }
+}
+
+/** The reader's choice between the centered column and the full surface width, remembered on this device. */
+function useNoteFullWidth(): [boolean, () => void] {
+  const [fullWidth, setFullWidth] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read device preference after hydration
+    setFullWidth(readFullWidth())
+  }, [])
+  const toggle = useCallback(() => {
+    setFullWidth((current) => {
+      const next = !current
+      try { localStorage.setItem(FULL_WIDTH_KEY, next ? '1' : '0') } catch { /* storage may be unavailable */ }
+      return next
+    })
+  }, [])
+  return [fullWidth, toggle]
 }
 
 export interface CanonicalNotebookEditorProps {
@@ -139,7 +168,6 @@ export interface CanonicalNotebookEditorProps {
     onKeyDown(event: React.KeyboardEvent<HTMLElement>): void
   }): ReactNode
   renderMarkdown?(text: string, streaming: boolean): ReactNode
-  logo?: ReactNode
   media?: NotebookEditorMediaAdapter
   focusRequest?: number
   contentContainerRef?: Ref<HTMLDivElement>
@@ -155,6 +183,11 @@ export interface CanonicalNotebookEditorProps {
   renderNotesSidebar?(props: NotebookNotesSidebarProps): ReactNode
   renderAgentComposer?(props: NotebookAgentComposerRenderProps): ReactNode
   renderHeader?(props: NotebookEditorHeaderRenderProps): ReactNode
+  /**
+   * `page` is the Files/Notes reading column; `panel` fits the note into a side panel (smaller type, tighter
+   * margins, tables scroll edge to edge). Both edit the same Markdown note.
+   */
+  layout?: 'page' | 'panel'
 }
 
 type EditorLifecycle = ReturnType<typeof useEditorLifecycle>
@@ -235,14 +268,25 @@ function NotebookModelPicker({
   )
 }
 
+/** Accepting changes only updates diff state, not the document, so count from every editor transaction. */
+function usePendingDiffCount(editor: TiptapEditor): number {
+  const [count, setCount] = useState(() => (editor ? getPendingDiffs(editor).length : 0))
+  useEffect(() => {
+    if (!editor) return
+    const update = () => setCount(getPendingDiffs(editor).length)
+    update()
+    editor.on('transaction', update)
+    return () => { editor.off('transaction', update) }
+  }, [editor])
+  return count
+}
+
 function NotebookAssistantHeader({
-  editor,
   modelPicker,
   agentPanelMode,
   onAgentPanelModeChange,
   onToggleAgentPanel,
 }: {
-  editor: TiptapEditor
   modelPicker: ReactNode
   agentPanelMode: 'docked' | 'floating'
   onAgentPanelModeChange?: (mode: 'docked' | 'floating') => void
@@ -250,7 +294,6 @@ function NotebookAssistantHeader({
 }) {
   return (
     <NotebookAgentHeader
-      pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
       modelPicker={modelPicker}
       presentation={
         onAgentPanelModeChange
@@ -267,10 +310,25 @@ function NotebookAssistantHeader({
               )
           : undefined
       }
-      onAcceptAllDiffs={() => editor?.chain().focus().acceptAllDiffs().run()}
-      onRejectAllDiffs={() => editor?.chain().focus().rejectAllDiffs().run()}
       onClose={() => void onToggleAgentPanel()}
     />
+  )
+}
+
+function NotebookAgentReviewActions({ editor, running }: { editor: TiptapEditor; running: boolean }) {
+  const pendingDiffCount = usePendingDiffCount(editor)
+  if (running || pendingDiffCount === 0) return null
+  return (
+    <div className="flex items-center gap-2 px-1">
+      <Button variant="secondary" size="sm" type="button"
+        onClick={() => editor?.chain().focus().acceptAllDiffs().run()}>
+        Accept all
+      </Button>
+      <Button variant="outline" size="sm" type="button"
+        onClick={() => editor?.chain().focus().rejectAllDiffs().run()}>
+        Reject all
+      </Button>
+    </div>
   )
 }
 
@@ -365,7 +423,11 @@ function NotebookEditorBody({
   setShowFloatingFormatToolbar,
   resolvingRequestedNote,
   noteRemoved = false,
+  layout,
+  fullWidth,
 }: {
+  layout: 'page' | 'panel'
+  fullWidth: boolean
   noteRemoved?: boolean
   lifecycle: EditorLifecycle
   mutations: NoteMutations
@@ -381,6 +443,9 @@ function NotebookEditorBody({
   resolvingRequestedNote: boolean
 }) {
   const { notes, activeNote, editorConflict } = lifecycle
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
+  useImperativeHandle(contentContainerRef, () => scrollRef.current as HTMLDivElement, [])
   return (
     <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="relative flex h-full flex-row">
       {showNotesSidebar
@@ -414,8 +479,23 @@ function NotebookEditorBody({
           ) : null}
           <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div ref={contentContainerRef} className="h-full overflow-y-auto px-6 py-4">
-                <EditorContent editor={editor} />
+              <div ref={scrollRef} className="h-full overflow-y-auto overflow-x-hidden">
+                <div
+                  ref={pageRef}
+                  className="overlay-note-page"
+                  data-layout={layout}
+                  data-width={fullWidth ? 'full' : undefined}
+                >
+                  <NotePageTitle
+                    value={lifecycle.title}
+                    onChange={mutations.updateTitle}
+                    onCommit={mutations.commitTitleChange}
+                    onEnterBody={() => editor?.chain().focus('start').run()}
+                  />
+                  <NotePageMeta editor={editor} updatedAt={activeNote.updatedAt} />
+                  <EditorContent editor={editor} />
+                  <NoteBlockHandle editor={editor} containerRef={pageRef} />
+                </div>
               </div>
 
               <NotebookFloatingFormatToolbar
@@ -453,7 +533,6 @@ function NotebookEditorBody({
 
 function notebookChromeElements({
   agent,
-  editor,
   agentPanelMode,
   onAgentPanelModeChange,
   models,
@@ -462,7 +541,6 @@ function notebookChromeElements({
   renderAgentInput,
 }: {
   agent: ReturnType<typeof useNotebookAgent>
-  editor: ReturnType<typeof useNotebookEditor>['editor']
   agentPanelMode: 'docked' | 'floating'
   onAgentPanelModeChange: CanonicalNotebookEditorProps['onAgentPanelModeChange']
   models: CanonicalNotebookEditorProps['models']
@@ -485,7 +563,6 @@ function notebookChromeElements({
 
   const assistantHeader = (
     <NotebookAssistantHeader
-      editor={editor}
       modelPicker={modelPicker}
       agentPanelMode={agentPanelMode}
       onAgentPanelModeChange={onAgentPanelModeChange}
@@ -514,6 +591,7 @@ function NotebookHeaderBlock({
   title,
   projectName,
   isDirty,
+  saveFailed,
   agentPanelOpen,
   headerLeading,
   hideBackButton,
@@ -523,7 +601,11 @@ function NotebookHeaderBlock({
   editor,
   handleBackToFiles,
   agent,
+  fullWidth,
+  onToggleFullWidth,
 }: {
+  fullWidth: boolean
+  onToggleFullWidth?: () => void
   renderHeader: CanonicalNotebookEditorProps['renderHeader']
   activeNote: ReturnType<typeof useEditorLifecycle>['activeNote']
   resolvingRequestedNote: boolean
@@ -531,6 +613,7 @@ function NotebookHeaderBlock({
   title: string
   projectName: CanonicalNotebookEditorProps['projectName']
   isDirty: boolean
+  saveFailed: boolean
   agentPanelOpen: boolean
   headerLeading: CanonicalNotebookEditorProps['headerLeading']
   hideBackButton: CanonicalNotebookEditorProps['hideBackButton']
@@ -546,6 +629,7 @@ function NotebookHeaderBlock({
     loading: resolvingRequestedNote,
     title,
     isDirty,
+    saveFailed,
     agentPanelOpen,
     onCreateNote: () => void mutations.createNote(),
     onDeleteNote: repository.delete && activeNote ? () => void mutations.deleteNote(activeNote._id) : undefined,
@@ -574,6 +658,8 @@ function NotebookHeaderBlock({
         title: title || 'Untitled',
         content: editor?.getHTML() || activeNote.content || '',
       }) : null}
+      fullWidth={fullWidth}
+      onToggleFullWidth={onToggleFullWidth}
       onBackToFiles={() => void handleBackToFiles()}
       onCreateNote={() => void mutations.createNote()}
       onTitleChange={mutations.handleTitleChange}
@@ -607,7 +693,6 @@ export function CanonicalNotebookEditor({
   renderExportMenu,
   renderAgentInput,
   renderMarkdown,
-  logo,
   media,
   focusRequest,
   contentContainerRef,
@@ -622,7 +707,9 @@ export function CanonicalNotebookEditor({
   renderNotesSidebar,
   renderAgentComposer,
   renderHeader,
+  layout = 'page',
 }: CanonicalNotebookEditorProps) {
+  const [fullWidth, toggleFullWidth] = useNoteFullWidth()
   const lifecycle = useEditorLifecycle({ repository, liveNotes: notesList, onNoteChanged, media })
   const {
     notes,
@@ -641,6 +728,7 @@ export function CanonicalNotebookEditor({
   } = lifecycle
 
   const slashState = useSlashMenuState()
+  const agentReviewRef = useRef<NotebookAgentReview | null>(null)
   const { editor } = useNotebookEditor({
     lifecycleController,
     activeNoteRef,
@@ -664,6 +752,7 @@ export function CanonicalNotebookEditor({
     setTitle,
     hydratingEditorRef,
     editor,
+    agentReviewRef,
   })
 
   useEditorRequests({ editor, focusRequest, externalInsertion })
@@ -688,6 +777,7 @@ export function CanonicalNotebookEditor({
   })
 
   const agent = useNotebookAgent({
+    agentReviewRef,
     runAgent,
     editor,
     activeNote,
@@ -712,7 +802,6 @@ export function CanonicalNotebookEditor({
 
   const { assistantHeader, agentComposer } = notebookChromeElements({
     agent,
-    editor,
     agentPanelMode,
     onAgentPanelModeChange,
     models,
@@ -721,11 +810,6 @@ export function CanonicalNotebookEditor({
     renderAgentInput,
   })
 
-  const overlayLogo = logo ?? (
-    <span className="overlay-stream-marker h-3.5 w-3.5" aria-hidden>
-      <OverlayMark motion="look" size={14} label="" />
-    </span>
-  )
   const resolvingRequestedNote = Boolean(selectionPending || (noteId && activeNote?._id !== noteId))
   return (
     <AppScreenShell
@@ -738,6 +822,7 @@ export function CanonicalNotebookEditor({
           title={title}
           projectName={projectName}
           isDirty={isDirty}
+          saveFailed={lifecycle.saveFailed}
           agentPanelOpen={agent.agentPanelOpen}
           headerLeading={headerLeading}
           hideBackButton={hideBackButton}
@@ -747,6 +832,8 @@ export function CanonicalNotebookEditor({
           editor={editor}
           handleBackToFiles={handleBackToFiles}
           agent={agent}
+          fullWidth={fullWidth}
+          onToggleFullWidth={layout === 'page' ? toggleFullWidth : undefined}
         />
       }
       rightPanel={agent.agentPanelOpen && activeNote ? (
@@ -754,7 +841,7 @@ export function CanonicalNotebookEditor({
           header={assistantHeader}
           items={agent.agentItems}
           running={agent.agentRunning}
-          logo={overlayLogo}
+          footer={<NotebookAgentReviewActions editor={editor} running={agent.agentRunning} />}
           composer={agentComposer}
             renderMarkdownMessage={(text, isStreaming) =>
               renderMarkdown?.(text, isStreaming) ?? (
@@ -784,6 +871,8 @@ export function CanonicalNotebookEditor({
         setShowFloatingFormatToolbar={setShowFloatingFormatToolbar}
         resolvingRequestedNote={resolvingRequestedNote}
         noteRemoved={noteRemoved}
+        layout={layout}
+        fullWidth={fullWidth}
       />
     </AppScreenShell>
   )

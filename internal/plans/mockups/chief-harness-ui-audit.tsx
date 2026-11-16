@@ -134,14 +134,14 @@ function App() {
     return <SidebarMenuItem key={agent.id}><div className="cos-agent-row">
       <SidebarMenuButton className="cos-agent-button" onClick={() => open(agent.id)}>
         <span className="cos-agent-avatar">{agent.id === 'chief' ? <OverlayMark size={24} /> : <Creature color={agent.color} size={24} animated={false} />}</span>
-        <span className="cos-agent-copy"><span>{agent.name}</span><AgentActivitySummary activity={statuses} fallback={agent.id === 'chief' ? 'Workspace Chief of Staff' : undefined} /></span>
+        <span className="cos-agent-copy"><span>{agent.name}</span><AgentActivitySummary activity={statuses} /></span>
       </SidebarMenuButton>
       <SidebarMenuAction className="cos-new-thread" aria-label={`New thread with ${agent.name}`} onClick={mutedAction}><Plus /></SidebarMenuAction>
       <SidebarMenuAction className="cos-expand-agent" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${agent.name}`} aria-expanded={expanded} onClick={() => setClosedAgents(previous => expanded ? [...previous, agent.id] : previous.filter(id => id !== agent.id))}><ChevronRight className={expanded ? 'rotate-90' : ''} /></SidebarMenuAction>
     </div>{expanded && <AgentThreadRows agent={agent as unknown as React.ComponentProps<typeof AgentThreadRows>['agent']}
       bundle={{ threads: visible, automations: [] } as unknown as React.ComponentProps<typeof AgentThreadRows>['bundle']}
       activeConversationId={page} activity={statuses} onOpenThread={(_agent, id) => open(id)} onOpenAutomation={mutedAction}
-      onArchiveThread={(_agent, id) => { setArchived(previous => [...previous, id]); setNotice('Archived in this preview. Undo restores the thread and Work row.') }} onDeleteThread={mutedAction} />}</SidebarMenuItem>
+      onArchiveThread={(_agent, id) => { setArchived(previous => [...previous, id]); setNotice('Archived in this preview. Undo restores the thread and Work row.') }} />}</SidebarMenuItem>
   })}</SidebarMenu>
 
   const workSidebar = <div className="audit-work-sidebar"><Button variant="ghost" className="audit-all" onClick={() => open('work')}><ListChecks size={15} />All</Button><p className="audit-existing">Publish launch checklist</p>

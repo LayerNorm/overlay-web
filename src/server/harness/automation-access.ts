@@ -3,7 +3,9 @@ import 'server-only'
 import { FatalError, RetryableError } from 'workflow'
 import { agentWithheldToolIds, resolveAgentGrant } from '@/server/agents/agent-tooling'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
+import { automationRunTurnId } from '@/shared/automations/run-identity'
 import type { PersonalHarnessAccess } from './personal-access'
 
 type ServerContext = ReturnType<typeof getOverlayServerContext>
@@ -11,9 +13,18 @@ type AutomationRecord = Awaited<ReturnType<ServerContext['appData']['repositorie
   ? NonNullable<T> & { workspaceId?: string }
   : never
 
+type AutomationRun = NonNullable<Awaited<ReturnType<ServerContext['appData']['repositories']['automations']['getRunForExecution']>>>['run']
+
 type Source = {
   automation: AutomationRecord
-  run?: NonNullable<Awaited<ReturnType<ServerContext['appData']['repositories']['automations']['getRunForExecution']>>>['run']
+  run: AutomationRun
+}
+
+/** The agent an automation runs as: its identity, memory and computer. */
+export type AutomationAgentIdentity = {
+  agentId: string
+  agentPrincipalId: string
+  memoryOwnerId: string
 }
 
 export type AutomationSourceGrant = {
@@ -26,49 +37,33 @@ export type AutomationSourceGrant = {
    * exactly as `applyAgentCapabilityFilter` removed them at admission.
    */
   withheldToolIds: string[]
+  /** The bound agent, re-read from the automation on every step; absent without one. */
+  agent?: AutomationAgentIdentity
 }
 
 function isDeleted(automation: AutomationRecord): boolean {
   return Boolean(automation.deletedAt || automation.archivedAt)
 }
 
-async function readSource(
-  access: PersonalHarnessAccess,
-  options: { allowQueued?: boolean } = {},
-): Promise<Source> {
+// Every automation turn belongs to an automationRuns row owned by this workflow.
+async function readSource(access: PersonalHarnessAccess): Promise<Source> {
   const authority = access.authentication
   if (authority.type !== 'automation') throw new FatalError('Automation authority is required.')
+  if (!authority.automationRunId) throw new FatalError('Automation run identity is required.')
   const repository = getOverlayServerContext().appData.repositories.automations
-  if (authority.automationRunId) {
-    const payload = await repository.getRunForExecution({ runId: authority.automationRunId })
-    const run = payload?.run
-    if (!payload || !run || run._id !== authority.automationRunId
-      || run.userId !== access.actorUserId || run.automationId !== authority.automationId
-      || (run.status !== 'running' && !(options.allowQueued && run.status === 'queued'))
-      || isDeleted(payload.automation as AutomationRecord)) {
-      throw new FatalError('Automation run is no longer authorized.')
-    }
-    if (!run.workflowRunId) throw new RetryableError('Automation workflow ownership is not acknowledged yet.')
-    if (run.workflowRunId !== authority.originWorkflowRunId) {
-      throw new FatalError('Automation workflow ownership changed.')
-    }
-    return { automation: payload.automation as AutomationRecord, run }
+  const payload = await repository.getRunForExecution({ runId: authority.automationRunId })
+  const run = payload?.run
+  if (!payload || !run || run._id !== authority.automationRunId
+    || run.userId !== access.actorUserId || run.automationId !== authority.automationId
+    || run.status !== 'running'
+    || isDeleted(payload.automation as AutomationRecord)) {
+    throw new FatalError('Automation run is no longer authorized.')
   }
-  const automation = await repository.getAutomation({
-    automationId: authority.automationId,
-    userId: access.actorUserId,
-    workspaceId: access.workspaceId,
-  }) as AutomationRecord | null
-  if (!automation || isDeleted(automation) || automation.enabled !== true) {
-    throw new FatalError('Automation is no longer enabled.')
+  if (!run.workflowRunId) throw new RetryableError('Automation workflow ownership is not acknowledged yet.')
+  if (run.workflowRunId !== authority.originWorkflowRunId) {
+    throw new FatalError('Automation workflow ownership changed.')
   }
-  if (!automation.schedulerWorkflowRunId) {
-    throw new RetryableError('Automation scheduler ownership is not acknowledged yet.')
-  }
-  if (automation.schedulerWorkflowRunId !== authority.originWorkflowRunId) {
-    throw new FatalError('Automation scheduler ownership changed.')
-  }
-  return { automation }
+  return { automation: payload.automation as AutomationRecord, run }
 }
 
 function ownedConversationId(automation: AutomationRecord): string | undefined {
@@ -119,7 +114,7 @@ function assertRefreshSourceBinding(args: {
   authority: Extract<PersonalHarnessAccess['authentication'], { type: 'automation' }>
   access: PersonalHarnessAccess
   automation: AutomationRecord
-  run?: Source['run']
+  run: AutomationRun
   targetConversationId?: string
   turnId: string
 }) {
@@ -127,8 +122,9 @@ function assertRefreshSourceBinding(args: {
   if (automation._id !== authority.automationId || automation.userId !== access.actorUserId
     || (automation.workspaceId && automation.workspaceId !== access.workspaceId)
     || (targetConversationId && targetConversationId !== access.conversationId)
-    || (run?.conversationId && run.conversationId !== access.conversationId)
-    || (run?.turnId && run.turnId !== turnId)) {
+    || (run.conversationId && run.conversationId !== access.conversationId)
+    || turnId !== automationRunTurnId(run._id)
+    || (run.turnId && run.turnId !== turnId)) {
     throw new FatalError('Automation source authorization changed.')
   }
 }
@@ -186,7 +182,13 @@ async function resolveAutomationSourceGrant(
   })
   const integrations = grant.capabilities.has('integrations')
   const allowedConnectorIds = integrations ? context.accountAllowedConnectorIds ?? [] : []
+  if (!agent.principalId) throw new FatalError('The bound automation agent has no identity.')
   return {
+    agent: {
+      agentId: automation.agentId,
+      agentPrincipalId: agent.principalId,
+      memoryOwnerId: agentMemoryOwnerId(automation.agentId),
+    },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask',
     allowedToolIds: [
       ...(context.accountAllowedToolIds ?? []).filter(id => grant.overlayToolIds.includes(id)),
@@ -206,35 +208,28 @@ type AutomationAdmissionInput = {
   actorUserId: string
   workspaceId?: string
   conversationId?: string
-  turnId?: string
 }
 
 type AutomationAdmissionSource = {
   automation: AutomationRecord
-  run?: Source['run']
+  run: AutomationRun
 }
 
 async function readAutomationAdmissionSource(
   input: AutomationAdmissionInput,
   server: ServerContext,
 ): Promise<AutomationAdmissionSource> {
-  if (input.runId) {
-    const payload = await server.appData.repositories.automations.getRunForExecution({ runId: input.runId })
-    if (!payload) throw new FatalError('Automation run is not available.')
-    assertAdmissionRunOwner(input, payload.automation as AutomationRecord, payload.run)
-    return { automation: payload.automation as AutomationRecord, run: payload.run }
-  }
-  const automation = await server.appData.repositories.automations.getAutomation({
-    automationId: input.automationId, userId: input.actorUserId,
-  }) as AutomationRecord
-  assertAdmissionSchedulerOwner(input, automation)
-  return { automation }
+  if (!input.runId) throw new FatalError('Automation run identity is required.')
+  const payload = await server.appData.repositories.automations.getRunForExecution({ runId: input.runId })
+  if (!payload) throw new FatalError('Automation run is not available.')
+  assertAdmissionRunOwner(input, payload.automation as AutomationRecord, payload.run)
+  return { automation: payload.automation as AutomationRecord, run: payload.run }
 }
 
 function assertAdmissionRunOwner(
   input: AutomationAdmissionInput,
   automation: AutomationRecord,
-  run: NonNullable<Source['run']>,
+  run: AutomationRun,
 ): void {
   if (run._id !== input.runId || run.automationId !== input.automationId || run.userId !== input.actorUserId
     || !['queued', 'running'].includes(run.status) || isDeleted(automation)) {
@@ -244,35 +239,22 @@ function assertAdmissionRunOwner(
   if (run.workflowRunId !== input.originWorkflowRunId) throw new FatalError('Automation workflow ownership changed.')
 }
 
-function assertAdmissionSchedulerOwner(
-  input: AutomationAdmissionInput,
-  automation: AutomationRecord,
-): void {
-  if (!automation || isDeleted(automation) || automation.enabled !== true) {
-    throw new FatalError('Automation is no longer enabled.')
-  }
-  if (!automation.schedulerWorkflowRunId) throw new RetryableError('Automation scheduler ownership is not acknowledged yet.')
-  if (automation.schedulerWorkflowRunId !== input.originWorkflowRunId) {
-    throw new FatalError('Automation scheduler ownership changed.')
-  }
-}
-
 function assertAdmissionRecordBinding(
   input: AutomationAdmissionInput,
   automation: AutomationRecord,
-  run: Source['run'],
-  targetConversationId?: string,
-  canonicalTurnId = '',
+  run: AutomationRun,
+  targetConversationId: string | undefined,
+  canonicalTurnId: string,
 ): void {
   if (automation._id !== input.automationId || automation.userId !== input.actorUserId
     || (automation.workspaceId && input.workspaceId && automation.workspaceId !== input.workspaceId)
     || (targetConversationId && input.conversationId && targetConversationId !== input.conversationId)
-    || (run?.conversationId && targetConversationId && run.conversationId !== targetConversationId)
-    || (run?.conversationId && run.conversationId === automation.sourceConversationId)
-    || (run?.conversationId && input.conversationId && run.conversationId !== input.conversationId)) {
+    || (run.conversationId && targetConversationId && run.conversationId !== targetConversationId)
+    || (run.conversationId && run.conversationId === automation.sourceConversationId)
+    || (run.conversationId && input.conversationId && run.conversationId !== input.conversationId)) {
     throw new FatalError('Automation source binding changed.')
   }
-  if (run?.turnId && run.turnId !== canonicalTurnId) {
+  if (run.turnId && run.turnId !== canonicalTurnId) {
     throw new FatalError('Automation run turn binding changed.')
   }
 }
@@ -309,21 +291,21 @@ export async function assertAutomationAdmissionSource(input: AutomationAdmission
   principalId: string
   conversationId?: string
   turnId: string
-  automationRunId?: string
+  automationRunId: string
 }> {
   const server = getOverlayServerContext()
   const { automation, run } = await readAutomationAdmissionSource(input, server)
   const targetConversationId = ownedConversationId(automation)
-  const canonicalTurnId = input.runId ? `automation-run:${input.runId}` : input.turnId ?? ''
+  const canonicalTurnId = automationRunTurnId(run._id)
   assertAdmissionRecordBinding(input, automation, run, targetConversationId, canonicalTurnId)
   const workspace = await resolveAdmissionWorkspace(input, server, automation)
-  const conversationId = targetConversationId ?? run?.conversationId
+  const conversationId = targetConversationId ?? run.conversationId
   await validateAdmissionConversation(input, server, conversationId, workspace.workspace.id)
   return {
     workspaceId: workspace.workspace.id,
     principalId: workspace.principal.id,
     conversationId,
     turnId: canonicalTurnId,
-    ...(input.runId ? { automationRunId: input.runId } : {}),
+    automationRunId: run._id,
   }
 }

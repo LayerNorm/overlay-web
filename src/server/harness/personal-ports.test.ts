@@ -8,9 +8,10 @@ import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { admitPersonalHarnessExecution, createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
-import { createHarnessModelPorts } from './model-ports'
+import { createHarnessModelPorts, MAX_INTERRUPTED_MODEL_RETRIES } from './model-ports'
 import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
+import { isHarnessStateMessage, withoutHarnessStateMessages } from './prompt-cache'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
   model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(),
@@ -104,13 +105,17 @@ test('shared model preparation delegates surface authority without requiring per
   expect(mocks.refresh).not.toHaveBeenCalled()
 })
 
-test('an ambiguous provider error retains its hold and never tries another model', async () => {
+test('an interrupted provider call settles at zero, retries the same model and stops at the retry limit', async () => {
   const failed = new MockLanguageModelV4({ doStream: async () => { throw new Error('Network timeout') } })
   mocks.model.mockResolvedValue(failed)
   const ports = createPersonalHarnessExecutionPorts({ access, context }, surface)
   await expect(runOverlayHarness(execution, ports)).rejects.toThrow('Network timeout')
-  expect(mocks.model).toHaveBeenCalledOnce()
-  expect(current.modelReservation?.dispatch?.modelId).toBe('fixture/model')
+  expect(mocks.model).toHaveBeenCalledTimes(MAX_INTERRUPTED_MODEL_RETRIES + 1)
+  expect(mocks.authorize.mock.calls.every(([reference]) => reference.modelId === 'fixture/model')).toBe(true)
+  expect(mocks.settle).not.toHaveBeenCalled()
+  expect(current.modelReservation).toBeUndefined()
+  expect(current.latestReceipt).toMatchObject({ provider: 'interrupted', costMicros: 0, responseFailure: 'provider_error' })
+  expect(current.usage.costMicros).toBe(0)
 })
 
 test('Kimi K3 reasoning is prepared for the selected model', async () => {
@@ -137,7 +142,7 @@ beforeEach(() => {
   mocks.sleep.mockResolvedValue(undefined)
   current = state.claimHarnessExecution(state.createHarnessSnapshot({ runId: 'run', goal: 'Check observations', constraints: ['Do not publish'], policy: {
     actorUserId: 'user', workspaceId: 'workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 0,
-    deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
+    deadlineAt: Date.now() + 60_000,
   } }, Date.now()), 'workflow', Date.now())
   mocks.claim.mockResolvedValue(true)
   mocks.read.mockImplementation(async () => current)
@@ -356,7 +361,9 @@ test.each([
 ])('%s uses the settled-summary fallback when history fits', async (_label, summaryText) => {
   const { model, originalMessages, prepare, result } = await prepareModelWithSummary(summaryText, 'model:summary-quality-rejected')
 
-  expect(result.messages).toHaveLength(originalMessages.length)
+  // Full history plus the single trailing working-state message.
+  expect(withoutHarnessStateMessages(result.messages)).toHaveLength(originalMessages.length)
+  expect(isHarnessStateMessage(result.messages.at(-1)!)).toBe(true)
   expect(current.modelReservation).toBeUndefined()
   expect(current.latestReceipt?.id).toMatch(/^summary:model:summary-quality-rejected:/)
   expect(current.latestReceipt?.rejectionReason).toBeUndefined()
@@ -393,7 +400,9 @@ test('a failed summary falls back to uncompacted history when it fits the real m
 
   const responseRequest = prepare.mock.calls.find(([request]) => request.purpose === 'response')?.[0]
   expect(responseRequest?.options.maxOutputTokens).toBe(12_000)
-  expect(result.messages).toHaveLength(originalMessages.length)
+  // Full history plus the single trailing working-state message.
+  expect(withoutHarnessStateMessages(result.messages)).toHaveLength(originalMessages.length)
+  expect(isHarnessStateMessage(result.messages.at(-1)!)).toBe(true)
   expect(result.settings?.maxOutputTokens).toBe(12_000)
   expect(model.doStreamCalls).toHaveLength(2)
   expect(current.modelReservation).toBeUndefined()

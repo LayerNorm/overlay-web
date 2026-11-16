@@ -7,12 +7,10 @@ import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules
 import {
   AccessSelector,
   AgentAvatar,
-  AgentBehaviorFields,
   type AgentModelFieldProps,
   AgentMemoriesSection,
+  OverlayAgentFields,
   OverlayAgentPermissionsField,
-  AgentTypeSelector,
-
   DangerZone,
   MasterAgentNotice,
 } from './AgentEditorForm'
@@ -21,11 +19,8 @@ import {
   AgentEditorSidePanel,
   SayHelloButton,
 } from './AgentEditorPresentation'
-import type { useByoConnection } from './use-byo-connection'
 import type { useAgentComputer } from './use-agent-computer'
 import type { useAgentEditorForm } from './use-agent-editor-form'
-import type { useAgentRuntime } from './use-agent-runtime'
-import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
 import { usesOverlayMark } from '@/shared/agents/chief-identity'
 
@@ -41,16 +36,11 @@ type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
   agent: WorkspaceAgentDirectoryItem | null
   isDefaultMaster: boolean
-
   computersAvailable: boolean
-  connectedAgentsEnabled: boolean
-  connectedAgentsChecked: boolean
   modelField: AgentModelFieldProps
   valid: boolean
   busy: boolean
   form: ReturnType<typeof useAgentEditorForm>
-  runtime: ReturnType<typeof useAgentRuntime>
-  byo: ReturnType<typeof useByoConnection>
   computer: ReturnType<typeof useAgentComputer>
   closeEditor(): void
   persistNew(): void
@@ -59,45 +49,15 @@ type AgentEditorFormSectionProps = {
   archiveAgent(): void
 }
 
-type AgentRuntimeFlags = Pick<ReturnType<typeof useAgentRuntime>, 'cloudAgent' | 'legacyHostedRuntime'>
-
-function RetiredHostedRuntimeNotice({ runtime }: { runtime: AgentRuntimeFlags }) {
-  if (!runtime.cloudAgent && !runtime.legacyHostedRuntime) return null
-  return <p className="rounded-xl border border-(--border) px-4 py-3 text-sm text-(--muted)">Hosted Overlay Cloud runtimes are retired. This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p>
-}
-
-function ConnectedAgentSettingsSection({
-  agent,
-  connectedAgentsEnabled,
-  runtime,
-  agentType,
-}: {
-  agent: WorkspaceAgentDirectoryItem | null
-  connectedAgentsEnabled: boolean
-  runtime: AgentRuntimeFlags
-  agentType: ReturnType<typeof useAgentRuntime>['agentType']
-}) {
-  if (!agent || !connectedAgentsEnabled || runtime.cloudAgent || runtime.legacyHostedRuntime || agentType !== 'byo') {
-    return null
-  }
-  return <ConnectedAgentSettings key={agent.id}
-    agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} />
-}
-
 function AgentEditorFormSection({
   mode,
   agent,
   isDefaultMaster,
-
   computersAvailable,
-  connectedAgentsEnabled,
-  connectedAgentsChecked,
   modelField,
   valid,
   busy,
   form,
-  runtime,
-  byo,
   computer,
   closeEditor,
   persistNew,
@@ -105,9 +65,9 @@ function AgentEditorFormSection({
   cancelEdit,
   archiveAgent,
 }: AgentEditorFormSectionProps) {
-  // One loading state for the whole form: it shows when everything (the agent's connection, computer,
-  // machine, memories) has loaded, not piece by piece.
-  useEditorLoad(!connectedAgentsChecked || byo.initialLoading || computer.initialLoading)
+  // One loading state for the whole form: it shows when everything (computer, memories) has loaded,
+  // not piece by piece.
+  useEditorLoad(computer.initialLoading)
   const {
     name,
     description,
@@ -132,35 +92,6 @@ function AgentEditorFormSection({
     setPermissionMode,
     setAdvanced,
   } = form
-  const {
-    agentType,
-    setAgentType,
-    legacyHostedRuntime,
-  } = runtime
-  const {
-    adapterId,
-    harnessOptions,
-    chooseHarness,
-    environmentChoice,
-    setEnvironmentChoice,
-    compatibleEnvironments,
-    environmentsLoading,
-    environmentId,
-    chooseEnvironment,
-    workingDirectory,
-    setWorkingDirectory,
-    selectedHarness,
-    environmentBusy,
-    environmentError,
-    command,
-    copied,
-    copyCommand,
-    beginConnection,
-    setupEnvironment,
-    setupRoots,
-    setSetupRoots,
-    approveSetupEnvironment,
-  } = byo
   const {
     agentComputer,
     currentUserId,
@@ -191,29 +122,15 @@ function AgentEditorFormSection({
           shape={avatarShape}
           name={name}
           description={description}
-          namePlaceholder={agentType === 'byo' ? 'Local Codex' : 'Research partner'}
-          descriptionPlaceholder={agentType === 'byo' ? 'Works in my product repository' : 'Finds evidence and challenges assumptions'}
+          namePlaceholder="Research partner"
+          descriptionPlaceholder="Finds evidence and challenges assumptions"
           onNameChange={(value) => { setName(value); markDirty() }}
           onDescriptionChange={(value) => { setDescription(value); markDirty() }}
           onChange={(color) => { setAvatarColor(color); markDirty() }}
           onShapeChange={(next) => { setAvatarShape(next); markDirty() }}
         />
-        <AgentTypeSelector
-          hidden={isDefaultMaster || !connectedAgentsEnabled || runtime.cloudAgent}
-          value={agentType}
-          onChange={(value) => { setAgentType(value); markDirty() }}
-        />
         <div className="space-y-5">
-          <RetiredHostedRuntimeNotice runtime={runtime} />
-          <ConnectedAgentSettingsSection
-            agent={agent}
-            connectedAgentsEnabled={connectedAgentsEnabled}
-            runtime={runtime}
-            agentType={agentType}
-          />
-          {runtime.cloudAgent ? null : <AgentBehaviorFields
-            agentType={agentType}
-            connectedAgentsEnabled={connectedAgentsEnabled}
+          <OverlayAgentFields
             computersAvailable={computersAvailable}
             instructions={instructions}
             onInstructionsChange={(value) => { setInstructions(value); markDirty() }}
@@ -224,30 +141,7 @@ function AgentEditorFormSection({
             onToggleToolGroup={toggleToolGroup}
             advanced={advanced}
             onAdvancedChange={setAdvanced}
-            legacyHostedRuntime={legacyHostedRuntime}
-            adapterId={adapterId}
-            harnessOptions={harnessOptions}
-            onHarnessChange={(value) => { chooseHarness(value); markDirty() }}
-            environmentChoice={environmentChoice}
-            onEnvironmentChoiceChange={(value) => { setEnvironmentChoice(value); markDirty() }}
-            compatibleEnvironments={compatibleEnvironments}
-            environmentsLoading={environmentsLoading}
-            environmentId={environmentId}
-            onEnvironmentChange={(value) => { chooseEnvironment(value); markDirty() }}
-            workingDirectory={workingDirectory}
-            onWorkingDirectoryChange={(value) => { setWorkingDirectory(value); markDirty() }}
-            selectedHarnessConnectable={Boolean(selectedHarness?.connectable)}
-            environmentBusy={environmentBusy}
-            environmentError={environmentError}
-            command={command}
-            copied={copied}
-            onCopyCommand={copyCommand}
-            onBeginConnection={beginConnection}
-            setupEnvironment={setupEnvironment}
-            setupRoots={setupRoots}
-            onSetupRootsChange={(value) => { setSetupRoots(value); markDirty() }}
-            onApproveSetup={approveSetupEnvironment}
-            computer={agentType === 'overlay' && computersAvailable ? {
+            computer={computersAvailable ? {
               size: computerSize,
               onSizeChange: (next: ComputerSize) => { setComputerSize(next); markDirty() },
               computer: agentComputer,
@@ -264,14 +158,12 @@ function AgentEditorFormSection({
               onRetryLoad: retryComputerLoad,
               disabled: false,
             } : undefined}
-          />}
+          />
 
-          {agentType === 'overlay' ? (
-            <OverlayAgentPermissionsField
-              value={permissionMode}
-              onChange={(value) => { setPermissionMode(value); markDirty() }}
-            />
-          ) : null}
+          <OverlayAgentPermissionsField
+            value={permissionMode}
+            onChange={(value) => { setPermissionMode(value); markDirty() }}
+          />
 
           {controls.showAccessSelector ? <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} /> : null}
 
@@ -364,14 +256,9 @@ export function AgentEditorView({
   isDefaultMaster,
   valid,
   busy,
-
   computersAvailable,
-  connectedAgentsEnabled,
-  connectedAgentsChecked,
   modelField,
   form,
-  runtime,
-  byo,
   computer,
   closeEditor,
   sayHello,
@@ -395,14 +282,9 @@ export function AgentEditorView({
   isDefaultMaster: boolean
   valid: boolean
   busy: boolean
-
   computersAvailable: boolean
-  connectedAgentsEnabled: boolean
-  connectedAgentsChecked: boolean
   modelField: AgentModelFieldProps
   form: ReturnType<typeof useAgentEditorForm>
-  runtime: ReturnType<typeof useAgentRuntime>
-  byo: ReturnType<typeof useByoConnection>
   computer: ReturnType<typeof useAgentComputer>
   closeEditor(): void
   sayHello(): void
@@ -460,16 +342,11 @@ export function AgentEditorView({
             mode={mode}
             agent={agent}
             isDefaultMaster={isDefaultMaster}
-
             computersAvailable={computersAvailable}
-            connectedAgentsEnabled={connectedAgentsEnabled}
-            connectedAgentsChecked={connectedAgentsChecked}
             modelField={modelField}
             valid={valid}
             busy={busy}
             form={form}
-            runtime={runtime}
-            byo={byo}
             computer={computer}
             closeEditor={closeEditor}
             persistNew={persistNew}

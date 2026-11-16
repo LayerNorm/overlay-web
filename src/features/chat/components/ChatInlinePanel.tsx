@@ -54,9 +54,12 @@ import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { usePersonalChat, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
+import { usePersonalChatDirectory, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
+import { hasThreadActivity, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
+import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
 
 type Conversation = {
   _id: string
@@ -67,6 +70,8 @@ type Conversation = {
   workspaceId?: string
   archivedAt?: number
   unread?: boolean
+  /** Working / Needs you / Ready, as agent threads show it. */
+  activity?: ThreadActivityStatus
   lastMessageId?: string
   otherParticipantTypes?: Array<'human' | 'agent'>
   externalPlatform?: string
@@ -621,7 +626,9 @@ function ChatListRow({
           >
             <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
             <span className="flex-1 truncate">{chat.title}</span>
-            {isStreaming && !unread ? (
+            {chat.activity && hasThreadActivity(chat.activity) ? (
+              <ThreadActivityIndicator status={chat.activity} />
+            ) : isStreaming && !unread ? (
               <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-(--muted)" />
             ) : null}
           </SidebarMenuSubButton>
@@ -715,7 +722,7 @@ function ChatListBody({
         ? chats.filter((chat) => chat.conversationType === 'channel')
         : chats
   const activeChats = activityOnly ? viewChats.filter((chat) =>
-    sessions[chat._id]?.status === 'streaming' || (nativePersonalIds.has(chat._id)
+    sessions[chat._id]?.status === 'streaming' || (chat.activity && hasThreadActivity(chat.activity)) || (nativePersonalIds.has(chat._id)
       ? Boolean(chat.unread)
       : Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0) > 0),
   ) : viewChats
@@ -872,7 +879,7 @@ export function ChatInlinePanel({
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
-  const nativePersonal = usePersonalChat()
+  const nativePersonal = usePersonalChatDirectory()
   const nativePersonalOwner = Boolean(user) || authLoading
   const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
     baseHref, workspaceId, sectionView,
@@ -882,6 +889,7 @@ export function ChatInlinePanel({
   // router to re-read the URL; `router.push` alone leaves the pane rendering
   // the previous room until Next commits its own history update.
   const navigateChatHref = useCallback((href: string, detail: { chatId: string | null; view: string }) => {
+    beginNavigationIntent(href)
     if (isSameChatSurface(pathname, baseHref)) {
       window.history.pushState(null, '', href)
       window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail }))

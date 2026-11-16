@@ -30,6 +30,9 @@ import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
 import { toChatTranscriptView } from './chat/toChatTranscriptView'
 import { reconcileTranscriptIdentity } from './chat/chat-transcript-identity'
+import { useChatRowCallbacks } from './chat/useChatRowCallbacks'
+
+const readOnlyAction = () => {}
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
@@ -218,8 +221,9 @@ export function ChatMessageList({
 function ChatMessages({
   state,
   runtime,
-  actions,
+  actions: incomingActions,
 }: Pick<ChatMessageListProps, 'state' | 'runtime' | 'actions'>) {
+  const actions = useChatRowCallbacks(incomingActions)
   recordRender('ChatMessages(list)')
   const userMessages = useMemo(
     () => state.primaryMessages.filter((message) => message.role === 'user'),
@@ -286,8 +290,8 @@ function ChatMessages({
             selectedVideoModels={state.selectedVideoModels}
             exitingTurnIds={runtime.exitingTurnIds}
             onJumpToReply={actions.onJumpToReply}
-            onDeleteTurn={readOnly ? () => {} : actions.onDeleteTurn}
-            onReplyToMediaPrompt={readOnly ? () => {} : actions.onReplyToMediaPrompt}
+            onDeleteTurn={readOnly ? readOnlyAction : actions.onDeleteTurn}
+            onReplyToMediaPrompt={readOnly ? readOnlyAction : actions.onReplyToMediaPrompt}
             onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
             presentation={presentation}
           />
@@ -349,7 +353,6 @@ function ChatMessages({
           kind="text"
           readOnly={readOnly}
           canonicalTranscript={runtime.canonicalTranscript}
-          canonicalResponses={canonicalResponses}
           canonicalResponse={selectedResponse}
           hasCanonicalResponse={runtime.canonicalTranscript === true}
           responseIdentity={selectedResponseIdentity}
@@ -371,11 +374,11 @@ function ChatMessages({
           onJumpToReply={actions.onJumpToReply}
           onDeleteTurn={actions.onDeleteTurn}
           onReplyToAssistantText={actions.onReplyToAssistantText}
-          onBranch={readOnly ? () => {} : actions.onBranch}
+          onBranch={readOnly ? readOnlyAction : actions.onBranch}
           onOpenDraft={actions.onOpenDraft}
           onCreateAutomationDraft={actions.onCreateAutomationDraft}
-          onOpenSources={(turnId: string, sources: WebSourceItem[]) => actions.onOpenSources(turnId, sources)}
-          onRetry={readOnly ? () => {} : actions.onRetry}
+          onOpenSources={actions.onOpenSources}
+          onRetry={readOnly ? readOnlyAction : actions.onRetry}
           onOpenFilePreview={actions.onOpenFilePreview}
           onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
           onContinue={actions.onContinue}

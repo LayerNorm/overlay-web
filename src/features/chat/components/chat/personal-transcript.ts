@@ -103,6 +103,18 @@ function responseKey(message: PersonalTranscriptMessage) {
   return JSON.stringify([message.turnId, message.variantIndex ?? 0, message.model ?? ''])
 }
 
+export function createPersonalMessageProjector() {
+  // Weak keys retain no history independently of the immutable live rows.
+  const messages = new WeakMap<HydratedRemoteMessage, PersonalTranscriptMessage>()
+  return (message: HydratedRemoteMessage) => {
+    const existing = messages.get(message)
+    if (existing) return existing
+    const projected = personalMessageToUi(message)
+    messages.set(message, projected)
+    return projected
+  }
+}
+
 // Local stream responses may not carry the model recorded on their canonical row.
 function pendingResponseKey(responses: ReadonlyMap<string, PersonalTranscriptMessage>, response: PersonalTranscriptMessage) {
   const key = responseKey(response)
@@ -143,6 +155,7 @@ function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pe
 export function projectPersonalTranscript(
   rows: readonly PersonalTranscriptRow[],
   pendingTurns: readonly PersonalPendingTurn[] = [],
+  projectMessage = personalMessageToUi,
 ) {
   const messages = new Map<string, HydratedRemoteMessage>()
   const outputs = new Map<string, PersonalTranscriptOutput>()
@@ -159,7 +172,7 @@ export function projectPersonalTranscript(
   const byTurn = new Map<string, PersonalTranscriptExchange>()
   for (const message of ordered) {
     const exchange = byTurn.get(message.turnId) ?? { turnId: message.turnId, user: null, responses: [] }
-    const ui = personalMessageToUi(message)
+    const ui = projectMessage(message)
     if (message.role === 'user') exchange.user = ui
     else exchange.responses.push(ui)
     byTurn.set(message.turnId, exchange)

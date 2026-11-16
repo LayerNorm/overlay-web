@@ -54,7 +54,7 @@ export async function runHarnessModelInvocation(
     if (/(?:^|[^\w])HARNESS_SAFE_YIELD(?:$|[^\w:])/.test(message) && await confirmBlocked?.()) {
       return { ...state, pending: [], recovered: false }
     }
-    if (!await recover?.(state.preparedReceiptId)) throw error
+    if (!await recover?.(state.preparedReceiptId, error)) throw error
     return {
       ...state,
       pending: [],
