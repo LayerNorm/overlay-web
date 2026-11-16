@@ -1029,8 +1029,8 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result', reason: 'This Mac local tool result; protected by device-key authentication and not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/operations/reconcile', reason: 'Internal reconciliation cron trigger; not part of the public web API reference.' },
   // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
-  { routePath: '/api/v1/github/connect', reason: 'Starts the GitHub App install redirect; a browser flow, not a public API call.' },
-  { routePath: '/api/v1/github/callback', reason: 'GitHub App install redirect target, protected by signed state and GitHub user authorization rather than the public API authentication scheme.' },
+  { routePath: '/api/v1/github/connect', reason: 'Starts the GitHub sign-in (or app install) redirect; a browser flow, not a public API call.' },
+  { routePath: '/api/v1/github/callback', reason: 'GitHub sign-in redirect target, protected by signed state and GitHub user authorization rather than the public API authentication scheme.' },
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
   { routePath: '/api/v1/webhooks/slack', reason: 'Inbound Slack Events API webhook, authenticated by the Slack request signature.' },
@@ -1075,6 +1075,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/portal', reason: 'Workspace billing portal; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/top-ups', reason: 'Workspace billing top-ups; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/verify', reason: 'Workspace billing verification; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/billing/preview-plan', reason: 'PR-preview-only test plan for QA; 404 on every other deployment. Protected by workspace owner/admin authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/request', reason: 'Signed-browser-session billing request; service verifies active workspace membership and non-manager execution eligibility. Rate-limited and email-deduplicated per UTC day.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/governance', reason: 'Workspace governance management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/invitations', reason: 'Workspace invitation management; boundary definition pending. Protected by workspace authorization.' },
