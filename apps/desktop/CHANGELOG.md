@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-16
+
 - Run agent threads on this computer from a thread, not only from Settings. The bridge gains `localComputer.chooseFolder`, which opens the system's folder dialog so people pick a folder instead of typing a path, and `localComputer.status` now reports the computer's own name (from System Settings), the environment it connected as and its work folder, so the web app knows which threads belong to this computer. Connecting creates `~/Overlay Files`, where threads without a folder work. The computer connects under its own name instead of its network host name. The app says "this computer" instead of "Mac".
 - Remove the Agent host harness mode: the embedded host no longer starts Codex, Claude Code or Hermes over ACP. `agentHost.start` now only connects This Mac with local tools, and host status no longer reports an adapter.
 - Add This Mac: Overlay agents can use this Mac as a Computer. The embedded Agent Host (now 0.5.0) can start with `--local-tools` and no third-party harness. The bridge gains the `localComputer` capability (status, macOS Screen Recording and Accessibility permission requests, and a per-device "keep available" switch) plus a `localTools` option on `agentHost.start`. With "keep available" on, the saved local-tools host restarts at launch once the session is verified; sign-out turns it off and stops the host. Unpackaged development builds can run a locally packed host through `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` for QA.
