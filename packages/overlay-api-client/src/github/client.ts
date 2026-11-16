@@ -20,9 +20,14 @@ export class GitHubClient {
     )
   }
 
-  /** The browser address that starts installing the GitHub App and comes back to `returnTo`. */
+  /** The browser address that signs in with GitHub, connects the app's installations and comes back to `returnTo`. */
   connectUrl(workspaceId: string, returnTo: string): string {
     const params = new URLSearchParams({ workspaceId, returnTo })
     return `/api/v1/github/connect?${params.toString()}`
+  }
+
+  /** The browser address of the GitHub App's install page, where people choose an account and its repositories. */
+  installUrl(): string {
+    return '/api/v1/github/connect?install=1'
   }
 }

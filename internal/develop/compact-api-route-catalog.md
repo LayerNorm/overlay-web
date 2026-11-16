@@ -236,6 +236,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/workspaces/[workspaceId]/billing/portal`
 - `GET, POST /api/v1/workspaces/[workspaceId]/billing`
 - `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`
+- `POST /api/v1/workspaces/[workspaceId]/billing/preview-plan`
 - `POST /api/v1/workspaces/[workspaceId]/billing/verify`
 - `POST /api/v1/workspaces/[workspaceId]/billing/request`
 - `GET, POST /api/v1/workspaces/[workspaceId]/governance`

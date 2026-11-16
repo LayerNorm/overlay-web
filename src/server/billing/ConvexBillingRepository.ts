@@ -172,6 +172,14 @@ export class ConvexBillingRepository implements BillingRepository {
     }, { throwOnError: true })
   }
 
+  async grantPreviewTestPlan(args: { workspaceId: string }): Promise<{ granted: boolean }> {
+    const result = await convex.mutation<{ granted: boolean }>('billing/previewTestPlan:grantByServer', {
+      ...args, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!result) throw new Error('Failed to grant the preview test plan')
+    return result
+  }
+
   async confirmBillingAccountPaidPeriod(args: Parameters<BillingRepository['confirmBillingAccountPaidPeriod']>[0]) {
     const result = await convex.mutation<{ applied: boolean }>('billing/accountSubscriptions:fundPaidPeriodByServer', {
       ...args, serverSecret: this.serverSecret,

@@ -73,6 +73,8 @@ export interface WorkspaceManagementClient {
   createBillingTopUp(workspaceId: string, input: WorkspaceBillingTopUpInput): Promise<{ url: string | null }>
   updateBillingAutoTopUp(workspaceId: string, input: WorkspaceBillingAutoTopUpInput): Promise<WorkspaceBillingSummaryResponse>
   createBillingPortal(workspaceId: string): Promise<{ url: string | null }>
+  /** PR previews only: makes the workspace paid for testing, without a card. */
+  grantPreviewTestPlan?(workspaceId: string): Promise<{ granted: boolean }>
   verifyBillingCheckout(
     workspaceId: string,
     input: WorkspaceBillingVerificationInput,

@@ -51,6 +51,7 @@ import type * as billing_browse from "../billing/browse.js";
 import type * as billing_lib_stripeOverlaySubscription from "../billing/lib/stripeOverlaySubscription.js";
 import type * as billing_paidFirstMigration from "../billing/paidFirstMigration.js";
 import type * as billing_paidFirstMigrationNode from "../billing/paidFirstMigrationNode.js";
+import type * as billing_previewTestPlan from "../billing/previewTestPlan.js";
 import type * as billing_providerBudget from "../billing/providerBudget.js";
 import type * as billing_retireHolds from "../billing/retireHolds.js";
 import type * as billing_spendLimits from "../billing/spendLimits.js";
@@ -251,6 +252,7 @@ declare const fullApi: ApiFromModules<{
   "billing/lib/stripeOverlaySubscription": typeof billing_lib_stripeOverlaySubscription;
   "billing/paidFirstMigration": typeof billing_paidFirstMigration;
   "billing/paidFirstMigrationNode": typeof billing_paidFirstMigrationNode;
+  "billing/previewTestPlan": typeof billing_previewTestPlan;
   "billing/providerBudget": typeof billing_providerBudget;
   "billing/retireHolds": typeof billing_retireHolds;
   "billing/spendLimits": typeof billing_spendLimits;

@@ -62,7 +62,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   },
   '/api/v1/github/connect': {
     methods: ['GET'],
-    reason: 'Browser navigation that must end in a redirect to the GitHub App install page, not a JSON envelope.',
+    reason: 'Browser navigation that must end in a redirect to GitHub sign-in (or, with install=1, the GitHub App install page), not a JSON envelope.',
     controls: {
       authentication: 'Overlay session required; unauthenticated callers are redirected to sign-in',
       authorization: 'resolveActiveWorkspace: the caller must be an active member of the workspace the install is for',
@@ -74,10 +74,10 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   },
   '/api/v1/github/callback': {
     methods: ['GET'],
-    reason: 'GitHub App install redirect target; the response must redirect back into the app.',
+    reason: 'GitHub sign-in redirect target; the response must redirect back into the app.',
     controls: {
       authentication: 'HMAC-sealed state (10-minute TTL) plus a live Overlay session for the same user',
-      authorization: 'GitHub user authorization code must show the installation is visible to the signing-in person',
+      authorization: 'only installations GitHub lists for the signed-in GitHub user (GET /user/installations) are connected',
       rateLimit: 'endpoint-specific IP limit',
       csrf: 'sealed state must match the completing session user',
       idempotency: 'installations upsert by workspace and installation id',

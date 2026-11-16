@@ -119,6 +119,14 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
     )
   },
 
+  async grantPreviewTestPlan(workspaceId) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/preview-plan`,
+      'POST',
+    )
+  },
+
   async verifyBillingCheckout(workspaceId, input) {
     return await workspaceMutation(
       workspaceId,

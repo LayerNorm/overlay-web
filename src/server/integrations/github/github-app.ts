@@ -8,8 +8,9 @@ import { createHmac, createSign, timingSafeEqual } from 'node:crypto'
  * keeps no long-lived GitHub credential: the app's private key only signs short app tokens on the server.
  *
  * Settings: GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY (PEM, newlines may be written as \n),
- * GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET. The app must request user authorization during installation,
- * with its callback URL set to <origin>/api/v1/github/callback.
+ * GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET. The app's callback URL is <origin>/api/v1/github/callback; it
+ * does not request user authorization during installation, because connecting is a separate sign-in that returns to
+ * whichever deployment started it.
  */
 
 const API = 'https://api.github.com'
@@ -70,12 +71,6 @@ async function github<T>(path: string, init: { method?: string; token: string; s
   return await response.json() as T
 }
 
-export type GitHubInstallation = { id: number; account: { login: string; type: string }; repository_selection?: string }
-
-export async function getInstallation(installationId: number): Promise<GitHubInstallation> {
-  return await github<GitHubInstallation>(`/app/installations/${installationId}`, { token: appJwt() })
-}
-
 /** A token for one installation, limited to the named repositories and to code and pull requests. */
 export async function installationToken(installationId: number, repositories?: string[]): Promise<{ token: string; expiresAt: string }> {
   const result = await github<{ token: string; expires_at: string }>(`/app/installations/${installationId}/access_tokens`, {
@@ -121,31 +116,54 @@ export async function pullRequestsOpenedSince(token: string, repository: string,
     .map(pull => ({ number: pull.number, title: pull.title, url: pull.html_url, branch: pull.head?.ref ?? '' }))
 }
 
-/** Where people install the app. GitHub returns to the callback with the installation and an authorization code. */
-export function installUrl(state: string): string {
+/** Where people install the app on their account or organization and choose its repositories. */
+export function installPageUrl(): string {
   const { slug } = requireConfig()
-  return `https://github.com/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`
+  return `https://github.com/apps/${encodeURIComponent(slug)}/installations/new`
 }
 
-/** Proves the person connecting an installation can see it on GitHub, so nobody can claim someone else's. */
-export async function userCanSeeInstallation(code: string, installationId: number): Promise<boolean> {
-  const { clientId, clientSecret } = requireConfig()
+/**
+ * Where connecting starts: GitHub asks the person to sign in and returns to `redirectUri` on this deployment (the
+ * app's registered callback, or a subdomain of it when wildcard matching is on, as for PR previews).
+ */
+export function authorizeUrl(state: string, redirectUri: string): string {
+  const { clientId } = requireConfig()
+  const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, state })
+  return `https://github.com/login/oauth/authorize?${params.toString()}`
+}
+
+export type UserInstallation = { id: number; account: { login: string; type: string }; repositorySelection?: string }
+
+/**
+ * The app's installations the signed-in GitHub user can access. Only these are connected, so nobody can connect an
+ * installation they can't see on GitHub.
+ */
+export async function userInstallations(code: string, redirectUri: string): Promise<UserInstallation[]> {
+  const { appId, clientId, clientSecret } = requireConfig()
   const response = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Overlay' },
-    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri }),
     signal: AbortSignal.timeout(20_000),
   })
   const result = await response.json().catch((_error) => null) as { access_token?: string } | null
-  if (!response.ok || !result?.access_token) return false
+  if (!response.ok || !result?.access_token) throw new GitHubAppError('forbidden', 'GitHub didn’t accept the sign-in.')
+  const found: UserInstallation[] = []
   for (let page = 1; page <= 5; page += 1) {
-    const installations = await github<{ installations: Array<{ id: number }> }>(
+    const listed = await github<{ installations: Array<{ id: number; app_id?: number; account?: { login?: string; type?: string } | null; repository_selection?: string }> }>(
       `/user/installations?per_page=100&page=${page}`, { token: result.access_token },
     )
-    if (installations.installations.some(entry => entry.id === installationId)) return true
-    if (installations.installations.length < 100) break
+    for (const entry of listed.installations) {
+      if (entry.app_id !== undefined && String(entry.app_id) !== appId) continue
+      found.push({
+        id: entry.id,
+        account: { login: entry.account?.login ?? '', type: entry.account?.type ?? 'User' },
+        ...(entry.repository_selection ? { repositorySelection: entry.repository_selection } : {}),
+      })
+    }
+    if (listed.installations.length < 100) break
   }
-  return false
+  return found
 }
 
 // ---- The connect state carries who started the install through GitHub and back.
