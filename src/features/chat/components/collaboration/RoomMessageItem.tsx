@@ -990,6 +990,7 @@ function RoomChatMessageActions({ message, isAgent, actions }: {
       isSourcesOpenForThis={false}
       modelLabel=""
       showModelLabel={false}
+      actionVisibility="hover"
     />
   )
 }

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show an agent reply's copy, retry, delete, reply and branch buttons only while you hover over or focus the reply, the same as in chats. They were showing permanently under every reply in agent threads.
+
 - Regenerate the Convex API types from the code production now runs: they add the `lib/threadWork` module that the thread-folders change left out, and restore the generator's own ordering and quoting.
 
 - Make agent threads behave like chats instead of channels. Agent replies now have the same action row as chat replies: copy, retry, delete, reply and branch. Reactions, thread replies and the channel toolbar no longer appear in agent threads, and your own messages show just a copy button. Delete removes the whole exchange (your message and the agent's reply) instead of leaving a "Message deleted" row. Retry resends the latest request so the agent answers it again. Branch opens a new thread with the same agent holding the conversation up to that reply. Channels and multi-person DMs are unchanged. Adds the `agents/threads:deleteTurn` and `agents/threads:branch` Convex mutations, with tests.
