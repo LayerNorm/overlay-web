@@ -24,7 +24,7 @@ Add `--local-tools` to let Overlay's own agents use this machine's shell, files,
 screen, input and an Overlay Chrome profile, within the folders you approve. With no `--adapter`, the
 host starts no third-party agent at all; `config.json` then has `"localTools": true` and `"adapters": []`.
 On macOS, screenshots and input need the Screen Recording and Accessibility permissions of the app or
-terminal that starts the host. Overlay Desktop does this from Settings → Desktop → This Mac.
+terminal that starts the host. Overlay Desktop does this from Settings → Desktop → This computer.
 
 Browser enrollment writes a restartable `config.json` beside the private connection state. The
 credential remains in the mode-0600 connection store rather than the JSON file:

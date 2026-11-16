@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { MAC_WORK_FOLDER, folderLabel, type ThreadWork } from '@/shared/agents/thread-work'
+import { folderLabel, localWorkBase, type ThreadWork } from '@/shared/agents/thread-work'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { directoryNames, folderLocation } from './thread-work-service'
 
@@ -19,9 +19,9 @@ export async function threadWorkInstructions(args: { work: ThreadWork | undefine
       workspaceId: args.workspaceId, userId: args.actorUserId, environmentId: computer.environmentId, includeOffline: true,
     }).catch((_error) => null)
     computerLine = mac
-      ? `This thread runs on the user's Mac “${mac.name}”. Computer tools run there by default.`
-      : 'This thread is set to run on a Mac that only the person who connected it can use. If computer tools fail, tell the user to open Overlay on that Mac or pick another computer under the message box.'
-    if (mac) macBase = `${(mac.roots?.[0] ?? mac.capability.homeDirectory).replace(/\/$/, '')}/${MAC_WORK_FOLDER}`
+      ? `This thread runs on the user's own computer “${mac.name}”. Computer tools run there by default.`
+      : 'This thread runs on a computer that only the person who connected it can use. If computer tools fail, tell the user to open Overlay on that computer.'
+    if (mac) macBase = localWorkBase(mac.roots?.[0], mac.capability.homeDirectory)
   }
   const names = directoryNames(work.folders)
   const lines = work.folders.map((folder) => {
@@ -32,7 +32,7 @@ export async function threadWorkInstructions(args: { work: ThreadWork | undefine
     if (folder.source === 'github') {
       return `- **${folder.repository}** (GitHub): cloned at \`${path}\`. Make a new branch, commit, push it, then open a pull request. Never push to the default branch.`
     }
-    return `- **${folderLabel(folder)}** (on the Mac): \`${path}\`, edited in place.`
+    return `- **${folderLabel(folder)}** (on the user's computer): \`${path}\`, edited in place.`
   })
   return ['## Where you work', computerLine, ...(lines.length ? ['Folders chosen for this thread:', ...lines] : [])].join('\n')
 }

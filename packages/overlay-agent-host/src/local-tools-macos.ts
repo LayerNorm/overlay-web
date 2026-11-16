@@ -89,7 +89,7 @@ function run(argv) {
     }
     const g = geometry()
     if (command === 'geometry') return JSON.stringify(g)
-    if (!$.AXIsProcessTrusted()) return fail('permission_required', 'Overlay needs the Accessibility permission on this Mac to click and type. Ask the user to allow Overlay in System Settings → Privacy & Security → Accessibility.', ['accessibility'])
+    if (!$.AXIsProcessTrusted()) return fail('permission_required', 'Overlay needs the Accessibility permission on this computer to click and type. Ask the user to allow Overlay in System Settings → Privacy & Security → Accessibility.', ['accessibility'])
     if (command === 'click') {
       const point = toPoint(g, request.x, request.y)
       const button = BUTTONS[request.button || 'left']
@@ -171,7 +171,7 @@ export async function macDesktopCapabilities(): Promise<Record<string, unknown>>
 export async function macScreenshot(): Promise<Record<string, unknown>> {
   if (!(await macDesktopPermissions()).screenRecording) {
     throw new LocalToolFailure('permission_required',
-      'Overlay needs the Screen Recording permission on this Mac to take screenshots. Ask the user to allow Overlay in System Settings → Privacy & Security → Screen Recording.',
+      'Overlay needs the Screen Recording permission on this computer to take screenshots. Ask the user to allow Overlay in System Settings → Privacy & Security → Screen Recording.',
       ['screen_recording'])
   }
   const directory = await mkdtemp(join(tmpdir(), 'overlay-shot-'))

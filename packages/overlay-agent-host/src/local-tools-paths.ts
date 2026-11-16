@@ -61,13 +61,13 @@ export async function resolveLocalToolPath(grant: FilesystemGrant, input: string
 
 function outside(path: string) {
   return new LocalToolFailure('outside_approved_folders',
-    `${path} is outside the folders this Mac approved for Overlay. Use a path inside an approved folder, or ask the user to approve this folder in Settings → Desktop.`)
+    `${path} is outside the folders approved for Overlay on this computer. Use a path inside an approved folder, or ask the user to add this folder in Settings → Desktop.`)
 }
 
 /** A working directory must exist and be a directory inside the grant. */
 export async function resolveLocalWorkingDirectory(grant: FilesystemGrant, input: string | undefined): Promise<string> {
   const path = await resolveLocalToolPath(grant, input ?? localToolsBaseDirectory(grant), 'read')
   const stats = await lstat(path).catch(() => null)
-  if (!stats?.isDirectory()) throw new LocalToolFailure('invalid_input', `${input ?? path} is not a folder on this Mac.`)
+  if (!stats?.isDirectory()) throw new LocalToolFailure('invalid_input', `${input ?? path} is not a folder on this computer.`)
   return path
 }

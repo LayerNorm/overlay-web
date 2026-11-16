@@ -68,7 +68,7 @@ export class LocalTerminals {
       for (const id of await this.ids()) {
         try { const session = await this.load(id); if (await this.running(session.directory, session.pid)) running++ } catch (_error) { /* skip */ }
       }
-      if (running >= LIMIT) throw new LocalToolFailure('terminal_limit', `This Mac already has ${LIMIT} running terminal sessions.`)
+      if (running >= LIMIT) throw new LocalToolFailure('terminal_limit', `This computer already has ${LIMIT} running terminal sessions.`)
       const id = `t-${randomBytes(6).toString('hex')}`
       const directory = join(this.root, id)
       await mkdir(directory, { mode: 0o700 })
