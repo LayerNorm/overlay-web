@@ -6,9 +6,7 @@ import { ConvexAutomationRepository } from './ConvexAutomationRepository'
 import { AutomationService, AutomationServiceError } from './AutomationService'
 import { ConfiguredAutomationEntitlementPolicy } from './AutomationEntitlementPolicy'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
-import { start } from 'workflow/api'
 import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
-import { automationRunWorkflow } from '@/server/workflows/automation-run'
 
 const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
   billingDisabled: () => {
@@ -30,7 +28,8 @@ const entitlementPolicy = new ConfiguredAutomationEntitlementPolicy({
 })
 
 export const automationService = new AutomationService({
-  automationWorkflowStarter: (input) => start(automationRunWorkflow, [input]),
+  // Loaded on use: the chat entry point it calls imports this module.
+  threadTurnStarter: async (input) => (await import('./automation-thread-turn')).startAutomationThreadTurn(input),
   entitlementPolicy,
   lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
   repository: new ConvexAutomationRepository(),

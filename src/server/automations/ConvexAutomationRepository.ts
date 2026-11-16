@@ -5,8 +5,9 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
   AutomationRecord,
   AutomationExecutionPayload,
-  AutomationForUpdateNote,
   AutomationRepository,
+  AutomationThreadBinding,
+  AutomationThreadRunOutcome,
   CreateAutomationInput,
   UpdateAutomationInput,
 } from './AutomationRepository'
@@ -45,8 +46,8 @@ export class ConvexAutomationRepository implements AutomationRepository {
   async getAutomation(args: {
     automationId: string
     userId: string
-  }): Promise<AutomationForUpdateNote | null> {
-    return await convex.query<AutomationForUpdateNote | null>('automations/automations:get', {
+  }): Promise<AutomationRecord | null> {
+    return await convex.query<AutomationRecord | null>('automations/automations:get', {
       ...args,
       automationId: args.automationId as Id<'automations'>,
       serverSecret: this.serverSecret,
@@ -153,24 +154,6 @@ export class ConvexAutomationRepository implements AutomationRepository {
     }, { throwOnError: true })
   }
 
-  async appendAutomationUpdateNote(args: {
-    automationId: string
-    content: string
-    conversationId: string
-    userId: string
-  }): Promise<void> {
-    await convex.mutation('chat/conversations:addMessage', {
-      conversationId: args.conversationId as Id<'conversations'>,
-      userId: args.userId,
-      serverSecret: this.serverSecret,
-      turnId: `automation-update-${args.automationId}-${Date.now()}`,
-      role: 'assistant',
-      mode: 'act',
-      content: args.content,
-      contentType: 'text',
-      parts: [{ type: 'text', text: args.content }],
-    }, { throwOnError: true })
-  }
 
   async createManualRun(args: {
     automationId: string
@@ -269,5 +252,41 @@ export class ConvexAutomationRepository implements AutomationRepository {
       serverSecret: this.serverSecret,
       workflowRunId: args.workflowRunId,
     }, { throwOnError: true })
+  }
+
+  async bindThread(args: {
+    automationId: string
+    userId: string
+  }): Promise<AutomationThreadBinding> {
+    const binding = await convex.mutation<AutomationThreadBinding>('automations/automations:bindThreadByServer', {
+      automationId: args.automationId as Id<'automations'>,
+      userId: args.userId,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!binding) throw new Error('Automation thread binding returned nothing')
+    return binding
+  }
+
+  async linkRunMessage(args: {
+    runId: string
+    userId: string
+    expectedWorkflowRunId: string
+    messageId: string
+  }): Promise<void> {
+    await convex.mutation('automations/automations:linkRunMessageByServer', {
+      ...args,
+      runId: args.runId as Id<'automationRuns'>,
+      messageId: args.messageId as Id<'conversationMessages'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async getThreadRunOutcome(args: {
+    runId: string
+  }): Promise<AutomationThreadRunOutcome> {
+    return await convex.query<AutomationThreadRunOutcome>('automations/automations:getThreadRunOutcomeByServer', {
+      runId: args.runId as Id<'automationRuns'>,
+      serverSecret: this.serverSecret,
+    }) ?? { status: 'pending' }
   }
 }
