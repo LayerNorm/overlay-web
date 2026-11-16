@@ -163,7 +163,7 @@ export function ThreadWorkFooter({ workspaceId, agentId, conversationId }: { wor
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{option.path}</span>
                   <span className="block truncate text-[11px] text-(--muted-light)">
-                    {computer.kind === 'cloud' ? `Copied to /workspace/${option.name}` : 'Copied onto the Mac'} · {option.scope === 'workspace' ? 'Workspace' : 'Personal'}
+                    {computer.kind === 'cloud' ? `Copied to ~/workspace/${option.name}` : 'Copied onto the Mac'} · {option.scope === 'workspace' ? 'Workspace' : 'Personal'}
                   </span>
                 </span>
                 {folder && folderKey(folder) === folderKey(choice) ? <Check size={13} /> : null}

@@ -42,7 +42,7 @@ workspace computers) is in `todos.md`.
 - **A Mac folder pins the thread to its Mac.** Its approved folders are the Mac's folders; the owner can add one
   from the thread (`PATCH roots` now allows the machine's owner, not only managers). The Mac picks up a new folder
   when it next renews its access, within 15 minutes.
-- **GitHub repositories are cloned on the cloud computer only**, into `/workspace/<repo>`, with an installation token
+- **GitHub repositories are cloned on the cloud computer only**, into `~/workspace/<repo>`, with an installation token
   limited to that repository that expires within an hour. The token sits in `/tmp/overlay-github/<owner>.token` for a
   git credential helper and is removed when the run's folders are saved. The agent is told to branch and open a pull
   request, never push to the default branch; the summary card lists pull requests the app opened during the run.
@@ -52,7 +52,8 @@ workspace computers) is in `todos.md`.
 
 ## Paths
 
-- Cloud: Overlay folders at `/workspace/<folder>`, repositories at `/workspace/<repo>`.
+- Cloud: Overlay folders at `~/workspace/<folder>`, repositories at `~/workspace/<repo>` (the home folder). Boat's file
+  API only reads and writes under the home folder and `/tmp`, so a root such as `/workspace` can't be used.
 - Mac: Overlay folders at `<first approved folder>/Overlay Files/<folder>` (or the home folder when the Mac may use
   all files); Mac folders are used in place.
 

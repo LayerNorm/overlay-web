@@ -44,7 +44,7 @@ Living doc: `internal/develop/thread-folders.md`.
    `todos.md`). The same runs showed many small files are 20 to 40 times slower over a mount than on the computer's
    disk, so copying folders in is also faster for builds. Scripts: `scripts/qa/fuse-mount-check.ts`,
    `scripts/qa/boat-stop-control.ts`.
-1. **Copy in and out.** When a run starts, copy each chosen Overlay folder to `/workspace/<folder>` and record each
+1. **Copy in and out.** When a run starts, copy each chosen Overlay folder to `~/workspace/<folder>` and record each
    file's revision and hash.
    - Skip anything in `.gitignore`, `node_modules` and `.env` files. Ask first above a size limit.
    - At the end of each run, find new, changed and deleted files and save them through FileService.

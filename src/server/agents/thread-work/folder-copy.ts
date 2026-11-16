@@ -20,8 +20,6 @@ export type WorkMachine = {
   environmentId?: string
   /** Copies of Overlay folders go in folders inside this one. */
   base: string
-  /** The cloud base needs sudo to create; a Mac base is inside an approved folder. */
-  createBase?: string
   maxFileBytes: number
   maxTotalBytes: number
   maxFiles: number
@@ -159,7 +157,6 @@ export async function copyFolderIn(args: {
     const plan = planFolderCopy(subtree.rows, folder.fileId, machine)
     const directories = plan.folders.map(entry => join(root, entry.path))
     const prepare = [
-      machine.createBase ? `sudo -n mkdir -p ${quote(machine.createBase)} && sudo -n chown "$(id -u):$(id -g)" ${quote(machine.createBase)}` : '',
       `mkdir -p -- ${directories.map(quote).join(' ')}`,
     ].filter(Boolean).join(' && ')
     const prepared = await machine.run(prepare)

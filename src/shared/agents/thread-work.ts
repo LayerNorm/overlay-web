@@ -16,8 +16,12 @@ export type ThreadWork = { computer?: ThreadComputer; folders: ThreadFolder[] }
 
 export const THREAD_WORK_MAX_FOLDERS = 5
 
-/** Cloud Computers keep copies and clones here. */
-export const CLOUD_WORK_ROOT = '/workspace'
+/**
+ * Cloud Computers keep copies and clones in `workspace` inside the home folder, as the agent sees it. The computer's
+ * file API only reads and writes under the home folder and /tmp, so a root such as /workspace can't be used.
+ */
+export const CLOUD_WORK_ROOT = '~/workspace'
+export const CLOUD_WORK_FOLDER = 'workspace'
 
 /** On a Mac, copies of Overlay folders go in this folder inside the first approved folder. */
 export const MAC_WORK_FOLDER = 'Overlay Files'

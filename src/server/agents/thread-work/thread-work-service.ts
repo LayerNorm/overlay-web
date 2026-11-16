@@ -1,7 +1,7 @@
 import 'server-only'
 
 import {
-  CLOUD_WORK_ROOT, MAC_WORK_FOLDER, folderLabel, isExcludedWorkPath, workDirectoryName,
+  CLOUD_WORK_FOLDER, CLOUD_WORK_ROOT, MAC_WORK_FOLDER, folderLabel, isExcludedWorkPath, workDirectoryName,
   type ThreadComputer, type ThreadFolder, type ThreadWork,
 } from '@/shared/agents/thread-work'
 import type { FolderSavesData } from '@/shared/agents/folder-saves'
@@ -54,7 +54,7 @@ async function machineFor(run: Pick<ThreadRun, 'actorUserId' | 'workspaceId' | '
     ...(computer.kind === 'mac' ? { localEnvironmentId: computer.environmentId } : {}),
   }, { target: computer.kind === 'mac' ? 'local' : 'cloud', toolName: 'folder_copy' })
   if (!resolved.ok) return { ok: false, error: resolved.error }
-  let base = CLOUD_WORK_ROOT
+  let base: string | null = null
   if (computer.kind === 'mac') {
     const mac = await getOverlayServerContext().localComputerService.findForUser({
       workspaceId: run.workspaceId, userId: run.actorUserId, environmentId: computer.environmentId,
@@ -65,10 +65,12 @@ async function machineFor(run: Pick<ThreadRun, 'actorUserId' | 'workspaceId' | '
   return {
     ok: true,
     operate: (work) => resolved.operate(async (instance) => {
+      // In the cloud the copies live in the home folder: the computer's file API refuses paths outside it and /tmp.
+      const root = base ?? `${(await instance.workingDirectory()).replace(/\/$/, '')}/${CLOUD_WORK_FOLDER}`
       const machine: WorkMachine = {
         target: computer.kind === 'mac' ? 'mac' : 'cloud',
-        ...(computer.kind === 'mac' ? { environmentId: computer.environmentId } : { createBase: CLOUD_WORK_ROOT }),
-        base,
+        ...(computer.kind === 'mac' ? { environmentId: computer.environmentId } : {}),
+        base: root,
         ...(computer.kind === 'mac' ? MAC_LIMITS : CLOUD_LIMITS),
         run: async (script, cwd) => await (await instance.runCommand({
           command: 'sh', args: ['-c', script], ...(cwd ? { cwd } : {}), timeoutMs: 280_000,
@@ -147,9 +149,9 @@ async function cloneRepositories(machine: WorkMachine, run: ThreadRun, folders: 
       const { token } = await installationToken(folder.installationId, [repo!])
       const { defaultBranch } = await getRepository(token, folder.repository)
       await machine.write([{ path: `${GITHUB_DIR}/${owner}.token`, contents: encoder.encode(token) }])
-      const directory = `${CLOUD_WORK_ROOT}/${names.get(folder.repository)}`
+      const directory = `${machine.base}/${names.get(folder.repository)}`
       const cloned = await machine.run([
-        `sudo -n mkdir -p ${CLOUD_WORK_ROOT} && sudo -n chown "$(id -u):$(id -g)" ${CLOUD_WORK_ROOT}`,
+        `mkdir -p ${quote(machine.base)}`,
         `chmod 600 ${quote(`${GITHUB_DIR}/${owner}.token`)}`,
         `if [ -d ${quote(`${directory}/.git`)} ]; then git -C ${quote(directory)} fetch --quiet origin; else git clone --quiet https://github.com/${folder.repository}.git ${quote(directory)}; fi`,
         `git -C ${quote(directory)} config user.name ${quote(`${agentName} (Overlay)`)}`,
