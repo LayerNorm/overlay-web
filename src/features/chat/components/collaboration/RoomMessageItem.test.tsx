@@ -306,6 +306,8 @@ test('agent-thread replies use the chat response actions instead of reactions an
     assert.match(html, new RegExp(`aria-label="${label}"`), label)
   }
   assert.doesNotMatch(html, /👍|Add reaction|Reply in thread|1 reply|Pin message|Save message|Report message/)
+  // The action row stays hidden until the reply is hovered or focused, like a chat reply.
+  assert.match(html, /chat-exchange-actions--hover[^"]*opacity-0 group-hover\/exchange:opacity-100/)
 
   const mine = renderToStaticMarkup(<RoomMessageItem {...messageElement(record(), 'Me', false, false, false, undefined, true).props} chatActions={chatActions} />)
   assert.match(mine, /aria-label="Copy message"/)

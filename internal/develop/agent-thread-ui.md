@@ -36,7 +36,8 @@ before a later schema contraction.
 
 Agent threads are chats with one agent, not channels. Each agent reply shows the
 same action row as a personal chat reply (`ExchangeActions`): copy, retry,
-delete, reply and branch, hidden while the reply streams. The member's own
+delete, reply and branch. Like a chat reply, the row shows only while the
+reply is hovered or focused, and is absent while the reply streams. The member's own
 messages show only a hover copy button. Agent threads show no reactions, thread
 replies, pins, saves, edit or report; channels and multi-person DMs keep the
 channel toolbar. `RoomMessageItem` switches on its `chatActions` prop, which
