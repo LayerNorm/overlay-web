@@ -231,6 +231,7 @@
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/chat/components/collaboration/useAgentThreadTurnActions.ts",
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
     "src/features/chat/components/collaboration/useRoomState.ts",
     "src/features/chat/components/thread-work/ThreadWorkFooter.tsx",
@@ -399,6 +400,7 @@
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/chat/components/collaboration/useAgentThreadTurnActions.ts",
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
     "src/features/chat/components/collaboration/useRoomState.ts",
     "src/features/chat/components/thread-work/ThreadWorkFooter.tsx",
@@ -564,6 +566,7 @@
   ],
   "convexScheduledCallFiles": [
     "convex/agents/machineLeases.ts",
+    "convex/agents/threadTurns.ts",
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/billing/retireHolds.ts",
