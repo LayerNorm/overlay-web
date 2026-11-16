@@ -16,8 +16,6 @@ For a description of what each route does and its associated implementation file
 
 - `POST /api/auth/preview-login`
 - `POST /api/account/delete`
-- `DELETE, GET, POST /api/agent-mcp`
-- `POST /api/agent-drive`
 - `GET, POST /api/agent-gateway/[provider]/[...path]`
 - `GET /api/auth/callback`
 - `GET /api/auth/convex-policy`
@@ -65,7 +63,6 @@ For a description of what each route does and its associated implementation file
 
 ## Deployment, bootstrap, capabilities, transport
 
-- `DELETE, GET, PUT /api/v1/agent-bindings`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/chat-suggestions`
 - `GET /api/v1/bootstrap`
@@ -79,34 +76,24 @@ For a description of what each route does and its associated implementation file
 
 - `POST /api/v1/harness/continuation`
 - `POST /api/v1/agent-environments/[environmentId]/approve`
-- `POST /api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete`
-- `POST /api/v1/agent-environments/[environmentId]/artifacts`
+- `POST /api/v1/agent-environments/[environmentId]/copy-to-files`
 - `PUT /api/v1/agent-environments/[environmentId]/capabilities`
-- `POST /api/v1/agent-environments/[environmentId]/commands/[commandId]/ack`
-- `GET /api/v1/agent-environments/[environmentId]/commands`
+- `GET /api/v1/agent-environments/[environmentId]/local-tool-calls`
+- `POST /api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result`
 - `POST /api/v1/agent-environments/[environmentId]/credentials/refresh`
 - `POST /api/v1/agent-environments/[environmentId]/credentials`
-- `POST /api/v1/agent-environments/[environmentId]/desktop`
-- `POST /api/v1/agent-environments/[environmentId]/events`
 - `POST /api/v1/agent-environments/[environmentId]/heartbeat`
 - `POST /api/v1/agent-environments/[environmentId]/revoke`
 - `PATCH /api/v1/agent-environments/[environmentId]/roots`
-- `POST /api/v1/agent-environments/artifacts/cleanup`
 - `POST /api/v1/agent-environments/enroll`
 - `POST /api/v1/agent-asks`
-- `POST /api/v1/provider-accounts/codex-sign-in`
-- `POST /api/v1/agent-profiles/upload`
 - `POST /api/v1/agent-environments/enrollment-sessions`
-- `POST /api/v1/agent-environments/cloud`
-- `POST /api/v1/agent-environments/[environmentId]/run-credentials` (410 retired)
-- `POST /api/v1/agent-environments/[environmentId]/drive-credentials`
 - `POST /api/v1/agent-environments/operations/reconcile`
 - `GET /api/v1/agent-environments`
 - `DELETE, GET, PATCH /api/v1/agents/[agentId]`
 - `GET /api/v1/agents/[agentId]/automations`
 - `GET /api/v1/agents/[agentId]/bundle`
 - `DELETE, GET, POST /api/v1/agents/[agentId]/machine`
-- `GET, POST /api/v1/agents/[agentId]/profile`
 - `POST /api/v1/agents/[agentId]/restore`
 - `DELETE /api/v1/agents/[agentId]/permanent`
 - `GET, POST /api/v1/agents/[agentId]/threads`
@@ -159,9 +146,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/conversations/run/input`
 - `POST /api/v1/conversations/run/metrics-event`
 - `GET /api/v1/conversations/run/metrics`
-- `GET /api/v1/conversations/run/remote/artifacts/[artifactId]`
-- `POST /api/v1/conversations/run/remote/request`
-- `POST /api/v1/conversations/run/remote` — idempotent control requests, typed state/recovery errors, cloud wake, and pending cancellation.
 - `GET /api/v1/conversations/run`
 - `GET /api/v1/conversations/trace`
 - `PATCH /api/v1/conversations/share`
@@ -190,6 +174,9 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST, PUT /api/v1/extensions/[extensionId]/[...path]`
 - `POST /api/v1/imports/slack/process`
 - `GET, POST /api/v1/imports/slack`
+- `GET /api/v1/github/callback`
+- `GET /api/v1/github/connect`
+- `GET /api/v1/github/repositories`
 - `GET, POST /api/v1/integrations`
 - `POST /api/v1/mcp/authorize`
 - `GET /api/v1/mcp/client`
@@ -219,7 +206,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/onboarding/reset`
 - `GET /api/v1/onboarding/status`
 - `GET, POST /api/v1/onboarding/session`
-- `DELETE, GET, PATCH, POST /api/v1/provider-accounts`
 - `DELETE, GET, PATCH, POST /api/v1/providers/connections`
 - `GET, PATCH, POST /api/v1/providers/subscriptions`
 - `POST /api/v1/providers/connections/test`

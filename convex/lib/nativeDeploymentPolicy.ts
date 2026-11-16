@@ -1,6 +1,5 @@
 import type { QueryCtx } from '../_generated/server'
 import type { NativeDeploymentFeature, NativePolicySnapshot } from '@/shared/authorization/native-deployment-policy'
-import { resolveConnectedAgentRollout } from '@/shared/agents/connected-agent-rollout'
 
 export function nativePolicySourceOrigin(): string {
   const configured = process.env.OVERLAY_BFF_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim()
@@ -29,9 +28,8 @@ export function nativePolicyFeatureEnabled(
   feature: NativeDeploymentFeature,
   workspaceId?: string,
 ): boolean {
-  if (policy?.features[feature] !== true) return false
-  return (feature !== 'externalAgents' && feature !== 'connectedAgents')
-    || resolveConnectedAgentRollout(policy.rollout, workspaceId).eligible
+  void workspaceId
+  return policy?.features[feature] === true
 }
 
 export async function nativeDeploymentFeatureEnabled(

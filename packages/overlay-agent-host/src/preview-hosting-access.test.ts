@@ -15,7 +15,7 @@ test('the built CLI crosses a protected enrollment gate only through its one-sho
   const execute = promisify(execFile)
   const command = ['--import', fileURLToPath(new URL('fixtures/preview-enrollment-fetch.mjs', import.meta.url)),
     fileURLToPath(new URL('../dist/cli.js', import.meta.url)), 'connect', 'single-use-enrollment-code-1234',
-    '--server', access.origin, '--state-dir', directory, '--adapter', 'codex']
+    '--server', access.origin, '--state-dir', directory, '--local-tools']
   const options = {env: {...process.env, OVERLAY_QA_ENROLL_STATE: directory, VERCEL_AUTOMATION_BYPASS_SECRET: access.secret}, timeout: 15000}
   try {
     await writeFile(path, JSON.stringify(access), {mode: 0o600})

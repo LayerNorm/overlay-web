@@ -9,6 +9,9 @@ export type { ToolCategory } from '@overlay/tools-core'
  * Composio tools are merged in act/route.ts.
  */
 
+/** Where a computer tool runs. */
+export type ComputerTarget = 'cloud' | 'local'
+
 export interface OverlayToolsOptions {
   userId: string
   accessToken?: string
@@ -17,6 +20,17 @@ export interface OverlayToolsOptions {
   turnId?: string
   automationId?: string
   approvalMode?: 'ask' | 'auto'
+  /**
+   * Where computer tools run when a call names no target: the cloud Computer or
+   * the user's own connected Mac. Unset prefers the cloud Computer and falls back
+   * to the Mac.
+   */
+  computerTarget?: ComputerTarget
+  /**
+   * The Mac an agent thread was set to run on (internal/develop/thread-folders.md). Local computer tools use this
+   * machine instead of the most recently seen one, and fail when it is offline or belongs to someone else.
+   */
+  localEnvironmentId?: string
   /** Approval-capable durable execution context for consequential computer actions. */
   computerApprovalContext?: 'work' | 'automation'
   workspaceId?: string
@@ -34,7 +48,7 @@ export interface OverlayToolsOptions {
   memoryOwnerId?: string
   /**
    * Set when a workspace agent is driving the turn. Tools still authenticate as
-   * `userId` (the delegate model — see internal/develop/bring-your-own-agents.md),
+   * `userId` (the delegate model — see internal/develop/tool-catalog.md),
    * so this exists to attribute the work, not to authorize it.
    */
   agentId?: string

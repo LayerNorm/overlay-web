@@ -1,15 +1,14 @@
 # Overlay Agent Bridge Protocol
 
-`@layernorm/overlay-agent-bridge-protocol` is the versioned command, event, enrollment, and host-request
-contract shared by Overlay and `@layernorm/overlay-agent-host`. It contains strict Zod schemas, canonical
-signature payloads, protocol limits, and TypeScript types; it does not start an agent by itself.
+`@layernorm/overlay-agent-bridge-protocol` is the versioned enrollment, signed host-request and local-tool
+contract shared by Overlay and `@layernorm/overlay-agent-host`, which lets Overlay's own agents use the
+machine it runs on. It contains strict Zod schemas, canonical signature payloads, limits and TypeScript
+types.
 
 Install the matching protocol and host versions together:
 
 ```sh
-npm install @layernorm/overlay-agent-bridge-protocol@0.3.4 @layernorm/overlay-agent-host@0.3.4
+npm install @layernorm/overlay-agent-bridge-protocol@0.5.0 @layernorm/overlay-agent-host@0.5.0
 ```
 
-Protocol version 1 fails closed on unknown versions, invalid event sequences, oversized payloads,
-and malformed filesystem grants. See the repository's
-`internal/develop/bring-your-own-agents.md` for the complete trust and compatibility policy.
+See the repository's `internal/develop/local-computer.md` for the trust and compatibility policy.

@@ -8,9 +8,8 @@ import { McpDeferredCall } from './mcp-deferred-call'
 
 /**
  * MCP over Streamable HTTP, stateless, JSON responses (no SSE stream): the protocol
- * half shared by Overlay's two MCP servers (`/api/agent-mcp` for connected agents,
- * `/api/mcp` for outside AI apps). Callers authenticate first and hand in the tool
- * set; nothing here knows who is asking.
+ * half of Overlay's MCP server for outside AI apps (`/api/mcp`). Callers authenticate
+ * first and hand in the tool set; nothing here knows who is asking.
  */
 
 export const SUPPORTED_MCP_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05']

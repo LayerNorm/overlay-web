@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { getDescriptiveToolLabel } from '@overlay/chat-core'
 import { captureRoomScrollAnchor, createRoomScrollIntent, holdRoomScrollAnchor, isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
@@ -93,19 +92,6 @@ test('native input waits survive reload and are hidden for settled or non-agent 
   assert.equal(view({ ...message, parts: [{ type: 'data-native-agent-input', data: { ...input, token: '' } }] }).nativeInput, undefined)
 })
 
-test('saved drive summaries retain file links separately from the provider answer and reject malformed paths', () => {
-  const status = { state: 'saved', fileCount: 1, folderCount: 0,
-    entries: [{ fileId: 'report', path: 'reports/result.md', kind: 'file' }] }
-  const view = (data: Record<string, unknown>) => toRoomMessageView({ message: record({
-    content: '# Result', parts: [{ type: 'text', text: '# Result' }, { type: 'data-remote-agent-drive', data }],
-  }), currentPrincipalId: 'me', authorName: 'Agent' })
-  const saved = view({ ...status, key: 'drive' })
-  assert.deepEqual(saved.remoteDrive, status)
-  assert.equal(saved.text, '# Result')
-  assert.deepEqual(saved.blocks, [{ kind: 'text', text: '# Result' }])
-  assert.equal(view({ ...status, entries: [{ fileId: 'report', path: '../private', kind: 'file' }] }).remoteDrive, undefined)
-})
-
 test('agent messages derive workedDurationMs from createdAt→updatedAt', () => {
   const view = toRoomMessageView({
     message: record({ createdAt: 1_000, updatedAt: 44_000 }),
@@ -149,70 +135,6 @@ test('an agent-authored question carries who asked and how deep the chain is; a 
   assert.deepEqual(asked.askedBy, { name: 'Scout', hop: 2, parentConversationId: 'room-1' })
   const forged = toRoomMessageView({ message: { ...base, authorKind: 'human', parts: [lineage] } as never, currentPrincipalId: 'me', authorName: 'Me' })
   assert.equal(forged.askedBy, undefined)
-})
-
-test('while a connected agent’s computer wakes up the row is a running "Connecting to computer" tool line, not stored text', () => {
-  const view = toRoomMessageView({
-    message: record({
-      content: 'Waiting for overlay-cloud-5d291a64',
-      parts: [
-        { type: 'text', text: 'Waiting for overlay-cloud-5d291a64' },
-        { type: 'data-remote-agent-status', data: { state: 'waiting', runId: 'run_1', environmentName: 'overlay-cloud-5d291a64', queueExpiresAt: 9 } },
-      ],
-    }),
-    currentPrincipalId: 'me',
-    authorName: 'Claude Code',
-  })
-  assert.deepEqual(view.blocks, [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer', state: 'input-available' }])
-  assert.equal(getDescriptiveToolLabel('connect_computer', undefined, 'running'), 'Connecting to computer')
-  // The queue identity remains available while the hover toolbar handles cancellation.
-  assert.equal(view.remoteQueue?.environmentName, 'overlay-cloud-5d291a64')
-})
-
-test('a connection timeout replaces stored waiting text with a failed connection, then reconnects on retry', () => {
-  for (const state of ['recoverable', 'recovering']) {
-    const view = toRoomMessageView({
-      message: record({ content: 'Waiting for Computer', parts: [
-        { type: 'text', text: 'Waiting for Computer' },
-        { type: 'data-remote-agent-status', data: { state, runId: 'run-1', environmentName: 'Computer', retryable: true } },
-      ] }), currentPrincipalId: 'me', authorName: 'Claude Code',
-    })
-    assert.deepEqual(view.blocks, [{ kind: 'tool', key: 'connect-computer', name: 'connect_computer',
-      state: state === 'recoverable' ? 'output-error' : 'input-available' }])
-  }
-  assert.equal(getDescriptiveToolLabel('connect_computer', undefined, 'error'), 'Computer connection failed')
-})
-
-test('a recoverable failure after work starts preserves the actual output', () => {
-  const view = toRoomMessageView({ message: record({ content: 'Finished inspecting', parts: [
-    { type: 'text', text: 'Finished inspecting' },
-    { type: 'data-remote-agent-status', data: { state: 'recoverable', runId: 'run-1', environmentName: 'Computer', retryable: true } },
-  ] }), currentPrincipalId: 'me', authorName: 'Claude Code' })
-  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'Finished inspecting' }])
-})
-
-test('once the agent starts working the connecting row is gone and the real content shows', () => {
-  const view = toRoomMessageView({
-    message: record({ content: 'Working on it', parts: [{ type: 'text', text: 'Working on it' }, { type: 'data-remote-agent-status', data: { state: 'running', runId: 'run_1', environmentName: 'e', queueExpiresAt: 9 } }] }),
-    currentPrincipalId: 'me',
-    authorName: 'Claude Code',
-  })
-  assert.equal(view.remoteQueue, undefined)
-  assert.deepEqual(view.blocks, [{ kind: 'text', text: 'Working on it' }])
-})
-
-test('the transcript stops at a pending permission card and continues once it is answered', () => {
-  const request = (state: string) => ({ type: 'data-remote-agent-request', data: { state, runId: 'run_1', requestKey: 'k1', kind: 'permission', prompt: 'Allow the command?' } })
-  const parts = (state: string) => [
-    { type: 'text', text: 'Let me run that.' },
-    request(state),
-    { type: 'text', text: 'It printed 3 lines.' },
-  ]
-  const blocks = (state: string) => toRoomMessageView({ message: record({ parts: parts(state) }), currentPrincipalId: 'me', authorName: 'Claude Code' }).blocks
-  // Waiting: only what came before the card.
-  assert.deepEqual(blocks('pending'), [{ kind: 'text', text: 'Let me run that.' }])
-  // Answered: everything, in order.
-  assert.deepEqual(blocks('resolved'), [{ kind: 'text', text: 'Let me run that.\n\nIt printed 3 lines.' }])
 })
 
 test('an older HTTP snapshot cannot overwrite committed subscription output after reconnect', () => {

@@ -25,28 +25,10 @@ test('automation run boundary rejects missing run IDs', () => {
   )
 })
 
-test('provider accounts accept supported providers only', () => {
-  for (const provider of ['claude-code', 'codex']) {
-    assert.doesNotThrow(() => {
-      validateApiClientBoundary({
-        path: '/api/v1/provider-accounts',
-        method: 'POST',
-        body: { provider, method: 'api_key', secret: 'sk-test-secret-value' },
-      })
-    }, provider)
-  }
-
-  for (const provider of ['opencode', 'hermes', 'cursor']) {
-    assert.throws(() => validateApiClientBoundary({
-      path: '/api/v1/provider-accounts',
-      method: 'POST',
-      body: { provider, method: 'api_key', secret: 'sk-test-secret-value' },
-    }), /Invalid POST \/api\/v1\/provider-accounts body: Invalid enum value/)
-  }
-})
-
-test('retired cloud provisioning is excluded from API boundary schemas', () => {
+test('removed connected-agent routes are excluded from API boundary schemas', () => {
   assert.equal(getApiBoundarySchema('/api/v1/agent-environments/cloud', 'POST'), undefined)
+  assert.equal(getApiBoundarySchema('/api/v1/provider-accounts', 'POST'), undefined)
+  assert.equal(getApiBoundarySchema('/api/v1/agent-environments/{environmentId}/events', 'POST'), undefined)
 })
 
 test('scope request parsing preserves native task activity attribution', () => {

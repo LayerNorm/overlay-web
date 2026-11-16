@@ -20,10 +20,10 @@ test('three dots disappear on the first rendered token and do not return between
   await act(async () => { renderer.unmount() })
 })
 
-test('no pending dots for completed, failed, cancelled or input-blocked responses', () => {
+test('no pending dots for completed, failed or input-blocked responses', () => {
   for (const patch of [
     { streaming: false }, { generationError: 'Failed' },
-    { remoteRun: { state: 'cancelled' } }, { nativeInput: { token: 'request' } },
+    { nativeInput: { token: 'request' } },
   ]) {
     assert.equal(renderToStaticMarkup(<AgentResponsePending message={{ ...pending, ...patch } as RoomMessageView} />), '')
   }

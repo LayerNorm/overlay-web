@@ -970,6 +970,8 @@ export const createWithStorage = mutation({
     mimeType: v.optional(v.string()),
     extension: v.optional(v.string()),
     scope: scopeArg,
+    /** Set when an agent created the file, so growth analytics doesn't credit the owner with it. */
+    byAgent: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     if (args.storageId) {
@@ -996,6 +998,7 @@ export const createWithStorage = mutation({
       sizeBytes: args.sizeBytes,
       indexable: false,
       indexStatus: 'skipped',
+      ...(args.byAgent ? { createdByAgent: true } : {}),
       createdAt: now,
       updatedAt: now,
     })

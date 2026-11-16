@@ -2,7 +2,7 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { HARNESS_WITHHELD_TOOL_IDS } from '@/server/agents/agent-mcp-tools'
+import { HARNESS_WITHHELD_TOOL_IDS } from '@/server/mcp/mcp-tool-adapter'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { MCP_EXTERNAL_WITHHELD_TOOL_IDS, MCP_GROUP_COVERAGE, mcpToolGrantFor } from '@/shared/mcp/access'
 
