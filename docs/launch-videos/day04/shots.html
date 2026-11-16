@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Geist;src:url(/home/user/overlay-film/fonts/geist-400.woff2) format('woff2');font-weight:400}
+@font-face{font-family:Geist;src:url(/home/user/overlay-film/fonts/geist-500.woff2) format('woff2');font-weight:500}
+@font-face{font-family:Geist;src:url(/home/user/overlay-film/fonts/geist-600.woff2) format('woff2');font-weight:600}
+@font-face{font-family:Bask;src:url(/home/user/overlay-film/fonts/libre-baskerville-400.woff2) format('woff2')}
+*{box-sizing:border-box;margin:0}
+body{background:#ddd;font-family:Geist,sans-serif}
+.shot{width:1920px;height:1080px;position:relative;overflow:hidden;background:#f4f5f0;margin-bottom:20px}
+.head{position:absolute;left:0;right:0;top:96px;text-align:center;font-weight:600;font-size:60px;letter-spacing:-.025em;color:#191919}
+.head em{font-family:Bask;font-style:italic;font-weight:400}
+.sub{position:absolute;left:0;right:0;top:182px;text-align:center;font-size:28px;color:#7a7a76}
+.win{position:absolute;background:#fff;border:1px solid #e3e3de;border-radius:22px;overflow:hidden;box-shadow:0 30px 80px -30px rgba(40,40,30,.28),0 2px 6px rgba(40,40,30,.06)}
+.win img{display:block;position:absolute;left:0;top:0;transform-origin:0 0}
+.ring{position:absolute;border:3px solid #8b5cf6;border-radius:12px;box-shadow:0 0 0 8px rgba(139,92,246,.14)}
+.chip{position:absolute;background:#fff;border:1px solid #e3e3de;border-radius:999px;padding:10px 20px;font-size:24px;font-weight:500;color:#191919;box-shadow:0 8px 24px -10px rgba(40,40,30,.25);white-space:nowrap;display:flex;align-items:center;gap:10px}
+.chip i{width:10px;height:10px;border-radius:50%;background:#8b5cf6;display:inline-block}
+.cursor{position:absolute;width:34px;height:34px}
+.big{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:Bask;font-size:96px;color:#191919;letter-spacing:-.02em;text-align:center;line-height:1.15}
+.dim{opacity:.35}
+</style></head><body>
+
+<!-- 1 hook -->
+<section class="shot" data-frame="1">
+  <div class="big">What if Grok Bot<br>had a <em>&nbsp;to-do list?</em></div>
+</section>
+
+<!-- 2 list reveal -->
+<section class="shot" data-frame="2">
+  <div class="head">Meet <em>Work.</em></div>
+  <div class="sub">Every task your team and its agents own, in one list.</div>
+  <div class="win" style="left:240px;top:270px;width:1440px;height:760px">
+    <img src="ui/list.png" style="width:1440px">
+  </div>
+</section>
+
+<!-- 3 owner close-up -->
+<section class="shot" data-frame="3">
+  <div class="head">Owned by a person, <em>or an agent.</em></div>
+  <div class="win" style="left:160px;top:230px;width:1600px;height:780px">
+    <img src="ui/list-narrow.png" style="width:900px;transform:scale(1.8) translate(-14px,-60px)">
+  </div>
+  <div class="ring" style="left:1652px;top:312px;width:58px;height:58px;border-radius:50%"></div>
+  <div class="ring" style="left:1652px;top:384px;width:58px;height:58px;border-radius:50%"></div>
+  <div class="chip" style="left:1380px;top:250px"><i></i>Research · agent</div>
+  <div class="chip" style="left:1400px;top:462px"><i></i>Support · agent</div>
+</section>
+
+<!-- 4 assign -->
+<section class="shot" data-frame="4">
+  <div class="head">Give the task <em>to an agent.</em></div>
+  <div class="sub">Assigning sets the owner. Nothing runs yet.</div>
+  <div class="win" style="left:560px;top:270px;width:800px;height:760px">
+    <img src="ui/assign.png" style="width:560px;transform:scale(1.43)">
+  </div>
+  <div class="ring" style="left:744px;top:440px;width:300px;height:46px"></div>
+  <div class="chip" style="left:1064px;top:438px"><i></i>Owner: Research</div>
+</section>
+
+<!-- 5 channel -->
+<section class="shot" data-frame="5">
+  <div class="head">Message it <em>to start.</em></div>
+  <div class="sub">@mention the agent in a channel and link the task.</div>
+  <div class="win" style="left:260px;top:270px;width:1400px;height:760px">
+    <img src="ui/channel.png" style="width:1100px;transform:scale(1.27) translate(0,-20px)">
+  </div>
+  <div class="ring" style="left:262px;top:496px;width:1396px;height:84px;border-radius:6px"></div>
+  <div class="ring" style="left:262px;top:576px;width:1396px;height:90px;border-radius:6px"></div>
+  <div class="chip" style="left:1340px;top:470px"><i></i>Maya links the task</div>
+  <div class="chip" style="left:1380px;top:640px"><i></i>Research starts</div>
+</section>
+
+<!-- 6 board -->
+<section class="shot" data-frame="6">
+  <div class="head">It moves <em>its own card.</em></div>
+  <div class="sub">Todo, In progress, In review. Checking off Done when as it goes.</div>
+  <div class="win" style="left:80px;top:270px;width:1760px;height:700px">
+    <img src="ui/board.png" style="width:1600px;transform:scale(1.1)">
+  </div>
+  <div class="ring" style="left:1130px;top:368px;width:325px;height:120px"></div>
+  <div class="chip" style="left:1210px;top:510px"><i></i>Research · In review</div>
+</section>
+
+<!-- 7 review -->
+<section class="shot" data-frame="7">
+  <div class="head"><em>You review.</em> It ships.</div>
+  <div class="sub">Tasks waiting on you show up as Ready for review.</div>
+  <div class="win" style="left:560px;top:250px;width:800px;height:780px">
+    <img src="ui/review.png" style="width:560px;transform:scale(1.43)">
+  </div>
+  <div class="ring" style="left:618px;top:518px;width:108px;height:52px;border-radius:10px"></div>
+  <svg class="cursor" style="left:680px;top:545px" viewBox="0 0 24 24"><path d="M4 2l16 10-7 1.5L9.5 21z" fill="#191919" stroke="#fff" stroke-width="1.5"/></svg>
+</section>
+
+<!-- 8 timeline -->
+<section class="shot" data-frame="8">
+  <div class="head">People and agents, <em>one plan.</em></div>
+  <div class="win" style="left:80px;top:220px;width:1760px;height:780px">
+    <img src="ui/timeline.png" style="width:1600px;transform:scale(1.1)">
+  </div>
+</section>
+
+<!-- 9 end card -->
+<section class="shot" data-frame="9">
+  <img src="/home/user/day03/wordmark.svg" style="position:absolute;left:50%;top:380px;height:110px;transform:translateX(-50%)">
+  <div class="sub" style="top:540px;font-size:40px;color:#191919">AI employees, <em style="font-family:Bask">on your team.</em></div>
+  <div class="chip" style="left:50%;top:650px;transform:translateX(-50%);font-size:28px;padding:14px 32px">getoverlay.io</div>
+</section>
+</body></html>

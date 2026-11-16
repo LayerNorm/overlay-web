@@ -46,7 +46,7 @@ export interface WorkData {
   adoptTask: (id: string) => void
 }
 
-const WorkDataContext = createContext<WorkData | null>(null)
+export const WorkDataContext = createContext<WorkData | null>(null)
 
 export function useWorkData(): WorkData {
   const value = useContext(WorkDataContext)
