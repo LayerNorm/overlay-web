@@ -44,9 +44,8 @@ const GITHUB_RESULTS: Record<string, string> = {
   not_configured: 'GitHub isn’t set up on this Overlay server yet.',
   expired: 'Connecting GitHub took too long. Try again.',
   signed_in_as_someone_else: 'You came back signed in as someone else. Sign in as the person who started connecting GitHub.',
-  awaiting_org_approval: 'Your GitHub organization needs an owner to approve the Overlay app first.',
-  missing_installation: 'GitHub didn’t say which installation to connect. Try again.',
-  not_yours: 'That GitHub installation isn’t visible to your GitHub account.',
+  not_installed: 'The Overlay GitHub App isn’t installed on any account you can access. Install it on GitHub, then connect again.',
+  cancelled: 'Connecting GitHub was cancelled.',
   workspace: 'That workspace isn’t available to you.',
   connect_failed: 'Connecting GitHub didn’t work. Try again.',
 }
