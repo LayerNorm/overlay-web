@@ -380,6 +380,7 @@ function buildRoomMessageItemProps({
     highlighted: ctx.highlightedMessageId === message.id,
     grouped,
     personalChatStyle: ctx.conversationType !== 'channel',
+    chatActions: ctx.agentThreadTurns?.actionsFor(message, () => ctx.beginQuoteReply(message)),
   }
 }
 
