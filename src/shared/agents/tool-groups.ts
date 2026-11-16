@@ -25,6 +25,15 @@ export type AgentToolCapability = 'web_search' | 'integrations' | 'mcp'
  */
 export { COMPUTER_TOOL_IDS }
 
+/**
+ * Computer tools a thread gets from where it runs (internal/develop/thread-folders.md). A thread its owner set to run
+ * on their own computer can use that computer even when the agent's Computer group is off: that group is about a
+ * cloud computer, and the person chose this one for this thread. Workspace policy still applies on top.
+ */
+export function localThreadComputerToolIds(work: { computer?: { kind: string } } | null | undefined): readonly string[] {
+  return work?.computer?.kind === 'mac' ? COMPUTER_TOOL_IDS : []
+}
+
 export interface AgentToolGroup {
   id: string
   label: string

@@ -77,6 +77,9 @@ workspace computers) is in `todos.md`.
   Connecting is a GitHub sign-in that returns to the deployment that started it (`redirect_uri`); the callback connects
   every installation of the app GitHub lists for that person (`/user/installations`), so nobody can connect someone
   else's. Installing is a separate step on GitHub ("Install on GitHub"), after which the person connects again.
+- **A local thread has computer tools.** An agent's Computer setting is about a cloud computer. A thread its owner
+  set to run on their own computer gets the computer tools for that thread even when that setting is off
+  (`localThreadComputerToolIds`); workspace policy and approvals still apply.
 - **Computer tools default to the thread's computer.** A local thread sends computer tools to its computer
   (`localEnvironmentId`); offline or not-yours fails with a message telling the agent not to retry.
 

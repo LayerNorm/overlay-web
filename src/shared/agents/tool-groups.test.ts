@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   AGENT_TOOL_GROUPS,
+  COMPUTER_TOOL_IDS,
+  localThreadComputerToolIds,
   AGENT_TOOL_PRESETS,
   agentToolPresetFor,
   agentToolCapabilities,
@@ -161,4 +163,11 @@ test('tool presets never include computer and are recognised from their groups',
   assert.equal(agentToolPresetFor(new Set(AGENT_TOOL_PRESETS.everything)), 'everything')
   assert.equal(agentToolPresetFor(new Set([...AGENT_TOOL_PRESETS.standard, 'computer'])), 'standard')
   assert.equal(agentToolPresetFor(new Set(['knowledge'])), null)
+})
+
+test('a thread on the person’s own computer gets the computer tools; a cloud thread adds none', () => {
+  assert.deepEqual(localThreadComputerToolIds({ computer: { kind: 'mac' } }), COMPUTER_TOOL_IDS)
+  assert.deepEqual(localThreadComputerToolIds({ computer: { kind: 'cloud' } }), [])
+  assert.deepEqual(localThreadComputerToolIds({}), [])
+  assert.deepEqual(localThreadComputerToolIds(undefined), [])
 })
