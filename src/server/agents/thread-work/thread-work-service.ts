@@ -308,7 +308,8 @@ export async function copyMacFolderToFiles(args: {
   const path = args.path.replace(/\/+$/, '')
   if (!path.startsWith('/') || path.length > 1024) throw new ThreadWorkError('invalid_path', 'Choose a folder by its full path.')
   const access = await machineFor({ actorUserId: args.userId, workspaceId: args.workspaceId, agentId: '' }, { kind: 'mac', environmentId: args.environmentId })
-  if (!access.ok) throw new ThreadWorkError('mac_unavailable', access.error)
+  // The tool-facing reason is written for the agent; people get plain words.
+  if (!access.ok) throw new ThreadWorkError('mac_unavailable', 'That Mac is offline. Open Overlay on it and try again.')
   return await access.operate(async (machine) => {
     const listed = await machine.run(listingScript(), path)
     if (listed.exitCode !== 0) throw new ThreadWorkError('folder_unavailable', 'That folder couldn’t be read on the Mac. Check that it is one of the Mac’s approved folders.')
