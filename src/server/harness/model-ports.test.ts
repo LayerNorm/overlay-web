@@ -59,8 +59,6 @@ function runningState() {
         requiresPlan: false,
         deadlineAt: Date.now() + 60_000,
         maxCostMicros: 0,
-        maxParallelChildren: 0,
-        maxDepth: 0,
       },
     }, Date.now()),
     status: 'running' as const,
@@ -104,8 +102,6 @@ test('historical free-router rejection receipts do not recover or dispatch anoth
         requiresPlan: false,
         deadlineAt: Date.now() + 60_000,
         maxCostMicros: 0,
-        maxParallelChildren: 0,
-        maxDepth: 0,
       },
     }, Date.now()),
     status: 'running' as const,
@@ -143,7 +139,7 @@ test('model preparation reuses the boundary state and reads catalog limits once 
   const state = { ...createHarnessSnapshot({
     runId: 'run', goal: 'Use the selected paid model.', constraints: [], policy: {
       actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 0, maxDepth: 0,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 100,
     },
   }, Date.now()), status: 'running' as const }
   const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
@@ -655,7 +651,7 @@ test('a response call after one cut off at its output cap is prepared as a conti
   const state = { ...createHarnessSnapshot({
     runId: 'run', goal: 'Write the long list.', constraints: [], policy: {
       actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 0, maxDepth: 0,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 100,
     },
   }, Date.now()), status: 'running' as const }
   const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
@@ -691,7 +687,7 @@ function dispatchedState(billingReservationId: string | null = null, modelRecove
   const state = createHarnessSnapshot({
     runId: 'run', goal: 'Write the page.', constraints: [], policy: {
       actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
-      deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 0,
     },
   }, Date.now())
   return {

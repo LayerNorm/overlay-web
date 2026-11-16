@@ -67,7 +67,10 @@ export function useChatTitleController({
     prefetchTitle(seedText)
   }, [])
 
+  const renamedChatIdsRef = useRef(new Set<string>())
   const startFirstMessageRename = useCallback((chatId: string, text: string) => {
+    if (renamedChatIdsRef.current.has(chatId)) return
+    renamedChatIdsRef.current.add(chatId)
     // Resolves from the prefetched request when the seed matches.
     void generateTitle(text).then(async (aiTitle) => {
       if (aiTitle) await persistNativeChatTitle(renameNative, chatId, sanitizeChatTitle(aiTitle, DEFAULT_CHAT_TITLE))

@@ -52,6 +52,7 @@ import type {
   useRoomActions,
   useRoomCollaboration,
   useRoomComposer,
+  useRoomComposerQueue,
   useRoomPanels,
   useRoomRoster,
   useRoomTranscript,
@@ -721,6 +722,7 @@ export function RoomComposer({
   onOpenFilePreview,
   guided,
   footer,
+  queue,
 }: {
   composer: ReturnType<typeof useRoomComposer>
   mentionCategories: MentionCategory[]
@@ -734,8 +736,10 @@ export function RoomComposer({
   guided?: GuidedRoomComposer
   /** Shown under the message box instead of the disclaimer: an agent thread's computer and folder pickers. */
   footer?: ReactNode
+  queue?: ReturnType<typeof useRoomComposerQueue>
 }) {
   recordRender('RoomComposer')
+  const activeQueue = guided ? undefined : queue
   useEffect(() => {
     if (guided?.focusRevision) composer.composerRef.current?.focus()
   }, [guided?.focusRevision, composer.composerRef])
@@ -752,6 +756,7 @@ export function RoomComposer({
         textOnly: Boolean(guided),
       }}
       emptyState={{ showCenteredEmptyChat: false, greetingLine: '' }}
+      queue={activeQueue?.controls}
       attachments={{
         attachedImages: composer.attachedImages,
         setAttachedImages: composer.setAttachedImages,
@@ -768,7 +773,7 @@ export function RoomComposer({
       runtime={{
         composerNotice: null,
         isSendBlocked: guided?.disabled ?? false,
-        isActiveLoading: false,
+        isActiveLoading: activeQueue?.running ?? false,
         isTemporaryChat: false,
         blockedComposerContent: null,
         ...(footer && !guided ? { afterComposerContent: footer } : {}),
@@ -807,7 +812,7 @@ export function RoomComposer({
         onNavigateMode: () => {},
       }}
       actions={{
-        onStop: () => {},
+        onStop: activeQueue?.stop ?? (() => {}),
         onSend: guided ? () => { if (!guided.disabled) guided.onSubmit() } : () => void composer.handleSend(),
       }}
     />

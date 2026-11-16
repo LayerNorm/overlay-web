@@ -391,6 +391,7 @@ export function DirectMessageExperience({
                 footer: agentId && activeWorkspaceId && !guided
                   ? <ThreadWorkFooter workspaceId={activeWorkspaceId} agentId={agentId} conversationId={conversationId} />
                   : undefined,
+                queue: room.composerQueue,
               }}
             />
           </AppScreenBody>

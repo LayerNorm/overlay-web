@@ -145,8 +145,6 @@ function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boo
       requiresPlan: options.requiresPlan ?? false,
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 100,
-      maxParallelChildren: 2,
-      maxDepth: 2,
     },
   }, Date.now())
   const calls: Array<{ kind: 'model' | 'tool'; name?: string }> = []
@@ -515,7 +513,7 @@ it('Plan: textual DSML after finished steps recovers without repeating the compl
   expect(result.snapshot.plan.map(step => step.status)).toEqual(['done', 'done'])
 })
 
-it('Budget — two named children plus the parent remain within the ceiling and a third ask is refused before a turn row', () => {
+it('Budget — named children carry no spending split and a third ask is admitted (no fan-out cap)', () => {
   const parent = runtime.createHarnessSnapshot({
     runId: 'parent',
     goal: 'delegate',
@@ -526,8 +524,6 @@ it('Budget — two named children plus the parent remain within the ceiling and 
       requiresPlan: false,
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 100,
-      maxParallelChildren: 2,
-      maxDepth: 2,
     },
   }, Date.now())
   const first = runtime.admitHarnessNamedChild(parent, {
@@ -537,10 +533,11 @@ it('Budget — two named children plus the parent remain within the ceiling and 
     id: 'child-2', stepId: 'two', allowedToolIds: [], maxCostMicros: 33, costMicros: 0, status: 'running', evidenceRefs: [],
   }, { title: 'two', acceptanceCriteria: ['two'] }, Date.now())
   expect(second.children).toHaveLength(2)
-  expect(second.children.reduce((sum, child) => sum + child.maxCostMicros, 0)).toBeLessThanOrEqual(66)
-  expect(() => runtime.admitHarnessNamedChild(second, {
+  expect(second.children.reduce((sum, child) => sum + child.maxCostMicros, 0)).toBe(0)
+  const third = runtime.admitHarnessNamedChild(second, {
     id: 'child-3', stepId: 'three', allowedToolIds: [], maxCostMicros: 33, costMicros: 0, status: 'running', evidenceRefs: [],
-  }, { title: 'three', acceptanceCriteria: ['three'] }, Date.now())).toThrow()
+  }, { title: 'three', acceptanceCriteria: ['three'] }, Date.now())
+  expect(third.children).toHaveLength(3)
 })
 
 it('Stop — cancellation propagates through anonymous and cross-room descendants without completing a cancelled run', () => {
@@ -548,7 +545,7 @@ it('Stop — cancellation propagates through anonymous and cross-room descendant
     runId: 'root',
     goal: 'stop',
     constraints: [],
-    policy: { actorUserId: 'human', allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 3, maxDepth: 2 },
+    policy: { actorUserId: 'human', allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000, maxCostMicros: 100 },
   }, Date.now())
   const child = runtime.admitHarnessNamedChild(root, {
     id: 'anonymous', stepId: 'anonymous', allowedToolIds: [], maxCostMicros: 10, costMicros: 0, status: 'running', evidenceRefs: [],
@@ -564,7 +561,7 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
     goal: 'deep',
     constraints: [],
     depth: 2,
-    policy: { actorUserId: 'human', allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000, maxCostMicros: 10, maxParallelChildren: 1, maxDepth: 2 },
+    policy: { actorUserId: 'human', allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000, maxCostMicros: 10 },
   }, Date.now())
   expect(() => runtime.admitHarnessChild(tooDeep, {
     id: 'grandchild', stepId: 'grandchild', allowedToolIds: [], maxCostMicros: 1, costMicros: 0, status: 'running', evidenceRefs: [],

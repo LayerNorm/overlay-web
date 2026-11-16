@@ -235,7 +235,7 @@ export const startStreaming = internalMutation({
     const snapshot = createHarnessSnapshot({ runId: scope.runId, goal: 'Replay the synthetic public-stream fixture.',
       constraints: [], policy: { actorUserId: scope.userId, workspaceId: scope.workspaceId,
         allowedToolIds: [], requiresPlan: false, deadlineAt: now + 60_000,
-        maxCostMicros: 0, maxParallelChildren: 1, maxDepth: 1, publicStreamVersion: 1 } }, now)
+        maxCostMicros: 0, publicStreamVersion: 1 } }, now)
     const metadataJson = JSON.stringify({ ...snapshot, workflowRunId, executionGeneration: generation,
       modelReservation: { id: 'model:0', maxCostMicros: 0, dispatch: { modelId: MODEL, billingReservationId: null } } })
     if (run) await ctx.db.patch(run._id, { metadataJson, updatedAt: now })

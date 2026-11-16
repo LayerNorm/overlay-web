@@ -855,6 +855,18 @@ by run and diagnostic operation ID, while legacy entries without one report
 its first index row; backfill does not infer historical workflow ownership from
 the run's current metadata.
 
+`appendHarnessDiagnosticIndex` logs one `[harness] diagnostic recorded hd_…` line
+per new row so every diagnostic ID is searchable in Convex logs; the backfill
+passes `log: false` so replaying history does not flood them.
+
+Sub-agents have no count or nesting cap: admission no longer reads
+`maxParallelChildren`/`maxDepth`, and the root concurrency check is gone. The
+workspace budget (stop under 2%) is the only limit. `policyValidator` still
+accepts both fields as optional so web and Convex can deploy in either order;
+delete them once no caller sends them. `MAX_HARNESS_DEPTH` (32) stays as the
+bound on the transactional lineage walk, which also detects corrupt or cyclic
+lineage; it is not a product limit.
+
 `harness/diagnosticBackfill:backfill` is an internal, resumable migration for
 existing metadata or journal rows. It processes at most 100 source records per
 call, returns a continuation cursor and explicit insertion/skip/error counts,

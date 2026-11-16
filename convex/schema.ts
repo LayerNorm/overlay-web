@@ -1067,6 +1067,9 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     conversationId: v.optional(v.id('conversations')),
     turnId: v.optional(v.string()),
+    // The user message a run posted into its automation's thread. The thread's
+    // agent run for this message decides the run's outcome.
+    messageId: v.optional(v.id('conversationMessages')),
     error: v.optional(v.string()),
     workflowRunId: v.optional(v.string()),
     workflowProjectionCursor: v.optional(v.string()),

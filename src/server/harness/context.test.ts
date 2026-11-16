@@ -8,7 +8,7 @@ const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
   policy: {
     actorUserId: 'fixture-user', allowedToolIds: ['read'], requiresPlan,
-    deadlineAt: 10_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2,
+    deadlineAt: 10_000, maxCostMicros: 0,
   },
 }, 1_000)
 
