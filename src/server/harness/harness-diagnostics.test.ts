@@ -196,6 +196,19 @@ test.each([
   'Harness request is not owned by an active execution.',
   'HARNESS_EXECUTION_NOT_OWNED',
   'Native harness execution is no longer authorized.',
+  'Native delivery execution changed.',
+  'Personal harness resource access has changed.',
+])('run bookkeeping fault %s is an Overlay error, not lost authorization', message => {
+  // Even with a model call in flight, so it never reads as a dropped model connection.
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot({
+    modelReservation: { id: 'model:1', dispatch: { receiptId: 'receipt' } },
+  } as never), new Error(message), 'model')
+  expect(diagnostic).toMatchObject({ code: 'INTERNAL_ERROR', retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain(message)
+  expect(harnessDiagnosticTerminalError(diagnostic).message).not.toMatch(/authorization|membership/)
+})
+
+test.each([
   'Personal harness execution is not authorized to continue.',
   'Native workspace identity changed.',
   'The API key that authorized this run is no longer permitted.',
