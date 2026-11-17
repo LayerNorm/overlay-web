@@ -96,6 +96,10 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `scope-toggle.html` (feature `scope-toggle`): three proposed placements for the Personal/Workspace scope control
+  in the contextual sidebar, so it stops stacking a second gray bar on the active view row beside the rail. The bar at
+  the top switches between today's control, an aligned segmented control, text tabs and a menu beside the panel
+  title (`?variant=current|aligned|tabs|title`). Delete it when one is chosen and shipped.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.
