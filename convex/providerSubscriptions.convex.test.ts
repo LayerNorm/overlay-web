@@ -401,6 +401,30 @@ test('discovery activation is atomic and rediscovery preserves an empty model se
     expect(refreshed?.status).toBe('active')
     expect(refreshed?.enabledModelIds).toEqual([])
 
+    const laterModels = [...models, { id: 'codex-three', name: 'Codex Three' }]
+    const laterDiscovery = await convex.mutation(mutation('acquireDiscovery'), {
+      serverSecret: secret,
+      userId: 'owner-1',
+      connectionId: pending.connectionId,
+      leaseToken: 'later-discovery-lease',
+    })
+    await convex.mutation(mutation('commitActive'), {
+      serverSecret: secret,
+      userId: 'owner-1',
+      connectionId: pending.connectionId,
+      generation: laterDiscovery.generation!,
+      revision: laterDiscovery.revision!,
+      leaseToken: 'later-discovery-lease',
+      credentialRef: 'vault-credential',
+      discoveredModelsJson: JSON.stringify({ data: laterModels }),
+      discoveredModelIds: laterModels.map(({ id }) => id),
+    })
+    const later = await convex.query(connectionQuery('getByServer'), {
+      serverSecret: secret,
+      connectionId: pending.connectionId,
+    })
+    expect(later?.enabledModelIds).toEqual(['codex-three'])
+
     const refresh = await convex.mutation(mutation('acquireRefresh'), {
       serverSecret: secret,
       userId: 'owner-1',
