@@ -164,7 +164,7 @@ if (appBundle) {
         const privatePath = strings
           .split('\n')
           .filter((line) => /\/Users\/|\/var\/folders\//.test(line))
-          .some((line) => !(artifact.upstreamBuildPaths ?? []).some((prefix) => line.includes(prefix)))
+          .some((line) => !(artifact.upstreamBuildHomes ?? []).some((home) => line.includes(`/Users/${home}`)))
         if (privatePath) failures.push(`${packagedRelative} contains a private workstation path`)
       } catch (error) {
         failures.push(`failed to scan strings in ${packagedRelative}: ${error.message}`)

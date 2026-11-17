@@ -31,7 +31,7 @@ for (const artifact of manifest.artifacts ?? []) {
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024
     })
-    if (hasPrivatePath(strings, artifact.upstreamBuildPaths)) {
+    if (hasPrivatePath(strings, artifact.upstreamBuildHomes)) {
       failures.push(`${artifact.path} contains a private workstation path`)
     }
   }
@@ -76,12 +76,15 @@ function verifyRecord(artifact) {
   }
 }
 
-/** Paths from the upstream project's own build machine are public and listed per artifact. */
-function hasPrivatePath(strings, upstreamBuildPaths = []) {
+/**
+ * Paths from the upstream project's own build machine are public. Each artifact
+ * lists them relative to the home-folder root, so this file holds no home path.
+ */
+function hasPrivatePath(strings, upstreamBuildHomes = []) {
   return strings
     .split('\n')
     .filter((line) => /\/Users\/|\/var\/folders\//.test(line))
-    .some((line) => !upstreamBuildPaths.some((prefix) => line.includes(prefix)))
+    .some((line) => !upstreamBuildHomes.some((home) => line.includes(`/Users/${home}`)))
 }
 
 function hashFile(file) {

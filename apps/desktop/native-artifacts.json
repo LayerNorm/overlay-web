@@ -42,8 +42,8 @@
       "licenseFile": "third_party/licenses/Node-LICENSE",
       "buildScript": "scripts/build-agent-host-bundle.mjs",
       "fetched": true,
-      "upstreamBuildPaths": [
-        "/Users/admin/build/ws/"
+      "upstreamBuildHomes": [
+        "admin/build/ws/"
       ]
     }
   ]
