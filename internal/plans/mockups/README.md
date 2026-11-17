@@ -96,6 +96,10 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `hugeicons.html` (feature `hugeicons`): the whole app with every Lucide icon swapped for a Hugeicons outline, to
+  judge the icon system before migrating. `overlay-app/features/hugeicons/map.json` pairs each Lucide name the app
+  imports with a Hugeicons icon; edit it and run `generate.mjs` (see its header) to try a different outline. Compare
+  against `overlay-app.html` at the same hash. Delete it when the icon decision is made.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.

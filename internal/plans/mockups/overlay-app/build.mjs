@@ -15,7 +15,8 @@ const locationBanner = await readFile(path.join(here, 'shims/location-banner.js'
 
 /**
  * A feature (features/<name>/feature.mjs) names its output file and the source patches that place its proposed
- * components into production modules at bundle time. Production files are never edited, and a patch whose text no
+ * components into production modules at bundle time. It may also list `aliases`, which swap a whole package for a
+ * stand-in file in that build. Production files are never edited, and a patch whose text no
  * longer appears exactly once stops the build, so a feature mockup cannot silently drift from the app.
  */
 const featureName = process.env.MOCKUP_FEATURE
@@ -55,6 +56,8 @@ function shimPlugin() {
     name: 'overlay-app-shims',
     setup(b) {
       b.onResolve({ filter: /.*/ }, (args) => {
+        const alias = feature?.aliases?.[args.path]
+        if (alias) return { path: alias }
         const shim = SHIMS[args.path]
         return shim ? { path: path.join(here, shim) } : undefined
       })
