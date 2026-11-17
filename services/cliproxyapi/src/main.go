@@ -59,6 +59,7 @@ type pendingEnvelope struct {
 
 type bridge struct {
 	secret        string
+	catalogReady  <-chan struct{}
 	executeStream func(context.Context, *cliproxyauth.Auth, cliproxyexecutor.Request, cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error)
 }
 
@@ -83,9 +84,11 @@ func run() error {
 		port = value
 	}
 	logrus.SetOutput(io.Discard)
+	catalogReady := make(chan struct{})
+	go keepCatalogsCurrent(context.Background(), catalogReady)
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           &bridge{secret: secret},
+		Handler:           &bridge{secret: secret, catalogReady: catalogReady},
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("private subscription bridge listening on port %d", port)
@@ -93,6 +96,43 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// keepCatalogsCurrent replaces the catalogs embedded at build time with the
+// published upstream ones, once at startup and then on the upstream cadence. A
+// failed or invalid download keeps the last valid catalog.
+func keepCatalogsCurrent(ctx context.Context, ready chan<- struct{}) {
+	refresh := func() {
+		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if _, err := registry.RefreshModelCatalogsWithPolicy(refreshCtx, registry.CatalogSources{}, false); err != nil {
+			log.Print("model catalog refresh incomplete; keeping the last valid catalogs")
+		}
+	}
+	refresh()
+	close(ready)
+	ticker := time.NewTicker(registry.ModelsRefreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refresh()
+		}
+	}
+}
+
+// awaitCatalog holds a request until the first catalog refresh after a cold
+// start has settled, so it is not answered from the older embedded catalog.
+func (b *bridge) awaitCatalog(r *http.Request) {
+	if b.catalogReady == nil {
+		return
+	}
+	select {
+	case <-b.catalogReady:
+	case <-r.Context().Done():
+	}
 }
 
 func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -125,10 +165,12 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/internal/v1/models":
 		if requireMethod(w, r, http.MethodPost) {
+			b.awaitCatalog(r)
 			b.models(w, r)
 		}
 	case "/internal/v1/infer":
 		if requireMethod(w, r, http.MethodPost) {
+			b.awaitCatalog(r)
 			b.infer(w, r)
 		}
 	default:
