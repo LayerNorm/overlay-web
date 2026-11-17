@@ -404,6 +404,17 @@ function SidebarHeaderBar({
  * The default app sidebar: brand, Personal/Workspace, the main pages (Files and Extensions under More), then the
  * current page's own rows and items, then the account. Subviews that are views of one page go to header tabs.
  */
+/** Splits the pages into the sidebar's own rows and More, by the person's arrangement when there is one. */
+function arrangeSidebarItems(items: readonly PrimaryRailItem[], moreGroups: readonly MoreGroup[], customization?: SidebarCustomization) {
+  const groupedMoreItems = groupMoreItems(items, customization ? [{ ids: customization.more }] : moreGroups)
+  if (customization) {
+    const mainItems = [...items.filter((item) => item.id === 'settings-close'), ...orderSidebarItems(items, customization.pinned)]
+    return { groupedMoreItems, mainItems, inlineItems: [...mainItems, ...orderSidebarItems(items, customization.more)] }
+  }
+  const moreItemIds = new Set(groupedMoreItems.flatMap((group) => group.items.map((item) => item.id)))
+  return { groupedMoreItems, mainItems: items.filter((item) => !moreItemIds.has(item.id)), inlineItems: items }
+}
+
 export function UnifiedSidebar({
   brand,
   collapsed,
@@ -437,12 +448,7 @@ export function UnifiedSidebar({
   const [resizing, setResizing] = useState(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const settingsBack = items.find((item) => item.id === 'settings-close')
-  const groupedMoreItems = groupMoreItems(items, customization ? [{ ids: customization.more }] : moreGroups)
-  const moreItemIds = new Set(groupedMoreItems.flatMap((group) => group.items.map((item) => item.id)))
-  const mainItems = customization
-    ? [...items.filter((item) => item.id === 'settings-close'), ...orderSidebarItems(items, customization.pinned)]
-    : items.filter((item) => !moreItemIds.has(item.id))
-  const inlineItems = customization ? [...mainItems, ...orderSidebarItems(items, customization.more)] : items
+  const { groupedMoreItems, mainItems, inlineItems } = arrangeSidebarItems(items, moreGroups, customization)
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
   const rows = scopeChildren(scopedNav, scope)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))

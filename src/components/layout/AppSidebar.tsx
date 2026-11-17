@@ -34,6 +34,28 @@ const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((
 const UNIFIED_SIDEBAR_MORE_PAGE_IDS = ['files', 'extensions']
 const shellAdapter = { Link: NextLink, rememberScope: rememberPanelScope } satisfies ShellAdapter
 
+/** The person's saved page arrangement, and the page the brand opens: the first page in their sidebar. */
+function useSidebarCustomization(railItems: readonly PrimaryRailItem[], classicLayout: boolean, defaultHomeHref: string) {
+  const appSettings = useOptionalAppSettings()
+  const savedPinnedPageIds = appSettings?.settings.sidebarPinnedPageIds ?? []
+  const sidebarLayout = resolveSidebarLayout(
+    railItems.filter((item) => item.id !== 'settings-close').map((item) => item.id),
+    { pinned: savedPinnedPageIds, more: appSettings?.settings.sidebarMorePageIds },
+    classicLayout ? DEFAULT_SIDEBAR_MORE_PAGE_IDS : UNIFIED_SIDEBAR_MORE_PAGE_IDS,
+  )
+  const sidebarCustomization: SidebarCustomization | undefined = appSettings ? {
+    ...sidebarLayout,
+    customized: savedPinnedPageIds.length > 0,
+    onMove: (id, list, index) => {
+      const next = moveSidebarPage(sidebarLayout, id, list, index)
+      if (next !== sidebarLayout) void appSettings.updateSettings({ sidebarPinnedPageIds: next.pinned, sidebarMorePageIds: next.more })
+    },
+    onReset: () => { void appSettings.updateSettings({ sidebarPinnedPageIds: [], sidebarMorePageIds: [] }) },
+  } : undefined
+  const pinnedHome = savedPinnedPageIds.length > 0 ? railItems.find((item) => item.id === sidebarLayout.pinned[0])?.href : undefined
+  return { sidebarCustomization, brandHomeHref: pinnedHome ?? defaultHomeHref }
+}
+
 function useSidebarActivityFilter(panelKind: ReturnType<typeof useAppSidebarState>['routeState']['panelKind']) {
   const [filters, setFilters] = useState({ chat: false, agents: false })
   const kind = panelKind === 'chat' || panelKind === 'agents' ? panelKind : null
@@ -119,25 +141,7 @@ export default function AppSidebar({
   const appSettings = useOptionalAppSettings()
   const classicLayout = appSettings?.settings.useSecondarySidebar !== false
   const railExpanded = !classicLayout && !s.sidebarCollapsed
-  const savedPinnedPageIds = appSettings?.settings.sidebarPinnedPageIds ?? []
-  const sidebarLayout = resolveSidebarLayout(
-    s.railItems.filter((item) => item.id !== 'settings-close').map((item) => item.id),
-    { pinned: savedPinnedPageIds, more: appSettings?.settings.sidebarMorePageIds },
-    classicLayout ? DEFAULT_SIDEBAR_MORE_PAGE_IDS : UNIFIED_SIDEBAR_MORE_PAGE_IDS,
-  )
-  const sidebarCustomization: SidebarCustomization | undefined = appSettings ? {
-    ...sidebarLayout,
-    customized: savedPinnedPageIds.length > 0,
-    onMove: (id, list, index) => {
-      const next = moveSidebarPage(sidebarLayout, id, list, index)
-      if (next !== sidebarLayout) void appSettings.updateSettings({ sidebarPinnedPageIds: next.pinned, sidebarMorePageIds: next.more })
-    },
-    onReset: () => { void appSettings.updateSettings({ sidebarPinnedPageIds: [], sidebarMorePageIds: [] }) },
-  } : undefined
-  // The brand opens the same page the app opens to: the first page in the person's sidebar.
-  const brandHomeHref = (savedPinnedPageIds.length > 0
-    ? s.railItems.find((item) => item.id === sidebarLayout.pinned[0])?.href
-    : undefined) ?? s.brandConfig.homeHref
+  const { sidebarCustomization, brandHomeHref } = useSidebarCustomization(s.railItems, classicLayout, s.brandConfig.homeHref)
   const brandLabel = s.brandConfig.shortName ?? s.brandConfig.name
 
   const brandLink = (
