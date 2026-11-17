@@ -96,6 +96,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `people-sidebar-composer.html` (feature `people-sidebar-composer`): three proposals awaiting a decision. Account
+  photos and agent creatures in the Direct Messages list, the People panel and message tags; a primary sidebar each
+  person arranges (hover More to pin a page, or open Customize sidebar to reorder and move pages; the layout is kept
+  in this browser); and composer tags that show the avatar and name without the @, link chips for pasted addresses,
+  and a hover card on both. Open
+  `people-sidebar-composer.html#/w/northwind/workspace/chat?view=channels&id=k17convchannellaunch000000000000`; the
+  composer there opens with a sample message. Delete it when the three changes ship or are declined.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.
