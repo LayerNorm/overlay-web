@@ -82,8 +82,8 @@ const nextConfig: NextConfig = {
     },
   },
   async redirects() {
-    // Desktop builds are not public yet; the page and its release plumbing stay
-    // behind OVERLAY_DESKTOP_DOWNLOADS_ENABLED for when they are.
+    // The download page offers the signed desktop build from GitHub Releases.
+    // Deployments without OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1 send it to /home.
     const downloadRedirects =
       process.env.OVERLAY_DESKTOP_DOWNLOADS_ENABLED?.trim() === "1"
         ? []
