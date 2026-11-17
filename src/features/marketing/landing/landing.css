@@ -288,6 +288,18 @@
 .sl .sec .actions.left { justify-content: flex-start; margin-top: 24px; }
 .sl .faq.flush { margin: 0; max-width: none; }
 
+/* Overlay for Mac: the desktop section, the Apple mark on download buttons, key caps and file names */
+.sl .onmac { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.sl .onmac .lead { margin-top: 18px; max-width: 440px; }
+.sl .onmac .actions { justify-content: flex-start; }
+.sl .onmac .step-art .mini { max-width: 360px; }
+.sl .apple { width: 14px; height: 16px; flex: none; margin-top: -2px; }
+.sl .prow > .apple { width: 16px; color: var(--sl-muted); }
+.sl kbd { font-family: var(--sl-sans); font-size: 11px; line-height: 1; color: var(--sl-muted); border: 1px solid var(--sl-line-2); border-radius: 5px; padding: 3px 5px; background: var(--sl-panel); }
+.sl kbd + kbd { margin-left: 3px; }
+.sl .file { font-family: var(--sl-mono); font-size: .92em; color: var(--sl-text); }
+.sl .cell .num + .h3 { margin-top: 10px; }
+
 /* Responsive */
 @media (max-width: 1040px) {
   .sl .shot { grid-template-columns: 200px minmax(0, 1fr); }
@@ -309,6 +321,7 @@
   .sl .doc { grid-template-columns: 1fr; gap: 0; }
   .sl .toc { display: none; }
   .sl .step { grid-template-columns: 1fr; gap: 24px; }
+  .sl .onmac { grid-template-columns: 1fr; gap: 28px; }
   .sl .step:nth-child(even) .step-art { order: 0; }
   .sl .step-art { height: 300px; }
   .sl .shot { grid-template-columns: 1fr; height: 500px; }
