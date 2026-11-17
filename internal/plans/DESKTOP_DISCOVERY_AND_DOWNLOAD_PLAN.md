@@ -5,7 +5,7 @@ Status: Phases 1 and 2 built and awaiting preview QA and merge. Phases 3 and 4 n
 How a visitor learns that Overlay has a Mac app, and how they go from that to a
 signed-in app on their computer. Mockup:
 [mockups/desktop-discovery.html](mockups/desktop-discovery.html) (rebuild with
-`node internal/plans/mockups/build-desktop-discovery.cjs`). It is the live
+`node internal/plans/mockups/build-desktop-discovery.mjs`). It is the live
 marketing page with the proposed changes applied; the bar at the bottom switches
 page and visitor and can outline everything that is new, and the page's own
 theme button switches light and dark.

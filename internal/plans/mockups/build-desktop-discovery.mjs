@@ -12,13 +12,13 @@
  *   - the proposed /download page, in its before and after-click states.
  * Everything added is marked `data-new`, so the bar at the bottom can outline it.
  *
- *   node internal/plans/mockups/build-desktop-discovery.cjs
+ *   node internal/plans/mockups/build-desktop-discovery.mjs
  */
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
 
 const ORIGIN = 'https://www.getoverlay.io'
-const OUT = path.join(__dirname, 'desktop-discovery.html')
+const OUT = path.join(import.meta.dirname, 'desktop-discovery.html')
 const RELEASE = { version: '0.3.0', file: 'overlay-0.3.0.dmg', date: 'November 17, 2026', size: '131 MB' }
 
 const get = async (url, binary = false) => {
@@ -295,7 +295,7 @@ async function main() {
 </div>`
 
   const html = `<!doctype html>
-<!-- Built by build-desktop-discovery.cjs from the live marketing page. Do not edit by hand. -->
+<!-- Built by build-desktop-discovery.mjs from the live marketing page. Do not edit by hand. -->
 ${htmlTag}
 <head>
 <meta charset="utf-8"/>
