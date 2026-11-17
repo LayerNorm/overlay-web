@@ -21,8 +21,10 @@ function fixture() {
     "export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.4.3'\n",
   )
   write(
-    'overlay-desktop/src/main/services/embedded-host-config.ts',
-    "export const EMBEDDED_HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.4.3'\n",
+    'overlay-desktop/agent-host-bundle/package.json',
+    JSON.stringify({
+      dependencies: { '@layernorm/overlay-agent-host': '0.4.3' },
+    }),
   )
   write(
     'overlay-desktop/package.json',

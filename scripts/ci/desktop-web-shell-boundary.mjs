@@ -56,13 +56,12 @@ export function desktopWebShellViolations(root) {
     /OVERLAY_AGENT_HOST_PACKAGE_VERSION = ['"]([^'"]+)['"]/.exec(
       webEnrollment ?? '',
     )?.[1]
-  const nativeHostConfig = read(
-    join(desktop, 'src/main/services/embedded-host-config.ts'),
-  )
-  if (
-    !hostVersion ||
-    !nativeHostConfig?.includes(`@layernorm/overlay-agent-host@${hostVersion}'`)
-  )
+  // The desktop app ships the host it pins in agent-host-bundle/package.json.
+  const bundledHost = read(join(desktop, 'agent-host-bundle/package.json'))
+  const bundledHostVersion = bundledHost
+    ? JSON.parse(bundledHost).dependencies?.['@layernorm/overlay-agent-host']
+    : undefined
+  if (!hostVersion || bundledHostVersion !== hostVersion)
     failures.push('desktop Agent Host pin must match web enrollment')
   const manifest = read(join(desktop, 'package.json'))
   if (!manifest) failures.push('desktop manifest is missing')
