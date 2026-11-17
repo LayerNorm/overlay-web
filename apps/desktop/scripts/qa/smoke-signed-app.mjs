@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { createServer } from 'node:https'
 import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -13,6 +13,13 @@ assert.equal(process.platform, 'darwin')
 const bundle = resolve('dist/mac-arm64/Overlay.app')
 const executable = join(bundle, 'Contents/MacOS/Overlay')
 execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle])
+// The signed, bundled Node.js must start the bundled Agent Host under the
+// hardened runtime with no Node.js on PATH (the host prints usage and exits 2).
+const agentHost = join(bundle, 'Contents/Resources/agent-host')
+const hostUsage = spawnSync(join(agentHost, 'node'), [join(agentHost, 'overlay-agent-host.mjs'), '--help'], {
+  env: { PATH: '/usr/bin:/bin' }, encoding: 'utf8',
+})
+assert.match(`${hostUsage.stdout}${hostUsage.stderr}`, /overlay-agent-host connect/, 'Bundled agent host did not start')
 const directory = await mkdtemp(join(tmpdir(), 'overlay-signed-acceptance-'))
 const certificate = join(directory, 'fixture.crt')
 const key = join(directory, 'fixture.key')

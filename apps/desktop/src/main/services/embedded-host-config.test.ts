@@ -1,21 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  EMBEDDED_HOST_PACKAGE_SPEC,
   buildEmbeddedHostArgs,
   buildEmbeddedHostRunArgs,
-  embeddedHostPackageSpec,
+  resolveEmbeddedHostRuntime,
   verificationPhraseFrom,
   isValidServerOrigin,
-  resolveNpxPath,
   ENROLLMENT_CODE_PATTERN
 } from './embedded-host-config'
 
 describe('embedded-host-config', () => {
   it('pins the same host release line as the web enrollment command', () => {
-    expect(EMBEDDED_HOST_PACKAGE_SPEC).toBe('@layernorm/overlay-agent-host@0.5.0')
+    const bundle = JSON.parse(readFileSync(join(process.cwd(), 'agent-host-bundle/package.json'), 'utf8'))
+    expect(bundle.dependencies).toEqual({ '@layernorm/overlay-agent-host': '0.5.0' })
   })
 
   it('accepts https origins and http loopback only', () => {
@@ -36,25 +34,28 @@ describe('embedded-host-config', () => {
     expect(ENROLLMENT_CODE_PATTERN.test('code;rm -rf ~')).toBe(false)
   })
 
-  it('resolves npx from PATH without a shell', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'overlay-npx-'))
-    writeFileSync(join(directory, 'npx'), '#!/bin/sh\nexit 0\n')
-    expect(
-      resolveNpxPath({ PATH: `/nonexistent:${directory}` }, (path) => {
-        try {
-          return path === join(directory, 'npx')
-        } catch {
-          return false
-        }
-      })
-    ).toBe(join(directory, 'npx'))
+  const cli = 'overlay-agent-host.mjs'
+  const locations = { resourcesPath: '/Applications/Overlay.app/Contents/Resources', appPath: '/repo' }
+
+  it('runs the host and Node.js that ship inside a packaged app', () => {
+    expect(resolveEmbeddedHostRuntime({ packaged: true, ...locations }, { PATH: '' }, () => true)).toEqual({
+      nodePath: '/Applications/Overlay.app/Contents/Resources/agent-host/node',
+      cliPath: `/Applications/Overlay.app/Contents/Resources/agent-host/${cli}`
+    })
   })
 
-  it('returns null when npx is nowhere to be found', () => {
-    expect(resolveNpxPath({ PATH: '/nonexistent-dir' }, () => false)).toBeNull()
+  it('uses the built bundle in a checkout', () => {
+    expect(resolveEmbeddedHostRuntime({ packaged: false, ...locations }, {}, () => true)).toEqual({
+      nodePath: '/repo/agent-host-bundle/runtime/node',
+      cliPath: `/repo/agent-host-bundle/runtime/${cli}`
+    })
   })
 
-  it('builds a pinned, shell-free argv array', () => {
+  it('returns null when the bundle is missing', () => {
+    expect(resolveEmbeddedHostRuntime({ packaged: true, ...locations }, {}, () => false)).toBeNull()
+  })
+
+  it('builds a shell-free argv array', () => {
     const args = buildEmbeddedHostArgs({
       code: 'ABCD-1234',
       origin: 'https://www.getoverlay.io',
@@ -62,12 +63,6 @@ describe('embedded-host-config', () => {
       name: 'Mac (Desktop)'
     })
     expect(args).toEqual([
-      '--yes',
-      '--package',
-      'node@24',
-      '--package',
-      '@layernorm/overlay-agent-host@0.5.0',
-      'overlay-agent-host',
       'connect',
       'ABCD-1234',
       '--server',
@@ -93,13 +88,11 @@ describe('local tools (this Mac as a Computer)', () => {
     const argv = buildEmbeddedHostArgs(base)
     expect(argv).toContain('--local-tools')
     expect(argv).not.toContain('--adapter')
-    expect(argv.slice(0, 6)).toEqual(['--yes', '--package', 'node@24', '--package', EMBEDDED_HOST_PACKAGE_SPEC, 'overlay-agent-host'])
+    expect(argv[0]).toBe('connect')
   })
 
   it('restarts a saved host from its configuration without an enrollment code', () => {
-    expect(buildEmbeddedHostRunArgs({ configPath: '/tmp/host/config.json' })).toEqual([
-      '--yes', '--package', 'node@24', '--package', EMBEDDED_HOST_PACKAGE_SPEC, 'overlay-agent-host', 'run', '--config', '/tmp/host/config.json'
-    ])
+    expect(buildEmbeddedHostRunArgs({ configPath: '/tmp/host/config.json' })).toEqual(['run', '--config', '/tmp/host/config.json'])
   })
 
   it('reads the verification phrase the host prints', () => {
@@ -108,10 +101,13 @@ describe('local tools (this Mac as a Computer)', () => {
     expect(verificationPhraseFrom('Verify this phrase in Overlay: amber; rm -rf ~')).toBeNull()
   })
 
-  it('uses a local host package only in unpackaged development builds', () => {
-    const env = { OVERLAY_DESKTOP_DEV_HOST_PACKAGE: '/tmp/layernorm-overlay-agent-host-0.5.0.tgz' }
-    expect(embeddedHostPackageSpec(env, false)).toBe('/tmp/layernorm-overlay-agent-host-0.5.0.tgz')
-    expect(embeddedHostPackageSpec(env, true)).toBe(EMBEDDED_HOST_PACKAGE_SPEC)
-    expect(embeddedHostPackageSpec({ OVERLAY_DESKTOP_DEV_HOST_PACKAGE: 'evil@latest' }, false)).toBe(EMBEDDED_HOST_PACKAGE_SPEC)
+  it('runs another host checkout only in unpackaged development builds', () => {
+    const env = { OVERLAY_DESKTOP_DEV_HOST_CLI: '/work/overlay-agent-host/src/cli.mjs' }
+    const locations = { resourcesPath: '/res', appPath: '/repo' }
+    expect(resolveEmbeddedHostRuntime({ packaged: false, ...locations }, env, () => true)?.cliPath).toBe(env.OVERLAY_DESKTOP_DEV_HOST_CLI)
+    expect(resolveEmbeddedHostRuntime({ packaged: true, ...locations }, env, () => true)?.cliPath).toMatch(/^\/res\/agent-host\//)
+    expect(
+      resolveEmbeddedHostRuntime({ packaged: false, ...locations }, { OVERLAY_DESKTOP_DEV_HOST_CLI: 'evil.mjs' }, () => true)?.cliPath
+    ).toMatch(/^\/repo\/agent-host-bundle\//)
   })
 })

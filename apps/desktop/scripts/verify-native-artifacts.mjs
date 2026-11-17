@@ -10,22 +10,17 @@ const failures = []
 for (const artifact of manifest.artifacts ?? []) {
   const absolute = path.join(root, artifact.path)
   if (!fs.existsSync(absolute)) {
-    failures.push(`missing native artifact ${artifact.path}`)
+    // A fetched artifact is not in the repository; its build script checks the
+    // same pins when it downloads it, and the packaged app is checked again.
+    if (artifact.fetched) verifyRecord(artifact)
+    else failures.push(`missing native artifact ${artifact.path}`)
     continue
   }
   const digest = hashFile(absolute)
   if (digest !== artifact.sha256) {
     failures.push(`${artifact.path} hash changed: expected ${artifact.sha256}, got ${digest}`)
   }
-  const license = path.join(root, artifact.licenseFile)
-  if (!fs.existsSync(license)) failures.push(`${artifact.path} is missing ${artifact.licenseFile}`)
-  const buildScript = fs.readFileSync(path.join(root, artifact.buildScript), 'utf8')
-  if (artifact.source.startsWith('https://') && !buildScript.includes(artifact.sourceRevision)) {
-    failures.push(`${artifact.buildScript} does not pin ${artifact.sourceRevision}`)
-  }
-  if (artifact.upstreamRevision && !buildScript.includes(artifact.upstreamRevision)) {
-    failures.push(`${artifact.buildScript} does not pin upstream ${artifact.upstreamRevision}`)
-  }
+  verifyRecord(artifact)
 
   if (process.platform === 'darwin') {
     const description = execFileSync('/usr/bin/file', [absolute], { encoding: 'utf8' })
@@ -36,7 +31,7 @@ for (const artifact of manifest.artifacts ?? []) {
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024
     })
-    if (/\/Users\/|\/var\/folders\//.test(strings)) {
+    if (hasPrivatePath(strings, artifact.upstreamBuildPaths)) {
       failures.push(`${artifact.path} contains a private workstation path`)
     }
   }
@@ -68,6 +63,26 @@ if (failures.length) {
 }
 
 console.log(`Verified ${manifest.artifacts.length} pinned arm64 native artifacts and source records.`)
+
+function verifyRecord(artifact) {
+  const license = path.join(root, artifact.licenseFile)
+  if (!fs.existsSync(license)) failures.push(`${artifact.path} is missing ${artifact.licenseFile}`)
+  const buildScript = fs.readFileSync(path.join(root, artifact.buildScript), 'utf8')
+  if (artifact.source.startsWith('https://') && !buildScript.includes(artifact.sourceRevision)) {
+    failures.push(`${artifact.buildScript} does not pin ${artifact.sourceRevision}`)
+  }
+  if (artifact.upstreamRevision && !buildScript.includes(artifact.upstreamRevision)) {
+    failures.push(`${artifact.buildScript} does not pin upstream ${artifact.upstreamRevision}`)
+  }
+}
+
+/** Paths from the upstream project's own build machine are public and listed per artifact. */
+function hasPrivatePath(strings, upstreamBuildPaths = []) {
+  return strings
+    .split('\n')
+    .filter((line) => /\/Users\/|\/var\/folders\//.test(line))
+    .some((line) => !upstreamBuildPaths.some((prefix) => line.includes(prefix)))
+}
 
 function hashFile(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex')

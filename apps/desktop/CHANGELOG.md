@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Run threads on this computer without Node.js installed. The app used to start the Agent Host through `npx`, so a Mac without Node.js could not run a local thread and a Mac with it downloaded the host from npm on first use. The app now ships the Agent Host (0.5.0) and Node.js 24.22.3 inside the signed bundle and starts them directly; nothing is installed or downloaded on the user's computer. `npm run build:agent-host` assembles the bundle from the official Node.js build, pinned by checksum in `native-artifacts.json`, and from `agent-host-bundle/package-lock.json`; the release build runs it, and the license check, SBOM and artifact verification cover it. The download grows by the size of Node.js. `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` is replaced by `OVERLAY_DESKTOP_DEV_HOST_CLI`, the path to another host checkout's `cli.mjs`, for unpackaged builds.
+
 ## [0.3.0] - 2026-11-16
 
 - Run agent threads on this computer from a thread, not only from Settings. The bridge gains `localComputer.chooseFolder`, which opens the system's folder dialog so people pick a folder instead of typing a path, and `localComputer.status` now reports the computer's own name (from System Settings), the environment it connected as and its work folder, so the web app knows which threads belong to this computer. Connecting creates `~/Overlay Files`, where threads without a folder work. The computer connects under its own name instead of its network host name. The app says "this computer" instead of "Mac".

@@ -66,7 +66,10 @@ jobs:
       - name: Package an unsigned Apple Silicon app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --arm64 --dir --publish never
+        run: |
+          npm run build:agent-host
+          npx electron-builder --mac --arm64 --dir --publish never
+          test -x dist/mac-arm64/Overlay.app/Contents/Resources/agent-host/node
 
       - name: Record compiled-source provenance
         env:

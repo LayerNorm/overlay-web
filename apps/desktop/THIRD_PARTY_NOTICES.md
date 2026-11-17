@@ -22,6 +22,12 @@ Important native and model components include:
 - WhisperKit CoreML model files — downloaded from immutable model revision
   `97a5bf9bbc74c7d9c12c755d04dea59e672e3808`. The pinned model card is
   preserved under `third_party/licenses`.
+- Node.js — the official Apple silicon build, pinned by checksum in
+  `native-artifacts.json` and downloaded by `scripts/build-agent-host-bundle.mjs`.
+  It runs the bundled Agent Host. Its license, which also covers the libraries
+  compiled into it, is preserved as `third_party/licenses/Node-LICENSE`.
+- Overlay Agent Host (`@layernorm/overlay-agent-host`) — AGPL-3.0-only, pinned by
+  `agent-host-bundle/package-lock.json`.
 - Native npm dependencies — licenses recorded in their package metadata and the
   generated SBOM.
 

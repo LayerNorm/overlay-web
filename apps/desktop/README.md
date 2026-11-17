@@ -39,7 +39,8 @@ npm run test:e2e
 - **This computer.** Agent threads can run on this computer, in folders chosen in
   the system's folder dialog. The app starts a bundled Agent Host for this, only
   when the user chooses it; it serves Overlay's own tools and the server still
-  approves every folder. It needs Node.js 22 or newer installed.
+  approves every folder. The host and the Node.js runtime it uses ship inside
+  the app, so nothing else needs to be installed.
 - **Upgrades from the old app.** Old transcripts and native preferences are
   exported to the app's data folder once; nothing is uploaded or deleted.
 

@@ -10,10 +10,9 @@ import {
   ENROLLMENT_CODE_PATTERN,
   buildEmbeddedHostArgs,
   buildEmbeddedHostRunArgs,
-  embeddedHostPackageSpec,
   verificationPhraseFrom,
   isValidServerOrigin,
-  resolveNpxPath
+  resolveEmbeddedHostRuntime
 } from './embedded-host-config'
 
 export type EmbeddedHostState = 'idle' | 'starting' | 'running' | 'stopping' | 'error'
@@ -26,7 +25,7 @@ export type EmbeddedHostState = 'idle' | 'starting' | 'running' | 'stopping' | '
  *   launch only while the user keeps "Keep available" on, and the child dies
  *   with the app (see beginShutdown).
  * - argv is built from validated fields only — never a shell string — and the
- *   host package spec is pinned, never `latest`.
+ *   host and its Node.js runtime ship inside the signed app; nothing is fetched at run time.
  * - The child inherits a sanitized environment (see local-helper-process) and
  *   its own state directory under the app user data.
  * - Server-side root approval still gates all dispatched work: a running host
@@ -107,7 +106,6 @@ class EmbeddedHostService {
         origin,
         stateDir,
         name: input.name?.trim() || hostname(),
-        packageSpec: embeddedHostPackageSpec(process.env, app.isPackaged),
         ...(process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE
           ? { hostingAuthFile: process.env.OVERLAY_DESKTOP_HOSTING_AUTH_FILE }
           : {})
@@ -123,7 +121,7 @@ class EmbeddedHostService {
     const configPath = this.savedLocalToolsConfig()
     if (!configPath) return this.getStatus()
     return this.launch({
-      argv: buildEmbeddedHostRunArgs({ configPath, packageSpec: embeddedHostPackageSpec(process.env, app.isPackaged) }),
+      argv: buildEmbeddedHostRunArgs({ configPath }),
       code: null,
       localTools: true
     })
@@ -135,10 +133,16 @@ class EmbeddedHostService {
     localTools: boolean
   }): Promise<EmbeddedHostStatus> {
     if (this.child) this.stopImmediately()
-    const npxPath = resolveNpxPath()
-    if (!npxPath) {
+    const runtime = resolveEmbeddedHostRuntime({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath()
+    })
+    if (!runtime) {
       throw new Error(
-        'Node.js (npx) was not found on this computer. Install Node.js 22 or newer, then try again.'
+        app.isPackaged
+          ? 'This copy of Overlay is missing the part that runs threads on this computer. Reinstall Overlay.'
+          : 'The agent host bundle is not built. Run `npm run build:agent-host`.'
       )
     }
     this.enrollmentCode = input.code
@@ -151,8 +155,8 @@ class EmbeddedHostService {
     this.broadcast()
 
     const child = spawn(
-      npxPath,
-      input.argv,
+      runtime.nodePath,
+      [runtime.cliPath, ...input.argv],
       {
         env: createLocalHelperEnvironment(),
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -160,7 +164,7 @@ class EmbeddedHostService {
       }
     )
     this.child = child
-    this.appendLog(`Starting embedded agent host (${input.argv[4]})…`)
+    this.appendLog('Starting embedded agent host…')
 
     child.stdout?.on('data', (chunk: Buffer) => this.appendLog(chunk.toString()))
     child.stderr?.on('data', (chunk: Buffer) => this.appendLog(chunk.toString()))

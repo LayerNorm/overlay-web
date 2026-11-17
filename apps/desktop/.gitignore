@@ -80,3 +80,6 @@ ParakeetServer/.build/*
 # Mobile app (separate repository)
 mobile/
 test-results/
+
+# Agent host bundle: built by scripts/build-agent-host-bundle.mjs
+agent-host-bundle/runtime/

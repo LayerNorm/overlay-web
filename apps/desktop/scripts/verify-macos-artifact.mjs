@@ -114,8 +114,13 @@ if (appBundle) {
   const packagedNativePaths = new Map([
     ['resources/ax-helper', 'resources/ax-helper'],
     ['whisperkit-bundle/whisperkit-cli', 'whisperkit/whisperkit-cli'],
-    ['parakeet-bundle/parakeet-cli', 'parakeet/parakeet-cli']
+    ['parakeet-bundle/parakeet-cli', 'parakeet/parakeet-cli'],
+    ['agent-host-bundle/runtime/node', 'agent-host/node']
   ])
+  const hostCli = 'agent-host/overlay-agent-host.mjs'
+  if (!fs.existsSync(path.join(appBundle, 'Contents', 'Resources', hostCli))) {
+    failures.push(`packaged agent host is missing: ${hostCli}`)
+  }
   for (const artifact of nativeManifest.artifacts ?? []) {
     const packagedRelative = packagedNativePaths.get(artifact.path)
     if (!packagedRelative) {
@@ -129,6 +134,9 @@ if (appBundle) {
     }
 
     const sourcePath = path.join(root, artifact.path)
+    if (artifact.fetched && !fs.existsSync(sourcePath)) {
+      failures.push(`fetched native artifact was not built: ${artifact.path}`)
+    }
     if (fs.existsSync(sourcePath)) {
       const sourceDigest = createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex')
       if (sourceDigest !== artifact.sha256) {
@@ -153,9 +161,11 @@ if (appBundle) {
           encoding: 'utf8',
           maxBuffer: 64 * 1024 * 1024
         })
-        if (/\/Users\/|\/var\/folders\//.test(strings)) {
-          failures.push(`${packagedRelative} contains a private workstation path`)
-        }
+        const privatePath = strings
+          .split('\n')
+          .filter((line) => /\/Users\/|\/var\/folders\//.test(line))
+          .some((line) => !(artifact.upstreamBuildPaths ?? []).some((prefix) => line.includes(prefix)))
+        if (privatePath) failures.push(`${packagedRelative} contains a private workstation path`)
       } catch (error) {
         failures.push(`failed to scan strings in ${packagedRelative}: ${error.message}`)
       }

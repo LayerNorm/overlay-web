@@ -17,6 +17,8 @@ const run = (command, args, env = process.env) =>
 const security = (args) => execFileSync('/usr/bin/security', args, { stdio: 'pipe' })
 try {
   run('npm', ['run', 'build'])
+  stage = 'bundle the agent host'
+  run('npm', ['run', 'build:agent-host'])
   const env = { ...process.env }
   if (env.CSC_LINK) {
     stage = 'prepare signing keychain'

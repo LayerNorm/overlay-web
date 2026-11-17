@@ -31,7 +31,21 @@ function packageUrl(name, version) {
   return `pkg:npm/${encodedName}@${encodeURIComponent(version)}`
 }
 
-const components = Object.entries(lock.packages ?? {})
+// The Agent Host bundle ships in the app with its own lockfile and Node.js.
+const bundleLock = JSON.parse(fs.readFileSync(path.join(root, 'agent-host-bundle/package-lock.json'), 'utf8'))
+const bundledNode = JSON.parse(fs.readFileSync(path.join(root, 'native-artifacts.json'), 'utf8')).artifacts.find(
+  (artifact) => artifact.path === 'agent-host-bundle/runtime/node'
+)
+const nodeVersion = /\/v(\d+\.\d+\.\d+)\//.exec(bundledNode.source)[1]
+const lockedEntries = [
+  ...Object.entries(lock.packages ?? {}),
+  ...Object.entries(bundleLock.packages ?? {}).map(([packagePath, entry]) => [
+    packagePath && `agent-host-bundle/${packagePath}`,
+    entry
+  ])
+]
+
+const components = lockedEntries
   .filter(([packagePath, entry]) => packagePath && entry?.version)
   .map(([packagePath, entry]) => {
     const name = entry.name || packageNameFromPath(packagePath)
@@ -58,6 +72,15 @@ const components = Object.entries(lock.packages ?? {})
       ]
     }
     return component
+  })
+  .concat({
+    type: 'application',
+    'bom-ref': 'agent-host-bundle/runtime/node',
+    name: 'node',
+    version: nodeVersion,
+    purl: `pkg:generic/node@${nodeVersion}?arch=arm64&os=darwin`,
+    externalReferences: [{ type: 'distribution', url: bundledNode.source }],
+    hashes: [{ alg: 'SHA-256', content: bundledNode.sha256 }]
   })
   .sort((left, right) => left['bom-ref'].localeCompare(right['bom-ref']))
 

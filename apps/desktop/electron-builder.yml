@@ -24,6 +24,8 @@ files:
   - '!parakeet-bundle/**/*'
   - '!ParakeetServer'
   - '!ParakeetServer/**/*'
+  - '!agent-host-bundle'
+  - '!agent-host-bundle/**/*'
   - '!scripts'
   - '!scripts/**/*'
 asarUnpack:
@@ -42,6 +44,11 @@ extraResources:
     to: parakeet
     filter:
       - '**/*'
+  - from: agent-host-bundle/runtime
+    to: agent-host
+    filter:
+      - '**/*'
+      - '!.bundle-stamp'
 mac:
   icon: resources/icon.png
   hardenedRuntime: true

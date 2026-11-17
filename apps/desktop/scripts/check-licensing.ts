@@ -33,10 +33,16 @@ const allowedLicenseIds = new Set([
   'Zlib'
 ])
 let audited = 0
-for (const [packagePath, metadata] of Object.entries<any>(readJson('package-lock.json').packages)) {
+// The app ships its own dependencies and the Agent Host bundle's.
+const lockedPackages = ['package-lock.json', 'agent-host-bundle/package-lock.json'].flatMap((lockfile) =>
+  Object.entries<any>(readJson(lockfile).packages)
+)
+for (const [packagePath, metadata] of lockedPackages) {
   if (
     !packagePath.startsWith('node_modules/') ||
     packagePath.startsWith('node_modules/@overlay/') ||
+    // Overlay's own Agent Host, AGPL like this app.
+    packagePath.startsWith('node_modules/@layernorm/') ||
     !metadata.version ||
     metadata.dev === true ||
     metadata.devOptional === true

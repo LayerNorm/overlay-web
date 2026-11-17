@@ -1,15 +1,22 @@
 import { existsSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 
 /**
- * Pure embedded-host configuration: package pin, validation, npx resolution,
- * and argv construction. Electron-free so unit tests can cover it directly.
+ * Pure embedded-host configuration: bundled runtime resolution, validation and
+ * argv construction. Electron-free so unit tests can cover it directly.
  *
- * Keep EMBEDDED_HOST_PACKAGE_SPEC in sync with OVERLAY_AGENT_HOST_PACKAGE_VERSION
- * in the web `src/server/agents/agent-enrollment-command.ts`.
+ * The host and the Node.js it runs on ship inside the app (see
+ * scripts/build-agent-host-bundle.mjs); nothing is installed or downloaded on
+ * the user's computer. agent-host-bundle/package.json pins the host version.
  */
-export const EMBEDDED_HOST_PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.5.0'
-export const EMBEDDED_HOST_NODE_SPEC = 'node@24'
+export interface EmbeddedHostRuntime {
+  /** The bundled Node.js binary. */
+  nodePath: string
+  /** The host's command-line entry, run by that binary. */
+  cliPath: string
+}
+
+const HOST_CLI = 'overlay-agent-host.mjs'
 
 export const ENROLLMENT_CODE_PATTERN = /^[A-Za-z0-9_-]{6,128}$/
 
@@ -26,56 +33,25 @@ export function isValidServerOrigin(value: string): boolean {
   }
 }
 
-const FALLBACK_NPX_DIRS = [
-  '/opt/homebrew/bin',
-  '/usr/local/bin',
-  '/opt/local/bin',
-  '/usr/bin',
-  '/bin'
-]
-
-/** npx resolution without a shell: explicit PATH scan plus fixed macOS locations. */
-export function resolveNpxPath(
+/**
+ * The runtime directory is `agent-host` in a packaged app's resources and
+ * `agent-host-bundle/runtime` in a checkout (built by `npm run build:agent-host`).
+ * An unpackaged development build may run another host checkout's `cli.mjs` for QA.
+ */
+export function resolveEmbeddedHostRuntime(
+  input: { packaged: boolean; resourcesPath: string; appPath: string },
   env: NodeJS.ProcessEnv = process.env,
   exists: (path: string) => boolean = existsSync
-): string | null {
-  const seen = new Set<string>()
-  const candidates: string[] = []
-  for (const directory of (env.PATH ?? '').split(delimiter)) {
-    const trimmed = directory.trim()
-    if (trimmed && !seen.has(trimmed)) {
-      seen.add(trimmed)
-      candidates.push(join(trimmed, 'npx'))
-    }
+): EmbeddedHostRuntime | null {
+  const directory = input.packaged
+    ? join(input.resourcesPath, 'agent-host')
+    : join(input.appPath, 'agent-host-bundle', 'runtime')
+  const override = env.OVERLAY_DESKTOP_DEV_HOST_CLI?.trim()
+  const runtime = {
+    nodePath: join(directory, 'node'),
+    cliPath: !input.packaged && override && /^\/[^\0\n]+\/cli\.mjs$/.test(override) ? override : join(directory, HOST_CLI)
   }
-  for (const directory of FALLBACK_NPX_DIRS) {
-    if (!seen.has(directory)) {
-      seen.add(directory)
-      candidates.push(join(directory, 'npx'))
-    }
-  }
-  return (
-    candidates.find((candidate) => {
-      try {
-        return exists(candidate)
-      } catch {
-        return false
-      }
-    }) ?? null
-  )
-}
-
-/**
- * Unpackaged development builds may run a locally packed host tarball for QA.
- * Packaged builds always use the pinned registry release.
- */
-export function embeddedHostPackageSpec(
-  env: NodeJS.ProcessEnv = process.env,
-  packaged = true
-): string {
-  const override = env.OVERLAY_DESKTOP_DEV_HOST_PACKAGE?.trim()
-  if (!packaged && override && /^\/[^\0\n]+\.tgz$/.test(override)) return override
-  return EMBEDDED_HOST_PACKAGE_SPEC
+  return exists(runtime.nodePath) && exists(runtime.cliPath) ? runtime : null
 }
 
 /** Connects this computer with local tools only; the host never starts a third-party harness. */
@@ -85,15 +61,8 @@ export function buildEmbeddedHostArgs(args: {
   stateDir: string
   name: string
   hostingAuthFile?: string
-  packageSpec?: string
 }): string[] {
   return [
-    '--yes',
-    '--package',
-    EMBEDDED_HOST_NODE_SPEC,
-    '--package',
-    args.packageSpec ?? EMBEDDED_HOST_PACKAGE_SPEC,
-    'overlay-agent-host',
     'connect',
     args.code,
     '--server',
@@ -111,18 +80,8 @@ export function buildEmbeddedHostArgs(args: {
 }
 
 /** Restarts an already connected host from its saved configuration (no enrollment code). */
-export function buildEmbeddedHostRunArgs(args: { configPath: string; packageSpec?: string }): string[] {
-  return [
-    '--yes',
-    '--package',
-    EMBEDDED_HOST_NODE_SPEC,
-    '--package',
-    args.packageSpec ?? EMBEDDED_HOST_PACKAGE_SPEC,
-    'overlay-agent-host',
-    'run',
-    '--config',
-    args.configPath
-  ]
+export function buildEmbeddedHostRunArgs(args: { configPath: string }): string[] {
+  return ['run', '--config', args.configPath]
 }
 
 /** The phrase the host prints while it waits for approval, so Overlay can match it to its enrollment. */
