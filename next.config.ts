@@ -82,18 +82,11 @@ const nextConfig: NextConfig = {
     },
   },
   async redirects() {
-    // The download page offers the signed desktop build from GitHub Releases.
-    // Deployments without OVERLAY_DESKTOP_DOWNLOADS_ENABLED=1 send it to /home.
-    const downloadRedirects =
-      process.env.OVERLAY_DESKTOP_DOWNLOADS_ENABLED?.trim() === "1"
-        ? []
-        : [{ source: "/download", destination: "/home", permanent: false }];
-    if (!mintlifyDocsOrigin) return downloadRedirects;
+    if (!mintlifyDocsOrigin) return [];
 
     const docsHost = [{ type: "host" as const, value: "docs.getoverlay.io" }];
 
     return [
-      ...downloadRedirects,
       {
         source: "/docs",
         has: docsHost,
