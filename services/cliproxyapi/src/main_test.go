@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +65,74 @@ func TestBridgeRequiresServiceBearer(t *testing.T) {
 	}
 	if strings.Contains(response.Body.String(), strings.Repeat("s", 8)) {
 		t.Fatal("response leaked service secret")
+	}
+}
+
+func TestModelRequestsWaitForTheFirstCatalogRefresh(t *testing.T) {
+	ready := make(chan struct{})
+	handler := &bridge{secret: strings.Repeat("s", 32), catalogReady: ready}
+	done := make(chan int, 1)
+	go func() {
+		request := httptest.NewRequest(http.MethodPost, "/internal/v1/models", strings.NewReader(`{}`))
+		request.Header.Set("Authorization", "Bearer "+strings.Repeat("s", 32))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		done <- response.Code
+	}()
+	select {
+	case <-done:
+		t.Fatal("model request was answered before the catalog refresh settled")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(ready)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("model request did not continue after the catalog refresh settled")
+	}
+}
+
+func TestPublishedCatalogReplacesTheEmbeddedOne(t *testing.T) {
+	embeddedDir, err := filepath.Abs("../../internal/registry/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	embeddedSources := registry.CatalogSources{
+		Catalog:      filepath.Join(embeddedDir, "models.json"),
+		CodexCatalog: filepath.Join(embeddedDir, "codex_client_models.json"),
+		DevinCatalog: filepath.Join(embeddedDir, "devin_models.json"),
+	}
+	embedded, err := os.ReadFile(embeddedSources.Catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published map[string]any
+	if err := json.Unmarshal(embedded, &published); err != nil {
+		t.Fatal(err)
+	}
+	published["claude"] = append(published["claude"].([]any), map[string]any{"id": "claude-published-later", "display_name": "Published Later"})
+	publishedBytes, err := json.Marshal(published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishedSources := embeddedSources
+	publishedSources.Catalog = filepath.Join(t.TempDir(), "models.json")
+	if err := os.WriteFile(publishedSources.Catalog, publishedBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := providerCatalogModel("claude", "", "claude-published-later"); err == nil {
+		t.Fatal("embedded catalog already lists the later model")
+	}
+	t.Cleanup(func() {
+		if _, err := registry.RefreshModelCatalogsWithPolicy(context.Background(), embeddedSources, false); err != nil {
+			t.Fatalf("restoring the embedded catalogs failed: %v", err)
+		}
+	})
+	if _, err := registry.RefreshModelCatalogsWithPolicy(context.Background(), publishedSources, false); err != nil {
+		t.Fatalf("catalog refresh failed: %v", err)
+	}
+	if _, err := providerCatalogModel("claude", "", "claude-published-later"); err != nil {
+		t.Fatalf("refreshed catalog does not list the later model: %v", err)
 	}
 }
 

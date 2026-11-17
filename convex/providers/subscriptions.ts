@@ -720,7 +720,13 @@ export const commitActive = mutation({
     const discovered = new Set(args.discoveredModelIds)
     const retainedSelection = connection.discoveredAt === undefined
       ? args.discoveredModelIds
-      : connection.enabledModelIds.filter((modelId) => discovered.has(modelId))
+      : [
+          ...connection.enabledModelIds.filter((modelId) => discovered.has(modelId)),
+          ...args.discoveredModelIds.filter((modelId) =>
+            !connection.enabledModelIds.includes(modelId) &&
+            !isDiscovered(connection.discoveredModelsJson, modelId)
+          ),
+        ]
     const cleanupRefs = dedupeRefs(
       ...state.cleanupRefs,
       state.pendingStateRef,

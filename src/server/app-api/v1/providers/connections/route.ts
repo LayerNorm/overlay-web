@@ -161,10 +161,11 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
     const repository = getOverlayServerContext().appData.repositories.providerConnections
-    const connections = await repository.listPublic({
-      userId: auth.userId,
-      workspaceId: context.workspace.workspace.id,
-    })
+    const scope = { userId: auth.userId, workspaceId: context.workspace.workspace.id }
+    let connections = await repository.listPublic(scope)
+    if (await createSubscriptionService().refreshStaleCatalogs(auth.userId, connections)) {
+      connections = await repository.listPublic(scope)
+    }
     const seededConnections = await ensureDefaultGatewayConnection(
       auth.userId,
       repository,
