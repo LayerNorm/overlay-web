@@ -688,10 +688,11 @@ The liveness status uses only the first command line, capped at 96 Unicode code 
 ## Queue and steer while a response runs
 
 Every chat, agent-thread and automation-thread composer passes `queue` controls
-to the shared `ChatComposer`. While a response runs, Enter queues the draft and
-Cmd/Ctrl+Enter steers. The submit button becomes a queue button (`ListEnd`)
-when the draft has text and stays Stop when it is empty. A small "↵ queue · ⌘↵ steer"
-hint sits in the footer. Queued messages render in `ComposerQueueTray` directly
+to the shared `ChatComposer`. While a response runs, Enter steers the draft and
+Cmd/Ctrl+Enter queues it. The submit button becomes a steer button (`ArrowUp`)
+when the draft has text and stays Stop when it is empty. A small "↵ steer · ⌘↵ queue"
+hint sits in the footer, drawn as borderless Lucide key caps (`CornerDownLeft`,
+`Command`; "Ctrl" off Apple platforms). Queued messages render in `ComposerQueueTray` directly
 above the composer, with Steer now (Send now when idle), Edit and Remove on
 each row. Edit is disabled while the composer has text, so it never overwrites
 a draft.

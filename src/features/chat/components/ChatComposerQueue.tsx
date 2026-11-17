@@ -6,7 +6,7 @@ import type { QueuedMessage } from '@/shared/chat/conversation-queue'
 import { DelayedTooltip } from './DelayedTooltip'
 
 export type ChatComposerQueueControls = {
-  /** A response is running, so Enter queues and Cmd/Ctrl+Enter steers. */
+  /** A response is running, so Enter steers and Cmd/Ctrl+Enter queues. */
   running: boolean
   items: QueuedMessage[]
   paused: boolean
@@ -17,7 +17,7 @@ export type ChatComposerQueueControls = {
   onRemoveItem: (id: string) => void
 }
 
-export function steerShortcutLabel(): string {
+export function queueShortcutLabel(): string {
   if (typeof navigator === 'undefined') return 'Ctrl'
   return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl'
 }
