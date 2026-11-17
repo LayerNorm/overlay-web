@@ -54,3 +54,11 @@ the parent to complete them with evidence. Stop cancels active same-user named
 descendants across their own conversations, deepest-first, and returns each
 delivery's workflow cleanup descriptor. If an ancestor already terminated,
 its subtree counts are not released a second time.
+
+While a parent joins a child inside a tool call, its harness status stays
+`running` and its delivery run shows what it waits on (`waiting_for_children`,
+or a descendant's input or approval wait). The once-a-minute wait renewal
+(`refreshNativeHarnessAccess` in renewal mode) therefore accepts any waiting
+delivery status and relies on the owner checks (workflow, harness run,
+identity). Requiring the two statuses to match stopped every ask that lasted
+over a minute.
