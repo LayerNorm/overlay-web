@@ -73,3 +73,11 @@ unavailable until an explicit collaboration-grant flow exists. The restriction
 is recomputed from the persisted surface root and current agent directory at
 discovery, native execution refresh, and dispatch; ordinary non-shared web
 access is unchanged.
+
+While a parent joins a child inside a tool call, its harness status stays
+`running` and its delivery run shows what it waits on (`waiting_for_children`,
+or a descendant's input or approval wait). The once-a-minute wait renewal
+(`refreshNativeHarnessAccess` in renewal mode) therefore accepts any waiting
+delivery status and relies on the owner checks (workflow, harness run,
+identity). Requiring the two statuses to match stopped every ask that lasted
+over a minute.
