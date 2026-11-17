@@ -159,9 +159,10 @@ function assertDeliveryOwnership(
     || agentRun.runner !== 'workflow' || agentRun.executionEngine !== 'overlay_harness' || agentRun.mode === 'room'
     || (agentRun.status !== 'running' && !(state.parentRunId
       && ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources'].includes(agentRun.status))
+      // The run shows what it is waiting on, which can differ from the harness status:
+      // a child joined inside a tool call leaves the harness running.
       && !(renewalMode && state.runId === root.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
-        && agentRun.status === state.status))) {
+        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(agentRun.status)))) {
     throw new FatalError('Personal harness resource access has changed.')
   }
   const deliveryOwner = root.workflowRunId ?? root.handoffWorkflowRunId

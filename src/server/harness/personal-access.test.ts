@@ -117,6 +117,16 @@ test('child execution may share a waiting root delivery run while roots still re
   }
 })
 
+test('a run joining a child inside a tool call survives the wait renewal', async () => {
+  // The harness stays running during the tool call while the run shows what it waits on.
+  for (const status of ['waiting_for_children', 'waiting_for_input'] as const) {
+    mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status })
+    await refreshPersonalHarnessAccess(access, context, undefined, { renewalMode: true })
+  }
+  mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status: 'failed' })
+  await expect(refreshPersonalHarnessAccess(access, context, undefined, { renewalMode: true })).rejects.toThrow(/resource access/)
+})
+
 test('checks current model policy and BYOK connection authority instead of trusting old entitlements', async () => {
   mocks.models.mockResolvedValueOnce({ chat: new Set() })
   await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/model.*no longer/)

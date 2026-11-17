@@ -302,6 +302,21 @@ test('children can execute while their delivery waits, but cannot borrow a sibli
   await expect(refreshNativeHarnessAccess(childAccess, context)).rejects.toThrow(/authorized/)
 })
 
+test('a run joining a child inside a tool call survives the wait renewal', async () => {
+  // The harness stays running during the tool call while the delivery shows what it waits on.
+  for (const status of ['waiting_for_children', 'waiting_for_input', 'waiting_for_approval']) {
+    mocks.run.mockResolvedValue({ ...delivery(), status })
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).resolves.toMatchObject({ paid: true })
+  }
+  mocks.state.mockResolvedValue({ ...snapshot(), status: 'waiting_for_children' })
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_input' })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).resolves.toMatchObject({ paid: true })
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_children', workflowRunId: 'other-workflow' })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).rejects.toThrow(/execution changed/)
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'failed' })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).rejects.toThrow(/execution changed/)
+})
+
 test('BYOK ownership is checked again for the selected agent model', async () => {
   const modelId = 'byok/connection/model'
   mocks.room.mockResolvedValue({ ...room(), directory: { agents: [{ ...room().directory.agents[0], modelId }] } })
