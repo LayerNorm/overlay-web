@@ -1,6 +1,6 @@
 # Slack and Teams sync
 
-Status: Proposal. No production code has started. Phase 0 (platform approvals) is the first step and has no owner yet.
+Status: In progress. The foundation (data model, Slack live sync into Overlay, link management API) is in review; nothing is merged, deployed or accepted yet.
 
 Overlay becomes the hub of a customer's chat: chosen Slack channels and Microsoft Teams channels stay in sync with Overlay channels in both directions, so a team can start using Overlay without everyone leaving Slack or Teams on the same day. This plan builds that on official platform APIs and our existing Convex backend.
 
@@ -11,7 +11,7 @@ Mockup: [mockups/slack-teams-sync.html](mockups/slack-teams-sync.html), built fr
 | Phase | What ships | State |
 | --- | --- | --- |
 | 0 | Slack and Microsoft app registrations, Slack Marketplace submission | Not started |
-| 1 | Data model and Slack live sync into Overlay | Not started |
+| 1 | Data model and Slack live sync into Overlay | In review (foundation PR); the settings UI lands separately |
 | 2 | Rate-limited Slack history backfill and gap repair | Not started |
 | 3 | Replying from Overlay to Slack as yourself | Not started |
 | 4 | Teams live sync and history into Overlay | Not started |
@@ -23,6 +23,7 @@ Nothing above is merged, deployed or accepted.
 
 ## Decisions
 
+0. **Reuse the existing Overlay Slack app.** Agents in Slack already run on a multi-workspace Slack app whose installs, encrypted bot tokens and Events API webhook (`/api/v1/webhooks/slack`) are in production, and it already has the history, channel, user and reaction scopes sync needs. Sync adds two bot events (`reaction_added`, `reaction_removed`), a `purpose=sync` OAuth state for workspace-level connects, and later user scopes for replying. This means one Marketplace submission instead of two, and no new Slack secrets. Live Slack events are therefore received by the existing Next.js webhook and applied with `after()`, rather than by a new Convex HTTP route and raw-event table.
 1. **Official APIs only.** We use a Slack Marketplace app, a Teams app installed by the customer's admin, and each member's own OAuth sign-in. We do not use browser session tokens (Slack `xoxc-` tokens and `d` cookies) the way Beeper's bridge does. Slack's May 2025 API terms make the Marketplace the only allowed commercial distribution channel, including "templated custom app" instructions, and enterprise security reviews reject servers holding employees' session cookies.
 2. **Hub and spoke, one link per channel.** Each Slack or Teams channel links to exactly one Overlay channel, and an Overlay channel links to at most one external channel. We never relay Slack directly to Teams. Apps cannot post as people who have not connected an account, and Teams apps cannot post in shared or private channels, so a direct relay would produce bot-authored copies and echo loops. Ando made the same choice.
 3. **Store once per workspace, never per user.** A channel's messages arrive once through the workspace-level install and are stored once, however many Overlay members read them. Members' own tokens are used only to send as themselves and, if they opt in, for their DMs.
@@ -139,7 +140,7 @@ Risks at scale:
 
 ### Phase 0: accounts and approvals
 
-- Register the Overlay Sync Slack app (events, bot scopes, user scopes for posting and opt-in DMs) and a multi-tenant Microsoft Entra app with a Teams app package that requests resource-specific consent.
+- Add the sync events and user scopes to the existing Overlay Slack app (see `internal/develop/surfaces-slack-app.md`), and register a multi-tenant Microsoft Entra app with a Teams app package that requests resource-specific consent.
 - Run it on 10 active workspaces (design partners and internal), then submit to the Slack Marketplace. Until approval, history runs at the slow budget.
 - Store the client secrets, signing secret and Graph notification certificate in Vercel and Convex environment settings for Preview and Production. Never in the repository.
 

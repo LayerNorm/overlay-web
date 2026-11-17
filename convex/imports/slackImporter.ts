@@ -27,7 +27,7 @@ async function requireActorForSlack(
   return { principalId: principal.principalId, membership }
 }
 
-function slugifyChannel(name: string): string {
+export function slugifyChannel(name: string): string {
   return name
     .toLowerCase()
     .trim()
@@ -43,7 +43,7 @@ function slugifyChannel(name: string): string {
  * different live conversation. Prevents imports from hard-failing on a slug
  * clash — a common case for DMs that share a generic title.
  */
-async function findUniqueSlug(
+export async function findUniqueSlug(
   ctx: { db: MutationCtx['db'] },
   workspaceId: string,
   base: string,

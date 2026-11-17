@@ -71,6 +71,8 @@ settings:
       - message.im
       - message.mpim
       - member_joined_channel
+      - reaction_added          # channel sync
+      - reaction_removed        # channel sync
       - app_home_opened
       - app_context_changed
       - agent_session_stopped
@@ -105,6 +107,14 @@ settings:
   "invite needed" and shows this hint).
 - **`interactivity`** — enabled now so native feedback buttons work and
   approval cards are an additive change later.
+
+## Channel sync
+
+The same app powers Slack channel sync (internal/plans/SLACK_TEAMS_SYNC_PLAN.md).
+An owner or admin connects from Settings → Workspace → Import & sync, which
+runs this OAuth flow with `purpose=sync`. Message, edit, delete and reaction
+events from linked channels are applied by `src/server/sync/slack/`. Private
+channels only sync once Overlay has been invited to them.
 
 ## Several agents in one channel
 

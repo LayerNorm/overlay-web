@@ -8,6 +8,8 @@ import { logger } from '@/server/observability/logger'
 import { getSlackAdapter, slackConfigured } from '@/server/surfaces/chat'
 import { openSlackConnectState, slackOAuthRedirectUri } from '@/server/surfaces/slack-oauth'
 import { SurfaceServiceError } from '@/server/surfaces/SurfaceService'
+import { lazyConvex as convex } from '@/server/database/lazy-convex'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 
 /**
  * Slack OAuth redirect target. Like the MCP callback this bypasses
@@ -70,15 +72,19 @@ export async function GET(request: NextRequest) {
       state.userId,
       state.workspaceId,
     )
-    await serverContext.surfaceService.requireBindableAgent({
-      actor: {
-        userId: state.userId,
-        principalId: access.principal.id,
-        workspaceRole: access.membership.role,
-      },
-      workspaceId: access.workspace.id,
-      agentId: state.agentId,
-    })
+    if (state.purpose === 'sync') {
+      if (access.membership.role !== 'owner' && access.membership.role !== 'admin') return fail('forbidden')
+    } else {
+      await serverContext.surfaceService.requireBindableAgent({
+        actor: {
+          userId: state.userId,
+          principalId: access.principal.id,
+          workspaceRole: access.membership.role,
+        },
+        workspaceId: access.workspace.id,
+        agentId: state.agentId!,
+      })
+    }
 
     const result = await (await getSlackAdapter()).handleOAuthCallback(request, {
       redirectUri: slackOAuthRedirectUri(getBaseUrl()),
@@ -93,12 +99,22 @@ export async function GET(request: NextRequest) {
       botUserId: result.installation.botUserId ?? null,
       installedByUserId: state.userId,
     })
+    if (state.purpose === 'sync') {
+      await convex.mutation('sync/links:connect', {
+        serverSecret: getInternalApiSecret(),
+        actorUserId: state.userId,
+        workspaceId: state.workspaceId,
+        provider: 'slack',
+        externalOrgId: result.teamId,
+        ...(result.installation.teamName ? { externalOrgName: result.installation.teamName } : {}),
+      }, { throwOnError: true })
+    }
     await serverContext.auditService.record({
       action: 'surface.slack.connected',
       actorType: 'user',
       actorUserId: state.userId,
       ipAddress: getClientIp(request),
-      metadata: { agentId: state.agentId, teamId: result.teamId },
+      metadata: { ...(state.agentId ? { agentId: state.agentId } : { purpose: 'sync' }), teamId: result.teamId },
       outcome: 'success',
       resourceId: state.workspaceId,
       resourceType: 'workspace',
@@ -109,13 +125,14 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.redirect(
-      surfaceUrl(returnTo, { surfaceConnected: 'slack', agentId: state.agentId }),
+      surfaceUrl(returnTo, state.agentId ? { surfaceConnected: 'slack', agentId: state.agentId } : { syncConnected: 'slack' }),
       { headers: NO_STORE },
     )
   } catch (error) {
     if (error instanceof SurfaceServiceError) {
       return fail(error.code === 'conflict' ? 'team_already_connected' : error.code)
     }
+    if (error instanceof Error && error.message.includes('SYNC_ORG_CONNECTED_ELSEWHERE')) return fail('team_already_connected')
     logger.error('[surfaces] Slack OAuth callback failed', error)
     return fail('exchange_failed')
   }
