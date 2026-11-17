@@ -35,9 +35,6 @@ import {
 } from './service-helpers'
 
 const disconnectLeasePollMs = 500
-const catalogMaxAgeMs = 6 * 60 * 60_000
-const catalogRetryMs = 10 * 60_000
-const catalogAttempts = new Map<string, number>()
 
 export class SubscriptionService {
   private readonly bridge: SubscriptionBridgeClient
@@ -240,39 +237,6 @@ export class SubscriptionService {
     }
   }
 
-  async refreshStaleCatalogs(
-    userId: string,
-    connections: Array<{
-      _id: string
-      authKind?: string
-      subscriptionProvider?: string
-      canManage?: boolean
-      status: string
-      discoveredAt?: number
-    }>,
-    now = Date.now(),
-  ): Promise<boolean> {
-    const stale = connections.filter((connection) =>
-      connection.authKind === 'subscription' &&
-      connection.canManage !== false &&
-      connection.status === 'active' &&
-      this.isEnabled(connection.subscriptionProvider) &&
-      (connection.discoveredAt ?? 0) <= now - catalogMaxAgeMs &&
-      (catalogAttempts.get(connection._id) ?? 0) <= now - catalogRetryMs
-    )
-    const results = await Promise.all(stale.map(async (connection) => {
-      catalogAttempts.set(connection._id, now)
-      try {
-        const state = await this.repository.get({ userId, connectionId: connection._id })
-        if (state?.phase !== 'active' || !state.credentialRef) return false
-        return (await this.discover(userId, connection._id)).status === 'connected'
-      } catch (_error) {
-        return false
-      }
-    }))
-    return results.includes(true)
-  }
-
   async disconnect(userId: string, connectionId: string): Promise<void> {
     const refs = await this.repository.disconnect({ userId, connectionId })
     // A sign-in check or refresh that was already running keeps its lease. It
@@ -357,7 +321,7 @@ export class SubscriptionService {
     await this.repository.forgetAllByUser(userId)
   }
 
-  private async discover(userId: string, connectionId: string): Promise<SubscriptionResult> {
+  async discover(userId: string, connectionId: string): Promise<SubscriptionResult> {
     const leaseToken = randomUUID()
     const lease = await this.repository.acquireDiscovery({ userId, connectionId, leaseToken })
     const fenced = {

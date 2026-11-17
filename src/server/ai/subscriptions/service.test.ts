@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { SubscriptionService } from './service'
+import { refreshStaleSubscriptionCatalogs } from './stale-catalogs'
 import type { SubscriptionRepository } from './repository'
 import type { ByokCredentialContext, ByokCredentialStore } from '@/server/ai/gateway/byok-credential-store'
 import { SubscriptionBridgeClient, type BridgeCredential } from './bridge-client'
@@ -1228,11 +1229,11 @@ test('stale catalogs are rediscovered once for owned active subscriptions only',
     { ...row, _id: 'stale-key', authKind: 'api_key' },
   ]
 
-  assert.equal(await service.refreshStaleCatalogs('owner-1', connections, now), true)
+  assert.equal(await refreshStaleSubscriptionCatalogs(service, 'owner-1', connections, now), true)
   assert.deepEqual(discoveries, ['/internal/v1/models'])
   assert.deepEqual(repository.state?.discoveredModelIds, ['devin-new'])
 
-  assert.equal(await service.refreshStaleCatalogs('owner-1', connections, now + 60_000), false)
+  assert.equal(await refreshStaleSubscriptionCatalogs(service, 'owner-1', connections, now + 60_000), false)
   assert.equal(discoveries.length, 1)
 })
 

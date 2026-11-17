@@ -20,6 +20,7 @@ import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 import { parseDiscoveredModels } from '@/shared/ai/gateway/byok-model-conversion'
 import { createSubscriptionService } from '@/server/ai/subscriptions/service'
+import { refreshStaleSubscriptionCatalogs } from '@/server/ai/subscriptions/stale-catalogs'
 
 const MAX_CONNECTIONS_PER_USER = 20
 const MAX_DISPLAY_NAME_LENGTH = 80
@@ -163,7 +164,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const repository = getOverlayServerContext().appData.repositories.providerConnections
     const scope = { userId: auth.userId, workspaceId: context.workspace.workspace.id }
     let connections = await repository.listPublic(scope)
-    if (await createSubscriptionService().refreshStaleCatalogs(auth.userId, connections)) {
+    if (await refreshStaleSubscriptionCatalogs(createSubscriptionService(), auth.userId, connections)) {
       connections = await repository.listPublic(scope)
     }
     const seededConnections = await ensureDefaultGatewayConnection(
