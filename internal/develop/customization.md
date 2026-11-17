@@ -186,7 +186,7 @@ lifecycle anchors.
 
 All ordinary full-page product destinations use the shared app shell. This includes
 account settings, sign-in, sign-up, password recovery, mobile authentication
-completion, the desktop download page (redirected to `/home` while `OVERLAY_DESKTOP_DOWNLOADS_ENABLED` is off), and legal pages. `/account` is a compatibility URL
+completion, the desktop download page (it offers the signed build only while `OVERLAY_DESKTOP_DOWNLOADS_ENABLED` is on, and the source repository otherwise), and legal pages. `/account` is a compatibility URL
 that redirects to `/app/settings?section=account` so the client receives the
 canonical settings section instead of falling back to General.
 
