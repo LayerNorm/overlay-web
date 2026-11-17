@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
-import { otherParticipantTypes } from './directMessages'
+import { otherParticipantPrincipalIds, otherParticipantTypes } from './directMessages'
 
 /** Upper bound on one person's active room memberships read per call; far above any real sidebar. */
 const MAX_PARTICIPATIONS = 5000
@@ -52,6 +52,9 @@ export const list = query({
       scope: conversation.scope,
       workspaceId,
       otherParticipantTypes: await otherParticipantTypes(ctx, conversation._id, viewer.principal.principalId),
+      ...(conversation.conversationType === 'dm'
+        ? { otherParticipantPrincipalIds: await otherParticipantPrincipalIds(ctx, conversation._id, viewer.principal.principalId) }
+        : {}),
       ...(conversation.externalPlatform ? { externalPlatform: conversation.externalPlatform } : {}),
     })))
     return { rooms: page, hasMore: rooms.length > pageSize }

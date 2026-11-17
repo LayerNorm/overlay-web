@@ -135,6 +135,8 @@ export function applySettingsPatch(settings: AppSettings, patch: Partial<AppSett
     modelOrder: patch.modelOrder
       ? [...patch.modelOrder]
       : [...settings.modelOrder],
+    sidebarPinnedPageIds: [...(patch.sidebarPinnedPageIds ?? settings.sidebarPinnedPageIds)],
+    sidebarMorePageIds: [...(patch.sidebarMorePageIds ?? settings.sidebarMorePageIds)],
   }
 }
 

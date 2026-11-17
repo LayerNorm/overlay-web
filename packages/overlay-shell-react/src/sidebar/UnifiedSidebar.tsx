@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import { Bell, ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
+import { Bell, ChevronRight, Ellipsis, Loader2, PanelLeft, Pin, Search, SlidersHorizontal } from 'lucide-react'
 import {
   Button,
   PanelResizeHandle,
@@ -14,6 +14,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -27,6 +28,7 @@ import type { InlineNavItem, PanelScope, PrimaryRailItem, SecondaryPanelNav } fr
 import { publishPageSubviews } from './pageSubviewStore'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { PageSections, badgeLabel } from './PageSections'
+import { CustomizeSidebarDialog, orderSidebarItems, type SidebarCustomization } from './CustomizeSidebarDialog'
 
 type MoreGroup = { label?: string; ids: readonly string[] }
 type MoreItemGroup = { label?: string; items: readonly PrimaryRailItem[] }
@@ -54,7 +56,7 @@ const TAB_PANEL_KINDS = new Set(['work', 'files', 'notes', 'tools'])
 const MORE_CLOSE_DELAY_MS = 150
 
 
-export function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: boolean }) {
+export function NavRow({ item, collapsed, action }: { item: PrimaryRailItem; collapsed: boolean; action?: ReactNode }) {
   const { Link } = useShellAdapter()
   const Icon = item.pending ? Loader2 : item.icon
   const content = (
@@ -93,13 +95,24 @@ export function NavRow({ item, collapsed }: { item: PrimaryRailItem; collapsed: 
         </SidebarMenuButton>
       )}
       {item.badgeCount && !collapsed ? <SidebarMenuBadge>{badgeLabel(item.badgeCount)}</SidebarMenuBadge> : null}
+      {action}
     </SidebarMenuItem>
   )
 }
 
-/** More pages. Opens on hover with a short close delay; click, Enter and touch still open it. */
-export function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItemGroup>; collapsed: boolean }) {
+/**
+ * More pages. Opens on hover with a short close delay; click, Enter and touch still open it. With `customization`,
+ * each row can be pinned to the sidebar and the menu ends with Customize.
+ */
+export function MoreMenu({ groups, collapsed, items, customization }: {
+  groups: ReadonlyArray<MoreItemGroup>
+  collapsed: boolean
+  /** Every page, for the Customize dialog. */
+  items?: readonly PrimaryRailItem[]
+  customization?: SidebarCustomization
+}) {
   const [open, setOpen] = useState(false)
+  const [customizing, setCustomizing] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A click right after hover opened the menu should keep it open, not toggle it shut.
   const openedByHover = useRef(false)
@@ -118,7 +131,7 @@ export function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItem
     setOpen(next)
   }
   useEffect(() => cancelClose, [])
-  if (groups.length === 0) return null
+  if (groups.length === 0 && !customization) return null
   const activeItem = groups.flatMap((group) => group.items).find((item) => item.active)
   const label = 'More'
   const hoverOpen = (event: React.PointerEvent) => {
@@ -165,7 +178,7 @@ export function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItem
           side="right"
           align="start"
           sideOffset={8}
-          className="w-48 p-1"
+          className={customization ? 'w-52 p-1' : 'w-48 p-1'}
           onPointerEnter={hoverOpen}
           onPointerLeave={hoverClose}
           onOpenAutoFocus={(event) => { if (openedByHover.current) event.preventDefault() }}
@@ -188,13 +201,37 @@ export function MoreMenu({ groups, collapsed }: { groups: ReadonlyArray<MoreItem
                     key={item.id}
                     item={{ ...item, onSelect: () => { changeOpen(false); item.onSelect() } }}
                     collapsed={false}
+                    action={customization ? (
+                      <SidebarMenuAction
+                        showOnHover
+                        title="Pin to sidebar"
+                        aria-label={`Pin ${item.label} to sidebar`}
+                        className="right-1.5"
+                        onClick={() => customization.onMove(item.id, 'pinned', customization.pinned.length)}
+                      >
+                        <Pin aria-hidden />
+                      </SidebarMenuAction>
+                    ) : undefined}
                   />
                 ))}
               </Fragment>
             ))}
+            {customization ? (
+              <>
+                {groups.length === 0 ? <li className="px-3 py-2 text-xs text-(--muted-light)">Every page is pinned to the sidebar.</li> : null}
+                <li role="separator" className="-mx-1 my-1 h-px bg-(--border)" />
+                <SidebarMenuItem>
+                  <SidebarMenuButton size="lg" className="text-(--muted) [&>svg]:mx-1" onClick={() => { changeOpen(false); setCustomizing(true) }}>
+                    <SlidersHorizontal aria-hidden />
+                    <span>Customize</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </>
+            ) : null}
           </SidebarMenu>
         </PopoverContent>
       </Popover>
+      {customization && items ? <CustomizeSidebarDialog items={items} customization={customization} open={customizing} onOpenChange={setCustomizing} /> : null}
     </SidebarMenuItem>
   )
 }
@@ -283,6 +320,8 @@ export interface UnifiedSidebarProps {
   /** List More pages as plain rows (the phone drawer has no room for a side menu). */
   inlineMore?: boolean
   moreGroups?: ReadonlyArray<{ label?: string; ids: readonly string[] }>
+  /** The person's own page arrangement. It replaces `moreGroups` and adds pinning and Customize to More. */
+  customization?: SidebarCustomization
   settingsGroups?: ReadonlyArray<{ label: string; ids: readonly string[] }>
   /** Owns the header tabs; a second copy (the phone drawer) must not clear them when it closes. */
   publishSubviews?: boolean
@@ -387,6 +426,7 @@ export function UnifiedSidebar({
   resizable = false,
   inlineMore = false,
   moreGroups = DEFAULT_MORE_GROUPS,
+  customization,
   settingsGroups,
   publishSubviews = true,
   children,
@@ -397,9 +437,12 @@ export function UnifiedSidebar({
   const [resizing, setResizing] = useState(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const settingsBack = items.find((item) => item.id === 'settings-close')
-  const groupedMoreItems = groupMoreItems(items, moreGroups)
+  const groupedMoreItems = groupMoreItems(items, customization ? [{ ids: customization.more }] : moreGroups)
   const moreItemIds = new Set(groupedMoreItems.flatMap((group) => group.items.map((item) => item.id)))
-  const mainItems = items.filter((item) => !moreItemIds.has(item.id))
+  const mainItems = customization
+    ? [...items.filter((item) => item.id === 'settings-close'), ...orderSidebarItems(items, customization.pinned)]
+    : items.filter((item) => !moreItemIds.has(item.id))
+  const inlineItems = customization ? [...mainItems, ...orderSidebarItems(items, customization.more)] : items
   const scopedNav = panelKind && panelKind !== 'settings' ? panelNav : undefined
   const rows = scopeChildren(scopedNav, scope)
   const tabsPage = Boolean(panelKind && TAB_PANEL_KINDS.has(panelKind))
@@ -447,8 +490,8 @@ export function UnifiedSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
-            {(inlineMore ? items : mainItems).map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
-            {inlineMore ? null : <MoreMenu groups={groupedMoreItems} collapsed={collapsed} />}
+            {(inlineMore ? inlineItems : mainItems).map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
+            {inlineMore ? null : <MoreMenu groups={groupedMoreItems} collapsed={collapsed} items={items} customization={customization} />}
           </SidebarMenu>
         </SidebarGroup>
         {collapsed ? null : (

@@ -1,7 +1,7 @@
 'use client'
 
 import type { AppSettings, ThemePresetId } from '@overlay/app-core'
-import { DEFAULT_APP_SETTINGS } from '@overlay/app-core'
+import { DEFAULT_APP_SETTINGS, isSidebarPageIdList } from '@overlay/app-core'
 import {
   createContext,
   useCallback,
@@ -136,6 +136,9 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
   ) {
     return false
   }
+  for (const key of ['sidebarPinnedPageIds', 'sidebarMorePageIds'] as const) {
+    if (candidate[key] !== undefined && !isSidebarPageIdList(candidate[key])) return false
+  }
   return (
     typeof candidate.theme === 'string' ||
     typeof candidate.lightThemePreset === 'string' ||
@@ -156,7 +159,9 @@ function isAppSettingsPayload(value: unknown): value is Partial<AppSettings> {
     typeof candidate.dismissedZdrWarningGlobally === 'boolean' ||
     Array.isArray(candidate.dismissedZdrWarningModelIds) ||
     Array.isArray(candidate.enabledChatModelIds) ||
-    Array.isArray(candidate.modelOrder)
+    Array.isArray(candidate.modelOrder) ||
+    Array.isArray(candidate.sidebarPinnedPageIds) ||
+    Array.isArray(candidate.sidebarMorePageIds)
   )
 }
 

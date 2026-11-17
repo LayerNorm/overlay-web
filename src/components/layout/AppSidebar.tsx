@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import { CircleHelp, Moon, Settings, Sun } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
-import { ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
+import { ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, type PrimaryRailItem, type ShellAdapter, type SidebarCustomization } from '@overlay/shell-react'
+import { DEFAULT_SIDEBAR_MORE_PAGE_IDS, moveSidebarPage, resolveSidebarLayout } from '@overlay/app-core'
 import { StorageBar, UsageBar } from './sidebar/SidebarUsageMeters'
 import {
   DesktopAccountSlot,
@@ -29,6 +30,8 @@ import { HelpMenu } from './sidebar/HelpMenu'
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
 const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((id) => ({ id, label: WORK_FILTER_LABELS[id] }))
+/** The single sidebar keeps Automations among its main pages; the rail tucks it under More. */
+const UNIFIED_SIDEBAR_MORE_PAGE_IDS = ['files', 'extensions']
 const shellAdapter = { Link: NextLink, rememberScope: rememberPanelScope } satisfies ShellAdapter
 
 function useSidebarActivityFilter(panelKind: ReturnType<typeof useAppSidebarState>['routeState']['panelKind']) {
@@ -116,7 +119,25 @@ export default function AppSidebar({
   const appSettings = useOptionalAppSettings()
   const classicLayout = appSettings?.settings.useSecondarySidebar !== false
   const railExpanded = !classicLayout && !s.sidebarCollapsed
-  const brandHomeHref = s.brandConfig.homeHref
+  const savedPinnedPageIds = appSettings?.settings.sidebarPinnedPageIds ?? []
+  const sidebarLayout = resolveSidebarLayout(
+    s.railItems.filter((item) => item.id !== 'settings-close').map((item) => item.id),
+    { pinned: savedPinnedPageIds, more: appSettings?.settings.sidebarMorePageIds },
+    classicLayout ? DEFAULT_SIDEBAR_MORE_PAGE_IDS : UNIFIED_SIDEBAR_MORE_PAGE_IDS,
+  )
+  const sidebarCustomization: SidebarCustomization | undefined = appSettings ? {
+    ...sidebarLayout,
+    customized: savedPinnedPageIds.length > 0,
+    onMove: (id, list, index) => {
+      const next = moveSidebarPage(sidebarLayout, id, list, index)
+      if (next !== sidebarLayout) void appSettings.updateSettings({ sidebarPinnedPageIds: next.pinned, sidebarMorePageIds: next.more })
+    },
+    onReset: () => { void appSettings.updateSettings({ sidebarPinnedPageIds: [], sidebarMorePageIds: [] }) },
+  } : undefined
+  // The brand opens the same page the app opens to: the first page in the person's sidebar.
+  const brandHomeHref = (savedPinnedPageIds.length > 0
+    ? s.railItems.find((item) => item.id === sidebarLayout.pinned[0])?.href
+    : undefined) ?? s.brandConfig.homeHref
   const brandLabel = s.brandConfig.shortName ?? s.brandConfig.name
 
   const brandLink = (
@@ -270,6 +291,7 @@ export default function AppSidebar({
     title: s.panelTitle,
     themePreset: appSettings?.settings.theme === 'dark' ? appSettings.settings.darkThemePreset : appSettings?.settings.lightThemePreset,
     items: s.railItems,
+    customization: sidebarCustomization,
     footerItems: railFooterItems,
     helpMenu: <HelpMenu collapsed={classicLayout || s.sidebarCollapsed} docsUrl={`${MARKETING_DOCS_URL}/help`} />,
     panelKind: s.routeState.panelKind,

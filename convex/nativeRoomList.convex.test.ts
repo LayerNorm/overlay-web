@@ -6,7 +6,7 @@ import schema from './schema'
 const modules = import.meta.glob('./**/*.ts')
 const listRef = makeFunctionReference<'query'>('collaboration/roomList:list')
 
-type Row = { _id: string; title: string; conversationType: string; otherParticipantTypes: string[] }
+type Row = { _id: string; title: string; conversationType: string; otherParticipantTypes: string[]; otherParticipantPrincipalIds?: string[] }
 type Page = { rooms: Row[]; hasMore: boolean }
 const list = listRef
 
@@ -45,6 +45,8 @@ test('the room list shows the viewer’s own active rooms, newest first, and upd
   const all = (await as('alice').query(list, { workspaceId: 'ws', kind: 'all' }) as Page).rooms
   expect(all.map(row => row.title)).toEqual(['alice, bob', 'general'])
   expect(all[0].otherParticipantTypes).toEqual(['human'])
+  expect(all[0].otherParticipantPrincipalIds).toEqual(['p-bob'])
+  expect(all[1].otherParticipantPrincipalIds).toBeUndefined()
   expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'channel' }) as Page).rooms.map(row => row.title)).toEqual(['general'])
   expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'dm' }) as Page).rooms.map(row => row.title)).toEqual(['alice, bob'])
 
