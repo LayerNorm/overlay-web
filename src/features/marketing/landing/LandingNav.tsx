@@ -7,6 +7,7 @@ import { GithubMark } from './GithubMark'
 import { useLandingTheme } from '@/contexts/LandingThemeContext'
 import { MARKETING_DISCORD_URL, MARKETING_DOCS_URL, MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
 import { BrandLockup } from '@/components/brand/BrandLockup'
+import { DESKTOP_DOWNLOAD_PATH } from '@/shared/web/latest-release'
 
 /** Discord's mark (256x199 source), drawn in the current text color like the other nav icons. */
 function DiscordMark() {
@@ -31,6 +32,7 @@ export function LandingNav({ appHref }: { appHref: string }) {
           <a href={MARKETING_DOCS_URL} target="_blank" rel="noopener noreferrer">Docs</a>
           <Link href="/pricing">Pricing</Link>
           <Link href="/blog">Blog</Link>
+          <Link href={DESKTOP_DOWNLOAD_PATH}>Download</Link>
         </nav>
         <div className="nav-right">
           <Button variant="ghost" className={unstyledButton('icon-btn')} type="button" onClick={toggleLandingTheme} aria-label="Toggle light / dark mode">
