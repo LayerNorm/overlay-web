@@ -2,10 +2,15 @@
 export const GITHUB_REPO = "LayerNorm/overlay-desktop";
 export const CACHE_DURATION = 600; // 10 minutes in seconds
 export const LATEST_RELEASE_DOWNLOAD_PATH = "/api/latest-release/download";
+/** The desktop download page. */
+export const DESKTOP_DOWNLOAD_PATH = "/download";
+/** The download page, starting the download as it opens. "Download for Mac" buttons link here. */
+export const DESKTOP_DOWNLOAD_START_PATH = "/download?start=1";
 
 interface GitHubReleaseAsset {
   name: string;
   browser_download_url: string;
+  size?: number;
 }
 
 interface GitHubRelease {
@@ -20,6 +25,9 @@ export interface LatestReleaseInfo {
   downloadUrl: string;
   releaseName: string;
   publishedAt: string;
+  /** The installer's file name, as it lands in the Downloads folder. */
+  fileName: string;
+  sizeBytes: number | null;
 }
 
 export async function fetchLatestReleaseInfo(): Promise<LatestReleaseInfo> {
@@ -50,5 +58,7 @@ export async function fetchLatestReleaseInfo(): Promise<LatestReleaseInfo> {
     downloadUrl: dmgAsset.browser_download_url,
     releaseName: release.name,
     publishedAt: release.published_at,
+    fileName: dmgAsset.name,
+    sizeBytes: typeof dmgAsset.size === "number" ? dmgAsset.size : null,
   };
 }
