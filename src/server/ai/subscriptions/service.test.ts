@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { SubscriptionService } from './service'
+import { refreshStaleSubscriptionCatalogs } from './stale-catalogs'
 import type { SubscriptionRepository } from './repository'
 import type { ByokCredentialContext, ByokCredentialStore } from '@/server/ai/gateway/byok-credential-store'
 import { SubscriptionBridgeClient, type BridgeCredential } from './bridge-client'
@@ -1173,6 +1174,67 @@ test('device-flow slowdown interval is saved with the pending provider state', a
   assert.deepEqual(await service.poll('owner-1', 'connection-1'), { status: 'pending' })
   assert.deepEqual(repository.pollReleaseIntervals, [15_000])
   assert.equal(repository.failClosedCalls, 0)
+})
+
+test('stale catalogs are rediscovered once for owned active subscriptions only', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'devin'
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const credential: BridgeCredential = {
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'devin',
+    metadata: { tokenStorage: { type: 'devin' } },
+    expiresAt: null,
+    nonExpiring: true,
+  }
+  const credentialRef = await credentials.write({ apiKey: JSON.stringify(credential) })
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'stale-owned',
+    providerId: 'devin',
+    generation: 3,
+    revision: 6,
+    phase: 'active',
+    credentialRef,
+    cleanupRefs: [],
+    pendingWrites: [],
+  }
+  const discoveries: string[] = []
+  const service = createService(repository, credentials, async (input) => {
+    const path = new URL(String(input)).pathname
+    discoveries.push(path)
+    if (path !== '/internal/v1/models') throw new Error(`unexpected bridge request: ${path}`)
+    return Response.json({
+      providerId: 'devin',
+      models: [{ id: 'devin-new', name: 'Devin New' }],
+      source: 'provider_catalog',
+    })
+  })
+  const now = Date.now()
+  const row = {
+    authKind: 'subscription', subscriptionProvider: 'devin',
+    status: 'active', discoveredAt: now - 7 * 60 * 60_000,
+  }
+  const connections = [
+    { ...row, _id: 'stale-owned' },
+    { ...row, _id: 'fresh-owned', discoveredAt: now - 60_000 },
+    { ...row, _id: 'stale-shared', canManage: false },
+    { ...row, _id: 'stale-reconnect', status: 'error' },
+    { ...row, _id: 'stale-key', authKind: 'api_key' },
+  ]
+
+  assert.equal(await refreshStaleSubscriptionCatalogs(service, 'owner-1', connections, now), true)
+  assert.deepEqual(discoveries, ['/internal/v1/models'])
+  assert.deepEqual(repository.state?.discoveredModelIds, ['devin-new'])
+
+  assert.equal(await refreshStaleSubscriptionCatalogs(service, 'owner-1', connections, now + 60_000), false)
+  assert.equal(discoveries.length, 1)
 })
 
 test('explicit refresh discovers exact provider catalog for non-expiring credentials and preserves them on failure', async (t) => {

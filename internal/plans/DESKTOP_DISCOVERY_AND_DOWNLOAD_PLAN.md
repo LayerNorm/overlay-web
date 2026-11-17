@@ -116,10 +116,12 @@ using the app.
 
 ## Known gaps to close before promoting the app widely
 
-- **Node.js.** Running a thread on this computer needs Node.js 22 or newer
-  installed. The landing section leads with that feature, so the app should
-  bundle its own runtime first, or the section should lead with dictation and
-  the chat panel until it does.
+- **Node.js.** Release 0.3.0 needs Node.js 22 or newer installed to run a thread
+  on this computer, and the landing section leads with that feature. The fix is
+  merged in the desktop repository on 2026-11-17 (the app ships the Agent Host
+  and its own Node.js runtime) but is not in a released build yet, and has not
+  been tested in a signed build or in a real thread. The gap closes when the
+  next desktop release is published and checked on a Mac without Node.js.
 - **Installer notarization.** The app inside the installer is notarized; the
   disk image itself is not stapled, so the first open needs a network
   connection.

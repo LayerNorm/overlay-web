@@ -13,7 +13,22 @@ import { spawnSync } from 'node:child_process'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
-const AUDIT_EXCEPTIONS = []
+// GHSA-fc5q-39xc-vjpf (picomatch ReDoS, every release through 4.0.7, no patched
+// version yet). These copies run only at build time, on patterns from our own
+// build config: Sentry's webpack wrapping loader (@rollup/plugin-commonjs) and
+// the Workflow builder's file discovery (tinyglobby). No production request path
+// passes user input to them. Remove when a patched picomatch is published.
+const PICOMATCH_REDOS = {
+  advisories: ['GHSA-fc5q-39xc-vjpf'],
+  expires: '2026-12-01',
+  reason: 'Build-time glob matching on our own config patterns; no patched picomatch exists yet.',
+}
+
+const AUDIT_EXCEPTIONS = [
+  { path: 'node_modules/@rollup/plugin-commonjs/node_modules/picomatch', ...PICOMATCH_REDOS },
+  { path: 'node_modules/@rollup/pluginutils/node_modules/picomatch', ...PICOMATCH_REDOS },
+  { path: 'node_modules/tinyglobby/node_modules/picomatch', ...PICOMATCH_REDOS },
+]
 
 const BLOCKING = new Set(['high', 'critical'])
 
