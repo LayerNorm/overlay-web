@@ -1,10 +1,12 @@
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  ArrowRight, Braces, ChevronRight, CircleCheck, Database, FileText, Gauge, Globe, History,
-  Lock, LogIn, Monitor, Plug, Server, ShieldCheck, Terminal, Users, Zap,
+  ArrowRight, ArrowUpRight, Braces, ChevronRight, CircleCheck, Database, FileText, Folder, Gauge, Globe, History,
+  Lock, Mic, Monitor, PanelTop, Plug, Server, ShieldCheck, Terminal, Users, Zap,
 } from 'lucide-react'
 import { MARKETING_DOCS_URL, MARKETING_GITHUB_URL, MARKETING_SALES_URL } from '@/shared/marketing/marketing'
+import { DESKTOP_DOWNLOAD_START_PATH } from '@/shared/web/latest-release'
+import { AppleMark } from './AppleMark'
 import { GithubMark } from './GithubMark'
 import { LANDING_AGENTS, LandingAgent, type LandingAgentId } from './LandingAgent'
 import { LandingLogo, type LogoName } from './LandingLogo'
@@ -12,6 +14,7 @@ import { LandingLogo, type LogoName } from './LandingLogo'
 const API_DOCS = `${MARKETING_DOCS_URL}/developer/api/overview`
 const MCP_DOCS = `${MARKETING_DOCS_URL}/help/connect-other-apps`
 const SELF_HOSTING_DOCS = `${MARKETING_DOCS_URL}/self-hosting/overview`
+const DESKTOP_REPO_URL = 'https://github.com/LayerNorm/overlay-desktop'
 
 /** Internal routes use `Link`; docs and other sites open in a new tab. */
 function SmartLink({ href, className, children }: { href: string; className?: string; children: ReactNode }) {
@@ -169,6 +172,34 @@ export function OnePlaceSection({ appHref }: { appHref: string }) {
   )
 }
 
+/** What the desktop app adds that a browser can't, with the download beside it. */
+export function OverlayForMacSection() {
+  return (
+    <section className="sec" id="desktop">
+      <div className="onmac">
+        <div>
+          <h2 className="h2">Overlay for Mac<br /><span className="dim">agents on your computer</span></h2>
+          <p className="lead">Run a thread on your Mac, in the folders you choose. Nothing is uploaded, and Overlay asks before it runs a command.</p>
+          <div className="actions">
+            <a className="btn primary" href={DESKTOP_DOWNLOAD_START_PATH}><AppleMark /> Download for Mac</a>
+            <a className="btn ghost" href={DESKTOP_REPO_URL} target="_blank" rel="noopener noreferrer">Source <ArrowUpRight className="i" /></a>
+          </div>
+          <p className="meta-line">Apple silicon · Open source</p>
+        </div>
+        <div className="step-art">
+          <div className="mini">
+            <div className="mini-h"><Monitor className="i sm" />This computer<span className="meta">Maya’s MacBook Pro</span></div>
+            <div className="mini-r"><Folder className="i sm" /><span className="k">~/Projects/website</span><span className="meta">working folder</span></div>
+            <div className="mini-r"><Terminal className="i sm" /><span className="k">npm test</span><span className="meta" style={{ color: 'var(--sl-ok)' }}>214 passed</span></div>
+            <div className="mini-r"><Mic className="i sm" /><span className="k">Dictate into any app</span><span className="meta"><kbd>⌃</kbd><kbd>Space</kbd></span></div>
+            <div className="mini-r"><PanelTop className="i sm" /><span className="k">Chat over any window</span><span className="meta"><kbd>⌘</kbd><kbd>.</kbd></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function TeamsSection() {
   return (
     <section className="sec">
@@ -242,9 +273,9 @@ export function ControlSection() {
 
 export function GetOverlaySection({ appHref }: { appHref: string }) {
   const columns: Array<{ title: string; rows: Array<{ name: string; href: string; icon: ReactNode }> }> = [
-    { title: 'Web', rows: [
+    { title: 'Web and Mac', rows: [
       { name: 'Get started', href: appHref, icon: <Globe className="i" /> },
-      { name: 'Sign in', href: '/auth/sign-in', icon: <LogIn className="i" /> },
+      { name: 'Download for Mac', href: DESKTOP_DOWNLOAD_START_PATH, icon: <AppleMark /> },
     ] },
     { title: 'Your AI apps', rows: [
       { name: 'ChatGPT', href: MCP_DOCS, icon: <LandingLogo name="openai" className="logo" /> },

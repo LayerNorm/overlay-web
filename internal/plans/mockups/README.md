@@ -88,6 +88,10 @@ them. Besides the canonical app mockup, this folder holds only:
   `id=k17convatlasiosshare000000000000` for a thread running on the Mac Studio.
   `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
   rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
+- `desktop-discovery.html`: how a visitor finds and downloads the desktop app. It is the live marketing page with
+  the proposed changes applied, not an app-shell mockup: `node internal/plans/mockups/build-desktop-discovery.mjs`
+  reads the production home page and inlines it. The bar at the bottom switches page and visitor and outlines what
+  is new. Plan: `internal/plans/DESKTOP_DISCOVERY_AND_DOWNLOAD_PLAN.md`.
 - `local-and-cloud.html` (feature `local-and-cloud`): the Local and Cloud design, kept as the reference and for
   visual QA. It renders the production thread controls and Settings → Desktop → This computer
   (`internal/develop/thread-folders.md`) with sample data and a stand-in for the desktop app; "Choose folder…" opens
