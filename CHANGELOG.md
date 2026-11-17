@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record in the desktop discovery plan that the landing page entry points and the one-click download page are merged, live and verified, and what was not tested.
 - Make the desktop app discoverable from the marketing site. The top navigation and footer link to the download page, Mac visitors get a "Download for Mac" button in the hero in place of "Star on GitHub", a new "Overlay for Mac" section explains what the app adds (threads on your own computer in folders you choose, dictation into any app, chat over any window), and the "Hire your first AI employee" card lists the Mac download beside the web app. Download buttons carry the Apple mark.
 - Make the download one click. A "Download for Mac" button opens `/download?start=1`, which starts the download, shows "Your download has started" with the installer's file name, and lists the three install steps. Visitors who are not on a Mac are told the app is for Apple silicon Macs and offered the web app and a link to copy. `/api/latest-release` now also returns the installer's file name and size.
 - Keep `/download` reachable on every deployment. It no longer redirects to the home page when `OVERLAY_DESKTOP_DOWNLOADS_ENABLED` is off; it points to the public source repository instead, so the new links work on self-hosted sites too.

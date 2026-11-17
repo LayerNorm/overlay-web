@@ -1,6 +1,6 @@
 # Desktop discovery and download
 
-Status: Phases 1 and 2 built and awaiting preview QA and merge. Phases 3 and 4 not started.
+Status: Phases 1 and 2 merged, deployed and verified in production on 2026-11-17. Phases 3 and 4 not started.
 
 How a visitor learns that Overlay has a Mac app, and how they go from that to a
 signed-in app on their computer. Mockup:
@@ -135,8 +135,8 @@ using the app.
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | Publish the signed build; turn on `/download` in production | Done |
-| 1 | Landing page: navigation, hero, "Overlay for Mac" section, card row, footer | Built; not yet verified on a preview or merged |
-| 2 | Download page: one-click start, "Your download has started", install steps, non-Mac page | Built; not yet verified on a preview or merged |
+| 1 | Landing page: navigation, hero, "Overlay for Mac" section, card row, footer | Merged and live. Verified on the PR preview and in production |
+| 2 | Download page: one-click start, "Your download has started", install steps, non-Mac page | Merged and live. One-click start verified on the PR preview; in production the page, button target and release data were checked without starting a download. Not tested in Safari, Firefox or on real non-Mac devices |
 | 3 | Measurement events | Not started |
 | 4 | In-app entry points | Needs a mockup |
 
