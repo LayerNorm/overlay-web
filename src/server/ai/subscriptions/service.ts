@@ -321,7 +321,7 @@ export class SubscriptionService {
     await this.repository.forgetAllByUser(userId)
   }
 
-  private async discover(userId: string, connectionId: string): Promise<SubscriptionResult> {
+  async discover(userId: string, connectionId: string): Promise<SubscriptionResult> {
     const leaseToken = randomUUID()
     const lease = await this.repository.acquireDiscovery({ userId, connectionId, leaseToken })
     const fenced = {
