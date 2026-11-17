@@ -113,9 +113,11 @@ function nativeDeliveryIsCurrent(
     && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
     && (run.status === 'running' || (state.runId !== delivery.runId
       && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
+      // The delivery's own run shows what it is waiting on. That can differ from the
+      // harness status: a child joined inside a tool call leaves the harness running,
+      // and a descendant's question is shown on the root. Ownership is checked above.
       || (renewalMode && state.runId === delivery.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
-        && run.status === state.status)
+        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status))
       || (cancelledToolProgress && run.status === 'cancelled'))
 }
 
