@@ -49,6 +49,37 @@ const TASK_DEADLINE_MESSAGES = new Set([
   'The explicit harness task deadline was reached while waiting.',
 ])
 
+/**
+ * Overlay's own record of who is running a task disagreed with itself. Nobody's
+ * access changed, so these are reported as an Overlay fault, not as lost authorization.
+ */
+const RUN_BOOKKEEPING_MESSAGES = new Set([
+  'HARNESS_EXECUTION_NOT_OWNED',
+  'Harness request is not owned by an active execution.',
+  'HARNESS_RUN_NOT_FOUND',
+  'Native harness execution is no longer authorized.',
+  'Native harness execution is not owned by this workflow.',
+  'Personal harness identity does not match its tooling context.',
+  'The root harness execution is no longer active.',
+  'Native delivery identity changed.',
+  'Native delivery execution changed.',
+  'Personal harness identity is incomplete.',
+  'Personal harness resource access has changed.',
+  'Native harness root is unavailable.',
+  'Native surface source ownership changed.',
+  'Native delivery does not own this descendant.',
+  'Native harness lineage changed.',
+  'Invalid fallback delivery authority.',
+  'Invalid root delivery authority.',
+  'Invalid personal delivery run.',
+  'Personal delivery ownership changed.',
+  'Invalid native fallback authority.',
+  'Native delivery ownership changed.',
+  'Personal harness delivery ownership has changed.',
+  'Native root run is no longer available.',
+  'Native parent run is no longer available.',
+])
+
 const AUTHORIZATION_MESSAGES = [
   'This native tool is no longer authorized.',
   'This native action requires fresh approval.',
@@ -60,9 +91,6 @@ const AUTHORIZATION_MESSAGES = [
   'Automation run is no longer authorized.',
   'Automation source authorization changed.',
   'The bound automation agent is no longer available.',
-  'Personal harness delivery ownership has changed.',
-  'Native root run is no longer available.',
-  'Native parent run is no longer available.',
 ]
 
 /** Prefixes: the model itself can no longer serve this run, whatever the provider says. */
@@ -249,25 +277,19 @@ export function harnessDiagnosticForFailure(
   } else if (error instanceof HarnessPersistenceError || value.code === 'HARNESS_PERSISTENCE_FAILED') {
     code = 'PERSISTENCE_FAILED'
     stage = 'persistence'
+  } else if (RUN_BOOKKEEPING_MESSAGES.has(message)) {
+    code = 'INTERNAL_ERROR'
   } else if (error instanceof HarnessAuthorizationError || value.code === 'HARNESS_AUTHORIZATION_REVOKED'
-    || ['HARNESS_EXECUTION_NOT_OWNED', 'Harness request is not owned by an active execution.', 'HARNESS_RUN_NOT_FOUND', 'CONVERSATION_ACCESS_DENIED',
-    'NOTE_ACCESS_DENIED', 'HARNESS_DELIVERY_ACCESS_DENIED', 'Native harness execution is no longer authorized.',
-    'Native harness execution is not owned by this workflow.', 'Personal harness execution is not authorized to continue.',
-    'Personal harness identity does not match its tooling context.', 'The root harness execution is no longer active.',
-    'Native delivery identity changed.', 'Native delivery execution changed.', 'Personal harness identity is incomplete.',
-    'The API key that authorized this run is no longer permitted.', 'Personal harness resource access has changed.',
-    'Personal harness permissions have been revoked.', 'Automation agent permissions have been revoked.',
+    || ['CONVERSATION_ACCESS_DENIED',
+    'NOTE_ACCESS_DENIED', 'HARNESS_DELIVERY_ACCESS_DENIED', 'Personal harness execution is not authorized to continue.',
+    'The API key that authorized this run is no longer permitted.', 'Personal harness permissions have been revoked.', 'Automation agent permissions have been revoked.',
     'The model is no longer allowed by server policy.', 'Native workspace identity changed.',
     'Native agent or room access changed.', 'Native room participation was revoked.',
     'Room visibility changed; private context cannot be reused.',
     'The model is no longer an admitted native agent candidate.', 'Native harness permissions were revoked.',
-    'Native harness model permission was revoked.', 'Native harness root is unavailable.',
-    'Native surface source ownership changed.', 'The native model is no longer allowed by server policy.',
+    'Native harness model permission was revoked.', 'The native model is no longer allowed by server policy.',
     'Tool is outside this harness run\'s capabilities.',
-    'Personal harness authentication is not supported.', 'Native delivery does not own this descendant.',
-    'Native harness lineage changed.', 'Invalid fallback delivery authority.', 'Invalid root delivery authority.',
-    'Invalid personal delivery run.', 'Personal delivery ownership changed.', 'Invalid native fallback authority.',
-    'Native delivery ownership changed.', ...AUTHORIZATION_MESSAGES].includes(message)) {
+    'Personal harness authentication is not supported.', ...AUTHORIZATION_MESSAGES].includes(message)) {
     code = 'AUTHORIZATION_REVOKED'
   } else if (MODEL_UNAVAILABLE_MESSAGES.some(prefix => message.startsWith(prefix))) {
     code = 'MODEL_UNAVAILABLE'
