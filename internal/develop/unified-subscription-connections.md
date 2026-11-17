@@ -12,8 +12,9 @@ The provider implementation supports the exact IDs `codex`, `claude`, `xai`,
 `meta`, `kimi`, and `devin`. Subscription inference and provider-side
 authorization use the pinned CLIProxyAPI source in a private, stateless service
 bound to the web service inside the same Vercel project. The service has no
-public rewrite, shared account pool, auth files, background refresh, or
-provider/domain fallback.
+public rewrite, shared account pool, auth files, background credential refresh,
+or provider/domain fallback. Its only background work is downloading the
+published model catalogs (see "Keeping model lists current").
 
 Subscription connections support explicit, immutable `personal` or `workspace`
 scope. Missing scope on legacy rows is personal; creation defaults to personal,
@@ -53,7 +54,7 @@ compatible with its owner-only contract and can dispatch personal connections
 only; workspace use requires the actor-aware endpoint, with no legacy fallback.
 
 The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. The
-`prolite` and `promax` variants additionally intersect that pinned registry with
+`prolite` and `promax` variants additionally intersect that registry with
 its Codex client catalog's explicit per-model plan membership; they do not
 inherit unverified Pro-only models. It is
 catalog provenance, not proof that a particular account is entitled to every
@@ -133,6 +134,34 @@ that hand-back (bounded by the lease, at most a minute), then deletes every
 cleanup ref, including ones the fenced operation retained, and forgets the
 state. It reports "Subscription cleanup is pending" only if the operation never
 hands the lease back or a vault delete fails; a later delete retries.
+
+### Keeping model lists current
+
+Model lists are not read from the provider account. The bridge serves them from
+CLIProxyAPI's model catalogs. The pinned source embeds a snapshot of those
+catalogs, which is only as new as the pin. The bridge therefore downloads the
+catalogs upstream publishes (`models.json`, the Codex client catalog and the
+Devin catalog) when it starts and every three hours after, using upstream's own
+loader and validation. A download that fails or is rejected keeps the last valid
+catalog, and the embedded snapshot remains the fallback. After a cold start,
+model-list and inference requests wait for the first download to settle (ten
+seconds at most), so they are not answered from the older snapshot. The
+published catalog decides only which model IDs are offered and their reasoning
+levels; credentials, endpoints and executors still come from the pinned source.
+A model newer than the pin can therefore be listed before the pinned executor
+has been checked against it; move the pin when such a model fails.
+
+Overlay stores each connection's list and refreshes it without the refresh
+button. Listing connections (`GET /api/v1/providers/connections`, which the app
+does on load) rediscovers every active subscription the caller owns whose list
+is older than six hours, then returns the updated rows. This step only reads the
+catalog: it never rotates a credential and cannot mark a connection for
+reconnect. A failed attempt is not repeated by the same server instance for ten
+minutes. Shared subscriptions are refreshed by their owner's sessions.
+
+Models that appear in a later catalog are turned on automatically. Models a
+person turned off stay off, because only IDs absent from the previously stored
+list count as new.
 
 Catalog reconciliation removes selections only when a successful catalog
 update proves a selected model is no longer present. Temporary inference
