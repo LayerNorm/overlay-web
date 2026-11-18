@@ -6,6 +6,8 @@ export type ChatMessageMention = {
   avatarColor?: string
   avatarShape?: string
   isDefault?: boolean
+  /** Person mentions carry the account photo. */
+  photoUrl?: string
 }
 
 type MarkdownNode = {

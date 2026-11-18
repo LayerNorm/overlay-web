@@ -7,7 +7,7 @@ import { ROOT_APP_DESTINATION } from './root-entry'
 test('default and rejected web auth returns use the authenticated home', () => {
   assert.equal(DEFAULT_AUTH_REDIRECT, ROOT_APP_DESTINATION)
   for (const value of [undefined, null, '', '  ', '//outside.example', 'https://outside.example/account']) {
-    assert.equal(sanitizeClientAuthRedirect(value), '/app/work')
+    assert.equal(sanitizeClientAuthRedirect(value), '/app')
   }
 })
 

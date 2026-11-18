@@ -34,3 +34,18 @@ test('UI settings are the signed-in person own, with defaults and the public sha
   expect(fresh).toMatchObject({ useSecondarySidebar: true, chatStreamingMode: 'token', sendWithEnter: true })
   expect(await t.query(settings, {})).toBeNull()
 })
+
+test('the saved sidebar arrangement is returned, without ids that could never be pages', async () => {
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await ctx.db.insert('userUiSettings', {
+      userId: 'alice', theme: 'dark', useSecondarySidebar: true, sendWithEnter: false, createdAt: 1, updatedAt: 2,
+      sidebarPinnedPageIds: ['chat', 'files', 'chat', 'Not A Page'], sidebarMorePageIds: ['work'],
+    })
+    await ctx.db.insert('userUiSettings', { userId: 'bob', theme: 'dark', useSecondarySidebar: true, sendWithEnter: false, createdAt: 1, updatedAt: 2 })
+  })
+  expect(await t.withIdentity({ subject: 'alice' }).query(settings, {}))
+    .toMatchObject({ sidebarPinnedPageIds: ['chat', 'files'], sidebarMorePageIds: ['work'] })
+  expect(await t.withIdentity({ subject: 'bob' }).query(settings, {}))
+    .toMatchObject({ sidebarPinnedPageIds: [], sidebarMorePageIds: [] })
+})

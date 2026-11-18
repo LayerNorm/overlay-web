@@ -10,6 +10,7 @@ import type { PrimaryRailItem, SecondaryPanelNav } from '../types'
 import { PageSections } from './PageSections'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { publishPageSubviews } from './pageSubviewStore'
+import { orderSidebarItems } from './CustomizeSidebarDialog'
 import { groupMoreItems, MoreMenu, NavRow, ScopeToggle, scopeChildren, useCollapseShortcut, type UnifiedSidebarProps } from './UnifiedSidebar'
 
 const MORE_GROUPS = [{ ids: ['files', 'extensions', 'automations'] }]
@@ -62,7 +63,7 @@ const ignoreResizing = () => {}
 export function DoubleSidebar({
   railBrand, title, collapsed, onCollapsedChange, items, footerItems = [], panelKind,
   panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, activityOnly, onToggleActivity, helpMenu, scope,
-  account, keyboardShortcut = false, resizable = false, settingsGroups, children,
+  account, keyboardShortcut = false, resizable = false, settingsGroups, customization, children,
   className, panelId, themePreset,
 }: DoubleSidebarProps) {
   const { rememberScope } = useShellAdapter()
@@ -81,8 +82,9 @@ export function DoubleSidebar({
     onSelect: () => selectDoubleSidebarItem(item, collapsed, setCollapsed),
   })
   const destinations = items.filter((item) => item.id !== 'settings-close').map(select)
-  const moreGroups = groupMoreItems(destinations, MORE_GROUPS)
+  const moreGroups = groupMoreItems(destinations, customization ? [{ ids: customization.more }] : MORE_GROUPS)
   const moreIds = new Set(moreGroups.flatMap((group) => group.items.map((item) => item.id)))
+  const railDestinations = customization ? orderSidebarItems(destinations, customization.pinned) : destinations.filter((item) => !moreIds.has(item.id))
   const rows = scopedNav ? scopeChildren(scopedNav, scope) : []
   const groupedResources = panelKind === 'chat' || panelKind === 'work'
 
@@ -113,10 +115,10 @@ export function DoubleSidebar({
         <SidebarContent className="overflow-visible">
           <nav aria-label="Primary">
             <SidebarMenu className="gap-1">
-              {destinations.filter((item) => !moreIds.has(item.id)).map((item) => (
+              {railDestinations.map((item) => (
                 <NavRow key={item.id} item={item} collapsed />
               ))}
-              <MoreMenu groups={moreGroups} collapsed />
+              <MoreMenu groups={moreGroups} collapsed items={destinations} customization={customization} />
             </SidebarMenu>
           </nav>
         </SidebarContent>

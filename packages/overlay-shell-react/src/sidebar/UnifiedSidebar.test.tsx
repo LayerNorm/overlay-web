@@ -62,6 +62,15 @@ test('main pages render as links and Files and Extensions move under More', () =
   assert.match(html, />3</)
 })
 
+test('a saved arrangement decides which pages are in the sidebar and their order', () => {
+  const html = render({
+    customization: { pinned: ['files', 'work'], more: ['chat', 'extensions'], customized: true, onMove: noop, onReset: noop },
+  })
+  assert.ok(html.indexOf('href="/app/files"') > 0 && html.indexOf('href="/app/files"') < html.indexOf('href="/app/work"'))
+  assert.doesNotMatch(html, /href="\/app\/chat"/)
+  assert.doesNotMatch(html, /href="\/app\/tools"/)
+})
+
 test('activity is an accessible toggle before search in the alternative shell', () => {
   const html = render({ activityOnly: true, onToggleActivity: noop })
   assert.match(html, /aria-label="Show activity only" aria-pressed="true"/)
