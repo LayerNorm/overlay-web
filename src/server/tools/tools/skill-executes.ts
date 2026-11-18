@@ -47,7 +47,9 @@ export async function executeFindSkills(
   try {
     const skills = await loadDiscoverableSkills(options)
     const matches = rankSkills(skills, input.query, { domain: input.domain, limit: input.limit })
-    const strongWorkspaceFit = matches.some(m => m.origin !== 'builtin' && m.score >= WEAK_SKILL_FIT)
+    // Judge fit across all candidates, not just the page the caller asked for, so a small limit can't hide a good fit.
+    const strongWorkspaceFit = rankSkills(skills.filter(s => !s._id.startsWith('builtin:')), input.query, { domain: input.domain, limit: 20 })
+      .some(m => m.score >= WEAK_SKILL_FIT)
     return {
       success: true,
       matches,

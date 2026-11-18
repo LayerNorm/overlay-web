@@ -93,7 +93,14 @@ export function rankSkills(skills: DiscoverableSkill[], query: string, options: 
       score: Math.min(1, Math.round(score * 100) / 100),
     })
   }
-  ranked.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+  ranked.sort((a, b) => {
+    // With a domain selected, its map always comes first so the agent reads the field map before its skills.
+    if (domainFilter) {
+      const mapOrder = Number(b.kind === 'domain_map') - Number(a.kind === 'domain_map')
+      if (mapOrder !== 0) return mapOrder
+    }
+    return b.score - a.score || a.name.localeCompare(b.name)
+  })
   return ranked.slice(0, Math.min(Math.max(options.limit ?? 5, 1), 20))
 }
 
@@ -121,12 +128,25 @@ export function skillOutline(instructions: string): string[] {
  */
 export function extractSkillSection(instructions: string, heading: string): string | null {
   const lines = instructions.split('\n')
+  // Lines inside fenced code blocks (e.g. shell comments starting with #) are not headings.
+  const inFence: boolean[] = []
+  let fence: string | null = null
+  for (const line of lines) {
+    const marker = line.trim().match(/^(`{3,}|~{3,})/)?.[1]
+    if (marker && (fence === null || marker.startsWith(fence))) {
+      inFence.push(true)
+      fence = fence === null ? marker : null
+      continue
+    }
+    inFence.push(fence !== null)
+  }
   const wanted = heading.trim().toLowerCase().replace(/^#+\s*/, '')
-  const start = lines.findIndex(line => /^#{1,6}\s+/.test(line) && line.replace(/^#+\s+/, '').trim().toLowerCase() === wanted)
+  const start = lines.findIndex((line, i) => !inFence[i] && /^#{1,6}\s+/.test(line) && line.replace(/^#+\s+/, '').trim().toLowerCase() === wanted)
   if (start < 0) return null
   const level = lines[start].match(/^#+/)?.[0].length ?? 2
   let end = lines.length
   for (let i = start + 1; i < lines.length; i += 1) {
+    if (inFence[i]) continue
     const match = lines[i].match(/^(#+)\s+/)
     if (match && match[1].length <= level) {
       end = i

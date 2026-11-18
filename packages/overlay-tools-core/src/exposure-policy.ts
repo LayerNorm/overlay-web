@@ -15,6 +15,8 @@ const DEFAULT_BASE_TOOL_IDS = [
   'find_skills',
   'load_skill',
   'search_skill_registries',
+  // Always personal and archivable, so the self-verticalize workflow can persist what it learned on any specialized turn.
+  'save_skill',
 ] as const
 
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const
@@ -36,7 +38,7 @@ const VIDEO_TOOL_IDS = [
   'edit_video',
 ] as const
 const BROWSER_TOOL_IDS = ['computer_browser', 'computer_open_url', 'computer_screenshot'] as const
-const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat', 'save_skill'] as const
+const SKILL_DRAFT_TOOL_IDS = ['draft_skill_from_chat'] as const
 const AUTOMATION_TOOL_IDS = [
   'list_automations',
   'draft_automation_from_chat',

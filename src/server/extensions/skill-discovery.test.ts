@@ -90,3 +90,16 @@ test('searchSkillRegistries calls only fixed hosts and survives one registry fai
   assert.equal(results.length, 1)
   assert.deepEqual(errors, [{ registry: 'skills.sh', error: 'HTTP 503' }])
 })
+
+test('rankSkills keeps the domain map first under a task query and a small limit', () => {
+  const ranked = rankSkills(skills, 'texture a blender model with PBR materials', { domain: '3d-design', limit: 1 })
+  assert.deepEqual(ranked.map(r => r.id), ['b'])
+})
+
+test('extractSkillSection ignores # lines inside code fences', () => {
+  const body = '## Procedure\n```bash\n# Bake textures\nblender -b scene.blend\n```\nThen review.\n## Pitfalls\nNone.'
+  const section = extractSkillSection(body, 'Procedure')
+  assert.ok(section?.includes('blender -b scene.blend'))
+  assert.ok(section?.includes('Then review.'))
+  assert.ok(!section?.includes('Pitfalls'))
+})

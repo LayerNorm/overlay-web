@@ -219,6 +219,8 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
   // Reading chats joined the memory group.
   { grantedBy: ['search_messages'], adds: ['list_chats', 'read_chat'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+  // Skill discovery, loading, registry search and saving joined the skills group.
+  { grantedBy: ['list_skills', 'draft_skill_from_chat'], adds: ['find_skills', 'load_skill', 'search_skill_registries', 'save_skill'] },
   {
     grantedBy: ['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'],
     adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal', 'computer_publish_file'],
