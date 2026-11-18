@@ -438,9 +438,12 @@ function resolveLoadingPresentation(
   responseInProgress: boolean | undefined,
   assistantVisualBlocks: AssistantVisualBlock[],
 ) {
-  const normalizedStatus: ChatExchangeStatus = status ?? (
-    responseInProgress ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted') : 'completed'
-  )
+  const liveStatus: ChatExchangeStatus = responseInProgress
+    ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted')
+    : 'completed'
+  const normalizedStatus = responseInProgress && (status === undefined || status === 'completed')
+    ? liveStatus
+    : status ?? liveStatus
   const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
   return { loadingPresentation, responseSettled: !loadingPresentation.active }
 }
