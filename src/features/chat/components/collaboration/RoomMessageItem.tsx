@@ -32,6 +32,7 @@ import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
+import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { roomMessageDomId } from './room-message-view'
 import { roomMessageTime } from './room-message-time'
@@ -170,15 +171,11 @@ const AUTHOR_STATUS_META = {
   not_invited: { label: 'Not invited', className: 'bg-(--surface-subtle) text-(--muted)' },
 } as const
 
-/** Agent mention chips carry the creature avatar; other types keep their icon. */
+/** Agent mention chips carry the creature avatar and person chips the account photo; other types keep their icon. */
 const renderMentionAvatar = (mention: ChatMessageMention) =>
-  mention.type === 'agent' ? (
-    <AgentCreature
-      isDefault={mention.isDefault}
-      agent={{ name: mention.name, avatarColor: mention.avatarColor, avatarShape: mention.avatarShape }}
-      size={14}
-    />
-  ) : undefined
+  mention.type === 'agent' || mention.type === 'person'
+    ? <PrincipalAvatar principal={{ ...mention, principalType: mention.type === 'agent' ? 'agent' : 'human' }} size={14} />
+    : undefined
 
 type AuthorStatus = keyof typeof AUTHOR_STATUS_META
 

@@ -10,6 +10,7 @@ export { publishPageSubviews, usePageSubviews } from './sidebar/pageSubviewStore
 export type { PageSubviews } from './sidebar/pageSubviewStore'
 export { UnifiedSidebar } from './sidebar/UnifiedSidebar'
 export type { UnifiedSidebarProps } from './sidebar/UnifiedSidebar'
+export type { SidebarCustomization, SidebarPageList } from './sidebar/CustomizeSidebarDialog'
 export { DoubleSidebar } from './sidebar/DoubleSidebar'
 export type { DoubleSidebarProps } from './sidebar/DoubleSidebar'
 export { WorkspaceSwitcherView } from './workspaces/WorkspaceSwitcherView'

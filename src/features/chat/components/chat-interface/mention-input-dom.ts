@@ -1,4 +1,5 @@
 import type { MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import { composerLinkLabel, splitComposerChipSegments, trimComposerUrl } from './composer-chips'
 import { composerAnchorToMarkdown, joinComposerMarkdownSegments } from './composer-markdown'
 
 export type MentionInputFormatCommand =
@@ -14,6 +15,10 @@ export type MentionInputFormatCommand =
   | 'blockquote'
 
 export const MENTION_ATTR = 'data-mention'
+/** Marks a link chip and holds the exact address the message is sent with. */
+export const LINK_CHIP_ATTR = 'data-link-chip'
+/** Marks the empty avatar slot of an agent chip; MentionInput renders the creature into it. */
+export const MENTION_AVATAR_ATTR = 'data-mention-avatar'
 const MENTION_TYPE_ATTR = 'data-mention-type'
 const MENTION_ID_ATTR = 'data-mention-id'
 const MIN_EDITOR_HEIGHT = 44
@@ -141,6 +146,8 @@ function inlineNodeToMarkdown(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
   const element = node as HTMLElement
+  const linkChipHref = element.getAttribute(LINK_CHIP_ATTR)
+  if (linkChipHref) return linkChipHref
   if (element.getAttribute(MENTION_ATTR)) {
     try {
       const item = JSON.parse(element.dataset.mentionData ?? '{}') as Partial<MentionItem>
@@ -556,14 +563,14 @@ export function resizeEditorElement(el: HTMLDivElement) {
   }
 }
 
-export function createMentionChip(item: MentionItem): HTMLSpanElement {
-  const chip = document.createElement('span')
-  chip.contentEditable = 'false'
-  chip.setAttribute(MENTION_ATTR, 'true')
-  chip.setAttribute(MENTION_TYPE_ATTR, item.type)
-  chip.setAttribute(MENTION_ID_ATTR, item.id)
-  chip.className =
-    'inline-flex items-center gap-1 mx-0.5 px-1.5 py-0.5 rounded-md bg-(--surface-muted) border border-(--border) text-xs font-medium text-(--foreground) select-none align-baseline'
+const CHIP_CLASS =
+  'mx-0.5 inline-flex h-[22px] max-w-full cursor-default select-none items-center gap-1 align-middle text-[13px] font-medium leading-5 text-(--foreground) bg-(--surface-elevated) shadow-[inset_0_0_0_1px_var(--border)] transition-shadow hover:shadow-[inset_0_0_0_1px_var(--muted-light)]'
+const LINK_ICON_PATHS = [
+  'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+  'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+]
+
+function createChipSymbol(paths: string[]): SVGSVGElement {
   const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   symbol.setAttribute('aria-hidden', 'true')
   symbol.setAttribute('viewBox', '0 0 24 24')
@@ -573,17 +580,139 @@ export function createMentionChip(item: MentionItem): HTMLSpanElement {
   symbol.setAttribute('stroke-linecap', 'round')
   symbol.setAttribute('stroke-linejoin', 'round')
   symbol.setAttribute('class', 'h-3.5 w-3.5 shrink-0 text-(--muted)')
-  for (const pathData of MENTION_ICON_PATHS[item.type]) {
+  for (const pathData of paths) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
     path.setAttribute('d', pathData)
     symbol.append(path)
   }
+  return symbol
+}
+
+function createChipLabel(text: string): HTMLSpanElement {
   const label = document.createElement('span')
-  label.textContent = `@${item.name}`
-  chip.append(symbol, label)
+  label.className = 'truncate'
+  label.textContent = text
+  return label
+}
+
+/** The avatar that leads a person or agent chip. Other mentions keep their type icon. */
+function createPersonChipLead(item: MentionItem): HTMLSpanElement {
+  const lead = document.createElement('span')
+  lead.className = 'flex size-4 shrink-0 items-center justify-center overflow-hidden rounded-full'
+  if (item.principalType === 'agent') {
+    lead.setAttribute(MENTION_AVATAR_ATTR, 'agent')
+    return lead
+  }
+  // The initial is drawn by CSS so it never becomes part of the message text.
+  const showInitial = () => {
+    lead.replaceChildren()
+    lead.className += ' bg-(--surface-muted) text-[9px] text-(--muted) before:content-[attr(data-initial)]'
+    lead.dataset.initial = item.name.trim().slice(0, 1).toUpperCase() || '?'
+  }
+  if (!item.photoUrl) {
+    showInitial()
+    return lead
+  }
+  const image = document.createElement('img')
+  image.src = item.photoUrl
+  image.alt = ''
+  image.draggable = false
+  image.className = 'size-full object-cover'
+  image.addEventListener('error', showInitial, { once: true })
+  lead.append(image)
+  return lead
+}
+
+export function createMentionChip(item: MentionItem): HTMLSpanElement {
+  const chip = document.createElement('span')
+  chip.contentEditable = 'false'
+  chip.setAttribute(MENTION_ATTR, 'true')
+  chip.setAttribute(MENTION_TYPE_ATTR, item.type)
+  chip.setAttribute(MENTION_ID_ATTR, item.id)
+  chip.className = item.type === 'person'
+    ? `${CHIP_CLASS} rounded-full pl-[3px] pr-2`
+    : `${CHIP_CLASS} rounded-md px-1.5`
+  chip.append(
+    item.type === 'person' ? createPersonChipLead(item) : createChipSymbol(MENTION_ICON_PATHS[item.type]),
+    createChipLabel(item.name),
+  )
   // Store full item data
   chip.dataset.mentionData = JSON.stringify(item)
   return chip
+}
+
+export function createLinkChip(href: string): HTMLSpanElement {
+  const chip = document.createElement('span')
+  chip.contentEditable = 'false'
+  chip.setAttribute(LINK_CHIP_ATTR, href)
+  chip.className = `${CHIP_CLASS} rounded-md px-1.5`
+  chip.append(createChipSymbol(LINK_ICON_PATHS), createChipLabel(composerLinkLabel(href)))
+  return chip
+}
+
+/** Build the text and chip nodes for plain text, or null when it holds no chip. */
+export function buildComposerChipNodes(text: string, mentionItems: readonly MentionItem[] = []): Node[] | null {
+  const segments = splitComposerChipSegments(text, mentionItems)
+  if (segments.every((segment) => segment.kind === 'text')) return null
+  return segments.map((segment) => {
+    if (segment.kind === 'link') return createLinkChip(segment.href)
+    if (segment.kind === 'mention') return createMentionChip(segment.item)
+    return document.createTextNode(segment.text)
+  })
+}
+
+/**
+ * Turn the addresses and known `@name` mentions in plain editor text into
+ * chips, as when a saved draft comes back as text. Code keeps its text.
+ * Returns true when at least one mention chip was rebuilt.
+ */
+export function rebuildComposerChips(root: Node, mentionItems: readonly MentionItem[] = []): boolean {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
+  let rebuiltMention = false
+  for (const node of textNodes) {
+    if (node.parentElement?.closest(`pre, code, a, [${MENTION_ATTR}], [${LINK_CHIP_ATTR}]`)) continue
+    const nodes = buildComposerChipNodes(node.data, mentionItems)
+    if (!nodes) continue
+    rebuiltMention ||= nodes.some((chip) => chip instanceof HTMLElement && chip.hasAttribute(MENTION_ATTR))
+    node.replaceWith(...nodes)
+  }
+  return rebuiltMention
+}
+
+/** Turn an address into a link chip once the user types whitespace after it. */
+export function tryApplyLinkChip(el: HTMLDivElement): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  const node = range.startContainer
+  if (!el.contains(node) || node.nodeType !== Node.TEXT_NODE) return false
+  if (node.parentElement?.closest('pre, code, a')) return false
+
+  const textBefore = (node.textContent || '').slice(0, range.startOffset)
+  const match = textBefore.match(/(?:^|\s)(https?:\/\/[^\s<>]+)\s$/)
+  if (!match) return false
+  const href = trimComposerUrl(match[1]!)
+  if (!href) return false
+
+  const start = textBefore.length - 1 - match[1]!.length
+  const linkRange = document.createRange()
+  linkRange.setStart(node, start)
+  linkRange.setEnd(node, start + href.length)
+  linkRange.deleteContents()
+  const chip = createLinkChip(href)
+  linkRange.insertNode(chip)
+
+  const caret = document.createRange()
+  const after = chip.nextSibling
+  if (after?.nodeType === Node.TEXT_NODE) caret.setStart(after, match[1]!.length - href.length + 1)
+  else caret.setStartAfter(chip)
+  caret.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(caret)
+  dispatchEditorInput(el)
+  return true
 }
 
 export function extractMentionsFromElement(el: HTMLDivElement): MentionItem[] {
