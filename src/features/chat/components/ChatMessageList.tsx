@@ -6,7 +6,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from '@overlay/ui/ai'
-import type { ReactNode, RefObject } from 'react'
+import type { ReactNode, RefCallback, RefObject } from 'react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
@@ -90,6 +90,7 @@ export type ChatMessageListActions = {
 
 type ChatMessageListProps = {
   messagesScrollRef: RefObject<HTMLDivElement | null>
+  messagesScrollRefCallback: RefCallback<HTMLDivElement>
   messagesEndRef: RefObject<HTMLDivElement | null>
   floatingControl?: ReactNode
   showLoadingState: boolean
@@ -104,6 +105,7 @@ type ChatMessageListProps = {
 
 export function ChatMessageList({
   messagesScrollRef,
+  messagesScrollRefCallback,
   messagesEndRef,
   floatingControl,
   showLoadingState,
@@ -177,7 +179,7 @@ export function ChatMessageList({
     <MessageScrollerProvider key={nextIdentity.key} defaultScrollPosition="end" autoScroll>
       <MessageScroller className="overlay-chat-surface min-h-0 flex-1">
         <MessageScrollerViewport
-          ref={messagesScrollRef}
+          ref={messagesScrollRefCallback}
           aria-label="Conversation"
           className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
