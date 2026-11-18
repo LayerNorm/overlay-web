@@ -18,11 +18,8 @@ import { OnboardingPayment } from './OnboardingPayment'
 import type { WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
 import { OnboardingEmployees } from './OnboardingEmployees'
 import { OnboardingTools } from './OnboardingTools'
+import { OnboardingDots } from './OnboardingDots'
 import styles from './onboarding.module.css'
-
-export function OnboardingDots() {
-  return <div className={styles.dots} role="status" aria-label="Overlay is typing"><span /><span /><span /></div>
-}
 
 const PLACEHOLDERS: Partial<Record<OnboardingSession['step'], string>> = {
   name: 'Your name',

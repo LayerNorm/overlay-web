@@ -822,7 +822,7 @@ export function useChatExperienceController({
     tryLogTtftClientFirstText()
   }, [isActiveLoading, actChat.messages, selectedActModel])
 
-  const { isConversationBottomVisible, scrollToConversationBottom } = useConversationBottomVisibility({
+  const { isConversationBottomVisible, scrollToConversationBottom, messagesScrollRefCallback } = useConversationBottomVisibility({
     messagesScrollRef,
     messagesEndRef,
     activeChatId,
@@ -1285,6 +1285,7 @@ export function useChatExperienceController({
     scrollToConversationBottom,
     messagesEndRef,
     messagesScrollRef,
+    messagesScrollRefCallback,
     activeChat,
     primaryMessages,
     hasHistory,
