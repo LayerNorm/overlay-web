@@ -9,7 +9,10 @@ code owns only OS integrations. There is no desktop chat pipeline or provider SD
 `packages/overlay-desktop-bridge` defines v1 schemas, result/event types,
 `getDesktopBridge()` and `openExternal()`. Desktop vendors that package; keep both
 copies byte-for-byte synchronized. The package's fingerprint check detects local
-schema drift. To add a method, define its input schema and typed result, implement
+schema drift. Web code loads the package at runtime only through
+`src/components/desktop/desktop-bridge-loader.ts`, which imports it when
+`window.overlayDesktop` exists, so browsers never download the contract or its zod
+schemas; type-only imports are fine anywhere. To add a method, define its input schema and typed result, implement
 it in the native router, gate callers on its advertised capability, and test both
 sides. Additive v1 methods must preserve existing method semantics.
 

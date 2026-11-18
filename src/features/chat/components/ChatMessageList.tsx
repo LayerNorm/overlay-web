@@ -28,6 +28,7 @@ import { getUserTurnId } from '@overlay/chat-core'
 import type { DraftModalState, GenerationResult } from './chat-interface/types'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatMessage } from './ChatMessage'
+import { ChatMessageListSkeleton } from './ChatMessageListSkeleton'
 import { toChatTranscriptView } from './chat/toChatTranscriptView'
 import { reconcileTranscriptIdentity } from './chat/chat-transcript-identity'
 import { useChatRowCallbacks } from './chat/useChatRowCallbacks'
@@ -398,21 +399,6 @@ function ChatMessages({
       view={transcriptView}
       actions={transcriptActions}
     />
-  )
-}
-
-function ChatMessageListSkeleton() {
-  return (
-    <div className="flex min-h-full flex-col justify-start pt-4 sm:pt-6">
-      <div className="max-w-2xl space-y-4">
-        <div className="tool-line-shimmer w-fit text-sm font-medium">Loading conversation</div>
-        <div className="space-y-2.5">
-          <div className="ui-skeleton-line h-3 w-[min(72%,34rem)]" />
-          <div className="ui-skeleton-line h-3 w-[min(88%,42rem)]" />
-          <div className="ui-skeleton-line h-3 w-[min(54%,26rem)]" />
-        </div>
-      </div>
-    </div>
   )
 }
 
