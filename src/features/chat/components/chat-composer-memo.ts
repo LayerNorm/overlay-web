@@ -61,12 +61,14 @@ export function sameChatComposerProps(prev: ChatComposerProps, next: ChatCompose
 /**
  * The same object with every function except `renderFunctions` replaced by a handler that keeps its identity
  * and calls the latest committed function. Functions called while rendering must stay in `renderFunctions`.
+ * While nothing else changes, the previous object is returned, so it can be passed on as a memoizable prop.
  */
 export function useForwardedHandlers<T extends object>(value: T, renderFunctions: ReadonlySet<string> = RENDER_FUNCTIONS): T {
   const latest = useRef(value)
   useLayoutEffect(() => { latest.current = value })
   const handlers = useRef(new Map<string, Handler>()).current
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+  const previous = useRef<T | null>(null)
+  const next = Object.fromEntries(Object.entries(value).map(([key, item]) => {
     if (typeof item !== 'function' || renderFunctions.has(key)) return [key, item]
     let forwarded = handlers.get(key)
     if (!forwarded) {
@@ -75,6 +77,9 @@ export function useForwardedHandlers<T extends object>(value: T, renderFunctions
     }
     return [key, forwarded]
   })) as T
+  if (previous.current && sameShallow(previous.current, next, (_key, a, b) => Object.is(a, b))) return previous.current
+  previous.current = next
+  return next
 }
 
 const NO_QUEUE = {}

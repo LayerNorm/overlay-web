@@ -3,7 +3,7 @@ import test from 'node:test'
 import React, { act, createRef } from 'react'
 import { createRequire } from 'node:module'
 import type { ChatComposerProps, ComposerViewProps } from './ChatComposerTypes'
-import { sameChatComposerProps, useComposerViewProps } from './chat-composer-memo'
+import { sameChatComposerProps, useComposerViewProps, useForwardedHandlers } from './chat-composer-memo'
 
 const { create } = createRequire(import.meta.url)('react-test-renderer') as {
   create(element: React.ReactElement): { update(element: React.ReactElement): void; unmount(): void }
@@ -80,5 +80,24 @@ test('composer handlers keep their identity and call the latest committed handle
   assert.equal(before.textareaRef, textareaRef)
   await before.onSend()
   assert.deepEqual(calls, ['second'])
+  await act(async () => renderer!.unmount())
+})
+
+test('forwarded controls stay the same object until their data or render functions change', async () => {
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
+  const seen: object[] = []
+  const renderLabel = () => 'label'
+  function Probe({ value }: { value: { folder: string; choose: () => void; label: () => string } }) {
+    seen.push(useForwardedHandlers(value, new Set(['label'])))
+    return null
+  }
+  let renderer: ReturnType<typeof create> | undefined
+  await act(async () => { renderer = create(<Probe value={{ folder: 'a', choose: () => {}, label: renderLabel }} />) })
+  await act(async () => renderer!.update(<Probe value={{ folder: 'a', choose: () => {}, label: renderLabel }} />))
+  assert.equal(seen[0], seen[1])
+  await act(async () => renderer!.update(<Probe value={{ folder: 'b', choose: () => {}, label: renderLabel }} />))
+  assert.notEqual(seen[1], seen[2])
+  await act(async () => renderer!.update(<Probe value={{ folder: 'b', choose: () => {}, label: () => 'other' }} />))
+  assert.notEqual(seen[2], seen[3])
   await act(async () => renderer!.unmount())
 })
