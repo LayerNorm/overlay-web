@@ -3,6 +3,7 @@
 /* eslint-disable react-hooks/refs -- handlers are created once per key and read the latest committed props when called */
 
 import { isValidElement, useLayoutEffect, useRef } from 'react'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
 
 type Handler = (...args: unknown[]) => unknown
@@ -46,7 +47,11 @@ function sameComposerValue(key: string, left: unknown, right: unknown): boolean 
  * replaced handler alone never needs a render.
  */
 export function sameChatComposerProps(prev: ChatComposerProps, next: ChatComposerProps): boolean {
-  return sameShallow(toComposerViewProps(prev), toComposerViewProps(next), sameComposerValue)
+  return sameShallow(toComposerViewProps(prev), toComposerViewProps(next), (key, left, right) => {
+    const same = sameComposerValue(key, left, right)
+    if (!same) recordRender(`ChatComposer changed: ${key}`)
+    return same
+  })
 }
 
 /** Composer view props whose event handlers keep their identity and always call the latest committed handler. */
