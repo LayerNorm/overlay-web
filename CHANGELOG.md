@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Point the desktop submodule at Overlay Desktop 0.3.1, the release that runs threads on this computer without Node.js installed (the app carries the Agent Host and its own Node.js runtime). The website's download serves the newest release on its own; the desktop discovery plan records what was checked on the published build and that a real thread from the installed 0.3.1 app is still untested.
 - Let Stop and steer retry cancellation when a previous request failed, so a still-generating channel reply does not remain stuck behind a one-time stop attempt.
 - Let Stop reconcile an authorized terminal agent run with its still-generating reply, preserving completed output and failed diagnostics while releasing the channel composer.
 - Let each person arrange the primary sidebar. Hovering **More** shows a pin on every page that moves it into the sidebar, and **Customize** at the end of More opens a dialog to reorder pages and move them between the sidebar and More (drag, or the arrow keys on a row's handle). The sidebar always keeps at least one page. The arrangement is saved to the account (`sidebarPinnedPageIds` and `sidebarMorePageIds` in the UI settings), so it follows the person to every device, and both the double and the single sidebar use it. The first page in the sidebar is now the page the app opens to: `/app`, the sign-in redirect and the brand link go there, and to Work for anyone who never arranged their sidebar.
