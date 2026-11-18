@@ -8,13 +8,12 @@ import {
   type ReactNode,
 } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  getDesktopBridge,
-  type DesktopBridge,
-  type Handshake,
-} from '@overlay/desktop-bridge'
+import type { DesktopBridge, Handshake } from '@overlay/desktop-bridge'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@overlay/ui/primitives'
+import { loadDesktopBridgeContract } from './desktop-bridge-loader'
+
+void loadDesktopBridgeContract()?.catch(() => {})
 
 type Desktop = { bridge: DesktopBridge; info: Handshake }
 const DesktopContext = createContext<Desktop | null>(null)
@@ -26,12 +25,14 @@ export function DesktopProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
   useEffect(() => {
-    const bridge = getDesktopBridge()
-    if (!bridge) return
+    const contract = loadDesktopBridgeContract()
+    if (!contract) return
     let disposed = false
-    void bridge
-      .handshake()
-      .then((info) => {
+    void contract
+      .then(async ({ getDesktopBridge }) => {
+        const bridge = getDesktopBridge()
+        if (!bridge || disposed) return
+        const info = await bridge.handshake()
         if (disposed || info.bridgeVersion !== 1) return
         setDesktop({ bridge, info })
         document.documentElement.dataset.desktop =
