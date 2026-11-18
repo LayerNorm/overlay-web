@@ -117,3 +117,25 @@ test('the native adapter retains file, tool and generated UI parts without lossy
   assert.deepEqual(ui.parts, parts)
   assert.deepEqual(ui.metadata, { replyToTurnId: 'earlier', replySnippet: 'Earlier', routedModelId: 'routed', agentPlan: undefined })
 })
+
+test('a reply read from Convex keeps the saved row and adds only the response metadata', () => {
+  const live = message('assistant', 'turn', 'assistant', { status: 'generating', content: 'Live from Convex', modelId: 'model' })
+  const user = message('turn', 'turn', 'user', { status: 'completed' })
+  const sourceCitations = { 1: { kind: 'file', sourceId: 'file-1' } }
+  const pending: PersonalPendingTurn = {
+    turnId: 'turn', userAcknowledged: true,
+    user: personalMessageToUi(user),
+    responses: [{
+      id: 'assistant', turnId: 'turn', role: 'assistant', mode: 'act', model: 'model', variantIndex: 0, createdAt: 1,
+      contentType: 'text', status: 'generating', parts: [],
+      metadata: { harnessAccepted: { runId: 'run', status: 'running', liveTransport: 'convex' }, sourceCitations },
+    }],
+  }
+  const projected = projectPersonalTranscript([{ message: live, contextUser: user }], [pending])
+  const reply = projected.exchanges[0]!.responses[0]!
+  assert.deepEqual(reply.parts, [{ type: 'text', text: 'Live from Convex' }])
+  assert.equal(reply.status, 'generating')
+  assert.deepEqual((reply.metadata as { sourceCitations?: unknown }).sourceCitations, sourceCitations)
+  assert.equal(projected.exchanges[0]!.responses.length, 1)
+})
+

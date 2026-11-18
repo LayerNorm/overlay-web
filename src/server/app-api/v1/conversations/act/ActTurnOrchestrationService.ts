@@ -163,6 +163,7 @@ export async function executeActTurn(
       harnessBudget,
       mentions: rawMentions,
       reasoning: rawReasoning,
+      liveTransport,
     } = bodyResult.data
     const { automationRun } = dependencies
     if (automationRun && (turnId !== automationRunTurnId(automationRun.runId) || !conversationId
@@ -598,6 +599,7 @@ export async function executeActTurn(
         goal: latestUserText ?? '',
         hasDynamicApproval: Boolean(actTooling.toolApproval),
         instructions: actInstructions,
+        liveTransport,
         messagesForModel,
         paid,
         principalId: context.workspace.principal.id,

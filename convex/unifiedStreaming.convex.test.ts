@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
-import { readActivePublicStreams } from './lib/publicStreamRead'
+import { readActivePublicStreamUpdates, readActivePublicStreams, type PublicStreamCursor } from './lib/publicStreamRead'
+import { mergePublicStreamUpdates, publicStreamCursors } from '../src/shared/chat/public-stream-updates'
 
 const modules = import.meta.glob('./**/*.ts')
 const query = (name: string) => makeFunctionReference<'query'>(name)
@@ -213,10 +214,28 @@ test('authorized personal, automation, and room readers see sequenced snapshots;
     workspaceId: 'ws', conversationId: ids.room, messageIds: [ids.roomMessage],
   })).resolves.toMatchObject([{ text: 'Live answer' }])
 
+  const personalUpdates = query('chat/personal:activePublicStreamUpdates')
+  const roomUpdates = query('collaboration/rooms:activePublicStreamUpdates')
+  await expect(owner.query(personalUpdates, {
+    workspaceId: 'ws', conversationId: ids.personal, messageIds: [ids.personalMessage], cursors: [],
+  })).resolves.toMatchObject([{ fromSegmentIndex: 0, segments: [{ index: 0, text: 'Live answer' }], sequence: 1 }])
+  await expect(owner.query(roomUpdates, {
+    workspaceId: 'ws', conversationId: ids.room, messageIds: [ids.roomMessage], cursors: [{
+      assistantMessageId: ids.roomMessage, runId: 'workspace:run', executionGeneration: 2, invocation: 0,
+      sequence: 1, segmentIndex: 0,
+    }],
+  })).resolves.toMatchObject([{ fromSegmentIndex: 1, segments: [] }])
+
   const outsider = convex.withIdentity({ subject: 'outsider' })
   await expect(outsider.query(personalStreams, {
     workspaceId: 'ws', conversationId: ids.personal, messageIds: [ids.personalMessage],
   })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  await expect(outsider.query(personalUpdates, {
+    workspaceId: 'ws', conversationId: ids.personal, messageIds: [ids.personalMessage], cursors: [],
+  })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  await expect(outsider.query(roomUpdates, {
+    workspaceId: 'ws', conversationId: ids.room, messageIds: [ids.roomMessage], cursors: [],
+  })).resolves.toEqual([])
   await convex.run(async ctx => {
     await ctx.db.patch(ids.membershipId, { status: 'suspended' })
   })
@@ -670,3 +689,81 @@ test('separate calls keep a blank line between their text, and the live reader d
   const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
   expect(message?.content).toBe('Checking the files.\n\nDone.')
 })
+
+test('incremental live reads return only segments the reader lacks and keep generation filtering', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:incremental')
+  const append = mutation('appendPublicStream')
+  const read = (cursors: PublicStreamCursor[]) => convex.run(ctx =>
+    readActivePublicStreamUpdates(ctx, stream.conversationId, [stream.assistantMessageId], cursors))
+  const cursor = (sequence: number, segmentIndex: number, executionGeneration = 0): PublicStreamCursor => ({
+    assistantMessageId: stream.assistantMessageId, runId: stream.runId, executionGeneration,
+    invocation: 0, sequence, segmentIndex,
+  })
+  await convex.mutation(append, appendArgs(stream, 0, 'a'.repeat(8_190)))
+  await convex.mutation(append, appendArgs(stream, 1, 'bcd'))
+
+  const first = await read([])
+  expect(first).toMatchObject([{ sequence: 1, fromSegmentIndex: 0 }])
+  expect(first[0]!.segments.map(segment => segment.index)).toEqual([0, 1])
+  let held = mergePublicStreamUpdates(new Map(), first)
+
+  expect(await read([cursor(1, 1)])).toMatchObject([{ sequence: 1, fromSegmentIndex: 2, segments: [] }])
+
+  await convex.mutation(append, appendArgs(stream, 2, 'efg'))
+  const next = await read(publicStreamCursors(held, [stream.assistantMessageId]) as PublicStreamCursor[])
+  expect(next).toMatchObject([{ sequence: 2, fromSegmentIndex: 1, segments: [{ index: 1, text: 'defg' }] }])
+  held = mergePublicStreamUpdates(held, next)
+  const whole = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+  expect(held.get(stream.assistantMessageId)?.snapshot.text).toBe(whole[0]!.text)
+  expect(held.get(stream.assistantMessageId)?.snapshot.text).toBe(`${'a'.repeat(8_190)}bcdefg`)
+
+  // A cursor from another generation is not trusted: the whole stream comes back.
+  expect((await read([cursor(2, 1, 1)]))[0]).toMatchObject({ fromSegmentIndex: 0 })
+  // A segment from another attempt under the same receipt is never returned.
+  await convex.run(ctx => ctx.db.insert('harnessPublicStreamSegments', {
+    runId: stream.runId, workflowRunId: 'workflow:stale-attempt', executionGeneration: 0, receiptId: 'model:0',
+    segmentIndex: 2, firstSequence: 3, lastSequence: 3, text: 'stale', createdAt: 1, updatedAt: 1,
+  }))
+  expect((await read([]))[0]!.segments.map(segment => segment.text).join('')).not.toContain('stale')
+
+  // A run whose current generation moved on hides the old stream, as does a newer checkpoint.
+  const run = await convex.run(ctx => ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique())
+  const metadata = JSON.parse(run!.metadataJson) as Record<string, unknown>
+  await convex.run(ctx => ctx.db.patch(run!._id, { metadataJson: JSON.stringify({ ...metadata, executionGeneration: 1 }) }))
+  expect(await read([cursor(2, 1)])).toEqual([])
+  await convex.run(ctx => ctx.db.patch(run!._id, { metadataJson: run!.metadataJson }))
+  await convex.run(ctx => ctx.db.patch(stream.assistantMessageId, {
+    publicStreamCheckpoint: { runId: stream.runId, executionGeneration: 0, receiptId: 'model:0', invocation: 0 },
+  }))
+  expect(await read([cursor(2, 1)])).toEqual([])
+})
+
+test('the continuation flag is read from stored step fields, and from JSON for older steps', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:legacy-step')
+  await convex.mutation(mutation('appendPublicStream'), { ...appendArgs(stream, 0, 'more'), receiptId: 'model:0' })
+  await convex.run(async ctx => {
+    const active = await ctx.db.query('harnessPublicStreams').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique()
+    await ctx.db.patch(active!._id, { receiptId: 'model:2', invocation: 2 })
+    const segment = await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique()
+    await ctx.db.patch(segment!._id, { receiptId: 'model:2' })
+    await ctx.db.insert('harnessTranscriptSteps', {
+      runId: stream.runId, receiptId: 'model:0', sequence: 0, stepNumber: 0, createdAt: 1,
+      persistenceJson: JSON.stringify({ content: 'cut', parts: [], outputLimitReached: true }),
+    })
+    await ctx.db.insert('harnessTranscriptSteps', {
+      runId: stream.runId, receiptId: 'model:1', sequence: 1, stepNumber: 1, createdAt: 2,
+      persistenceJson: JSON.stringify({ content: '', parts: [] }), hasOutput: false, outputLimitReached: false,
+    })
+  })
+  const reader = () => convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+  expect((await reader())[0]?.continuesPrevious).toBe(true)
+  await convex.run(async ctx => {
+    const legacy = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_receiptId', q =>
+      q.eq('runId', stream.runId).eq('receiptId', 'model:0')).unique()
+    await ctx.db.patch(legacy!._id, { hasOutput: true, outputLimitReached: false })
+  })
+  expect((await reader())[0]?.continuesPrevious).toBeUndefined()
+})
+

@@ -410,3 +410,47 @@ test('versioned accepted responses stream persisted text, source metadata, and t
   expect(chunks.findIndex(chunk => chunk.type === 'tool-input-available'))
     .toBeLessThan(chunks.findIndex(chunk => chunk.type === 'tool-output-available'))
 })
+
+test('a client reading the live reply from Convex gets the run identity and sources, and no relay', async () => {
+  const sourceCitations = { source: { kind: 'file', sourceId: 'file-1' } } as const
+  mocks.describeTools.mockResolvedValue([])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Hi.' }])
+  mocks.startPersonalHarness.mockImplementation(async options => {
+    await options.onAdmitted?.()
+    return { accepted: true, runId: 'personal:run-chat', executionGeneration: 2 }
+  })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => sdkCreateUIMessageStreamResponse({ stream }))
+  expect(ActConversationRequest.safeParse({ messages: [], liveTransport: 'convex' }).success).toBe(true)
+  expect(ActConversationRequest.safeParse({ messages: [], liveTransport: 'sse' }).success).toBe(false)
+
+  const response = await startPersonalHarnessTurn({
+    agentRun: makeAgentRun(),
+    auth: { userId: 'user', authType: 'session', accessToken: 'private-token' } as AuthenticatedAppUser,
+    conversationId: 'conversation', emitWebhook: true, effectiveModelId: 'candidate-0', goal: 'Hi.',
+    hasDynamicApproval: false, instructions: 'Answer.', liveTransport: 'convex',
+    messagesForModel: [{ id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Hi.' }] }] as UIMessage[],
+    paid: true, principalId: 'principal', requestId: 'request-live', releaseConcurrency: vi.fn(),
+    recordProgress: vi.fn(async () => {}), sourceCitations, tools: {} as never,
+    toolingContext: {} as never, workspaceId: 'workspace',
+  })
+  const reader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  while (true) {
+    const next = await reader.read()
+    if (next.done) break
+    if (!next.value.success) throw next.value.error
+    chunks.push(next.value.value)
+  }
+  expect(response.status).toBe(200)
+  expect(mocks.readPublicStreamState).not.toHaveBeenCalled()
+  expect(chunks.map(chunk => chunk.type)).toEqual(['start', 'message-metadata', 'finish'])
+  expect(chunks.at(-1)).toMatchObject({
+    type: 'finish',
+    messageMetadata: {
+      harnessAccepted: { runId: 'personal:run-chat', executionGeneration: 2, status: 'running', liveTransport: 'convex' },
+      sourceCitations,
+    },
+  })
+})
+

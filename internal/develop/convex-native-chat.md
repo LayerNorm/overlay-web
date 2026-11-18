@@ -209,6 +209,31 @@ The browser places live stream text before the trailing tool rows that native to
 progress stores for the running call (they have no part `id`; settled transcript
 parts do), so a sentence stays ahead of the tool it starts.
 
+Every thread kind reads live text through one hook, `useLivePublicStreams`
+(`src/components/providers/useLivePublicStreams.ts`), and projects it with
+`projectActivePublicStreams`: personal and workspace chats, automation threads
+(both through `usePersonalChatTranscript`) and agent threads, DMs and channels
+(`ConvexRoomMessageSubscription`). It subscribes only while a reply is generating.
+Reads are incremental: `chat/personal:activePublicStreamUpdates` and
+`collaboration/rooms:activePublicStreamUpdates` take a cursor per reply (run,
+generation, invocation, last sequence and last segment index held) and return only
+the segments from that last, still-growing segment onward, or none when the stream
+has not moved. A cursor from another run, generation or invocation is ignored and
+the whole stream comes back; segments from another attempt are never returned. The
+client joins segments in `src/shared/chat/public-stream-updates.ts`, keeps on-screen
+text while a re-read loads or after a gap (and re-reads from the first segment), and
+keeps object identity when a read brings nothing new. Both queries apply the same
+viewer, run, delivery, checkpoint and generation checks as the whole-stream readers
+(`readableActiveStream` in `convex/lib/publicStreamRead.ts`). The run's metadata
+JSON is still parsed on each read: it is written from several harness paths, and a
+denormalized copy that one path forgot would show a retried generation's stream.
+Settled transcript steps store `hasOutput` and `outputLimitReached` beside their
+JSON, so the continuation check no longer parses up to ten step snapshots per read;
+older rows without the fields are still parsed. During a web-first rollout the hook
+uses the incremental query only once `platform/uiSettings:mine` advertises
+`livePublicStreamRevision: incremental-v1`, and reads whole streams before that. Keep
+both whole-stream queries for already-open clients and server readers.
+
 Model-step checkpoints can precede native tool execution and temporarily contain
 the missing-result fallback. Final delivery reconciles only an explicit later
 tool outcome for the same call ID and original receipt/step, updates that
@@ -291,8 +316,19 @@ produced only thinking (the provider-reported reasoning tokens cover all but a f
 output tokens), `harnessReasoningSetting` runs the continuation with
 `reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
 
-The native personal Act request remains pending until the durable root's
-authoritative Convex state is terminal. Its SSE adapter reads the same persisted
+The web chat sends `liveTransport: 'convex'` on native personal Act requests.
+For an admitted versioned run the response then carries only `start`, the
+`harnessAccepted` run identity (with `liveTransport: 'convex'`) and source
+citations, and finishes at once, so no function stays open relaying text. The
+client renders the reply from Convex like every other thread, merges only that
+metadata into the saved row (`personal-transcript.ts`), and completes the turn
+(session, unread notice, first-turn activation, subscription refresh) when
+`chat/personal:getExecution` reports the run terminal (`waitForNativePersonalTurn`);
+a failed run reports "The durable run failed." as before. Runs that are not admitted
+on the versioned path keep streaming over the response. Requests without the field,
+such as the Notebook assistant, Act retry and public API callers, keep the
+SSE adapter: the request remains pending until the durable root's
+authoritative Convex state is terminal. That adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and
 ordered tool-part metadata; it never forwards a losing Workflow handle or raw
 SDK output. It reads only the stream projection rather than repeatedly loading
@@ -328,7 +364,7 @@ chats do not show workspace-filed outputs; workspace and automation chats do.
 | Operation | Path | Why |
 | --- | --- | --- |
 | List, transcript, run state, send, rename, archive, read, delete turn, branch, generated UI edits, media notes | Convex `chat/personal:*` | Shared state, updates every client |
-| Model execution and streaming | `conversations/act` | Server work |
+| Model execution | `conversations/act` (admission; live text from Convex) | Server work |
 | Stop, approval and input response | `conversations/stop`, `run/approval`, `run/input` | They abort provider calls and resume durable workflows; status returns through `getExecution` |
 | Title generation, image and video generation | `generate-*` | Provider calls |
 | Permanent delete of an archived chat | `v1/conversations` DELETE | Moves with unified archive, CN-33 |

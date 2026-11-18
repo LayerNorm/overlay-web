@@ -8,7 +8,7 @@ import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
 import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
-import { readActivePublicStreams } from '../lib/publicStreamRead'
+import { readActivePublicStreams, transcriptStepHasOutput } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
   admitHarnessChild,
@@ -1740,7 +1740,9 @@ export const writeTranscriptStep = mutation({
     // A large step is never refused: the stored row keeps a shortened copy that fits
     // Convex's document limit, and the full step lives in file storage when uploaded.
     // Compaction is idempotent, so a replayed write still matches the stored row.
-    const persistenceJson = stableJson(compactTranscriptSnapshot(args.persistence as HarnessTranscriptPersistence))
+    const stored = compactTranscriptSnapshot(args.persistence as HarnessTranscriptPersistence)
+    const persistenceJson = stableJson(stored)
+    const outputFlags = transcriptStepOutputFlags(stored)
     const run = await findRun(ctx, args.runId)
     if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
@@ -1780,6 +1782,7 @@ export const writeTranscriptStep = mutation({
       }
       await ctx.db.patch(existing._id, {
         persistenceJson,
+        ...outputFlags,
         fullPersistenceStorageId: args.fullPersistenceStorageId,
         fullPersistenceDigest: args.fullPersistenceDigest,
       })
@@ -1796,6 +1799,7 @@ export const writeTranscriptStep = mutation({
       sequence: Number(sequenceMatch[1]),
       stepNumber: args.stepNumber,
       persistenceJson,
+      ...outputFlags,
       ...(args.fullPersistenceStorageId ? {
         fullPersistenceStorageId: args.fullPersistenceStorageId,
         fullPersistenceDigest: args.fullPersistenceDigest,
@@ -1819,6 +1823,11 @@ export const writeTranscriptStep = mutation({
     return { persisted: true }
   },
 })
+
+/** Stored beside the step so live readers can tell whether it continues without parsing its JSON. */
+function transcriptStepOutputFlags(step: { content?: unknown; parts?: unknown; outputLimitReached?: unknown }) {
+  return { hasOutput: transcriptStepHasOutput(step), outputLimitReached: step.outputLimitReached === true }
+}
 
 const MAX_PUBLIC_STREAM_SEGMENT_BYTES = 8 * 1024
 const MAX_PUBLIC_STREAM_VISIBLE_CHARS = 160_000
