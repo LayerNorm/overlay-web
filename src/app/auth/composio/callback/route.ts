@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { INTEGRATIONS_BC_CHANNEL, INTEGRATIONS_STORAGE_KEY } from '@/shared/integrations/integrations-events'
+import { INTEGRATIONS_BC_CHANNEL, INTEGRATIONS_FAILED_STORAGE_KEY, INTEGRATIONS_STORAGE_KEY } from '@/shared/integrations/integrations-events'
 
 /**
  * Where the provider tab lands after connector sign-in. Static HTML with no app shell, so it renders at once: it tells
  * the original Overlay tab the connection changed (BroadcastChannel, with a localStorage ping as fallback) and closes
  * itself. Browsers refuse window.close() after some providers isolate the tab, so the page also says it can be closed.
+ * A failed sign-in stays open with its error and tells the original tab only that it failed, never the error text.
  */
 
 const STYLE = `
@@ -21,10 +22,12 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
 }
 
-function notifyScript(): string {
+function notifyScript(success: boolean): string {
   const channel = JSON.stringify(INTEGRATIONS_BC_CHANNEL)
-  const key = JSON.stringify(INTEGRATIONS_STORAGE_KEY)
-  return `try{var b=new BroadcastChannel(${channel});b.postMessage({type:'changed'});b.close()}catch(e){}try{localStorage.setItem(${key},String(Date.now()))}catch(e){}setTimeout(function(){window.close()},600)`
+  const key = JSON.stringify(success ? INTEGRATIONS_STORAGE_KEY : INTEGRATIONS_FAILED_STORAGE_KEY)
+  const type = success ? 'changed' : 'failed'
+  const close = success ? 'setTimeout(function(){window.close()},600)' : ''
+  return `try{var b=new BroadcastChannel(${channel});b.postMessage({type:'${type}'});b.close()}catch(e){}try{localStorage.setItem(${key},String(Date.now()))}catch(e){}${close}`
 }
 
 export function GET(request: NextRequest) {
@@ -36,7 +39,7 @@ export function GET(request: NextRequest) {
   const detail = success
     ? 'You can close this tab. Overlay has already updated.'
     : error ? escapeHtml(error.slice(0, 200)) : 'Close this tab and try connecting again from Overlay.'
-  const script = success ? `<script${nonce ? ` nonce="${escapeHtml(nonce)}"` : ''}>${notifyScript()}</script>` : ''
+  const script = `<script${nonce ? ` nonce="${escapeHtml(nonce)}"` : ''}>${notifyScript(success)}</script>`
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${title} · Overlay</title><style>${STYLE}</style></head><body><main><h1>${title}</h1><p>${detail}</p></main>${script}</body></html>`
   return new NextResponse(html, {
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },

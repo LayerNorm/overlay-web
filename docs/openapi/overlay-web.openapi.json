@@ -7433,6 +7433,18 @@
                   },
                   "useSecondarySidebar": {
                     "type": "boolean"
+                  },
+                  "sidebarPinnedPageIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sidebarMorePageIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": true

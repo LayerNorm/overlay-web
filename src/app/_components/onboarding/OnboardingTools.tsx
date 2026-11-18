@@ -50,8 +50,12 @@ export function OnboardingTools({ session, disabled, onContinue }: {
 }) {
   const { apps, refreshApps } = useAvailability(session.workspaceId)
   const [connecting, setConnecting] = useState<string | null>(null)
-  const [, setPendingConnection] = usePendingConnection({ load: refreshApps, onConnected: () => {} })
   const [error, setError] = useState<string | null>(null)
+  const [, setPendingConnection] = usePendingConnection({
+    load: refreshApps,
+    onConnected: () => {},
+    onFailed: (slug) => setError(`Could not connect ${ONBOARDING_TOOL_LABELS[slug as ToolSlug] ?? 'the app'}. Try again.`),
+  })
   const technical = /engineer|code|software/i.test(`${session.profile.about} ${session.profile.daily}`)
   const visibleApps = APPS.filter((app) => !app.technical || technical)
   const connectedApps = apps instanceof Set ? visibleApps.filter((app) => apps.has(app.slug)).map((app) => app.slug) : []

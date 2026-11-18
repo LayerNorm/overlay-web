@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useEffectEvent, useState } from 'react'
-import { subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { subscribeIntegrationsChanged, subscribeIntegrationsFailed } from '@/shared/integrations/integrations-events'
 
 const POLL_MS = 3_000
 const GIVE_UP_MS = 2 * 60_000
@@ -9,18 +9,22 @@ const GIVE_UP_MS = 2 * 60_000
 /**
  * Tracks a connector whose sign-in is finishing in another tab. While one is pending it re-checks the connected set on
  * cross-tab change events, when this tab becomes visible again, and every few seconds, so the original tab updates in
- * place even when the callback tab could not notify it. Gives up quietly after two minutes.
+ * place even when the callback tab could not notify it. Stops when the callback tab reports a failed sign-in, and gives
+ * up quietly after two minutes.
  */
 export function usePendingConnection({
   load,
   onConnected,
+  onFailed,
 }: {
   load: () => Promise<ReadonlySet<string> | null>
   onConnected: (providerKey: string) => void
+  onFailed: (providerKey: string) => void
 }) {
   const [pending, setPending] = useState<string | null>(null)
   const isConnected = useEffectEvent(async (providerKey: string) => (await load().catch(() => null))?.has(providerKey) === true)
   const notifyConnected = useEffectEvent(onConnected)
+  const notifyFailed = useEffectEvent(onFailed)
 
   useEffect(() => {
     if (!pending) return
@@ -41,11 +45,18 @@ export function usePendingConnection({
     }
     document.addEventListener('visibilitychange', onVisible)
     const unsubscribe = subscribeIntegrationsChanged(() => void check())
+    const unsubscribeFailed = subscribeIntegrationsFailed(() => {
+      if (settled) return
+      settled = true
+      setPending(null)
+      notifyFailed(pending)
+    })
     return () => {
       settled = true
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
       unsubscribe()
+      unsubscribeFailed()
     }
   }, [pending])
 

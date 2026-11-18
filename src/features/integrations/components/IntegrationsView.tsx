@@ -201,6 +201,10 @@ export default function IntegrationsView({
       const name = catalogItems.find((item) => item.providerKey === providerKey)?.name ?? 'Connector'
       toast.success(`${name} connected`)
     },
+    onFailed: (providerKey) => {
+      const name = catalogItems.find((item) => item.providerKey === providerKey)?.name ?? 'the connector'
+      toast.error(`Could not connect ${name}. Try again.`)
+    },
   })
 
   // Search reaches the provider's whole catalog, not only the first page loaded above.
