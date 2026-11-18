@@ -99,6 +99,15 @@ function routeTargetMatchesCurrentWorkspace(
   return true
 }
 
+/** A switch to a workspace already in the live list resolves without a server call, so it keeps the shell up. */
+function routeTargetIsKnown(routeTarget: WorkspaceRouteTarget | null, listed: readonly WorkspaceSummary[]): boolean {
+  if (routeTarget?.kind === 'id') return listed.some((workspace) => workspace.id === routeTarget.value)
+  if (routeTarget?.kind === 'handle') {
+    return listed.some((workspace) => workspace.status === 'active' && workspace.routingHandle === routeTarget.value)
+  }
+  return false
+}
+
 export function WorkspaceProvider({
   children,
   enabled = true,
@@ -168,12 +177,8 @@ export function WorkspaceProvider({
       currentWorkspace,
       resolvedRouteTargetKey,
     )
-    // A switch to a workspace already in the live list resolves without a server call, so it keeps the shell up too.
-    const targetKnown = routeTarget?.kind === 'id'
-      ? listed.some((workspace) => workspace.id === routeTarget.value)
-      : routeTarget?.kind === 'handle'
-        && directory.workspaces.some((workspace) => workspace.status === 'active' && workspace.routingHandle === routeTarget.value)
-    const softReload = !options?.force && statusRef.current === 'ready' && (targetMatchesCurrent || targetKnown)
+    const softReload = !options?.force && statusRef.current === 'ready'
+      && (targetMatchesCurrent || routeTargetIsKnown(routeTarget, listed))
     if (!softReload) setStatus('loading')
     setError(null)
     const routeResolution = await resolveRouteWorkspace(routeTarget, resolveHandle, directory.workspaces)
@@ -307,12 +312,28 @@ export function WorkspaceProvider({
 
   // Every workspace route names its workspace and every request is scoped by that route, so a switch navigates
   // at once; saving the choice as the next default only needs to land eventually.
+  // Saves run one at a time and only the newest pick is sent next, so rapid switches always leave the last choice saved.
+  const activation = useRef<{ running: boolean; next: string | null }>({ running: false, next: null })
   const rememberActiveWorkspace = useCallback((workspaceId: string) => {
-    void client.activate(workspaceId).then((response) => {
-      setWorkspaces((current) => current.map((workspace) => (
-        workspace.id === response.workspace.id ? response.workspace : workspace
-      )))
-    }).catch(() => undefined)
+    const queue = activation.current
+    queue.next = workspaceId
+    if (queue.running) return
+    queue.running = true
+    void (async () => {
+      while (queue.next) {
+        const id = queue.next
+        queue.next = null
+        try {
+          const response = await client.activate(id)
+          setWorkspaces((current) => current.map((workspace) => (
+            workspace.id === response.workspace.id ? response.workspace : workspace
+          )))
+        } catch {
+          // The route already opened the workspace; only the remembered default is unchanged.
+        }
+      }
+      queue.running = false
+    })()
   }, [client])
 
   const activeWorkspace = useMemo(

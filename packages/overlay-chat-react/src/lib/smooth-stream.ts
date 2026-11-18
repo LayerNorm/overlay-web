@@ -29,8 +29,8 @@ export function nextRevealLength(text: string, shown: number, elapsedMs: number)
  * shows at once. After the stream ends, any remaining backlog finishes revealing at the same pace.
  */
 export function useSmoothStreamText(text: string, isStreaming: boolean): { text: string; revealing: boolean } {
-  const [reveal, setReveal] = useState(() => ({ length: text.length, streamed: isStreaming }))
-  if (isStreaming && !reveal.streamed) setReveal({ ...reveal, streamed: true })
+  const [reveal, setReveal] = useState(() => ({ length: text.length, streamed: isStreaming && typeof requestAnimationFrame === 'function' }))
+  if (isStreaming && !reveal.streamed && typeof requestAnimationFrame === 'function') setReveal({ ...reveal, streamed: true })
   const length = reveal.streamed && reveal.length <= text.length ? reveal.length : text.length
   const behind = length < text.length
   const textRef = useRef(text)
