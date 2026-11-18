@@ -65,6 +65,14 @@ simulated mutations are not a production contract.
 
 ## What else lives here
 
+- `automation-threads.html` (feature `automation-threads`): proposed scheduled-thread composer.
+  Open the file directly, choose a schedule and agent (or no agent), then send a prompt.
+  Submission opens one persistent thread, with schedule changes, pause/resume and recurring-prompt changes inline;
+  there is no edit page. Run now and replies are simulated, explicitly labeled, and never call a backend.
+  Demo changes persist in browser storage. Built with
+  `MOCKUP_FEATURE=automation-threads node internal/plans/mockups/overlay-app/build.mjs`.
+  Delete it when the design ships.
+
 Mockups for shipped features are deleted once they land; Git history keeps
 them. Besides the canonical app mockup, this folder holds only:
 
