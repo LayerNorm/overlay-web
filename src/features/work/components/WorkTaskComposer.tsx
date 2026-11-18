@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useConvex } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { Settings, X } from 'lucide-react'
@@ -45,38 +45,30 @@ type ComposerProps = {
 export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerProps>(function WorkTaskComposerForm({ disabled, people, tasks, scope, principalId, createTask, search }, ref) {
   const [draft, setDraft] = useState(emptyComposerDraft)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const input = useRef<HTMLTextAreaElement>(null)
-  const inFlight = useRef(false)
-  const refocus = useRef(false)
-  const locked = disabled || busy
+  const submittedDraft = useRef<ComposerDraft | null>(null)
+  const locked = Boolean(disabled)
   useAutosizeTextarea(input, draft.text)
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }), [])
-  useEffect(() => {
-    if (!busy && refocus.current) { refocus.current = false; input.current?.focus() }
-  }, [busy])
   const patch = (value: Partial<ComposerDraft>) => { setDraft(current => ({ ...current, ...value })); setError('') }
   const assignee = people.find(person => person.principalId === draft.assigneePrincipalId)
 
+  // The composer clears on submit so the next task can be typed at once; a refused task comes back as the draft.
   async function submit() {
-    if (locked || inFlight.current) return
+    if (locked || submittedDraft.current === draft) return
     const request = composerRequest(draft)
     if (!request.input) { setError(request.error); return }
-    inFlight.current = true
-    setBusy(true)
+    const submitted = draft
+    submittedDraft.current = draft
+    setDraft(emptyComposerDraft())
+    setSettingsOpen(false)
     setError('')
-    try {
-      const created = await createTask(request.input)
-      if (created) { setDraft(emptyComposerDraft()); setSettingsOpen(false) }
-      else setError('Could not add the task. Your draft is unchanged.')
-    } catch {
-      setError('Could not add the task. Your draft is unchanged.')
-    } finally {
-      inFlight.current = false
-      refocus.current = true
-      setBusy(false)
-    }
+    input.current?.focus()
+    const created = await createTask(request.input).catch(() => null)
+    if (created) return
+    setDraft(current => (current.text.trim() ? current : submitted))
+    setError('Could not add the task. Your draft is back.')
   }
 
   // The same composer box as chat and agent threads: one outlined card, centered at the transcript width.
@@ -100,7 +92,7 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
           </Popover>
           <span className="min-w-0 flex-1" />
           {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
-          <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
+          <PromptInputSubmit aria-label="Add task" status="ready" disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
         </PromptInputFooter>
         {error ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
       </PromptInputBody></PromptInput>

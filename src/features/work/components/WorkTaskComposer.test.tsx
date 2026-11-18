@@ -62,7 +62,7 @@ test('compact pickers preserve accessible labels, avatars and counts, including 
   }
 })
 
-test('Enter submits, duplicate submits are held, success resets and refocuses; failures retain the draft', async () => {
+test('Enter submits, duplicate submits are held, the composer resets at once and refocuses; failures restore the draft', async () => {
   const restoreGlobals = mockTooltipGlobals()
   let renderer: ReactTestRenderer
   let focuses = 0
@@ -93,6 +93,7 @@ test('Enter submits, duplicate submits are held, success resets and refocuses; f
     await act(async () => { send().props.onClick(); send().props.onClick() })
     assert.equal(requests.length, 1)
     assert.deepEqual(requests[0], { title: 'Title', description: 'Description', status: 'backlog', priority: 2, blockedBy: ['blocker'], assigneePrincipalId: 'agent', startDate: '2026-11-01', dueDate: '2026-11-03', context: [{ type: 'link', id: 'https://example.com/', label: 'Example' }] })
+    assert.equal(input().props.value, '', 'clears before the server answers')
     await act(async () => { resolve({ id: 'created' } as WorkItem) })
     assert.equal(input().props.value, '')
     assert.equal(send().props.disabled, true)
@@ -108,6 +109,7 @@ test('Enter submits, duplicate submits are held, success resets and refocuses; f
     await act(async () => { input().props.onChange({ target: { value: 'Keep this' } }) })
     await act(async () => { input().props.onKeyDown({ key: 'Enter', shiftKey: false, nativeEvent: {}, preventDefault() { prevented = true } }) })
     assert.equal(prevented, true)
+    assert.equal(input().props.value, '')
     await act(async () => { resolve(null) })
     assert.equal(input().props.value, 'Keep this')
     assert.ok(renderer!.root.findByProps({ role: 'alert' }))

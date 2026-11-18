@@ -39,6 +39,8 @@ export type WorkspaceContextValue = {
   refresh(): Promise<void>
   createWorkspace(input: WorkspaceCreateInput, options?: { idempotencyKey: string }): Promise<WorkspaceSummary>
   switchWorkspace(workspaceId: string): Promise<WorkspaceSummary>
+  /** Remembers a workspace as the last one opened, without holding up navigation to it. */
+  rememberActiveWorkspace(workspaceId: string): void
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
@@ -166,7 +168,12 @@ export function WorkspaceProvider({
       currentWorkspace,
       resolvedRouteTargetKey,
     )
-    const softReload = !options?.force && statusRef.current === 'ready' && targetMatchesCurrent
+    // A switch to a workspace already in the live list resolves without a server call, so it keeps the shell up too.
+    const targetKnown = routeTarget?.kind === 'id'
+      ? listed.some((workspace) => workspace.id === routeTarget.value)
+      : routeTarget?.kind === 'handle'
+        && directory.workspaces.some((workspace) => workspace.status === 'active' && workspace.routingHandle === routeTarget.value)
+    const softReload = !options?.force && statusRef.current === 'ready' && (targetMatchesCurrent || targetKnown)
     if (!softReload) setStatus('loading')
     setError(null)
     const routeResolution = await resolveRouteWorkspace(routeTarget, resolveHandle, directory.workspaces)
@@ -298,6 +305,16 @@ export function WorkspaceProvider({
     }
   }, [activeWorkspaceId, client, workspaces])
 
+  // Every workspace route names its workspace and every request is scoped by that route, so a switch navigates
+  // at once; saving the choice as the next default only needs to land eventually.
+  const rememberActiveWorkspace = useCallback((workspaceId: string) => {
+    void client.activate(workspaceId).then((response) => {
+      setWorkspaces((current) => current.map((workspace) => (
+        workspace.id === response.workspace.id ? response.workspace : workspace
+      )))
+    }).catch(() => undefined)
+  }, [client])
+
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
     [activeWorkspaceId, workspaces],
@@ -315,6 +332,7 @@ export function WorkspaceProvider({
     resolvedRouteTargetKey,
     createWorkspace,
     switchWorkspace,
+    rememberActiveWorkspace,
   }), [
     activeWorkspace,
     activeWorkspaceId,
@@ -324,6 +342,7 @@ export function WorkspaceProvider({
     resolvedRouteTargetKey,
     status,
     switchWorkspace,
+    rememberActiveWorkspace,
     switchingWorkspaceId,
     workspaces,
     invitations,

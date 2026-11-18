@@ -447,6 +447,18 @@ export function useRoomTranscript({
     }
   }, [agentResponding, conversationId, loading, messages.length, generatingTextLength, scrollIntent, stickToBottom, turnScroll.anchored])
 
+  // Streamed replies keep revealing words between server updates, so follow the transcript's own growth too.
+  useEffect(() => {
+    const content = listRef.current?.firstElementChild
+    if (loading || !stickToBottom || !content) return
+    const observer = new ResizeObserver(() => {
+      const node = listRef.current
+      if (node && scrollIntent.followsLatest() && !turnScroll.anchored.current) node.scrollTop = node.scrollHeight
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [loading, scrollIntent, stickToBottom, turnScroll.anchored])
+
   useEffect(() => {
     const node = listRef.current
     if (!node) return

@@ -411,11 +411,8 @@ function AgentConversationWorkspaceContent() {
       open={createOpen}
       workspaceId={activeWorkspaceId}
       onClose={() => setCreateOpen(false)}
-      onCreated={(agent, warning) => {
-        setCreateOpen(false)
-        openCreatedAgent(agent)
-        if (warning) setError(warning)
-      }}
+      onReopen={() => setCreateOpen(true)}
+      onCreated={openCreatedAgent}
     />
   )
 
