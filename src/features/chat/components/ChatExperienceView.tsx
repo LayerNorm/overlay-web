@@ -33,6 +33,9 @@ const AutomationEditorPanel = dynamic(
   { loading: () => null },
 )
 
+/** The composer's model controls never show the export menu, so the transcript-dependent one must not re-render them. */
+const renderNoExportMenu = () => null
+
 type DragHandlers = Pick<
   React.HTMLAttributes<HTMLDivElement>,
   'onDragEnter' | 'onDragOver' | 'onDragLeave' | 'onDrop'
@@ -149,7 +152,7 @@ export function ChatExperienceView({
               <ChatComposer
                 {...composerProps}
                 surface={modelControlsInComposer
-                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...headerProps} placement="composer" /> }
+                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...headerProps} renderExportMenu={renderNoExportMenu} placement="composer" /> }
                   : composerProps.surface}
               />
               )

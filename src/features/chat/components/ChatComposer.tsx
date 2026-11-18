@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { markComposerReady } from '../lib/realtime-baseline'
@@ -27,7 +27,8 @@ import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
-import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
+import type { ChatComposerProps, ComposerViewProps } from './ChatComposerTypes'
+import { sameChatComposerProps, useComposerViewProps } from './chat-composer-memo'
 import { ComposerQueueTray, steerShortcutLabel } from './ChatComposerQueue'
 
 const DOCUMENT_FILE_ACCEPT = [
@@ -96,9 +97,9 @@ const TOOL_REQUEST_OPTIONS: Array<{
 
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
-export function ChatComposer(props: ChatComposerProps) {
+export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   recordRender('ChatComposer')
-  const viewProps = toComposerViewProps(props)
+  const viewProps = useComposerViewProps(props)
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
     !viewProps.hasComposerText &&
@@ -145,7 +146,7 @@ export function ChatComposer(props: ChatComposerProps) {
       </div>
     </>
   )
-}
+}, sameChatComposerProps)
 
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   useEffect(() => {
