@@ -12,6 +12,7 @@ import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
 import { WorkspaceSwitcherView, type ShellWorkspace } from '@overlay/shell-react'
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog'
 import type { WorkspaceSummary } from '@/shared/workspaces/types'
+import { isWorkspaceSwitchSupersededError } from '@/shared/workspaces/workspace-switch-error'
 
 function toShellWorkspace(workspace: WorkspaceSummary): ShellWorkspace {
   return { ...workspace, memberLabel: workspaceMemberLabel(workspace) }
@@ -47,6 +48,7 @@ export function WorkspaceSwitcher({
     activeWorkspaceId,
     switchingWorkspaceId,
     error,
+    beginWorkspaceNavigation,
     refresh,
     createWorkspace,
     switchWorkspace,
@@ -67,42 +69,44 @@ export function WorkspaceSwitcher({
     return () => window.removeEventListener('overlay:account-menu-action', closeForAccountAction)
   }, [])
 
-  async function selectWorkspace(workspaceId: string) {
-    try {
-      await switchWorkspace(workspaceId)
-      setOpen(false)
-      onNavigate?.()
-      const destination = workspaces.find((workspace) => workspace.id === workspaceId)
-      const search = new URLSearchParams(searchParams?.toString() ?? '')
-      const href = buildWorkspaceSwitchHref({
-        workspaceId,
-        handle: destination?.routingHandle,
-        pathname,
-        search: search.toString(),
-        currentScope,
-      })
-      router.push(href)
-    } catch (switchError) {
+  function selectWorkspace(workspaceId: string) {
+    const destination = workspaces.find((workspace) => workspace.id === workspaceId)
+    const search = new URLSearchParams(searchParams?.toString() ?? '')
+    const href = buildWorkspaceSwitchHref({
+      workspaceId,
+      handle: destination?.routingHandle,
+      pathname,
+      search: search.toString(),
+      currentScope,
+    })
+    setOpen(false)
+    beginWorkspaceNavigation(workspaceId)
+    onNavigate?.()
+    const activation = switchWorkspace(workspaceId)
+    router.push(href)
+    void activation.catch((switchError) => {
+      if (isWorkspaceSwitchSupersededError(switchError)) return
       toast.error(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
-    }
+    })
   }
 
   async function createAndSelect(name: string) {
     setCreateBusy(true)
     try {
       const workspace = await createWorkspace({ name })
+      const params = new URLSearchParams({ section: 'workspace' })
+      const settings = `/app/settings?${params.toString()}`
+      const href = workspace.routingHandle
+        ? buildWorkspaceHandleHref(workspace.routingHandle, settings)
+        : buildWorkspaceHref(workspace.id, settings)
       await switchWorkspace(workspace.id)
+      beginWorkspaceNavigation(workspace.id)
       setCreateOpen(false)
       setOpen(false)
       onNavigate?.()
-      const params = new URLSearchParams({ section: 'workspace' })
-      const settings = `/app/settings?${params.toString()}`
-      router.push(
-        workspace.routingHandle
-          ? buildWorkspaceHandleHref(workspace.routingHandle, settings)
-          : buildWorkspaceHref(workspace.id, settings),
-      )
+      router.push(href)
     } catch (createError) {
+      if (isWorkspaceSwitchSupersededError(createError)) return
       toast.error(createError instanceof Error ? createError.message : 'Could not create the workspace.')
     } finally {
       setCreateBusy(false)

@@ -12,6 +12,7 @@ import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
+import { isWorkspaceSwitchSupersededError } from '@/shared/workspaces/workspace-switch-error'
 
 export function WorkspaceDirectory({ onOpen }: { onOpen(): void }) {
   const router = useRouter()
@@ -40,7 +41,12 @@ export function WorkspaceDirectory({ onOpen }: { onOpen(): void }) {
   }
 
   async function open(workspaceId: string) {
-    await switchWorkspace(workspaceId)
+    try {
+      await switchWorkspace(workspaceId)
+    } catch (switchError) {
+      if (isWorkspaceSwitchSupersededError(switchError)) return
+      throw switchError
+    }
     router.push(buildWorkspaceHref(workspaceId, '/app/work'))
     onOpen()
   }

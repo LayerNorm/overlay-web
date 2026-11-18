@@ -30,6 +30,8 @@ export default defineConfig({
       'src/components/providers/usePersonalChatTranscript.parallel.test.tsx',
       'src/components/layout/sidebar/HelpMenu.test.tsx',
       'src/contexts/WorkspaceContext.test.tsx',
+      'src/features/workspaces/components/WorkspaceDirectory.test.tsx',
+      'src/features/workspaces/components/WorkspaceSwitcher.test.tsx',
       'src/hooks/use-panel-scope.test.tsx',
       'src/server/agents/workspace-agent-preparation.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',

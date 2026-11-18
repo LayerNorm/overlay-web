@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,7 +13,9 @@ import {
 } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useConvex, useConvexAuth, useQuery } from 'convex/react'
+import { toast } from '@overlay/ui/primitives'
 import type { AccountWorkspaceInvitation } from '@overlay/workspace-contracts'
+import { isWorkspaceSwitchSupersededError, WorkspaceSwitchSupersededError } from '@/shared/workspaces/workspace-switch-error'
 import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
 import {
   readWorkspaceRouteTarget,
@@ -36,6 +39,7 @@ export type WorkspaceContextValue = {
   error: string | null
   switchingWorkspaceId: string | null
   resolvedRouteTargetKey: string | null
+  beginWorkspaceNavigation(workspaceId: string): void
   refresh(): Promise<void>
   createWorkspace(input: WorkspaceCreateInput, options?: { idempotencyKey: string }): Promise<WorkspaceSummary>
   switchWorkspace(workspaceId: string): Promise<WorkspaceSummary>
@@ -49,6 +53,7 @@ type LiveDirectory = {
   invitations: AccountWorkspaceInvitation[]
 }
 type HandleResolver = (handle: string) => Promise<{ workspaceId: string; canonicalHandle: string; canonical: boolean } | null>
+type WorkspaceHistoryTarget = { pathname: string; generation: number }
 
 async function resolveRouteWorkspace(
   routeTarget: WorkspaceRouteTarget | null,
@@ -107,6 +112,13 @@ export function WorkspaceProvider({
   client: WorkspaceClient
 }) {
   const pathname = usePathname() ?? ''
+  const pathnameRef = useRef(pathname)
+  const routePathGenerationRef = useRef(0)
+  useLayoutEffect(() => {
+    if (pathnameRef.current === pathname) return
+    pathnameRef.current = pathname
+    routePathGenerationRef.current += 1
+  }, [pathname])
   const router = useRouter()
   const convex = useConvex()
   const { isAuthenticated, isLoading: convexAuthLoading } = useConvexAuth()
@@ -127,6 +139,18 @@ export function WorkspaceProvider({
   const workspacesRef = useRef(workspaces)
   const liveRef = useRef(live)
   const createdRef = useRef(new Map<string, WorkspaceSummary>())
+  const activationGenerationRef = useRef(0)
+  const routeLoadGenerationRef = useRef(0)
+  const navigationGenerationRef = useRef(0)
+  const historyTargetRef = useRef<WorkspaceHistoryTarget | null>(null)
+  const lastResolvedPathnameRef = useRef<string | null>(null)
+  const activationPendingCountRef = useRef(0)
+  const activationQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const latestActivationRequestRef = useRef<{
+    workspaceId: string
+    generation: number
+    promise: Promise<WorkspaceSummary>
+  } | null>(null)
   const liveReady = Boolean(live)
   useEffect(() => {
     statusRef.current = status
@@ -140,19 +164,97 @@ export function WorkspaceProvider({
     [convex],
   )
 
+  const queueWorkspaceActivation = useCallback((workspace: WorkspaceSummary) => {
+    const generation = ++activationGenerationRef.current
+    const snapshot = workspacesRef.current.find((item) => item.id === workspace.id)
+      ?? createdRef.current.get(workspace.id)
+      ?? workspace
+    activationPendingCountRef.current += 1
+    const promise = activationQueueRef.current.catch(() => undefined).then(async () => {
+      try {
+        const isLatestRequest = () => latestActivationRequestRef.current?.generation === generation
+        if (!isLatestRequest()) throw new WorkspaceSwitchSupersededError()
+        try {
+          await client.activate(workspace.id)
+        } catch (activationError) {
+          if (!isLatestRequest()) throw new WorkspaceSwitchSupersededError()
+          throw activationError
+        }
+        if (!isLatestRequest()) throw new WorkspaceSwitchSupersededError()
+        return workspacesRef.current.find((item) => item.id === workspace.id)
+          ?? createdRef.current.get(workspace.id)
+          ?? snapshot
+      } finally {
+        activationPendingCountRef.current -= 1
+      }
+    })
+    activationQueueRef.current = promise.then(() => undefined, () => undefined)
+    latestActivationRequestRef.current = { workspaceId: workspace.id, generation, promise }
+    return promise
+  }, [client])
+
+  const beginWorkspaceNavigation = useCallback((workspaceId: string) => {
+    navigationGenerationRef.current += 1
+    routeLoadGenerationRef.current += 1
+    historyTargetRef.current = null
+    if (activeWorkspaceIdRef.current === workspaceId) {
+      setSwitchingWorkspaceId(null)
+    } else {
+      setSwitchingWorkspaceId(workspaceId)
+    }
+    setError(null)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    function handlePopState() {
+      const pathname = window.location.pathname
+      const generation = ++navigationGenerationRef.current
+      historyTargetRef.current = { pathname, generation }
+      routeLoadGenerationRef.current += 1
+      setSwitchingWorkspaceId(null)
+
+      const routeTarget = readWorkspaceRouteTarget(pathname)
+      const activeWorkspaceId = activeWorkspaceIdRef.current
+      const currentWorkspace = workspacesRef.current.find((workspace) => workspace.id === activeWorkspaceId)
+      if (!routeTarget || statusRef.current !== 'ready' || !currentWorkspace) {
+        return
+      }
+      if (!routeTargetMatchesCurrentWorkspace(routeTarget, activeWorkspaceId, currentWorkspace, resolvedRouteTargetKey)) return
+
+      historyTargetRef.current = null
+      const latestActivationRequest = latestActivationRequestRef.current
+      if (latestActivationRequest && latestActivationRequest.workspaceId !== currentWorkspace.id) {
+        void queueWorkspaceActivation(currentWorkspace).catch((activationError) => {
+          if (isWorkspaceSwitchSupersededError(activationError)) return
+          toast.error(activationError instanceof Error ? activationError.message : 'Could not switch workspaces.')
+        })
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [queueWorkspaceActivation, resolvedRouteTargetKey])
+
   const load = useCallback(async (options?: { force?: boolean; cancelled?: () => boolean }) => {
+    const loadGeneration = ++routeLoadGenerationRef.current
     const cancelled = options?.cancelled ?? (() => false)
     if (!enabled) {
+      historyTargetRef.current = null
       setStatus('idle')
       setWorkspaces([])
       setInvitations([])
       setActiveWorkspaceId(null)
+      setSwitchingWorkspaceId(null)
       setResolvedRouteTargetKey(null)
       return
     }
     const directory = liveRef.current
     // The live directory has not arrived yet; this runs again when it does.
     if (!directory) return
+    const routePathGeneration = routePathGenerationRef.current
+    const navigationGeneration = navigationGenerationRef.current
+    const historyGeneration = historyTargetRef.current?.generation ?? null
     const listed = withCreated(directory.workspaces, createdRef.current)
 
     // Soft path changes (chat ↔ files within the same workspace, or query-only
@@ -170,9 +272,25 @@ export function WorkspaceProvider({
     if (!softReload) setStatus('loading')
     setError(null)
     const routeResolution = await resolveRouteWorkspace(routeTarget, resolveHandle, directory.workspaces)
-    if (cancelled()) return
-    if (routeResolution.canonicalHandle) {
-      const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(routeResolution.canonicalHandle)}`)
+    if (cancelled() || pathnameRef.current !== pathname
+      || routePathGenerationRef.current !== routePathGeneration
+      || routeLoadGenerationRef.current !== loadGeneration
+      || navigationGenerationRef.current !== navigationGeneration
+      || (historyTargetRef.current?.generation ?? null) !== historyGeneration) return
+    const pendingHistoryTarget = historyTargetRef.current
+    if (pendingHistoryTarget && pendingHistoryTarget.pathname !== pathname
+      && lastResolvedPathnameRef.current === pathname) return
+    const currentDirectory = liveRef.current ?? directory
+    const currentListed = withCreated(currentDirectory.workspaces, createdRef.current)
+    const liveRouteWorkspace = routeTarget?.kind === 'handle'
+      ? currentDirectory.workspaces.find((workspace) => workspace.status === 'active'
+        && workspace.routingHandle === routeTarget.value)
+      : undefined
+    const currentRouteResolution = liveRouteWorkspace
+      ? { workspaceId: liveRouteWorkspace.id, canonicalHandle: null, unavailable: false }
+      : routeResolution
+    if (currentRouteResolution.canonicalHandle) {
+      const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(currentRouteResolution.canonicalHandle)}`)
       if (canonicalPath !== pathname) {
         const locationSuffix = typeof window === 'undefined'
           ? ''
@@ -180,32 +298,58 @@ export function WorkspaceProvider({
         router.replace(`${canonicalPath}${locationSuffix}`, { scroll: false })
       }
     }
-    const routeWorkspace = routeResolution.workspaceId
-      ? listed.find((item) => item.id === routeResolution.workspaceId) ?? null
+    const routeWorkspace = currentRouteResolution.workspaceId
+      ? currentListed.find((item) => item.id === currentRouteResolution.workspaceId) ?? null
       : null
-    if (routeResolution.unavailable || (routeResolution.workspaceId && !routeWorkspace)) {
+    if (currentRouteResolution.unavailable || (currentRouteResolution.workspaceId && !routeWorkspace)) {
       setWorkspaces([])
       setActiveWorkspaceId(null)
+      setSwitchingWorkspaceId(null)
+      historyTargetRef.current = null
       setError('Workspace not found or you no longer have access.')
       setStatus('error')
       return
     }
 
+    const pathChanged = lastResolvedPathnameRef.current !== null
+      && lastResolvedPathnameRef.current !== pathname
+    const previousWorkspaceId = activeWorkspaceIdRef.current
+    const historyOwnsRoute = historyTargetRef.current?.pathname === pathname
+    const authoritativeRouteChange = pathChanged || historyOwnsRoute
+    let preferenceWorkspace: WorkspaceSummary | null = null
+
+    if (authoritativeRouteChange) {
+      historyTargetRef.current = null
+      setSwitchingWorkspaceId(null)
+      const latestActivationRequest = latestActivationRequestRef.current
+      if (routeWorkspace && (latestActivationRequest
+        ? latestActivationRequest.workspaceId !== routeWorkspace.id
+        : pathChanged && routeWorkspace.id !== previousWorkspaceId)) {
+        preferenceWorkspace = routeWorkspace
+      }
+    }
+
     const nextActiveWorkspaceId = routeWorkspace?.id
-      ?? (directory.activeWorkspaceId || null)
-      ?? listed[0]?.id
+      ?? (currentDirectory.activeWorkspaceId || null)
+      ?? currentListed[0]?.id
       ?? null
-    setWorkspaces(listed)
-    setInvitations(directory.invitations)
+    setWorkspaces(currentListed)
+    setInvitations(currentDirectory.invitations)
     setActiveWorkspaceId(nextActiveWorkspaceId)
     setResolvedRouteTargetKey(workspaceRouteTargetKey(routeTarget))
     setStatus('ready')
-    const previousWorkspaceId = activeWorkspaceIdRef.current
     activeWorkspaceIdRef.current = nextActiveWorkspaceId
+    lastResolvedPathnameRef.current = pathname
     if (nextActiveWorkspaceId && previousWorkspaceId && nextActiveWorkspaceId !== previousWorkspaceId) {
       dispatchWorkspaceChanged({ previousWorkspaceId, workspaceId: nextActiveWorkspaceId })
     }
-  }, [enabled, pathname, resolveHandle, resolvedRouteTargetKey, router])
+    if (preferenceWorkspace) {
+      void queueWorkspaceActivation(preferenceWorkspace).catch((activationError) => {
+        if (isWorkspaceSwitchSupersededError(activationError)) return
+        toast.error(activationError instanceof Error ? activationError.message : 'Could not switch workspaces.')
+      })
+    }
+  }, [enabled, pathname, queueWorkspaceActivation, resolveHandle, resolvedRouteTargetKey, router])
 
   useEffect(() => {
     let cancelled = false
@@ -215,10 +359,8 @@ export function WorkspaceProvider({
 
   // The directory effect below runs only when the directory changes, not on every navigation.
   const loadRef = useRef(load)
-  const pathnameRef = useRef(pathname)
   useEffect(() => {
     loadRef.current = load
-    pathnameRef.current = pathname
   }, [load, pathname])
 
   // Later directory changes apply in place. Losing access to the open workspace shows the unavailable screen;
@@ -271,32 +413,20 @@ export function WorkspaceProvider({
     return response.workspace
   }, [client])
 
-  const switchWorkspace = useCallback(async (workspaceId: string) => {
-    if (workspaceId === activeWorkspaceId) {
-      const current = workspaces.find((workspace) => workspace.id === workspaceId)
-      if (current) return current
-    }
+  const switchWorkspace = useCallback((workspaceId: string) => {
+    const workspace = workspacesRef.current.find((item) => item.id === workspaceId)
+      ?? createdRef.current.get(workspaceId)
+    if (!workspace) return Promise.reject(new Error('Could not switch workspaces.'))
 
-    setSwitchingWorkspaceId(workspaceId)
-    setError(null)
-    try {
-      const response = await client.activate(workspaceId)
-      setWorkspaces((current) => current.map((workspace) => (
-        workspace.id === response.workspace.id ? response.workspace : workspace
-      )))
-      // Publish the active workspace only after load() resolves the destination route.
-      // Until navigation commits, route-scoped requests still address the old workspace.
-      return response.workspace
-    } catch (switchError) {
-      const message = switchError instanceof Error
-        ? switchError.message
-        : 'Could not switch workspaces.'
-      setError(message)
-      throw switchError
-    } finally {
-      setSwitchingWorkspaceId(null)
+    const latest = latestActivationRequestRef.current
+    if (latest?.workspaceId === workspaceId && activationPendingCountRef.current > 0) return latest.promise
+    if (activeWorkspaceIdRef.current === workspaceId
+      && activationPendingCountRef.current === 0
+      && (!latest || latest.workspaceId === workspaceId)) {
+      return Promise.resolve(workspace)
     }
-  }, [activeWorkspaceId, client, workspaces])
+    return queueWorkspaceActivation(workspace)
+  }, [queueWorkspaceActivation])
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
@@ -311,6 +441,7 @@ export function WorkspaceProvider({
     activeWorkspaceId,
     error,
     switchingWorkspaceId,
+    beginWorkspaceNavigation,
     refresh,
     resolvedRouteTargetKey,
     createWorkspace,
@@ -318,6 +449,7 @@ export function WorkspaceProvider({
   }), [
     activeWorkspace,
     activeWorkspaceId,
+    beginWorkspaceNavigation,
     createWorkspace,
     error,
     refresh,

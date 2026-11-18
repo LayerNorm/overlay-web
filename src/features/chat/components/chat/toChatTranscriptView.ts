@@ -23,7 +23,7 @@ import type {
 } from '@overlay/chat-core'
 
 type PersistedResponseStatus = 'generating' | 'completed' | 'error'
-type WebRuntimeStatus = 'ready' | 'submitted' | 'streaming' | 'error'
+type WebRuntimeStatus = 'ready' | 'submitted' | 'streaming' | 'error' | 'cancelled'
 
 export interface WebTranscriptResponseRuntime {
   status?: WebRuntimeStatus
@@ -115,13 +115,16 @@ export function createWebChatTranscriptAdapter() {
         const response = responseSources[index]
         const persistedStatus = (response as { status?: PersistedResponseStatus } | null)?.status
         const runtime = input.getResponseRuntime?.(modelId, exchangeIndex)
-        const isResponseDone = persistedStatus === 'completed' || (!runtime?.status && Boolean(response && getMessageText(response).trim()))
+        const hasLiveLatestFallback = index === modelIds.length - 1 && fallbackRuntimeStatus !== undefined
+        const hasVisibleContent = Boolean(response && getMessageText(response).trim())
+        const isResponseDone = persistedStatus === 'completed'
+          || (!runtime?.status && !hasLiveLatestFallback && hasVisibleContent)
         const effectiveRuntimeStatus = isResponseDone ? runtimeStatusForCore(runtime?.status) : runtimeStatusForCore(runtime?.status ?? fallbackRuntimeStatus)
         return deriveChatExchangeStatus({
           runtimeStatus: effectiveRuntimeStatus,
           persistedStatus,
           hasResponse: Boolean(response),
-          hasVisibleContent: Boolean(response && getMessageText(response).trim()),
+          hasVisibleContent,
           interrupted,
           error: runtime?.error,
         })
