@@ -27,7 +27,7 @@ import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks, ExchangeActions, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, ExchangeActions, ExchangeLoadingState, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
@@ -160,6 +160,7 @@ export type RoomChatActions = {
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
+const STREAMING_REPLY_PRESENTATION = { active: true, inlineTextMarker: false, marker: 'standalone' } as const
 
 function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'
@@ -755,7 +756,10 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
       />
-      {/* The avatar beside the name shows activity; no second indicator under the reply. */}
+      {message.streaming && !message.generationError && !message.nativeApproval && !message.nativeInput
+        && message.blocks.some(block => block.kind === 'text' && block.text.trim().length > 0)
+        ? <ExchangeLoadingState presentation={STREAMING_REPLY_PRESENTATION} />
+        : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
       {message.folderSaves ? <FolderSavesCard data={message.folderSaves} /> : null}
