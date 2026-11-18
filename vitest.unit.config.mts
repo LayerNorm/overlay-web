@@ -28,6 +28,7 @@ export default defineConfig({
       'src/components/layout/AppSidebarAgentsPanel.test.tsx',
       'src/features/settings/components/ArchivedSettings.test.tsx',
       'src/components/providers/usePersonalChatTranscript.parallel.test.tsx',
+      'src/components/providers/usePersonalConversationTranscript.test.tsx',
       'src/components/layout/sidebar/HelpMenu.test.tsx',
       'src/contexts/WorkspaceContext.test.tsx',
       'src/hooks/use-panel-scope.test.tsx',
