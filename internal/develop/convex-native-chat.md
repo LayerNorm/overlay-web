@@ -217,10 +217,24 @@ errors and denials remain terminal; missing results stay errors or pending
 approvals. Native result envelopes are unwrapped in both `content` and
 `toolResults` before classification so explicit `success: false` remains an
 error. The conversation trace reads these updated durable rows.
-Cancellation never reads the live
-stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
-cancels the run, then the scheduled `settleCancelledPublicStream` keeps the
-retained text and retires the rows. Finalize, failure and cancellation paths preserve safe partial
+Stop does not read an actively written stream row in its initial mutation:
+`cancelAgentRuns` cancels the exact authorized run and schedules
+`settleTerminalAgentMessage` with the run id, terminal state, workflow id and
+terminal update version. The settlement revalidates that identity before reading
+retained text or cleaning streams, so a stale job cannot settle a restarted run.
+Retrying Stop for an already-terminal exact run schedules the same idempotent
+repair. Cancellation keeps partial text and adds the interruption notice;
+completed replies remain completed, while failed replies retain their terminal
+error diagnostic without an interruption notice. Targets without an authorized
+run fail explicitly rather than being reported as success. Native delivery
+settlement checks agent-authored replies against the run's agent principal;
+personal chat/work replies without an agent principal remain bound to the run's
+initiating user. Native delivery
+finish does not call Stop reconciliation from its terminal snapshot: a retried
+workflow could otherwise cancel a fresh run for the same message. If native
+finish leaves a terminal run linked to a generating message, recovery is through
+an authorized exact-message Stop; there is no automatic repair without that
+targeted request. Finalize, failure and cancellation paths preserve safe partial
 output where needed, mark the canonical message terminal, and perform bounded
 cleanup; active rows are not retained as a second transcript.
 
