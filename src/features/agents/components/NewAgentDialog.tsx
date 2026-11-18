@@ -291,7 +291,7 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
   return { modelField, modelId }
 }
 
-/** Creates the agent (and its computer when asked for), then refreshes the roster. */
+/** Creates the agent. Its computer, when asked for, is provisioned afterwards without holding up the new agent. */
 async function createAgentFromDraft(
   workspaceId: string,
   draft: NewAgentDraft,
@@ -319,28 +319,28 @@ async function createAgentFromDraft(
     }),
     teamIds: [],
   })
-  let computerError: string | null = null
   if (withComputer) {
-    await overlayAppClient.computers.provision(workspaceId, {
+    void overlayAppClient.computers.provision(workspaceId, {
       ownerType: 'agent',
       ownerId: created.agent.id,
       size: draft.computerSize,
       name: `${created.agent.name} computer`,
     }).catch((error: unknown) => {
       // The agent is durable either way; report and let the editor retry.
-      computerError = error instanceof Error ? error.message : 'Could not create the computer.'
+      toast.error(error instanceof Error ? error.message : 'Could not create the computer.')
     })
   }
   rememberAgentOpened(workspaceId, created.agent.id)
-  return { agent: created.agent, computerError }
+  return created.agent
 }
 
 /** New-agent dialog for native Overlay agents. */
-export function NewAgentDialog({ open, workspaceId, onClose, onCreated }: {
+export function NewAgentDialog({ open, workspaceId, onClose, onReopen, onCreated }: {
   open: boolean
   workspaceId: string | null
   onClose(): void
-  onCreated(agent: WorkspaceAgentDirectoryItem, warning: string | null): void
+  onReopen(): void
+  onCreated(agent: WorkspaceAgentDirectoryItem): void
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
@@ -357,21 +357,26 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated }: {
     onClose()
   }
 
+  // The dialog closes on submit and the new agent opens as soon as it exists. A refusal reopens the dialog with the
+  // draft intact, so nothing typed is lost.
   const submit = async () => {
     if (!workspaceId || working || !isNewAgentDraftValid(draft)) return
     setBusy(true)
+    onClose()
+    const pending = toast.loading(`Creating ${draft.name.trim()}…`)
     try {
-      const { agent, computerError } = await createAgentFromDraft(
+      const agent = await createAgentFromDraft(
         workspaceId,
         draft,
         computersAvailable,
         modelField.selectableTextModels,
       )
       setDraft(initialNewAgentDraft())
-      toast.success('Agent created.')
-      onCreated(agent, computerError)
+      toast.dismiss(pending)
+      onCreated(agent)
     } catch (createError) {
-      toast.error(createError instanceof Error ? createError.message : 'Could not create the agent.')
+      toast.error(createError instanceof Error ? createError.message : 'Could not create the agent.', { id: pending })
+      onReopen()
     } finally {
       setBusy(false)
     }
