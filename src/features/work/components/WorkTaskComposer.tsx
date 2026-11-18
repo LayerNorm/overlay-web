@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useConvex } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { Settings, X } from 'lucide-react'
@@ -42,41 +42,68 @@ type ComposerProps = {
   createTask(input: Omit<CreateWorkItemRequest, 'scope'>): Promise<WorkItem | null>
 }
 
+type FailedSubmission = { id: number; draft: ComposerDraft; retrying: boolean }
+
 export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerProps>(function WorkTaskComposerForm({ disabled, people, tasks, scope, principalId, createTask, search }, ref) {
   const [draft, setDraft] = useState(emptyComposerDraft)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [failedSubmissions, setFailedSubmissions] = useState<FailedSubmission[]>([])
   const input = useRef<HTMLTextAreaElement>(null)
-  const inFlight = useRef(false)
-  const refocus = useRef(false)
-  const locked = disabled || busy
+  const pendingDrafts = useRef(new WeakSet<ComposerDraft>())
+  const retryingSubmissions = useRef(new Set<number>())
+  const nextFailedSubmissionId = useRef(0)
+  const locked = Boolean(disabled)
   useAutosizeTextarea(input, draft.text)
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }), [])
-  useEffect(() => {
-    if (!busy && refocus.current) { refocus.current = false; input.current?.focus() }
-  }, [busy])
   const patch = (value: Partial<ComposerDraft>) => { setDraft(current => ({ ...current, ...value })); setError('') }
   const assignee = people.find(person => person.principalId === draft.assigneePrincipalId)
 
+  // Keep the composer available while each request completes; failed submissions remain independent of the current draft.
   async function submit() {
-    if (locked || inFlight.current) return
+    if (locked || pendingDrafts.current.has(draft)) return
     const request = composerRequest(draft)
     if (!request.input) { setError(request.error); return }
-    inFlight.current = true
-    setBusy(true)
-    setError('')
-    try {
-      const created = await createTask(request.input)
-      if (created) { setDraft(emptyComposerDraft()); setSettingsOpen(false) }
-      else setError('Could not add the task. Your draft is unchanged.')
-    } catch {
-      setError('Could not add the task. Your draft is unchanged.')
-    } finally {
-      inFlight.current = false
-      refocus.current = true
-      setBusy(false)
+    const submitted = {
+      ...draft,
+      blockedBy: [...draft.blockedBy],
+      context: draft.context.map(context => ({ ...context })),
     }
+    pendingDrafts.current.add(draft)
+    setDraft(emptyComposerDraft())
+    setSettingsOpen(false)
+    setError('')
+    input.current?.focus()
+    let created: WorkItem | null
+    try {
+      created = await createTask(request.input)
+    } catch {
+      created = null
+    }
+    pendingDrafts.current.delete(draft)
+    if (created) return
+    const failed = { id: nextFailedSubmissionId.current++, draft: submitted, retrying: false }
+    setFailedSubmissions(current => [...current, failed].sort((a, b) => a.id - b.id))
+  }
+
+  async function retryFailedSubmission(submission: FailedSubmission) {
+    if (locked || submission.retrying || retryingSubmissions.current.has(submission.id)) return
+    const request = composerRequest(submission.draft)
+    if (!request.input) return
+    retryingSubmissions.current.add(submission.id)
+    setFailedSubmissions(current => current.map(item => item.id === submission.id ? { ...item, retrying: true } : item))
+    let created: WorkItem | null
+    try {
+      created = await createTask(request.input)
+    } catch {
+      created = null
+    }
+    retryingSubmissions.current.delete(submission.id)
+    if (created) {
+      setFailedSubmissions(current => current.filter(item => item.id !== submission.id))
+      return
+    }
+    setFailedSubmissions(current => current.map(item => item.id === submission.id ? { ...item, retrying: false } : item))
   }
 
   // The same composer box as chat and agent threads: one outlined card, centered at the transcript width.
@@ -100,9 +127,18 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
           </Popover>
           <span className="min-w-0 flex-1" />
           {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light) @max-[520px]/work-composer:hidden">Starts when dependencies finish</span> : null}
-          <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
+          <PromptInputSubmit aria-label="Add task" status="ready" disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
         </PromptInputFooter>
         {error ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+        {failedSubmissions.length ? <div className="mt-2 grid gap-2">
+          {failedSubmissions.map(submission => {
+            const title = submission.draft.text.split(/\r?\n/, 1)[0]?.trim() || 'Untitled task'
+            return <div key={submission.id} className="flex items-center justify-between gap-3 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-2">
+              <p role="alert" className="min-w-0 text-xs text-red-600 dark:text-red-400">Couldn’t add “{title}”. Retry with your saved draft and settings.</p>
+              <Button type="button" variant="secondary" size="sm" disabled={locked || submission.retrying} aria-label={`${submission.retrying ? 'Retrying' : 'Retry'} ${title}`} onClick={() => void retryFailedSubmission(submission)}>{submission.retrying ? 'Retrying…' : 'Retry'}</Button>
+            </div>
+          })}
+        </div> : null}
       </PromptInputBody></PromptInput>
     </div>
   </div>
