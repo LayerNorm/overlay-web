@@ -13,6 +13,8 @@ export type ChatListConversation = {
   conversationType?: 'personal' | 'dm' | 'channel'
   scope?: 'personal' | 'workspace'
   otherParticipantTypes?: Array<'human' | 'agent'>
+  /** The first other members of a direct message, for the avatars on its row. */
+  otherParticipantPrincipalIds?: string[]
   createdByPrincipalId?: string
   externalPlatform?: string
 }

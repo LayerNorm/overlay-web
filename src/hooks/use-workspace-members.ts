@@ -36,3 +36,14 @@ export function useLiveWorkspacePrincipals(workspaceId: string | null | undefine
     return { currentPrincipalId: people?.currentPrincipalId ?? '', items: [...byPrincipal.values()] }
   }, [agents, people])
 }
+
+const NO_PRINCIPALS: ReadonlyMap<string, WorkspaceManagementItem> = new Map()
+
+/** The live workspace people and agents keyed by principal, for showing their avatars. Empty while loading. */
+export function useWorkspacePrincipalDirectory(workspaceId: string | null | undefined): ReadonlyMap<string, WorkspaceManagementItem> {
+  const principals = useLiveWorkspacePrincipals(workspaceId)
+  return useMemo(
+    () => principals ? new Map(principals.items.map((item) => [item.principalId!, item])) : NO_PRINCIPALS,
+    [principals],
+  )
+}

@@ -2,6 +2,7 @@ import type { ClipboardEvent, KeyboardEvent, MutableRefObject, RefObject } from 
 import type { MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 import {
   applyEditorFormat,
+  buildComposerChipNodes,
   buildSafeRichPasteFragment,
   createMentionChip,
   dispatchEditorInput,
@@ -13,14 +14,17 @@ import {
   isCaretOnEmptyLine,
   isComposerTextEmpty,
   isEditorDomEmpty,
+  LINK_CHIP_ATTR,
   markEditorEmpty,
   markdownToEditorHtml,
   MENTION_ATTR,
   moveCaretToEnd,
+  rebuildComposerChips,
   removeMentionQueryText,
   resizeEditorElement,
   tryApplyBlockMarkdown,
   tryApplyInlineMarkdown,
+  tryApplyLinkChip,
   exitBlockToParagraph,
   type MentionInputFormatCommand,
 } from './mention-input-dom'
@@ -39,17 +43,48 @@ export interface MentionInputHandle {
 }
 
 type EditorRef = RefObject<HTMLDivElement | null>
+type MentionItemsRef = RefObject<readonly MentionItem[]>
+
+/** A chip that ends the editor needs text after it for the caret to sit in. */
+function ensureCaretSpaceAfterTrailingChip(el: HTMLDivElement) {
+  let last: Node | null = el.lastChild
+  while (last instanceof HTMLElement && !last.hasAttribute(MENTION_ATTR) && !last.hasAttribute(LINK_CHIP_ATTR)) {
+    last = last.lastChild
+  }
+  if (last instanceof HTMLElement) last.after(document.createTextNode('\u00A0'))
+}
+
+/**
+ * Rebuild the link chips and known mentions of text that came back as plain
+ * Markdown (a restored draft), reporting mentions only when one was rebuilt.
+ * Returns whether a mention chip was rebuilt.
+ */
+export function rebuildEditorChips(
+  el: HTMLDivElement,
+  mentionItems: readonly MentionItem[],
+  onMentionsChange: (mentions: MentionItem[]) => void,
+): boolean {
+  const rebuiltMention = rebuildComposerChips(el, mentionItems)
+  ensureCaretSpaceAfterTrailingChip(el)
+  if (rebuiltMention) onMentionsChange(extractMentionsFromElement(el))
+  return rebuiltMention
+}
 
 export function syncEditorValue({
   editorRef,
   lastValueRef,
+  mentionItemsRef,
   onMentionsChange,
+  restoredValueRef,
   setIsEditorEmpty,
   value,
 }: {
   editorRef: EditorRef
   lastValueRef: MutableRefObject<string>
+  mentionItemsRef: MentionItemsRef
   onMentionsChange: (mentions: MentionItem[]) => void
+  /** The text last written into the editor from outside, until the user edits it. */
+  restoredValueRef: MutableRefObject<string | null>
   setIsEditorEmpty: (value: boolean) => void
   value: string
 }): (() => void) | undefined {
@@ -58,6 +93,7 @@ export function syncEditorValue({
   let emptyFrame = 0
   if (value === '') {
     markEditorEmpty(el)
+    restoredValueRef.current = null
     onMentionsChange([])
     emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(true))
   } else if (value !== lastValueRef.current || el.innerHTML === '') {
@@ -65,6 +101,8 @@ export function syncEditorValue({
     // emitting markup, so this innerHTML cannot contain attacker HTML.
     // react-doctor-disable-next-line react-doctor/dangerous-html-sink
     el.innerHTML = markdownToEditorHtml(value)
+    restoredValueRef.current = value
+    rebuildEditorChips(el, mentionItemsRef.current, onMentionsChange)
     emptyFrame = requestAnimationFrame(() => setIsEditorEmpty(false))
     moveCaretToEnd(el)
   }
@@ -79,6 +117,7 @@ export function createMentionInputHandle({
   buttonInsertedAtRef,
   editorRef,
   lastValueRef,
+  mentionItemsRef,
   onChange,
   onMentionsChange,
   setIsEditorEmpty,
@@ -86,6 +125,7 @@ export function createMentionInputHandle({
   buttonInsertedAtRef: MutableRefObject<boolean>
   editorRef: EditorRef
   lastValueRef: MutableRefObject<string>
+  mentionItemsRef: MentionItemsRef
   onChange: (text: string) => void
   onMentionsChange: (mentions: MentionItem[]) => void
   setIsEditorEmpty: (value: boolean) => void
@@ -125,6 +165,7 @@ export function createMentionInputHandle({
           // emitting markup, so this innerHTML cannot contain attacker HTML.
           // react-doctor-disable-next-line react-doctor/dangerous-html-sink
           editorRef.current.innerHTML = markdownToEditorHtml(text)
+          rebuildEditorChips(editorRef.current, mentionItemsRef.current, onMentionsChange)
           setIsEditorEmpty(false)
           moveCaretToEnd(editorRef.current)
         }
@@ -211,7 +252,7 @@ export function handleEditorInput({
   // recursion by skipping the formatting attempt on the re-entrant call.
   if (!formattingAppliedRef.current) {
     formattingAppliedRef.current = true
-    const applied = tryApplyBlockMarkdown(el) || tryApplyInlineMarkdown(el)
+    const applied = tryApplyBlockMarkdown(el) || tryApplyInlineMarkdown(el) || tryApplyLinkChip(el)
     formattingAppliedRef.current = false
     if (applied) return // The dispatched input event will re-run handleInput
   }
@@ -486,14 +527,18 @@ function handleBackspaceInBlock(e: KeyboardEvent<HTMLDivElement>, el: HTMLDivEle
   return false
 }
 
-function removeMentionChipBeforeCaret(e: KeyboardEvent<HTMLDivElement>): boolean {
+function isChip(node: HTMLElement | null | undefined): node is HTMLElement {
+  return Boolean(node?.getAttribute?.(MENTION_ATTR) || node?.getAttribute?.(LINK_CHIP_ATTR))
+}
+
+function removeChipBeforeCaret(e: KeyboardEvent<HTMLDivElement>): boolean {
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false
   const range = sel.getRangeAt(0)
   const node = range.startContainer
   if (node.nodeType === Node.TEXT_NODE && range.startOffset === 0) {
     const prev = node.previousSibling as HTMLElement | null
-    if (prev?.getAttribute?.(MENTION_ATTR)) {
+    if (isChip(prev)) {
       e.preventDefault()
       prev.remove()
       return true
@@ -503,7 +548,7 @@ function removeMentionChipBeforeCaret(e: KeyboardEvent<HTMLDivElement>): boolean
   if (node.nodeType === Node.ELEMENT_NODE) {
     const el = node as HTMLElement
     const childBefore = el.childNodes[range.startOffset - 1] as HTMLElement | undefined
-    if (childBefore?.getAttribute?.(MENTION_ATTR)) {
+    if (isChip(childBefore)) {
       e.preventDefault()
       childBefore.remove()
       return true
@@ -563,8 +608,8 @@ export function handleEditorKeyDown(
     if (handleBackspaceInBlock(e, el)) return
   }
 
-  // Handle backspace on mention chip
-  if (e.key === 'Backspace' && removeMentionChipBeforeCaret(e)) {
+  // Handle backspace on a mention or link chip
+  if (e.key === 'Backspace' && removeChipBeforeCaret(e)) {
     handleInput()
     return
   }
@@ -602,6 +647,7 @@ function insertMarkdownPaste(el: HTMLDivElement, text: string): boolean {
   const template = document.createElement('template')
   template.innerHTML = html
   const fragment = template.content
+  rebuildComposerChips(fragment)
 
   const sel = window.getSelection()
   if (sel && sel.rangeCount > 0) {
@@ -620,6 +666,29 @@ function insertMarkdownPaste(el: HTMLDivElement, text: string): boolean {
   } else {
     document.execCommand('insertText', false, text)
   }
+  resizeEditorElement(el)
+  dispatchEditorInput(el)
+  return true
+}
+
+/** Plain text holding an address is inserted with the address as a link chip. */
+function insertLinkChipPaste(el: HTMLDivElement, text: string): boolean {
+  const nodes = buildComposerChipNodes(text)
+  const sel = window.getSelection()
+  if (!nodes || !sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  const host = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement
+  if (!el.contains(range.startContainer) || host?.closest('pre, code')) return false
+  if (nodes[nodes.length - 1]!.nodeType === Node.ELEMENT_NODE) nodes.push(document.createTextNode('\u00A0'))
+  const fragment = document.createDocumentFragment()
+  fragment.append(...nodes)
+  const lastNode = fragment.lastChild
+  range.deleteContents()
+  range.insertNode(fragment)
+  if (lastNode) range.setStartAfter(lastNode)
+  range.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(range)
   resizeEditorElement(el)
   dispatchEditorInput(el)
   return true
@@ -658,6 +727,8 @@ export function handleEditorPaste(
   if (richHtml && insertRichPasteFragment(el, richHtml)) return
 
   if (insertMarkdownPaste(el, text)) return
+
+  if (insertLinkChipPaste(el, text)) return
 
   // Plain text: insert without formatting
   document.execCommand('insertText', false, text)

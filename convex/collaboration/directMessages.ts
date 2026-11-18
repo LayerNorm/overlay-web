@@ -281,6 +281,25 @@ export async function otherParticipantTypes(
     .filter((type): type is 'human' | 'agent' => type === 'human' || type === 'agent')
 }
 
+/** The first other members of a direct message, in joining order, for the avatars on its sidebar row. */
+export async function otherParticipantPrincipalIds(
+  ctx: CollaborationCtx,
+  conversationId: Id<'conversations'>,
+  actorPrincipalId: string,
+  limit = 2,
+): Promise<string[]> {
+  const rows = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_status', (q) => (
+      q.eq('conversationId', conversationId).eq('status', 'active')
+    ))
+    .collect()
+  return rows
+    .filter((row) => row.principalId !== actorPrincipalId && (row.principalType === 'human' || row.principalType === 'agent'))
+    .sort((a, b) => a.joinedAt - b.joinedAt)
+    .slice(0, limit)
+    .map((row) => row.principalId)
+}
+
 export const getAccessibleConversation = query({
   args: {
     actorUserId: v.string(),

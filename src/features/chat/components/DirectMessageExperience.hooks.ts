@@ -738,6 +738,7 @@ export function useRoomViewModels({
       avatarColor: agent?.avatarColor,
       avatarShape: agent?.avatarShape,
       isDefault: agent?.isDefault,
+      ...(participant.principalType === 'human' && participant.photoUrl ? { photoUrl: participant.photoUrl } : {}),
     }
   }), [directoryAgentsByPrincipal, participants])
 
@@ -2036,6 +2037,7 @@ export type RoomMessageContext = {
     avatarColor?: string
     avatarShape?: string
     isDefault?: boolean
+    photoUrl?: string
   }>
   reactions: MessageReaction[]
   pins: ConversationPin[]
