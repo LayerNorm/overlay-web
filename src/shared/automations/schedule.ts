@@ -162,7 +162,6 @@ function daysInUtcMonth(year: number, month: number): number {
  */
 export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: number, timeZone?: string): number {
   const schedule = normalizeSchedule(scheduleInput)
-  const from = new Date(fromMs)
 
   if (schedule.kind === 'interval') {
     return fromMs + (schedule.intervalMinutes ?? 60) * 60_000
@@ -171,6 +170,12 @@ export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: numb
   if (isLocalSchedule(schedule)) {
     return nextLocalRunAt(schedule, fromMs, isValidTimeZone(timeZone) ? timeZone : 'UTC')
   }
+  return nextUtcRunAt(schedule, fromMs)
+}
+
+/** The next slot of an older schedule that only has UTC fields. */
+function nextUtcRunAt(schedule: Exclude<AutomationSchedule, { kind: 'interval' }>, fromMs: number): number {
+  const from = new Date(fromMs)
 
   if (schedule.kind === 'weekdays') {
     let candidate = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), schedule.hourUTC ?? 9, schedule.minuteUTC ?? 0)
