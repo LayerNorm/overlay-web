@@ -14,6 +14,7 @@ const messages = makeFunctionReference<'query'>('chat/personal:getMessages')
 const create = makeFunctionReference<'mutation'>('chat/personal:create')
 const setPreferences = makeFunctionReference<'mutation'>('chat/personal:setPreferences')
 const submit = makeFunctionReference<'mutation'>('chat/personal:submit')
+const getByClientId = makeFunctionReference<'query'>('chat/personal:getByClientId')
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -108,6 +109,22 @@ test('native create retries reuse one scoped chat and preferences remain canonic
   await expect(user.mutation(create, input)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
   expect(await t.run(ctx => ctx.db.query('conversations').withIndex('by_userId_clientId', q => q.eq('userId', 'u').eq('clientId', input.clientId)).collect()))
     .toHaveLength(1)
+})
+
+test('a note chat is found by its client id only for its owner, before and after it exists', async () => {
+  const { t, user } = await fixture()
+  await t.run(async ctx => {
+    const role = (await ctx.db.query('authorizationRoles').first())!
+    await ctx.db.patch(role._id, { capabilities: ['conversations.read', 'conversations.edit', 'conversations.create'] })
+  })
+  const lookup = { workspaceId: 'ws', clientId: 'notebook:note-1' }
+  expect(await user.query(getByClientId, lookup)).toBeNull()
+  const id = await user.mutation(create, { ...lookup, title: 'Note', askModelIds: ['model'], actModelId: 'model', lastMode: 'act' as const })
+  expect(await user.query(getByClientId, lookup)).toBe(id)
+  expect(await user.query(getByClientId, { ...lookup, clientId: 'notebook:note-2' })).toBeNull()
+  await expect(t.withIdentity({ subject: 'other' }).query(getByClientId, lookup)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  await t.run(ctx => ctx.db.patch(id, { deletedAt: 3 }))
+  expect(await user.query(getByClientId, lookup)).toBeNull()
 })
 
 test('native submission commits one authenticated user turn before execution and retries cannot overwrite it', async () => {

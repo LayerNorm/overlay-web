@@ -103,6 +103,19 @@ export const getSummary = query({
   },
 })
 
+/** The viewer's own chat created with this client id, such as a note's assistant chat; null until one exists. */
+export const getByClientId = query({
+  args: { workspaceId: v.string(), clientId: v.string() },
+  returns: v.union(v.null(), v.id('conversations')),
+  handler: async (ctx, args) => {
+    const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+    await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
+    const conversation = await ctx.db.query('conversations')
+      .withIndex('by_userId_clientId', q => q.eq('userId', viewer.userId).eq('clientId', args.clientId.trim())).first()
+    return await nativePersonalChatScope(ctx, viewer, conversation) ? conversation!._id : null
+  },
+})
+
 export const getExecution = query({
   args: resourceArgs,
   handler: async (ctx, args) => {
