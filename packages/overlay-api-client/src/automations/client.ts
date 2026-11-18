@@ -38,14 +38,14 @@ export class AutomationsClient {
     return this.get<AutomationRunSummary[]>({ automationId, includeRuns: true }, init)
   }
 
-  create(body: CreateAutomationRequest & { agentId?: string }, init?: MutationRequestInit) {
+  create(body: CreateAutomationRequest, init?: MutationRequestInit) {
     return this.http.json<CreateAutomationResponse>(
       '/api/v1/automations',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }
 
-  createResponse(body: CreateAutomationRequest & { agentId?: string }, init?: MutationRequestInit) {
+  createResponse(body: CreateAutomationRequest, init?: MutationRequestInit) {
     return this.http.request('/api/v1/automations', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
