@@ -176,7 +176,7 @@ export function useAutomationComposer<P extends ComposerHooks>(props: P): P {
     const instructions = take()
     if (!instructions) return
     const { schedule, agentId } = draft.get()
-    const created = createAutomation({ scope, schedule, agentId, modelId: DEFAULT_MODEL, instructions })
+    const created = createAutomation({ scope, schedule, agentId, modelId: composerModel, instructions })
     draft.set({ schedule: DEFAULT_SCHEDULE, agentId: null })
     open(created.conversationId)
   } }
@@ -323,12 +323,29 @@ type ShellProps = {
 }
 
 /** An automation's chat docks the Automation panel where agent threads dock theirs, with the same toggle and width. */
-export function useAutomationShell<S extends ShellProps, H extends { renderExportMenu: () => ReactNode }>(chatId: string | null, shell: S, headerProps: H): { shell: S; headerProps: H } {
+type HeaderModel = {
+  renderExportMenu: () => ReactNode
+  titleLabel: string
+  selectedActModel: string
+  modelPickerLabel: string
+  selectableTextModels: Array<{ id: string; name: string }>
+  onToggleTextModel: (modelId: string) => void
+}
+
+/** The model the new-automation composer shows, read when the automation is created. */
+let composerModel = DEFAULT_MODEL
+
+export function useAutomationShell<S extends ShellProps, H extends HeaderModel>(chatId: string | null, shell: S, headerProps: H): { shell: S; headerProps: H } {
   const open = panel.use()
   const route = useAutomationRoute()
   useAutomations()
-  const automation = route.onAutomations ? automationForConversation(chatId) : undefined
-  if (!automation) return { shell, headerProps }
+  if (!route.onAutomations) return { shell, headerProps }
+  const automation = automationForConversation(chatId)
+  if (!automation) {
+    if (chatId) return { shell, headerProps }
+    composerModel = headerProps.selectedActModel
+    return { shell, headerProps: { ...headerProps, titleLabel: 'New automation' } }
+  }
   const close = () => panel.set(false)
   return {
     shell: {
@@ -353,6 +370,13 @@ export function useAutomationShell<S extends ShellProps, H extends { renderExpor
     },
     headerProps: {
       ...headerProps,
+      // The composer's model is the automation's model, the same value as the panel's Model row.
+      selectedActModel: automation.modelId,
+      modelPickerLabel: modelName(automation.modelId, headerProps.selectableTextModels),
+      onToggleTextModel: (modelId: string) => {
+        updateAutomation(automation.id, (current) => ({ ...current, modelId }))
+        headerProps.onToggleTextModel(modelId)
+      },
       renderExportMenu: () => <>{headerProps.renderExportMenu()}<RightSidebarToggle open={open} onToggle={() => panel.set(!open)} /></>,
     },
   }
