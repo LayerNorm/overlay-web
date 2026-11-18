@@ -87,11 +87,12 @@ test('a streaming agent reply shows one 24px mark below its text until it settle
   assert.doesNotMatch(settled, /is responding/)
 })
 
-test('an empty generating reply shows dots immediately below its author', () => {
+test('an empty generating reply shows the chat mark immediately below its author, with no dots row', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: '' }), 'Agent', false, true)
-  assert.match(html, /aria-label="Agent is preparing a response"/)
-  assert.match(html, /class="agent-response-pending"[^>]*><span><\/span><span><\/span><span><\/span>/)
-  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('agent-response-pending'))
+  assert.equal(html.match(/is responding/g)?.length, 1)
+  assert.match(html, /data-loading-presentation="standalone"/)
+  assert.doesNotMatch(html, /agent-response-pending/)
+  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('is responding'))
 })
 
 test('a member’s own message is just the personal gray bubble', () => {

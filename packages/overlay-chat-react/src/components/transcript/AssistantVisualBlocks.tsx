@@ -44,6 +44,8 @@ export interface AssistantVisualBlocksProps {
   workedDurationMs?: number | null
   /** Agent replies: the collapsed view is the final answer only (earlier text folds with the work). */
   foldWorkIntoSummary?: boolean
+  /** Whether settled work may fold behind "Worked for"; false keeps every segment in place. */
+  collapseWork?: boolean
   /** The steps the agent is working through, shown after the message body. */
   plan?: readonly RunPlanStep[]
   planPhase?: RunPlanPhase
@@ -81,6 +83,7 @@ export function AssistantVisualBlocks({
   resolveFileHref,
   workedDurationMs,
   foldWorkIntoSummary = false,
+  collapseWork = true,
   plan,
   planPhase = 'ended',
   onOpenDraft,
@@ -122,10 +125,10 @@ export function AssistantVisualBlocks({
   const workedMs = workedDurationMs ?? measuredWorkMs
 
   const collapsePlan = useMemo(
-    () => isStreaming || planPhase !== 'ended'
+    () => isStreaming || !collapseWork || planPhase !== 'ended'
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
       : planAssistantWorkCollapse(segments, { foldTextBeforeLastWork: foldWorkIntoSummary }),
-    [segments, isStreaming, planPhase, foldWorkIntoSummary],
+    [segments, isStreaming, collapseWork, planPhase, foldWorkIntoSummary],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),

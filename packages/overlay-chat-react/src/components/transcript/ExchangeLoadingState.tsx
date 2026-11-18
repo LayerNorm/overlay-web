@@ -24,6 +24,27 @@ export function exchangeLoadingPresentation(
   return { active, inlineTextMarker: false, marker: active ? 'standalone' : 'none' }
 }
 
+/**
+ * The one rule every live reply uses for its loading mark: chat exchanges, agent
+ * threads and rooms. An in-progress reply without an explicit status is
+ * `submitted` until it has blocks and `streaming` after; the mark stays through
+ * tool-only periods and disappears once the reply settles.
+ */
+export function responseLoadingPresentation(
+  status: ChatExchangeStatus | undefined,
+  responseInProgress: boolean | undefined,
+  blocks: readonly AssistantVisualBlock[],
+) {
+  const liveStatus: ChatExchangeStatus = responseInProgress
+    ? (blocks.length > 0 ? 'streaming' : 'submitted')
+    : 'completed'
+  const normalizedStatus = responseInProgress && (status === undefined || status === 'completed')
+    ? liveStatus
+    : status ?? liveStatus
+  const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, blocks)
+  return { loadingPresentation, responseSettled: !loadingPresentation.active }
+}
+
 export function ExchangeLoadingState({
   presentation,
 }: {

@@ -23,11 +23,10 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks, ExchangeActions, ExchangeLoadingState, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, ExchangeActions, ExchangeLoadingState, isRecentMessage, responseLoadingPresentation, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
@@ -160,7 +159,6 @@ export type RoomChatActions = {
 
 /** Rooms do not surface draft review; agent drafts are handled in personal chat. */
 const NOOP_DRAFT = () => {}
-const STREAMING_REPLY_PRESENTATION = { active: true, inlineTextMarker: false, marker: 'standalone' } as const
 
 function authorInitial(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?'
@@ -721,7 +719,6 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
     blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
     <>
-      <AgentResponsePending key={message.id} message={message} />
       {message.askedBy ? (
         <p className="mb-1 text-[11px] text-(--muted)">
           Agent question · step {message.askedBy.hop}
@@ -756,9 +753,8 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
       />
-      {message.streaming && !message.generationError && !message.nativeApproval && !message.nativeInput
-        && message.blocks.some(block => block.kind === 'text' && block.text.trim().length > 0)
-        ? <ExchangeLoadingState presentation={STREAMING_REPLY_PRESENTATION} />
+      {!message.generationError
+        ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} />
         : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
