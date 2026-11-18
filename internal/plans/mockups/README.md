@@ -100,14 +100,15 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
-- `automation-threads.html` (feature `automation-threads`): the proposed composer-first Automations page. An
-  automation is an ordinary thread: the landing page is one composer with only a schedule and an agent picker plus the
-  list of automations, sending opens the new automation's thread, the first message holds the instructions (edit it
-  with the pencil), each run arrives as a "Scheduled run" message, and the header changes the schedule, agent, Pause
-  and Run now in place. The launch brief shows a failed run with Retry and a run waiting for your answer. Open
-  `automation-threads.html#/w/northwind/workspace/automations` (landing; add `?empty=1` before the hash for the empty
-  state) or `automation-threads.html#/w/northwind/workspace/automations?automationId=auto_launch_brief` (a thread).
-  Delete it when the design ships or is rejected.
+- `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
+  Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
+  Agent picker beside the model picker, and sending opens the automation's chat. Each run posts the instructions again
+  and gets a reply; failed runs use the production error row. The Automation panel docks where an agent thread's
+  sidebar does (toggle in the header) and holds the name, schedule, time zone, agent, model, on/off, Run now, recent
+  runs with Retry and Delete. Automations are listed as thread rows in the contextual panel. Open
+  `automation-threads.html#/w/northwind/workspace/automations` (new automation) or
+  `automation-threads.html#/w/northwind/workspace/automations?id=k17chatautolaunch000000000000000` (a thread with a
+  failed run and one waiting for an answer). Delete it when the design ships or is rejected.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.

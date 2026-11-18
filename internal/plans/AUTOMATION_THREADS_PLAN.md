@@ -4,9 +4,12 @@ Status: diagnosis done and mockup proposed; no product code changed yet.
 
 ## Goal
 
-An automation is an ordinary thread (a chat, or an agent thread) that receives a message on a schedule. People create
-one from a composer on the Automations page: the prompt is the instructions, and the only other controls are a
-schedule picker and an agent picker. There is no edit page. Mockup: `internal/plans/mockups/automation-threads.html`.
+An automation is an ordinary thread (a chat, or an agent thread) that receives a message on a schedule. A new
+automation is the normal new-chat view: the prompt is the instructions, and the chat composer gains a schedule picker and
+an agent picker beside its model picker. An automation's thread is the normal chat thread; each run posts the
+instructions again and gets a reply. Everything configurable (name, schedule, time zone, agent, model, on/off, Run now,
+recent runs, delete) lives in a right details panel like an agent thread's. There is no edit page. Mockup:
+`internal/plans/mockups/automation-threads.html`.
 
 ## What was tested (PR #560 Preview, 2026-11-18)
 
