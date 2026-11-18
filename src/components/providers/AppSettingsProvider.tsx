@@ -214,6 +214,9 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   // Counters that keep an older save's response from replacing newer settings (a later save or live snapshot).
   const liveSeqRef = useRef(0)
   const saveSeqRef = useRef(0)
+  // Saves go to the server one at a time, in order. Sent together, an older save can reach the server last and
+  // store a value the person already changed (for example several quick moves in Customize sidebar).
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const isLoading = authLoading || (authUserId !== null && remoteUserId !== authUserId)
 
   const applyRemote = useCallback((remote: Partial<AppSettings> | null) => {
@@ -273,8 +276,12 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
 
     pendingRef.current = { ...pendingRef.current, ...patch }
     const saveSeq = ++saveSeqRef.current
-    const liveSeqAtStart = liveSeqRef.current
     setIsSaving(true)
+    const previousSave = saveQueueRef.current
+    let releaseQueue = () => {}
+    saveQueueRef.current = new Promise<void>((resolve) => { releaseQueue = resolve })
+    await previousSave
+    const liveSeqAtStart = liveSeqRef.current
     try {
       const res = await overlayAppClient.settings.updateResponse(patch)
       if (!res.ok) {
@@ -303,7 +310,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         setSettings(next)
         persistSettings(next)
       }
-      setIsSaving(false)
+      if (saveSeq === saveSeqRef.current) setIsSaving(false)
+      releaseQueue()
     }
   }, [authUserId, settings])
 
