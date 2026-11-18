@@ -42,33 +42,68 @@ type ComposerProps = {
   createTask(input: Omit<CreateWorkItemRequest, 'scope'>): Promise<WorkItem | null>
 }
 
+type FailedSubmission = { id: number; draft: ComposerDraft; retrying: boolean }
+
 export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerProps>(function WorkTaskComposerForm({ disabled, people, tasks, scope, principalId, createTask, search }, ref) {
   const [draft, setDraft] = useState(emptyComposerDraft)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [error, setError] = useState('')
+  const [failedSubmissions, setFailedSubmissions] = useState<FailedSubmission[]>([])
   const input = useRef<HTMLTextAreaElement>(null)
-  const submittedDraft = useRef<ComposerDraft | null>(null)
+  const pendingDrafts = useRef(new WeakSet<ComposerDraft>())
+  const retryingSubmissions = useRef(new Set<number>())
+  const nextFailedSubmissionId = useRef(0)
   const locked = Boolean(disabled)
   useAutosizeTextarea(input, draft.text)
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }), [])
   const patch = (value: Partial<ComposerDraft>) => { setDraft(current => ({ ...current, ...value })); setError('') }
   const assignee = people.find(person => person.principalId === draft.assigneePrincipalId)
 
-  // The composer clears on submit so the next task can be typed at once; a refused task comes back as the draft.
+  // Keep the composer available while each request completes; failed submissions remain independent of the current draft.
   async function submit() {
-    if (locked || submittedDraft.current === draft) return
+    if (locked || pendingDrafts.current.has(draft)) return
     const request = composerRequest(draft)
     if (!request.input) { setError(request.error); return }
-    const submitted = draft
-    submittedDraft.current = draft
+    const submitted = {
+      ...draft,
+      blockedBy: [...draft.blockedBy],
+      context: draft.context.map(context => ({ ...context })),
+    }
+    pendingDrafts.current.add(draft)
     setDraft(emptyComposerDraft())
     setSettingsOpen(false)
     setError('')
     input.current?.focus()
-    const created = await createTask(request.input).catch(() => null)
+    let created: WorkItem | null
+    try {
+      created = await createTask(request.input)
+    } catch {
+      created = null
+    }
+    pendingDrafts.current.delete(draft)
     if (created) return
-    setDraft(current => (current.text.trim() ? current : submitted))
-    setError('Could not add the task. Your draft is back.')
+    const failed = { id: nextFailedSubmissionId.current++, draft: submitted, retrying: false }
+    setFailedSubmissions(current => [...current, failed].sort((a, b) => a.id - b.id))
+  }
+
+  async function retryFailedSubmission(submission: FailedSubmission) {
+    if (locked || submission.retrying || retryingSubmissions.current.has(submission.id)) return
+    const request = composerRequest(submission.draft)
+    if (!request.input) return
+    retryingSubmissions.current.add(submission.id)
+    setFailedSubmissions(current => current.map(item => item.id === submission.id ? { ...item, retrying: true } : item))
+    let created: WorkItem | null
+    try {
+      created = await createTask(request.input)
+    } catch {
+      created = null
+    }
+    retryingSubmissions.current.delete(submission.id)
+    if (created) {
+      setFailedSubmissions(current => current.filter(item => item.id !== submission.id))
+      return
+    }
+    setFailedSubmissions(current => current.map(item => item.id === submission.id ? { ...item, retrying: false } : item))
   }
 
   // The same composer box as chat and agent threads: one outlined card, centered at the transcript width.
@@ -95,6 +130,15 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
           <PromptInputSubmit aria-label="Add task" status="ready" disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
         </PromptInputFooter>
         {error ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+        {failedSubmissions.length ? <div className="mt-2 grid gap-2">
+          {failedSubmissions.map(submission => {
+            const title = submission.draft.text.split(/\r?\n/, 1)[0]?.trim() || 'Untitled task'
+            return <div key={submission.id} className="flex items-center justify-between gap-3 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-2">
+              <p role="alert" className="min-w-0 text-xs text-red-600 dark:text-red-400">Couldn’t add “{title}”. Retry with your saved draft and settings.</p>
+              <Button type="button" variant="secondary" size="sm" disabled={locked || submission.retrying} aria-label={`${submission.retrying ? 'Retrying' : 'Retry'} ${title}`} onClick={() => void retryFailedSubmission(submission)}>{submission.retrying ? 'Retrying…' : 'Retry'}</Button>
+            </div>
+          })}
+        </div> : null}
       </PromptInputBody></PromptInput>
     </div>
   </div>

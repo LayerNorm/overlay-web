@@ -62,7 +62,7 @@ test('compact pickers preserve accessible labels, avatars and counts, including 
   }
 })
 
-test('Enter submits, duplicate submits are held, the composer resets at once and refocuses; failures restore the draft', async () => {
+test('Enter submits, duplicate submits are held, failures remain retryable without blocking the composer', async () => {
   const restoreGlobals = mockTooltipGlobals()
   let renderer: ReactTestRenderer
   let focuses = 0
@@ -111,8 +111,105 @@ test('Enter submits, duplicate submits are held, the composer resets at once and
     assert.equal(prevented, true)
     assert.equal(input().props.value, '')
     await act(async () => { resolve(null) })
-    assert.equal(input().props.value, 'Keep this')
-    assert.ok(renderer!.root.findByProps({ role: 'alert' }))
+    assert.equal(input().props.value, '')
+    const message = () => renderer!.root.findByProps({ role: 'alert' }).children.join('')
+    assert.equal(message(), 'Couldn’t add “Keep this”. Retry with your saved draft and settings.')
+    const retry = () => renderer!.root.findAllByType('button').find(button => button.props['aria-label']?.endsWith('Keep this'))!
+    await act(async () => { retry().props.onClick(); retry().props.onClick() })
+    assert.equal(requests.length, 3, 'a pending retry cannot be duplicated')
+    assert.deepEqual(requests[2], { title: 'Keep this', status: 'todo', priority: 2, blockedBy: [], context: [] })
+    assert.equal(retry().props.disabled, true)
+    await act(async () => { resolve(null) })
+    assert.equal(requests.length, 3)
+    assert.equal(retry().props.disabled, false, 'a failed retry can be attempted again')
+    await act(async () => { retry().props.onClick() })
+    assert.equal(requests.length, 4)
+    await act(async () => { resolve({ id: 'retry-success' } as WorkItem) })
+    assert.equal(renderer!.root.findAllByProps({ role: 'alert' }).length, 0)
+    await act(async () => { renderer!.unmount() })
+  } finally {
+    restoreGlobals()
+  }
+})
+
+test('concurrent failures retain every setting and do not overwrite a settings-only draft', async () => {
+  const restoreGlobals = mockTooltipGlobals()
+  let renderer: ReactTestRenderer
+  const requests: unknown[] = []
+  const resolvers: Array<(value: WorkItem | null) => void> = []
+  const createTask = (input: unknown) => {
+    requests.push(input)
+    return new Promise<WorkItem | null>(resolve => { resolvers.push(resolve) })
+  }
+  const people: WorkPerson[] = ['agent-a', 'agent-b', 'agent-current'].map(principalId => ({
+    principalId, type: 'agent' as const, userId: null, displayName: principalId,
+  }))
+  const contextA = { type: 'link' as const, id: 'https://example.com/a', label: 'Context A' }
+  const contextB = { type: 'link' as const, id: 'https://example.com/b', label: 'Context B' }
+  const currentContext = { type: 'link' as const, id: 'https://example.com/current', label: 'Current context' }
+  const props = { scope: 'personal' as const, principalId: 'me', people, tasks: [], createTask, search: async () => [] }
+  const input = () => renderer!.root.findByType('textarea')
+  const settings = () => renderer!.root.findAllByType(PopoverContent).find(node => node.props['aria-label'] === 'Task settings')!.props.children
+  const submit = () => renderer!.root.findByProps({ 'aria-label': 'Add task' }).props.onClick()
+  const retry = (title: string) => renderer!.root.findAllByType('button').find(button => button.props['aria-label'] === `Retry ${title}`)!
+  try {
+    await act(async () => { renderer = create(<WorkTaskComposerForm {...props} />) })
+    await act(async () => {
+      input().props.onChange({ target: { value: 'Failed A\nDescription A' } })
+      renderer!.root.findByType(ComposerAssignee).props.onChange('agent-a')
+      renderer!.root.findByType(ComposerSchedule).props.onChange({ startDate: '2026-11-01', dueDate: '2026-11-04' })
+      renderer!.root.findByType(ComposerDependencies).props.onChange(['dependency-a'])
+      renderer!.root.findByType(WorkComposerContext).props.onAdd(contextA)
+      settings().props.onChange({ status: 'backlog', priority: 1 })
+    })
+    await act(async () => { submit() })
+    await act(async () => {
+      input().props.onChange({ target: { value: 'Failed B\nDescription B' } })
+      renderer!.root.findByType(ComposerAssignee).props.onChange('agent-b')
+      renderer!.root.findByType(ComposerSchedule).props.onChange({ startDate: '2026-12-01', dueDate: '2026-12-05' })
+      renderer!.root.findByType(ComposerDependencies).props.onChange(['dependency-b'])
+      renderer!.root.findByType(WorkComposerContext).props.onAdd(contextB)
+      settings().props.onChange({ status: 'todo', priority: 3 })
+    })
+    await act(async () => { submit() })
+    await act(async () => {
+      renderer!.root.findByType(ComposerAssignee).props.onChange('agent-current')
+      renderer!.root.findByType(ComposerSchedule).props.onChange({ startDate: '2026-12-10', dueDate: '' })
+      renderer!.root.findByType(ComposerDependencies).props.onChange(['current-dependency'])
+      renderer!.root.findByType(WorkComposerContext).props.onAdd(currentContext)
+      settings().props.onChange({ status: 'backlog', priority: 1 })
+    })
+    assert.deepEqual(requests.slice(0, 2), [
+      { title: 'Failed A', description: 'Description A', status: 'backlog', priority: 1, blockedBy: ['dependency-a'], assigneePrincipalId: 'agent-a', startDate: '2026-11-01', dueDate: '2026-11-04', context: [contextA] },
+      { title: 'Failed B', description: 'Description B', status: 'todo', priority: 3, blockedBy: ['dependency-b'], assigneePrincipalId: 'agent-b', startDate: '2026-12-01', dueDate: '2026-12-05', context: [contextB] },
+    ])
+    await act(async () => { resolvers[0]!(null) })
+    await act(async () => { resolvers[1]!(null) })
+    assert.equal(input().props.value, '')
+    assert.equal(renderer!.root.findByType(ComposerAssignee).props.value, 'agent-current')
+    assert.deepEqual(renderer!.root.findByType(ComposerDependencies).props.value, ['current-dependency'])
+    assert.equal(renderer!.root.findByType(ComposerSchedule).props.draft.startDate, '2026-12-10')
+    assert.equal(renderer!.root.findByType(ComposerSchedule).props.draft.status, 'backlog')
+    assert.equal(renderer!.root.findByType(ComposerSchedule).props.draft.priority, 1)
+    assert.ok(renderer!.root.findByProps({ 'aria-label': 'Remove Current context' }))
+    assert.equal(renderer!.root.findAllByProps({ role: 'alert' }).length, 2)
+    assert.ok(renderer!.root.findAllByProps({ role: 'alert' }).every(message => message.children.join('').includes('Retry with your saved draft and settings.')))
+    const retryA = retry('Failed A')
+    const retryB = retry('Failed B')
+    await act(async () => {
+      retryA.props.onClick()
+      retryA.props.onClick()
+      retryB.props.onClick()
+    })
+    assert.equal(requests.length, 4, 'both failed tasks retry, while duplicate clicks on one pending retry are ignored')
+    assert.deepEqual(requests[2], requests[0])
+    assert.deepEqual(requests[3], requests[1])
+    await act(async () => {
+      resolvers[2]!({ id: 'retry-a' } as WorkItem)
+      resolvers[3]!({ id: 'retry-b' } as WorkItem)
+    })
+    assert.equal(renderer!.root.findAllByProps({ role: 'alert' }).length, 0)
+    assert.equal(renderer!.root.findByType(ComposerAssignee).props.value, 'agent-current')
     await act(async () => { renderer!.unmount() })
   } finally {
     restoreGlobals()

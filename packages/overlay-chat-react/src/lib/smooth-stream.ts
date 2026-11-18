@@ -26,13 +26,14 @@ export function nextRevealLength(text: string, shown: number, elapsedMs: number)
 /**
  * Paces streamed text. Server updates arrive in bursts (one every few hundred milliseconds); this reveals each
  * burst word by word so a reply flows instead of jumping. Text present at mount, and text that never streamed,
- * shows at once. After the stream ends, any remaining backlog finishes revealing at the same pace.
+ * shows at once. When the stream ends, the complete final text shows immediately.
  */
 export function useSmoothStreamText(text: string, isStreaming: boolean): { text: string; revealing: boolean } {
   const [reveal, setReveal] = useState(() => ({ length: text.length, streamed: isStreaming && typeof requestAnimationFrame === 'function' }))
   if (isStreaming && !reveal.streamed && typeof requestAnimationFrame === 'function') setReveal({ ...reveal, streamed: true })
-  const length = reveal.streamed && reveal.length <= text.length ? reveal.length : text.length
-  const behind = length < text.length
+  if (!isStreaming && reveal.streamed && reveal.length !== text.length) setReveal({ ...reveal, length: text.length })
+  const length = isStreaming && reveal.streamed && reveal.length <= text.length ? reveal.length : text.length
+  const behind = isStreaming && length < text.length
   const textRef = useRef(text)
   useEffect(() => {
     textRef.current = text
