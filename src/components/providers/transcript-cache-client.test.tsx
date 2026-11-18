@@ -204,7 +204,8 @@ test('hover intent waits before reading and a quick pass-over reads nothing', as
   let intent!: ReturnType<typeof import('./transcript-cache-client').useTranscriptPrefetchIntent>
   const { useTranscriptPrefetchIntent } = await import('./transcript-cache-client')
   function Row() {
-    intent = useTranscriptPrefetchIntent()
+    const current = useTranscriptPrefetchIntent()
+    React.useEffect(() => { intent = current }, [current])
     return null
   }
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
