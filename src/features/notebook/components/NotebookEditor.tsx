@@ -1,6 +1,5 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   readStoredPanelPresentation,
@@ -15,6 +14,7 @@ import {
 } from '@overlay/app-core'
 import {
   CanonicalNotebookEditor,
+  NotebookAgentEmptyState,
   type NotebookAgentComposerRenderProps,
 } from '@overlay/modules-react/notes'
 import { ExportMenu } from '@/features/files/components/ExportMenu'
@@ -27,15 +27,18 @@ import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useLiveNote } from '@/hooks/use-file-tree'
-import { useMutation } from 'convex/react'
+import { useConvex, useConvexAuth, useMutation, useQuery } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { api } from '../../../../convex/_generated/api'
-import { notebookChatClientId, runNotebookChatTurn } from '../lib/notebook-chat-turn'
+import {
+  notebookChatClientId,
+  runNotebookChatTurn,
+  type NotebookChatTurn,
+  type NotebookTurnOutcome,
+} from '../lib/notebook-chat-turn'
+import { waitForNativePersonalTurn } from '@/features/chat/components/chat/native-personal-lifecycle'
+import { EmbeddedPersonalTranscript } from '@/features/chat/components/EmbeddedPersonalTranscript'
 import { useNotebookRepository } from '@/hooks/use-notebook-repository'
-
-const MarkdownMessage = dynamic(() =>
-  import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
-)
 
 // Separate from chat's last-used model, so a note starts on the chat default until a model is picked here.
 const NOTEBOOK_MODEL_KEY = 'overlay_notebook_model'
@@ -74,12 +77,21 @@ export default function NotebookEditor({
     storePanelPresentation(presentation)
   }, [])
 
+  const noteId = searchParams?.get('id') ?? null
+  const convex = useConvex()
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const canQueryNoteChat = Boolean(activeWorkspaceId && !authLoading && isAuthenticated)
+  const noteChatId = useQuery(api.chat.personal.getByClientId,
+    canQueryNoteChat && noteId ? { workspaceId: activeWorkspaceId!, clientId: notebookChatClientId(noteId) } : 'skip')
+  const [liveTurn, setLiveTurn] = useState<NotebookChatTurn | null>(null)
+  const [endedTurn, setEndedTurn] = useState<{ noteId: string; turnId: string; outcome: NotebookTurnOutcome } | null>(null)
+
   const createPersonalChat = useMutation(api.chat.personal.create)
   const noteChatIdsRef = useRef(new Map<string, string>())
   const ensureNoteChat = useCallback(async (request: NotebookAgentRequest) => {
-    const known = noteChatIdsRef.current.get(request.noteId)
-    if (known) return known
     if (!activeWorkspaceId) throw new Error('Choose a workspace to use the note assistant.')
+    const known = noteChatIdsRef.current.get(request.noteId)
+    if (known) return { workspaceId: activeWorkspaceId, conversationId: known }
     const modelId = request.modelId ?? initialModelId
     const conversationId = await createPersonalChat({
       workspaceId: activeWorkspaceId,
@@ -90,10 +102,23 @@ export default function NotebookEditor({
       lastMode: 'act',
     })
     noteChatIdsRef.current.set(request.noteId, conversationId)
-    return conversationId
+    return { workspaceId: activeWorkspaceId, conversationId }
   }, [activeWorkspaceId, createPersonalChat, initialModelId])
-
-  const noteId = searchParams?.get('id') ?? null
+  const runAgent = useCallback((request: NotebookAgentRequest, signal: AbortSignal) => runNotebookChatTurn({
+    request,
+    signal,
+    ensureConversation: ensureNoteChat,
+    waitForTurn: (target) => waitForNativePersonalTurn(convex, target),
+    onTurnStart: (turn) => {
+      setEndedTurn(null)
+      setLiveTurn(turn)
+    },
+    onTurnEnd: (turn, outcome) => {
+      setLiveTurn((current) => current?.turnId === turn.turnId ? null : current)
+      setEndedTurn({ noteId: turn.noteId, turnId: turn.turnId, outcome })
+    },
+  }), [convex, ensureNoteChat])
+  const liveConversationId = liveTurn?.noteId === noteId ? liveTurn.conversationId : null
   const liveNote = useLiveNote(noteId)
   // The open note was deleted, archived or became unreadable elsewhere: go back to the files it belonged to.
   const [seenNoteId, setSeenNoteId] = useState<string | null>(null)
@@ -110,7 +135,17 @@ export default function NotebookEditor({
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}
-      runAgent={(request, signal) => runNotebookChatTurn({ request, signal, ensureConversation: ensureNoteChat })}
+      runAgent={runAgent}
+      agentTranscript={(
+        <EmbeddedPersonalTranscript
+          workspaceId={activeWorkspaceId}
+          conversationId={noteChatId ?? liveConversationId}
+          canQuery={canQueryNoteChat}
+          pendingSend={liveTurn?.noteId === noteId ? liveTurn : null}
+          endedTurn={endedTurn?.noteId === noteId ? endedTurn : null}
+          emptyState={<NotebookAgentEmptyState />}
+        />
+      )}
       agentPanelMode={toRightPanelMode(panelPresentation)}
       onAgentPanelModeChange={(mode) => setPanelPresentation(mode === 'docked' ? 'sidebar' : 'floating')}
       models={models}
@@ -141,7 +176,6 @@ export default function NotebookEditor({
         </>
       )}
       renderAgentComposer={(composer) => <NotebookChatComposer {...composer} />}
-      renderMarkdown={(text, streaming) => <MarkdownMessage text={text} isStreaming={streaming} />}
     />
   )
 }
