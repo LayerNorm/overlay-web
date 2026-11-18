@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 const components = JSON.stringify(fileURLToPath(new URL('./components.tsx', import.meta.url)))
 
-export default {
+const feature = {
   out: 'interaction-responsiveness.html',
   title: 'Overlay | Interaction responsiveness mockup',
   patches: [
@@ -78,3 +78,5 @@ export default {
     },
   ],
 }
+
+export default feature

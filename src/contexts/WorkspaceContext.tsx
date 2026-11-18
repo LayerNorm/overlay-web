@@ -54,6 +54,13 @@ type LiveDirectory = {
 }
 type HandleResolver = (handle: string) => Promise<{ workspaceId: string; canonicalHandle: string; canonical: boolean } | null>
 type WorkspaceHistoryTarget = { pathname: string; generation: number }
+type RouteLoadSnapshot = {
+  pathname: string
+  routePathGeneration: number
+  loadGeneration: number
+  navigationGeneration: number
+  historyGeneration: number | null
+}
 
 async function resolveRouteWorkspace(
   routeTarget: WorkspaceRouteTarget | null,
@@ -100,6 +107,70 @@ function routeTargetMatchesCurrentWorkspace(
       || resolvedRouteTargetKey === workspaceRouteTargetKey(routeTarget)
   }
   return true
+}
+
+function isRouteLoadObsolete(
+  snapshot: RouteLoadSnapshot,
+  current: RouteLoadSnapshot,
+  cancelled: () => boolean,
+  lastResolvedPathname: string | null,
+  historyTargetPathname: string | null,
+): boolean {
+  return cancelled()
+    || snapshot.pathname !== current.pathname
+    || snapshot.routePathGeneration !== current.routePathGeneration
+    || snapshot.loadGeneration !== current.loadGeneration
+    || snapshot.navigationGeneration !== current.navigationGeneration
+    || snapshot.historyGeneration !== current.historyGeneration
+    || (historyTargetPathname !== null
+      && historyTargetPathname !== snapshot.pathname
+      && lastResolvedPathname === snapshot.pathname)
+}
+
+function replaceCanonicalWorkspaceRoute(
+  pathname: string,
+  canonicalHandle: string | null,
+  router: ReturnType<typeof useRouter>,
+): void {
+  if (!canonicalHandle) return
+  const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(canonicalHandle)}`)
+  if (canonicalPath === pathname) return
+  const locationSuffix = typeof window === 'undefined'
+    ? ''
+    : `${window.location.search}${window.location.hash}`
+  router.replace(`${canonicalPath}${locationSuffix}`, { scroll: false })
+}
+
+function isRouteWorkspaceUnavailable(
+  resolution: { workspaceId: string | null; unavailable: boolean },
+  routeWorkspace: WorkspaceSummary | null,
+): boolean {
+  return resolution.unavailable || Boolean(resolution.workspaceId && !routeWorkspace)
+}
+
+function workspacePreferenceForRouteChange(
+  authoritativeRouteChange: boolean,
+  pathChanged: boolean,
+  routeWorkspace: WorkspaceSummary | null,
+  latestActivationRequest: { workspaceId: string } | null,
+  previousWorkspaceId: string | null,
+): WorkspaceSummary | null {
+  if (!authoritativeRouteChange || !routeWorkspace) return null
+  if (latestActivationRequest) {
+    return latestActivationRequest.workspaceId !== routeWorkspace.id ? routeWorkspace : null
+  }
+  return pathChanged && routeWorkspace.id !== previousWorkspaceId ? routeWorkspace : null
+}
+
+function resolveNextActiveWorkspaceId(
+  routeWorkspace: WorkspaceSummary | null,
+  directory: LiveDirectory,
+  listed: readonly WorkspaceSummary[],
+): string | null {
+  return routeWorkspace?.id
+    ?? (directory.activeWorkspaceId || null)
+    ?? listed[0]?.id
+    ?? null
 }
 
 export function WorkspaceProvider({
@@ -255,6 +326,13 @@ export function WorkspaceProvider({
     const routePathGeneration = routePathGenerationRef.current
     const navigationGeneration = navigationGenerationRef.current
     const historyGeneration = historyTargetRef.current?.generation ?? null
+    const routeLoadSnapshot = {
+      pathname,
+      routePathGeneration,
+      loadGeneration,
+      navigationGeneration,
+      historyGeneration,
+    }
     const listed = withCreated(directory.workspaces, createdRef.current)
 
     // Soft path changes (chat ↔ files within the same workspace, or query-only
@@ -272,14 +350,19 @@ export function WorkspaceProvider({
     if (!softReload) setStatus('loading')
     setError(null)
     const routeResolution = await resolveRouteWorkspace(routeTarget, resolveHandle, directory.workspaces)
-    if (cancelled() || pathnameRef.current !== pathname
-      || routePathGenerationRef.current !== routePathGeneration
-      || routeLoadGenerationRef.current !== loadGeneration
-      || navigationGenerationRef.current !== navigationGeneration
-      || (historyTargetRef.current?.generation ?? null) !== historyGeneration) return
-    const pendingHistoryTarget = historyTargetRef.current
-    if (pendingHistoryTarget && pendingHistoryTarget.pathname !== pathname
-      && lastResolvedPathnameRef.current === pathname) return
+    if (isRouteLoadObsolete(
+      routeLoadSnapshot,
+      {
+        pathname: pathnameRef.current,
+        routePathGeneration: routePathGenerationRef.current,
+        loadGeneration: routeLoadGenerationRef.current,
+        navigationGeneration: navigationGenerationRef.current,
+        historyGeneration: historyTargetRef.current?.generation ?? null,
+      },
+      cancelled,
+      lastResolvedPathnameRef.current,
+      historyTargetRef.current?.pathname ?? null,
+    )) return
     const currentDirectory = liveRef.current ?? directory
     const currentListed = withCreated(currentDirectory.workspaces, createdRef.current)
     const liveRouteWorkspace = routeTarget?.kind === 'handle'
@@ -289,19 +372,11 @@ export function WorkspaceProvider({
     const currentRouteResolution = liveRouteWorkspace
       ? { workspaceId: liveRouteWorkspace.id, canonicalHandle: null, unavailable: false }
       : routeResolution
-    if (currentRouteResolution.canonicalHandle) {
-      const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(currentRouteResolution.canonicalHandle)}`)
-      if (canonicalPath !== pathname) {
-        const locationSuffix = typeof window === 'undefined'
-          ? ''
-          : `${window.location.search}${window.location.hash}`
-        router.replace(`${canonicalPath}${locationSuffix}`, { scroll: false })
-      }
-    }
+    replaceCanonicalWorkspaceRoute(pathname, currentRouteResolution.canonicalHandle, router)
     const routeWorkspace = currentRouteResolution.workspaceId
       ? currentListed.find((item) => item.id === currentRouteResolution.workspaceId) ?? null
       : null
-    if (currentRouteResolution.unavailable || (currentRouteResolution.workspaceId && !routeWorkspace)) {
+    if (isRouteWorkspaceUnavailable(currentRouteResolution, routeWorkspace)) {
       setWorkspaces([])
       setActiveWorkspaceId(null)
       setSwitchingWorkspaceId(null)
@@ -316,23 +391,20 @@ export function WorkspaceProvider({
     const previousWorkspaceId = activeWorkspaceIdRef.current
     const historyOwnsRoute = historyTargetRef.current?.pathname === pathname
     const authoritativeRouteChange = pathChanged || historyOwnsRoute
-    let preferenceWorkspace: WorkspaceSummary | null = null
+    const preferenceWorkspace = workspacePreferenceForRouteChange(
+      authoritativeRouteChange,
+      pathChanged,
+      routeWorkspace,
+      latestActivationRequestRef.current,
+      previousWorkspaceId,
+    )
 
     if (authoritativeRouteChange) {
       historyTargetRef.current = null
       setSwitchingWorkspaceId(null)
-      const latestActivationRequest = latestActivationRequestRef.current
-      if (routeWorkspace && (latestActivationRequest
-        ? latestActivationRequest.workspaceId !== routeWorkspace.id
-        : pathChanged && routeWorkspace.id !== previousWorkspaceId)) {
-        preferenceWorkspace = routeWorkspace
-      }
     }
 
-    const nextActiveWorkspaceId = routeWorkspace?.id
-      ?? (currentDirectory.activeWorkspaceId || null)
-      ?? currentListed[0]?.id
-      ?? null
+    const nextActiveWorkspaceId = resolveNextActiveWorkspaceId(routeWorkspace, currentDirectory, currentListed)
     setWorkspaces(currentListed)
     setInvitations(currentDirectory.invitations)
     setActiveWorkspaceId(nextActiveWorkspaceId)
