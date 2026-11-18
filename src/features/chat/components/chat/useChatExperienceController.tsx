@@ -487,15 +487,12 @@ export function useChatExperienceController({
 
   const {
     automationConversationId,
-    automationDetailTab,
     automationIdParam,
     hasAutomationContext,
     idParam,
     invalidateLoadChatRequestRef,
     loadChatRef,
     resetToBlankChatSurface,
-    showAutomationChatTab,
-    showAutomationHeaderControls,
     syncStandaloneChatUrl,
   } = useChatRouteController({
     activeChatId,
@@ -745,7 +742,6 @@ export function useChatExperienceController({
 
   const {
     refreshSelectedAutomation,
-    selectAutomationDetailTab,
     saveAutomationHeaderModel,
     automationHeaderModelId,
   } = useAutomationDetail({
@@ -832,7 +828,6 @@ export function useChatExperienceController({
     isOptimisticLoading,
     runtimeHydrationVersion,
     isTemporaryChat,
-    showAutomationChatTab,
     canonicalRevision: nativePersonalSendEnabled ? nativePersonal.transcript.rows : null,
   })
   usePendingTurnScroll({
@@ -1046,12 +1041,10 @@ export function useChatExperienceController({
     generationResults: viewGenerationResults,
     idParam: nativePersonalDisplay ? displayActiveChatId : idParam,
     automationConversationId,
-    showAutomationChatTab,
     activeChatHydrated,
     isActiveLoading,
     isOptimisticLoading,
     isConversationBottomVisible,
-    composerMode,
     firstName,
     mode,
     selectedAutomation,
@@ -1082,7 +1075,6 @@ export function useChatExperienceController({
     handleGenerationModeChange,
     handleGenerationChipChange,
     handleEmptySuggestion,
-    handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
   } = useComposerActions({
 
@@ -1235,9 +1227,6 @@ export function useChatExperienceController({
     automationConversationId,
     automationIdParam,
     hasAutomationContext,
-    showAutomationChatTab,
-    showAutomationHeaderControls,
-    automationDetailTab,
     isTemporaryChat,
 
     mode,
@@ -1252,13 +1241,11 @@ export function useChatExperienceController({
     selectedImageModels,
     selectedVideoModels,
     automationHeaderModelId,
-    automationHeaderModels: selectableTextModels,
     pickerTextModels,
     isTextModelLocked: isPickerTextModelLocked,
     upgradeModel,
     setUpgradeModel,
     saveAutomationHeaderModel,
-    selectAutomationDetailTab,
     headerModelProps,
     selectedAutomation,
     selectedAutomationLoading,
@@ -1356,7 +1343,6 @@ export function useChatExperienceController({
     handleGenerationModeChange,
     handleGenerationChipChange,
     handleEmptySuggestion,
-    handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
     getResponseForExchange: effectiveGetResponseForExchange,
     getResponsesForExchange,

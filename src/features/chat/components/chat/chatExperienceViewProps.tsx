@@ -24,6 +24,9 @@ export function buildChatExperienceViewProps(
   renderAttachmentViewer: (args: { preview: AttachmentPreview; headerRight: React.ReactNode }) => React.ReactNode,
   shell: ShellPanels,
 ) {
+  // An automation link whose automation is gone or unreadable has no thread to show.
+  const automationNotFound = c.hasAutomationContext && !c.selectedAutomationLoading && !c.selectedAutomation
+  const automationModelId = c.selectedAutomation ? c.automationHeaderModelId : null
   const viewProps = {
     nativeThreadSafety: c.nativeThreadSafety,
     onNewNativeThread: c.startNewNativeThread,
@@ -86,14 +89,11 @@ export function buildChatExperienceViewProps(
       onCommitChatRename: c.commitChatRename,
       onCancelChatRename: c.cancelChatRename,
       headerTitleInputRef: c.headerTitleInputRef,
-      showAutomationHeaderControls: c.showAutomationHeaderControls,
       titleLabel: c.headerTitleLabel,
       onBeginHeaderChatRename: c.beginHeaderChatRename,
       showRenameButton: Boolean(c.activeChatId && !c.selectedAutomation),
       projectName: c.projectName,
-      showAutomationChatTab: c.showAutomationChatTab,
       appMode: c.mode,
-      hasAutomationContext: c.hasAutomationContext,
       isTemporaryChat: c.isTemporaryChat,
       isActiveLoading: c.isActiveLoading,
       onTemporaryChatToggle: c.handleTemporaryChatToggle,
@@ -101,36 +101,22 @@ export function buildChatExperienceViewProps(
       generationMode: c.generationMode,
       renderExportMenu,
       ...c.headerModelProps,
+      // In an automation's thread the composer's model is the automation's model, saved as it changes.
+      ...(automationModelId ? {
+        selectedActModel: automationModelId,
+        selectedModels: [automationModelId],
+        modelPickerLabel: c.headerModelProps.getChatModelDisplayName(automationModelId),
+        onToggleTextModel: (modelId: string) => void c.saveAutomationHeaderModel(modelId),
+      } : {}),
       pickerTextModels: c.pickerTextModels,
       modelAccessPending: c.billingAccessNotice !== null,
       isTextModelLocked: c.isTextModelLocked,
       onLockedTextModelSelect: c.setUpgradeModel,
-      automationHeaderModelId: c.automationHeaderModelId,
-      automationHeaderModels: c.automationHeaderModels,
-      onSaveAutomationHeaderModel: c.saveAutomationHeaderModel,
-      automationDetailTab: c.automationDetailTab,
-      onSelectAutomationDetailTab: c.selectAutomationDetailTab,
     },
     body: {
-      hasAutomationContext: c.hasAutomationContext,
       isTemporaryChat: c.isTemporaryChat,
-      selectedAutomationLoading: c.selectedAutomationLoading,
-      showAutomationChatTab: c.showAutomationChatTab,
+      automationNotFound,
     },
-    automationEditorProps:
-      !c.showAutomationChatTab && c.selectedAutomation && c.automationDetailTab === 'edit'
-        ? {
-            automation: c.selectedAutomation,
-            onSaved: c.setSelectedAutomation,
-            onTested: (conversationId: string) => {
-              const params = new URLSearchParams(c.searchParams?.toString() ?? '')
-              params.set('id', conversationId)
-              params.set('automationId', c.selectedAutomation!._id)
-              params.delete('tab')
-              c.router.replace(`${c.pathname}?${params.toString()}`)
-            },
-          }
-        : null,
     upgradeModelDialogProps: {
       model: c.upgradeModel,
       onOpenChange: (open: boolean) => {
@@ -142,7 +128,7 @@ export function buildChatExperienceViewProps(
       },
     },
     messageListProps:
-      c.showAutomationChatTab && (c.hasHistory || c.showChatLoadingState)
+      !automationNotFound && (c.hasHistory || c.showChatLoadingState)
         ? {
             messagesScrollRef: c.messagesScrollRef,
             messagesEndRef: c.messagesEndRef,
@@ -210,7 +196,7 @@ export function buildChatExperienceViewProps(
           }
         : null,
     composerProps:
-      c.showAutomationChatTab
+      !automationNotFound
         ? {
             mode: c.composerMode,
             emptyState: {
@@ -297,7 +283,6 @@ export function buildChatExperienceViewProps(
               onStop: c.stopResponseAndPauseQueue,
               onSend: c.effectiveHandleSend,
               onEmptySuggestion: c.handleEmptySuggestion,
-              onAutomateSuggestion: c.handleAutomateSuggestion,
             },
           }
         : null,

@@ -67,10 +67,8 @@ test('the chat header keeps existing controls without a Chat/Work selector', () 
         onCommitChatRename: () => {},
         onCancelChatRename: () => {},
         headerTitleInputRef: createRef<HTMLInputElement>(),
-        showAutomationHeaderControls: false,
         titleLabel: 'Chat',
         showRenameButton: false,
-        showAutomationChatTab: true,
         appMode: 'chat',
         isTemporaryChat: false,
         isActiveLoading: false,
@@ -85,4 +83,34 @@ test('the chat header keeps existing controls without a Chat/Work selector', () 
 
   assert.match(html, /aria-label="Enable temporary chat"/)
   assert.doesNotMatch(html, /Personal chat mode|Work mode/)
+})
+
+test('the automations header has no temporary-chat control and keeps its header actions', () => {
+  const html = renderToStaticMarkup(
+    <ChatExperienceHeader
+      {...({
+        activeChatId: 'chat_1',
+        editingChatId: null,
+        editingChatTitle: '',
+        onEditingChatTitleChange: () => {},
+        onCommitChatRename: () => {},
+        onCancelChatRename: () => {},
+        headerTitleInputRef: createRef<HTMLInputElement>(),
+        titleLabel: 'Morning brief',
+        showRenameButton: false,
+        appMode: 'automate',
+        isTemporaryChat: false,
+        isActiveLoading: false,
+        onTemporaryChatToggle: () => {},
+        onGenerationModeChange: () => {},
+        generationMode: 'text',
+        modelControlsInComposer: true,
+        renderExportMenu: () => <span data-testid="automation-actions" />,
+      } as ChatExperienceHeaderProps)}
+    />,
+  )
+
+  assert.doesNotMatch(html, /temporary chat/i)
+  assert.match(html, /data-testid="automation-actions"/)
+  assert.doesNotMatch(html, />Edit</)
 })

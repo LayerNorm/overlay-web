@@ -1,6 +1,7 @@
 # Automation threads
 
-Status: diagnosis done and mockup proposed; no product code changed yet.
+Status: fixes 2–4 implemented on branches (backend on `codex/automation-thread-composer`, web UI on
+`codex/automation-threads-ui`); not merged, deployed or accepted yet. Fix 1 is not started.
 
 ## Goal
 
@@ -56,3 +57,12 @@ pipeline itself is not down.
 3. Automations page composer with schedule and agent pickers; the automation's thread is the only detail view.
    Instructions change by editing the first message.
 4. Keep the user's words as the instructions; derive the name from the first line.
+
+## Progress
+
+| Fix | State |
+| --- | --- |
+| 1. Waiting runs keep the schedule | Not started. The details panel shows a waiting run as "Running"; "Waiting for you" needs the run's thread state. |
+| 2. Local time and IANA zone, every weekday | Implemented in the backend branch (bd641f1b, e0a4b100). Untested on a Preview. |
+| 3. Composer pickers, thread as the detail view | Implemented in `codex/automation-threads-ui`: Schedule and Agent pickers, create then Run now on send, Automation details panel, Chat/Edit tabs and the editor removed. Untested on a Preview. |
+| 4. Keep the user's words as instructions | The new composer sends the typed text as the instructions; the server names it from the first line. Chat drafting (`draft_automation_from_chat`) is unchanged. |

@@ -16,7 +16,6 @@ export function useConversationBottomVisibility({
   isOptimisticLoading,
   runtimeHydrationVersion,
   isTemporaryChat,
-  showAutomationChatTab,
   canonicalRevision,
 }: {
   messagesScrollRef: RefObject<HTMLDivElement | null>
@@ -28,7 +27,6 @@ export function useConversationBottomVisibility({
   isOptimisticLoading: boolean
   runtimeHydrationVersion: number
   isTemporaryChat: boolean
-  showAutomationChatTab: boolean
   canonicalRevision?: unknown
 }) {
   const [isConversationBottomVisible, setIsConversationBottomVisible] = useState(true)
@@ -76,7 +74,6 @@ export function useConversationBottomVisibility({
     isOptimisticLoading,
     isTemporaryChat,
     runtimeHydrationVersion,
-    showAutomationChatTab,
     canonicalRevision,
     updateConversationBottomVisibility,
     messagesScrollRef,
