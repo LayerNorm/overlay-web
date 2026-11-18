@@ -106,8 +106,8 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
   {
     id: 'skills',
     label: 'Skills',
-    description: 'List available skills and draft new ones from a conversation.',
-    toolIds: ['list_skills', 'draft_skill_from_chat'],
+    description: 'Find, load and save skills, search public skill registries, and draft new skills from a conversation.',
+    toolIds: ['list_skills', 'find_skills', 'load_skill', 'search_skill_registries', 'save_skill', 'draft_skill_from_chat'],
   },
   {
     id: 'automations',
