@@ -119,9 +119,12 @@ using the app.
 - **Node.js.** Release 0.3.0 needed Node.js installed to run a thread on this
   computer. Release 0.3.1, published 2026-11-17, ships the Agent Host and its
   own Node.js runtime inside the app. Checked on the published signed,
-  notarized build: the bundled host starts with no Node.js on the path. Not
-  yet checked: a real thread run from the installed 0.3.1 app. The download
-  grew from about 131 MB to about 170 MB.
+  notarized build: the bundled host starts with no Node.js on the path, and
+  the installed 0.3.1 app started that host itself and ran a real thread on
+  this computer (the agent ran a shell command and wrote a file in the work
+  folder). Not checked: the same thread on a Mac that has no Node.js at all,
+  and the automatic update from 0.3.0. The download grew from about 131 MB to
+  about 170 MB.
 - **Installer notarization.** The app inside the installer is notarized; the
   disk image itself is not stapled, so the first open needs a network
   connection.

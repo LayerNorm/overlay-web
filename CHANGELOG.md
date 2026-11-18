@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Point the desktop submodule at Overlay Desktop 0.3.1, the release that runs threads on this computer without Node.js installed (the app carries the Agent Host and its own Node.js runtime). The website's download serves the newest release on its own; the desktop discovery plan records what was checked on the published build and that a real thread from the installed 0.3.1 app is still untested.
+- Point the desktop submodule at Overlay Desktop 0.3.1, the release that runs threads on this computer without Node.js installed (the app carries the Agent Host and its own Node.js runtime). The website's download serves the newest release on its own; the desktop discovery plan records what was checked on the published build including a real thread run on this computer from the installed 0.3.1 app; a Mac with no Node.js at all and the automatic update from 0.3.0 are still untested.
 - Let Stop and steer retry cancellation when a previous request failed, so a still-generating channel reply does not remain stuck behind a one-time stop attempt.
 - Let Stop reconcile an authorized terminal agent run with its still-generating reply, preserving completed output and failed diagnostics while releasing the channel composer.
 - Settle personal work replies using their initiating user's ownership instead of requiring room-agent authorship.
