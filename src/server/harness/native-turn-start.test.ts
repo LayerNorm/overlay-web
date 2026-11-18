@@ -71,8 +71,8 @@ test('read-only native tool sets remain plan-optional and start with the built i
     constraints: [],
     policy: {
       actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read_file', 'search_memory'],
-      publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace', requiresPlan: false,
-      deadlineAt: 86_400_100, maxCostMicros: 0,
+      publicProgressVersion: 1, publicStreamVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace',
+      requiresPlan: false, deadlineAt: 86_400_100, maxCostMicros: 0,
     },
     source: { conversationId: 'room' },
     deliveryAgentRunId: 'agent-run',
