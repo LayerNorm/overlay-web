@@ -166,6 +166,9 @@ function sameExchangeState(prev: PlannedTextChatMessageProps, next: PlannedTextC
     assistantSnapshotKey(prev.primaryMessages, exchangeIndex)
     !== assistantSnapshotKey(next.primaryMessages, exchangeIndex)
   ) return false
+  // A canonical row reads only its persisted response; the session chat holds just the turns sent since load,
+  // so its exchange indexes do not line up with the transcript's.
+  if (next.canonicalTranscript) return true
   return assistantSnapshotKey(prev.actChat.messages as UIMessage[], exchangeIndex)
     === assistantSnapshotKey(next.actChat.messages as UIMessage[], exchangeIndex)
 }

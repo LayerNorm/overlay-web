@@ -20,6 +20,8 @@ import {
 const errorText = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message.replace(/^.*ConvexError: /, '').split('\n')[0] || fallback : fallback
 
+const CLOUD_COMPUTER: ThreadComputer = { kind: 'cloud' }
+
 export function useThreadWork(args: { workspaceId: string | null; agentId: string | null; conversationId: string; started: boolean; enabled: boolean }) {
   const { workspaceId, agentId, conversationId, started } = args
   const enabled = args.enabled && Boolean(workspaceId && agentId)
@@ -32,7 +34,7 @@ export function useThreadWork(args: { workspaceId: string | null; agentId: strin
   const [connecting, setConnecting] = useState(false)
 
   const current: ThreadWork | null = work ?? null
-  const computer: ThreadComputer = current?.computer ?? { kind: 'cloud' }
+  const computer: ThreadComputer = current?.computer ?? CLOUD_COMPUTER
   const folder = current?.folders[0] ?? null
   const local = computer.kind === 'mac'
   const onThisComputer = computer.kind === 'mac' && thisComputer.environmentId === computer.environmentId
