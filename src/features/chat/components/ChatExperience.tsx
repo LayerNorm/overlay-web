@@ -9,6 +9,7 @@ import { ChatExperienceView, type ChatExperienceViewProps } from './ChatExperien
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
+import { DirectMessageExperience } from './DirectMessageExperience'
 import { useNewAutomationComposer } from '@/features/automations/components/AutomationComposerPickers'
 import {
   AUTOMATION_PANEL_WIDTH,
@@ -150,26 +151,43 @@ export default function ChatExperience(props: ChatExperienceProps) {
       shellRightPanelWidth,
     },
   )
-  if (c.selectedAutomation && automationPanelOpen) {
-    const closeAutomationPanel = () => setAutomationPanelOpen(false)
-    const automationModelId = c.automationHeaderModelId
+  const closeAutomationPanel = () => setAutomationPanelOpen(false)
+  const automationModelId = c.automationHeaderModelId
+  const automationPanel = c.selectedAutomation && automationPanelOpen ? (
+    <AutomationDetailsPanel
+      automation={c.selectedAutomation}
+      onClose={closeAutomationPanel}
+      model={{
+        models: c.pickerTextModels,
+        modelId: automationModelId,
+        modelLabel: c.headerModelProps.getChatModelDisplayName(automationModelId),
+        onModelChange: (modelId) => void c.saveAutomationHeaderModel(modelId),
+        favoriteScope: c.favoriteScope,
+        textModelsLoading: c.headerModelProps.textModelsLoading,
+        isTextModelLocked: c.isTextModelLocked,
+        onLockedTextModelSelect: c.setUpgradeModel,
+      }}
+    />
+  ) : null
+  // An agent automation's thread is that agent's thread, so it opens in the agent thread view.
+  const agentThreadId = c.selectedAutomation?.agentId ? c.selectedAutomation.conversationId : undefined
+  if (agentThreadId) {
+    return (
+      <DirectMessageExperience
+        key={agentThreadId}
+        conversationId={agentThreadId}
+        headerActions={renderExportMenu()}
+        externalRightPanel={automationPanel}
+        externalRightPanelLabel="Automation details"
+        externalRightPanelMode="docked"
+        externalRightPanelWidth={AUTOMATION_PANEL_WIDTH}
+        onExternalRightPanelClose={closeAutomationPanel}
+      />
+    )
+  }
+  if (automationPanel) {
     viewProps.shell = {
-      rightPanel: (
-        <AutomationDetailsPanel
-          automation={c.selectedAutomation}
-          onClose={closeAutomationPanel}
-          model={{
-            models: c.pickerTextModels,
-            modelId: automationModelId,
-            modelLabel: c.headerModelProps.getChatModelDisplayName(automationModelId),
-            onModelChange: (modelId) => void c.saveAutomationHeaderModel(modelId),
-            favoriteScope: c.favoriteScope,
-            textModelsLoading: c.headerModelProps.textModelsLoading,
-            isTextModelLocked: c.isTextModelLocked,
-            onLockedTextModelSelect: c.setUpgradeModel,
-          }}
-        />
-      ),
+      rightPanel: automationPanel,
       rightPanelOpen: true,
       rightPanelWidth: AUTOMATION_PANEL_WIDTH,
       rightPanelMode: 'docked',

@@ -11,7 +11,8 @@ import { DelayedTooltip } from '@overlay/ui/overlays'
 import { WEEKDAY_LABELS, automationHref } from '@overlay/app-core/automations'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { newItemScope } from '@/shared/workspaces/panel-scope'
+import { newItemScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
@@ -28,15 +29,19 @@ export function AutomationAvatar({ agent, size = 16 }: { agent: WorkspaceAgentDi
     : <AgentCreature agent={{ name: 'Overlay' }} isDefault size={size} />
 }
 
-/** The workspace's agents an automation can run as, the default Overlay agent aside ("No agent" covers it). */
-export function useAutomationAgents(): WorkspaceAgentDirectoryItem[] {
+/**
+ * The workspace's agents an automation can run as, the default Overlay agent aside ("No agent" covers it).
+ * With a scope, only the agents the Agents sidebar lists in that scope, so each personal Overlay appears once.
+ */
+export function useAutomationAgents(scope?: PanelScope): WorkspaceAgentDirectoryItem[] {
   const directory = useAgentDirectory()
   const { activeWorkspaceId } = useWorkspace()
   return useMemo(
     () => directory.workspaceId === activeWorkspaceId
-      ? (directory.agents ?? []).filter((agent) => !agent.isDefault)
+      ? (directory.agents ?? []).filter((agent) => !agent.isDefault
+        && (!scope || agentBelongsToCreatorScope(agent, directory.viewerPrincipalId, scope)))
       : [],
-    [activeWorkspaceId, directory.agents, directory.workspaceId],
+    [activeWorkspaceId, directory.agents, directory.viewerPrincipalId, directory.workspaceId, scope],
   )
 }
 
@@ -191,7 +196,7 @@ export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInpu
 }): { composerControls: ReactNode; onSend: () => Promise<void>; placeholder: string } | null {
   const router = useRouter()
   const panelScope = usePanelScope()
-  const agents = useAutomationAgents()
+  const agents = useAutomationAgents(panelScope)
   const [schedule, setSchedule] = useState<ScheduleDraft>(DEFAULT_SCHEDULE_DRAFT)
   const [agentId, setAgentId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
