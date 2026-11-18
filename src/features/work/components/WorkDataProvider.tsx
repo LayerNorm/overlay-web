@@ -96,7 +96,16 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     })
   }, [activeWorkspaceId])
 
-  const items = useMemo(() => liveItems ?? [], [liveItems])
+  // Assignments go through the server (they can start an agent), so the new assignee shows from the click until
+  // the live list carries the server's answer. `settledAt` is that answer's revision; a refusal drops the guess.
+  const [assigning, setAssigning] = useState<ReadonlyMap<string, { assigneePrincipalId: string | null; settledAt?: number }>>(new Map())
+  const withAssigning = useCallback((item: WorkItem) => {
+    const pending = assigning.get(item.id)
+    if (!pending || (pending.settledAt !== undefined && item.updatedAt >= pending.settledAt)) return item
+    return pending.assigneePrincipalId === item.assigneePrincipalId ? item : { ...item, assigneePrincipalId: pending.assigneePrincipalId }
+  }, [assigning])
+
+  const items = useMemo(() => (liveItems ?? []).map(withAssigning), [liveItems, withAssigning])
   const signedOut = useWorkSignedOut()
   const state: WorkLoadState = signedOut ? 'signed_out' : liveItems === undefined ? 'loading' : liveItems === null ? 'error' : 'ready'
 
@@ -114,7 +123,23 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     const { assigneePrincipalId, scope: nextScope, ...fields } = patch
     // Assignment starts an agent's turn and scope moves re-check access; both stay on the server.
     if (assigneePrincipalId !== undefined || nextScope !== undefined) {
+      if (assigneePrincipalId === undefined) {
+        return reported(async () => (await overlayAppClient.work.update(id, patch)).item, 'Could not save that change.')
+      }
+      const pending = { assigneePrincipalId }
+      setAssigning(current => new Map(current).set(id, pending))
+      const settle = (settledAt?: number) => setAssigning(current => {
+        if (current.get(id) !== pending) return current
+        const next = new Map(current)
+        if (settledAt === undefined) next.delete(id)
+        else next.set(id, { ...pending, settledAt })
+        return next
+      })
       return reported(async () => (await overlayAppClient.work.update(id, patch)).item, 'Could not save that change.')
+        .then((item) => {
+          settle(item?.updatedAt)
+          return item
+        })
     }
     return reported(() => commands.update({ id, ...fields }), 'Could not save that change.')
   }, [commands])
@@ -134,10 +159,10 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   const byId = useMemo(() => {
     const all = new Map(items.map((item) => [item.id, item]))
     for (const result of Object.values(adoptedResults)) {
-      if (result && !(result instanceof Error) && !all.has(result.id)) all.set(result.id, result)
+      if (result && !(result instanceof Error) && !all.has(result.id)) all.set(result.id, withAssigning(result))
     }
     return all as ReadonlyMap<string, WorkItem>
-  }, [adoptedResults, items])
+  }, [adoptedResults, items, withAssigning])
 
   const canWork = useCallback((item: WorkItem) => {
     if (!viewer || !context) return false
