@@ -28,7 +28,7 @@ import { groupExtensionCatalog } from '@overlay/app-core/extensions'
 import { ConnectorDetailsDialog, ExtensionCatalogPage, type ExtensionCatalogEntry } from '@overlay/modules-react/extensions'
 import { toast } from '@overlay/ui/primitives'
 import { Plug, Server, Settings, Unplug } from 'lucide-react'
-import { notifyIntegrationsChanged, subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { notifyIntegrationsChanged, rememberIntegrationAttempt, subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { usePendingConnection } from '@/features/integrations/hooks/use-pending-connection'
 import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -236,16 +236,22 @@ export default function IntegrationsView({
   async function connect(integration: ConnectorCatalogItem) {
     if (connecting) return
     setConnecting(integration.providerKey)
+    const attemptId = window.crypto.randomUUID()
     // Opened before any await so the browser treats the provider page as user-initiated, not a blocked popup.
-    const oauthTab = window.open('about:blank', '_blank')
+    let oauthTab = window.open('about:blank', '_blank')
+    rememberIntegrationAttempt(oauthTab, attemptId)
     try {
       const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(accountScope ? { scope: accountScope } : {}) })
       const data = await res.json().catch(() => ({}))
       const redirectUrl = res.ok ? safeHttpUrl(data.redirectUrl) : null
       if (redirectUrl) {
+        setPendingConnection({ providerKey: integration.providerKey, attemptId })
+        if (!oauthTab) {
+          oauthTab = window.open('about:blank', '_blank')
+          rememberIntegrationAttempt(oauthTab, attemptId)
+        }
         if (oauthTab) oauthTab.location.href = redirectUrl
         else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
-        setPendingConnection(integration.providerKey)
         return
       }
       oauthTab?.close()

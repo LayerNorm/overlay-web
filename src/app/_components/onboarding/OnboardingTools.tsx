@@ -6,7 +6,7 @@ import { Button } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
-import { subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { rememberIntegrationAttempt, subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { usePendingConnection } from '@/features/integrations/hooks/use-pending-connection'
 import { ONBOARDING_TOOL_LABELS, type OnboardingSession } from '@/shared/onboarding/session'
 import { BrandMark } from './onboarding-logos'
@@ -62,7 +62,9 @@ export function OnboardingTools({ session, disabled, onContinue }: {
   const anyConnected = connectedApps.length > 0
   const nothingAvailable = !(apps instanceof Set)
   const connect = async (slug: ToolSlug) => {
-    const tab = window.open('about:blank', '_blank')
+    const attemptId = window.crypto.randomUUID()
+    let tab = window.open('about:blank', '_blank')
+    rememberIntegrationAttempt(tab, attemptId)
     if (tab) tab.opener = null
     setConnecting(slug)
     setError(null)
@@ -72,9 +74,14 @@ export function OnboardingTools({ session, disabled, onContinue }: {
       if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : `Could not connect ${ONBOARDING_TOOL_LABELS[slug]}.`)
       const url = safeHttpUrl(result.redirectUrl)
       if (url) {
+        setPendingConnection({ providerKey: slug, attemptId })
+        if (!tab) {
+          tab = window.open('about:blank', '_blank')
+          rememberIntegrationAttempt(tab, attemptId)
+          if (tab) tab.opener = null
+        }
         if (tab) tab.location.href = url
         else window.open(url, '_blank', 'noopener,noreferrer')
-        setPendingConnection(slug)
       } else { tab?.close(); if (!result.connectionId) throw new Error('No connection setup URL was returned.') }
       await refreshApps()
     } catch (value) {

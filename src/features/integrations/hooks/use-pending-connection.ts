@@ -21,7 +21,7 @@ export function usePendingConnection({
   onConnected: (providerKey: string) => void
   onFailed: (providerKey: string) => void
 }) {
-  const [pending, setPending] = useState<string | null>(null)
+  const [pending, setPending] = useState<{ providerKey: string; attemptId: string } | null>(null)
   const isConnected = useEffectEvent(async (providerKey: string) => (await load().catch(() => null))?.has(providerKey) === true)
   const notifyConnected = useEffectEvent(onConnected)
   const notifyFailed = useEffectEvent(onFailed)
@@ -30,10 +30,10 @@ export function usePendingConnection({
     if (!pending) return
     let settled = false
     const check = async () => {
-      if (settled || !(await isConnected(pending)) || settled) return
+      if (settled || !(await isConnected(pending.providerKey)) || settled) return
       settled = true
       setPending(null)
-      notifyConnected(pending)
+      notifyConnected(pending.providerKey)
     }
     const startedAt = Date.now()
     const interval = window.setInterval(() => {
@@ -45,11 +45,11 @@ export function usePendingConnection({
     }
     document.addEventListener('visibilitychange', onVisible)
     const unsubscribe = subscribeIntegrationsChanged(() => void check())
-    const unsubscribeFailed = subscribeIntegrationsFailed(() => {
+    const unsubscribeFailed = subscribeIntegrationsFailed(pending.attemptId, () => {
       if (settled) return
       settled = true
       setPending(null)
-      notifyFailed(pending)
+      notifyFailed(pending.providerKey)
     })
     return () => {
       settled = true

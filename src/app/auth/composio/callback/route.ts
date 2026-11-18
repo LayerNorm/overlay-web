@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { INTEGRATIONS_BC_CHANNEL, INTEGRATIONS_FAILED_STORAGE_KEY, INTEGRATIONS_STORAGE_KEY } from '@/shared/integrations/integrations-events'
+import { INTEGRATIONS_ATTEMPT_SESSION_KEY, INTEGRATIONS_BC_CHANNEL, INTEGRATIONS_FAILED_STORAGE_KEY, INTEGRATIONS_STORAGE_KEY } from '@/shared/integrations/integrations-events'
 
 /**
  * Where the provider tab lands after connector sign-in. Static HTML with no app shell, so it renders at once: it tells
  * the original Overlay tab the connection changed (BroadcastChannel, with a localStorage ping as fallback) and closes
  * itself. Browsers refuse window.close() after some providers isolate the tab, so the page also says it can be closed.
- * A failed sign-in stays open with its error and tells the original tab only that it failed, never the error text.
+ * A failed sign-in stays open with its error and tells only the matching original attempt that it failed.
  */
 
 const STYLE = `
@@ -25,9 +25,11 @@ function escapeHtml(value: string): string {
 function notifyScript(success: boolean): string {
   const channel = JSON.stringify(INTEGRATIONS_BC_CHANNEL)
   const key = JSON.stringify(success ? INTEGRATIONS_STORAGE_KEY : INTEGRATIONS_FAILED_STORAGE_KEY)
-  const type = success ? 'changed' : 'failed'
-  const close = success ? 'setTimeout(function(){window.close()},600)' : ''
-  return `try{var b=new BroadcastChannel(${channel});b.postMessage({type:'${type}'});b.close()}catch(e){}try{localStorage.setItem(${key},String(Date.now()))}catch(e){}${close}`
+  const attemptKey = JSON.stringify(INTEGRATIONS_ATTEMPT_SESSION_KEY)
+  if (success) {
+    return `try{sessionStorage.removeItem(${attemptKey})}catch(e){}try{var b=new BroadcastChannel(${channel});b.postMessage({type:'changed'});b.close()}catch(e){}try{localStorage.setItem(${key},String(Date.now()))}catch(e){}setTimeout(function(){window.close()},600)`
+  }
+  return `var a='';try{a=sessionStorage.getItem(${attemptKey})||'';sessionStorage.removeItem(${attemptKey})}catch(e){}if(a){try{var b=new BroadcastChannel(${channel});b.postMessage({type:'failed',attemptId:a});b.close()}catch(e){}try{localStorage.setItem(${key},JSON.stringify({attemptId:a,at:Date.now()}))}catch(e){}}`
 }
 
 export function GET(request: NextRequest) {
