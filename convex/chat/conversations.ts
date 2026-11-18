@@ -1612,11 +1612,12 @@ export const settleTerminalAgentMessage = internalMutation({
       && (ACTIVE_AGENT_RUN_STATUSES.has(candidate.status) || candidate.createdAt >= run.createdAt))) return
     const message = await ctx.db.get(args.messageId)
     if (!message || message.deletedAt !== undefined || message.conversationId !== args.conversationId
-      || message.turnId !== run.turnId
-      || ((run.mode === 'room' || run.mode === 'work')
-        && (message.authorKind !== 'agent' || message.authorPrincipalId !== run.agentPrincipalId))
-      || (run.mode === 'chat' && message.userId !== run.userId)
-      || (message.nativeRunId !== undefined && message.nativeRunId !== run._id)) return
+      || message.turnId !== run.turnId) return
+    if (run.mode === 'room' || run.agentPrincipalId !== undefined) {
+      if (!run.agentPrincipalId || message.authorKind !== 'agent'
+        || message.authorPrincipalId !== run.agentPrincipalId) return
+    } else if (message.userId !== run.userId) return
+    if (message.nativeRunId !== undefined && message.nativeRunId !== run._id) return
     if (message.status !== 'generating') {
       if (message.status === 'completed' || message.status === 'error') {
         await cleanupTerminalPublicStreams(ctx, message._id)

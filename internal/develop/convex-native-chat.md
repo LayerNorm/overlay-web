@@ -227,6 +227,9 @@ repair. Cancellation keeps partial text and adds the interruption notice;
 completed replies remain completed, while failed replies retain their terminal
 error diagnostic without an interruption notice. Targets without an authorized
 run fail explicitly rather than being reported as success. Native delivery
+settlement checks agent-authored replies against the run's agent principal;
+personal chat/work replies without an agent principal remain bound to the run's
+initiating user. Native delivery
 finish does not call Stop reconciliation from its terminal snapshot: a retried
 workflow could otherwise cancel a fresh run for the same message. If native
 finish leaves a terminal run linked to a generating message, recovery is through
