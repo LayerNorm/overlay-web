@@ -1,6 +1,6 @@
 'use client'
 import { Button } from '@overlay/ui/primitives'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
 import { TraceLine, TraceTitle } from '@overlay/ui/ai'
 import { Send } from 'lucide-react'
@@ -47,6 +47,33 @@ function latestSendErrors(items: readonly NotebookAgentUiItem[]) {
   return items.slice(lastUser + 1).flatMap((item) => item.type === 'error' ? [item.text] : [])
 }
 
+/** Keeps a scroll area pinned to its newest content until the reader scrolls up. */
+function useStickToBottom(enabled: boolean) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    if (!enabled || !scroller || !content) return
+    let pinned = true
+    const onScroll = () => {
+      pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80
+    }
+    const pin = () => {
+      if (pinned) scroller.scrollTop = scroller.scrollHeight
+    }
+    const observer = new ResizeObserver(pin)
+    observer.observe(content)
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    pin()
+    return () => {
+      observer.disconnect()
+      scroller.removeEventListener('scroll', onScroll)
+    }
+  }, [enabled])
+  return { scrollRef, contentRef }
+}
+
 export function NotebookAgentPanel({
   items,
   transcript,
@@ -56,6 +83,7 @@ export function NotebookAgentPanel({
   composer,
   renderMarkdownMessage,
 }: NotebookAgentPanelProps) {
+  const { scrollRef, contentRef } = useStickToBottom(transcript !== undefined)
   return (
     <AppScreenSidePanel
       className="overlay-chat-surface bg-(--sidebar-surface)"
@@ -63,16 +91,16 @@ export function NotebookAgentPanel({
       header={header}
       aria-label="Note assistant"
     >
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
         {transcript !== undefined ? (
-          <>
+          <div ref={contentRef} className="space-y-4">
             {transcript}
             {latestSendErrors(items).map((text, idx) => (
               // Append-only stream items have no id; index is the stable identity.
               // react-doctor-disable-next-line react-doctor/no-array-index-as-key
               <NotebookAgentError key={idx} text={text} />
             ))}
-          </>
+          </div>
         ) : items.length === 0 ? <NotebookAgentEmptyState /> : items.map((item, idx) => {
           if (item.type === 'user') {
             // Append-only stream items have no id; index is the stable identity.
