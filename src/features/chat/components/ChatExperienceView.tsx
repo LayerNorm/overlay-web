@@ -16,6 +16,7 @@ import { UpgradeModelDialog } from './UpgradeModelDialog'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { preloadWhenIdle } from '@/shared/app/preload-when-idle'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 
 const ChatMessageList = dynamic(
   () => import('./ChatMessageList').then((mod) => ({ default: mod.ChatMessageList })),
@@ -93,6 +94,7 @@ export function ChatExperienceView({
   upgradeModelDialogProps,
   readOnlyFooter,
 }: ChatExperienceViewProps) {
+  recordRender('ChatExperienceView')
   const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
   return (
     <>
