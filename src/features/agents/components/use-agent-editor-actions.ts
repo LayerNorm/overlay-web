@@ -83,25 +83,19 @@ export function useAgentEditorActions({
     void (async () => {
       try {
         const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
+        // The agent is usable before its computer exists, so provisioning never holds up opening it. A failure is
+        // reported against the saved agent, whose editor can retry without creating a duplicate.
         if (computersAvailable && enabledToolGroups.has('computer')) {
           setComputerProvisionError(null)
-          await overlayAppClient.computers.provision(activeWorkspaceId, {
+          void overlayAppClient.computers.provision(activeWorkspaceId, {
             ownerType: 'agent',
             ownerId: saved.agent.id,
             size: computerSize,
             name: `${saved.agent.name} computer`,
-          }).catch(async (computerError) => {
-            setComputerProvisionError(
-              computerError instanceof Error ? computerError.message : 'Could not create the computer.',
-              saved.agent.id,
-            )
-            // The agent is durable even if its computer fails to provision —
-            // land on the edit page so a retry never creates a duplicate agent.
-            setAgent(saved.agent)
-            if (presentation === 'page') {
-              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
-            }
-            throw computerError
+          }).catch((computerError: unknown) => {
+            const message = computerError instanceof Error ? computerError.message : 'Could not create the computer.'
+            setComputerProvisionError(message, saved.agent.id)
+            toast.error(message)
           })
         }
         toast.success('Agent created.')

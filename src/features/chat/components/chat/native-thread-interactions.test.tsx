@@ -6,9 +6,13 @@ import React, { act, type ReactElement, useEffect, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { savePendingCollaborationMessage } from '@/shared/chat/pending-collaboration-message'
 import { readDraft } from '@/shared/chat/conversation-drafts'
+import type { MentionItem } from '@/shared/knowledge/mention-types'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
 import { useChatTurnActions } from './useChatTurnActions'
-import { useRoomComposer, useSendMessage, useThreadPanel, type RoomSendResult, type SendMessage } from '../DirectMessageExperience.hooks'
+import {
+  useRoomComposer, useRoomComposerQueue, useSendMessage, useThreadPanel,
+  type RoomSendResult, type SendMessage,
+} from '../DirectMessageExperience.hooks'
 
 type Renderer = { update(element: ReactElement): void; unmount(): void }
 const { create } = createRequire(import.meta.url)('react-test-renderer') as {
@@ -371,6 +375,111 @@ async function roomComposerWithPendingSave(t: TestContext) {
   }, args)
   return { hook, saved, args }
 }
+
+async function roomComposerQueue(t: TestContext, props: {
+  messages: unknown[]
+  agentResponding: string | null
+  stopAgentResponse: (messageId: string) => Promise<void>
+}) {
+  browser(t)
+  return mount(t, ({ messages, agentResponding, stopAgentResponse }) => {
+    const [mentions, setMentions] = useState<MentionItem[]>([])
+    return useRoomComposerQueue({
+      activeWorkspaceId: 'workspace', conversationId: 'room', composer: {} as never,
+      sendMessage: async () => ({ accepted: true }), mentions, setMentions,
+      messages: messages as never[], agentResponding, stopAgentResponse, disabled: false,
+    })
+  }, props)
+}
+
+test('room Stop targets generating replies and does nothing when there is no reply id', async t => {
+  const stopped: string[] = []
+  const hook = await roomComposerQueue(t, {
+    messages: [
+      { id: 'reply-a', authorKind: 'agent', status: 'generating' },
+      { id: 'reply-b', authorKind: 'agent', status: 'generating' },
+      { id: 'thread-reply', authorKind: 'agent', status: 'generating', threadRootMessageId: 'root' },
+    ],
+    agentResponding: null,
+    stopAgentResponse: async messageId => { stopped.push(messageId) },
+  })
+
+  await act(async () => { hook.value.stop() })
+  assert.deepEqual(stopped, ['reply-a', 'reply-b'])
+
+  await hook.update({
+    messages: [], agentResponding: 'pending',
+    stopAgentResponse: async messageId => { stopped.push(messageId) },
+  })
+  await act(async () => { hook.value.stop() })
+  assert.deepEqual(stopped, ['reply-a', 'reply-b'])
+})
+
+test('room Stop can retry a generating reply after its previous cancellation failed', async t => {
+  const stopped: string[] = []
+  const hook = await roomComposerQueue(t, {
+    messages: [{ id: 'reply', authorKind: 'agent', status: 'generating' }],
+    agentResponding: null,
+    stopAgentResponse: async messageId => {
+      stopped.push(messageId)
+      if (stopped.length === 1) throw new Error('Cancellation request failed')
+    },
+  })
+
+  await act(async () => { hook.value.stop() })
+  await act(async () => { hook.value.stop() })
+  assert.deepEqual(stopped, ['reply', 'reply'])
+})
+
+test('room steer retries cancellation and sends its queued draft after the reply settles', async t => {
+  browser(t)
+  const stopped: string[] = []
+  const sent: string[] = []
+  const draft = { current: 'First steer' }
+  const composer = {
+    inputRef: draft,
+    input: 'First steer',
+    setInput: (value: string) => { draft.current = value },
+    composerRef: { current: null },
+    attachedImages: [],
+    pendingChatDocuments: [],
+    replyContext: null,
+    setAttachmentError: noop,
+  }
+  let stopAttempts = 0
+  const props = {
+    messages: [{ id: 'reply', authorKind: 'agent', status: 'generating' }],
+    agentResponding: null,
+    stopAgentResponse: async (messageId: string) => {
+      stopped.push(messageId)
+      stopAttempts++
+      if (stopAttempts === 1) throw new Error('Cancellation request failed')
+    },
+  }
+  const hook = await mount(t, (input: typeof props) => {
+    const [mentions, setMentions] = useState<MentionItem[]>([])
+    return useRoomComposerQueue({
+      activeWorkspaceId: 'workspace', conversationId: 'room', composer: composer as never,
+      sendMessage: async text => { sent.push(text); return { accepted: true } },
+      mentions, setMentions, messages: input.messages as never[],
+      agentResponding: input.agentResponding, stopAgentResponse: input.stopAgentResponse, disabled: false,
+    })
+  }, props)
+
+  await act(() => { hook.value.controls.onSteerDraft() })
+  draft.current = 'Retry steer'
+  await act(() => { hook.value.controls.onSteerDraft() })
+  assert.deepEqual(stopped, ['reply', 'reply'])
+
+  await act(async () => {
+    await hook.update({
+      ...props,
+      messages: [{ id: 'reply', authorKind: 'agent', status: 'completed' }],
+    })
+  })
+  await act(async () => { await Promise.resolve(); await Promise.resolve() })
+  assert.deepEqual(sent, ['Retry steer'])
+})
 
 test('a failed optimistic room send restores its text, attachments, reply and stored draft', async t => {
   const { hook, saved } = await roomComposerWithPendingSave(t)
