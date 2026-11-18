@@ -9,9 +9,14 @@ code owns only OS integrations. There is no desktop chat pipeline or provider SD
 `packages/overlay-desktop-bridge` defines v1 schemas, result/event types,
 `getDesktopBridge()` and `openExternal()`. Desktop vendors that package; keep both
 copies byte-for-byte synchronized. The package's fingerprint check detects local
-schema drift. To add a method, define its input schema and typed result, implement
-it in the native router, gate callers on its advertised capability, and test both
-sides. Additive v1 methods must preserve existing method semantics.
+schema drift. App-shell runtime callers load the package through
+`src/components/desktop/desktop-bridge-loader.ts`, which imports it when
+`window.overlayDesktop` exists, so ordinary browser shell traffic does not load
+the shell's bridge contract or zod schemas. This guarantee covers app-shell
+imports, not route-specific settings code; type-only imports are fine anywhere.
+To add a method, define its input schema and typed result, implement it in the
+native router, gate callers on its advertised capability, and test both sides.
+Additive v1 methods must preserve existing method semantics.
 
 Only the pinned server origin's top frame receives `window.overlayDesktop`.
 Main checks both the registered WebContents and the sender frame on every call,
