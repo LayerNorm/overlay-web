@@ -623,7 +623,7 @@ test('automations create/update/test/run preserve validation and auth error shap
   )
   assert.equal(createResponse.status, 400)
   assert.deepEqual(await readJson(createResponse), {
-    error: 'name, description, instructions, and schedule are required',
+    error: 'instructions and schedule are required',
   })
 
   const updateResponse = await automations.PATCH(
