@@ -16,6 +16,7 @@ import { UpgradeModelDialog } from './UpgradeModelDialog'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { useForwardedHandlers } from './chat-composer-memo'
 
 const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
@@ -26,6 +27,8 @@ const AutomationEditorPanel = dynamic(
   { loading: () => null },
 )
 
+/** Header functions the model controls call while rendering; the rest are event handlers. */
+const MODEL_CONTROL_RENDER_FUNCTIONS = new Set(['renderExportMenu', 'resolveModel', 'getChatModelDisplayName', 'isTextModelLocked'])
 /** The composer's model controls never show the export menu, so the transcript-dependent one must not re-render them. */
 const renderNoExportMenu = () => null
 
@@ -92,6 +95,7 @@ export function ChatExperienceView({
 }: ChatExperienceViewProps) {
   recordRender('ChatExperienceView')
   const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
+  const modelControlProps = useForwardedHandlers(headerProps, MODEL_CONTROL_RENDER_FUNCTIONS)
   return (
     <>
       <AppScreenShell
@@ -145,7 +149,7 @@ export function ChatExperienceView({
               <ChatComposer
                 {...composerProps}
                 surface={modelControlsInComposer
-                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...headerProps} renderExportMenu={renderNoExportMenu} placement="composer" /> }
+                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...modelControlProps} renderExportMenu={renderNoExportMenu} placement="composer" /> }
                   : composerProps.surface}
               />
               )

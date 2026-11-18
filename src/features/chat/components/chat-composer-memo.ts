@@ -29,7 +29,11 @@ function sameNode(left: unknown, right: unknown): boolean {
     return left.length === right.length && left.every((node, index) => sameNode(node, right[index]))
   }
   return isValidElement(left) && isValidElement(right) && left.type === right.type && left.key === right.key
-    && sameShallow(left.props as object, right.props as object, (key, a, b) => key === 'children' ? sameNode(a, b) : Object.is(a, b))
+    && sameShallow(left.props as object, right.props as object, (key, a, b) => {
+      const same = key === 'children' ? sameNode(a, b) : Object.is(a, b)
+      if (!same) recordRender(`ChatComposer changed element prop: ${key}`)
+      return same
+    })
 }
 
 function sameComposerValue(key: string, left: unknown, right: unknown): boolean {
@@ -54,32 +58,30 @@ export function sameChatComposerProps(prev: ChatComposerProps, next: ChatCompose
   })
 }
 
+/**
+ * The same object with every function except `renderFunctions` replaced by a handler that keeps its identity
+ * and calls the latest committed function. Functions called while rendering must stay in `renderFunctions`.
+ */
+export function useForwardedHandlers<T extends object>(value: T, renderFunctions: ReadonlySet<string> = RENDER_FUNCTIONS): T {
+  const latest = useRef(value)
+  useLayoutEffect(() => { latest.current = value })
+  const handlers = useRef(new Map<string, Handler>()).current
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (typeof item !== 'function' || renderFunctions.has(key)) return [key, item]
+    let forwarded = handlers.get(key)
+    if (!forwarded) {
+      forwarded = (...args) => ((latest.current as Record<string, unknown>)[key] as Handler | undefined)?.(...args)
+      handlers.set(key, forwarded)
+    }
+    return [key, forwarded]
+  })) as T
+}
+
+const NO_QUEUE = {}
+
 /** Composer view props whose event handlers keep their identity and always call the latest committed handler. */
 export function useComposerViewProps(props: ChatComposerProps): ComposerViewProps {
-  const viewProps = toComposerViewProps(props)
-  const latest = useRef(viewProps)
-  useLayoutEffect(() => { latest.current = viewProps })
-  const handlers = useRef(new Map<string, Handler>()).current
-  const handler = (path: string, read: (props: ComposerViewProps) => unknown) => {
-    const existing = handlers.get(path)
-    if (existing) return existing
-    const created: Handler = (...args) => (read(latest.current) as Handler | undefined)?.(...args)
-    handlers.set(path, created)
-    return created
-  }
-  const stable = Object.fromEntries(Object.entries(viewProps).map(([key, value]) => [
-    key,
-    forwards(key, value) ? handler(key, (current) => current[key as keyof ComposerViewProps]) : value,
-  ])) as ComposerViewProps
-  if (!viewProps.queue) return stable
-  const queue = viewProps.queue
-  return {
-    ...stable,
-    queue: Object.fromEntries(Object.entries(queue).map(([key, value]) => [
-      key,
-      forwards(key, value)
-        ? handler(`queue.${key}`, (current) => current.queue?.[key as keyof typeof queue])
-        : value,
-    ])) as typeof queue,
-  }
+  const viewProps = useForwardedHandlers(toComposerViewProps(props))
+  const queue = useForwardedHandlers(props.queue ?? NO_QUEUE)
+  return props.queue ? { ...viewProps, queue: queue as ComposerViewProps['queue'] } : viewProps
 }

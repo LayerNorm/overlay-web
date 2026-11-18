@@ -35,7 +35,7 @@ import {
 } from '@overlay/chat-core'
 import { assistantSnapshotKey } from './chat/chat-runtime-helpers'
 import type { DraftModalState } from './chat-interface/types'
-import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { isPerfDebugEnabled, recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatToolSurface } from './ChatToolSurface'
 import { ChatMediaMessage } from './ChatMediaMessage'
 import { readNativeAgentError } from '@/shared/agents/native-agent-error'
@@ -171,9 +171,17 @@ function sameExchangeState(prev: PlannedTextChatMessageProps, next: PlannedTextC
 }
 
 export function areTextChatMessagePropsEqual(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps): boolean {
-  if (!sameRowInputs(prev, next)) return false
   if (next.exchangeIndex === next.latestExchangeIndex) return false
-  return sameExchangeState(prev, next)
+  const same = sameRowInputs(prev, next) && sameExchangeState(prev, next)
+  if (!same && isPerfDebugEnabled()) recordSettledRowChanges(prev, next)
+  return same
+}
+
+/** Perf-debug only: which inputs changed when a settled row re-renders. */
+function recordSettledRowChanges(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps) {
+  for (const key of Object.keys(next) as (keyof PlannedTextChatMessageProps)[]) {
+    if (prev[key] !== next[key]) recordRender(`TextChatMessage changed: ${key}`)
+  }
 }
 
 function resolveStreamSelection(props: TextChatMessageProps) {
