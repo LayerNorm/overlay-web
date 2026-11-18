@@ -55,6 +55,7 @@ import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { assertAgentModelSelectable } from '@/server/agents/agent-model-selection'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -220,7 +221,9 @@ export function createOverlayServerContext(
   const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
-  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const workspaceAgentService = new WorkspaceAgentService(
+    workspaceAgentRepository, workspaceService, undefined, undefined, assertAgentModelSelectable,
+  )
   const computerLifecycleRef: { current?: ComputerLifecycleService } = {}
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,

@@ -605,7 +605,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_agent')) {
     tools.create_agent = tool({
       description:
-        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first.',
+        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first. Leave modelId out unless the person names a model; the default is used.',
       inputSchema: z.object({
         name: z.string().min(1),
         description: z.string().optional(),

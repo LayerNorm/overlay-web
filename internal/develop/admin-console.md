@@ -140,7 +140,7 @@ Search either log for the ID.
 
 New runs never record `UNKNOWN`. A failure that matches no specific cause is
 `INTERNAL_ERROR` (an Overlay fault, whose cause is in the log above); dropped
-models are `MODEL_UNAVAILABLE` and an unreachable task backend is
+models, including a saved model the server no longer offers, are `MODEL_UNAVAILABLE` and an unreachable task backend is
 `BACKEND_UNAVAILABLE`. A mid-stream provider error is never `INTERNAL_ERROR`: its
 type label maps to the matching `PROVIDER_*` code, and an unlisted or missing type
 is `PROVIDER_UNAVAILABLE`, which the harness retries like other transient provider

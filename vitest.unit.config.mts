@@ -33,6 +33,7 @@ export default defineConfig({
       'src/contexts/WorkspaceContext.test.tsx',
       'src/hooks/use-panel-scope.test.tsx',
       'src/server/agents/workspace-agent-preparation.test.ts',
+      'src/server/agents/agent-model-selection.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
       'src/shared/chat/public-stream-projection.test.ts',

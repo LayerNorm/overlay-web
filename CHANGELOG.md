@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Refuse to save an agent with a model Overlay does not offer. An agent, or a Chief creating one for you, could be saved with a mistyped or invented model name and then failed its first task with “This task no longer has the authorization it needs.” Creating an agent or changing its model now checks the model and says what is wrong; the Chief’s create-agent tool uses the default model unless you name one. A task whose model is withdrawn later now says “The selected model can no longer run this task” and to choose another model, instead of pointing at workspace membership.
 - Keep creator-private agents and Personal Chiefs out of shared surface-rooted discovery and delegation until an explicit collaboration-grant flow exists. Native execution refresh also stops existing roots or descendants whose current agent no longer meets that policy; ordinary non-shared access is unchanged.
 - Resolve native Slack `ask_agent` lineage from the verified persisted surface trigger message while preserving its canonical turn ID; legacy web turn validation remains unchanged.
 - Resolve shared-room restrictions for a new Slack surface root before Harness admission even though the delivery already has its reserved run ID. Existing roots and parents keep their monotonic privacy refresh; missing or unauthorized roots do not bypass authorization.
