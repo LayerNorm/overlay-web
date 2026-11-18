@@ -7,7 +7,9 @@ import {
   MessageScrollerViewport,
 } from '@overlay/ui/ai'
 import type { ReactNode, RefObject } from 'react'
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranscriptCacheScope, transcriptCache } from '@/components/providers/transcript-cache-client'
+import { transcriptCacheKey } from '@/shared/chat/transcript-cache'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
@@ -122,6 +124,11 @@ export function ChatMessageList({
   const [identity, setIdentity] = useState({ conversationId, firstTurnId, key: 0 })
   const nextIdentity = reconcileTranscriptIdentity(identity, conversationId, firstTurnId)
   if (nextIdentity !== identity) setIdentity(nextIdentity)
+  const cacheScope = useTranscriptCacheScope()
+  const scrollKey = cacheScope && conversationId
+    ? transcriptCacheKey(cacheScope, { kind: 'personal', conversationId })
+    : null
+  useTranscriptScrollMemory(messagesScrollRef, scrollKey, nextIdentity.key, state.primaryMessages.length)
   useLayoutEffect(() => {
     const anchor = paginationAnchorRef.current
     if (!runtime.transcriptPagination?.loadingMore) loadingMoreRef.current = false
@@ -217,6 +224,70 @@ export function ChatMessageList({
       </MessageScroller>
     </MessageScrollerProvider>
   )
+}
+
+function exchangeAnchor(viewport: HTMLElement) {
+  const top = viewport.getBoundingClientRect().top
+  for (const element of viewport.querySelectorAll<HTMLElement>('[data-exchange-turn]')) {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom > top && element.dataset.exchangeTurn) return { anchorId: element.dataset.exchangeTurn, offset: rect.top - top }
+  }
+  return null
+}
+
+/**
+ * Remembers where the reader was in each personal conversation and, on a
+ * revisit, returns them to that exchange once it is rendered. A reader who was
+ * following the newest message keeps the scroller's default end position.
+ */
+function useTranscriptScrollMemory(
+  viewportRef: ChatMessageListProps['messagesScrollRef'],
+  scrollKey: string | null,
+  viewportKey: number,
+  rowCount: number,
+) {
+  const restoredKeyRef = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !scrollKey || restoredKeyRef.current === scrollKey || rowCount === 0) return
+    restoredKeyRef.current = scrollKey
+    const snapshot = transcriptCache.scroll(scrollKey)
+    if (!snapshot || snapshot.atBottom || !snapshot.anchorId) return
+    const anchorId = snapshot.anchorId
+    const align = () => {
+      const element = Array.from(viewport.querySelectorAll<HTMLElement>('[data-exchange-turn]'))
+        .find((candidate) => candidate.dataset.exchangeTurn === anchorId)
+      if (!element) return
+      viewport.scrollTop += element.getBoundingClientRect().top - viewport.getBoundingClientRect().top - snapshot.offset
+    }
+    align()
+    // The scroller settles its default end position after layout; correct once more after it.
+    const frame = window.requestAnimationFrame(() => { align() })
+    return () => window.cancelAnimationFrame(frame)
+  }, [rowCount, scrollKey, viewportKey, viewportRef])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !scrollKey) return
+    let frame: number | null = null
+    const save = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        const atBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 96
+        const anchor = atBottom ? null : exchangeAnchor(viewport)
+        transcriptCache.saveScroll(scrollKey, {
+          atBottom: atBottom || !anchor, anchorId: anchor?.anchorId ?? null, offset: anchor?.offset ?? 0,
+        })
+      })
+    }
+    viewport.addEventListener('scroll', save, { passive: true })
+    return () => {
+      viewport.removeEventListener('scroll', save)
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [scrollKey, viewportKey, viewportRef])
 }
 
 function ChatMessages({

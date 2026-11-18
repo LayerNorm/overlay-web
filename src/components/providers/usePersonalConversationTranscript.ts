@@ -1,11 +1,18 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
 import { useLivePublicStreams } from './useLivePublicStreams'
+import { restoredPageSize } from '@/shared/chat/transcript-cache'
+import {
+  transcriptCache,
+  useTranscriptCacheKey,
+  type PersonalCachedRow,
+  type PersonalCachedSummary,
+} from './transcript-cache-client'
 
 function transcriptStatus(canRead: boolean, canQuery: boolean, id: string | null, summaryReady: boolean,
   summaryInScope: boolean, loading: boolean): 'disabled' | 'loading' | 'ready' | 'unavailable' {
@@ -69,11 +76,18 @@ export function usePersonalConversationTranscript({ workspaceId, conversationId,
   const canReadMessages = canQuery && canRead && summaryInScope
   const settings = useQuery(api.platform.uiSettings.mine, canQuery && canRead ? {} : 'skip')
   const parallelReads = settings?.personalChatParallelReadsRevision === 'parallel-reads-v1'
+  const cacheKey = useTranscriptCacheKey(
+    canQuery && canRead && wellFormed ? { kind: 'personal', conversationId: conversationId! } : null, workspaceId)
+  // Read once per conversation visit: later write-backs must not change the page size mid-visit.
+  const cached = useMemo(
+    () => cacheKey ? transcriptCache.get<PersonalCachedRow, PersonalCachedSummary>(cacheKey) : null,
+    [cacheKey],
+  )
   const messages = usePaginatedQuery(api.chat.personal.getMessages,
     getMessagesQueryArgs({
       canQuery, canRead, wellFormed, parallelReads, summaryInScope, workspaceId, conversationId,
     }),
-    { initialNumItems: 50 })
+    { initialNumItems: restoredPageSize(cached, 50) })
   const generatingMessageIds = messages.results
     .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')
     .slice(0, 50).map(row => row.message._id)
@@ -97,11 +111,57 @@ export function usePersonalConversationTranscript({ workspaceId, conversationId,
     () => scopedRows.map((row, index) => ({ ...row, message: projectedMessages[index]! })),
     [projectedMessages, scopedRows],
   )
+  const liveSettled = canReadMessages && messages.status !== 'LoadingFirstPage'
+  // A remembered transcript paints until the live summary and first page answer; it is display-only.
+  const knownUnavailable = selectedSummary === null || Boolean(selectedSummary && !summaryInScope)
+  const restoring = Boolean(cached) && !liveSettled && !knownUnavailable
+  const cachedRows = useMemo(() => cached?.items.filter(row => row.message.conversationId === conversationId) ?? [],
+    [cached, conversationId])
+  const snapshotRef = useRef<{ key: string; rows: PersonalCachedRow[]; summary: PersonalCachedSummary; isDone: boolean } | null>(null)
+  useEffect(() => {
+    if (!cacheKey) return
+    if (knownUnavailable) {
+      transcriptCache.evict(cacheKey)
+      snapshotRef.current = null
+      return
+    }
+    if (!liveSettled || !selectedSummary) return
+    snapshotRef.current = {
+      key: cacheKey,
+      rows: scopedRows,
+      summary: selectedSummary,
+      isDone: messages.status === 'Exhausted',
+    }
+  }, [cacheKey, knownUnavailable, liveSettled, messages.status, scopedRows, selectedSummary])
+  // Write back when the reader leaves, not on every streamed update.
+  useEffect(() => () => {
+    const snapshot = snapshotRef.current
+    snapshotRef.current = null
+    if (!snapshot || snapshot.key !== cacheKey) return
+    transcriptCache.put(snapshot.key, { items: snapshot.rows, summary: snapshot.summary, isDone: snapshot.isDone, source: 'live' })
+  }, [cacheKey])
+
+  if (restoring && cached) {
+    return {
+      selectedSummary: selectedSummary ?? cached.summary,
+      transcript: {
+        conversationId,
+        rows: cachedRows,
+        status: 'ready' as const,
+        queryStatus: messages.status,
+        restored: true,
+        hasMore: !cached.isDone,
+        loadingMore: false,
+        loadMore: () => undefined,
+      },
+    }
+  }
 
   return {
     selectedSummary,
     transcript: {
       conversationId: canReadMessages ? conversationId : null,
+      restored: false,
       rows: canReadMessages ? rows : [],
       status: transcriptStatus(canRead, canQuery, conversationId, selectedSummary !== undefined,
         summaryInScope, messages.status === 'LoadingFirstPage'),
