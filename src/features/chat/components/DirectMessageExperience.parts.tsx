@@ -631,6 +631,7 @@ export function RoomSidePanel({
     return (
       <RoomPeoplePanel
         participants={roster.participants}
+        agentsByPrincipal={ctx.directoryAgentsByPrincipal}
         presence={roster.presence}
         currentPrincipalId={roster.currentPrincipalId}
         onAddPeople={onAddPeople}
