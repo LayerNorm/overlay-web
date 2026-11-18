@@ -91,6 +91,7 @@ type CreateAutomationBody = {
   concurrencyPolicy?: 'skip' | 'queue'
   scope?: 'personal' | 'workspace'
   byAgent?: boolean
+  agentId?: string
 }
 
 type UpdateAutomationBody = {
@@ -119,6 +120,13 @@ function serviceError(payload: Record<string, unknown>, statusCode: number): nev
   throw new AutomationServiceError(payload, statusCode)
 }
 
+
+/** An automation made from a prompt is named after the prompt's first line. */
+export function automationNameFromInstructions(instructions: string): string {
+  const firstLine = instructions.split('\n').map((line) => line.trim()).find(Boolean) ?? ''
+  const plain = firstLine.replace(/^[#>*\-\d.)\s]+/, '').trim() || firstLine
+  return plain.length > 80 ? `${plain.slice(0, 79).trimEnd()}…` : plain
+}
 
 function scheduleTooFrequent(schedule: AutomationSchedule | undefined): boolean {
   return schedule?.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES
@@ -183,9 +191,11 @@ export class AutomationService {
     workspaceId?: string
   }): Promise<{ success: true; id: unknown }> {
     const { body } = args
-    if (!body.name?.trim() || !body.description?.trim() || !body.instructions?.trim() || !body.schedule) {
-      serviceError({ error: 'name, description, instructions, and schedule are required' }, 400)
+    const instructions = body.instructions?.trim()
+    if (!instructions || !body.schedule) {
+      serviceError({ error: 'instructions and schedule are required' }, 400)
     }
+    const name = body.name?.trim() || automationNameFromInstructions(instructions)
     const schedule = normalizeScheduleValue(body.schedule)
     this.assertScheduleAllowed(schedule)
     if (body.enabled !== false) {
@@ -194,9 +204,9 @@ export class AutomationService {
 
     const id = await this.deps.repository.createAutomation({
       userId: args.userId,
-      name: body.name,
-      description: body.description,
-      instructions: body.instructions,
+      name,
+      description: body.description?.trim() ?? '',
+      instructions,
       enabled: body.enabled,
       schedule,
       timezone: body.timezone,
@@ -208,6 +218,7 @@ export class AutomationService {
       workspaceId: args.workspaceId,
       ...(body.scope === 'workspace' || body.scope === 'personal' ? { scope: body.scope } : {}),
       ...(body.byAgent === true ? { byAgent: true } : {}),
+      ...(body.agentId?.trim() ? { agentId: body.agentId.trim() } : {}),
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }

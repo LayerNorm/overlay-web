@@ -6,6 +6,7 @@ import {
   msUntilNextRun,
   DEFAULT_SCHEDULE,
   MIN_INTERVAL_MINUTES,
+  withUtcFields,
   type AutomationSchedule,
 } from './schedule'
 
@@ -157,3 +158,44 @@ test('DEFAULT_SCHEDULE is daily at 14:00 UTC', () => {
   assert.equal((DEFAULT_SCHEDULE as { hourUTC: number }).hourUTC, 14)
   assert.equal((DEFAULT_SCHEDULE as { minuteUTC: number }).minuteUTC, 0)
 })
+
+// ---------------------------------------------------------------------------
+// Local-time schedules
+// ---------------------------------------------------------------------------
+
+test('computeNextRunAt: a local daily time keeps its wall-clock hour across daylight saving', () => {
+  const schedule: AutomationSchedule = { kind: 'daily', hour: 9, minute: 0 }
+  // Before the Nov 1 2026 change, 9:00 in Los Angeles is 16:00 UTC; after it, 17:00 UTC.
+  assert.equal(computeNextRunAt(schedule, Date.UTC(2026, 9, 30, 12), 'America/Los_Angeles'), Date.UTC(2026, 9, 30, 16))
+  assert.equal(computeNextRunAt(schedule, Date.UTC(2026, 10, 2, 12), 'America/Los_Angeles'), Date.UTC(2026, 10, 2, 17))
+})
+
+test('computeNextRunAt: weekdays skip Saturday and Sunday in the local zone', () => {
+  const schedule: AutomationSchedule = { kind: 'weekdays', hour: 9, minute: 30 }
+  // Friday Nov 20 2026 at 10:00 in Los Angeles: the next weekday run is Monday Nov 23.
+  const from = Date.UTC(2026, 10, 20, 18)
+  assert.equal(computeNextRunAt(schedule, from, 'America/Los_Angeles'), Date.UTC(2026, 10, 23, 17, 30))
+})
+
+test('computeNextRunAt: a local weekly evening run stays on its local day', () => {
+  // Monday 20:00 in Los Angeles is Tuesday 04:00 UTC in winter.
+  const schedule: AutomationSchedule = { kind: 'weekly', dayOfWeek: 1, hour: 20, minute: 0 }
+  const from = Date.UTC(2026, 10, 18, 12)
+  assert.equal(computeNextRunAt(schedule, from, 'America/Los_Angeles'), Date.UTC(2026, 10, 24, 4))
+})
+
+test('computeNextRunAt: a local monthly day clamps to short months', () => {
+  const schedule: AutomationSchedule = { kind: 'monthly', dayOfMonth: 31, hour: 8, minute: 0 }
+  assert.equal(computeNextRunAt(schedule, Date.UTC(2027, 1, 1), 'UTC'), Date.UTC(2027, 1, 28, 8))
+})
+
+test('computeNextRunAt: an unknown time zone falls back to UTC', () => {
+  const schedule: AutomationSchedule = { kind: 'daily', hour: 9, minute: 0 }
+  assert.equal(computeNextRunAt(schedule, Date.UTC(2026, 10, 18, 5), 'Not/AZone'), Date.UTC(2026, 10, 18, 9))
+})
+
+test('withUtcFields: fills the UTC fields older readers display', () => {
+  const schedule = withUtcFields({ kind: 'weekly', dayOfWeek: 1, hour: 20, minute: 0 }, 'America/Los_Angeles', Date.UTC(2026, 10, 18, 12))
+  assert.deepEqual(schedule, { kind: 'weekly', dayOfWeekUTC: 2, hourUTC: 4, minuteUTC: 0, dayOfWeek: 1, hour: 20, minute: 0 })
+})
+

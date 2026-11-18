@@ -1,10 +1,18 @@
 import type { ScopedResourceFields } from './resource-scope'
 
+/**
+ * When `hour` is set, `hour`, `minute`, `dayOfWeek` (0 = Sunday) and `dayOfMonth`
+ * are wall-clock values in the automation's `timezone` and decide when it runs.
+ * The UTC fields remain for older rows and readers.
+ */
 export type AutomationSchedule =
   | { kind: 'interval'; intervalMinutes?: number }
-  | { kind: 'daily'; hourUTC?: number; minuteUTC?: number }
-  | { kind: 'weekly'; dayOfWeekUTC?: number; hourUTC?: number; minuteUTC?: number }
-  | { kind: 'monthly'; dayOfMonthUTC?: number; hourUTC?: number; minuteUTC?: number }
+  | ({ kind: 'daily'; hourUTC?: number; minuteUTC?: number } & AutomationLocalTime)
+  | ({ kind: 'weekdays'; hourUTC?: number; minuteUTC?: number } & AutomationLocalTime)
+  | ({ kind: 'weekly'; dayOfWeekUTC?: number; hourUTC?: number; minuteUTC?: number; dayOfWeek?: number } & AutomationLocalTime)
+  | ({ kind: 'monthly'; dayOfMonthUTC?: number; hourUTC?: number; minuteUTC?: number; dayOfMonth?: number } & AutomationLocalTime)
+
+export type AutomationLocalTime = { hour?: number; minute?: number }
 
 // ---------------------------------------------------------------------------
 // AutomationGraph — versioned, structured graph model for automations.
