@@ -100,6 +100,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `tabbed-right-panel.html` (feature `tabbed-right-panel`): the proposed thread panel. Everything beside an agent
+  thread opens as a tab in one docked panel: Progress (plan and activity), Computer, Changes (pull request and diff),
+  Terminal, Files and the agent's settings, plus any opened file. "+" (⌥T) opens a launcher with search and a Computer
+  preview; ⌘P opens Files and ⌘J the Terminal. The panel is wider by default, drag-resizable and can expand over most of
+  the thread. Details, Files and the agent settings are the production components. Open
+  `tabbed-right-panel.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`. Delete
+  it when the design ships or is rejected.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.
