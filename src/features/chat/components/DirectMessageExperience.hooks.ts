@@ -9,6 +9,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { RoomPaging, RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useRoomState, type RoomStateApi } from './collaboration/useRoomState'
 import { useRoomCompatibility } from './collaboration/useRoomCompatibility'
+import { useStableRoomMessageContext } from './collaboration/room-message-row'
 import {
   useCallback,
   useEffect,
@@ -2476,7 +2477,7 @@ export function useDirectMessageRoom({
     sendMessage,
     router,
   })
-  const messageCtx = buildRoomMessageContext({
+  const messageCtx = useStableRoomMessageContext(buildRoomMessageContext({
     isReadOnlyMessage,
     conversationId,
     conversationType,
@@ -2492,7 +2493,7 @@ export function useDirectMessageRoom({
     remoteControls: { ...remoteControls, stopAgentResponse: composerQueue.stopMessage },
     agentThreadTurns,
     onOpenAttachmentPreview,
-  })
+  }))
 
   return {
 

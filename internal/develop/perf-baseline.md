@@ -18,7 +18,7 @@ Targets (from the plan): warm thread switch ≤100 ms, cold ≤500 ms, keystroke
 Both are off for normal users.
 
 - **User Timing marks** (`src/features/chat/lib/realtime-baseline.ts`), written only when the harness sets the `overlay:baseline:enabled` mark: `composer-ready`, `personal-query-ready`. They contain no content or ids. Query readiness is not a paint timestamp. Composer readiness requires a mounted input card that is not send-blocked; the runner also checks a visible editable input.
-- **Render counters** (`@overlay/chat-react/lib/perf-debug`), enabled with `?perf=1` or `localStorage.overlay_perf = '1'`. This PR adds counters for `ChatComposer`, `AppSidebar`, `RoomMessageItem` and `RoomComposer`, next to the existing `ChatExchange`, `ChatTranscript` and `MarkdownMessage` ones. When enabled, `window.__overlayPerfDebug.snapshot()` and `.reset()` let the harness read them.
+- **Render counters** (`@overlay/chat-react/lib/perf-debug`), enabled with `?perf=1` or `localStorage.overlay_perf = '1'`. Counters cover `ChatExperience`, `ChatExperienceView`, `ChatMessageList`, `ChatComposer`, `AppSidebar`, `ChatExchange`, `ChatTranscript`, `TextChatMessage`, `MarkdownMessage`, and for rooms `DirectMessageExperience`, `RoomTranscript`, `RoomMessageItem` and `RoomComposer`. A memoized component counts only renders that actually run, so a skipped render is not counted. When enabled, `window.__overlayPerfDebug.snapshot()` and `.reset()` let the harness read them.
 
 ## Running it
 
@@ -69,6 +69,10 @@ PERF_FIXTURE_DEPLOY_KEY=<securely-bound-scoped-preview-deployment-key>
 Bind the key through the secret store/environment; never paste a real value into a command, report, browser or commit. The Node runner alone uses it to call the internal fixture mutation. `PERF_ALLOW_SEND` and `PERF_PROMPT` are not used in fixture mode, and no prompt is submitted through the UI.
 
 Each replay updates only the last two-message exchange using native public-stream projection and 80 fixed paragraphs at 150 ms scheduler intervals. It creates no provider request or real workflow/worker. Public delivery/run/segment rows are reused, so transcript/sidebar sizes stay fixed. Only the reserved synthetic stream fixture can be restarted, while idle; generation/sequence fences discard old callbacks. The runner waits for settlement before the next replay. Timing still depends on scheduler and network delivery, so runner variance must be measured before making a timing gate. Do not use fixture Stop/Resume controls as workflow correctness evidence.
+
+### Agent threads (rooms)
+
+The harness typing scenario targets personal chat. Agent-thread replies render without `data-text-streaming`, so the runner's observer rejects their samples. To measure a room, use the same observer logic and throttle profile but treat the last `[data-room-message]` as streaming while it contains its busy marker (`[aria-busy]` or the shimmer), and accept a run only when that row's text advanced during the keystrokes. Live agent replies arrive in bursts over a few seconds, so ask for a long reply and start typing once the row has visible text. This is exploratory live-model evidence, like live chat mode.
 
 ### Interpretation
 

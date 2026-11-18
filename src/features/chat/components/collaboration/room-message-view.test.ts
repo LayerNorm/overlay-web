@@ -383,3 +383,22 @@ test('holdRoomScrollAnchor can be released before a newer older-history load', (
   release()
   assert.equal(harness.hasFrame(), false)
 })
+
+test('live updates keep unchanged room rows and replace only the rows that changed', () => {
+  const earlier = record({ id: 'm1', content: 'Finished answer', status: 'completed', parts: [{ type: 'text', text: 'Finished answer' }] })
+  const live = record({ id: 'm2', content: 'Partial', status: 'generating', createdAt: 2_000, updatedAt: 2_000 })
+  const current = mergeRoomMessages([earlier, live], [])
+  const fresh = (value: RoomMessageRecord) => JSON.parse(JSON.stringify(value)) as RoomMessageRecord
+  const streamed = mergeRoomMessages([fresh(earlier), { ...fresh(live), content: 'Partial and more', updatedAt: 2_100 }], current)
+  assert.equal(streamed[0], current[0])
+  assert.notEqual(streamed[1], current[1])
+  assert.equal(streamed[1]!.content, 'Partial and more')
+  assert.equal(mergeRoomMessages(streamed.map(fresh), streamed), streamed)
+  const edited = mergeRoomMessages([{ ...fresh(earlier), content: 'Edited answer', editedAt: 3_000 }, fresh(streamed[1]!)], streamed)
+  assert.notEqual(edited[0], streamed[0])
+  assert.equal(edited[0]!.content, 'Edited answer')
+  assert.equal(edited[1], streamed[1])
+  const settled = mergeRoomMessages([fresh(edited[0]!), { ...fresh(edited[1]!), status: 'completed', updatedAt: 2_200 }], edited)
+  assert.equal(settled[0], edited[0])
+  assert.equal(settled[1]!.status, 'completed')
+})

@@ -127,9 +127,28 @@ export function mergeRoomMessages(
     claimed.add(reply.id)
     replaced.add(pending.id)
   }
-  return rows.filter((message) => !replaced.has(message.id)).map((message) => (
-    identities.has(message.id) ? { ...message, rowIdentity: identities.get(message.id) } : message
-  ))
+  const previous = new Map(current.map((message) => [message.id, message]))
+  const next = rows.filter((message) => !replaced.has(message.id)).map((message) => {
+    const row = identities.has(message.id) ? { ...message, rowIdentity: identities.get(message.id) } : message
+    const unchanged = previous.get(row.id)
+    return unchanged && sameRoomValue(unchanged, row) ? unchanged : row
+  })
+  return next.length === current.length && next.every((message, index) => message === current[index]) ? current : next
+}
+
+/**
+ * Live queries return fresh objects on every update, including for rows that did not change. Keeping the
+ * previous object for an unchanged row lets memoized transcript rows skip re-rendering while another reply streams.
+ */
+function sameRoomValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+  if (Array.isArray(left) !== Array.isArray(right)) return false
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  const keys = Object.keys(leftRecord)
+  return keys.length === Object.keys(rightRecord).length
+    && keys.every((key) => Object.hasOwn(rightRecord, key) && sameRoomValue(leftRecord[key], rightRecord[key]))
 }
 
 /**
