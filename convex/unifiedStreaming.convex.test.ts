@@ -358,19 +358,37 @@ test('personal failure and cancellation retain active text and retire stream row
   const cancelled = convexTest(schema, modules)
   const cancelStream = await seedWritableStream(cancelled, 'personal:cancelled')
   await cancelled.mutation(append, appendArgs(cancelStream, 0, 'Stop partial'))
-  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), {
+  const cancelArgs = {
     conversationId: cancelStream.conversationId, messageId: cancelStream.assistantMessageId,
     serverSecret: secret, userId: 'owner',
-  })
+  }
+  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), cancelArgs)
+  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), cancelArgs)
   // The cancel itself leaves the stream rows alone, so it never races the executor's
   // writes, and it makes the executor's next write stale.
   expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', cancelStream.runId)).unique())).not.toBeNull()
   await expect(cancelled.mutation(append, appendArgs(cancelStream, 1, ' never shown')))
     .rejects.toThrow('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+  const cancelledRun = await cancelled.run(ctx => ctx.db.get(cancelStream.deliveryId))
+  expect(cancelledRun?.cancelledAt).toBeTypeOf('number')
+  vi.setSystemTime(cancelledRun!.cancelledAt! + 1)
+  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:recordAgentRunMetrics'), {
+    runId: cancelStream.deliveryId,
+    userId: 'owner',
+    serverSecret: secret,
+    metrics: { cancellationAcknowledgedAt: Date.now() },
+  })
+  expect((await cancelled.run(ctx => ctx.db.get(cancelStream.deliveryId)))?.updatedAt)
+    .toBeGreaterThan(cancelledRun!.updatedAt)
+  await cancelled.finishAllScheduledFunctions(vi.runAllTimers)
+  const firstSettlement = await cancelled.run(ctx => ctx.db.get(cancelStream.assistantMessageId))
+  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), cancelArgs)
   await cancelled.finishAllScheduledFunctions(vi.runAllTimers)
   vi.useRealTimers()
   const cancelledMessage = await cancelled.run(ctx => ctx.db.get(cancelStream.assistantMessageId))
+  expect(cancelledMessage?.content).toBe(firstSettlement?.content)
+  expect(cancelledMessage?.content?.split('This response was interrupted. Should I continue?')).toHaveLength(2)
   expect(cancelledMessage?.content).not.toContain('never shown')
   expect(cancelledMessage?.content).toMatch(/Stop partial[\s\S]*interrupted/i)
   expect(cancelledMessage?.content).toContain('Stop partial')
@@ -378,6 +396,67 @@ test('personal failure and cancellation retain active text and retire stream row
   expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', cancelStream.runId)).unique())).toBeNull()
 
+})
+
+test('legacy cancelled-stream settlement delegates only for the current cancelled run', async () => {
+  vi.useFakeTimers()
+  try {
+    const convex = convexTest(schema, modules)
+    const stream = await seedWritableStream(convex, 'personal:legacy-cancel-settlement')
+    await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Legacy partial'))
+    await convex.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), {
+      conversationId: stream.conversationId, messageId: stream.assistantMessageId,
+      serverSecret: secret, userId: 'owner',
+    })
+    const cancelledRun = await convex.run(ctx => ctx.db.get(stream.deliveryId))
+    const legacySettle = makeFunctionReference<'mutation'>('chat/conversations:settleCancelledPublicStream')
+    const legacyArgs = {
+      conversationId: stream.conversationId,
+      messageId: stream.assistantMessageId,
+      cancelledAt: cancelledRun!.cancelledAt!,
+    }
+    await convex.mutation(legacySettle, legacyArgs)
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+    const settled = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+    expect(settled?.status).toBe('completed')
+    expect(settled?.content).toContain('Legacy partial')
+    expect(settled?.content).toContain('interrupted')
+
+    await convex.run(async ctx => {
+      await ctx.db.patch(stream.deliveryId, {
+        status: 'running', cancelledAt: undefined, updatedAt: Date.now() + 1,
+      })
+      await ctx.db.patch(stream.assistantMessageId, {
+        status: 'generating', content: 'Fresh run output', parts: [{ type: 'text', text: 'Fresh run output' }],
+      })
+    })
+    const freshMessage = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+    await convex.mutation(legacySettle, legacyArgs)
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+    expect(await convex.run(ctx => ctx.db.get(stream.assistantMessageId))).toEqual(freshMessage)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a stale cancelled-stream settlement cannot finalize a restarted run', async () => {
+  vi.useFakeTimers()
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:restarted-after-stop')
+  await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'New generation output'))
+  await convex.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), {
+    conversationId: stream.conversationId, messageId: stream.assistantMessageId,
+    serverSecret: secret, userId: 'owner',
+  })
+  await convex.run(ctx => ctx.db.patch(stream.deliveryId, {
+    status: 'running', cancelledAt: undefined, updatedAt: Date.now() + 1,
+  }))
+
+  await convex.finishAllScheduledFunctions(vi.runAllTimers)
+  vi.useRealTimers()
+  expect((await convex.run(ctx => ctx.db.get(stream.assistantMessageId)))?.status).toBe('generating')
+  expect(await convex.run(ctx => ctx.db.query('harnessPublicStreams')
+    .withIndex('by_runId', q => q.eq('runId', stream.runId)).unique())).not.toBeNull()
 })
 
 test('a workspace-scope chat settles its steps into a checkpoint, so live and settled text never show together', async () => {

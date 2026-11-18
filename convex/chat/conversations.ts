@@ -1445,15 +1445,24 @@ export const cancelAgentRuns = mutation({
       .query('conversationAgentRuns')
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
       .collect()
+    const authorizedTargetRuns = args.messageId
+      ? runs.filter((run) => run.assistantMessageId === args.messageId && (!isRoom || run.userId === args.userId))
+      : []
+    if (args.messageId && authorizedTargetRuns.length === 0) {
+      throw new Error('No authorized agent run is associated with this reply. Refresh the conversation and try again.')
+    }
     const matching = runs.filter((run) =>
       ACTIVE_AGENT_RUN_STATUSES.has(run.status) &&
       (!isRoom || run.userId === args.userId) &&
       (!args.messageId || run.assistantMessageId === args.messageId),
     )
+    const terminalRuns = authorizedTargetRuns.filter((run) =>
+      run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled',
+    ).filter((run) => !matching.some((active) => active.assistantMessageId === run.assistantMessageId))
     // A connected agent's run is cancelled through the control plane (it tells the agent's machine to stop and settles
     // billing); the caller does that for the ids returned here, so it is left untouched.
     const remoteRunIds = matching.flatMap((run) => (run.runner === 'remote' && run.externalRunId ? [run.externalRunId] : []))
-    const harnessRuns = await loadCancellationHarnessRuns(ctx, matching, args.userId)
+    const harnessRuns = await loadCancellationHarnessRuns(ctx, [...matching, ...terminalRuns], args.userId)
     const descendants = await findHarnessDescendantAgentRuns(ctx, matching, harnessRuns, args.userId)
     const activeRuns = [
       ...orderCancellationRunsDeepestFirst(descendants, harnessRuns),
@@ -1465,25 +1474,22 @@ export const cancelAgentRuns = mutation({
       assertAgentRunTransition(run.status, 'cancelled')
     }
     const cancelledHarnessRoots: Array<{ agentRunId: string; runId: string }> = []
-    const runMessages = await Promise.all(
-      activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
-    )
-    // Runs on the unified stream keep their live text in rows the executor rewrites several
-    // times a second. Reading them here made this mutation lose every optimistic-concurrency
-    // retry while output was flowing, so Stop failed and the run kept going. Cancel first
-    // without touching those rows (which also makes the executor's next write stale), then
-    // copy the retained text into the message in a follow-up mutation nobody contends with.
     const streamed = activeRuns.map(run => Boolean(run.harnessRunId
       && publicStreamVersionOf(harnessRuns.get(run.harnessRunId)) === 1))
+    // Stream rows remain untouched here: their writers can continue until the Harness
+    // cancellation commits, so even reading those message rows can make Stop retry.
+    const runMessages = await Promise.all(activeRuns.map((run, index) => (
+      streamed[index] ? Promise.resolve(null) : ctx.db.get(run.assistantMessageId)
+    )))
     for (const run of activeRuns) {
       if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
     }
-    const deferredMessageIds: Array<Doc<'conversationMessages'>['_id']> = []
+    const deferredRuns: typeof activeRuns = []
     await Promise.all(activeRuns.flatMap((run, i) => {
       const message = runMessages[i]
       const writes = []
-      if (message?.status === 'generating' && streamed[i]) {
-        deferredMessageIds.push(message._id)
+      if (streamed[i]) {
+        deferredRuns.push(run)
       } else if (message?.status === 'generating') {
         const baseContent = args.partialContent ?? message.content
         const baseParts = args.partialParts?.length ? args.partialParts : message.parts ?? [{ type: 'text', text: baseContent }]
@@ -1524,10 +1530,16 @@ export const cancelAgentRuns = mutation({
       }))
       return writes
     }))
-    for (const messageId of deferredMessageIds) {
-      await ctx.scheduler.runAfter(0, internal.chat.conversations.settleCancelledPublicStream, {
-        conversationId: args.conversationId, messageId, cancelledAt: now,
+    for (const run of deferredRuns) {
+      await scheduleTerminalAgentMessageSettlement(ctx, {
+        ...run,
+        status: 'cancelled',
+        cancelledAt: now,
+        updatedAt: now,
       })
+    }
+    for (const run of terminalRuns) {
+      await scheduleTerminalAgentMessageSettlement(ctx, run)
     }
     if (activeRuns.length > 0) {
       await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
@@ -1554,11 +1566,126 @@ function publicStreamVersionOf(run: CancellationHarnessRun | undefined): number 
   }
 }
 
-/**
- * Second half of cancelling a unified-stream run: keeps the text that was streaming when the
- * user stopped, marks the response interrupted and retires the stream rows. Scheduled by
- * `cancelAgentRuns` after the run is cancelled, so the executor can no longer write.
- */
+function terminalAgentRunTimestamp(run: Doc<'conversationAgentRuns'>): number | undefined {
+  if (run.status === 'completed') return run.completedAt ?? run.createdAt
+  if (run.status === 'failed') return run.failedAt ?? run.createdAt
+  if (run.status === 'cancelled') return run.cancelledAt ?? run.createdAt
+  return undefined
+}
+
+async function scheduleTerminalAgentMessageSettlement(
+  ctx: MutationCtx,
+  run: Doc<'conversationAgentRuns'>,
+): Promise<void> {
+  const expectedTerminalAt = terminalAgentRunTimestamp(run)
+  if (expectedTerminalAt === undefined) return
+  await ctx.scheduler.runAfter(0, internal.chat.conversations.settleTerminalAgentMessage, {
+    agentRunId: run._id,
+    conversationId: run.conversationId,
+    messageId: run.assistantMessageId,
+    expectedStatus: run.status as 'completed' | 'failed' | 'cancelled',
+    expectedTerminalAt,
+    ...(run.workflowRunId ? { expectedWorkflowRunId: run.workflowRunId } : {}),
+  })
+}
+
+/** Settles an assistant row only while the exact AgentRun is still terminal. */
+export const settleTerminalAgentMessage = internalMutation({
+  args: {
+    agentRunId: v.id('conversationAgentRuns'),
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    expectedStatus: v.union(v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
+    expectedTerminalAt: v.number(),
+    expectedWorkflowRunId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.agentRunId)
+    if (!run || run.conversationId !== args.conversationId || run.assistantMessageId !== args.messageId
+      || run.status !== args.expectedStatus
+      || run.workflowRunId !== args.expectedWorkflowRunId
+      || terminalAgentRunTimestamp(run) !== args.expectedTerminalAt) return
+    const linkedRuns = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', args.messageId))
+      .collect()
+    if (linkedRuns.some(candidate => candidate._id !== run._id
+      && (ACTIVE_AGENT_RUN_STATUSES.has(candidate.status) || candidate.createdAt >= run.createdAt))) return
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.deletedAt !== undefined || message.conversationId !== args.conversationId
+      || message.turnId !== run.turnId
+      || ((run.mode === 'room' || run.mode === 'work')
+        && (message.authorKind !== 'agent' || message.authorPrincipalId !== run.agentPrincipalId))
+      || (run.mode === 'chat' && message.userId !== run.userId)
+      || (message.nativeRunId !== undefined && message.nativeRunId !== run._id)) return
+    if (message.status !== 'generating') {
+      if (message.status === 'completed' || message.status === 'error') {
+        await cleanupTerminalPublicStreams(ctx, message._id)
+      }
+      return
+    }
+
+    const retained = run.harnessRunId
+      ? await readRetainedPublicStream(ctx, args.conversationId, args.messageId)
+      : null
+    if (retained && retained.runId !== run.harnessRunId) return
+    const activeText = retained ? [retained.text, retained.truncatedMarker].filter(Boolean).join('\n\n') : ''
+    const retainedContinues = retained?.continuesPrevious === true
+    const baseContent = retainedContinues ? message.content : message.content.trimEnd()
+    const content = joinStepText(baseContent, activeText, retainedContinues)
+    const baseParts = (message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : []))
+      .filter(part => part.type !== 'data-native-agent-approval'
+        && part.type !== 'data-native-agent-input' && part.type !== NATIVE_AGENT_ERROR_PART)
+    const parts = appendStepParts(
+      baseParts,
+      retained && activeText ? [{
+        type: 'text',
+        id: transcriptPartIdentity(retained.runId, retained.receiptId, 0, retained.executionGeneration),
+        text: activeText,
+      }] : [],
+      retainedContinues,
+    ) as typeof baseParts
+    const terminalParts = [...parts]
+    let terminalContent = content
+    if (run.status === 'cancelled' && !terminalContent.includes(INTERRUPTED_RESPONSE_NOTICE)) {
+      const sentinel = `\n\n${INTERRUPTED_RESPONSE_NOTICE}`
+      terminalContent = `${terminalContent.trimEnd()}${sentinel}`
+      terminalParts.push({ type: 'text', text: sentinel.trimStart() })
+    }
+    if (run.status === 'failed') {
+      const error = run.terminalError ?? {
+        code: 'agent_run_failed',
+        message: 'The agent run failed before its reply was settled.',
+        retryable: false,
+      }
+      terminalParts.push({
+        type: NATIVE_AGENT_ERROR_PART,
+        data: {
+          ...error,
+          message: nativeAgentErrorMessage(error.message),
+          runId: String(run._id),
+          failedAt: run.failedAt ?? args.expectedTerminalAt,
+        },
+      })
+    }
+    if (terminalContent && !terminalParts.some(part => part.type === 'text')) {
+      terminalParts.push({ type: 'text', text: terminalContent })
+    }
+    const now = Date.now()
+    await ctx.db.patch(message._id, {
+      content: terminalContent,
+      parts: terminalParts,
+      status: run.status === 'failed' ? 'error' : 'completed',
+      ...(retained ? { publicStreamCheckpoint: {
+        runId: retained.runId, executionGeneration: retained.executionGeneration,
+        receiptId: retained.receiptId, invocation: retained.invocation,
+      } } : {}),
+      updatedAt: now,
+    })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
+  },
+})
+
 export const settleCancelledPublicStream = internalMutation({
   args: {
     conversationId: v.id('conversations'),
@@ -1566,38 +1693,13 @@ export const settleCancelledPublicStream = internalMutation({
     cancelledAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const message = await ctx.db.get(args.messageId)
-    if (!message || message.conversationId !== args.conversationId) return
-    if (message.status === 'generating') {
-      const retained = await readRetainedPublicStream(ctx, args.conversationId, args.messageId)
-      const sentinel = `\n\n${INTERRUPTED_RESPONSE_NOTICE}`
-      const activeText = retained ? [retained.text, retained.truncatedMarker].filter(Boolean).join('\n\n') : ''
-      const baseParts = message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : [])
-      const retainedContinues = retained?.continuesPrevious === true
-      const baseContent = retainedContinues ? message.content : message.content.trimEnd()
-      await ctx.db.patch(message._id, {
-        content: `${joinStepText(baseContent, activeText, retainedContinues).trimEnd()}${sentinel}`,
-        parts: [
-          ...appendStepParts(
-            baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
-            retained && activeText ? [{
-              type: 'text',
-              id: transcriptPartIdentity(retained.runId, retained.receiptId, 0, retained.executionGeneration),
-              text: activeText,
-            }] : [],
-            retainedContinues,
-          ) as typeof baseParts,
-          { type: 'text', text: sentinel.trimStart() },
-        ],
-        ...(retained ? { publicStreamCheckpoint: {
-          runId: retained.runId, executionGeneration: retained.executionGeneration,
-          receiptId: retained.receiptId, invocation: retained.invocation,
-        } } : {}),
-        status: 'completed',
-        updatedAt: args.cancelledAt,
-      })
-    }
-    await cleanupTerminalPublicStreams(ctx, args.messageId)
+    const linkedRuns = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', args.messageId))
+      .collect()
+    const run = linkedRuns.find(candidate => candidate.conversationId === args.conversationId
+      && candidate.status === 'cancelled'
+      && terminalAgentRunTimestamp(candidate) === args.cancelledAt)
+    if (run) await scheduleTerminalAgentMessageSettlement(ctx, run)
   },
 })
 
