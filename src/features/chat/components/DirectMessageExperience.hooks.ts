@@ -1554,20 +1554,30 @@ export function useRoomComposerQueue({
     .map((message) => message.id)
     .join(',')
   const [stopRequested, setStopRequested] = useState(false)
+  const [stopRequestId, setStopRequestId] = useState(0)
+  const stoppedIdsRef = useRef(new Set<string>())
   const [wasRunning, setWasRunning] = useState(running)
   if (wasRunning !== running) {
     setWasRunning(running)
     if (!running && stopRequested) setStopRequested(false)
   }
-  const stoppedIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!stopRequested) stoppedIdsRef.current.clear()
+  }, [stopRequested])
   useEffect(() => {
     if (!stopRequested) return
     for (const messageId of generatingKey ? generatingKey.split(',') : []) {
       if (stoppedIdsRef.current.has(messageId)) continue
       stoppedIdsRef.current.add(messageId)
-      void stopAgentResponse(messageId)
+      void stopAgentResponse(messageId).catch(() => {})
     }
-  }, [generatingKey, stopAgentResponse, stopRequested])
+  }, [generatingKey, stopAgentResponse, stopRequested, stopRequestId])
+
+  const requestStop = useCallback(() => {
+    stoppedIdsRef.current.clear()
+    setStopRequested(true)
+    setStopRequestId(id => id + 1)
+  }, [])
 
   const sendQueued = useCallback(async (item: QueuedMessage) => {
     const turnId = `human_${crypto.randomUUID()}`
@@ -1591,7 +1601,7 @@ export function useRoomComposerQueue({
     scope: disabled ? null : { workspaceId: activeWorkspaceId, conversationId },
     running,
     send: sendQueued,
-    stop: () => setStopRequested(true),
+    stop: requestStop,
   })
   const controls = useComposerQueueControls({
     queue,
@@ -1617,8 +1627,8 @@ export function useRoomComposerQueue({
   })
   const stop = useCallback(() => {
     queue.pause()
-    setStopRequested(true)
-  }, [queue])
+    requestStop()
+  }, [queue, requestStop])
   const stopMessage = useCallback((messageId: string) => {
     queue.pause()
     return stopAgentResponse(messageId)
