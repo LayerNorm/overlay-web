@@ -481,6 +481,7 @@ export function RoomTranscript({
   /** Guided onboarding: plain messages without action toolbars. */
   guided?: boolean
 }) {
+  recordRender('RoomTranscript')
   const {
     listRef,
     handleTranscriptScroll: onScroll,

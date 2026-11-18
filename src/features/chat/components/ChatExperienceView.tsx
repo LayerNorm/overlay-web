@@ -15,6 +15,7 @@ import { ChatDropOverlay } from './ChatDropOverlay'
 import { UpgradeModelDialog } from './UpgradeModelDialog'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 
 const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
@@ -86,6 +87,7 @@ export function ChatExperienceView({
   upgradeModelDialogProps,
   readOnlyFooter,
 }: ChatExperienceViewProps) {
+  recordRender('ChatExperienceView')
   const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
   return (
     <>

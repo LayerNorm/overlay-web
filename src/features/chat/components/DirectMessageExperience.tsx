@@ -34,6 +34,7 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 import { useThreadWork } from './thread-work/useThreadWork'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 
 function RoomComposerArea({
   safety,
@@ -242,6 +243,7 @@ export function DirectMessageExperience({
   bodyOverlay?: ReactNode;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
+  recordRender('DirectMessageExperience')
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
   const { markConversationRead } = useCollaborationRealtime()
