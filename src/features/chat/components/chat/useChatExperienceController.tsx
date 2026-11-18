@@ -421,8 +421,9 @@ export function useChatExperienceController({
     if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
 
     const query = params.toString()
-    router.replace(buildWorkspaceHref(activeWorkspaceId, `/app/chat${query ? `?${query}` : ''}`))
-  }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, router, searchParams])
+    const surface = mode === 'automate' ? '/app/automations' : '/app/chat'
+    router.replace(buildWorkspaceHref(activeWorkspaceId, `${surface}${query ? `?${query}` : ''}`))
+  }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, mode, router, searchParams])
 
   const {
     activeChatTitle,
