@@ -12,7 +12,7 @@ theme button switches light and dark.
 
 ## Where things stand
 
-- Overlay Desktop 0.3.0 is published as a signed, notarized macOS build on the
+- Overlay Desktop 0.3.1 is published as a signed, notarized macOS build on the
   public desktop repository's GitHub Releases.
 - `/download` is on in production and its button resolves to the newest
   installer.
@@ -116,12 +116,15 @@ using the app.
 
 ## Known gaps to close before promoting the app widely
 
-- **Node.js.** Release 0.3.0 needs Node.js 22 or newer installed to run a thread
-  on this computer, and the landing section leads with that feature. The fix is
-  merged in the desktop repository on 2026-11-17 (the app ships the Agent Host
-  and its own Node.js runtime) but is not in a released build yet, and has not
-  been tested in a signed build or in a real thread. The gap closes when the
-  next desktop release is published and checked on a Mac without Node.js.
+- **Node.js.** Release 0.3.0 needed Node.js installed to run a thread on this
+  computer. Release 0.3.1, published 2026-11-17, ships the Agent Host and its
+  own Node.js runtime inside the app. Checked on the published signed,
+  notarized build: the bundled host starts with no Node.js on the path, and
+  the installed 0.3.1 app started that host itself and ran a real thread on
+  this computer (the agent ran a shell command and wrote a file in the work
+  folder). Not checked: the same thread on a Mac that has no Node.js at all,
+  and the automatic update from 0.3.0. The download grew from about 131 MB to
+  about 170 MB.
 - **Installer notarization.** The app inside the installer is notarized; the
   disk image itself is not stapled, so the first open needs a network
   connection.

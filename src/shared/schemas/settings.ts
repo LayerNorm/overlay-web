@@ -28,6 +28,8 @@ export const UpdateSettingsRequest = z.object({
   dismissedZdrWarningModelIds: z.array(z.string()).optional(),
   chatStreamingMode: z.enum(['token', 'chunk']).optional(),
   useSecondarySidebar: z.boolean().optional(),
+  sidebarPinnedPageIds: z.array(z.string()).optional(),
+  sidebarMorePageIds: z.array(z.string()).optional(),
 }).passthrough()
 
 export const UpdateBillingSettingsRequest = z.object({
