@@ -1,4 +1,4 @@
-import { useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Check, ChevronRight, CircleAlert, CirclePlay, Clock, MessageCircleQuestion, Trash2 } from 'lucide-react'
 import {
@@ -334,16 +334,22 @@ type HeaderModel = {
 
 /** The model the new-automation composer shows, read when the automation is created. */
 let composerModel = DEFAULT_MODEL
+function rememberComposerModel(modelId: string) {
+  composerModel = modelId
+}
 
 export function useAutomationShell<S extends ShellProps, H extends HeaderModel>(chatId: string | null, shell: S, headerProps: H): { shell: S; headerProps: H } {
   const open = panel.use()
   const route = useAutomationRoute()
   useAutomations()
+  const newAutomation = route.onAutomations && !chatId
+  useEffect(() => {
+    if (newAutomation) rememberComposerModel(headerProps.selectedActModel)
+  }, [newAutomation, headerProps.selectedActModel])
   if (!route.onAutomations) return { shell, headerProps }
   const automation = automationForConversation(chatId)
   if (!automation) {
     if (chatId) return { shell, headerProps }
-    composerModel = headerProps.selectedActModel
     return { shell, headerProps: { ...headerProps, titleLabel: 'New automation' } }
   }
   const close = () => panel.set(false)

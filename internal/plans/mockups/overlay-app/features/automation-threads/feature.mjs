@@ -18,11 +18,6 @@ export default {
       replace: [['installFixtures()\n', 'installFixtures()\ninstallAutomationFixtures()\n']],
     },
     {
-      // Lets the feature wrap a shared query fixture instead of copying it.
-      file: 'internal/plans/mockups/overlay-app/fixtures/convex.ts',
-      replace: [['export function defineMutations(', 'export const queryResolver = (name: string) => queries.get(name)\n\nexport function defineMutations(']],
-    },
-    {
       // The Automations route is the production chat.
       file: 'internal/plans/mockups/overlay-app/routes.tsx',
       replace: [["if (pathname === '/app/automations') return <ChatRouteClient mode=\"automate\" />", "if (pathname === '/app/automations') return <ChatRouteClient />"]],
