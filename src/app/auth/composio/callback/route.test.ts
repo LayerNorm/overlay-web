@@ -13,9 +13,11 @@ const callback = (query: string, headers: Record<string, string> = {}) =>
   GET(new NextRequest(`https://getoverlay.io/auth/composio/callback?${query}`, { headers }))
 
 function callbackScript(html: string): string {
-  const match = html.match(/<script[^>]*>([\s\S]*?)<\/script>/i)
-  assert.ok(match)
-  return match[1]!
+  const open = html.indexOf('<script')
+  const start = html.indexOf('>', open) + 1
+  const end = html.indexOf('</script>', start)
+  assert.ok(open >= 0 && start > 0 && end > start)
+  return html.slice(start, end)
 }
 
 function runCallbackScript(script: string, options: {
