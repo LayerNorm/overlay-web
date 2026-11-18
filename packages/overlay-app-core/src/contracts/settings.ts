@@ -75,6 +75,10 @@ export interface AppSettings {
   modelOrder: string[]
   /** Classic layout: a primary rail plus a secondary panel instead of the single sidebar. */
   useSecondarySidebar: boolean
+  /** Pages in the primary sidebar, in order; the first is the page the app opens to. Empty uses the default layout. */
+  sidebarPinnedPageIds: string[]
+  /** Pages under More, in order. */
+  sidebarMorePageIds: string[]
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -101,6 +105,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enabledChatModelIds: [],
   modelOrder: [],
   useSecondarySidebar: true,
+  sidebarPinnedPageIds: [],
+  sidebarMorePageIds: [],
 }
 
 export interface ChatModel {

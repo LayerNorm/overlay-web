@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import type { AppSettings, ChatModePreference, ThemePresetId } from '@overlay/app-core'
+import { isSidebarPageIdList } from '@overlay/app-core'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { isThemePresetId } from '@/shared/app/themes'
@@ -82,6 +83,8 @@ export async function PATCH(request: NextRequest, context: AccountAppApiRouteCon
       dismissedZdrWarningModelIds?: string[]
       enabledChatModelIds?: string[]
       modelOrder?: string[]
+      sidebarPinnedPageIds?: string[]
+      sidebarMorePageIds?: string[]
       /** @deprecated Only `token` is supported; `chunk` is accepted for compatibility and normalized away. */
       chatStreamingMode?: 'token' | 'chunk'
       accessToken?: string
@@ -192,6 +195,12 @@ export async function PATCH(request: NextRequest, context: AccountAppApiRouteCon
     ) {
       return NextResponse.json({ error: 'Invalid modelOrder' }, { status: 400 })
     }
+    if (body.sidebarPinnedPageIds !== undefined && !isSidebarPageIdList(body.sidebarPinnedPageIds)) {
+      return NextResponse.json({ error: 'Invalid sidebarPinnedPageIds' }, { status: 400 })
+    }
+    if (body.sidebarMorePageIds !== undefined && !isSidebarPageIdList(body.sidebarMorePageIds)) {
+      return NextResponse.json({ error: 'Invalid sidebarMorePageIds' }, { status: 400 })
+    }
     if (
       body.chatStreamingMode !== undefined &&
       body.chatStreamingMode !== 'token' &&
@@ -228,6 +237,8 @@ export async function PATCH(request: NextRequest, context: AccountAppApiRouteCon
       dismissedZdrWarningModelIds?: string[]
       enabledChatModelIds?: string[]
       modelOrder?: string[]
+      sidebarPinnedPageIds?: string[]
+      sidebarMorePageIds?: string[]
     } = {
       userId: auth.userId,
       serverSecret: getInternalApiSecret(),
@@ -320,6 +331,14 @@ export async function PATCH(request: NextRequest, context: AccountAppApiRouteCon
     if (body.modelOrder !== undefined) {
       mutationArgs.modelOrder = Array.from(new Set(body.modelOrder.map((id) => id.trim()))).slice(0, MAX_ENABLED_MODEL_IDS)
       settingsPatch.modelOrder = mutationArgs.modelOrder
+    }
+    if (body.sidebarPinnedPageIds !== undefined) {
+      mutationArgs.sidebarPinnedPageIds = body.sidebarPinnedPageIds
+      settingsPatch.sidebarPinnedPageIds = body.sidebarPinnedPageIds
+    }
+    if (body.sidebarMorePageIds !== undefined) {
+      mutationArgs.sidebarMorePageIds = body.sidebarMorePageIds
+      settingsPatch.sidebarMorePageIds = body.sidebarMorePageIds
     }
     if (body.chatStreamingMode !== undefined) {
       settingsPatch.chatStreamingMode = 'token'

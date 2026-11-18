@@ -56,6 +56,9 @@ export default defineSchema({
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
     enabledChatModelIds: v.optional(v.array(v.string())),
     modelOrder: v.optional(v.array(v.string())),
+    /** Pages pinned to the primary sidebar, in order; the first is where the app opens. Empty or absent: default layout. */
+    sidebarPinnedPageIds: v.optional(v.array(v.string())),
+    sidebarMorePageIds: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_userId', ['userId']),

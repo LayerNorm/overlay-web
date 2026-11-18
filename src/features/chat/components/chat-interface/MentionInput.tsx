@@ -12,13 +12,15 @@ import {
 import { MentionPopup } from '@/components/mentions/MentionPopup'
 import { useMentionData } from './useMentionData'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
-import { isComposerTextEmpty } from './mention-input-dom'
+import { ComposerChipLayer } from './ComposerChipLayer'
+import { isComposerTextEmpty, moveCaretToEnd } from './mention-input-dom'
 import {
   closeMentionPopup,
   createMentionInputHandle,
   handleEditorInput,
   handleEditorKeyDown,
   handleEditorPaste,
+  rebuildEditorChips,
   selectMentionItem,
   syncEditorDomEmpty,
   syncEditorValue,
@@ -127,6 +129,12 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     const isComposingRef = useRef(false)
     const suppressInputRef = useRef(false)
     const lastValueRef = useRef(value)
+    const restoredValueRef = useRef<string | null>(null)
+    const mentionItems = useMemo(
+      () => mentionCategories.flatMap((category) => category.items),
+      [mentionCategories],
+    )
+    const mentionItemsRef = useRef<readonly MentionItem[]>(mentionItems)
     /** Guards against recursive handleInput calls from dispatchEditorInput in live markdown formatting. */
     const formattingAppliedRef = useRef(false)
     /** True when the @ that opened the current popup was inserted by the @ button rather
@@ -153,15 +161,27 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
     useEffect(() => syncEditorValue({
       editorRef,
       lastValueRef,
+      mentionItemsRef,
       onMentionsChange,
+      restoredValueRef,
       setIsEditorEmpty,
       value,
     }), [value, valueRevision, onMentionsChange])
+
+    // Members can load after a draft is restored; rebuild its mention chips
+    // then, as long as the restored text has not been edited.
+    useEffect(() => {
+      mentionItemsRef.current = mentionItems
+      const el = editorRef.current
+      if (!el || restoredValueRef.current === null || restoredValueRef.current !== lastValueRef.current) return
+      if (rebuildEditorChips(el, mentionItems, onMentionsChange) && document.activeElement === el) moveCaretToEnd(el)
+    }, [mentionItems, onMentionsChange])
 
     useImperativeHandle(ref, () => createMentionInputHandle({
       buttonInsertedAtRef,
       editorRef,
       lastValueRef,
+      mentionItemsRef,
       onChange,
       onMentionsChange,
       setIsEditorEmpty,
@@ -279,6 +299,7 @@ export const MentionInput = forwardRef<MentionInputHandle, MentionInputProps>(
           aria-activedescendant={activeOptionId ?? undefined}
           aria-controls={showPopup ? 'mention-listbox' : undefined}
         />
+        <ComposerChipLayer editorRef={editorRef} />
         {showPopup && (
           <MentionPopup
             categories={categories}

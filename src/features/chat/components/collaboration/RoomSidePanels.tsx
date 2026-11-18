@@ -5,6 +5,7 @@ import { Bell, BellOff, Pin, Send, UserPlus } from 'lucide-react'
 import { Button, Textarea } from '@overlay/ui/primitives'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import type { ConversationParticipant, ConversationPresence } from '@overlay/workspace-contracts'
+import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
 
 /**
  * Rooms open People, Thread, and Pinned through the shell's right panel slot —
@@ -15,12 +16,15 @@ export type RoomPanelKind = 'people' | 'thread' | 'pinned'
 
 export function RoomPeoplePanel({
   participants,
+  agentsByPrincipal,
   presence,
   currentPrincipalId,
   onAddPeople,
   onClose,
 }: {
   participants: ConversationParticipant[]
+  /** Each agent's creature identity; an agent missing here shows its initial. */
+  agentsByPrincipal?: ReadonlyMap<string, { avatarColor?: string; avatarShape?: string; isDefault?: boolean }>
   presence: ConversationPresence[]
   currentPrincipalId: string
   onAddPeople?: () => void
@@ -38,9 +42,14 @@ export function RoomPeoplePanel({
             key={participant.principalId}
             className='flex items-center gap-3 rounded-lg px-3 py-2'
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-(--surface-muted) text-xs">
-              {participant.displayName.slice(0, 1).toUpperCase()}
-            </span>
+            <PrincipalAvatar
+              principal={{
+                name: participant.displayName,
+                principalType: participant.principalType,
+                photoUrl: participant.photoUrl,
+                ...agentsByPrincipal?.get(participant.principalId),
+              }}
+            />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm">
                 {participant.principalId === currentPrincipalId ? 'You' : participant.displayName}

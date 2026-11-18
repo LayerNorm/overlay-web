@@ -1,5 +1,7 @@
-/** Where a signed-in person lands: Work. */
-export const ROOT_APP_DESTINATION = '/app/work'
+/** Where a signed-in person lands: `/app`, which opens the first page in their sidebar. */
+export const ROOT_APP_DESTINATION = '/app'
+/** Where `/app` sends a person who never arranged their sidebar: Work. */
+export const ROOT_APP_FALLBACK_DESTINATION = '/app/work'
 
 export type RootSessionResolution =
   | 'authenticated'

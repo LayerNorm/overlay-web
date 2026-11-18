@@ -209,7 +209,7 @@ export function toRoomMessageView({
   authorColor?: string
   authorShape?: string
   authorIsDefault?: boolean
-  mentions?: Array<{ type: string; id: string; name: string; avatarColor?: string; avatarShape?: string; isDefault?: boolean }>
+  mentions?: Array<{ type: string; id: string; name: string; avatarColor?: string; avatarShape?: string; isDefault?: boolean; photoUrl?: string }>
   streaming?: boolean
 }): RoomMessageView {
   const mine = isOwnRoomMessage(message, currentPrincipalId)

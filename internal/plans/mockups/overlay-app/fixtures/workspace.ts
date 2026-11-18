@@ -228,6 +228,7 @@ export function installWorkspaceFixtures() {
       rooms: ROOMS.filter((room) => room.kind !== 'agent' && (kind === 'all' || room.kind === kind)).sort((a, b) => b.lastModified - a.lastModified).map((room) => ({
         _id: room.id, title: room.title, lastModified: room.lastModified, createdAt: room.createdAt, updatedAt: room.lastModified, conversationType: room.kind, scope: 'workspace', workspaceId: 'ws_northwind',
         otherParticipantTypes: room.participants.filter((id) => id !== VIEWER_PRINCIPAL).map((id) => PEOPLE.find((person) => person.principalId === id)?.type ?? 'human'),
+        ...(room.kind === 'dm' ? { otherParticipantPrincipalIds: room.participants.filter((id) => id !== VIEWER_PRINCIPAL).slice(0, 2) } : {}),
       })),
       hasMore: false,
     }),
