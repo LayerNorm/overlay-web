@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import dynamic from "next/dynamic";
 import { useDesktopBridge } from "@/components/desktop/DesktopProvider";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@overlay/ui/primitives";
@@ -16,13 +17,15 @@ import { useLiveWorkspaceBilling } from "@/hooks/use-billing";
 import type { OnboardingSession, OnboardingSessionResponse } from "@/shared/onboarding/session";
 import { useWorkspaceHref } from "@/hooks/use-workspace-href";
 import { OnboardingWorkHandoff } from "@/components/providers/OnboardingWorkHandoff";
-import {
-  OnboardingConversation,
-  OnboardingDots,
-} from "./OnboardingConversation";
+import { OnboardingDots } from "./OnboardingDots";
 import { OnboardingIntro } from "./OnboardingIntro";
 import { requestOnboarding, skipOnboarding } from "./onboarding-client";
 import styles from "./onboarding.module.css";
+
+const OnboardingConversation = dynamic(
+  () => import("./OnboardingConversation").then((mod) => ({ default: mod.OnboardingConversation })),
+  { loading: () => <OnboardingDots /> },
+);
 
 type ShellProps = { sidebar: ReactNode; children: ReactNode };
 
@@ -100,6 +103,7 @@ function AuthenticatedOnboardingShell({
     void (async () => {
       let next = await requestOnboarding(workspaceId, undefined, abort.signal);
       if (!next.completed) {
+        void import("./OnboardingConversation");
         const fresh = !next.session;
         next = await requestOnboarding(
           workspaceId,
