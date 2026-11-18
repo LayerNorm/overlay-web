@@ -50,6 +50,7 @@ export function WorkspaceSwitcher({
     refresh,
     createWorkspace,
     switchWorkspace,
+    rememberActiveWorkspace,
   } = useWorkspace()
   const [open, setOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -67,24 +68,20 @@ export function WorkspaceSwitcher({
     return () => window.removeEventListener('overlay:account-menu-action', closeForAccountAction)
   }, [])
 
-  async function selectWorkspace(workspaceId: string) {
-    try {
-      await switchWorkspace(workspaceId)
-      setOpen(false)
-      onNavigate?.()
-      const destination = workspaces.find((workspace) => workspace.id === workspaceId)
-      const search = new URLSearchParams(searchParams?.toString() ?? '')
-      const href = buildWorkspaceSwitchHref({
-        workspaceId,
-        handle: destination?.routingHandle,
-        pathname,
-        search: search.toString(),
-        currentScope,
-      })
-      router.push(href)
-    } catch (switchError) {
-      toast.error(switchError instanceof Error ? switchError.message : 'Could not switch workspaces.')
-    }
+  function selectWorkspace(workspaceId: string) {
+    setOpen(false)
+    if (workspaceId === activeWorkspaceId) return
+    onNavigate?.()
+    const destination = workspaces.find((workspace) => workspace.id === workspaceId)
+    const search = new URLSearchParams(searchParams?.toString() ?? '')
+    router.push(buildWorkspaceSwitchHref({
+      workspaceId,
+      handle: destination?.routingHandle,
+      pathname,
+      search: search.toString(),
+      currentScope,
+    }))
+    rememberActiveWorkspace(workspaceId)
   }
 
   async function createAndSelect(name: string) {
@@ -152,7 +149,7 @@ export function WorkspaceSwitcher({
       error={error}
       actionError={null}
       refresh={() => void refresh()}
-      onSelectWorkspace={(workspaceId) => void selectWorkspace(workspaceId)}
+      onSelectWorkspace={selectWorkspace}
       onCreateRequest={openCreateDialog}
       onOpenChange={setOpen}
     />

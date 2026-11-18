@@ -77,11 +77,12 @@ test('streaming agent controls stay hidden until their own response is hovered o
   assert.match(html, /-ml-1\.5/)
 })
 
-test('a streaming agent reply shows one avatar, whose eyes move, and no second indicator', () => {
+test('a streaming agent reply shows one 24px mark below its text until it settles', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Searching memory first.' }), 'Agent', false, true)
   assert.doesNotMatch(html, /animate-pulse rounded-full/)
   assert.doesNotMatch(html, /agent-response-pending/)
-  assert.doesNotMatch(html, /is responding/)
+  assert.equal(html.match(/is responding/g)?.length, 1)
+  assert.ok(html.indexOf('Searching memory first.') < html.indexOf('is responding'))
   const settled = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Agent')
   assert.doesNotMatch(settled, /is responding/)
 })

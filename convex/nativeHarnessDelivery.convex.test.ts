@@ -1,5 +1,5 @@
 import type { Id } from './_generated/dataModel'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import type { HarnessAdmission, HarnessOperation } from '../packages/overlay-agent-runtime/src/harness-store'
@@ -808,4 +808,141 @@ test('plan changes reach the run and its message, and survive message updates', 
   expect(message?.agentPlan).toEqual(expected)
   await convex.run(ctx => ctx.db.patch(message!._id, { parts: [{ type: 'text', text: 'Final answer' }], content: 'Final answer' }))
   expect((await read()).message?.agentPlan).toEqual(expected)
+})
+
+test.each([
+  { label: 'with final text', content: 'Final answer' },
+  { label: 'with empty content', content: '' },
+])('Stop repairs an already-completed generating reply $label and is idempotent', async ({ content }) => {
+  vi.useFakeTimers()
+  try {
+    const convex = convexTest(schema, modules)
+    const fixture = await seed(convex)
+    const turn = await open(convex, fixture)
+    const completedAt = Date.now()
+    await convex.run(async ctx => {
+      await ctx.db.patch(turn.messageId, { content, parts: content ? [{ type: 'text', text: content }] : [] })
+      await ctx.db.patch(turn.runId, { status: 'completed', completedAt, updatedAt: completedAt })
+    })
+    const stopArgs = {
+      conversationId: fixture.conversationId,
+      messageId: turn.messageId,
+      userId: 'alice',
+      serverSecret: secret,
+    }
+    const stop = mutation('chat/conversations:cancelAgentRuns')
+    await convex.mutation(stop, stopArgs)
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+    const settled = await convex.run(ctx => ctx.db.get(turn.messageId))
+    expect(settled?.status).toBe('completed')
+    expect(settled?.content).toBe(content)
+    expect(settled?.content).not.toContain('interrupted')
+
+    await convex.mutation(stop, stopArgs)
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+    expect(await convex.run(ctx => ctx.db.get(turn.messageId))).toEqual(settled)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('Stop repairs a failed generating reply with its stored error and partial text', async () => {
+  vi.useFakeTimers()
+  try {
+    const convex = convexTest(schema, modules)
+    const fixture = await seed(convex)
+    const turn = await open(convex, fixture)
+    const failedAt = Date.now()
+    const terminalError = { code: 'delivery_failed', message: 'Native delivery failed.', retryable: false }
+    await convex.run(async ctx => {
+      await ctx.db.patch(turn.messageId, { content: 'Partial answer', parts: [{ type: 'text', text: 'Partial answer' }] })
+      await ctx.db.patch(turn.runId, {
+        status: 'failed', failedAt, terminalError, updatedAt: failedAt,
+      })
+    })
+    const stopArgs = {
+      conversationId: fixture.conversationId,
+      messageId: turn.messageId,
+      userId: 'alice',
+      serverSecret: secret,
+    }
+    const stop = mutation('chat/conversations:cancelAgentRuns')
+    await convex.mutation(stop, stopArgs)
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+    const settled = await convex.run(ctx => ctx.db.get(turn.messageId))
+    expect(settled?.status).toBe('error')
+    expect(settled?.content).toBe('Partial answer')
+    expect(settled?.content).not.toContain('interrupted')
+    expect(settled?.parts?.filter(part => part.type === 'data-native-agent-error')).toHaveLength(1)
+    expect(settled?.parts?.find(part => part.type === 'data-native-agent-error')).toMatchObject({
+      data: { code: 'delivery_failed', message: 'Native delivery failed.', runId: turn.runId, failedAt },
+    })
+
+    await convex.mutation(stop, stopArgs)
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+    expect(await convex.run(ctx => ctx.db.get(turn.messageId))).toEqual(settled)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('terminal repair is exact-message and cannot settle another invoker or thread reply', async () => {
+  vi.useFakeTimers()
+  try {
+    const convex = convexTest(schema, modules)
+    const fixture = await seed(convex)
+    const target = await open(convex, fixture, 'alice', true, 'terminal-target')
+    const threadReply = await open(convex, fixture, 'alice', true, 'thread-reply')
+    const unrelated = await open(convex, fixture, 'alice', true, 'unrelated-run')
+    const otherInvoker = await open(convex, fixture, 'bob', true, 'other-invoker')
+    const completedAt = Date.now()
+    await convex.run(async ctx => {
+      await ctx.db.patch(target.runId, { status: 'completed', completedAt, updatedAt: completedAt })
+      await ctx.db.patch(threadReply.messageId, { threadRootMessageId: fixture.userMessageId })
+      await ctx.db.patch(otherInvoker.runId, { status: 'completed', completedAt, updatedAt: completedAt })
+    })
+    const untouchedBefore = await convex.run(async ctx => ({
+      threadMessage: await ctx.db.get(threadReply.messageId),
+      threadRun: await ctx.db.get(threadReply.runId),
+      unrelatedMessage: await ctx.db.get(unrelated.messageId),
+      unrelatedRun: await ctx.db.get(unrelated.runId),
+      otherMessage: await ctx.db.get(otherInvoker.messageId),
+      otherRun: await ctx.db.get(otherInvoker.runId),
+    }))
+    const stop = mutation('chat/conversations:cancelAgentRuns')
+    await expect(convex.mutation(stop, {
+      conversationId: fixture.conversationId, messageId: otherInvoker.messageId,
+      userId: 'alice', serverSecret: secret,
+    })).rejects.toThrow('No authorized agent run is associated with this reply')
+    await convex.mutation(stop, {
+      conversationId: fixture.conversationId, messageId: target.messageId,
+      userId: 'alice', serverSecret: secret,
+    })
+    await convex.finishAllScheduledFunctions(vi.runAllTimers)
+
+    expect((await convex.run(ctx => ctx.db.get(target.messageId)))?.status).toBe('completed')
+    expect(await convex.run(async ctx => ({
+      threadMessage: await ctx.db.get(threadReply.messageId),
+      threadRun: await ctx.db.get(threadReply.runId),
+      unrelatedMessage: await ctx.db.get(unrelated.messageId),
+      unrelatedRun: await ctx.db.get(unrelated.runId),
+      otherMessage: await ctx.db.get(otherInvoker.messageId),
+      otherRun: await ctx.db.get(otherInvoker.runId),
+    }))).toEqual(untouchedBefore)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('Stop returns an actionable failure when an exact generating reply has no run record', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const turn = await open(convex, fixture)
+  await convex.run(ctx => ctx.db.delete(turn.runId))
+
+  await expect(convex.mutation(mutation('chat/conversations:cancelAgentRuns'), {
+    conversationId: fixture.conversationId, messageId: turn.messageId,
+    userId: 'alice', serverSecret: secret,
+  })).rejects.toThrow('No authorized agent run is associated with this reply. Refresh the conversation and try again.')
+  expect((await convex.run(ctx => ctx.db.get(turn.messageId)))?.status).toBe('generating')
 })
