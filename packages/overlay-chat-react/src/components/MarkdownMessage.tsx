@@ -19,6 +19,7 @@ import { resolveToolResourceHref } from './markdown/tool-resource-links'
 import { ChatMarkdownImage } from './files/ChatFileCards'
 import { fileIdFromContentHref } from './files/chat-files-context'
 import { recordRender, timeSync } from '../lib/perf-debug'
+import { useSmoothStreamText } from '../lib/smooth-stream'
 import {
   remarkOverlayMentions,
   isMentionHref,
@@ -56,8 +57,8 @@ interface Props {
 }
 
 function MarkdownMessageImpl({
-  text,
-  isStreaming,
+  text: streamedText,
+  isStreaming: streamOpen,
   sourceCitations,
   webSources,
   suppressTypingIndicator = false,
@@ -68,6 +69,9 @@ function MarkdownMessageImpl({
   renderMentionAvatar,
   onOpenAttachmentPreview,
 }: Props) {
+  const smooth = useSmoothStreamText(streamedText, streamOpen)
+  const text = smooth.text
+  const isStreaming = streamOpen || smooth.revealing
   recordRender(isStreaming ? 'MarkdownMessage(streaming)' : 'MarkdownMessage')
   const hasCitationMap = !!(sourceCitations && Object.keys(sourceCitations).length > 0)
   const hasWebSources = !!(webSources && webSources.length > 0)

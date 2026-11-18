@@ -96,3 +96,45 @@ test('a late alias result cannot redirect a newer canonical navigation', async (
   expect(observed.activeWorkspaceId).toBe(workspace.id)
   expect(mocks.router.replace).not.toHaveBeenCalled()
 })
+
+test('rapid switches save one at a time and the newest pick is saved last, even when an earlier save fails', async () => {
+  const other: WorkspaceSummary = { ...workspace, id: 'other', name: 'Other', slug: 'other', routingHandle: 'other' }
+  const third: WorkspaceSummary = { ...workspace, id: 'third', name: 'Third', slug: 'third', routingHandle: 'third' }
+  mocks.directory = { workspaces: [workspace, other, third], activeWorkspaceId: workspace.id, invitations: [] }
+  const pending: Array<{ id: string; settle(ok: boolean): void }> = []
+  const activating: WorkspaceClient = {
+    ...client,
+    activate: (id) => new Promise((resolve, reject) => {
+      const summary = [workspace, other, third].find(item => item.id === id)!
+      pending.push({ id, settle: ok => (ok ? resolve({ activeWorkspaceId: id, workspace: summary }) : reject(new Error('refused'))) })
+    }),
+  }
+  await act(() => { renderer = create(<WorkspaceProvider client={activating}><Probe /></WorkspaceProvider>) })
+  act(() => {
+    observed.rememberActiveWorkspace('other')
+    observed.rememberActiveWorkspace('workspace')
+    observed.rememberActiveWorkspace('third')
+  })
+  expect(pending.map(item => item.id)).toEqual(['other'])
+  await act(async () => { pending[0]!.settle(false) })
+  expect(pending.map(item => item.id)).toEqual(['other', 'third'])
+  await act(async () => { pending[1]!.settle(true) })
+  expect(pending).toHaveLength(2)
+})
+
+test('opening another listed workspace keeps the shell ready instead of reloading it', async () => {
+  const other: WorkspaceSummary = { ...workspace, id: 'other', name: 'Other', slug: 'other', routingHandle: 'other' }
+  mocks.directory = { workspaces: [workspace, other], activeWorkspaceId: workspace.id, invitations: [] }
+  const statuses: string[] = []
+  function StatusProbe() {
+    statuses.push(useWorkspace().status)
+    return null
+  }
+  await act(() => { renderer = create(<WorkspaceProvider client={client}><StatusProbe /></WorkspaceProvider>) })
+  statuses.length = 0
+  mocks.pathname = '/w/other/personal/chat'
+  await act(() => renderer!.update(<WorkspaceProvider client={client}><StatusProbe /></WorkspaceProvider>))
+  expect(statuses).not.toContain('loading')
+  expect(statuses.at(-1)).toBe('ready')
+  expect(mocks.convex.query).not.toHaveBeenCalled()
+})
