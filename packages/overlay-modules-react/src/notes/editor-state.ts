@@ -809,7 +809,7 @@ export function useNotebookAgent({
   agentReviewRef,
 }: {
   agentReviewRef: AgentReviewRef
-  runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
+  runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response | void>
   editor: TiptapEditor | null
   activeNote: NotebookNote | null
   title: string
@@ -908,6 +908,7 @@ export function useNotebookAgent({
         mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
       }, ac.signal)
 
+      if (!res) return
       if (!res.ok) {
         let errText = `Request failed (${res.status})`
         try {

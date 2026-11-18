@@ -2,7 +2,6 @@
 import { Button } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 import type { NotebookAgentUiItem } from '@overlay/app-core'
-import { OverlayMark } from '@overlay/ui'
 import { TraceLine, TraceTitle } from '@overlay/ui/ai'
 import { Send } from 'lucide-react'
 import { AppScreenSidePanel } from '../shell'
@@ -11,6 +10,11 @@ const NOTE_EDIT_TOOLS = new Set(['edit_note', 'replace_note_section', 'append_to
 
 export interface NotebookAgentPanelProps {
   items: readonly NotebookAgentUiItem[]
+  /**
+   * The note conversation rendered by the host. It replaces the items list; the panel
+   * still shows errors from the latest send, which never reached the conversation.
+   */
+  transcript?: ReactNode
   running?: boolean
   header?: ReactNode
   /** Shown below the latest response, e.g. Accept all / Reject all for the turn's edits. */
@@ -19,8 +23,33 @@ export interface NotebookAgentPanelProps {
   renderMarkdownMessage: (text: string, isStreaming: boolean) => ReactNode
 }
 
+export function NotebookAgentEmptyState() {
+  return (
+    <div className="text-center py-8">
+      <p className='text-sm text-(--muted)'>
+        Ask about this note or describe edits...
+      </p>
+    </div>
+  )
+}
+
+function NotebookAgentError({ text }: { text: string }) {
+  return (
+    <div className='rounded-md bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300'>
+      {text}
+    </div>
+  )
+}
+
+/** Errors after the latest user message: the current send's failures. */
+function latestSendErrors(items: readonly NotebookAgentUiItem[]) {
+  const lastUser = items.map((item) => item.type).lastIndexOf('user')
+  return items.slice(lastUser + 1).flatMap((item) => item.type === 'error' ? [item.text] : [])
+}
+
 export function NotebookAgentPanel({
   items,
+  transcript,
   running,
   header,
   footer,
@@ -35,14 +64,16 @@ export function NotebookAgentPanel({
       aria-label="Note assistant"
     >
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
-        {items.length === 0 && (
-          <div className="text-center py-8">
-            <p className='text-sm text-(--muted)'>
-              Ask about this note or describe edits...
-            </p>
-          </div>
-        )}
-        {items.map((item, idx) => {
+        {transcript !== undefined ? (
+          <>
+            {transcript}
+            {latestSendErrors(items).map((text, idx) => (
+              // Append-only stream items have no id; index is the stable identity.
+              // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+              <NotebookAgentError key={idx} text={text} />
+            ))}
+          </>
+        ) : items.length === 0 ? <NotebookAgentEmptyState /> : items.map((item, idx) => {
           if (item.type === 'user') {
             // Append-only stream items have no id; index is the stable identity.
             return (
@@ -51,24 +82,6 @@ export function NotebookAgentPanel({
                 <div className="chat-user-bubble min-w-0 max-w-[min(92%,36rem)] wrap-break-word select-text rounded-2xl rounded-br-sm bg-(--surface-subtle) px-3 py-2.5 text-sm leading-relaxed text-(--foreground) sm:max-w-[75%]">
                   <span className="whitespace-pre-wrap">{item.text}</span>
                 </div>
-              </div>
-            )
-          }
-          if (item.type === 'thinking') {
-            // Append-only stream items have no id; index is the stable identity.
-            return (
-              // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-              <div
-                key={idx}
-                className='flex items-center gap-2 text-xs text-(--muted)'
-              >
-                <span
-                  className="overlay-stream-marker overlay-stream-marker--standalone h-4 w-4"
-                  aria-label={item.text}
-                  role="img"
-                >
-                  <OverlayMark motion="look" size={16} label="" />
-                </span>
               </div>
             )
           }
@@ -96,15 +109,8 @@ export function NotebookAgentPanel({
               </div>
             )
           }
-          return (
-            // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-            <div
-              key={idx}
-              className='rounded-md bg-red-500/10 px-2 py-1.5 text-xs text-red-700 dark:text-red-300'
-            >
-              {item.text}
-            </div>
-          )
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+          return <NotebookAgentError key={idx} text={item.text} />
         })}
         {footer}
       </div>
