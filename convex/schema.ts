@@ -895,6 +895,21 @@ export default defineSchema({
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
     version: v.optional(v.number()),
+    // Self-verticalization. A domain (e.g. `3d-design`) is the set of skills sharing a slug; its map of the field
+    // (DOMAIN.md) is the skill with kind `domain_map`. Absent `kind` means an ordinary skill.
+    domain: v.optional(v.string()),
+    kind: v.optional(v.union(v.literal('skill'), v.literal('domain_map'))),
+    /** Phrases describing tasks this skill fits, used by find_skills ranking. */
+    triggers: v.optional(v.array(v.string())),
+    /** Who wrote it: a person, an agent acquiring it, or an import from a public skill registry. */
+    origin: v.optional(v.union(v.literal('user'), v.literal('agent'), v.literal('registry'))),
+    /** Where its knowledge came from, so private sources stay private and stale sources can be refreshed. */
+    provenance: v.optional(v.array(v.object({
+      kind: v.union(v.literal('web'), v.literal('registry'), v.literal('workspace'), v.literal('chat')),
+      ref: v.string(),
+      title: v.optional(v.string()),
+      retrievedAt: v.optional(v.number()),
+    }))),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_workspaceId_scope_archivedAt', ['workspaceId', 'scope', 'archivedAt']).index('by_workspaceId_userId_archivedAt', ['workspaceId', 'userId', 'archivedAt'])
