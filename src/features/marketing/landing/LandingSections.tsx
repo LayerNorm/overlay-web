@@ -9,6 +9,7 @@ import { DESKTOP_DOWNLOAD_START_PATH } from '@/shared/web/latest-release'
 import { AppleMark } from './AppleMark'
 import { GithubMark } from './GithubMark'
 import { LANDING_AGENTS, LandingAgent, type LandingAgentId } from './LandingAgent'
+import { Phrase } from './LandingHeadline'
 import { LandingLogo, type LogoName } from './LandingLogo'
 
 const API_DOCS = `${MARKETING_DOCS_URL}/developer/api/overview`
@@ -117,8 +118,8 @@ function Step({ num, title, body, more, href, id, children }: {
 export function OnePlaceSection({ appHref }: { appHref: string }) {
   return (
     <section className="sec" id="control-plane">
-      <div className="head">
-        <h2 className="h2"><span className="dim">One place</span><br />to get things done</h2>
+      <div className="head center wide">
+        <h2 className="h2">Give your <Phrase k="agents" /> a <Phrase k="workspace" /><br /><span className="dim">Create swarms of agents</span></h2>
       </div>
       <div className="life">
         <Step num="01" title="Create" more="Create an agent" href={appHref}
@@ -203,8 +204,8 @@ export function OverlayForMacSection() {
 export function TeamsSection() {
   return (
     <section className="sec">
-      <div className="head">
-        <h2 className="h2">Built for how teams<br /><span className="dim">actually work</span></h2>
+      <div className="head center wide">
+        <h2 className="h2">The <Phrase k="oss" /> <Phrase k="multi" /> <Phrase k="cloud" /><span className="br-lg" /> <Phrase k="cp" /> for <Phrase k="ai" /></h2>
       </div>
       <div className="grid3">
         <div className="cell" id="cloud">

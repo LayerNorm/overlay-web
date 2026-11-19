@@ -137,10 +137,10 @@ test('the computer group needs every computer tool id to count as enabled', () =
 test('grants saved before a group grew still hold the tools that joined it', () => {
   const beforeNoteEdits = ['list_notes', 'get_note', 'create_note', 'update_note', 'delete_note']
   const beforeFileReads = ['search_knowledge', 'search_in_files']
-  const groups = enabledAgentToolGroupIds([...beforeNoteEdits, ...beforeFileReads])
-  assert.ok(groups.has('notes'))
-  assert.ok(groups.has('knowledge'))
-  assert.ok(!groups.has('files'), 'file editing is a new grant, not implied by search')
+  const fileEdits = ['write_file', 'create_folder', 'move_file']
+  const groups = enabledAgentToolGroupIds([...beforeNoteEdits, ...beforeFileReads, ...fileEdits])
+  assert.ok(groups.has('files'), 'old Knowledge + Files + Notes grants read as the merged Files group')
+  assert.ok(!enabledAgentToolGroupIds(beforeFileReads).has('files'), 'a search-only grant gains no writes')
   const normalized = normalizeAgentToolGrant(beforeNoteEdits)
   for (const id of ['append_to_note', 'replace_note_section', 'edit_note']) assert.ok(normalized.includes(id))
   assert.ok(!normalizeAgentToolGrant(['get_note']).includes('edit_note'), 'read-only note grants gain no writes')
@@ -162,7 +162,7 @@ test('tool presets never include computer and are recognised from their groups',
   for (const ids of Object.values(AGENT_TOOL_PRESETS)) assert.equal(ids.includes('computer'), false)
   assert.equal(agentToolPresetFor(new Set(AGENT_TOOL_PRESETS.everything)), 'everything')
   assert.equal(agentToolPresetFor(new Set([...AGENT_TOOL_PRESETS.standard, 'computer'])), 'standard')
-  assert.equal(agentToolPresetFor(new Set(['knowledge'])), null)
+  assert.equal(agentToolPresetFor(new Set(['files'])), null)
 })
 
 test('a thread on the person’s own computer gets the computer tools; a cloud thread adds none', () => {
@@ -196,4 +196,14 @@ test('agents saved with the old Skills grant gain the new skill tools and keep t
     assert.equal(grant.includes(id), true, id)
   }
   assert.equal(enabledAgentToolGroupIds(legacy).has('skills'), true)
+})
+
+test('related tools share one group: files with notes, images with video, asking with editing agents', () => {
+  const groups = Object.fromEntries(AGENT_TOOL_GROUPS.map((group) => [group.id, group]))
+  for (const id of ['knowledge', 'notes', 'image', 'video', 'agent_chat']) assert.equal(groups[id], undefined, id)
+  for (const id of ['search_knowledge', 'read_file', 'write_file', 'get_note', 'edit_note']) assert.ok(groups.files!.toolIds.includes(id), id)
+  for (const id of ['generate_image', 'generate_video', 'edit_video']) assert.ok(groups.media!.toolIds.includes(id), id)
+  for (const id of ['ask_agent', 'read_agent_reply', 'create_agent', 'update_agent']) assert.ok(groups.agents!.toolIds.includes(id), id)
+  const everyTool = AGENT_TOOL_GROUPS.flatMap((group) => group.toolIds)
+  assert.equal(new Set(everyTool).size, everyTool.length, 'no tool belongs to two groups')
 })
