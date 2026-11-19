@@ -10,6 +10,8 @@ import type {
 export type FileRecord = {
   _id: string
   userId: string
+  workspaceId?: string
+  scope?: 'personal' | 'workspace'
   name: string
   kind?: string
   content?: string
@@ -70,6 +72,7 @@ export interface FileRepository {
     accessToken?: string
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null>
   getFileByLegacyOutputId(args: {
     outputId: string

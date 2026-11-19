@@ -68,8 +68,10 @@ test('the room scope is the Workspace scope in a shared room and the request oth
 
 test('tools that read the person’s own chats and file text are not offered in a shared room', () => {
   assert.deepEqual(
-    withoutSharedRoomWithheldTools(['search_knowledge', 'list_chats', 'read_chat', 'search_in_files', 'list_files']),
-    ['search_knowledge', 'list_files'],
+    withoutSharedRoomWithheldTools([
+      'search_knowledge', 'list_chats', 'read_chat', 'search_in_files', 'list_files', 'read_file', 'computer_download_file',
+    ]),
+    ['search_knowledge', 'list_files', 'read_file', 'computer_download_file'],
   )
 })
 

@@ -282,6 +282,7 @@ export class FileService {
       const file = await this.deps.repository.getFile({
         fileId: args.fileId,
         userId: args.userId,
+        ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
       })
       // Convex only returns files this user may read: their own, or workspace-shared by a member.
       if (!file) {
@@ -508,9 +509,24 @@ export class FileService {
    * The stored bytes of a file this person may read, for copying it onto a computer. Convex only returns readable
    * files, and the object must belong to the file's owner. Null when the file keeps no stored object.
    */
-  async readFileBytes(args: { fileId: string; userId: string; maximumBytes?: number }): Promise<Uint8Array | null> {
-    const file = await this.deps.repository.getFile({ fileId: args.fileId, userId: args.userId })
+  async readFileBytes(args: {
+    fileId: string
+    userId: string
+    maximumBytes?: number
+    workspaceId?: string
+    scope?: 'personal' | 'workspace'
+  }): Promise<Uint8Array | null> {
+    if (args.scope === 'workspace' && !args.workspaceId) serviceError({ error: 'Not found' }, 404)
+    const file = await this.deps.repository.getFile({
+      fileId: args.fileId,
+      userId: args.userId,
+      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
+    })
     if (!file) serviceError({ error: 'Not found' }, 404)
+    if ((args.workspaceId !== undefined && file.workspaceId !== args.workspaceId)
+      || (args.scope !== undefined && (file.scope ?? 'personal') !== args.scope)) {
+      serviceError({ error: 'Not found' }, 404)
+    }
     const owner = typeof file.userId === 'string' ? file.userId : null
     if (!owner || typeof file.r2Key !== 'string' || !isOwnedStorageKey(owner, file.r2Key)) return null
     const bytes = await this.storage.downloadBuffer(file.r2Key, args.maximumBytes)

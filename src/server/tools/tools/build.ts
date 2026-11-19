@@ -35,6 +35,7 @@ import {
   executeComputerListFiles,
   executeComputerOpenUrl,
   executeComputerReadFile,
+  executeComputerDownloadFile,
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerPublishFile,
@@ -765,7 +766,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.read_file = tool({
       description:
         'Read the text of a workspace file (uploads keep their extracted text). Long files come back in chunks: ' +
-        'pass the returned nextOffset to continue. Returns a revision to pass to write_file when you change the file. Use get_note for notes.',
+        'pass the returned nextOffset to continue. Returns a revision to pass to write_file when you change the file. Use get_note for notes.' +
+        (shouldExposeTool('computer_download_file') && shouldExposeTool('read_file')
+          ? ' For binary uploads without extracted text, use computer_download_file with the fileId; do not fetch a private content URL.'
+          : ''),
       inputSchema: z.object({
         fileId: z.string(),
         offset: z.number().int().min(0).optional().describe('Character offset to continue from'),
@@ -1075,6 +1079,22 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         return executeComputerReadFile(options, input)
       },
     })
+    }
+
+    if (shouldExposeTool('computer_download_file') && shouldExposeTool('read_file')) {
+      tools.computer_download_file = tool({
+        description:
+          'Transfer a readable binary Overlay File in the active workspace to a unique temporary directory on the bound Computer. In shared rooms, only workspace-scoped files are allowed. Pass only the fileId; the server authorizes and transfers the bytes without a download URL or storage credentials.',
+        inputSchema: z.object({
+          fileId: z.string().min(1).describe('Readable Overlay File id, usually from read_file or list_files'),
+          target: computerTargetSchema,
+        }).strict(),
+        execute: async (input) => {
+          assertToolAllowed('computer_download_file')
+          assertToolAllowed('read_file')
+          return executeComputerDownloadFile(options, input)
+        },
+      })
     }
 
     if (shouldExposeTool('computer_write_file')) {

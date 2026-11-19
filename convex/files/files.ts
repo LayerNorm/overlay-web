@@ -84,6 +84,7 @@ function normalizeFile(file: Doc<'files'>) {
   return {
     _id: file._id,
     userId: file.userId,
+    workspaceId: file.workspaceId,
     clientId: file.clientId,
     name: file.name,
     type: file.type,

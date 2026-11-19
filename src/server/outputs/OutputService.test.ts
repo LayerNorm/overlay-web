@@ -58,8 +58,10 @@ test('OutputService creates and completes canonical generated output files', asy
     prompt: 'draw it',
     modelId: 'image/model',
     fileName: 'image.png',
+    workspaceId: 'workspace_A',
   })
   assert.equal(rows.get(id)?.kind, 'output')
+  assert.equal(rows.get(id)?.workspaceId, 'workspace_A')
   assert.ok(Number(rows.get(id)?.expiresAt) >= before + 7 * 24 * 60 * 60_000)
 
   await service.update({
@@ -69,10 +71,27 @@ test('OutputService creates and completes canonical generated output files', asy
     r2Key: `users/user_1/outputs/${id}/image.png`,
     sizeBytes: 42,
   })
+  assert.equal(rows.get(id)?.workspaceId, 'workspace_A')
   const output = await service.get({ outputId: id, userId: 'user_1' })
   assert.equal(output?.status, 'completed')
   assert.equal(output?.sizeBytes, 42)
   assert.equal(output?.url, `/api/v1/files/${id}/content`)
+})
+
+test('OutputService does not infer a workspace when none is supplied', async () => {
+  const { service, rows } = fixture()
+  const id = await service.create({
+    userId: 'user_1',
+    type: 'image',
+    source: 'image_generation',
+    status: 'pending',
+    prompt: 'draw it',
+    modelId: 'image/model',
+    fileName: 'legacy-style.png',
+  })
+  const row = rows.get(id)
+  assert.ok(row)
+  assert.equal(Object.hasOwn(row, 'workspaceId'), false)
 })
 
 test('OutputService applies shorter sandbox retention and owner-scoped deletion', async () => {

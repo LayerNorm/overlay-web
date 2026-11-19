@@ -223,7 +223,7 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
   { grantedBy: ['list_skills', 'draft_skill_from_chat'], adds: ['find_skills', 'load_skill', 'search_skill_registries', 'save_skill'] },
   {
     grantedBy: ['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'],
-    adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal', 'computer_publish_file'],
+    adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal', 'computer_publish_file', 'computer_download_file'],
   },
   // Preserve later-added grants for saved full-toolbox agents, using the retired browser id only as a migration marker.
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'] },

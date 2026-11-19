@@ -35,6 +35,8 @@ import type {
  *   returned at start; `events()` streams appended log output.
  * - Files resolve under `/home/user` or `/tmp` only — the provider's rule, not
  *   ours. `listFiles` is emulated with `find` since the API is read/write only.
+ * - Inline writes are limited to 5 MiB; larger writes use a short-lived,
+ *   path-bound upload URL for a raw server-side PUT. Never return or log it.
  * - Every box is created `noEnv: true` — none of the Overlay box account's
  *   secrets may reach a customer machine. `request.metadata` has no box
  *   equivalent; tag machines through `environment` variables instead.
@@ -69,6 +71,9 @@ const PROVISION_TIMEOUT_MS = 5 * 60_000
 const STOP_TIMEOUT_MS = 2 * 60_000
 const SNAPSHOT_TIMEOUT_MS = 15 * 60_000
 const RUNTIME_FENCE_MS = 4 * 60_000
+const INLINE_FILE_WRITE_MAX_BYTES = 5 * 1024 * 1024
+const FILE_UPLOAD_URL_TTL_SECONDS = 120
+const FILE_UPLOAD_TIMEOUT_MS = 60_000
 
 export class BoxApiError extends Error {
   constructor(
@@ -80,6 +85,32 @@ export class BoxApiError extends Error {
     super(message)
     this.name = 'BoxApiError'
   }
+}
+
+function safeHttpStatus(status: number): number {
+  return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502
+}
+
+function isTimeoutFailure(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+}
+
+function safeFileUploadError(error: unknown, stage: 'url' | 'upload'): BoxApiError {
+  const timedOut = isTimeoutFailure(error)
+  const status = error instanceof BoxApiError ? safeHttpStatus(error.status) : timedOut ? 504 : 502
+  return new BoxApiError(
+    status,
+    timedOut ? 'file_upload_timeout' : stage === 'url' ? 'file_upload_url_failed' : 'file_upload_failed',
+    timedOut
+      ? 'File upload timed out.'
+      : stage === 'url' ? 'Could not create a signed file upload.' : 'Could not upload file to sandbox.',
+  )
+}
+
+type FileUploadUrlResponse = {
+  type?: unknown
+  method?: unknown
+  url?: unknown
 }
 
 type BoxState =
@@ -117,6 +148,11 @@ export type BoxFetch = (
   init: { method?: string; headers?: Record<string, string>; body?: string },
 ) => Promise<{ status: number; json(): Promise<unknown> }>
 
+export type BoxUploadFetch = (
+  input: string,
+  init: RequestInit,
+) => Promise<Pick<Response, 'ok' | 'status'>>
+
 /** Boat responses carry `sandbox`; legacy Box responses carried `box`. */
 type SandboxEnvelope = { sandbox?: BoxInfo; box?: BoxInfo }
 
@@ -130,6 +166,7 @@ export type BoxSandboxRuntimeOptions = {
   /** Named Boat environment; isolates Preview from production resources. */
   environment?: string
   fetch?: BoxFetch
+  uploadFetch?: BoxUploadFetch
 }
 
 export class BoxSandboxRuntime implements SandboxRuntime {
@@ -139,6 +176,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
   private readonly baseUrl: string
   private readonly environment: string | undefined
   private readonly fetch: BoxFetch
+  private readonly uploadFetch: BoxUploadFetch
 
   constructor(options: BoxSandboxRuntimeOptions = {}) {
     const apiKey = options.apiKey ?? boatApiKeyFromEnv()
@@ -154,6 +192,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
       const response = await fetch(input, { ...init, signal: AbortSignal.timeout(15_000), redirect: 'error' })
       return { status: response.status, json: () => response.json() }
     })
+    this.uploadFetch = options.uploadFetch ?? ((input, init) => fetch(input, init))
   }
 
   /** Raw v1 call. Response envelopes carry `ok`; errors throw BoxApiError. */
@@ -189,6 +228,53 @@ export class BoxSandboxRuntime implements SandboxRuntime {
       )
     }
     return envelope as T
+  }
+
+  async writeLargeFile(sandboxId: string, path: string, contents: Uint8Array): Promise<void> {
+    let upload: FileUploadUrlResponse
+    try {
+      upload = await this.request<FileUploadUrlResponse>(
+        'POST',
+        `/sandboxes/${sandboxId}/files/upload-url`,
+        { body: { path, ttlSeconds: FILE_UPLOAD_URL_TTL_SECONDS } },
+      )
+    } catch (error) {
+      throw safeFileUploadError(error, 'url')
+    }
+
+    if (upload.type !== 'file.upload_url' || upload.method !== 'PUT'
+      || typeof upload.url !== 'string' || !upload.url || upload.url !== upload.url.trim()
+      || upload.url.includes('#')) {
+      throw new BoxApiError(502, 'invalid_file_upload_url', 'Boat returned an invalid signed file upload URL.')
+    }
+
+    let uploadUrl: URL
+    try {
+      uploadUrl = new URL(upload.url)
+    } catch {
+      throw new BoxApiError(502, 'invalid_file_upload_url', 'Boat returned an invalid signed file upload URL.')
+    }
+    if (uploadUrl.protocol !== 'https:' || !uploadUrl.hostname || uploadUrl.username
+      || uploadUrl.password || uploadUrl.hash) {
+      throw new BoxApiError(502, 'invalid_file_upload_url', 'Boat returned an invalid signed file upload URL.')
+    }
+
+    let response: Pick<Response, 'ok' | 'status'>
+    try {
+      response = await this.uploadFetch(upload.url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: Buffer.from(contents),
+        credentials: 'omit',
+        redirect: 'error',
+        signal: AbortSignal.timeout(FILE_UPLOAD_TIMEOUT_MS),
+      })
+    } catch (error) {
+      throw safeFileUploadError(error, 'upload')
+    }
+    if (!response.ok) {
+      throw new BoxApiError(safeHttpStatus(response.status), 'file_upload_failed', 'Could not upload file to sandbox.')
+    }
   }
 
   async create(request: SandboxCreateRequest): Promise<SandboxInstance> {
@@ -475,9 +561,13 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     if (files.some(file => file.mode !== undefined && (!Number.isSafeInteger(file.mode) || file.mode < 0 || file.mode > 0o777)))
       throw new BoxApiError(400, 'invalid_file_mode', 'File permissions must be between 0000 and 0777')
     await Promise.all(files.map(async file => {
-      await this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
-        body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })
+      if (file.contents.byteLength > INLINE_FILE_WRITE_MAX_BYTES) {
+        await this.runtime.writeLargeFile(this.reference, file.path, file.contents)
+      } else {
+        await this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
+          body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
+        })
+      }
       if (file.mode !== undefined) {
         const result = await (await this.runCommand({command: 'chmod', args: ['--', file.mode.toString(8), file.path], timeoutMs: 15_000})).wait()
         if (result.exitCode !== 0) throw new BoxApiError(500, 'file_permissions_failed', 'Could not set machine file permissions')

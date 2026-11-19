@@ -5,11 +5,12 @@ import { join } from 'node:path'
 import test from 'node:test'
 import type { LocalToolCall, LocalToolOutcome, LocalToolRequest } from '@layernorm/overlay-agent-bridge-protocol'
 import type { AgentEnvironment } from '@overlay/workspace-contracts'
+import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { LocalToolExecutor, LocalToolLoop } from '../../../../packages/overlay-agent-host/src/local-tools'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ComputerServiceError } from '@/server/computers/ComputerService'
 import { runComputerDriverCommand } from '@/server/computers/ComputerDesktopDriver'
-import { executeComputerExec, executeComputerListFiles, executeComputerReadFile, executeComputerTerminal, executeComputerWriteFile } from '@/server/tools/tools/overlay-executes'
+import { executeComputerDownloadFile, executeComputerExec, executeComputerListFiles, executeComputerReadFile, executeComputerTerminal, executeComputerWriteFile } from '@/server/tools/tools/overlay-executes'
 import { LocalComputerError, LocalComputerService, type LocalToolCallRepository } from './LocalComputerService'
 import { LocalHostSandboxInstance } from './LocalHostSandboxInstance'
 
@@ -96,6 +97,43 @@ test('a Computer tool call reaches the Mac through the host channel and comes ba
     }
     assert.match(output, /terminal-ok/)
     await assert.rejects(instance.readFile('/etc/hosts'), (error: unknown) => error instanceof LocalComputerError && error.code === 'outside_approved_folders')
+    assert.ok([...mac.repository.calls.values()].every((call) => call.status === 'completed'))
+  } finally { await mac.close() }
+})
+
+test('computer_download_file writes under the first approved folder instead of the Mac home directory', async () => {
+  const mac = await connectedMac()
+  try {
+    const computer = await mac.service.findForUser({ workspaceId: 'ws-1', userId: 'user-1' })
+    assert.ok(computer)
+    const instance = new LocalHostSandboxInstance(computer, mac.service, { userId: 'user-1', toolName: 'computer_download_file' })
+    const bytes = new Uint8Array([0, 255, 12, 128])
+    const result = await executeComputerDownloadFile({
+      userId: 'user-1',
+      workspaceId: 'ws-1',
+      allowedToolIds: ['computer_download_file', 'read_file'],
+      computerApprovalContext: 'work',
+    }, { fileId: 'file-1', target: 'local' }, {
+      files: {
+        async getOrListFiles() {
+          return { type: 'file', name: 'transfer.bin', sizeBytes: bytes.byteLength, workspaceId: 'ws-1', scope: 'personal', isStorageBacked: true }
+        },
+        async readFileBytes() { return bytes },
+      } as never,
+      resolveComputer: async () => ({
+        ok: true,
+        computer: { id: 'local:env-mac', name: 'Dev MacBook', controlledByUserId: undefined, location: 'local' },
+        async operate(operation: (instance: SandboxInstance, current: { controlledByUserId: undefined }) => Promise<unknown>) {
+          return operation(instance, { controlledByUserId: undefined })
+        },
+      }) as never,
+    })
+
+    assert.equal(result.success, true)
+    if (!result.success) return
+    assert.ok(result.path.startsWith(`${mac.root}/.overlay-download.`))
+    assert.notEqual(result.path, '/home/dev')
+    assert.deepEqual(await readFile(result.path), Buffer.from(bytes))
     assert.ok([...mac.repository.calls.values()].every((call) => call.status === 'completed'))
   } finally { await mac.close() }
 })

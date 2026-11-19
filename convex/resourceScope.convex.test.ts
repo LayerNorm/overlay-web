@@ -131,6 +131,9 @@ describe('files (notes, uploads, outputs, folders)', () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const create = (userId: string, args: Record<string, unknown>) => convex.mutation(m('files/files:create'), { ...auth, userId, ...args }) as Promise<string>
+    const personalNote = await create('alice', { name: 'Private upload', kind: 'note', content: 'private' })
+    const personalMetadata = await convex.query(q('files/files:get'), { ...auth, userId: 'alice', fileId: personalNote }) as { scope: string; workspaceId: string } | null
+    expect(personalMetadata).toMatchObject({ scope: 'personal', workspaceId })
     const folder = await create('alice', { name: 'Plans', type: 'folder', kind: 'folder' })
     const note = await create('alice', { name: 'Roadmap', kind: 'note', content: '# Roadmap', parentId: folder })
     const names = async (userId: string, view?: string) =>
@@ -139,8 +142,8 @@ describe('files (notes, uploads, outputs, folders)', () => {
     expect(await names('bob')).toEqual([])
     expect(await convex.mutation(m('files/files:setScope'), { ...auth, userId: 'alice', id: folder, to: 'workspace' })).toEqual({ ok: true })
     expect(await names('bob', 'workspace')).toEqual(['Plans', 'Roadmap'])
-    const fetched = await convex.query(q('files/files:get'), { ...auth, userId: 'bob', fileId: note }) as { name: string } | null
-    expect(fetched?.name).toBe('Roadmap')
+    const fetched = await convex.query(q('files/files:get'), { ...auth, userId: 'bob', fileId: note }) as { name: string; scope: string; workspaceId: string } | null
+    expect(fetched).toMatchObject({ name: 'Roadmap', scope: 'workspace', workspaceId })
     expect(await convex.query(q('files/files:get'), { ...auth, userId: 'gus', fileId: note })).toBeNull()
 
     expect(await convex.mutation(m('files/files:archive'), { ...auth, userId: 'alice', id: folder })).toEqual({ ok: true })

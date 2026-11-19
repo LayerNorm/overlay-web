@@ -510,6 +510,8 @@ There is no connection polling in the browser.
 
 ## File listing
 
+Single-file reads preserve the stored `workspaceId` and `scope` in the normalized Convex record. `FileService` uses those fields for exact active-workspace checks; the existing repository read ACL remains authoritative.
+
 `GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web/desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.
 
 ## Database pagination (Phase B)

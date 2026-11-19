@@ -26,6 +26,7 @@ export const COMPUTER_TOOL_IDS = [
   'computer_browser',
   'computer_terminal',
   'computer_publish_file',
+  'computer_download_file',
 ] as const
 
 export const OVERLAY_TOOL_IDS = [
