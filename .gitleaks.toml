@@ -47,6 +47,16 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Minified variable names in the generated app mockup bundle look like key assignments"
+condition = "AND"
+paths = [
+  '''internal/plans/mockups/overlay-app\.html$''',
+]
+regexes = [
+  '''keyCount,[A-Za-z_$][\w$]{0,2}=''',
+]
+
+[[allowlists]]
 description = "Environment example files contain placeholder secrets for documentation"
 paths = [
   '''\.env\.example$''',

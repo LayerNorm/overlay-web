@@ -75,6 +75,10 @@ them. Besides the canonical app mockup, this folder holds only:
   extensions-catalog`): the approved Extensions catalog design that
   `ExtensionCatalogPage` implements. Delete it once the redesign is accepted
   in production.
+- `connector-callback.html`: the proposed static connector callback page for
+  `internal/plans/automation-threads-and-connector-return.md`. The same plan's
+  automation thread is the `Morning inbox triage` fixture thread in
+  `overlay-app.html`. Delete the page when the plan ships.
 - `local-cloud-continuity.html` (feature `local-cloud-continuity`): the proposed Phases 2–4 of
   `LOCAL_CLOUD_CONTINUITY_PLAN.md`. Open
   `local-cloud-continuity.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`
