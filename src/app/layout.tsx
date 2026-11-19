@@ -11,13 +11,14 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 export const metadata: Metadata = {
   metadataBase: new URL("https://getoverlay.io"),
   title: {
-    default: "Overlay: The control plane for AI employees",
+    default: "Overlay: Enabling self-driving companies with AI employees",
     template: "%s | Overlay",
   },
   description:
     "Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
   applicationName: "Overlay",
   keywords: [
+    "self-driving companies",
     "control plane for AI employees",
     "AI employees",
     "control plane for AI agents",
@@ -56,7 +57,7 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: "Overlay: The control plane for AI employees",
+    title: "Overlay: Enabling self-driving companies with AI employees",
     description:
       "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
     type: "website",
@@ -74,7 +75,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Overlay: The control plane for AI employees",
+    title: "Overlay: Enabling self-driving companies with AI employees",
     description:
       "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
     images: ["https://getoverlay.io/assets/overlay-share-linkedin-thumb.png"],
