@@ -1,13 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { RightSidebar } from '@overlay/modules-react/shell'
+import type { WorkspaceAgentDirectoryItem, WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
+import { AgentCreature } from '@/components/orb/Creature'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { useAgentEditorController } from './AgentEditorPage'
 import { AgentComputerTabView } from './AgentComputerTab.parts'
 import { AgentSidebarDetails } from './AgentSidebarDetails'
 import { AgentLibraryTab } from './AgentRightSidebar.parts'
+import { ThreadPanel, type ThreadComputerStatus } from './ThreadPanel'
+import { openFile, openPanel, type ThreadPanelTabs } from '../lib/thread-panel-tabs'
 import { AgentLibraryPreview } from './AgentLibraryPreview'
 import { AgentSidebarHero } from './AgentSidebarHero.parts'
 import type { useAgentSidebarComputer } from './use-agent-sidebar-computer'
@@ -17,25 +19,27 @@ import { usesOverlayMark } from '@/shared/agents/chief-identity'
 
 export function AgentRightSidebar({
   conversationId,
-  activeTab,
-  onTabChange,
+  tabs,
+  onTabsChange,
+  onOpenLauncher,
+  expanded,
+  onToggleExpanded,
   onClose,
-
+  pullRequests,
   editor,
   controlled,
   computerAccess,
   onTakeControl,
   onReleaseControl,
-  previewFileId,
-  onPreviewFileChange,
 }: {
   conversationId: string
-  /** A Library file shown in place of the panel's tabs, or null for the tabs. */
-  previewFileId: string | null
-  onPreviewFileChange(fileId: string | null): void
-  activeTab: string
-  onTabChange(id: string): void
+  tabs: ThreadPanelTabs
+  onTabsChange(update: (tabs: ThreadPanelTabs) => ThreadPanelTabs): void
+  onOpenLauncher(): void
+  expanded: boolean
+  onToggleExpanded(): void
   onClose(): void
+  pullRequests: readonly WorkspaceThreadPullRequest[]
 
   editor: ReturnType<typeof useAgentEditorController>
   controlled: boolean
@@ -45,7 +49,6 @@ export function AgentRightSidebar({
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersEnabled = capabilities.computers === true
-  const selectedTab = activeTab
   const [saveFailed, setSaveFailed] = useState(false)
   const schedulerRef = useRef<ReturnType<typeof createAgentAutosaveScheduler> | null>(null)
 
@@ -76,35 +79,33 @@ export function AgentRightSidebar({
   const agent = editor.agent as WorkspaceAgentDirectoryItem | null
   const agentName = editor.form.name.trim() || agent?.name || 'Agent'
   const hero = AgentSidebarHero({ editor, onBlurSave: flushSave })
-  const tabs = [
-    {
-      id: 'details',
-      label: 'Details',
-      content: selectedTab === 'details' ? (
+  const computer = computerAccess.computer
+  const computerStatus: ThreadComputerStatus = !computersEnabled ? 'unavailable'
+    : computer?.status === 'ready' ? 'running'
+      : computerAccess.waking || computer?.status === 'provisioning' ? 'starting' : 'asleep'
+
+  return (
+    <ThreadPanel
+      agentName={agentName}
+      avatar={agent ? <AgentCreature agent={agent} isDefault={usesOverlayMark(agent)} size={48} /> : null}
+      hero={hero}
+      agent={
         <AgentSidebarDetails
           editor={editor}
           saveFailed={saveFailed}
           onRetry={flushSave}
           onBlurSave={flushSave}
         />
-      ) : null,
-    },
-    {
-      id: 'library',
-      label: 'Library',
-      content: selectedTab === 'library' ? <AgentLibraryTab conversationId={conversationId} onOpenFile={onPreviewFileChange} /> : null,
-    },
-    {
-      id: 'computer',
-      label: 'Computer',
-      content: selectedTab === 'computer' ? (
+      }
+      files={<AgentLibraryTab conversationId={conversationId} onOpenFile={(fileId) => onTabsChange((current) => openFile(current, fileId))} />}
+      computer={
         <AgentComputerTabView
           agentName={agentName}
           agentColor={agent?.avatarColor}
           agentShape={agent?.avatarShape}
           isDefault={usesOverlayMark(agent)}
           unavailable={!computersEnabled}
-          computer={computerAccess.computer}
+          computer={computer}
           computerLoading={computerAccess.computerLoading}
           computerError={computerAccess.computerError}
           ticketUrl={computerAccess.ticketUrl}
@@ -121,32 +122,21 @@ export function AgentRightSidebar({
           onTakeControl={onTakeControl}
           onReleaseControl={onReleaseControl}
         />
-      ) : null,
-    },
-  ]
-
-  if (previewFileId) {
-    return (
-      <AgentLibraryPreview
-        fileId={previewFileId}
-        onBack={() => onPreviewFileChange(null)}
-        onClose={() => { onPreviewFileChange(null); onClose() }}
-      />
-    )
-  }
-
-  return (
-    <RightSidebar
-      ariaLabel="Agent sidebar"
-      hero={{
-        avatar: hero.avatar,
-        title: hero.title,
-        titleText: hero.titleText,
-        subtitle: hero.subtitle,
-      }}
+      }
+      computerStatus={computerStatus}
+      pullRequests={pullRequests}
+      renderFile={(fileId, close) => (
+        <AgentLibraryPreview
+          fileId={fileId}
+          onBack={() => { close(); onTabsChange((current) => openPanel(current, 'files')) }}
+          onClose={close}
+        />
+      )}
       tabs={tabs}
-      activeTab={selectedTab}
-      onTabChange={onTabChange}
+      onTabsChange={onTabsChange}
+      onOpenLauncher={onOpenLauncher}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
       onClose={onClose}
     />
   )

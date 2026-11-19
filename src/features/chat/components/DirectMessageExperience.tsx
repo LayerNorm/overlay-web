@@ -34,6 +34,7 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 import { useThreadWork } from './thread-work/useThreadWork'
+import { RoomTranscriptProvider } from '@/components/providers/RoomTranscriptProvider'
 
 function RoomComposerArea({
   safety,
@@ -224,6 +225,7 @@ export function DirectMessageExperience({
   externalRightPanelLabel,
   externalRightPanelMode,
   externalRightPanelWidth,
+  onExternalRightPanelResize,
   onExternalRightPanelClose,
   bodyOverlay,
   guided,
@@ -238,6 +240,7 @@ export function DirectMessageExperience({
   externalRightPanelLabel?: string;
   externalRightPanelMode?: "docked" | "floating";
   externalRightPanelWidth?: number;
+  onExternalRightPanelResize?: (width: number) => void;
   onExternalRightPanelClose?: () => void;
   bodyOverlay?: ReactNode;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
@@ -325,6 +328,7 @@ export function DirectMessageExperience({
         onRoom={transcript.applyRoomSummary}
         onPaging={transcript.setPaging}
       />
+      <RoomTranscriptProvider value={transcript.messages}>
       <AppScreenShell
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
@@ -332,7 +336,7 @@ export function DirectMessageExperience({
         rightPanelWidth={panels.shellRightPanel ? panels.shellRightPanelWidth : externalRightPanel ? (externalRightPanelWidth ?? 'lg') : 380}
         rightPanelMode={panels.shellRightPanel ? panels.shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
-        onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : undefined}
+        onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : externalRightPanel ? onExternalRightPanelResize : undefined}
         rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
       >
         <div
@@ -412,6 +416,7 @@ export function DirectMessageExperience({
           ) : null}
         </div>
       </AppScreenShell>
+      </RoomTranscriptProvider>
 
       <RoomDialogs
         panels={panels}

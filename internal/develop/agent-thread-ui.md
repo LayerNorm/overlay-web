@@ -9,7 +9,8 @@ Archive and delete remain separate actions; PR buttons do not navigate the threa
 Only sidebar thread rows render `ThreadPullRequests`. Its popover lists
 repository, number, title, lifecycle state and observation time, with a GitHub link.
 Draft, open, merged and closed use distinct Lucide icons and accessible labels.
-No PR indicator appears in the conversation header or body. Sending a new message
+No PR indicator appears in the conversation header or body; the thread panel's
+Changes tab (below) lists the same pull requests beside the thread. Sending a new message
 must retain all previous exchanges in the continuous scrollable transcript.
 Newly sent agent exchanges start near the viewport top using a shrinking bottom
 spacer, not a filtered transcript. Streaming does not pull readers away from
@@ -81,8 +82,39 @@ response runs" in `interface-design.md`). Steering stops each generating
 reply, including one that appears after the request, then sends the message.
 Side-thread replies do not count as running for the main composer.
 
+## Thread panel
+
+The right panel of an agent thread (`ThreadPanel`, rendered by
+`AgentRightSidebar`) shows each surface as a tab: Progress, Computer, Changes,
+Files, Terminal, the agent's settings (labelled with the agent's name) and any
+opened file. Panels open once and are focused when opened again; a file opens
+once per file. "+" (⌥T) opens a launcher headed by the agent's avatar and name,
+with search, a Computer row showing whether the computer is running and a row
+per panel; the launcher turns into the panel picked from it. ⌘P opens Files and
+⌘J opens Terminal, opening the panel when it is closed. Closing the last tab
+leaves a launcher. With four or more tabs, inactive tabs shrink to their icons.
+
+- Progress reads the newest `agentPlan` (shown with `RunPlan`) and every tool
+  call in the loaded transcript, in the transcript's row style.
+- Terminal lists `computer_exec` commands with output and a non-zero exit code,
+  redacted with `redactCommand`. It is read-only.
+- Changes lists the thread's pull requests from the agent thread bundle and the
+  files its computer edits changed, with summed line counts. There is no stored
+  diff text, so it shows no line-by-line diff.
+- The panel reads messages through `RoomTranscriptProvider`, which
+  `DirectMessageExperience` provides; `threadActivity` derives all three views.
+- `overlay:agent-right-sidebar` remembers whether the panel is open, its panel
+  tabs and selection, its dragged width (480px default, 360px minimum) and
+  whether it is expanded. File tabs and launchers are not remembered, and file
+  tabs close when the thread changes. Preferences saved before tabs map Details
+  to the agent tab and Library to Files.
+
 ## Sidebar agent rows
 
+- The pinned chief of staff (Overlay) is a tile above the other agents in
+  Personal and Workspace: its avatar and name, with a new-thread button on
+  hover. Like other rows, clicking it only shows or hides its threads. The
+  activity view keeps it as an ordinary row.
 - Clicking an agent row only expands or collapses its threads; it never
   navigates or selects a thread. Opening happens from a thread row.
 - Opening a thread (or creating one) records the agent as most recently used
