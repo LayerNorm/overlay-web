@@ -1015,6 +1015,7 @@ export default defineSchema({
       kind: v.union(
         v.literal('interval'),
         v.literal('daily'),
+        v.literal('weekdays'),
         v.literal('weekly'),
         v.literal('monthly'),
       ),
@@ -1023,6 +1024,11 @@ export default defineSchema({
       hourUTC: v.optional(v.number()),
       dayOfWeekUTC: v.optional(v.number()),
       dayOfMonthUTC: v.optional(v.number()),
+      // Wall-clock fields in the automation's time zone; preferred when set.
+      hour: v.optional(v.number()),
+      minute: v.optional(v.number()),
+      dayOfWeek: v.optional(v.number()),
+      dayOfMonth: v.optional(v.number()),
     })),
     timezone: v.optional(v.string()),
     nextRunAt: v.optional(v.number()),

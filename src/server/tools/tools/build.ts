@@ -351,29 +351,28 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       })
     }
   })
+  const localHour = z.number().int().min(0).max(23).describe('Hour in the automation timezone (0-23)')
+  const localMinute = z.number().int().min(0).max(59).describe('Minute in the automation timezone')
   const automationScheduleSchema = z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('interval'),
-      intervalMinutes: z.number().int().min(1).max(60 * 24 * 365),
+      intervalMinutes: z.number().int().min(15).max(60 * 24 * 365),
     }),
-    z.object({
-      kind: z.literal('daily'),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
-    }),
+    z.object({ kind: z.literal('daily'), hour: localHour, minute: localMinute }),
+    z.object({ kind: z.literal('weekdays'), hour: localHour, minute: localMinute }),
     z.object({
       kind: z.literal('weekly'),
-      dayOfWeekUTC: z.number().int().min(0).max(6),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
+      dayOfWeek: z.number().int().min(0).max(6).describe('Day of week in the automation timezone, 0 = Sunday'),
+      hour: localHour,
+      minute: localMinute,
     }),
     z.object({
       kind: z.literal('monthly'),
-      dayOfMonthUTC: z.number().int().min(1).max(31),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
+      dayOfMonth: z.number().int().min(1).max(31).describe('Day of month in the automation timezone'),
+      hour: localHour,
+      minute: localMinute,
     }),
-  ])
+  ]).describe('When to run, as wall-clock time in `timezone` (set `timezone` to the user\'s IANA time zone). Weekdays means Monday to Friday.')
 
   tools.present_generated_ui = tool({
     description:

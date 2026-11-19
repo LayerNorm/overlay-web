@@ -41,7 +41,8 @@ function memoryOwnerBody(options: OverlayToolsOptions): { memoryOwnerId?: string
 function roomSearchBody(options: OverlayToolsOptions): { workspaceOnly?: true } {
   return options.sharedRoom ? { workspaceOnly: true } : {}
 }
-import { buildAutomationDraftFromTurn, type AutomationScheduleDraft } from '@/features/automations/lib/automation-drafts'
+import { buildAutomationDraftFromTurn } from '@/features/automations/lib/automation-drafts'
+import type { AutomationSchedule } from '@overlay/app-core'
 import { buildSkillDraftFromTurn } from '@/features/automations/lib/skill-drafts'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import {
@@ -587,7 +588,7 @@ export async function executeCreateAutomation(
     name: string
     description: string
     instructions: string
-    schedule: AutomationScheduleDraft
+    schedule: AutomationSchedule
     timezone?: string
     enabled?: boolean
     modelId?: string
@@ -647,7 +648,7 @@ export async function executeUpdateAutomation(
     name?: string
     description?: string
     instructions?: string
-    schedule?: AutomationScheduleDraft
+    schedule?: AutomationSchedule
     timezone?: string
     enabled?: boolean
     modelId?: string
