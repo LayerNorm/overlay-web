@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react'
 import type { ConvexReactClient } from 'convex/react'
-import type { FunctionReturnType } from 'convex/server'
+import type { FunctionArgs, FunctionReference, FunctionReturnType } from 'convex/server'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import {
@@ -100,7 +100,7 @@ export function useTranscriptCacheKey(target: TranscriptCacheTarget | null, work
 }
 
 let inFlight = 0
-const queued: Array<{ key: string; run: () => Promise<void> }> = []
+const queued: Array<{ key: string; run: (signal: AbortSignal) => Promise<void> }> = []
 const pendingKeys = new Set<string>()
 
 function pump() {
@@ -108,9 +108,11 @@ function pump() {
     const next = queued.shift()!
     inFlight += 1
     let timer: ReturnType<typeof setTimeout> | undefined
-    // A read stalled by a dropped connection must not hold a slot forever.
-    const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, PREFETCH_TIMEOUT_MS) })
-    void Promise.race([next.run(), timeout]).catch(() => undefined).finally(() => {
+    // A read stalled by a dropped connection must not hold a slot forever, and its subscription is closed with it,
+    // so the limit on reads in flight still holds.
+    const abort = new AbortController()
+    const timeout = new Promise<void>((resolve) => { timer = setTimeout(() => { abort.abort(); resolve() }, PREFETCH_TIMEOUT_MS) })
+    void Promise.race([next.run(abort.signal), timeout]).catch(() => undefined).finally(() => {
       clearTimeout(timer)
       inFlight -= 1
       pendingKeys.delete(next.key)
@@ -119,23 +121,56 @@ function pump() {
   }
 }
 
+/**
+ * One read of a query that can be cancelled: `client.query` keeps its subscription until a result arrives, so a
+ * read stalled by a dropped connection would stay open after its prefetch gave up.
+ */
+function queryOnce<Query extends FunctionReference<'query'>>(client: ConvexReactClient, query: Query,
+  args: FunctionArgs<Query>, signal: AbortSignal): Promise<FunctionReturnType<Query>> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(new Error('Prefetch cancelled')); return }
+    const watch = client.watchQuery(query, args)
+    let settled = false
+    let unsubscribe = () => {}
+    const finish = (settle: () => void) => {
+      if (settled) return
+      settled = true
+      unsubscribe()
+      signal.removeEventListener('abort', onAbort)
+      settle()
+    }
+    const onAbort = () => finish(() => reject(new Error('Prefetch cancelled')))
+    const check = () => {
+      try {
+        const value = watch.localQueryResult()
+        if (value !== undefined) finish(() => resolve(value))
+      } catch (error) {
+        finish(() => reject(error))
+      }
+    }
+    unsubscribe = watch.onUpdate(check)
+    signal.addEventListener('abort', onAbort, { once: true })
+    check()
+  })
+}
+
 function isFresh(key: string) {
   const entry = transcriptCache.get(key)
   return Boolean(entry && Date.now() - entry.storedAt < PREFETCH_FRESH_MS)
 }
 
 async function prefetchPersonal(client: ConvexReactClient, scope: TranscriptCacheScope, conversationId: string,
-  key: string, generation: number) {
+  key: string, generation: number, signal: AbortSignal) {
   const args = { workspaceId: scope.workspaceId, conversationId: conversationId as Id<'conversations'> }
-  const summary = await client.query(api.chat.personal.getSummary, args)
+  const summary = await queryOnce(client, api.chat.personal.getSummary, args, signal)
   if (transcriptCache.generation() !== generation) return
   if (!summary || summary._id !== conversationId || summary.workspaceId !== scope.workspaceId) {
     transcriptCache.evict(key)
     return
   }
-  const page = await client.query(api.chat.personal.getMessages, {
+  const page = await queryOnce(client, api.chat.personal.getMessages, {
     ...args, paginationOpts: { numItems: FIRST_PAGE, cursor: null },
-  })
+  }, signal)
   transcriptCache.put<PersonalCachedRow, PersonalCachedSummary>(key, {
     items: page.page.filter(row => row.message.conversationId === conversationId),
     summary,
@@ -145,10 +180,10 @@ async function prefetchPersonal(client: ConvexReactClient, scope: TranscriptCach
 }
 
 async function prefetchRoom(client: ConvexReactClient, scope: TranscriptCacheScope, conversationId: string,
-  key: string, generation: number) {
+  key: string, generation: number, signal: AbortSignal) {
   const args = { workspaceId: scope.workspaceId, conversationId: conversationId as Id<'conversations'> }
   const stateKey = transcriptCacheKey(scope, { kind: 'room', conversationId, variant: ROOM_STATE_VARIANT })
-  const access = await client.query(api.collaboration.rooms.access, args)
+  const access = await queryOnce(client, api.collaboration.rooms.access, args, signal)
   if (transcriptCache.generation() !== generation) return
   if (!access) {
     transcriptCache.evict(key)
@@ -156,8 +191,8 @@ async function prefetchRoom(client: ConvexReactClient, scope: TranscriptCacheSco
     return
   }
   const [state, page] = await Promise.all([
-    client.query(api.collaboration.rooms.state, args),
-    client.query(api.collaboration.rooms.messages, { ...args, paginationOpts: { numItems: FIRST_PAGE, cursor: null } }),
+    queryOnce(client, api.collaboration.rooms.state, args, signal),
+    queryOnce(client, api.collaboration.rooms.messages, { ...args, paginationOpts: { numItems: FIRST_PAGE, cursor: null } }, signal),
   ])
   if (!state) {
     transcriptCache.evict(key)
@@ -189,9 +224,9 @@ export function prefetchTranscript(client: ConvexReactClient, scope: TranscriptC
   pendingKeys.add(key)
   queued.push({
     key,
-    run: () => target.kind === 'personal'
-      ? prefetchPersonal(client, scope, target.conversationId, key, generation)
-      : prefetchRoom(client, scope, target.conversationId, key, generation),
+    run: (signal) => target.kind === 'personal'
+      ? prefetchPersonal(client, scope, target.conversationId, key, generation, signal)
+      : prefetchRoom(client, scope, target.conversationId, key, generation, signal),
   })
   while (queued.length > MAX_PREFETCHES_QUEUED) pendingKeys.delete(queued.shift()!.key)
   pump()

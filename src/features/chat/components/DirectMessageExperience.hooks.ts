@@ -408,6 +408,13 @@ export function useRoomTranscript({
         transcriptReady: sameRoom && current.transcriptReady,
       }
     })
+    if (summary === null) {
+      // This member can no longer read the room (removed, or the room was deleted): drop anything shown from the
+      // transcript cache, so its messages do not stay on screen behind the unavailable state.
+      restoredIdsRef.current = null
+      setMessages([])
+      setPaging({ hasMore: false, loadingMore: false, loadMore: () => undefined })
+    }
     const loadedTitle = summary?.title?.trim()
     if (loadedTitle) setConversationTitle((current) => mergeChatTitle(current ?? 'New thread', loadedTitle))
     if (summary !== undefined) setSurfacePlatform(summary?.externalPlatform ?? null)

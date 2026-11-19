@@ -130,12 +130,23 @@ test('another workspace or user never reads the entry', async () => {
   }
 })
 
+/** A client whose watched queries answer only when the test resolves them, and record when they are closed. */
 function deferredClient() {
-  const calls: { name: string; args: unknown; resolve(value: unknown): void }[] = []
+  const calls: { name: string; args: unknown; resolve(value: unknown): void; closed: boolean }[] = []
   const client = {
-    query: (query: Parameters<typeof getFunctionName>[0], args: unknown) => new Promise((resolve) => {
-      calls.push({ name: getFunctionName(query), args, resolve })
-    }),
+    watchQuery: (query: Parameters<typeof getFunctionName>[0], args: unknown) => {
+      let value: unknown
+      let listener = () => {}
+      const call = {
+        name: getFunctionName(query), args, closed: false,
+        resolve: (next: unknown) => { value = next; listener() },
+      }
+      calls.push(call)
+      return {
+        localQueryResult: () => value,
+        onUpdate: (callback: () => void) => { listener = callback; return () => { call.closed = true } },
+      }
+    },
   } as unknown as ConvexReactClient
   return { client, calls }
 }
@@ -221,5 +232,23 @@ test('hover intent waits before reading and a quick pass-over reads nothing', as
   intent.intend({ kind: 'personal', conversationId })
   vi.advanceTimersByTime(130)
   expect(calls.map(call => call.name)).toEqual(['chat/personal:getSummary'])
+  // Answer the read so its slot is free for the next test.
+  calls[0]!.resolve(null)
+  await vi.advanceTimersByTimeAsync(0)
   await act(() => renderer.unmount())
+})
+
+test('a prefetch read that times out is closed, so stalled reads never exceed the limit', async () => {
+  vi.useFakeTimers()
+  transcriptCache.setIdentity(scope)
+  const { client, calls } = deferredClient()
+  for (const letter of ['d', 'e']) prefetchTranscript(client, scope, { kind: 'room', conversationId: letter.repeat(32) })
+  expect(calls.filter(call => !call.closed)).toHaveLength(2)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(calls.slice(0, 2).every(call => call.closed)).toBe(true)
+  for (const letter of ['f', 'g', 'h']) prefetchTranscript(client, scope, { kind: 'room', conversationId: letter.repeat(32) })
+  expect(calls.filter(call => !call.closed)).toHaveLength(2)
+  await vi.advanceTimersByTimeAsync(10_000)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(calls.every(call => call.closed)).toBe(true)
 })
