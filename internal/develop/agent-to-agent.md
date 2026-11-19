@@ -2,14 +2,14 @@
 
 An agent can ask another agent in the workspace for help and read its answer. It works the same for Overlay agents (native tools) and user-owned BYOM agents connected through Agent Host (the same tools over the Overlay MCP server).
 
-## Tools (group `agent_chat`, "Ask other agents")
+## Tools (group `agents`, "Agents", shared with `create_agent` / `update_agent`)
 
 - `list_agents`: the agents the person can see, except the caller.
 - `ask_agent(agent, message, wait?)`: `agent` is an id or exact name. With `wait` (default) it returns the reply, or a handle (`conversationId`, `turnId`) if the agent is still working after about 80 seconds. The message must stand alone: the asked agent does not see the asker's conversation.
 - `read_agent_reply(conversationId, turnId)`: the reply to an earlier ask that was still working.
 - `post_message(conversationId, text, mentions?)`: post into a channel or group chat the person can see and the agent is part of, optionally mentioning up to 20 agents who are in it; they answer there. It does not wait. A mention is a question: the same chain limits and budgets apply, and the message carries the lineage. A post that mentions nobody starts nothing. Refused for a personal chat, a conversation the person cannot see, a room the agent is not in, or a mention of someone not in the room.
 
-All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read`), through `executeListAgents` / `executeAskAgent` / `executePostMessage` / `executeReadAgentReply`. Registered in `OVERLAY_TOOL_IDS`, the `agent_chat` group, and (for `post_message` only) the outside-app withheld list. The route's actions and the boundary schema's action list are tied by a test. Agents that hold the whole toolbox (automations, video, browser) read as holding these too (`LATER_GROUP_MEMBERS`); narrower grants do not get them.
+All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read`), through `executeListAgents` / `executeAskAgent` / `executePostMessage` / `executeReadAgentReply`. Registered in `OVERLAY_TOOL_IDS`, the `agents` group, and (for `post_message`, like `create_agent` / `update_agent`) the outside-app withheld list. The route's actions and the boundary schema's action list are tied by a test. Agents that hold the whole toolbox (automations, video, browser) read as holding these too (`LATER_GROUP_MEMBERS`); narrower grants do not get them.
 
 ## How an ask works (`AgentAskService`)
 
