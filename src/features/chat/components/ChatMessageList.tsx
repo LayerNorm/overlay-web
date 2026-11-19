@@ -226,6 +226,9 @@ export function ChatMessageList({
   )
 }
 
+const RESTORE_SETTLE_FRAMES = 45
+const RESTORE_CANCEL_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+
 function exchangeAnchor(viewport: HTMLElement) {
   const top = viewport.getBoundingClientRect().top
   for (const element of viewport.querySelectorAll<HTMLElement>('[data-exchange-turn]')) {
@@ -247,11 +250,15 @@ function useTranscriptScrollMemory(
   rowCount: number,
 ) {
   const restoredKeyRef = useRef<string | null>(null)
+  const stopRestoreRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => stopRestoreRef.current?.(), [])
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
     if (!viewport || !scrollKey || restoredKeyRef.current === scrollKey || rowCount === 0) return
     restoredKeyRef.current = scrollKey
+    stopRestoreRef.current?.()
+    stopRestoreRef.current = null
     const snapshot = transcriptCache.scroll(scrollKey)
     if (!snapshot || snapshot.atBottom || !snapshot.anchorId) return
     const anchorId = snapshot.anchorId
@@ -261,10 +268,22 @@ function useTranscriptScrollMemory(
       if (!element) return
       viewport.scrollTop += element.getBoundingClientRect().top - viewport.getBoundingClientRect().top - snapshot.offset
     }
-    align()
-    // The scroller settles its default end position after layout; correct once more after it.
-    const frame = window.requestAnimationFrame(() => { align() })
-    return () => window.cancelAnimationFrame(frame)
+    // The scroller settles its default end position and rows change height for a few frames
+    // after layout; keep the anchor in place until then unless the reader takes over.
+    let frame = 0
+    let frames = 0
+    const stop = () => {
+      window.cancelAnimationFrame(frame)
+      for (const type of RESTORE_CANCEL_EVENTS) viewport.removeEventListener(type, stop, { capture: true })
+    }
+    const settle = () => {
+      align()
+      frames += 1
+      frame = frames < RESTORE_SETTLE_FRAMES ? window.requestAnimationFrame(settle) : 0
+    }
+    for (const type of RESTORE_CANCEL_EVENTS) viewport.addEventListener(type, stop, { capture: true, passive: true })
+    stopRestoreRef.current = stop
+    settle()
   }, [rowCount, scrollKey, viewportKey, viewportRef])
 
   useEffect(() => {
