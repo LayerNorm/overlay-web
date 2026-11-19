@@ -114,15 +114,26 @@ export const work = mutation({
   },
 })
 
+/** How many rows of each state one tick reads, so the scan stays bounded however many intents are waiting. */
+const SCAN_LIMIT = 100
+/** A launch waiting for its parent run is looked at again after this long, instead of on every tick. */
+const DEFERRED_RECHECK_MS = 30_000
+const TURN_RECHECK_MS = 30_000
+
 export const listDue = internalQuery({
   args: { now: v.number() },
-  handler: async (ctx, args): Promise<NativeRecoveryRequest[]> => {
+  handler: async (ctx, args): Promise<{ requests: NativeRecoveryRequest[]; deferred: Array<{ id: string; generation: number }> }> => {
     const requests: Array<NativeRecoveryRequest & { nextAttemptAt: number }> = []
+    const deferred: Array<{ id: string; generation: number }> = []
     for (const state of ['pending', 'launched', 'cancelled'] as const) {
-      const items = ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_state_nextAttemptAt', q => q.eq('state', state).lte('nextAttemptAt', args.now))
+      const items = await ctx.db.query('agentAssignmentLaunchIntents')
+        .withIndex('by_state_nextAttemptAt', q => q.eq('state', state).lte('nextAttemptAt', args.now)).take(SCAN_LIMIT)
       let selected = 0
-      for await (const item of items) {
-        if (await launchDeferred(ctx, item)) continue
+      for (const item of items) {
+        if (await launchDeferred(ctx, item)) {
+          deferred.push({ id: item._id, generation: item.generation })
+          continue
+        }
         requests.push({ kind: 'assignment', id: item._id, generation: item.generation, nextAttemptAt: item.nextAttemptAt })
         if (++selected === 25) break
       }
@@ -131,7 +142,24 @@ export const listDue = internalQuery({
       const items = await ctx.db.query('agentConversationTurnQueue').withIndex('by_state_nextAttemptAt', q => q.eq('state', state).lte('nextAttemptAt', args.now)).take(25)
       requests.push(...items.map(item => ({ kind: 'turn' as const, id: item._id, generation: item.generation, nextAttemptAt: item.nextAttemptAt })))
     }
-    return requests.sort((a, b) => a.nextAttemptAt - b.nextAttemptAt).slice(0, 25).map(({ kind, id, generation }) => ({ kind, id, generation }))
+    return {
+      requests: requests.sort((a, b) => a.nextAttemptAt - b.nextAttemptAt).slice(0, 25).map(({ kind, id, generation }) => ({ kind, id, generation })),
+      deferred,
+    }
+  },
+})
+
+/** Launches still waiting for their parent run are checked again later rather than rescanned on every tick. */
+export const deferWaitingLaunches = internalMutation({
+  args: { items: v.array(v.object({ id: v.string(), generation: v.number() })) },
+  handler: async (ctx, args) => {
+    const at = Date.now() + DEFERRED_RECHECK_MS
+    for (const entry of args.items.slice(0, SCAN_LIMIT * 3)) {
+      const id = ctx.db.normalizeId('agentAssignmentLaunchIntents', entry.id)
+      const intent = id ? await ctx.db.get(id) : null
+      if (!intent || intent.generation !== entry.generation || !await launchDeferred(ctx, intent)) continue
+      await ctx.db.patch(intent._id, { nextAttemptAt: at, updatedAt: Date.now() })
+    }
   },
 })
 
@@ -142,8 +170,10 @@ export const noteAttempt = internalMutation({
     const item = id ? await ctx.db.get(id) : null
     if (!item || item.generation !== args.generation) return
     if ('parentRunId' in item && await launchDeferred(ctx, item)) return
-    await ctx.db.patch(item._id, { attempts: item.attempts + 1,
-      nextAttemptAt: Date.now() + Math.min(15 * 60_000, 1000 * 2 ** Math.min(item.attempts, 9)), updatedAt: Date.now() })
+    // A queued turn usually waits for the turn ahead of it, not for a failure, so it is checked again within the next
+    // tick or two instead of backing off for up to 15 minutes.
+    const backoff = args.kind === 'turn' ? TURN_RECHECK_MS : Math.min(15 * 60_000, 1000 * 2 ** Math.min(item.attempts, 9))
+    await ctx.db.patch(item._id, { attempts: item.attempts + 1, nextAttemptAt: Date.now() + backoff, updatedAt: Date.now() })
   },
 })
 

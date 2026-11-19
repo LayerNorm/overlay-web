@@ -2,7 +2,7 @@
 import { unstyledButton } from '@overlay/ui/control-reset'
 
 import Link from 'next/link'
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, useEffect } from 'react'
 import { ArrowUpRight, Bot, ChevronDown, CircleAlert, CircleDot, CornerDownRight, Hash, RotateCcw } from 'lucide-react'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { Button } from '@overlay/ui/primitives'
@@ -62,6 +62,11 @@ export function WorkAssignmentGroup({ items, selectedId, onOpen, canLoadMore, on
   onLoadMore: () => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  // A page can hold only assignments this member cannot see (they are filtered after paging). Keep loading until a
+  // visible one arrives or there is nothing more, instead of hiding the group and its "Show more" for good.
+  useEffect(() => {
+    if (items.length === 0 && canLoadMore) onLoadMore()
+  }, [canLoadMore, items.length, onLoadMore])
   if (items.length === 0) return null
   return (
     <section role="rowgroup" aria-label="Agent assignments" data-testid="work-group-assignments">

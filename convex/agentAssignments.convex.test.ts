@@ -395,8 +395,8 @@ test.each(['waiting_for_input', 'waiting_for_approval', 'waiting_for_resources',
     const work = mutation('collaboration/assignmentRecovery:work')
     const noteAttempt = mutation('collaboration/assignmentRecovery:noteAttempt')
     const now = intent.nextAttemptAt
-    expect(await data.convex.query(listDue, { now: now - 1 })).toEqual([])
-    expect(await data.convex.query(listDue, { now })).not.toContainEqual(request)
+    expect((await data.convex.query(listDue, { now: now - 1 })).requests).toEqual([])
+    expect((await data.convex.query(listDue, { now })).requests).not.toContainEqual(request)
     expect(await data.convex.mutation(work, { serverSecret: secret, ...request })).toBeNull()
     await data.convex.mutation(noteAttempt, request)
     expect(await data.convex.run(ctx => ctx.db.get(intent._id))).toEqual(intent)
@@ -404,7 +404,7 @@ test.each(['waiting_for_input', 'waiting_for_approval', 'waiting_for_resources',
       const parent = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique()
       await ctx.db.patch(parent!._id, { metadataJson: JSON.stringify({ ...JSON.parse(parent!.metadataJson), status: 'running' }) })
     })
-    expect(await data.convex.query(listDue, { now })).toContainEqual(request)
+    expect((await data.convex.query(listDue, { now })).requests).toContainEqual(request)
     expect(await data.convex.mutation(work, { serverSecret: secret, ...request })).toMatchObject({ kind: 'assignment', parentRunId: data.parentRunId })
     await data.convex.mutation(noteAttempt, request)
     expect(await data.convex.run(ctx => ctx.db.get(intent._id))).toMatchObject({ attempts: intent.attempts + 1 })
@@ -420,7 +420,7 @@ test.each(['completed', 'failed', 'cancelled'])('Phase 2: terminal %s parents st
     return (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!
   })
   const request = { kind: 'assignment' as const, id: intent._id, generation: intent.generation }
-  expect(await data.convex.query(query('collaboration/assignmentRecovery:listDue'), { now: intent.nextAttemptAt })).toContainEqual(request)
+  expect((await data.convex.query(query('collaboration/assignmentRecovery:listDue'), { now: intent.nextAttemptAt })).requests).toContainEqual(request)
   expect(await data.convex.mutation(mutation('collaboration/assignmentRecovery:work'), { serverSecret: secret, ...request })).toMatchObject({ kind: 'cancel' })
 })
 

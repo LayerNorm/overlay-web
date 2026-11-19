@@ -239,7 +239,15 @@ export const dispatchDue = internalAction({
   handler: async (ctx) => {
     const { internal } = await import('../_generated/api')
     const items = await ctx.runQuery(internal.harness.continuations.listDue, { now: Date.now(), limit: 25 })
-    const nativeItems = await ctx.runQuery(internal.collaboration.assignmentRecovery.listDue, { now: Date.now() })
+    // Assignment recovery must never stop ordinary continuations: a failed or oversized read only skips it this tick.
+    let nativeItems: Array<{ kind: 'assignment' | 'turn'; id: string; generation: number }> = []
+    try {
+      const native = await ctx.runQuery(internal.collaboration.assignmentRecovery.listDue, { now: Date.now() })
+      nativeItems = native.requests
+      if (native.deferred.length) await ctx.runMutation(internal.collaboration.assignmentRecovery.deferWaitingLaunches, { items: native.deferred })
+    } catch (error) {
+      console.warn('[NativeRecovery] scan skipped', { error: error instanceof Error ? error.message : 'unknown' })
+    }
     const baseUrl = process.env.OVERLAY_BFF_URL?.replace(/\/$/, '')
     const secret = process.env.INTERNAL_API_SECRET
     if ((!items.length && !nativeItems.length) || !baseUrl || !secret) return null

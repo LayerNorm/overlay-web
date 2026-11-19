@@ -7,6 +7,9 @@ import { requireServerSecret } from '../lib/auth'
 import { requireConversationAccess } from './directMessages'
 import { assertSourceReadable } from '../harness/artifactMetadata'
 
+/** At most this many artifact and evidence references are kept on an assignment result. */
+const RESULT_REF_LIMIT = 200
+
 async function replyDigest(content: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content))))
     .map(byte => byte.toString(16).padStart(2, '0')).join('')
@@ -82,8 +85,9 @@ export async function settleAssignmentAttempt(ctx: MutationCtx, childRunId: stri
   const publicationPending = childTerminal && (!deliveryTerminal || !finalMessage)
   const runStatus = state.status === 'completed' && (delivery.status === 'failed' || delivery.status === 'cancelled')
     ? delivery.status : state.status === 'completed' && finalMessage?.status === 'error' ? 'failed' : state.status
-  const artifacts = await ctx.db.query('harnessContextArtifacts').withIndex('by_runId_createdAt', q => q.eq('runId', childRunId)).collect()
-  const evidence = await ctx.db.query('harnessEvidence').withIndex('by_runId_createdAt', q => q.eq('runId', childRunId)).collect()
+  // Bounded: this runs on every child metadata write, and the envelope only needs references.
+  const artifacts = await ctx.db.query('harnessContextArtifacts').withIndex('by_runId_createdAt', q => q.eq('runId', childRunId)).take(RESULT_REF_LIMIT)
+  const evidence = await ctx.db.query('harnessEvidence').withIndex('by_runId_createdAt', q => q.eq('runId', childRunId)).take(RESULT_REF_LIMIT)
   const now = Date.now()
   const envelope = {
     workspaceId: attempt.workspaceId, assignmentId: attempt.assignmentId, attemptId: attempt.attemptId,

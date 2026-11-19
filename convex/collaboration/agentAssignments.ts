@@ -205,6 +205,9 @@ function agentScope(agent: Doc<'workspaceAgentDefinitions'>): 'workspace' | 'per
   return agent.agentRole === 'personal_chief' || agent.visibility === 'creator' ? 'personal' : 'workspace'
 }
 
+/** How many of a thread's assignments its assignment list shows. */
+const RECENT_ASSIGNMENTS = 50
+
 async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments'>) {
   if (assignment.currentAttemptId) {
     const attempt = await ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', assignment.currentAttemptId!)).unique()
@@ -217,7 +220,7 @@ async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments
   const runs = await ctx.db.query('conversationAgentRuns')
     .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', assignment.conversationId))
     .order('desc')
-    .collect()
+    .take(50)
   return runs.find(run => run.agentId === assignment.assignedAgentId)?.status ?? 'queued'
 }
 
@@ -508,9 +511,11 @@ export const forConversation = query({
       }
     }
 
-    const rows = await ctx.db.query('agentAssignments')
+    // The most recent assignments only (oldest first, as before): each one costs several reads, and a reactive query
+    // over a long-lived Chief thread must stay inside Convex's read limits.
+    const rows = (await ctx.db.query('agentAssignments')
       .withIndex('by_parentConversationId', q => q.eq('parentConversationId', conversationId))
-      .collect()
+      .order('desc').take(RECENT_ASSIGNMENTS)).reverse()
     const assignments = []
     for (const assignment of rows) {
       const execution = await assignmentExecutionForViewer(ctx, viewer, assignment)

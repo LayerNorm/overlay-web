@@ -1776,8 +1776,10 @@ async function restrictionForRun(
   if (lineage.length > MAX_ROOM_RESTRICTION_DEPTH) throw new Error('Invalid harness parent lineage.')
   const lineageRunIds = new Set(lineage.map(entry => entry.run.runId))
   for (const entry of lineage) {
+    // A run from before this flag existed has no stored value: its source room below decides, rather than treating
+    // every older run (and the personal runs that continue it) as shared and removing private tools for good.
     if (normalizedWorkspaceId(entry.metadata.policy.workspaceId) !== normalizedWorkspaceId(workspaceId)
-      || entry.run.sharedRoomRestriction === undefined || entry.run.sharedRoomRestriction === true) return true
+      || entry.run.sharedRoomRestriction === true) return true
     const source = parseJson<HarnessSource>(entry.run.sourceJson)
     if (await sourceRoomIsShared(ctx, source)) return true
     const sourceConversationId = conversationIdFromSource(source)
@@ -1801,7 +1803,7 @@ async function inheritedRoomRestriction(
 ): Promise<boolean> {
   const workspaceId = lineage[0]?.metadata.policy.workspaceId
   const actorUserId = lineage[0]?.metadata.policy.actorUserId ?? ''
-  if (lineage.some(entry => entry.run.sharedRoomRestriction === undefined || entry.run.sharedRoomRestriction)) return true
+  if (lineage.some(entry => entry.run.sharedRoomRestriction === true)) return true
   if (await restrictionForSource(ctx, workspaceId, actorUserId, source, serverSecret, newRoomRestrictionTrail())) return true
   for (const entry of lineage) {
     if (await restrictionForSource(ctx, workspaceId, actorUserId, parseJson<HarnessSource>(entry.run.sourceJson),

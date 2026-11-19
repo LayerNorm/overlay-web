@@ -5,6 +5,7 @@ import { requireServerSecret } from '../lib/auth'
 import { requireConversationAccess } from './directMessages'
 
 const terminal = (status: string) => ['completed', 'failed', 'cancelled'].includes(status)
+const RECENT_RUN_SCAN = 50
 
 export async function enqueueNativeTurn(ctx: Pick<MutationCtx, 'db'>, run: Doc<'conversationAgentRuns'>) {
   const existing = await ctx.db.query('agentConversationTurnQueue').withIndex('by_deliveryAgentRunId', q => q.eq('deliveryAgentRunId', run._id)).unique()
@@ -12,9 +13,10 @@ export async function enqueueNativeTurn(ctx: Pick<MutationCtx, 'db'>, run: Doc<'
   if (run.executionEngine !== 'overlay_harness' || !run.agentId) return null
   const conversation = await ctx.db.get(run.conversationId)
   if (!conversation?.workspaceId) return null
-  const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', run.agentId!)).unique()
+  // Only assignment threads take turns one at a time. Other conversations (including Chief and default-agent DMs)
+  // keep starting turns directly, as they did before assignments existed.
   const assignment = await ctx.db.query('agentAssignments').withIndex('by_conversationId', q => q.eq('conversationId', run.conversationId)).unique()
-  if (!assignment && agent?.agentRole !== 'workspace_chief' && agent?.agentRole !== 'personal_chief' && !agent?.isDefault) return null
+  if (!assignment) return null
   const trigger = run.userMessageId ? await ctx.db.get(run.userMessageId) : null
   const attempt = trigger?.turnId ? await ctx.db.query('agentAssignmentAttempts').withIndex('by_conversationId_questionTurnId', q =>
     q.eq('conversationId', run.conversationId).eq('questionTurnId', trigger.turnId!)).unique() : null
@@ -50,7 +52,10 @@ export async function acquireNativeTurn(ctx: Pick<MutationCtx, 'db'>, delivery: 
     if (await isPublished(ctx, owner)) await ctx.db.patch(owner._id, { state: 'settled', updatedAt: Date.now() })
     else return owner._id === item._id
   }
-  const legacy = await ctx.db.query('conversationAgentRuns').withIndex('by_conversationId_createdAt', q => q.eq('conversationId', item.conversationId)).collect()
+  // A run started outside the queue still owns the thread. Only recent runs can still be running, so the scan is
+  // bounded however long the conversation's history is.
+  const legacy = await ctx.db.query('conversationAgentRuns').withIndex('by_conversationId_createdAt', q => q.eq('conversationId', item.conversationId))
+    .order('desc').take(RECENT_RUN_SCAN)
   for (const run of legacy.filter(row => row._id !== delivery._id && !terminal(row.status) && Boolean(row.workflowRunId))) {
     const queued = await ctx.db.query('agentConversationTurnQueue').withIndex('by_deliveryAgentRunId', q => q.eq('deliveryAgentRunId', run._id)).unique()
     if (!queued || queued.state === 'claimed') return false
