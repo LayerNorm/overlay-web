@@ -47,15 +47,20 @@ function sameComposerValue(key: string, left: unknown, right: unknown): boolean 
 
 /**
  * The chat surface rebuilds composer props on every streamed update. They are equal when the same data, the same
- * rendered content and some event handler are passed; the composer calls handlers through the latest props, so a
- * replaced handler alone never needs a render.
+ * rendered content and some event handler are passed. A replaced handler alone never needs a render, because the
+ * unmemoized `ChatComposer` wrapper records the latest handlers on every parent render (`useComposerViewProps`) and
+ * the memoized view only calls them through forwarders.
  */
-export function sameChatComposerProps(prev: ChatComposerProps, next: ChatComposerProps): boolean {
-  return sameShallow(toComposerViewProps(prev), toComposerViewProps(next), (key, left, right) => {
+export function sameComposerViewProps(prev: ComposerViewProps, next: ComposerViewProps): boolean {
+  return sameShallow(prev, next, (key, left, right) => {
     const same = sameComposerValue(key, left, right)
     if (!same) recordRender(`ChatComposer changed: ${key}`)
     return same
   })
+}
+
+export function sameChatComposerProps(prev: ChatComposerProps, next: ChatComposerProps): boolean {
+  return sameComposerViewProps(toComposerViewProps(prev), toComposerViewProps(next))
 }
 
 /**
