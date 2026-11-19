@@ -70,7 +70,8 @@ for the body (shared with `ChatExchange`) and `ExchangeLoadingState` driven by
 `responseLoadingPresentation`, the same rule chat exchanges use. The 24px mark
 appears below the author as soon as the reply is pending, stays below the reply
 through text and tool-only periods, and disappears when the reply settles or
-fails. Room chrome (avatar with its working eyes, author row, reactions, threads,
+fails. It is also hidden while the reply waits on the person for an approval or an
+answer, because the agent is not working then. Room chrome (avatar with its working eyes, author row, reactions, threads,
 approval and input cards) stays around it. There is no separate dots row.
 
 Work task status and priority live in an anchored settings popover. Their values
