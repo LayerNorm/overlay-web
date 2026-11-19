@@ -35,6 +35,7 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { roomMessageDomId } from './room-message-view'
+import { useRoomConnectorActions } from './room-connector-actions'
 import { roomMessageTime } from './room-message-time'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
@@ -717,6 +718,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
   onOpenAttachmentPreview: RoomMessageItemProps['onOpenAttachmentPreview']
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
+  const connectorActions = useRoomConnectorActions()
   const trace = usePublicTrace({ messageId: message.id, enabled: !message.streaming && (!message.planPhase || message.planPhase === 'ended'),
     blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
@@ -754,6 +756,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         onOpenDraft={NOOP_DRAFT}
         onCreateAutomationDraft={NOOP_DRAFT}
         onOpenAttachmentPreview={onOpenAttachmentPreview}
+        generatedUiConnectorActions={readOnly ? undefined : connectorActions}
         generatedUiReadOnly={readOnly}
       />
       {message.streaming && !message.generationError && !message.nativeApproval && !message.nativeInput

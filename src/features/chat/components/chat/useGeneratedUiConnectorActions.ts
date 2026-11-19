@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ConnectedIntegrationsResponse } from '@overlay/app-core'
 import type { GeneratedEmailDraftData } from '@overlay/chat-core/generated-ui'
 import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
@@ -25,24 +25,57 @@ function gmailComposeUrl(data: GeneratedEmailDraftData): string {
   return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(formatCsv(data.to))}&cc=${encodeURIComponent(formatCsv(data.cc))}&bcc=${encodeURIComponent(formatCsv(data.bcc))}&su=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`
 }
 
+// After sign-in opens in another tab, re-check until the app shows up, so the
+// card flips to Connected even if this tab never regains focus.
+const PENDING_POLL_INTERVAL_MS = 3_000
+const PENDING_POLL_TIMEOUT_MS = 120_000
+
+function composioLogoUrl(slug: string): string {
+  return `https://logos.composio.dev/api/${encodeURIComponent(slug)}`
+}
+
 function resolveConnectorSlug(serviceName: string, slug?: string): string | null {
   return slug?.trim() || resolveSlugFromName(serviceName)
 }
 
 export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: boolean } = {}): GeneratedUiConnectorActions {
   const [connected, setConnected] = useState<Set<string>>(() => new Set())
+  const pendingPoll = useRef<number | null>(null)
 
-  const loadConnected = useCallback(async () => {
+  const loadConnected = useCallback(async (): Promise<Set<string>> => {
     try {
       const data = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>()
-      setConnected(new Set(data.connected ?? []))
+      const next = new Set(data.connected ?? [])
+      setConnected(next)
       for (const item of data.items ?? data.data ?? []) {
         if (item.slug) setIntegrationLogoUrl(item.slug, item.logoUrl ?? null)
       }
+      return next
     } catch {
       setConnected(new Set())
+      return new Set()
     }
   }, [])
+
+  const stopPendingPoll = useCallback(() => {
+    if (pendingPoll.current !== null) window.clearInterval(pendingPoll.current)
+    pendingPoll.current = null
+  }, [])
+
+  const watchPendingConnection = useCallback((slug: string) => {
+    stopPendingPoll()
+    const deadline = Date.now() + PENDING_POLL_TIMEOUT_MS
+    pendingPoll.current = window.setInterval(() => {
+      if (Date.now() > deadline) return stopPendingPoll()
+      void loadConnected().then((next) => {
+        if (!next.has(slug)) return
+        stopPendingPoll()
+        notifyIntegrationsChanged()
+      })
+    }, PENDING_POLL_INTERVAL_MS)
+  }, [loadConnected, stopPendingPoll])
+
+  useEffect(() => stopPendingPoll, [stopPendingPoll])
 
   useEffect(() => {
     if (!enabled) return
@@ -70,7 +103,10 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
 
   const getLogoUrl = useCallback((serviceName: string, slug?: string) => {
     const resolved = resolveConnectorSlug(serviceName, slug)
-    return resolved ? getIntegrationLogoUrl(resolved) : null
+    if (!resolved) return null
+    // The catalog logo cache warms in the background and doesn't re-render
+    // cards, so fall back to Composio's stable logo URL for the slug.
+    return getIntegrationLogoUrl(resolved) ?? composioLogoUrl(resolved)
   }, [])
 
   const isConnected = useCallback((serviceName: string, slug?: string) => {
@@ -101,6 +137,7 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
       if (redirectUrl) {
         if (oauthTab) oauthTab.location.href = redirectUrl
         else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
+        watchPendingConnection(resolved)
         return
       }
       if (data.connectionId) {
@@ -113,7 +150,7 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
     } catch {
       oauthTab?.close()
     }
-  }, [])
+  }, [watchPendingConnection])
 
   const openExternalUrl = useCallback((url: string) => {
     // Model-authored URL: normalizeGeneratedUiData already drops non-http(s),

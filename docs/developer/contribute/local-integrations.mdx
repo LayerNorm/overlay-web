@@ -149,6 +149,10 @@ POST /api/v3.1/auth_configs
 
 The auth config is project-scoped in Composio. Once created, the standard `connectResponse({ providerKey: 'slackbot' })` flow works from the UI.
 
+### Which auth config a connection uses
+
+When a connector starts, Overlay uses the toolkit's auth config: it skips disabled configs and uses a custom one (our own OAuth app) before Composio's shared managed app, creating a managed config only when none is enabled. A provider can revoke Composio's shared app. Reddit, for example, rejects it with "invalid client id" since Reddit started requiring approval for API apps. To fix such a connector, register our own app with the provider and add it as a custom auth config for that toolkit in Composio; no code change is needed.
+
 ### Rate limit considerations
 
 - The backfill worker adds small delays between thread fetches (200ms) to avoid rate limits.

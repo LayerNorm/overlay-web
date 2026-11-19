@@ -54,9 +54,28 @@ function displayName(slug: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
 }
 
+type ComposioAuthConfigRecord = {
+  id?: string
+  status?: string
+  isComposioManaged?: boolean
+}
+
+/**
+ * Pick the auth config a new connection should use. Disabled configs are
+ * skipped, and a custom config (our own OAuth app) wins over Composio's shared
+ * managed app. Providers can revoke a shared app (Reddit rejects Composio's
+ * managed client with "invalid client id"), so registering our own app in the
+ * Composio dashboard must take effect without a code change.
+ */
+export function selectComposioAuthConfigId(configs: ComposioAuthConfigRecord[]): string | null {
+  const enabled = configs.filter((config) => config.id && config.status !== 'DISABLED')
+  const custom = enabled.find((config) => config.isComposioManaged === false)
+  return (custom ?? enabled[0])?.id ?? null
+}
+
 export interface ComposioSdkFacade {
   authConfigs: {
-    list(args: { toolkit: string }): Promise<{ items?: Array<{ id?: string }> } | Array<{ id?: string }>>
+    list(args: { toolkit: string }): Promise<{ items?: ComposioAuthConfigRecord[] } | ComposioAuthConfigRecord[]>
     create(toolkit: string, args: { type: string }): Promise<{ id: string }>
   }
   connectedAccounts: {
@@ -230,8 +249,9 @@ export class ComposioIntegrationProvider implements IntegrationProvider {
     if (!apiKey) return { provider: this.id, error: 'Composio not configured' }
     const composio = await this.sdkFactory(apiKey)
     const authConfigs = await composio.authConfigs.list({ toolkit: context.providerKey })
-    const firstConfig = (Array.isArray(authConfigs) ? authConfigs : authConfigs.items ?? [])[0]
-    const authConfigId = firstConfig?.id ?? (await composio.authConfigs.create(context.providerKey, {
+    const authConfigId = selectComposioAuthConfigId(
+      Array.isArray(authConfigs) ? authConfigs : authConfigs.items ?? [],
+    ) ?? (await composio.authConfigs.create(context.providerKey, {
       type: 'use_composio_managed_auth',
     })).id
     const request = await composio.connectedAccounts.link(context.userId, authConfigId, {
