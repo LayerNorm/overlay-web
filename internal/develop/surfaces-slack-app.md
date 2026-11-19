@@ -60,6 +60,10 @@ oauth_config:
       - channels:read
       - groups:read
       - channels:join
+    user:
+      # channel sync: members reply, edit, delete and react as themselves
+      - chat:write
+      - reactions:write
 
 settings:
   event_subscriptions:
@@ -71,6 +75,9 @@ settings:
       - message.im
       - message.mpim
       - member_joined_channel
+      - channel_created         # channel sync auto-link
+      - reaction_added          # channel sync
+      - reaction_removed        # channel sync
       - app_home_opened
       - app_context_changed
       - agent_session_stopped
@@ -106,6 +113,48 @@ settings:
 - **`interactivity`** — enabled now so native feedback buttons work and
   approval cards are an additive change later.
 
+## Channel sync
+
+The same app powers Slack channel sync (internal/plans/SLACK_TEAMS_SYNC_PLAN.md).
+An owner or admin connects from Settings → Workspace → Import & sync, which
+runs this OAuth flow with `purpose=sync`. Message, edit, delete and reaction
+events from linked channels are applied by `src/server/sync/slack/`. Private
+channels only sync once Overlay has been invited to them.
+
+History and repair: a Convex cron (`sync/history:runTick`) wakes
+`/api/v1/sync/history/process` every minute while there is work. The worker
+(`src/server/sync/history-worker.ts`) imports each new link's last 180 days
+newest first, then its thread replies, and repairs every syncing link's last
+day once a night (after 10:00 UTC). Every call draws from one token bucket per
+Slack workspace and method (`src/server/sync/rate-limit.ts`,
+`syncRateBudgets`), shared with outbound sends, which come first. Until the
+app is approved in the Slack Marketplace, Slack allows us one
+`conversations.history` or `conversations.replies` call a minute with 15
+messages a page, so a busy channel's history takes hours; set
+`SLACK_SYNC_MARKETPLACE_APPROVED=true` after approval to use Tier 3 (about 50
+calls a minute, 1,000 messages a page). A 429 or an `app_rate_limited` event
+shows the affected channels as Catching up; they resume and repair on their
+own. With auto-link on, `channel_created` links each new public channel to a
+new Overlay channel and Overlay joins it (`channels:join`).
+Replying from Overlay uses each member's own Slack user token, so messages
+appear in Slack under their name. A member signs in once through
+`/api/v1/surfaces/slack/connect?purpose=sync_member&returnTo=…`, which asks
+only for the user scopes above (no bot scopes, no reinstall). The callback
+exchanges the code with `oauth.v2.access` itself, because the Chat SDK
+callback handles bot installs; the token is sealed with `sealSyncToken` before
+it reaches Convex (`syncMemberAccounts`) and is only opened by the outbound
+worker. Adding the user scopes to an existing app does not require workspaces
+to reinstall; members grant them when they connect.
+
+Outbound changes (posts, thread replies, edits, deletes, reactions) are queued
+in `syncOutbox` by the existing room mutations and sent by
+`src/server/sync/outbound-worker.ts`. Our own posts come back through the
+Events API as ordinary user messages, sometimes before `chat.postMessage`
+returns. Ingest drops them by their recorded `ts`; while a member's post is in
+flight, a new message from their Slack user is re-checked two seconds later
+instead of being stored, and completing the post folds in any copy that
+slipped through, so each message exists once in Overlay.
+
 ## Several agents in one channel
 
 One Slack install has one bot user (`@Overlay`), and any number of agents can
@@ -128,6 +177,7 @@ name. Inbound routing (`src/shared/surfaces/surface-routing.ts`):
 | `SLACK_SIGNING_SECRET` | webhook signature verification |
 | `SLACK_ENCRYPTION_KEY` | AES-256-GCM key encrypting stored bot tokens at rest (`openssl rand -hex 32`) |
 | `SLACK_REDIRECT_URI` | optional override; default `<origin>/api/v1/surfaces/slack/callback` |
+| `SLACK_SYNC_MARKETPLACE_APPROVED` | `true` once the app is approved in the Slack Marketplace; switches channel sync history from 1 call a minute (15 messages a page) to Tier 3. Leave unset before approval. |
 
 Chat SDK state: `ConvexChatStateAdapter` (`src/server/surfaces/convex-chat-state.ts`
 over `convex/surfaces/chatState.ts` and the `surfaceChatState` table) stores

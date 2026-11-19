@@ -2,6 +2,8 @@
 
 Living documentation for importing data from external communication platforms (Slack, Teams, Discord, Telegram) into Overlay. This is the source of truth for the import architecture, canonical model, and adapter interface.
 
+Continuous two-way channel sync is separate from these one-time imports. It lives in `convex/sync/` and `src/server/sync/`, with its own tables (`syncConnections`, `syncChannelLinks`, `syncMessageMap`, `syncIdentities`, `syncMemberAccounts`, `syncOutbox`, `syncRateBudgets`) and normalized events in `src/shared/sync/types.ts`. Sync history import and nightly gap repair run in `src/server/sync/history-worker.ts` under the shared rate limiter in `src/server/sync/rate-limit.ts`, and write through the same idempotent `sync/ingest:applyInbound` as live events. See `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`.Members' own grants for replying live in `convex/sync/accounts.ts`; outbound changes are queued by `convex/sync/outbox.ts` and sent by `src/server/sync/outbound-worker.ts` through each provider's outbound adapter (Slack: `src/server/sync/slack/outbound.ts`). See `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`.ee `internal/plans/SLACK_TEAMS_SYNC_PLAN.md`. Microsoft Teams sync lives in `src/server/sync/teams/` (Graph client, HTML conversion, webhook handling, subscriptions, history and outbound adapters) with `convex/sync/teamsLinks.ts` and `convex/sync/teamsAccounts.ts`; its Microsoft app setup is in `internal/develop/teams-sync-app.md`. Teams reply ids are stored as `root/reply` because Graph reply ids are only unique beside their root.
+
 ## Architecture
 
 External imports follow a deterministic, server-side pipeline — no LLM agent loops. The flow is:
@@ -13,7 +15,7 @@ External imports follow a deterministic, server-side pipeline — no LLM agent l
 5. **Report** coverage and progress via Convex subscriptions.
 
 ```
-Workspace Settings → Import tab
+Workspace Settings → Import & sync tab → One-time import
   → Connect platform (Composio OAuth)
   → Select channels/conversations
   → Create import job (Convex)
@@ -166,7 +168,7 @@ live import support until the import job repository is provider-neutral.
 
 ## UI
 
-The `SlackImportPanel` component in `src/features/workspaces/components/SlackImportPanel.tsx` renders inside the workspace settings "Import" tab. It has 5 states and a matching 5-step indicator:
+The `SlackImportPanel` component in `src/features/workspaces/components/SlackImportPanel.tsx` renders inside the workspace settings "Import & sync" tab, behind its **One-time import** action. It has 5 states and a matching 5-step indicator:
 
 1. **Not connected / Connect** — "Connect Slack" button triggers Composio OAuth; this is the active Connect step until the service is connected
 2. **People** — review/invite Slack members before importing; once Slack is connected, the Connect step is marked complete
@@ -175,6 +177,17 @@ The `SlackImportPanel` component in `src/features/workspaces/components/SlackImp
 5. **Done** — terminal summary (completed/failed/cancelled) with coverage and next actions. The import wizard lands on Done instead of returning to People.
 
 The connection state comes from the same live query: it is set on first load and changes on its own when OAuth finishes in another tab (the panel waits up to five minutes after **Connect Slack**, then re-enables the button). It must not reset the current view when the user advances from People to the Chats picker; otherwise the picker flashes and the wizard returns to People.
+
+### Slack and Teams sync settings
+
+The tab opens on ongoing sync (`SyncSettingsPanel` in `src/features/workspaces/components/`, plain helpers in `src/features/workspaces/lib/sync-settings.ts`), with a Slack / Microsoft Teams switch. Everything on it comes from the live `sync/links:status` query, so connects, links and history progress update without polling:
+
+- **Workspace card:** who connected the Slack workspace or Teams organization and when. Owners and admins connect through `/api/v1/surfaces/slack/connect?purpose=sync` or `/api/v1/sync/teams/connect`, and the menu offers Disconnect (and, for Teams, the app package from `/api/v1/sync/teams/app-package`).
+- **Your account:** each member connects their own account (`purpose=sync_member` for Slack, `/api/v1/sync/teams/account/connect` for Teams) and can then opt in to direct message sync. This is the only card members who are not owners or admins can change.
+- **Channels:** the auto-link switch, the **Link channel** picker (channels from `GET /api/v1/sync/<provider>?action=channels`, linked into a new channel or an existing one from `sync/ui:linkTargets`), and the link table with Syncing, Importing history (progress from `historyOldestAt` between `historyTargetAt` and the link's creation), Catching up (`catchUpUntil`) and Paused (`pauseReason`) states.
+- Actions post to `/api/v1/sync/<provider>`. A 404 or 503 from a Teams route shows "Microsoft Teams sync isn’t available yet" instead of an error. Returning from OAuth shows one toast from `?syncConnected=` or `?surfaceError=` and removes the parameter.
+
+Linked channels show a small **Slack** or **Teams** label in the Chats list and channel header (`sync/ui:channelSources`, through `useChannelSyncSources` in `src/hooks/use-sync-sources.ts`). Reaching the top of a linked channel that is still importing history calls `sync/history:prioritize` at most once a minute; failures are ignored.
 
 ## Conversation lifecycle scope (archive/delete)
 

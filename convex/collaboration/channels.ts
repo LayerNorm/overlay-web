@@ -6,6 +6,7 @@ import type { Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
+import { enqueueSyncOutbound } from '../sync/outbox'
 
 type Ctx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
@@ -289,6 +290,7 @@ export async function setReactionFor(ctx: MutationCtx, args: ObjectType<typeof s
       messageId: args.messageId,
       payload: { enabled: args.enabled, emoji },
     })
+    await enqueueSyncOutbound(ctx, { messageId: args.messageId, actorUserId: args.actorUserId, action: args.enabled ? 'react' : 'unreact', emoji })
   }
   const rows = await ctx.db.query('conversationMessageReactions')
     .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))

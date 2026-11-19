@@ -6,6 +6,7 @@ import { useConvexAuth, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { SYNC_SOURCE_LABEL, useChannelSyncSources } from '@/hooks/use-sync-sources'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -572,6 +573,7 @@ function ChatListRow({
   isStreaming,
   unread,
   editingTitle,
+  syncProvider,
 
   onOpenChat,
   onBeginRename,
@@ -588,6 +590,7 @@ function ChatListRow({
   isStreaming: boolean
   unread: number
   editingTitle: string
+  syncProvider?: 'slack' | 'teams'
 
   onOpenChat: (chat: Conversation) => void
   onBeginRename: (chat: Conversation, event: MouseEvent<HTMLButtonElement>) => void
@@ -650,6 +653,9 @@ function ChatListRow({
           >
             <ChatConversationIcon chat={chat} size={12} className="shrink-0" principals={principals} />
             <span className="flex-1 truncate">{chat.title}</span>
+            {syncProvider ? (
+              <span className="shrink-0 text-[10px] text-(--muted-light)">{SYNC_SOURCE_LABEL[syncProvider]}</span>
+            ) : null}
             {chat.activity && hasThreadActivity(chat.activity) ? (
               <ThreadActivityIndicator status={chat.activity} />
             ) : isStreaming && !unread ? (
@@ -761,6 +767,7 @@ function ChatListBody({
     all: 'No chats yet',
   }[chatView]
   const deletingChatIdSet = new Set(deletingChatIds)
+  const syncSources = useChannelSyncSources()
   const principals = useWorkspacePrincipalDirectory(viewChats.find((chat) => chat.conversationType === 'dm')?.workspaceId)
   const listClassName = 'ml-0 border-l-0 pl-0'
   if (loading) {
@@ -820,6 +827,7 @@ function ChatListBody({
                 ? (chat.unread ? 1 : 0)
                 : Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
               editingTitle={editingTitle}
+              syncProvider={syncSources.get(chat._id)?.provider}
 
               onOpenChat={openChat}
               onBeginRename={beginRename}
