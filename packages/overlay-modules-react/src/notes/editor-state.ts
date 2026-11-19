@@ -922,6 +922,9 @@ export function useNotebookAgent({
           }
         }
         setAgentItems((prev) => [...prev, { type: 'error', text: errText }])
+        // The request was refused before the message was saved, so the prompt is not in the transcript:
+        // put it back in the composer (unless something new was typed) so it can be copied or retried.
+        setAgentInput((current) => current || message)
         return
       }
 

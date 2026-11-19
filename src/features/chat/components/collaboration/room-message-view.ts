@@ -409,3 +409,11 @@ export function holdRoomScrollAnchor(scroller: HTMLElement, anchor: RoomScrollAn
   const timer = view.setTimeout(stop, ANCHOR_HOLD_TIMEOUT_MS)
   return stop
 }
+
+/**
+ * Whether an agent reply shows the "is responding" mark: not after it failed, and not while it waits on the
+ * person for an approval or an answer, because the agent is not working then.
+ */
+export function showsResponseMark(message: Pick<RoomMessageView, 'generationError' | 'nativeApproval' | 'nativeInput'>): boolean {
+  return !message.generationError && !message.nativeApproval && !message.nativeInput
+}

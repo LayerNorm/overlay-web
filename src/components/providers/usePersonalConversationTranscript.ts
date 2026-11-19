@@ -149,7 +149,8 @@ export function usePersonalConversationTranscript({ workspaceId, conversationId,
     .slice(0, 50).map(row => row.message._id)
   // Only subscribe while something is generating: idle chats never depend on the stream query.
   const activeStreams = useLivePublicStreams({
-    scope: canReadMessages ? { workspaceId: workspaceId!, conversationId: conversationId! } : null,
+    // Wait for the settings, so a chat opened mid-reply does not switch from whole to incremental reads.
+    scope: canReadMessages && settings !== undefined ? { workspaceId: workspaceId!, conversationId: conversationId! } : null,
     messageIds: generatingMessageIds,
     incremental: settings?.livePublicStreamRevision === 'incremental-v1',
     fullQuery: api.chat.personal.activePublicStreams,

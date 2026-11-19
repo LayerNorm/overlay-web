@@ -94,7 +94,9 @@ export function ConvexRoomMessageSubscription({
   // Only subscribe while something is generating: idle rooms never depend on the stream query.
   const settings = useQuery(api.platform.uiSettings.mine, {})
   const activeStreams = useLivePublicStreams({
-    scope: room ? { workspaceId, conversationId } : null,
+    // Wait for the settings, so a room opened mid-reply does not read the whole stream and then switch to
+    // incremental reads (dropping the text it showed for one round trip).
+    scope: room && settings !== undefined ? { workspaceId, conversationId } : null,
     messageIds: activeMessageIds,
     incremental: settings?.livePublicStreamRevision === 'incremental-v1',
     fullQuery: api.collaboration.rooms.activePublicStreams,

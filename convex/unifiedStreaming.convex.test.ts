@@ -224,7 +224,8 @@ test('authorized personal, automation, and room readers see sequenced snapshots;
       assistantMessageId: ids.roomMessage, runId: 'workspace:run', executionGeneration: 2, invocation: 0,
       sequence: 1, segmentIndex: 0,
     }],
-  })).resolves.toMatchObject([{ fromSegmentIndex: 1, segments: [] }])
+    // An older client's cursor (with a sequence) still validates; the held segment comes back again.
+  })).resolves.toMatchObject([{ fromSegmentIndex: 0, segments: [{ index: 0, text: 'Live answer' }] }])
 
   const outsider = convex.withIdentity({ subject: 'outsider' })
   await expect(outsider.query(personalStreams, {
@@ -696,9 +697,9 @@ test('incremental live reads return only segments the reader lacks and keep gene
   const append = mutation('appendPublicStream')
   const read = (cursors: PublicStreamCursor[]) => convex.run(ctx =>
     readActivePublicStreamUpdates(ctx, stream.conversationId, [stream.assistantMessageId], cursors))
-  const cursor = (sequence: number, segmentIndex: number, executionGeneration = 0): PublicStreamCursor => ({
+  const cursor = (segmentIndex: number, executionGeneration = 0): PublicStreamCursor => ({
     assistantMessageId: stream.assistantMessageId, runId: stream.runId, executionGeneration,
-    invocation: 0, sequence, segmentIndex,
+    invocation: 0, segmentIndex,
   })
   await convex.mutation(append, appendArgs(stream, 0, 'a'.repeat(8_190)))
   await convex.mutation(append, appendArgs(stream, 1, 'bcd'))
@@ -708,7 +709,8 @@ test('incremental live reads return only segments the reader lacks and keep gene
   expect(first[0]!.segments.map(segment => segment.index)).toEqual([0, 1])
   let held = mergePublicStreamUpdates(new Map(), first)
 
-  expect(await read([cursor(1, 1)])).toMatchObject([{ sequence: 1, fromSegmentIndex: 2, segments: [] }])
+  // A reader holding segment 1 gets segment 1 again (it may still grow), not the first segment.
+  expect(await read([cursor(1)])).toMatchObject([{ sequence: 1, fromSegmentIndex: 1, segments: [{ index: 1, text: 'd' }] }])
 
   await convex.mutation(append, appendArgs(stream, 2, 'efg'))
   const next = await read(publicStreamCursors(held, [stream.assistantMessageId]) as PublicStreamCursor[])
@@ -719,7 +721,7 @@ test('incremental live reads return only segments the reader lacks and keep gene
   expect(held.get(stream.assistantMessageId)?.snapshot.text).toBe(`${'a'.repeat(8_190)}bcdefg`)
 
   // A cursor from another generation is not trusted: the whole stream comes back.
-  expect((await read([cursor(2, 1, 1)]))[0]).toMatchObject({ fromSegmentIndex: 0 })
+  expect((await read([cursor(1, 1)]))[0]).toMatchObject({ fromSegmentIndex: 0 })
   // A segment from another attempt under the same receipt is never returned.
   await convex.run(ctx => ctx.db.insert('harnessPublicStreamSegments', {
     runId: stream.runId, workflowRunId: 'workflow:stale-attempt', executionGeneration: 0, receiptId: 'model:0',
@@ -731,12 +733,12 @@ test('incremental live reads return only segments the reader lacks and keep gene
   const run = await convex.run(ctx => ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique())
   const metadata = JSON.parse(run!.metadataJson) as Record<string, unknown>
   await convex.run(ctx => ctx.db.patch(run!._id, { metadataJson: JSON.stringify({ ...metadata, executionGeneration: 1 }) }))
-  expect(await read([cursor(2, 1)])).toEqual([])
+  expect(await read([cursor(1)])).toEqual([])
   await convex.run(ctx => ctx.db.patch(run!._id, { metadataJson: run!.metadataJson }))
   await convex.run(ctx => ctx.db.patch(stream.assistantMessageId, {
     publicStreamCheckpoint: { runId: stream.runId, executionGeneration: 0, receiptId: 'model:0', invocation: 0 },
   }))
-  expect(await read([cursor(2, 1)])).toEqual([])
+  expect(await read([cursor(1)])).toEqual([])
 })
 
 test('the continuation flag is read from stored step fields, and from JSON for older steps', async () => {

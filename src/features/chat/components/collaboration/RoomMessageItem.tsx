@@ -33,7 +33,7 @@ import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
-import { roomMessageDomId } from './room-message-view'
+import { roomMessageDomId, showsResponseMark } from './room-message-view'
 import { roomMessageTime } from './room-message-time'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
@@ -753,7 +753,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
       />
-      {!message.generationError
+      {showsResponseMark(message)
         ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} />
         : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
