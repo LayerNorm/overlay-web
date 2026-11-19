@@ -276,6 +276,32 @@ test('computer_download_file denies personal sources in shared rooms and wrong w
   }
 })
 
+test('computer_download_file denies generated outputs from another workspace and legacy outputs without workspace metadata', async () => {
+  const workspaceOutput = fixture({
+    metadata: { kind: 'output', userId: 'user_1', scope: 'personal', workspaceId: 'workspace_A' },
+  })
+  const crossWorkspace = await executeComputerDownloadFile(
+    { ...options(), workspaceId: 'workspace_B' },
+    { fileId: 'file_1' },
+    workspaceOutput.dependencies,
+  )
+  assert.equal(crossWorkspace.success, false)
+  assert.match(crossWorkspace.error ?? '', /workspace/i)
+  assert.equal(workspaceOutput.calls.readArgs, undefined)
+  assert.equal(workspaceOutput.calls.command, undefined)
+  assert.equal(workspaceOutput.calls.writes.length, 0)
+
+  const legacyOutput = fixture({
+    metadata: { kind: 'output', userId: 'user_1', scope: 'personal', workspaceId: undefined },
+  })
+  const legacyResult = await executeComputerDownloadFile(options(), { fileId: 'file_1' }, legacyOutput.dependencies)
+  assert.equal(legacyResult.success, false)
+  assert.match(legacyResult.error ?? '', /workspace/i)
+  assert.equal(legacyOutput.calls.readArgs, undefined)
+  assert.equal(legacyOutput.calls.command, undefined)
+  assert.equal(legacyOutput.calls.writes.length, 0)
+})
+
 test('computer_download_file rejects a source whose scope changes before byte retrieval', async () => {
   const state = fixture({
     readError: Object.assign(new Error('scope changed'), { statusCode: 404 }),

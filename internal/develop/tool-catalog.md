@@ -55,6 +55,9 @@ destination path and source-byte checksum without exposing storage credentials
 or a download URL. Cloud writes above Boat's 5 MiB inline-write limit use a
 short-lived, path-bound provider upload URL for a server-only raw-byte PUT; the
 URL is never returned, logged, or exposed as a public Overlay file link.
+Generated output files retain the workspace supplied at creation through pending
+and completed states. A transfer requires an exact active-workspace match; legacy
+outputs without workspace metadata are not inferred or reassigned.
 
 ## How tool calls appear in chat
 

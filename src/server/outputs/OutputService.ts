@@ -66,6 +66,7 @@ export class OutputService {
     const fileName = args.fileName?.trim() || `${args.type}-${now}`
     const id = await this.deps.repository.createFile({
       userId: args.userId,
+      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
       name: fileName,
       type: 'file',
       kind: 'output',
