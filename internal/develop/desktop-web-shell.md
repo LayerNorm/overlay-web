@@ -43,6 +43,16 @@ The sidebar's direct sign-out action also awaits the bounded native cleanup
 before deleting its web session and navigating away.
 Agent Host starts and online panels verify the actual server session; sign-out
 stops the host, closes panels, cancels dictation (including microphone tracks and stale paste results) and clears the badge.
+Signed out, the main window shows the desktop home at `/auth/desktop`, never the
+website: sign-out navigates there when `window.overlayDesktop` exists, `DesktopProvider`
+sends a signed-out main window there instead of the guest app (panels stay), and the
+proxy redirects a signed-out `/w/…` request from the app's user agent
+(`Overlay/<v> … Electron/<v>`) there instead of to `/auth/sign-in`. The user agent only
+picks the page; it grants nothing. The home is the loading screen's wordmark and line
+with **Sign in** (and "Create an account"), both calling `auth.signIn`, which opens the
+browser handoff; it shows a waiting state with "Open browser again" until the transfer
+link replaces the page. Opened in a plain browser, or by an app without the `auth`
+capability, it goes to `/auth/sign-in`; with a live session it opens `/app`.
 The app shell publishes its background as `<meta name="theme-color">` (normalized
 to `#rrggbb`). The desktop main window listens for `did-change-theme-color` and sets
 `nativeTheme.themeSource` to light or dark from it, so the window frame follows the
