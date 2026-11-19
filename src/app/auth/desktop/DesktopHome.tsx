@@ -66,7 +66,7 @@ export function DesktopHome() {
     <div className="relative flex h-screen flex-col items-center justify-center overflow-hidden bg-background px-6 text-foreground">
       <div className="desktop-home-drag absolute inset-x-0 top-0 h-10" aria-hidden />
       <BrandLockup className="app-brand-loader-lockup" motion="look" />
-      <div className="mt-[30px] flex min-h-[21px] items-center justify-center text-sm text-muted" role="status" aria-live="polite">
+      <div className="mt-[30px] flex min-h-[21px] items-center justify-center text-sm text-(--muted)" role="status" aria-live="polite">
         {phase === 'waiting' ? (
           <span className="inline-flex items-center gap-2"><Loader2 size={16} className="animate-spin" />Finish signing in in your browser&hellip;</span>
         ) : phase === 'opening' ? (
@@ -79,7 +79,7 @@ export function DesktopHome() {
       {phase === 'signed-out' ? (
         <div className="desktop-home-enter mt-7 flex w-[260px] flex-col items-center">
           <Button variant="primary" className="w-full" onClick={signIn}>Sign in</Button>
-          <p className="mt-4 text-center text-xs text-(--muted-light)" role={error ? 'alert' : undefined}>
+          <p className="mt-4 w-[340px] text-center text-xs text-(--muted-light)" role={error ? 'alert' : undefined}>
             {error ?? 'Opens in your browser, then brings you back here.'}
           </p>
         </div>
@@ -97,7 +97,7 @@ export function DesktopHome() {
       {!busy ? (
         <div className="absolute inset-x-0 bottom-4 flex flex-col items-center gap-3 text-center">
           {phase === 'signed-out' ? (
-            <p className="desktop-home-enter text-[13px] text-muted">
+            <p className="desktop-home-enter text-[13px] text-(--muted)">
               New to Overlay?{' '}
               <Button variant="link" className="text-[13px]" onClick={signIn}>Create an account</Button>
             </p>
