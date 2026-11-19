@@ -23,22 +23,9 @@ import {
   getAgentEditorPanelMode,
   setAgentEditorPanelMode,
 } from '@/shared/agents/agent-editor-presentation'
-import {
-  THREAD_PANEL_MIN_WIDTH,
-  getAgentRightSidebarPreferences,
-  setAgentRightSidebarPreferences,
-} from '@/shared/agents/agent-right-sidebar-preferences'
-import {
-  activeTab,
-  openFile,
-  openLauncher,
-  openPanel,
-  panelsOf,
-  tabsFromPanels,
-  withoutFileTabs,
-  type ThreadPanelTabs,
-} from '../lib/thread-panel-tabs'
+import { openLauncher } from '../lib/thread-panel-tabs'
 import { nextLauncherId } from './ThreadPanel'
+import { useThreadPanel } from './use-thread-panel'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
@@ -58,19 +45,6 @@ import { captureNavigationIntent } from '@/shared/app/navigation-intent'
 
 type EditorMode = 'new' | 'edit' | null
 
-type ThreadPanelState = { open: boolean; width: number; expanded: boolean; tabs: ThreadPanelTabs }
-
-function initialThreadPanel(): ThreadPanelState {
-  const { open, width, expanded, tabs, active } = getAgentRightSidebarPreferences()
-  const restored = tabsFromPanels(tabs, active)
-  return { open, width, expanded, tabs: restored.tabs.length ? restored : openLauncher(restored, nextLauncherId()) }
-}
-
-/** Expanded, the panel takes most of the window but leaves the thread a readable column beside the sidebars. */
-function threadPanelWidth({ width, expanded }: ThreadPanelState): number {
-  if (!expanded || typeof window === 'undefined') return width
-  return Math.max(width, Math.round(window.innerWidth - 60 - 272 - 400))
-}
 
 function AgentSettingsButton({ hasAgent, active, onClick }: {
   hasAgent: boolean
@@ -287,13 +261,7 @@ function AgentConversationWorkspaceContent() {
   const { activeWorkspaceId } = useWorkspace()
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
-  const [panel, setPanel] = useState<ThreadPanelState>(initialThreadPanel)
-  // Opened files belong to one thread, so switching threads closes their tabs.
-  const [panelConversationId, setPanelConversationId] = useState(conversationId)
-  if (panelConversationId !== conversationId) {
-    setPanelConversationId(conversationId)
-    setPanel((current) => ({ ...current, tabs: withoutFileTabs(current.tabs, nextLauncherId()) }))
-  }
+  const panel = useThreadPanel({ conversationId, threadOpen: Boolean(agentId && conversationId) })
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
   const [panelMode, setPanelModeState] = useState<'dialog' | 'side'>(() => getAgentEditorPanelMode())
   const setPanelMode = useCallback((next: 'dialog' | 'side') => {
@@ -303,16 +271,13 @@ function AgentConversationWorkspaceContent() {
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
-  const closeRightSidebar = () => setPanel((current) => ({ ...current, open: false }))
-  const updatePanelTabs = (update: (tabs: ThreadPanelTabs) => ThreadPanelTabs) => {
-    setPanel((current) => ({ ...current, tabs: update(current.tabs) }))
-  }
-  const shownTab = panel.open ? activeTab(panel.tabs) : null
+  const closeRightSidebar = () => panel.setOpen(false)
+  const { shownTab } = panel
   const outerFilesHost = useChatFilesHost()
   // Files opened from this thread's chat cards and tool rows open as tabs in its panel, so the user stays here.
   const filesHost: ChatFilesHost = {
     useFileSummaries: outerFilesHost.useFileSummaries,
-    openFile: ({ id }) => setPanel((current) => ({ ...current, open: true, tabs: openFile(current.tabs, id) })),
+    openFile: ({ id }) => panel.openFile(id),
     activeFileId: shownTab?.kind === 'file' ? shownTab.fileId : null,
   }
   const { sidebarEditor, computerAccess, computerControl, updateComputerControl } = useAgentConversationComputer({
@@ -336,32 +301,6 @@ function AgentConversationWorkspaceContent() {
   }
 
   const [createOpen, setCreateOpen] = useState(false)
-  useEffect(() => {
-    setAgentRightSidebarPreferences({ open: panel.open, width: panel.width, expanded: panel.expanded, ...panelsOf(panel.tabs) })
-  }, [panel])
-
-  const updateSidebarOpen = (open: boolean) => setPanel((current) => ({ ...current, open }))
-
-  // ⌥T opens a launcher, ⌘J the Terminal and ⌘P the Files panel, opening the panel when it is closed.
-  const threadOpen = Boolean(agentId && conversationId)
-  useEffect(() => {
-    if (!threadOpen) return
-    const openThreadPanel = (update: (tabs: ThreadPanelTabs) => ThreadPanelTabs) => {
-      setPanel((current) => ({ ...current, open: true, tabs: update(current.tabs) }))
-    }
-    const onKey = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey
-      const plainMod = mod && !event.altKey && !event.shiftKey
-      const key = event.key.toLowerCase()
-      if (event.altKey && !mod && event.code === 'KeyT') openThreadPanel((tabs) => openLauncher(tabs, nextLauncherId()))
-      else if (plainMod && key === 'j') openThreadPanel((tabs) => openPanel(tabs, 'terminal'))
-      else if (plainMod && key === 'p') openThreadPanel((tabs) => openPanel(tabs, 'files'))
-      else return
-      event.preventDefault()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [threadOpen])
 
   // "New agent" opens the creation dialog; nothing is created until the
   // person confirms.
@@ -488,10 +427,10 @@ function AgentConversationWorkspaceContent() {
       <AgentRightSidebar
         conversationId={conversationId}
         tabs={panel.tabs}
-        onTabsChange={updatePanelTabs}
-        onOpenLauncher={() => updatePanelTabs((tabs) => openLauncher(tabs, nextLauncherId()))}
+        onTabsChange={panel.updateTabs}
+        onOpenLauncher={() => panel.updateTabs((tabs) => openLauncher(tabs, nextLauncherId()))}
         expanded={panel.expanded}
-        onToggleExpanded={() => setPanel((current) => ({ ...current, expanded: !current.expanded }))}
+        onToggleExpanded={panel.toggleExpanded}
         onClose={closeRightSidebar}
         pullRequests={threadScope.pullRequests}
 
@@ -520,16 +459,14 @@ function AgentConversationWorkspaceContent() {
           headerActions={agentId ? (
             <RightSidebarToggle
               open={panel.open}
-              onToggle={() => updateSidebarOpen(!panel.open)}
+              onToggle={() => panel.setOpen(!panel.open)}
             />
           ) : undefined}
           externalRightPanel={agentSidebar}
           externalRightPanelLabel="Thread panel"
           externalRightPanelMode="docked"
-          externalRightPanelWidth={threadPanelWidth(panel)}
-          onExternalRightPanelResize={(width) => setPanel((current) => ({
-            ...current, width: Math.max(THREAD_PANEL_MIN_WIDTH, Math.round(width)), expanded: false,
-          }))}
+          externalRightPanelWidth={panel.width}
+          onExternalRightPanelResize={panel.resize}
           onExternalRightPanelClose={closeRightSidebar}
           bodyOverlay={computerControl ? (
             <AgentComputerControlOverlay
