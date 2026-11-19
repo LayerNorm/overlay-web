@@ -182,7 +182,7 @@ function AgentOptions({ agents, value, onChange }: {
   )
 }
 
-type ComposerEditor = { getPlainText(): string; clear(): void }
+type ComposerEditor = { getPlainText(): string; clear(): void; getMentions?(): readonly unknown[] }
 
 /**
  * The new-automation composer: Schedule and Agent beside the model control, and a send that creates the automation
@@ -210,8 +210,10 @@ export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInpu
   const onSend = async () => {
     const instructions = textareaRef.current?.getPlainText().trim() ?? ''
     if (!instructions || creatingRef.current) return
-    if (attachmentCount > 0) {
-      toast.error('Automations can’t include attachments yet. Remove them, or describe what to use in the instructions.')
+    // Instructions are saved as plain text, so attachments and @mentions (which point at files, agents or people by
+    // id) would be dropped silently. Ask for them to be removed instead.
+    if (attachmentCount > 0 || (textareaRef.current?.getMentions?.().length ?? 0) > 0) {
+      toast.error('Automations can’t include attachments or @mentions yet. Remove them, or describe what to use in the instructions.')
       return
     }
     creatingRef.current = true

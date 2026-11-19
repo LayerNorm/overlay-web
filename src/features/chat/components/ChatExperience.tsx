@@ -199,8 +199,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
     const composerProps = viewProps.composerProps
     viewProps.composerProps = {
       ...composerProps,
-      // Instructions are saved as plain text, so mention chips (which carry resource ids) are not offered here.
-      surface: { ...composerProps.surface, placeholder: newAutomation.placeholder, composerControls: newAutomation.composerControls, mentionCategories: [] },
+      surface: { ...composerProps.surface, placeholder: newAutomation.placeholder, composerControls: newAutomation.composerControls },
       actions: { ...composerProps.actions, onSend: newAutomation.onSend },
     }
   }
