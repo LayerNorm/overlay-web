@@ -81,13 +81,11 @@ const ACCESS_OPTIONS = [
 const PRESET_OPTIONS = [
   { value: 'everything', label: 'Everything' },
   { value: 'standard', label: 'Standard' },
-  { value: 'readonly', label: 'Read only' },
 ] as const
 
 const PRESET_SUMMARY: Record<AgentToolPreset, string> = {
   everything: 'All tools',
   standard: 'Standard tools',
-  readonly: 'Read-only tools',
 }
 
 /** Keep BYOK drafts unchanged; otherwise use the draft when offered or the first enabled model. */
