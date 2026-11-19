@@ -188,9 +188,11 @@ type ComposerEditor = { getPlainText(): string; clear(): void }
  * The new-automation composer: Schedule and Agent beside the model control, and a send that creates the automation
  * with the composer's model, runs it once and opens its thread. Null outside a new automation.
  */
-export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInputChange }: {
+export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInputChange, attachmentCount }: {
   enabled: boolean
   modelId: string
+  /** Images and documents in the composer. Instructions are plain text, so they cannot be carried into an automation. */
+  attachmentCount: number
   textareaRef: RefObject<ComposerEditor | null>
   onInputChange: (text: string) => void
 }): { composerControls: ReactNode; onSend: () => Promise<void>; placeholder: string } | null {
@@ -208,13 +210,18 @@ export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInpu
   const onSend = async () => {
     const instructions = textareaRef.current?.getPlainText().trim() ?? ''
     if (!instructions || creatingRef.current) return
+    if (attachmentCount > 0) {
+      toast.error('Automations can’t include attachments yet. Remove them, or describe what to use in the instructions.')
+      return
+    }
     creatingRef.current = true
     try {
       const created = await overlayAppClient.automations.create({
         instructions,
         schedule: scheduleFromDraft(schedule),
         timezone: timeZone,
-        modelId,
+        // An agent automation runs on the agent's own model, so only a chat automation saves the composer's model.
+        ...(agent ? {} : { modelId }),
         enabled: true,
         scope: newItemScope(panelScope),
         ...(agent ? { agentId: agent.id } : {}),

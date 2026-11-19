@@ -58,6 +58,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
     modelId: c.headerModelProps.selectedActModel,
     textareaRef: c.textareaRef,
     onInputChange: c.handleComposerInputChange,
+    attachmentCount: c.attachedImages.length + c.pendingChatDocuments.length,
   })
   const [automationPanelOpen, setAutomationPanelOpen] = useAutomationPanelOpen()
 
@@ -198,7 +199,8 @@ export default function ChatExperience(props: ChatExperienceProps) {
     const composerProps = viewProps.composerProps
     viewProps.composerProps = {
       ...composerProps,
-      surface: { ...composerProps.surface, placeholder: newAutomation.placeholder, composerControls: newAutomation.composerControls },
+      // Instructions are saved as plain text, so mention chips (which carry resource ids) are not offered here.
+      surface: { ...composerProps.surface, placeholder: newAutomation.placeholder, composerControls: newAutomation.composerControls, mentionCategories: [] },
       actions: { ...composerProps.actions, onSend: newAutomation.onSend },
     }
   }

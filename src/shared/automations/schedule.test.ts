@@ -199,3 +199,13 @@ test('withUtcFields: fills the UTC fields older readers display', () => {
   assert.deepEqual(schedule, { kind: 'weekly', dayOfWeekUTC: 2, hourUTC: 4, minuteUTC: 0, dayOfWeek: 1, hour: 20, minute: 0 })
 })
 
+
+test('a local time skipped by spring-forward runs one hour later, never earlier', () => {
+  const next = computeNextRunAt({ kind: 'daily', hour: 2, minute: 30 }, Date.parse('2027-03-14T08:00:00Z'), 'America/Los_Angeles')
+  assert.equal(new Date(next).toISOString(), '2027-03-14T10:30:00.000Z') // 3:30 AM PDT
+})
+
+test('a local time repeated by fall-back runs at its first occurrence', () => {
+  const next = computeNextRunAt({ kind: 'daily', hour: 1, minute: 30 }, Date.parse('2027-11-07T07:00:00Z'), 'America/Los_Angeles')
+  assert.equal(new Date(next).toISOString(), '2027-11-07T08:30:00.000Z') // 1:30 AM PDT
+})

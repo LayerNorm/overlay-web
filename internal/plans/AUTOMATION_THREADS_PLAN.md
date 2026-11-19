@@ -12,20 +12,10 @@ instructions again and gets a reply. Everything configurable (name, schedule, ti
 recent runs, delete) lives in a right details panel like an agent thread's. There is no edit page. Mockup:
 `internal/plans/mockups/automation-threads.html`.
 
-## What was tested (PR #560 Preview, 2026-11-18)
+## Diagnosis
 
-End to end on the isolated preview backend, with the seeded owner in the paid "Computer QA" workspace:
-
-| Case | Result |
-| --- | --- |
-| Chat automation, scheduled tick | Ran on the minute, posted the instructions into its own chat, reply arrived, run settled `completed`. |
-| Chat automation, Run now | Same, `completed`. |
-| Agent automation (drafted from an agent thread), scheduled tick | Ran in a new thread with the agent, reply arrived, `completed`. |
-| Automation whose turn asks the user a question | Turn waits (`waiting_for_input`); the run stays `running`; the next scheduled tick is recorded as `skipped`. Answering the question settles the run, and the skipped slot is never run. |
-| Enabling in the free Personal workspace | Refused with "Enabled automations require a paid plan." |
-
-Production runtime logs for the last 24 hours show the scheduler dispatching and settling runs with 200s, so the
-pipeline itself is not down.
+Before this work, scheduled and Run-now chat and agent automations ran and replied normally. The problems below are what
+remained; the dated test results live in the PR #560 QA handoff comments.
 
 ## Problems found
 
@@ -62,7 +52,7 @@ pipeline itself is not down.
 
 | Fix | State |
 | --- | --- |
-| 1. Waiting runs keep the schedule | Implemented: a running run whose thread turn waits for the owner's answer or approval no longer holds the schedule, so the next tick starts a new run in the same thread. The waiting run settles once the owner answers. The details panel shows it as "Waiting for you". Covered by Convex tests. On the Preview, with two runs waiting on a question, the 11:05 AM tick of a 15-minute automation ran in the same thread instead of being skipped. |
-| 2. Local time and IANA zone, every weekday | Implemented (bd641f1b, e0a4b100). On the Preview a daily 9:00 AM America/Los_Angeles automation stored `hour: 9`, `hourUTC: 17`, and its scheduled 9:00 AM Pacific tick ran and replied. DST transitions are covered by unit tests only. |
-| 3. Composer pickers, thread as the detail view | Implemented: Schedule and Agent pickers, create then Run now on send, Automation details panel, Chat/Edit tabs and the editor removed. Browser-tested on the Preview: a chat automation and an agent automation were created from the composer, ran once and opened their threads with the details panel. The agent picker lists only the current scope's agents, and an agent automation's thread opens in the agent thread view (the chat view refused agent threads as read-only). Run now, pause and resume, and Delete were tested in the details panel; Delete now stays on Automations. |
+| 1. Waiting runs keep the schedule | Implemented: a running run whose thread turn waits for the owner's answer or approval no longer holds the schedule, so the next tick starts a new run in the same thread. The waiting run settles once the owner answers. The details panel shows it as "Waiting for you". Covered by Convex tests. Browser-tested on the PR Preview. |
+| 2. Local time and IANA zone, every weekday | Implemented (bd641f1b, e0a4b100). A scheduled local-time tick was browser-tested on the PR Preview. A time that does not exist on the spring-forward day runs at the same minute one hour later; a repeated fall-back time runs at its first occurrence. DST transitions are covered by unit tests only. |
+| 3. Composer pickers, thread as the detail view | Implemented: Schedule and Agent pickers, create then Run now on send, Automation details panel, Chat/Edit tabs and the editor removed. The agent picker lists only the current scope's agents, and an agent automation's thread opens in the agent thread view. Browser-tested on the PR Preview. |
 | 4. Keep the user's words as instructions | The new composer sends the typed text as the instructions; the server names it from the first line. Chat drafting (`draft_automation_from_chat`) is unchanged. |

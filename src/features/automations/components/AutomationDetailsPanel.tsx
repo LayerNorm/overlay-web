@@ -135,6 +135,13 @@ function AutomationDetails({ automation, model }: { automation: AutomationDetail
           <span className="truncate">{agent?.name ?? (automation.agentId ? 'Agent' : 'No agent')}</span>
         </span>
       </div>
+      {/* An agent automation runs on the agent's own model; only a chat automation has a model of its own. */}
+      {automation.agentId ? (
+        <div className="flex h-8 items-center gap-3 px-1 text-xs">
+          <span className="shrink-0 font-medium text-(--muted)">Model</span>
+          <span className="ml-auto truncate text-(--muted-light)">The agent’s model</span>
+        </div>
+      ) : (
       <DetailsDisclosure label="Model" summary={model.modelLabel}>
         <ChatModelPicker
           placement="field"
@@ -151,6 +158,7 @@ function AutomationDetails({ automation, model }: { automation: AutomationDetail
           lockedGenerationMode="text"
         />
       </DetailsDisclosure>
+      )}
       <section aria-label="Recent runs">
         <h3 className="flex h-8 items-center px-1 text-xs font-medium text-(--muted)">Recent runs</h3>
         {runs.length ? (

@@ -95,15 +95,24 @@ function zoneParts(ms: number, timeZone: string) {
   return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour % 24, minute: parts.minute }
 }
 
-/** The UTC instant at which the wall clock in `timeZone` shows this date and time. */
+/** How far the wall clock in `timeZone` is ahead of UTC at this instant. */
+function zoneOffset(ms: number, timeZone: string): number {
+  const shown = zoneParts(ms, timeZone)
+  return Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute) - Math.floor(ms / 60_000) * 60_000
+}
+
+/**
+ * The UTC instant at which the wall clock in `timeZone` shows this date and time. A time shown twice (the hour
+ * repeated when clocks go back) resolves to its first occurrence. A time that never shows (the hour skipped when
+ * clocks go forward) resolves to the same minute one hour later, the way clocks read just after the change.
+ */
 function zonedTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): number {
   const wall = Date.UTC(year, month - 1, day, hour, minute)
-  let guess = wall
-  for (let i = 0; i < 2; i += 1) {
-    const shown = zoneParts(guess, timeZone)
-    guess += wall - Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute)
-  }
-  return guess
+  // The offsets a day either side cover the offset before and after any change on this date.
+  const offsets = [...new Set([zoneOffset(wall - 86_400_000, timeZone), zoneOffset(wall + 86_400_000, timeZone)])]
+  const candidates = offsets.map((offset) => wall - offset).sort((a, b) => a - b)
+  const exact = candidates.find((candidate) => candidate + zoneOffset(candidate, timeZone) === wall)
+  return exact ?? candidates[candidates.length - 1]!
 }
 
 export function isValidTimeZone(timeZone: string | undefined): timeZone is string {
