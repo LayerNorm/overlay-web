@@ -219,6 +219,10 @@ export class AutomationService {
       ...(body.scope === 'workspace' || body.scope === 'personal' ? { scope: body.scope } : {}),
       ...(body.byAgent === true ? { byAgent: true } : {}),
       ...(body.agentId?.trim() ? { agentId: body.agentId.trim() } : {}),
+    }).catch((error: unknown) => {
+      // The chosen agent is missing, archived, in another workspace, or not visible to this person.
+      if (error instanceof Error && error.message.includes('AGENT_NOT_FOUND')) serviceError({ error: 'Agent not found' }, 404)
+      throw error
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }

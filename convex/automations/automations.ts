@@ -17,6 +17,7 @@ import { AUTOMATION_THREAD_RUN_OWNER_PREFIX, automationRunTurnId } from '../../s
 import { createAgentThread } from '../agents/agentThreads'
 import { recordConversationEvent } from '../collaboration/events'
 import { isWaitingForOwner, threadAgentRunFor } from '../lib/automationThreadRuns'
+import { principalIdForUser } from '../lib/workItems'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 const automationSchedule = v.object({
@@ -91,6 +92,25 @@ const AUTOMATION_POLICY_ERRORS = {
   paidPlanRequired: 'automation_paid_plan_required',
   enabledLimitReached: 'automation_enabled_limit_reached',
 } as const
+
+/**
+ * An automation may run as an agent only when its creator could open a thread with it: a live agent in the
+ * same workspace that they can see. A workspace automation also needs an agent the whole workspace can see.
+ */
+async function assertAutomationAgent(
+  ctx: MutationCtx,
+  args: { agentId: string; workspaceId: string | undefined; userId: string; scope: 'personal' | 'workspace' },
+): Promise<void> {
+  const agent = args.workspaceId
+    ? await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
+    : null
+  if (!agent || agent.workspaceId !== args.workspaceId || agent.archivedAt) throw new Error('AGENT_NOT_FOUND')
+  const visibility = agent.visibility ?? 'workspace'
+  if (visibility === 'creator') {
+    const principalId = await principalIdForUser(ctx, agent.workspaceId, args.userId)
+    if (agent.createdByPrincipalId !== principalId || args.scope === 'workspace') throw new Error('AGENT_NOT_FOUND')
+  }
+}
 
 function assertSchedulePolicy(schedule: AutomationSchedule): void {
   if (schedule.kind === 'interval' && (schedule.intervalMinutes ?? 60) < MIN_INTERVAL_MINUTES) {
@@ -288,6 +308,10 @@ export const create = mutation({
       // Automations page.
       sourceAgentId = conversation.agentId
     }
+    const agentId = args.agentId?.trim() || undefined
+    if (agentId) {
+      await assertAutomationAgent(ctx, { agentId, workspaceId: args.workspaceId, userId: args.userId, scope })
+    }
     const now = Date.now()
     const enabled = args.enabled ?? true
     await enforceAutomationPolicy(ctx, {
@@ -313,7 +337,7 @@ export const create = mutation({
       graphSource: args.graphSource?.trim() || undefined,
       graph: args.graph ?? undefined,
       sourceConversationId: args.sourceConversationId,
-      agentId: args.agentId?.trim() || sourceAgentId,
+      agentId: agentId || sourceAgentId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
       createdByAgent: args.byAgent || undefined,
       createdAt: now,

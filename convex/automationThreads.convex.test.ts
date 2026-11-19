@@ -159,3 +159,42 @@ test('a run waiting for its owner does not hold the schedule; a working run does
   })
   expect(await convex.mutation(claim, { now })).toEqual([])
 })
+
+test('an automation runs only as an agent its creator can open a thread with', async () => {
+  const convex = convexTest(schema, modules)
+  const now = Date.now()
+  await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId: 'workspace', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: now, updatedAt: now })
+    for (const userId of ['alice', 'bob']) {
+      await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId: 'workspace', type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId: 'workspace', principalId: `p-${userId}`, role: 'member', status: 'active', joinedAt: now, updatedAt: now })
+    }
+    const agent = async (agentId: string, fields: Record<string, unknown>) => {
+      const workspaceId = (fields.workspaceId as string | undefined) ?? 'workspace'
+      await ctx.db.insert('workspacePrincipals', { principalId: `ap-${agentId}`, workspaceId, type: 'agent', agentId, displayName: agentId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceAgentDefinitions', {
+        agentId, workspaceId, principalId: `ap-${agentId}`, name: agentId, instructions: 'Help.', harness: 'overlay',
+        modelId: 'model', allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'p-alice',
+        createdAt: now, updatedAt: now, ...fields,
+      } as never)
+    }
+    await agent('shared', { visibility: 'workspace' })
+    await agent('private', { visibility: 'creator' })
+    await agent('archived', { visibility: 'workspace', archivedAt: now })
+    await agent('elsewhere', { visibility: 'workspace', workspaceId: 'other-workspace' })
+  })
+  const create = (userId: string, agentId: string, scope: 'personal' | 'workspace' = 'personal') =>
+    convex.mutation(makeFunctionReference<'mutation'>('automations/automations:create'), {
+      serverSecret: secret, workspaceId: 'workspace', userId, name: '', instructions: 'Check in.', enabled: false,
+      schedule: { kind: 'daily', hour: 9, minute: 0 }, timezone: 'America/Los_Angeles', scope, agentId,
+    })
+
+  await expect(create('bob', 'private')).rejects.toThrow(/AGENT_NOT_FOUND/)
+  await expect(create('alice', 'private', 'workspace')).rejects.toThrow(/AGENT_NOT_FOUND/)
+  await expect(create('alice', 'archived')).rejects.toThrow(/AGENT_NOT_FOUND/)
+  await expect(create('alice', 'elsewhere')).rejects.toThrow(/AGENT_NOT_FOUND/)
+  const own = await create('alice', 'private') as Id<'automations'>
+  expect((await convex.run(ctx => ctx.db.get(own)))?.agentId).toBe('private')
+  const shared = await create('bob', 'shared', 'workspace') as Id<'automations'>
+  expect((await convex.run(ctx => ctx.db.get(shared)))?.agentId).toBe('shared')
+})

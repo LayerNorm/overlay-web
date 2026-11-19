@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ReactNode, type RefObject } from 'react'
+import { useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Clock } from 'lucide-react'
 import {
@@ -199,15 +199,16 @@ export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInpu
   const agents = useAutomationAgents(panelScope)
   const [schedule, setSchedule] = useState<ScheduleDraft>(DEFAULT_SCHEDULE_DRAFT)
   const [agentId, setAgentId] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
+  // A ref, not state: two quick presses of Enter both see state as false and would create two automations.
+  const creatingRef = useRef(false)
   const [timeZone] = useState(browserTimeZone)
   if (!enabled) return null
   const agent = agents.find((entry) => entry.id === agentId) ?? null
 
   const onSend = async () => {
     const instructions = textareaRef.current?.getPlainText().trim() ?? ''
-    if (!instructions || creating) return
-    setCreating(true)
+    if (!instructions || creatingRef.current) return
+    creatingRef.current = true
     try {
       const created = await overlayAppClient.automations.create({
         instructions,
@@ -229,7 +230,7 @@ export function useNewAutomationComposer({ enabled, modelId, textareaRef, onInpu
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not create the automation.')
     } finally {
-      setCreating(false)
+      creatingRef.current = false
     }
   }
 
