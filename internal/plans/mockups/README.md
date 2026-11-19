@@ -91,8 +91,8 @@ them. Besides the canonical app mockup, this folder holds only:
 - `chief-assignments.html` (feature `chief-assignments`): the proposed Chief assignment design. The assignment box
   sits inside the response that made it, as wide as the response text. Agent threads, chats and channels share one
   right sidebar opened by one button: views open as tabs, and "+" opens a new tab listing what the conversation has
-  (Details, Assignments, Library and Computer under the agent's avatar; Assignments, People and Pinned in a chat or
-  channel). A delegated agent that cannot run is one failed assignment with its reason, and the Chief carries on. The bar at the top switches between an agent
+  (Details, Assignments, Library and Computer for an agent; Assignments, People and Pinned in a chat or channel). An
+  agent's sidebar opens on its avatar and that list; opening a view replaces both with the tab. A delegated agent that cannot run is one failed assignment with its reason, and the Chief carries on. The bar at the top switches between an agent
   thread, a channel and a chat, and between the app today (`?mode=today`) and the proposal; "What changes" lists the
   changes and the error messages before and after. Delete it when the design ships.
 - `desktop-discovery.html`: how a visitor finds and downloads the desktop app. It is the live marketing page with

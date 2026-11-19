@@ -118,7 +118,7 @@ type SidebarView = { id: string; label: string; content: ReactNode; flush?: bool
 const VIEW_ICONS: Record<string, LucideIcon> = { details: Info, assignments: GitBranch, library: Folder, computer: Monitor, people: UsersRound, pinned: Pin }
 const NEW_TAB = 'new'
 const sidebars: Record<Scope, { open: string[]; active: string }> = {
-  agent: { open: ['details'], active: 'details' },
+  agent: { open: [], active: NEW_TAB },
   room: { open: ['assignments'], active: 'assignments' },
 }
 const sidebarListeners = new Set<() => void>()
@@ -139,12 +139,12 @@ export function useAgentSidebarView(productionTab: string) {
   return MODE === 'proposed' ? active : productionTab
 }
 
-function ViewPicker({ views, counts, onPick }: { views: SidebarView[]; counts: Record<string, number | undefined>; onPick(id: string): void }) {
+function ViewPicker({ views, counts, search, onPick }: { views: SidebarView[]; counts: Record<string, number | undefined>; search: boolean; onPick(id: string): void }) {
   const [query, setQuery] = useState('')
   const matches = views.filter((view) => view.label.toLowerCase().includes(query.trim().toLowerCase()))
   return (
     <div className="px-3 pb-6">
-      <div className="relative">
+      <div className="relative" hidden={!search}>
         <Search size={13} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--muted)" />
         <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search views" aria-label="Search views" className="h-9 pl-8 text-[13px]" />
       </div>
@@ -189,9 +189,11 @@ export function TabbedRightSidebar({ scope, ariaLabel, hero, tabs, counts = {}, 
   }
   const pill = (selected: boolean) => `group/tab h-7 shrink-0 gap-1.5 rounded-md px-2 text-xs font-normal ${selected ? 'bg-(--surface-subtle) text-(--foreground) hover:bg-(--surface-subtle)' : 'text-(--muted)'}`
   const allCounts = { assignments: conversationCount(), ...counts }
+  // An agent's sidebar opens on its avatar and the list of views; opening a view replaces both with the tab.
+  const home = Boolean(hero) && open.length === 0
   return (
     <aside data-slot="right-sidebar" aria-label={ariaLabel} className="relative flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-(--border) bg-(--sidebar-surface)">
-      {hero ? (
+      {home && hero ? (
         <div className="flex shrink-0 flex-col items-center px-5 pb-4 pt-9 text-center">
           <div className="flex h-[72px] w-[72px] items-center justify-center">{hero.avatar}</div>
           <h2 aria-label={hero.titleText} className="mt-[14px] max-w-full text-lg font-medium leading-6 text-(--foreground)">{hero.title}</h2>
@@ -201,7 +203,7 @@ export function TabbedRightSidebar({ scope, ariaLabel, hero, tabs, counts = {}, 
       {onClose ? (
         <Button variant="ghost" size="icon" type="button" aria-label="Close" onClick={onClose} className="absolute right-2 top-2 z-10 h-8 w-8 text-(--muted) hover:text-(--foreground)"><X size={16} /></Button>
       ) : null}
-      <div role="tablist" aria-label="Open views" className={`flex shrink-0 items-center gap-1 overflow-x-auto px-3 pb-3 [scrollbar-width:none] ${hero ? '' : 'pr-11 pt-2.5'}`}>
+      <div role="tablist" aria-label="Open views" hidden={home} className="flex shrink-0 items-center gap-1 overflow-x-auto px-3 pb-3 pr-11 pt-2.5 [scrollbar-width:none]">
         {open.map((id) => {
           const tab = tabs.find((entry) => entry.id === id)!
           const Icon = VIEW_ICONS[id] ?? Info
@@ -220,7 +222,7 @@ export function TabbedRightSidebar({ scope, ariaLabel, hero, tabs, counts = {}, 
         <Button variant="ghost" size="icon" aria-label="New tab" title="New tab" onClick={() => updateSidebar(scope, { open, active: NEW_TAB })} className="h-7 w-7 shrink-0 rounded-md text-(--muted) hover:text-(--foreground)"><Plus size={14} /></Button>
       </div>
       <div data-tabbed-view className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${view && !view.flush ? 'px-5 pb-6' : ''}`}>
-        {view ? view.content : <ViewPicker views={tabs} counts={allCounts} onPick={pick} />}
+        {view ? view.content : <ViewPicker views={tabs} counts={allCounts} search={!home} onPick={pick} />}
       </div>
     </aside>
   )
@@ -307,7 +309,7 @@ function Notes({ onClose }: { onClose(): void }) {
       <ol start={4} className="mt-2 list-decimal space-y-2 pl-5">
         {item('One button opens it everywhere.', 'Chats and channels get the same sidebar button as agent threads; the separate People button goes away.')}
         {item('Views open as tabs.', '"+" opens a new tab that lists what this conversation has: Details, Assignments, Library and Computer for an agent; Assignments, People and Pinned for a chat or channel.')}
-        {item('Agents keep their avatar on top.', 'The avatar, name and role sit above the tabs in an agent thread.')}
+        {item('An agent sidebar opens on its avatar.', 'With no tabs open it shows the avatar, name, role and the list of views. Opening a view replaces all of that with the tab; closing the last tab brings it back.')}
       </ol>
       <h3 className="mt-5 text-xs text-(--muted)">Fixes</h3>
       <ol start={7} className="mt-2 list-decimal space-y-2 pl-5">
