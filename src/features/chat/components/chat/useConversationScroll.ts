@@ -30,6 +30,12 @@ export function useConversationBottomVisibility({
   canonicalRevision?: unknown
 }) {
   const [isConversationBottomVisible, setIsConversationBottomVisible] = useState(true)
+  const [messagesScrollElement, setMessagesScrollElement] = useState<HTMLDivElement | null>(null)
+
+  const messagesScrollRefCallback = useCallback((element: HTMLDivElement | null) => {
+    messagesScrollRef.current = element
+    setMessagesScrollElement(element)
+  }, [messagesScrollRef])
 
   const updateConversationBottomVisibility = useCallback(() => {
     const container = messagesScrollRef.current
@@ -47,7 +53,7 @@ export function useConversationBottomVisibility({
   }, [messagesScrollRef, messagesEndRef])
 
   useEffect(() => {
-    const container = messagesScrollRef.current
+    const container = messagesScrollElement
     if (!container) {
       const frame = window.requestAnimationFrame(() => setIsConversationBottomVisible(true))
       return () => window.cancelAnimationFrame(frame)
@@ -76,6 +82,7 @@ export function useConversationBottomVisibility({
     runtimeHydrationVersion,
     canonicalRevision,
     updateConversationBottomVisibility,
+    messagesScrollElement,
     messagesScrollRef,
   ])
 
@@ -105,7 +112,7 @@ export function useConversationBottomVisibility({
     window.requestAnimationFrame(updateConversationBottomVisibility)
   }, [messagesEndRef, messagesScrollRef, updateConversationBottomVisibility])
 
-  return { isConversationBottomVisible, scrollToConversationBottom }
+  return { isConversationBottomVisible, scrollToConversationBottom, messagesScrollRefCallback }
 }
 
 export function usePendingTurnScroll({

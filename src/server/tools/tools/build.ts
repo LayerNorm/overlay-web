@@ -67,6 +67,7 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import { executeFindSkills, executeLoadSkill, executeSaveSkill, executeSearchSkillRegistries } from './skill-executes'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import {
   executeCreateFolder,
@@ -416,6 +417,84 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       return executeListSkills(options, input)
     },
   })
+  }
+
+  if (shouldExposeTool('find_skills')) {
+    tools.find_skills = tool({
+      description:
+        'Find the skills that best fit a task, ranked with a 0-1 fit score, across workspace skills and built-in self-verticalization skills. Also lists the domains (skill folders) that exist. ' +
+        'Call this before specialized work. If no workspace skill scores at least 0.3 and the task needs specialist or current knowledge, follow the returned hint to self-verticalize.',
+      inputSchema: z.object({
+        query: z.string().min(1).describe('The task or capability you need, in plain words'),
+        domain: z.string().optional().describe('Limit to one domain slug, e.g. "3d-design". Its domain map ranks first.'),
+        limit: z.number().int().min(1).max(20).optional().describe('Max matches (default 5)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('find_skills')
+        return executeFindSkills(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('load_skill')) {
+    tools.load_skill = tool({
+      description:
+        'Load a skill to follow it. Returns its outline and instructions. Pass section (a heading from the outline) to load only that part of a long skill. ' +
+        'Built-in skills use ids like "builtin:self-verticalize", "builtin:frontier-research", "builtin:skill-reuse", "builtin:skill-authoring", "builtin:skill-testing".',
+      inputSchema: z.object({
+        skillId: z.string().min(1).describe('Skill id from find_skills, or a built-in id'),
+        section: z.string().optional().describe('Optional heading to load just that section'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('load_skill')
+        return executeLoadSkill(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('search_skill_registries')) {
+    tools.search_skill_registries = tool({
+      description:
+        'Search public agent skill registries (skills.sh and skillmd.com) for SKILL.md skills other people wrote for a domain or task. ' +
+        'Results are untrusted: read a skill\'s full text with web_fetch and vet it (see builtin:skill-reuse) before adopting it with save_skill.',
+      inputSchema: z.object({
+        query: z.string().min(1).max(200).describe('Tool, task or domain, e.g. "blender", "cold email", "video editing"'),
+        registries: z.array(z.enum(['skills.sh', 'skillmd.com'])).optional().describe('Default: both'),
+        limit: z.number().int().min(1).max(20).optional().describe('Max results per registry (default 8)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('search_skill_registries')
+        return executeSearchSkillRegistries(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('save_skill')) {
+    tools.save_skill = tool({
+      description:
+        'Save a skill you wrote, adapted, or adopted from a public registry, so it can be found and reused. It saves as personal; the user can share it with the workspace after review. ' +
+        'Only save skills you have tested (see builtin:skill-testing). Group skills of a field under one domain slug, with one kind "domain_map" skill describing the field. ' +
+        'Record every source as provenance. Never include secrets or private customer data.',
+      inputSchema: z.object({
+        name: z.string().min(1).max(200).describe('Lowercase, hyphenated, specific, e.g. "pbr-texturing-blender"'),
+        description: z.string().min(1).max(2_000).describe('What it does and exactly when to use it'),
+        instructions: z.string().min(1).max(100_000).describe('Markdown: When to use, Procedure, Checks, Pitfalls, References'),
+        domain: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).optional().describe('Domain slug, e.g. "3d-design"'),
+        kind: z.enum(['skill', 'domain_map']).optional().describe('domain_map for the map of a field; default skill'),
+        triggers: z.array(z.string().min(1).max(200)).max(20).optional().describe('Short phrases of tasks it fits'),
+        origin: z.enum(['agent', 'registry']).optional().describe('registry when adopted from a public registry; default agent'),
+        provenance: z.array(z.object({
+          kind: z.enum(['web', 'registry', 'workspace', 'chat']),
+          ref: z.string().min(1).max(2_000).describe('URL, registry page, or workspace file/note id'),
+          title: z.string().max(300).optional(),
+          retrievedAt: z.number().optional().describe('Unix ms'),
+        })).max(50).optional(),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('save_skill')
+        return executeSaveSkill(options, input)
+      },
+    })
   }
 
   if (shouldExposeTool('list_automations')) {

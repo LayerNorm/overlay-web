@@ -131,6 +131,7 @@ export function buildChatExperienceViewProps(
       !automationNotFound && (c.hasHistory || c.showChatLoadingState)
         ? {
             messagesScrollRef: c.messagesScrollRef,
+            messagesScrollRefCallback: c.messagesScrollRefCallback,
             messagesEndRef: c.messagesEndRef,
             floatingControl: c.showScrollToBottomControl ? (
               <DelayedTooltip label="Jump to latest" side="top">

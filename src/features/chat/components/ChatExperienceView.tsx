@@ -9,11 +9,18 @@ import {
 } from '@overlay/chat-react'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import { ChatComposer } from './ChatComposer'
-import { ChatMessageList } from './ChatMessageList'
+import { ChatMessageListPlaceholder } from './ChatMessageListSkeleton'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { UpgradeModelDialog } from './UpgradeModelDialog'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
+import { preloadWhenIdle } from '@/shared/app/preload-when-idle'
+
+const ChatMessageList = dynamic(
+  () => import('./ChatMessageList').then((mod) => ({ default: mod.ChatMessageList })),
+  { loading: () => <ChatMessageListPlaceholder /> },
+)
+preloadWhenIdle(() => import('./ChatMessageList'))
 
 const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
