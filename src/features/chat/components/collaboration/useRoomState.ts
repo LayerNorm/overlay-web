@@ -1,11 +1,16 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useConvexAuth, useMutation, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import {
+  ROOM_STATE_VARIANT,
+  transcriptCache,
+  useTranscriptCacheKey,
+} from '@/components/providers/transcript-cache-client'
 
 export type RoomState = NonNullable<FunctionReturnType<typeof api.collaboration.rooms.state>>
 type RoomArgs = { workspaceId: string; conversationId: Id<'conversations'> }
@@ -26,7 +31,29 @@ export function useRoomState(workspaceId: string | null | undefined, conversatio
   const args = useMemo<RoomArgs | null>(() => workspaceId && isAuthenticated && !isLoading
     ? { workspaceId, conversationId: conversationId as Id<'conversations'> }
     : null, [workspaceId, conversationId, isAuthenticated, isLoading])
-  const state = useQuery(api.collaboration.rooms.state, args ?? 'skip')
+  const liveState = useQuery(api.collaboration.rooms.state, args ?? 'skip')
+  const cacheKey = useTranscriptCacheKey({ kind: 'room', conversationId, variant: ROOM_STATE_VARIANT }, workspaceId)
+  const cachedState = useMemo(() => cacheKey ? transcriptCache.get<never, RoomState>(cacheKey)?.summary ?? null : null, [cacheKey])
+  // A remembered room paints its roster and pins until the live state answers; it is display-only.
+  const stateRestored = liveState === undefined && cachedState !== null
+  const state = stateRestored ? cachedState : liveState
+  const snapshotRef = useRef<{ key: string; state: RoomState } | null>(null)
+  useEffect(() => {
+    if (!cacheKey) return
+    if (liveState === null) {
+      transcriptCache.evict(cacheKey)
+      snapshotRef.current = null
+    } else if (liveState) {
+      snapshotRef.current = { key: cacheKey, state: liveState }
+    }
+  }, [cacheKey, liveState])
+  useEffect(() => () => {
+    const snapshot = snapshotRef.current
+    snapshotRef.current = null
+    if (snapshot?.key === cacheKey) {
+      transcriptCache.put<never, RoomState>(snapshot.key, { items: [], summary: snapshot.state, isDone: true, source: 'live' })
+    }
+  }, [cacheKey])
 
   const setReaction = useMutation(api.collaboration.rooms.setReaction).withOptimisticUpdate((store, change) => {
     patchRoomState(store, change, (current) => {
@@ -82,7 +109,7 @@ export function useRoomState(workspaceId: string | null | undefined, conversatio
   const updateMyState = useMutation(api.collaboration.rooms.updateMyState)
   const heartbeat = useMutation(api.collaboration.rooms.heartbeat)
 
-  return { args, state, setReaction, setPinned, setSaved, setThreadFollow, updateMyState, heartbeat }
+  return { args, state, stateRestored, setReaction, setPinned, setSaved, setThreadFollow, updateMyState, heartbeat }
 }
 
 export type RoomStateApi = ReturnType<typeof useRoomState>

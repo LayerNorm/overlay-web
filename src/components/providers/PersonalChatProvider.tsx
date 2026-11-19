@@ -27,6 +27,8 @@ import type { Id } from '../../../convex/_generated/dataModel'
 import { createPersonalChatArchiveOptimisticUpdate } from './personal-chat-optimistic'
 import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { TranscriptCacheScopeProvider } from './transcript-cache-client'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
 import { usePersonalChatCommands, type PersonalChatCommands } from './usePersonalChatCommands'
 import { PersonalChatDirectoryProvider } from './personal-chat-directory-context'
@@ -60,6 +62,8 @@ type PersonalChatTranscript = {
   rows: PersonalTranscriptRow[]
   status: ListStatus
   queryStatus: string
+  /** Rows are a remembered snapshot shown until live authorized data answers; display-only. */
+  restored?: boolean
   hasMore: boolean
   loadingMore: boolean
   loadMore(): void
@@ -175,6 +179,7 @@ export function PersonalChatProvider({ children: content }: { children: ReactNod
   }
 
   return (
+    <TranscriptCacheScope workspaceId={workspaceId}>
     <PersonalChatErrorBoundary
       context={PersonalChatContext}
       resetKey={`${workspaceId ?? 'no-workspace'}:${pathname ?? ''}:${searchParams.toString()}`}
@@ -201,6 +206,18 @@ export function PersonalChatProvider({ children: content }: { children: ReactNod
         {children}
       </NativePersonalChatProvider>
     </PersonalChatErrorBoundary>
+    </TranscriptCacheScope>
+  )
+}
+
+/** Keys the recent-transcript cache to the signed-in user and active workspace. */
+function TranscriptCacheScope({ workspaceId, children }: { workspaceId: string | null; children: ReactNode }) {
+  const client = useConvex()
+  const { user } = useAuth()
+  return (
+    <TranscriptCacheScopeProvider client={client} userId={user?.id ?? null} workspaceId={workspaceId}>
+      {children}
+    </TranscriptCacheScopeProvider>
   )
 }
 
