@@ -532,3 +532,175 @@ test('FileService creates files in the caller\'s workspace so workspace listings
   })
   assert.equal(extractedWorkspaceId, 'ws_1')
 })
+
+test('FileService.readFileBytes bounds and returns bytes from the row owner storage key', async () => {
+  const bytes = Buffer.from([0, 255, 4, 128])
+  let downloadedKey: string | undefined
+  let downloadLimit: number | undefined
+  const repository = createRepository({
+    async getFile({ fileId, userId }) {
+      return {
+        _id: fileId,
+        userId,
+        name: 'binary.mp4',
+        r2Key: `users/${userId}/files/${fileId}/binary.mp4`,
+      } satisfies FileRecord
+    },
+  })
+  const storage = createStorage({
+    async downloadBuffer(key, maximumBytes) {
+      downloadedKey = key
+      downloadLimit = maximumBytes
+      return bytes
+    },
+  })
+
+  const result = await createService(repository, storage).readFileBytes({
+    fileId: 'file_1',
+    userId: 'user_1',
+    maximumBytes: 16,
+  })
+  assert.deepEqual(result, new Uint8Array(bytes))
+  assert.equal(downloadedKey, 'users/user_1/files/file_1/binary.mp4')
+  assert.equal(downloadLimit, 16)
+})
+
+test('FileService direct-id metadata lookup passes the requested workspace to the repository', async () => {
+  let requestedWorkspaceId: string | undefined
+  const repository = createRepository({
+    async getFile({ fileId, workspaceId }) {
+      requestedWorkspaceId = workspaceId
+      return {
+        _id: fileId,
+        userId: 'member_2',
+        workspaceId: 'ws_1',
+        scope: 'workspace',
+        name: 'shared.mp4',
+      } satisfies FileRecord
+    },
+  })
+  await createService(repository).getOrListFiles({
+    fileId: 'file_1',
+    userId: 'member_1',
+    workspaceId: 'ws_1',
+  })
+  assert.equal(requestedWorkspaceId, 'ws_1')
+})
+
+test('FileService.readFileBytes reads a workspace-shared file owned by another member', async () => {
+  const bytes = Buffer.from([0, 255, 4, 128])
+  let requestedUserId: string | undefined
+  let requestedWorkspaceId: string | undefined
+  let downloadedKey: string | undefined
+  const repository = createRepository({
+    async getFile({ fileId, userId, workspaceId }) {
+      requestedUserId = userId
+      requestedWorkspaceId = workspaceId
+      return {
+        _id: fileId,
+        userId: 'member_2',
+        workspaceId: 'ws_1',
+        scope: 'workspace',
+        name: 'shared.mp4',
+        r2Key: `users/member_2/files/${fileId}/shared.mp4`,
+      } satisfies FileRecord
+    },
+  })
+  const storage = createStorage({
+    async downloadBuffer(key) {
+      downloadedKey = key
+      return bytes
+    },
+  })
+  const result = await createService(repository, storage).readFileBytes({
+    fileId: 'file_1',
+    userId: 'member_1',
+    workspaceId: 'ws_1',
+    scope: 'workspace',
+  })
+  assert.deepEqual(result, new Uint8Array(bytes))
+  assert.equal(requestedUserId, 'member_1')
+  assert.equal(requestedWorkspaceId, 'ws_1')
+  assert.equal(downloadedKey, 'users/member_2/files/file_1/shared.mp4')
+})
+
+test('FileService.readFileBytes denies fresh rows with a different scope or workspace before storage access', async () => {
+  for (const mismatch of [
+    { scope: 'personal' as const, workspaceId: 'ws_1' },
+    { scope: 'workspace' as const, workspaceId: 'ws_2' },
+  ]) {
+    let downloaded = false
+    const repository = createRepository({
+      async getFile({ fileId }) {
+        return {
+          _id: fileId,
+          userId: 'member_2',
+          workspaceId: mismatch.workspaceId,
+          scope: mismatch.scope,
+          name: 'shared.mp4',
+          r2Key: `users/member_2/files/${fileId}/shared.mp4`,
+        } satisfies FileRecord
+      },
+    })
+    const storage = createStorage({
+      async downloadBuffer() {
+        downloaded = true
+        return Buffer.from([1])
+      },
+    })
+    await assert.rejects(
+      createService(repository, storage).readFileBytes({
+        fileId: 'file_1',
+        userId: 'member_1',
+        workspaceId: 'ws_1',
+        scope: 'workspace',
+      }),
+      (error: unknown) => error instanceof FileServiceError && error.statusCode === 404,
+    )
+    assert.equal(downloaded, false)
+  }
+})
+
+test('FileService.readFileBytes does not download a foreign owner storage key', async () => {
+  let downloaded = false
+  const repository = createRepository({
+    async getFile({ fileId }) {
+      return {
+        _id: fileId,
+        userId: 'user_1',
+        name: 'private.mp4',
+        r2Key: 'users/user_2/files/file_2/private.mp4',
+      } satisfies FileRecord
+    },
+  })
+  const storage = createStorage({
+    async downloadBuffer() {
+      downloaded = true
+      return Buffer.from([1])
+    },
+  })
+
+  assert.equal(await createService(repository, storage).readFileBytes({
+    fileId: 'file_2',
+    userId: 'user_1',
+    maximumBytes: 16,
+  }), null)
+  assert.equal(downloaded, false)
+})
+
+test('FileService.readFileBytes leaves scoped file authorization to the repository ACL', async () => {
+  const repository = createRepository({
+    async getFile() {
+      return null
+    },
+  })
+  await assert.rejects(
+    createService(repository).readFileBytes({
+      fileId: 'file_2',
+      userId: 'user_1',
+      workspaceId: 'ws_1',
+      scope: 'personal',
+    }),
+    (error: unknown) => error instanceof FileServiceError && error.statusCode === 404,
+  )
+})

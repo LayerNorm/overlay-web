@@ -15,7 +15,7 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Image | `generate_image` |
 | Video | `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
-| Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
+| Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_download_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
 | Agents (editing) | `create_agent`, `update_agent` |
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
@@ -41,6 +41,18 @@ Computer is used and the Mac is the fallback. A connected Mac also makes the
 computer tools available in personal chat. Approvals are the same on both;
 automations never use the Mac, and only the person who approved the Mac can use
 it. See `local-computer.md`.
+
+`computer_download_file` transfers a readable binary Overlay File through
+`FileService.readFileBytes` to a fresh temporary directory on the selected
+Computer (under `/tmp` on Cloud, under the approved working directory on a
+Local Computer). It takes a file id, not a URL or destination path, requires both the
+Computer and `read_file` grants, and requires the file to belong to the active
+workspace. In shared rooms it transfers only workspace-scoped files; outside
+shared rooms, the current actor may transfer any file the repository allows them
+to read. It enforces
+the folder-copy per-file limits (50 MiB cloud, 450 KiB local) and returns the
+destination path and source-byte checksum without exposing storage credentials
+or a download URL.
 
 ## How tool calls appear in chat
 

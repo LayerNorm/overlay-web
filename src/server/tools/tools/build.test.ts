@@ -133,6 +133,41 @@ test('binary publication requires both the computer-publication and write-file g
   assert.ok(withBothGrants.computer_publish_file)
 })
 
+test('binary computer download requires both Computer and read-file grants', () => {
+  const computerOnly = buildOverlayToolSet({
+    userId: 'user-test',
+    allowedToolIds: ['computer_download_file'],
+  })
+  const readOnly = buildOverlayToolSet({
+    userId: 'user-test',
+    allowedToolIds: ['read_file'],
+  })
+  const bothGrants = buildOverlayToolSet({
+    userId: 'user-test',
+    allowedToolIds: ['computer_download_file', 'read_file'],
+  })
+  assert.equal(computerOnly.computer_download_file, undefined)
+  assert.equal(readOnly.computer_download_file, undefined)
+  assert.ok(bothGrants.computer_download_file)
+  assert.match((bothGrants.read_file as { description: string }).description, /computer_download_file/)
+  assert.doesNotMatch((readOnly.read_file as { description: string }).description, /computer_download_file/)
+
+  const inputSchema = bothGrants.computer_download_file.inputSchema as {
+    safeParse(input: unknown): { success: boolean }
+  }
+  assert.equal(inputSchema.safeParse({ fileId: 'file_1' }).success, true)
+  assert.equal(inputSchema.safeParse({ fileId: 'file_1', target: 'cloud', url: 'https://example.test' }).success, false)
+  assert.equal(inputSchema.safeParse({ fileId: 'file_1', path: '/tmp/elsewhere' }).success, false)
+
+  const sharedRoom = buildOverlayToolSet({
+    userId: 'user-test',
+    allowedToolIds: ['computer_download_file', 'read_file'],
+    sharedRoom: true,
+  })
+  assert.ok(sharedRoom.computer_download_file)
+  assert.match((sharedRoom.read_file as { description: string }).description, /computer_download_file/)
+})
+
 test('computer_browser typing in durable personal runs requires approval', async () => {
   const tools = buildOverlayToolSet({
     userId: 'user-test',

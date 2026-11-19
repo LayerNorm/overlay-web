@@ -33,11 +33,13 @@ export class ConvexFileRepository implements FileRepository {
     accessToken?: string
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null> {
     return await convex.query<FileRecord | null>('files/files:get', {
       fileId: args.fileId,
       userId: args.userId,
       serverSecret: this.serverSecret,
+      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
       ...(args.accessToken ? { accessToken: args.accessToken } : {}),
     })
   }
