@@ -7,7 +7,7 @@ import type { GenerationMode } from '@/shared/ai/gateway/model-types'
 import { assistantBlocksToPlainText, buildAssistantVisualSequence } from '@overlay/chat-core'
 import { safeSetLocalStorage } from './model-selection-utils'
 import { CHAT_GEN_MODE_KEY } from '../chat-interface/constants'
-import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from '../ChatEmptyState'
+import type { EmptyChatSuggestionId } from '../ChatEmptyState'
 import type { useGuestGate } from '@/components/providers/GuestGateProvider'
 import type { useChatSendController } from './useChatSendController'
 import type { useChatPreferences } from './useChatPreferences'
@@ -105,19 +105,6 @@ export function useComposerActions({
       focusComposer()
     },
     [focusComposer, handleGenerationChipChange, handleGenerationModeChange, setInput, setSelectedToolIds],
-  )
-
-  const handleAutomateSuggestion = useCallback(
-    (id: EmptyAutomateSuggestionId) => {
-      const prompts: Record<EmptyAutomateSuggestionId, string> = {
-        workflow: 'Build a workflow that ',
-        monitor: 'Monitor a website and alert me when it changes',
-        schedule: 'Schedule a weekly report and send it to my team',
-      }
-      setInput(prompts[id])
-      focusComposer()
-    },
-    [focusComposer, setInput],
   )
 
   const isActiveLoadingRef = useRef(isActiveLoading)
@@ -220,7 +207,6 @@ export function useComposerActions({
     handleGenerationModeChange,
     handleGenerationChipChange,
     handleEmptySuggestion,
-    handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
   }
 }
