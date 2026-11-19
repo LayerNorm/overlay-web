@@ -19,12 +19,10 @@ export function buildChatDerivedView({
   generationResults,
   idParam,
   automationConversationId,
-  showAutomationChatTab,
   activeChatHydrated,
   isActiveLoading,
   isOptimisticLoading,
   isConversationBottomVisible,
-  composerMode,
   firstName,
   mode,
   selectedAutomation,
@@ -40,12 +38,10 @@ export function buildChatDerivedView({
   generationResults: ReturnType<typeof useConversationUiState>['generationResults']
   idParam: string | null
   automationConversationId: string | null
-  showAutomationChatTab: boolean
   activeChatHydrated: boolean
   isActiveLoading: boolean
   isOptimisticLoading: boolean
   isConversationBottomVisible: boolean
-  composerMode: 'chat' | 'automate'
   firstName: string | undefined
   mode: 'chat' | 'automate'
   selectedAutomation: AutomationDetail | null
@@ -77,12 +73,11 @@ export function buildChatDerivedView({
     : hasRuntimeMessages || generationResults.size > 0
   const viewHydrated = canonicalView?.hydrated ?? activeChatHydrated
   const isExistingConversationView = Boolean(idParam || activeChatId || automationConversationId)
-  const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !viewHydrated
+  const showChatLoadingState = isExistingConversationView && !hasHistory && !viewHydrated
   /** Empty chat (any modality): center composer + suggestions only on the true new-chat surface. */
   const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || viewHydrated)
-  const reserveLatestExchangeStartSpace = showAutomationChatTab && hasHistory && (isActiveLoading || isOptimisticLoading)
+  const reserveLatestExchangeStartSpace = hasHistory && (isActiveLoading || isOptimisticLoading)
   const showScrollToBottomControl =
-    showAutomationChatTab &&
     hasHistory &&
     !showChatLoadingState &&
     !showCenteredEmptyChat &&
@@ -90,7 +85,7 @@ export function buildChatDerivedView({
   const userTurnCount = primaryMessages.filter((m) => m.role === 'user').length
   const latestExchIdx = userTurnCount > 0 ? userTurnCount - 1 : -1
 
-  const greetingLine = composerMode === 'automate' ? 'What are we automating today?' : chatGreetingLine(firstName)
+  const greetingLine = chatGreetingLine(firstName)
   const automationChatIntro = showCenteredEmptyChat && selectedAutomation && !automationConversationId ? (
     <div className="mx-auto mt-5 w-full max-w-xl rounded-2xl border border-(--border) bg-(--surface-elevated) px-4 py-3 text-left shadow-xs">
       <p className="text-sm font-medium text-(--foreground)">{selectedAutomation.name || selectedAutomation.title || 'Saved automation'}</p>

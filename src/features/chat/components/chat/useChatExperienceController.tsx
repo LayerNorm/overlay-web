@@ -421,8 +421,9 @@ export function useChatExperienceController({
     if (view && ['personal', 'workspace-chats', 'dms', 'channels'].includes(view)) params.set('view', view)
 
     const query = params.toString()
-    router.replace(buildWorkspaceHref(activeWorkspaceId, `/app/chat${query ? `?${query}` : ''}`))
-  }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, router, searchParams])
+    const surface = mode === 'automate' ? '/app/automations' : '/app/chat'
+    router.replace(buildWorkspaceHref(activeWorkspaceId, `${surface}${query ? `?${query}` : ''}`))
+  }, [activeWorkspaceId, buildWorkspaceHref, hideSidebar, mode, router, searchParams])
 
   const {
     activeChatTitle,
@@ -487,15 +488,12 @@ export function useChatExperienceController({
 
   const {
     automationConversationId,
-    automationDetailTab,
     automationIdParam,
     hasAutomationContext,
     idParam,
     invalidateLoadChatRequestRef,
     loadChatRef,
     resetToBlankChatSurface,
-    showAutomationChatTab,
-    showAutomationHeaderControls,
     syncStandaloneChatUrl,
   } = useChatRouteController({
     activeChatId,
@@ -745,7 +743,6 @@ export function useChatExperienceController({
 
   const {
     refreshSelectedAutomation,
-    selectAutomationDetailTab,
     saveAutomationHeaderModel,
     automationHeaderModelId,
   } = useAutomationDetail({
@@ -832,7 +829,6 @@ export function useChatExperienceController({
     isOptimisticLoading,
     runtimeHydrationVersion,
     isTemporaryChat,
-    showAutomationChatTab,
     canonicalRevision: nativePersonalSendEnabled ? nativePersonal.transcript.rows : null,
   })
   usePendingTurnScroll({
@@ -1046,12 +1042,10 @@ export function useChatExperienceController({
     generationResults: viewGenerationResults,
     idParam: nativePersonalDisplay ? displayActiveChatId : idParam,
     automationConversationId,
-    showAutomationChatTab,
     activeChatHydrated,
     isActiveLoading,
     isOptimisticLoading,
     isConversationBottomVisible,
-    composerMode,
     firstName,
     mode,
     selectedAutomation,
@@ -1082,7 +1076,6 @@ export function useChatExperienceController({
     handleGenerationModeChange,
     handleGenerationChipChange,
     handleEmptySuggestion,
-    handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
   } = useComposerActions({
 
@@ -1235,9 +1228,6 @@ export function useChatExperienceController({
     automationConversationId,
     automationIdParam,
     hasAutomationContext,
-    showAutomationChatTab,
-    showAutomationHeaderControls,
-    automationDetailTab,
     isTemporaryChat,
 
     mode,
@@ -1252,13 +1242,11 @@ export function useChatExperienceController({
     selectedImageModels,
     selectedVideoModels,
     automationHeaderModelId,
-    automationHeaderModels: selectableTextModels,
     pickerTextModels,
     isTextModelLocked: isPickerTextModelLocked,
     upgradeModel,
     setUpgradeModel,
     saveAutomationHeaderModel,
-    selectAutomationDetailTab,
     headerModelProps,
     selectedAutomation,
     selectedAutomationLoading,
@@ -1357,7 +1345,6 @@ export function useChatExperienceController({
     handleGenerationModeChange,
     handleGenerationChipChange,
     handleEmptySuggestion,
-    handleAutomateSuggestion,
     handleCreateAutomationDraftViaChat,
     getResponseForExchange: effectiveGetResponseForExchange,
     getResponsesForExchange,

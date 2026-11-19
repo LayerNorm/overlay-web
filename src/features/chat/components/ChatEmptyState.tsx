@@ -1,18 +1,16 @@
 'use client'
 
 import { AnimatePresence, domAnimation, LazyMotion, m } from 'framer-motion'
-import { Globe2, Image as ImageIcon, PenLine, Zap, type LucideIcon } from 'lucide-react'
+import { Globe2, Image as ImageIcon, PenLine, type LucideIcon } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import type { ReactNode } from 'react'
 
 export type EmptyChatSuggestionId = 'image' | 'write' | 'lookup'
-export type EmptyAutomateSuggestionId = 'workflow' | 'monitor' | 'schedule'
 
 type ChatEmptyStateProps = {
   visible: boolean
   mode: 'chat' | 'automate'
   onEmptySuggestion?: (id: EmptyChatSuggestionId) => void
-  onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
 }
 
 const CHAT_SUGGESTIONS: Array<{ id: EmptyChatSuggestionId; label: string; Icon: LucideIcon }> = [
@@ -21,11 +19,8 @@ const CHAT_SUGGESTIONS: Array<{ id: EmptyChatSuggestionId; label: string; Icon: 
   { id: 'lookup', label: 'Look something up', Icon: Globe2 },
 ]
 
-const AUTOMATE_SUGGESTIONS: Array<{ id: EmptyAutomateSuggestionId; label: string; Icon: LucideIcon }> = [
-  { id: 'workflow', label: 'Build a workflow', Icon: Zap },
-  { id: 'monitor', label: 'Monitor a site', Icon: Globe2 },
-  { id: 'schedule', label: 'Schedule a report', Icon: PenLine },
-]
+// A new automation is written as an ordinary chat message; creating an image is not a scheduled run.
+const AUTOMATE_SUGGESTIONS = CHAT_SUGGESTIONS.filter((suggestion) => suggestion.id !== 'image')
 
 export function ChatEmptyHero({
   visible,
@@ -62,7 +57,6 @@ export function ChatEmptyState({
   visible,
   mode,
   onEmptySuggestion,
-  onAutomateSuggestion,
 }: ChatEmptyStateProps) {
   const suggestions = mode === 'automate' ? AUTOMATE_SUGGESTIONS : CHAT_SUGGESTIONS
 
@@ -84,13 +78,7 @@ export function ChatEmptyState({
                   key={id}
                   type="button"
                   className="h-9 shrink-0 gap-2 rounded-2xl border border-(--border) bg-transparent px-3.5 text-sm font-normal text-(--foreground) transition-colors hover:bg-(--surface-muted)"
-                  onClick={() => {
-                    if (mode === 'automate') {
-                      onAutomateSuggestion?.(id as EmptyAutomateSuggestionId)
-                    } else {
-                      onEmptySuggestion?.(id as EmptyChatSuggestionId)
-                    }
-                  }}
+                  onClick={() => onEmptySuggestion?.(id)}
                 >
                   <Icon size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
                   <span>{label}</span>

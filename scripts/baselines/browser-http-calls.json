@@ -31,23 +31,28 @@
     "src/features/agents/components/use-agent-editor-actions.ts",
     "src/features/work/components/OrganizationAgentDetails.tsx"
   ],
-  "automations.createResponse": [
-    "src/features/chat/components/chat/useAutomationDetail.ts"
+  "automations.create": [
+    "src/features/automations/components/AutomationComposerPickers.tsx"
   ],
   "automations.deleteResponse": [
+    "src/features/automations/components/AutomationDetailsPanel.tsx",
     "src/features/automations/components/AutomationsInlinePanel.tsx",
     "src/features/settings/lib/archived-actions.ts"
   ],
   "automations.parseDeleteResponse": [
+    "src/features/automations/components/AutomationDetailsPanel.tsx",
     "src/features/automations/components/AutomationsInlinePanel.tsx",
     "src/features/settings/lib/archived-actions.ts"
   ],
-  "automations.runDurableResponse": [
-    "src/features/chat/components/chat-interface/AutomationEditor.tsx"
+  "automations.runDurable": [
+    "src/features/automations/components/AutomationComposerPickers.tsx",
+    "src/features/automations/components/AutomationDetailsPanel.tsx"
+  ],
+  "automations.update": [
+    "src/features/automations/components/AutomationDetailsPanel.tsx"
   ],
   "automations.updateResponse": [
     "src/features/automations/components/AutomationsInlinePanel.tsx",
-    "src/features/chat/components/chat-interface/AutomationEditor.tsx",
     "src/features/chat/components/chat/useAutomationDetail.ts"
   ],
   "chat.generateImageResponse": [
