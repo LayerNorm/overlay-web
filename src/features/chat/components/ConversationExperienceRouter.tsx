@@ -3,9 +3,10 @@
 import { Hash, Mail } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
-import { DirectMessageExperience } from './DirectMessageExperience'
+import { ChatMessageListPlaceholder } from './ChatMessageListSkeleton'
 import { useConvex } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -28,6 +29,11 @@ import {
   type ConversationDetailScopeStatus,
   type ConversationScopeDetail,
 } from './conversationScopeVerification'
+
+const DirectMessageExperience = dynamic(
+  () => import('./DirectMessageExperience').then((module) => ({ default: module.DirectMessageExperience })),
+  { loading: () => <div className="flex h-full min-h-0 flex-col"><ChatMessageListPlaceholder /></div> },
+)
 
 /**
  * Soft chat switches use `history.pushState` (see ChatInlinePanel) so the app

@@ -5,6 +5,14 @@ import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoa
 import { scopeMutations } from '../lib/scopeMutations'
 
 const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+const kindArg = v.optional(v.union(v.literal('skill'), v.literal('domain_map')))
+const originArg = v.optional(v.union(v.literal('user'), v.literal('agent'), v.literal('registry')))
+const provenanceArg = v.optional(v.array(v.object({
+  kind: v.union(v.literal('web'), v.literal('registry'), v.literal('workspace'), v.literal('chat')),
+  ref: v.string(),
+  title: v.optional(v.string()),
+  retrievedAt: v.optional(v.number()),
+})))
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
 
 export const { setScope, archive, restore } = scopeMutations('skills', 'extension')
@@ -93,6 +101,8 @@ export const listDirectory = query({
       name: s.name,
       description: s.description,
       enabled: s.enabled ?? true,
+      ...(s.domain !== undefined ? { domain: s.domain } : {}),
+      ...(s.kind !== undefined ? { kind: s.kind } : {}),
     }))
   },
 })
@@ -127,6 +137,11 @@ export const create = mutation({
     instructions: v.string(),
     enabled: v.optional(v.boolean()),
     scope: scopeArg,
+    domain: v.optional(v.string()),
+    kind: kindArg,
+    triggers: v.optional(v.array(v.string())),
+    origin: originArg,
+    provenance: provenanceArg,
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess(args)
@@ -140,6 +155,11 @@ export const create = mutation({
       description: args.description,
       instructions: args.instructions,
       ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
+      ...(args.domain !== undefined ? { domain: args.domain } : {}),
+      ...(args.kind !== undefined ? { kind: args.kind } : {}),
+      ...(args.triggers !== undefined ? { triggers: args.triggers } : {}),
+      ...(args.origin !== undefined ? { origin: args.origin } : {}),
+      ...(args.provenance !== undefined ? { provenance: args.provenance } : {}),
       version: 1,
       createdAt: now,
       updatedAt: now,
@@ -158,6 +178,9 @@ export const update = mutation({
     description: v.optional(v.string()),
     instructions: v.optional(v.string()),
     enabled: v.optional(v.boolean()),
+    domain: v.optional(v.string()),
+    triggers: v.optional(v.array(v.string())),
+    provenance: provenanceArg,
   },
   handler: async (ctx, { skillId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -170,6 +193,9 @@ export const update = mutation({
     if (updates.description !== undefined) patch.description = updates.description
     if (updates.instructions !== undefined) patch.instructions = updates.instructions
     if (updates.enabled !== undefined) patch.enabled = updates.enabled
+    if (updates.domain !== undefined) patch.domain = updates.domain
+    if (updates.triggers !== undefined) patch.triggers = updates.triggers
+    if (updates.provenance !== undefined) patch.provenance = updates.provenance
     if (
       updates.name !== undefined ||
       updates.description !== undefined ||
