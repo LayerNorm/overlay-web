@@ -4,7 +4,7 @@ import {mkdtempSync, writeFileSync, statSync, rmSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
-import { BoxApiError, BoxSandboxRuntime, boatApiKeyFromEnv, type BoxFetch } from './box'
+import { BoxApiError, BoxSandboxRuntime, boatApiKeyFromEnv, type BoxFetch, type BoxUploadFetch } from './box'
 import { isDesktopSandboxInstance, type SandboxCreateRequest } from './contracts'
 
 type RecordedCall = { method: string; url: string; body?: unknown; headers: Record<string, string> }
@@ -27,8 +27,8 @@ function recorder(handler: (call: RecordedCall) => Record<string, unknown>) {
 
 const ok = (extra: Record<string, unknown> = {}) => ({ ok: true, ...extra })
 
-function runtime(fetch: BoxFetch) {
-  return new BoxSandboxRuntime({ apiKey: 'test-key', fetch })
+function runtime(fetch: BoxFetch, uploadFetch?: BoxUploadFetch) {
+  return new BoxSandboxRuntime({ apiKey: 'test-key', fetch, uploadFetch })
 }
 
 function request(name = 'overlay-box'): SandboxCreateRequest {
@@ -352,6 +352,197 @@ test('files write base64, read base64, and missing files read as null', async ()
   assert.equal((calls.find((call) => call.method === 'PUT')?.body as { content: string }).content, 'b3ZlcmxheQ==')
   assert.equal(Buffer.from((await instance.readFile('/home/user/a.txt'))!).toString(), 'overlay')
   assert.equal(await instance.readFile('/home/user/missing'), null)
+})
+
+test('large file writes use a signed raw upload and preserve the exact byte view', async (t) => {
+  const path = '/tmp/overlay-download.test/file.mp4'
+  const credential = 'signed-test-credential'
+  const { calls, fetch } = recorder((call) => {
+    if (call.url.endsWith('/files/upload-url')) {
+      return ok({
+        type: 'file.upload_url',
+        method: 'PUT',
+        path,
+        url: `https://uploads.example.test/file?token=${credential}`,
+      })
+    }
+    return ok({ sandbox: { id: 'bx_1', state: 'ready' } })
+  })
+  const size = 16_860_824
+  const backing = Buffer.alloc(size + 4, 0x5a)
+  backing[2] = 0x01
+  backing[size + 1] = 0xfe
+  const contents = backing.subarray(2, size + 2)
+  const uploadCalls: Array<{ url: string; init: RequestInit }> = []
+  let timeoutMs: number | undefined
+  t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
+    timeoutMs = milliseconds
+    return new AbortController().signal
+  })
+  const uploadFetch: BoxUploadFetch = async (url, init) => {
+    uploadCalls.push({ url, init })
+    return { ok: true, status: 200 }
+  }
+  const instance = await runtime(fetch, uploadFetch).reconnect('bx_1')
+
+  await instance.writeFiles([{ path, contents }])
+
+  const mint = calls.find((call) => call.url.endsWith('/files/upload-url'))!
+  assert.equal(mint.method, 'POST')
+  assert.deepEqual(mint.body, { path, ttlSeconds: 120 })
+  assert.equal(mint.headers.Authorization, 'Bearer test-key')
+  assert.equal(calls.filter((call) => call.method === 'PUT' && call.url.endsWith('/files')).length, 0)
+  assert.equal(uploadCalls.length, 1)
+  const upload = uploadCalls[0]!
+  assert.equal(upload.url, `https://uploads.example.test/file?token=${credential}`)
+  assert.equal(upload.init.method, 'PUT')
+  assert.deepEqual(Object.fromEntries(new Headers(upload.init.headers).entries()), {
+    'content-type': 'application/octet-stream',
+  })
+  assert.equal(upload.init.credentials, 'omit')
+  assert.equal(upload.init.redirect, 'error')
+  assert.ok(upload.init.signal instanceof AbortSignal)
+  assert.equal(timeoutMs, 60_000)
+  assert.equal((upload.init.body as Uint8Array).byteLength, size)
+  assert.deepEqual(Buffer.from(upload.init.body as Uint8Array), Buffer.from(contents))
+})
+
+test('a 5 MiB file stays on the inline base64 endpoint', async () => {
+  const { calls, fetch } = recorder((call) => call.url.endsWith('/files') && call.method === 'PUT'
+    ? ok({ type: 'file.written' })
+    : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  let uploadCalls = 0
+  const instance = await runtime(fetch, async () => {
+    uploadCalls++
+    return { ok: true, status: 200 }
+  }).reconnect('bx_1')
+  const contents = Buffer.alloc(5 * 1024 * 1024, 0x2a)
+
+  await instance.writeFiles([{ path: '/tmp/exact-limit.bin', contents }])
+
+  const write = calls.find((call) => call.url.endsWith('/files') && call.method === 'PUT')!
+  assert.equal((write.body as { content: string }).content, contents.toString('base64'))
+  assert.equal(uploadCalls, 0)
+})
+
+test('oversized inline API errors are sanitized without retry or fallback', async () => {
+  const secret = 'private-provider-message-and-request-id'
+  const { calls, fetch } = recorder((call) => call.url.endsWith('/files/upload-url')
+    ? {
+        ok: false, status: 413, code: 'file_too_large', message: secret, requestId: secret,
+        error: { code: 'file_too_large', status: 413, message: secret },
+      }
+    : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  const instance = await runtime(fetch).reconnect('bx_1')
+
+  await assert.rejects(instance.writeFiles([{ path: '/tmp/large.bin', contents: Buffer.alloc(5 * 1024 * 1024 + 1) }]), (error) => {
+    assert.ok(error instanceof BoxApiError)
+    assert.equal(error.status, 413)
+    assert.equal(error.code, 'file_upload_url_failed')
+    assert.equal(error.message, 'Could not create a signed file upload.')
+    assert.equal(error.requestId, undefined)
+    assert.equal(error.cause, undefined)
+    assert.doesNotMatch(JSON.stringify(error), /private-provider-message-and-request-id/)
+    return true
+  })
+  assert.equal(calls.filter((call) => call.url.endsWith('/files/upload-url')).length, 1)
+  assert.equal(calls.filter((call) => call.method === 'PUT' && call.url.endsWith('/files')).length, 0)
+})
+
+test('non-JSON upload URL errors do not disclose provider response text', async () => {
+  const secret = 'credential-in-provider-body'
+  const fetch: BoxFetch = async (url) => url.endsWith('/files/upload-url')
+    ? { status: 502, json: async () => { throw new Error(secret) } }
+    : { status: 200, json: async () => ok({ sandbox: { id: 'bx_1', state: 'ready' } }) }
+  const instance = await runtime(fetch).reconnect('bx_1')
+
+  await assert.rejects(instance.writeFiles([{ path: '/tmp/large.bin', contents: Buffer.alloc(5 * 1024 * 1024 + 1) }]), (error) => {
+    assert.ok(error instanceof BoxApiError)
+    assert.equal(error.status, 502)
+    assert.equal(error.code, 'file_upload_url_failed')
+    assert.equal(error.requestId, undefined)
+    assert.equal(error.cause, undefined)
+    assert.doesNotMatch(JSON.stringify(error), /credential-in-provider-body/)
+    return true
+  })
+})
+
+test('failed raw upload HTTP responses expose only the status and fixed error class', async () => {
+  const secret = 'private-provider-response-body'
+  const { fetch } = recorder((call) => call.url.endsWith('/files/upload-url')
+    ? ok({ type: 'file.upload_url', method: 'PUT', path: '/tmp/large.bin', url: 'https://uploads.example.test/file?token=test' })
+    : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  const uploadFetch: BoxUploadFetch = async () => ({
+    ok: false,
+    status: 413,
+    json: async () => { throw new Error(secret) },
+  })
+  const instance = await runtime(fetch, uploadFetch).reconnect('bx_1')
+
+  await assert.rejects(instance.writeFiles([{ path: '/tmp/large.bin', contents: Buffer.alloc(5 * 1024 * 1024 + 1) }]), (error) => {
+    assert.ok(error instanceof BoxApiError)
+    assert.equal(error.status, 413)
+    assert.equal(error.code, 'file_upload_failed')
+    assert.equal(error.message, 'Could not upload file to sandbox.')
+    assert.equal(error.requestId, undefined)
+    assert.equal(error.cause, undefined)
+    assert.doesNotMatch(JSON.stringify(error), /private-provider-response-body/)
+    return true
+  })
+})
+
+test('malformed signed upload responses are rejected before raw upload', async () => {
+  const invalid = [
+    { type: 'unexpected', method: 'PUT', url: 'https://uploads.example.test/file' },
+    { type: 'file.upload_url', method: 'GET', url: 'https://uploads.example.test/file' },
+    { type: 'file.upload_url', method: 'PUT', url: '' },
+    { type: 'file.upload_url', method: 'PUT', url: 'not-a-url' },
+    { type: 'file.upload_url', method: 'PUT', url: 'http://uploads.example.test/file' },
+    { type: 'file.upload_url', method: 'PUT', url: 'https://user:pass@uploads.example.test/file' },
+    { type: 'file.upload_url', method: 'PUT', url: 'https://uploads.example.test/file#fragment' },
+  ]
+  for (const response of invalid) {
+    const { fetch } = recorder((call) => call.url.endsWith('/files/upload-url')
+      ? ok(response)
+      : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+    let uploadCalls = 0
+    const instance = await runtime(fetch, async () => {
+      uploadCalls++
+      return { ok: true, status: 200 }
+    }).reconnect('bx_1')
+    await assert.rejects(instance.writeFiles([{ path: '/tmp/large.bin', contents: Buffer.alloc(5 * 1024 * 1024 + 1) }]),
+      (error) => error instanceof BoxApiError && error.code === 'invalid_file_upload_url')
+    assert.equal(uploadCalls, 0)
+  }
+})
+
+test('failed raw uploads are sanitized and do not run chmod or fall back', async () => {
+  const secret = 'https://signed.example.test/file?credential=private-test-value'
+  const { calls, fetch } = recorder((call) => call.url.endsWith('/files/upload-url')
+    ? ok({ type: 'file.upload_url', method: 'PUT', path: '/tmp/large.bin', url: secret })
+    : ok({ sandbox: { id: 'bx_1', state: 'ready' } }))
+  let uploadCalls = 0
+  const instance = await runtime(fetch, async () => {
+    uploadCalls++
+    throw new Error(`transport failure for ${secret}`)
+  }).reconnect('bx_1')
+
+  await assert.rejects(instance.writeFiles([{
+    path: '/tmp/large.bin', contents: Buffer.alloc(5 * 1024 * 1024 + 1), mode: 0o600,
+  }]), (error) => {
+    assert.ok(error instanceof BoxApiError)
+    assert.equal(error.status, 502)
+    assert.equal(error.code, 'file_upload_failed')
+    assert.equal(error.message, 'Could not upload file to sandbox.')
+    assert.equal(error.requestId, undefined)
+    assert.equal(error.cause, undefined)
+    assert.doesNotMatch(JSON.stringify(error), /private-test-value|signed\.example\.test/)
+    return true
+  })
+  assert.equal(uploadCalls, 1)
+  assert.equal(calls.filter((call) => call.url.endsWith('/files/upload-url')).length, 1)
+  assert.equal(calls.some((call) => call.url.endsWith('/commands')), false)
+  assert.equal(calls.some((call) => call.method === 'PUT' && call.url.endsWith('/files')), false)
 })
 
 test('file modes are applied through the command channel and never put file contents in command arguments', {skip: process.platform === 'win32' ? 'Boat is a POSIX machine' : false}, async () => {
