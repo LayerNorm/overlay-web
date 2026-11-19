@@ -26,7 +26,7 @@ const BYOA: Array<{ name: string; logo: LogoName }> = [
 
 /**
  * The marketing home page: a static scroll in one framed column with hairline
- * sections. The hero headline rotates independently of the static page.
+ * sections.
  */
 export function StaticLanding() {
   const { isAuthenticated } = useAuth()

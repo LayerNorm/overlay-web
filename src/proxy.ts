@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { getServiceAuthHeaderName, verifyServiceAuthToken } from '@/server/auth/service-auth'
 import { hasValidSessionCookieSignature } from '@/server/auth/session-cookie-signature'
 import { previewHostnameAllowed } from '@/shared/web/preview-host'
+import { DESKTOP_HOME_PATH, isOverlayDesktopUserAgent } from '@/shared/auth/desktop-home'
 import {
   isSupportedLegacyWorkspaceRoute,
   parseWorkspaceHandleRoute,
@@ -403,6 +404,24 @@ function createProxySecurityContext(request: NextRequest, pathname: string): Pro
   return { cspHeaderName, cspPolicy, requestHeaders, nextResponse }
 }
 
+/**
+ * Where a signed-out request for a protected page goes. The desktop app's window
+ * gets its own signed-out home for workspace pages, which signs in through the
+ * browser; everyone else, including the browser half of the desktop sign-in
+ * (`/account?desktop_code_challenge`), gets the sign-in page with a return path.
+ * Signed-out `/app` pages are not redirected here: they render as a guest, and
+ * `DesktopProvider` sends the desktop window home.
+ */
+function signedOutDestination(request: NextRequest): URL {
+  const { pathname, search } = request.nextUrl
+  if (pathname.startsWith('/w/') && isOverlayDesktopUserAgent(request.headers.get('user-agent'))) {
+    return new URL(DESKTOP_HOME_PATH, request.url)
+  }
+  const signIn = new URL('/auth/sign-in', request.url)
+  signIn.searchParams.set('redirect', pathname + search)
+  return signIn
+}
+
 async function resolveWorkspaceHandleRoute(
   request: NextRequest,
   security: ProxySecurityContext,
@@ -414,10 +433,8 @@ async function resolveWorkspaceHandleRoute(
     ? hasBetterAuthSessionCookie(request)
     : await hasValidSessionCookieSignature(request.cookies.get(SESSION_COOKIE_NAME)?.value ?? '')
   if (!hasSession) {
-    const signIn = new URL('/auth/sign-in', request.url)
-    signIn.searchParams.set('redirect', request.nextUrl.pathname + request.nextUrl.search)
     return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
-      NextResponse.redirect(signIn),
+      NextResponse.redirect(signedOutDestination(request)),
       security.cspHeaderName,
       security.cspPolicy,
     ), pathname)
@@ -496,10 +513,8 @@ async function handleProtectedRoute(
     )
   }
 
-  const signInUrl = new URL('/auth/sign-in', request.url)
-  signInUrl.searchParams.set('redirect', pathname + request.nextUrl.search)
   return applyBrowserSecurityHeaders(
-    NextResponse.redirect(signInUrl),
+    NextResponse.redirect(signedOutDestination(request)),
     cspHeaderName,
     cspPolicy,
   )

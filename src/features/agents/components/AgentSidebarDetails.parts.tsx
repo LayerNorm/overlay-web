@@ -3,19 +3,17 @@
 import {
   BookOpen,
   Blocks,
-  FileImage,
-  Folder,
+  Bot,
+  FileText,
   Globe,
+  ImagePlay,
   Link2,
   Laptop,
+  ListChecks,
   Monitor,
-  PanelsTopLeft,
-  Search,
   Sparkles,
-  StickyNote,
-  Video,
+  Workflow,
   Wrench,
-  Zap,
 } from 'lucide-react'
 import { Toggle, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@overlay/ui/primitives'
 import {
@@ -33,36 +31,32 @@ type Controller = ReturnType<typeof useAgentEditorController>
 
 const toolIcons: Record<string, typeof Wrench> = {
   memory: BookOpen,
-  knowledge: Search,
-  files: Folder,
+  files: FileText,
   web_search: Globe,
   integrations: Link2,
   mcp: Blocks,
-  notes: StickyNote,
   skills: Sparkles,
-  automations: Zap,
-  image: FileImage,
-  video: Video,
-  browser: PanelsTopLeft,
+  automations: Workflow,
+  tasks: ListChecks,
+  media: ImagePlay,
   computer: Monitor,
   local_computer: Laptop,
+  agents: Bot,
 }
 
 const toolLabels: Record<string, string> = {
   memory: 'Memory',
-  knowledge: 'Knowledge',
   files: 'Files',
   web_search: 'Web search',
   integrations: 'Connected apps',
   mcp: 'MCP servers',
-  notes: 'Notes',
   skills: 'Skills',
   automations: 'Automations',
-  image: 'Image generation',
-  video: 'Video generation',
-  browser: 'Browser',
+  tasks: 'Tasks',
+  media: 'Media generation',
   computer: 'Cloud computer',
   local_computer: 'Local computer',
+  agents: 'Agents',
 }
 
 function visibleToolGroups(computersAvailable: boolean) {

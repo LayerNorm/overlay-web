@@ -33,7 +33,7 @@ test('an explicit grant on the master agent is honoured over the implicit one', 
 test('a narrow grant yields only what it names', () => {
   const grant = resolveAgentGrant({
     agentId: 'a2',
-    allowedToolIds: toolIdsForEnabledGroups(new Set(['notes', 'web_search'])),
+    allowedToolIds: toolIdsForEnabledGroups(new Set(['files', 'web_search'])),
     isDefaultMaster: false,
   })
   assert.deepEqual([...grant.capabilities], ['web_search'])
