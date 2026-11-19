@@ -1,5 +1,5 @@
-// Chief assignments: the assignment box inside the response that made it, an Assignments list in the right panel of
-// agent threads, chats and channels, and how a delegated agent that cannot run is reported.
+// Chief assignments and the tabbed right sidebar: the assignment box inside the response that made it, one sidebar for
+// agent threads, chats and channels whose views open as tabs, and how a delegated agent that cannot run is reported.
 //   MOCKUP_FEATURE=chief-assignments node internal/plans/mockups/overlay-app/build.mjs
 import { fileURLToPath } from 'node:url'
 
@@ -31,55 +31,68 @@ export default {
       ]],
     },
     {
-      // Agent thread: an Assignments tab beside Details, Library and Computer.
+      // Agent thread: the tabbed sidebar, with Assignments among its views and the avatar on top.
       file: 'src/features/agents/components/AgentRightSidebar.tsx',
-      imports: `import { assignmentsTab } from ${components}\n`,
-      replace: [[
-        `    {
+      imports: `import { TabbedRightSidebar, assignmentsTab, useAgentSidebarView } from ${components}\n`,
+      replace: [
+        [`  const selectedTab = activeTab\n`, `  const selectedTab = useAgentSidebarView(activeTab)\n`],
+        [
+          `    {
       id: 'library',
       label: 'Library',`,
-        `    ...assignmentsTab(conversationId, selectedTab),
+          `    ...assignmentsTab(conversationId, selectedTab),
     {
       id: 'library',
       label: 'Library',`,
-      ]],
+        ],
+        [`    <RightSidebar
+      ariaLabel="Agent sidebar"`, `    <TabbedRightSidebar
+      scope="agent"
+      ariaLabel="Agent sidebar"`],
+      ],
     },
     {
-      file: 'src/features/agents/components/AgentConversationWorkspace.tsx',
-      replace: [[`if (id !== 'details' && id !== 'library' && id !== 'computer') return`, `if (id !== 'details' && id !== 'library' && id !== 'computer' && id !== 'assignments') return`]],
-    },
-    {
-      file: 'src/shared/agents/agent-right-sidebar-preferences.ts',
-      replace: [[`['details', 'library', 'computer']`, `['details', 'library', 'computer', 'assignments' as never]`]],
-    },
-    {
-      // Chats and channels: an Assignments panel beside People and Pinned.
+      // Chats and channels: the same sidebar, opened by one button.
       file: 'src/features/chat/components/DirectMessageExperience.tsx',
       replace: [
-        [`room.roomPanel === 'people' || room.roomPanel === 'pinned'`, `room.roomPanel === 'people' || room.roomPanel === 'pinned' || (room.roomPanel as string) === 'assignments'`],
-        [`return roomPanel === 'people' || roomPanel === 'pinned'`, `return roomPanel === 'people' || roomPanel === 'pinned' || roomPanel === 'assignments'`],
+        [`room.roomPanel === 'people' || room.roomPanel === 'pinned'`, `room.roomPanel === 'people' || room.roomPanel === 'pinned' || (room.roomPanel as string) === 'sidebar'`],
+        [`return roomPanel === 'people' || roomPanel === 'pinned'`, `return roomPanel === 'people' || roomPanel === 'pinned' || roomPanel === 'sidebar'`],
       ],
     },
     {
       file: 'src/features/chat/components/DirectMessageExperience.parts.tsx',
-      imports: `import { AssignmentsPanelButton, AssignmentsRoomPanel } from ${components}\n`,
+      imports: `import { RoomSidebarToggle, RoomTabbedSidebar } from ${components}\n`,
       replace: [
         [
           `      <Button
         variant="ghost"
         type="button"
-        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}`,
-          `      <AssignmentsPanelButton roomPanel={roomPanel} setRoomPanel={setRoomPanel as never} />
-      <Button
-        variant="ghost"
-        type="button"
-        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}`,
+        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
+        aria-pressed={roomPanel === 'people'}
+        title="People in this room"
+        className={\`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) \${
+          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
+        }\`}
+      >
+        <UsersRound size={14} />
+        {roster.participants.length}
+      </Button>`,
+          `      <RoomSidebarToggle roomPanel={roomPanel} setRoomPanel={setRoomPanel as never} peopleCount={roster.participants.length} />`,
         ],
         [
           `  if (roomPanel === 'people') {
     return (
       <RoomPeoplePanel`,
-          `  if ((roomPanel as string) === 'assignments') return <AssignmentsRoomPanel onClose={onClosePanel} />
+          `  if ((roomPanel as string) === 'sidebar') {
+    return (
+      <RoomTabbedSidebar
+        onClose={onClosePanel}
+        counts={{ people: roster.participants.length, pinned: pinnedSummaries.length }}
+        people={<RoomPeoplePanel participants={roster.participants} agentsByPrincipal={ctx.directoryAgentsByPrincipal} presence={roster.presence} currentPrincipalId={roster.currentPrincipalId} onAddPeople={onAddPeople} onClose={onClosePanel} />}
+        pinned={<RoomPinnedPanel pinned={pinnedSummaries} onJump={jumpToMessage} onUnpin={(messageId) => void togglePinned(messageId)} onClose={onClosePanel} />}
+      />
+    )
+  }
   if (roomPanel === 'people') {
     return (
       <RoomPeoplePanel`,

@@ -1,12 +1,12 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import Link from 'next/link'
-import { ArrowUpRight, Check, ChevronDown, ChevronRight, GitBranch, Info, X } from 'lucide-react'
-import { Button } from '@overlay/ui/primitives'
-import { AppScreenSidePanel } from '@overlay/modules-react/shell'
+import { ArrowUpRight, Check, ChevronDown, ChevronRight, Folder, GitBranch, Info, Monitor, Pin, Plus, Search, UsersRound, X, type LucideIcon } from 'lucide-react'
+import { Button, Input } from '@overlay/ui/primitives'
+import { RightSidebar, RightSidebarToggle } from '@overlay/modules-react/shell'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
 import type { ThreadActivityStatus } from '@/shared/agents/thread-activity'
-import { navigate, useHref } from '../../shims/router'
+import { currentHref, navigate, useHref } from '../../shims/router'
 import {
   CHANNEL_ID, CHIEF_THREAD_ID, DM_ID, MODE, assignmentsForConversation, assignmentsForMessage, conversationInHref, switchMode,
   type Assignment, type Mode,
@@ -104,31 +104,156 @@ function AssignmentList({ conversationId }: { conversationId: string | null }) {
   )
 }
 
-/** The Assignments tab of an agent thread's right panel. */
+/** The Assignments view of an agent thread's sidebar. */
 export function assignmentsTab(conversationId: string, selectedTab: string) {
   if (MODE !== 'proposed') return []
   return [{ id: 'assignments', label: 'Assignments', content: selectedTab === 'assignments' ? <AssignmentList conversationId={conversationId} /> : null }]
 }
 
-/** The same list for a chat or a channel, beside People and Pinned. */
-export function AssignmentsRoomPanel({ onClose }: { onClose(): void }) {
-  const conversationId = conversationInHref(useHref())
+// Proposed: one tabbed right sidebar for agent threads, chats and channels. "+" opens a new tab that lists the views
+// this conversation has; each view opens as its own tab.
+
+type Scope = 'agent' | 'room'
+type SidebarView = { id: string; label: string; content: ReactNode; flush?: boolean }
+const VIEW_ICONS: Record<string, LucideIcon> = { details: Info, assignments: GitBranch, library: Folder, computer: Monitor, people: UsersRound, pinned: Pin }
+const NEW_TAB = 'new'
+const sidebars: Record<Scope, { open: string[]; active: string }> = {
+  agent: { open: ['details'], active: 'details' },
+  room: { open: ['assignments'], active: 'assignments' },
+}
+const sidebarListeners = new Set<() => void>()
+let sidebarVersion = 0
+function updateSidebar(scope: Scope, next: { open: string[]; active: string }) {
+  sidebars[scope] = next
+  sidebarVersion += 1
+  sidebarListeners.forEach((listener) => listener())
+}
+function useSidebar(scope: Scope) {
+  useSyncExternalStore((listener) => { sidebarListeners.add(listener); return () => { sidebarListeners.delete(listener) } }, () => sidebarVersion)
+  return sidebars[scope]
+}
+
+/** Which view the agent sidebar shows; today that is the production tab. */
+export function useAgentSidebarView(productionTab: string) {
+  const { active } = useSidebar('agent')
+  return MODE === 'proposed' ? active : productionTab
+}
+
+function ViewPicker({ views, counts, onPick }: { views: SidebarView[]; counts: Record<string, number | undefined>; onPick(id: string): void }) {
+  const [query, setQuery] = useState('')
+  const matches = views.filter((view) => view.label.toLowerCase().includes(query.trim().toLowerCase()))
   return (
-    <AppScreenSidePanel title="Assignments" description="Work the Chief handed out in this conversation" onClose={onClose}>
-      <div className="p-3"><AssignmentList conversationId={conversationId} /></div>
-    </AppScreenSidePanel>
+    <div className="px-3 pb-6">
+      <div className="relative">
+        <Search size={13} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--muted)" />
+        <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search views" aria-label="Search views" className="h-9 pl-8 text-[13px]" />
+      </div>
+      <ul className="mt-2">
+        {matches.map((view) => {
+          const Icon = VIEW_ICONS[view.id] ?? Info
+          return (
+            <li key={view.id}>
+              <Button variant="ghost" onClick={() => onPick(view.id)} className="h-9 w-full justify-start gap-2.5 rounded-lg px-3 text-[13px] font-normal">
+                <Icon size={14} strokeWidth={1.75} aria-hidden className="shrink-0 text-(--muted)" />
+                <span className="min-w-0 flex-1 truncate text-left">{view.label}</span>
+                {counts[view.id] !== undefined ? <span className="text-xs text-(--muted)">{counts[view.id]}</span> : null}
+              </Button>
+            </li>
+          )
+        })}
+        {matches.length === 0 ? <li className="px-3 py-4 text-xs text-(--muted)">No views match.</li> : null}
+      </ul>
+    </div>
   )
 }
 
-export function AssignmentsPanelButton({ roomPanel, setRoomPanel }: { roomPanel: string | null; setRoomPanel(next: (current: string | null) => string | null): void }) {
-  const conversationId = conversationInHref(useHref())
-  const count = conversationId && conversationId !== CHIEF_THREAD_ID ? assignmentsForConversation(conversationId).length : 0
-  if (MODE !== 'proposed' || count === 0) return null
+export function TabbedRightSidebar({ scope, ariaLabel, hero, tabs, counts = {}, activeTab, onTabChange, onClose }: {
+  scope: Scope
+  ariaLabel: string
+  hero?: { avatar: ReactNode; title: ReactNode; titleText: string; subtitle?: ReactNode }
+  tabs: SidebarView[]
+  counts?: Record<string, number | undefined>
+  activeTab?: string
+  onTabChange?(id: string): void
+  onClose?(): void
+}) {
+  const state = useSidebar(scope)
+  if (MODE !== 'proposed' && hero) return <RightSidebar ariaLabel={ariaLabel} hero={hero} tabs={tabs} activeTab={activeTab ?? 'details'} onTabChange={onTabChange ?? (() => {})} onClose={onClose} />
+  const open = state.open.filter((id) => tabs.some((tab) => tab.id === id))
+  const active = state.active === NEW_TAB || open.includes(state.active) ? state.active : open[0] ?? NEW_TAB
+  const view = tabs.find((tab) => tab.id === active)
+  const pick = (id: string) => updateSidebar(scope, { open: open.includes(id) ? open : [...open, id], active: id })
+  const close = (id: string) => {
+    const rest = open.filter((entry) => entry !== id)
+    updateSidebar(scope, { open: rest, active: active === id ? rest[Math.max(0, open.indexOf(id) - 1)] ?? NEW_TAB : active })
+  }
+  const pill = (selected: boolean) => `group/tab h-7 shrink-0 gap-1.5 rounded-md px-2 text-xs font-normal ${selected ? 'bg-(--surface-subtle) text-(--foreground) hover:bg-(--surface-subtle)' : 'text-(--muted)'}`
+  const allCounts = { assignments: conversationCount(), ...counts }
   return (
-    <Button variant="ghost" type="button" title="Assignments in this conversation" aria-pressed={roomPanel === 'assignments'}
-      onClick={() => setRoomPanel((current) => (current === 'assignments' ? null : 'assignments'))}
-      className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${roomPanel === 'assignments' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'}`}>
-      <GitBranch size={14} />{count}
+    <aside data-slot="right-sidebar" aria-label={ariaLabel} className="relative flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-(--border) bg-(--sidebar-surface)">
+      {hero ? (
+        <div className="flex shrink-0 flex-col items-center px-5 pb-4 pt-9 text-center">
+          <div className="flex h-[72px] w-[72px] items-center justify-center">{hero.avatar}</div>
+          <h2 aria-label={hero.titleText} className="mt-[14px] max-w-full text-lg font-medium leading-6 text-(--foreground)">{hero.title}</h2>
+          {hero.subtitle ? <div className="mt-0.5 max-w-full text-[13px] leading-5 text-(--muted)">{hero.subtitle}</div> : null}
+        </div>
+      ) : null}
+      {onClose ? (
+        <Button variant="ghost" size="icon" type="button" aria-label="Close" onClick={onClose} className="absolute right-2 top-2 z-10 h-8 w-8 text-(--muted) hover:text-(--foreground)"><X size={16} /></Button>
+      ) : null}
+      <div role="tablist" aria-label="Open views" className={`flex shrink-0 items-center gap-1 overflow-x-auto px-3 pb-3 [scrollbar-width:none] ${hero ? '' : 'pr-11 pt-2.5'}`}>
+        {open.map((id) => {
+          const tab = tabs.find((entry) => entry.id === id)!
+          const Icon = VIEW_ICONS[id] ?? Info
+          return (
+            <span key={id} className="relative flex shrink-0 items-center">
+              <Button variant="ghost" role="tab" aria-selected={active === id} onClick={() => pick(id)} className={`${pill(active === id)} ${active === id ? 'pr-6' : ''}`}>
+                <Icon size={13} strokeWidth={1.75} aria-hidden />{tab.label}
+              </Button>
+              {active === id ? (
+                <Button variant="ghost" size="icon" aria-label={`Close ${tab.label}`} onClick={() => close(id)} className="absolute right-1 h-4 w-4 rounded text-(--muted) hover:text-(--foreground)"><X size={11} /></Button>
+              ) : null}
+            </span>
+          )
+        })}
+        {active === NEW_TAB ? <span className={`inline-flex items-center ${pill(true)}`}><Search size={13} strokeWidth={1.75} aria-hidden />New tab</span> : null}
+        <Button variant="ghost" size="icon" aria-label="New tab" title="New tab" onClick={() => updateSidebar(scope, { open, active: NEW_TAB })} className="h-7 w-7 shrink-0 rounded-md text-(--muted) hover:text-(--foreground)"><Plus size={14} /></Button>
+      </div>
+      <div data-tabbed-view className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${view && !view.flush ? 'px-5 pb-6' : ''}`}>
+        {view ? view.content : <ViewPicker views={tabs} counts={allCounts} onPick={pick} />}
+      </div>
+    </aside>
+  )
+}
+
+function conversationCount() {
+  const conversationId = conversationInHref(currentHref())
+  return conversationId ? assignmentsForConversation(conversationId).length : 0
+}
+
+/** Chats and channels: the same sidebar, with the views a room has. People and Pinned are the production panels. */
+export function RoomTabbedSidebar({ people, pinned, counts, onClose }: { people: ReactNode; pinned: ReactNode; counts: Record<string, number>; onClose(): void }) {
+  const conversationId = conversationInHref(useHref())
+  return (
+    <TabbedRightSidebar scope="room" ariaLabel="Conversation sidebar" counts={counts} onClose={onClose} tabs={[
+      { id: 'assignments', label: 'Assignments', content: <AssignmentList conversationId={conversationId} /> },
+      { id: 'people', label: 'People', content: people, flush: true },
+      { id: 'pinned', label: 'Pinned', content: pinned, flush: true },
+    ]} />
+  )
+}
+
+/** One button opens the sidebar; it replaces the separate People button. An agent thread already has this button. */
+export function RoomSidebarToggle({ roomPanel, setRoomPanel, peopleCount }: { roomPanel: string | null; setRoomPanel(next: (current: string | null) => string | null): void; peopleCount: number }) {
+  const agentThread = useHref().includes('/agents')
+  if (MODE === 'proposed') {
+    return agentThread ? null : <RightSidebarToggle open={roomPanel === 'sidebar'} onToggle={() => setRoomPanel((current) => (current === 'sidebar' ? null : 'sidebar'))} />
+  }
+  return (
+    <Button variant="ghost" type="button" title="People in this room" aria-pressed={roomPanel === 'people'}
+      onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
+      className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'}`}>
+      <UsersRound size={14} />{peopleCount}
     </Button>
   )
 }
@@ -176,10 +301,16 @@ function Notes({ onClose }: { onClose(): void }) {
       <ol className="mt-2 list-decimal space-y-2 pl-5">
         {item('They stay in the response that made them.', 'The box no longer follows the bottom of the conversation; newer messages appear below it.')}
         {item('The box is as wide as the response text.', 'Its left edge lines up with the text, not with the agent icon.')}
-        {item('Every assignment is listed in the right panel.', 'An Assignments tab in an agent thread, and an Assignments panel in chats and channels. "Show in conversation" scrolls to the response.')}
+        {item('Every assignment is listed in the right sidebar.', 'Assignments is a view in the sidebar of agent threads, chats and channels. "Show in conversation" scrolls to the response.')}
+      </ol>
+      <h3 className="mt-5 text-xs text-(--muted)">Right sidebar</h3>
+      <ol start={4} className="mt-2 list-decimal space-y-2 pl-5">
+        {item('One button opens it everywhere.', 'Chats and channels get the same sidebar button as agent threads; the separate People button goes away.')}
+        {item('Views open as tabs.', '"+" opens a new tab that lists what this conversation has: Details, Assignments, Library and Computer for an agent; Assignments, People and Pinned for a chat or channel.')}
+        {item('Agents keep their avatar on top.', 'The avatar, name and role sit above the tabs in an agent thread.')}
       </ol>
       <h3 className="mt-5 text-xs text-(--muted)">Fixes</h3>
-      <ol start={4} className="mt-2 list-decimal space-y-2 pl-5">
+      <ol start={7} className="mt-2 list-decimal space-y-2 pl-5">
         {item('A delegated agent pays for its own model.', 'It no longer inherits how the Chief pays, which is what stopped new agents before they started.')}
         {item('One failed assignment does not stop the Chief.', 'The assignment shows why it did not finish, the Chief reports it and keeps working, and any credits reserved for it are released.')}
       </ol>
@@ -233,7 +364,7 @@ function MockupBar() {
 export function mountMockupBar() {
   document.documentElement.dataset.mockupHost = 'bar'
   const style = document.createElement('style')
-  style.textContent = 'html[data-mockup-host] [data-app-shell]{height:calc(100vh - 40px)!important;margin-top:40px}'
+  style.textContent = 'html[data-mockup-host] [data-app-shell]{height:calc(100vh - 40px)!important;margin-top:40px}[data-tabbed-view]>section>:first-child:not(:last-child){display:none}'
   document.head.append(style)
   const node = document.createElement('div')
   document.body.append(node)

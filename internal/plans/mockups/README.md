@@ -89,9 +89,10 @@ them. Besides the canonical app mockup, this folder holds only:
   `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
   rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
 - `chief-assignments.html` (feature `chief-assignments`): the proposed Chief assignment design. The assignment box
-  sits inside the response that made it, as wide as the response text; every assignment is listed in an Assignments
-  tab of an agent thread's right panel and an Assignments panel in chats and channels; a delegated agent that cannot
-  run is one failed assignment with its reason, and the Chief carries on. The bar at the top switches between an agent
+  sits inside the response that made it, as wide as the response text. Agent threads, chats and channels share one
+  right sidebar opened by one button: views open as tabs, and "+" opens a new tab listing what the conversation has
+  (Details, Assignments, Library and Computer under the agent's avatar; Assignments, People and Pinned in a chat or
+  channel). A delegated agent that cannot run is one failed assignment with its reason, and the Chief carries on. The bar at the top switches between an agent
   thread, a channel and a chat, and between the app today (`?mode=today`) and the proposal; "What changes" lists the
   changes and the error messages before and after. Delete it when the design ships.
 - `desktop-discovery.html`: how a visitor finds and downloads the desktop app. It is the live marketing page with
