@@ -3,25 +3,10 @@
 import { useEffect, useRef } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
-import posthog from 'posthog-js'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { redactUrlForTelemetry, routeForTelemetry } from '@/shared/security/safe-url'
-
-function posthogConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_POSTHOG_TOKEN?.trim() && process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim(),
-  )
-}
-
-function clientObservabilityContext(route?: string): Record<string, string> {
-  return {
-    deployment: process.env.NEXT_PUBLIC_OVERLAY_DEPLOYMENT_ID?.trim() || 'web',
-    environment: process.env.NEXT_PUBLIC_OVERLAY_DEPLOYMENT_ENV?.trim() || 'unknown',
-    release: process.env.NEXT_PUBLIC_OVERLAY_RELEASE?.trim() || 'unknown',
-    ...(route ? { route } : {}),
-  }
-}
+import { clientObservabilityContext, posthogConfigured, withPosthog } from './posthog-client'
 
 export default function ObservabilityClient() {
   const pathname = usePathname()
@@ -42,15 +27,13 @@ export default function ObservabilityClient() {
     const route = routeForTelemetry(pathname)
     if (lastPageviewUrlRef.current === url) return
     lastPageviewUrlRef.current = url
-    try {
+    withPosthog((posthog) => {
       posthog.register(clientObservabilityContext(route))
       posthog.capture('$pageview', {
         $current_url: url,
         route,
       })
-    } catch {
-      // ignore blocked storage / init failures (common on mobile Safari private mode)
-    }
+    })
   }, [capabilities.analytics, pathname, searchParams])
 
   useEffect(() => {
@@ -59,11 +42,7 @@ export default function ObservabilityClient() {
         Sentry.setUser(null)
       }
       if (capabilities.analytics && posthogConfigured()) {
-        try {
-          posthog.reset()
-        } catch {
-          // ignore
-        }
+        withPosthog((posthog) => posthog.reset())
       }
       return
     }
@@ -80,11 +59,7 @@ export default function ObservabilityClient() {
 
     if (!capabilities.analytics || !posthogConfigured()) return
 
-    try {
-      posthog.identify(user.id)
-    } catch {
-      // ignore
-    }
+    withPosthog((posthog) => posthog.identify(user.id))
   }, [capabilities.analytics, capabilities.errorReporting, pathname, user])
 
   return null
