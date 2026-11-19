@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import type { DesktopBridge, Handshake } from '@overlay/desktop-bridge'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@overlay/ui/primitives'
+import { DESKTOP_HOME_PATH } from '@/shared/auth/desktop-home'
 import { loadDesktopBridgeContract } from './desktop-bridge-loader'
 
 void loadDesktopBridgeContract()?.catch(() => {})
@@ -54,7 +55,9 @@ export function DesktopProvider({ children }: { children: ReactNode }) {
     )
       return
     void desktop.bridge.call('auth.signedOut', undefined).catch(() => {})
-  }, [desktop, isAuthenticated, isLoading])
+    // A signed-out main window shows the desktop's own home, not the guest app.
+    if (desktop.info.surface !== 'panel') router.replace(DESKTOP_HOME_PATH)
+  }, [desktop, isAuthenticated, isLoading, router])
   useEffect(() => {
     if (!desktop) return
     const offClick = desktop.info.capabilities.includes('notifications')
