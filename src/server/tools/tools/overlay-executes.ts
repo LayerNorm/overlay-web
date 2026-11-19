@@ -1141,11 +1141,6 @@ async function cloudComputerInstanceFor(
   }
 }
 
-type ComputerDownloadDependencies = {
-  files?: Pick<typeof fileService, 'getOrListFiles' | 'readFileBytes'>
-  resolveComputer?: typeof computerInstanceFor
-}
-
 function computerDownloadFileName(name: string): string | null {
   const cleaned = name.normalize('NFC').trim().replace(/[\\/:\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim()
   if (!cleaned || cleaned === '.' || cleaned === '..') return null
@@ -1157,78 +1152,96 @@ function computerDownloadFileName(name: string): string | null {
   return base.slice(0, 120 - extension.length) + extension
 }
 
-export async function executeComputerDownloadFile(
-  options: OverlayToolsOptions,
-  input: { fileId: string; target?: ComputerTarget },
-  dependencies: ComputerDownloadDependencies = {},
-) {
-  const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
-  assertOverlayToolAllowed('computer_download_file', allowedToolIds)
-  assertOverlayToolAllowed('read_file', allowedToolIds)
+type ComputerDownloadFileAccess = Pick<typeof fileService, 'getOrListFiles' | 'readFileBytes'>
+type ComputerDownloadFailure = { success: false; error: string }
+type ComputerDownloadMetadataResult =
+  | { success: true; metadata: Record<string, unknown>; safeName: string }
+  | ComputerDownloadFailure
+type ComputerDownloadBytesResult = { success: true; bytes: Uint8Array } | ComputerDownloadFailure
+type ComputerDownloadWriteResult = { success: true; path: string } | ComputerDownloadFailure
+type ResolvedComputer = Extract<Awaited<ReturnType<typeof computerInstanceFor>>, { ok: true }>
 
-  const files = dependencies.files ?? fileService
-  const resolveComputer = dependencies.resolveComputer ?? computerInstanceFor
-  if (!options.workspaceId) {
-    return { success: false as const, error: 'A workspace is required to transfer this file.' }
-  }
-  const fileId = input.fileId.trim()
-  if (!fileId) return { success: false as const, error: 'A fileId is required.' }
-  let metadata: Record<string, unknown>
-  try {
-    const result = await files.getOrListFiles({ fileId, userId: options.userId, workspaceId: options.workspaceId })
-    if (!result || typeof result !== 'object' || Array.isArray(result)) {
-      return { success: false as const, error: 'File not found or not readable.' }
-    }
-    metadata = result as Record<string, unknown>
-  } catch (error) {
-    if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404) {
-      return { success: false as const, error: 'File not found or not readable.' }
-    }
-    return { success: false as const, error: 'Could not read file metadata from Overlay Files.' }
-  }
+type ComputerDownloadDependencies = {
+  files?: ComputerDownloadFileAccess
+  resolveComputer?: typeof computerInstanceFor
+}
 
-  if (metadata.type === 'folder') {
-    return { success: false as const, error: 'This is a folder, not a file.' }
-  }
-  if (metadata.type !== 'file') {
-    return { success: false as const, error: 'This item is not a downloadable file.' }
-  }
+function computerDownloadNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404
+}
+
+function validateComputerDownloadMetadata(
+  metadata: Record<string, unknown>,
+  workspaceId: string,
+  sharedRoom: boolean | undefined,
+): { success: true; safeName: string } | ComputerDownloadFailure {
+  if (metadata.type === 'folder') return { success: false, error: 'This is a folder, not a file.' }
+  if (metadata.type !== 'file') return { success: false, error: 'This item is not a downloadable file.' }
+
   const scope = metadata.scope ?? 'personal'
-  if (metadata.workspaceId !== options.workspaceId
+  if (metadata.workspaceId !== workspaceId
     || (scope !== 'personal' && scope !== 'workspace')
-    || (options.sharedRoom && scope !== 'workspace')) {
+    || (sharedRoom && scope !== 'workspace')) {
     return {
-      success: false as const,
-      error: options.sharedRoom
+      success: false,
+      error: sharedRoom
         ? 'Only files shared to this workspace can be transferred.'
         : 'This file is not available in the active workspace.',
     }
   }
-  if (metadata.kind === 'note') {
-    return { success: false as const, error: 'This is a note; use get_note or read_file instead.' }
-  }
+  if (metadata.kind === 'note') return { success: false, error: 'This is a note; use get_note or read_file instead.' }
   if (metadata.textInObjectStore === true) {
-    return { success: false as const, error: 'This file stores text; use read_file instead.' }
+    return { success: false, error: 'This file stores text; use read_file instead.' }
   }
   if (metadata.isStorageBacked === false) {
-    return { success: false as const, error: 'This file has no downloadable object.' }
+    return { success: false, error: 'This file has no downloadable object.' }
   }
   if (typeof metadata.name !== 'string' || !metadata.name.trim()) {
-    return { success: false as const, error: 'This file has no readable name.' }
+    return { success: false, error: 'This file has no readable name.' }
   }
   const safeName = computerDownloadFileName(metadata.name)
   if (!safeName) {
-    return { success: false as const, error: 'This file name cannot be safely preserved on the Computer.' }
+    return { success: false, error: 'This file name cannot be safely preserved on the Computer.' }
+  }
+  return { success: true, safeName }
+}
+
+async function computerDownloadMetadataFor(
+  files: ComputerDownloadFileAccess,
+  options: OverlayToolsOptions,
+  fileId: string,
+): Promise<ComputerDownloadMetadataResult> {
+  let result: unknown
+  try {
+    result = await files.getOrListFiles({ fileId, userId: options.userId, workspaceId: options.workspaceId })
+  } catch (error) {
+    return {
+      success: false,
+      error: computerDownloadNotFound(error)
+        ? 'File not found or not readable.'
+        : 'Could not read file metadata from Overlay Files.',
+    }
+  }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return { success: false, error: 'File not found or not readable.' }
   }
 
-  const resolved = await resolveComputer(options, { target: input.target, toolName: 'computer_download_file' })
-  if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const maximumBytes = resolved.computer.location === 'local'
-    ? COMPUTER_DOWNLOAD_MAX_LOCAL_BYTES
-    : COMPUTER_DOWNLOAD_MAX_CLOUD_BYTES
+  const metadata = result as Record<string, unknown>
+  const validation = validateComputerDownloadMetadata(metadata, options.workspaceId!, options.sharedRoom)
+  if (!validation.success) return validation
+  return { success: true, metadata, safeName: validation.safeName }
+}
+
+async function computerDownloadBytesFor(
+  files: ComputerDownloadFileAccess,
+  options: OverlayToolsOptions,
+  fileId: string,
+  maximumBytes: number,
+  metadata: Record<string, unknown>,
+): Promise<ComputerDownloadBytesResult> {
   const declaredSize = metadata.sizeBytes
   if (typeof declaredSize === 'number' && Number.isFinite(declaredSize) && declaredSize > maximumBytes) {
-    return { success: false as const, error: `This file is too large for this Computer (maximum ${maximumBytes} bytes).` }
+    return { success: false, error: `This file is too large for this Computer (maximum ${maximumBytes} bytes).` }
   }
 
   let bytes: Uint8Array | null
@@ -1241,17 +1254,25 @@ export async function executeComputerDownloadFile(
       scope: options.sharedRoom ? 'workspace' : undefined,
     })
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404) {
-      return { success: false as const, error: 'File not found or not readable in this workspace.' }
+    return {
+      success: false,
+      error: computerDownloadNotFound(error)
+        ? 'File not found or not readable in this workspace.'
+        : 'Could not read file bytes from Overlay Files.',
     }
-    return { success: false as const, error: 'Could not read file bytes from Overlay Files.' }
   }
-  if (!bytes) return { success: false as const, error: 'This file has no downloadable object.' }
+  if (!bytes) return { success: false, error: 'This file has no downloadable object.' }
   if (bytes.byteLength > maximumBytes) {
-    return { success: false as const, error: `This file is too large for this Computer (maximum ${maximumBytes} bytes).` }
+    return { success: false, error: `This file is too large for this Computer (maximum ${maximumBytes} bytes).` }
   }
+  return { success: true, bytes }
+}
 
-  const sourceChecksumSha256 = createHash('sha256').update(bytes).digest('hex')
+async function computerDownloadWriteToComputer(
+  resolved: ResolvedComputer,
+  safeName: string,
+  bytes: Uint8Array,
+): Promise<ComputerDownloadWriteResult> {
   let failureStage: 'prepare' | 'write' = 'prepare'
   try {
     const path = await resolved.operate(async (instance) => {
@@ -1280,25 +1301,58 @@ export async function executeComputerDownloadFile(
       await instance.writeFiles([{ path: destination, contents: bytes }])
       return destination
     }, COMPUTER_DOWNLOAD_DEADLINE_MS)
-    return {
-      success: true as const,
-      fileId,
-      path,
-      sizeBytes: bytes.byteLength,
-      sourceChecksumSha256,
-      computerId: resolved.computer.id,
-    }
+    return { success: true, path }
   } catch (error) {
     if (error instanceof LocalComputerError || error instanceof ComputerServiceError
       || (error instanceof Error && error.message === 'COMPUTER_MAINTENANCE_IN_PROGRESS')) {
       return computerErrorResult(error, 'Computer file transfer failed')
     }
     return {
-      success: false as const,
+      success: false,
       error: failureStage === 'prepare'
         ? 'Could not prepare a temporary destination on the Computer.'
         : 'Could not write the file to the Computer.',
     }
+  }
+}
+
+export async function executeComputerDownloadFile(
+  options: OverlayToolsOptions,
+  input: { fileId: string; target?: ComputerTarget },
+  dependencies: ComputerDownloadDependencies = {},
+) {
+  const allowedToolIds = options.allowedToolIds ? new Set(options.allowedToolIds) : null
+  assertOverlayToolAllowed('computer_download_file', allowedToolIds)
+  assertOverlayToolAllowed('read_file', allowedToolIds)
+
+  const files = dependencies.files ?? fileService
+  const resolveComputer = dependencies.resolveComputer ?? computerInstanceFor
+  if (!options.workspaceId) {
+    return { success: false as const, error: 'A workspace is required to transfer this file.' }
+  }
+  const fileId = input.fileId.trim()
+  if (!fileId) return { success: false as const, error: 'A fileId is required.' }
+  const metadataResult = await computerDownloadMetadataFor(files, options, fileId)
+  if (!metadataResult.success) return metadataResult
+
+  const resolved = await resolveComputer(options, { target: input.target, toolName: 'computer_download_file' })
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const maximumBytes = resolved.computer.location === 'local'
+    ? COMPUTER_DOWNLOAD_MAX_LOCAL_BYTES
+    : COMPUTER_DOWNLOAD_MAX_CLOUD_BYTES
+  const bytesResult = await computerDownloadBytesFor(files, options, fileId, maximumBytes, metadataResult.metadata)
+  if (!bytesResult.success) return bytesResult
+
+  const sourceChecksumSha256 = createHash('sha256').update(bytesResult.bytes).digest('hex')
+  const writeResult = await computerDownloadWriteToComputer(resolved, metadataResult.safeName, bytesResult.bytes)
+  if (!writeResult.success) return writeResult
+  return {
+    success: true as const,
+    fileId,
+    path: writeResult.path,
+    sizeBytes: bytesResult.bytes.byteLength,
+    sourceChecksumSha256,
+    computerId: resolved.computer.id,
   }
 }
 
