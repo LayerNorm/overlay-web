@@ -1149,7 +1149,19 @@ function computerDownloadFileName(name: string): string | null {
   const extension = hasExtension ? cleaned.slice(dot) : ''
   if (extension.length >= 120) return null
   const base = hasExtension ? cleaned.slice(0, dot) : cleaned
-  return base.slice(0, 120 - extension.length) + extension
+  const maxBaseBytes = 255 - Buffer.byteLength(extension, 'utf8')
+  const maxBaseCodeUnits = 120 - extension.length
+  let safeBase = ''
+  let baseBytes = 0
+  let baseCodeUnits = 0
+  for (const codePoint of base) {
+    const codePointBytes = Buffer.byteLength(codePoint, 'utf8')
+    if (baseBytes + codePointBytes > maxBaseBytes || baseCodeUnits + codePoint.length > maxBaseCodeUnits) break
+    safeBase += codePoint
+    baseBytes += codePointBytes
+    baseCodeUnits += codePoint.length
+  }
+  return safeBase ? safeBase + extension : null
 }
 
 type ComputerDownloadFileAccess = Pick<typeof fileService, 'getOrListFiles' | 'readFileBytes'>

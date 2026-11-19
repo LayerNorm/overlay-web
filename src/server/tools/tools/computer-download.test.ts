@@ -302,6 +302,17 @@ test('computer_download_file preserves a long basename extension within the file
   assert.equal(basename.endsWith('.mp4'), true)
 })
 
+test('computer_download_file truncates multibyte basenames by UTF-8 bytes and preserves the extension', async () => {
+  const state = fixture({ metadata: { name: `${'界'.repeat(100)}.mp4` } })
+  const result = await executeComputerDownloadFile(options(), { fileId: 'file_1' }, state.dependencies)
+  assert.equal(result.success, true)
+  if (!result.success) return
+  const basename = result.path.slice(result.path.lastIndexOf('/') + 1)
+  assert.equal(basename, `${'界'.repeat(83)}.mp4`)
+  assert.equal(Buffer.byteLength(basename, 'utf8'), 253)
+  assert.equal(basename.endsWith('.mp4'), true)
+})
+
 test('computer_download_file rejects dot-segment names after trimming whitespace', async () => {
   for (const name of ['.', '..', ' . ', ' .. ']) {
     const state = fixture({ metadata: { name } })
