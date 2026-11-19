@@ -188,3 +188,12 @@ test('Local computer is its own group, on by default and separate from Cloud com
   // The cloud group alone does not let an agent use someone's own computer.
   assert.ok(!agentToolCapabilities(toolIdsForEnabledGroups(new Set(['computer']))).has('local_computer'))
 })
+
+test('agents saved with the old Skills grant gain the new skill tools and keep the Skills group', () => {
+  const legacy = ['list_skills', 'draft_skill_from_chat']
+  const grant = normalizeAgentToolGrant(legacy)
+  for (const id of ['find_skills', 'load_skill', 'search_skill_registries', 'save_skill']) {
+    assert.equal(grant.includes(id), true, id)
+  }
+  assert.equal(enabledAgentToolGroupIds(legacy).has('skills'), true)
+})

@@ -28,7 +28,7 @@ const READ_TOOL_IDS = [
   'search_memory', 'search_messages', 'list_chats', 'read_chat',
   'search_knowledge', 'search_in_files', 'list_files', 'read_file',
   'list_notes', 'get_note',
-  'list_skills',
+  'list_skills', 'find_skills', 'load_skill',
   'list_automations',
   'list_tasks', 'get_task',
 ] as const

@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import posthog from 'posthog-js'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
+import { withPosthog } from './posthog-client'
 
 export function usePublicStreamMetrics(streams: readonly ActivePublicStreamSnapshot[]): void {
   const { capabilities } = useOverlayCapabilities()
@@ -24,20 +24,13 @@ export function usePublicStreamMetrics(streams: readonly ActivePublicStreamSnaps
         output_characters: stream.text.length,
         received_at_ms: Math.round(receivedAt),
       }
-      try {
-        posthog.capture('harness_public_stream_first_live_text', properties)
-      } catch {
-        continue
-      }
+      withPosthog((posthog) => posthog.capture('harness_public_stream_first_live_text', properties))
       requestAnimationFrame(() => {
-        try {
-          posthog.capture('harness_public_stream_next_frame', {
-            ...properties,
-            receive_to_next_frame_ms: Math.round(performance.now() - receivedAt),
-          })
-        } catch {
-          return
-        }
+        const receiveToNextFrameMs = Math.round(performance.now() - receivedAt)
+        withPosthog((posthog) => posthog.capture('harness_public_stream_next_frame', {
+          ...properties,
+          receive_to_next_frame_ms: receiveToNextFrameMs,
+        }))
       })
     }
   }, [capabilities.analytics, streams])
