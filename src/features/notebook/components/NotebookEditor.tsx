@@ -81,8 +81,6 @@ export default function NotebookEditor({
   const convex = useConvex()
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const canQueryNoteChat = Boolean(activeWorkspaceId && !authLoading && isAuthenticated)
-  const noteChatId = useQuery(api.chat.personal.getByClientId,
-    canQueryNoteChat && noteId ? { workspaceId: activeWorkspaceId!, clientId: notebookChatClientId(noteId) } : 'skip')
   const [liveTurn, setLiveTurn] = useState<NotebookChatTurn | null>(null)
   const [endedTurn, setEndedTurn] = useState<{ noteId: string; turnId: string; outcome: NotebookTurnOutcome } | null>(null)
 
@@ -137,13 +135,13 @@ export default function NotebookEditor({
       repository={repository}
       runAgent={runAgent}
       agentTranscript={(
-        <EmbeddedPersonalTranscript
+        <NoteChatTranscript
           workspaceId={activeWorkspaceId}
-          conversationId={noteChatId ?? liveConversationId}
+          noteId={noteId}
+          liveConversationId={liveConversationId}
           canQuery={canQueryNoteChat}
           pendingSend={liveTurn?.noteId === noteId ? liveTurn : null}
           endedTurn={endedTurn?.noteId === noteId ? endedTurn : null}
-          emptyState={<NotebookAgentEmptyState />}
         />
       )}
       agentPanelMode={toRightPanelMode(panelPresentation)}
@@ -259,6 +257,32 @@ function NotebookChatComposer(props: NotebookAgentComposerRenderProps) {
         onNavigateMode: ignore,
       }}
       actions={{ onSend: props.onSend, onStop: props.onStop }}
+    />
+  )
+}
+
+/**
+ * The note's assistant chat. It is rendered only while the assistant panel is open, so a note opened with the panel
+ * closed never looks up its chat.
+ */
+function NoteChatTranscript({ workspaceId, noteId, liveConversationId, canQuery, pendingSend, endedTurn }: {
+  workspaceId: string | null
+  noteId: string | null
+  liveConversationId: string | null
+  canQuery: boolean
+  pendingSend: NotebookChatTurn | null
+  endedTurn: { noteId: string; turnId: string; outcome: NotebookTurnOutcome } | null
+}) {
+  const noteChatId = useQuery(api.chat.personal.getByClientId,
+    canQuery && workspaceId && noteId ? { workspaceId, clientId: notebookChatClientId(noteId) } : 'skip')
+  return (
+    <EmbeddedPersonalTranscript
+      workspaceId={workspaceId}
+      conversationId={noteChatId ?? liveConversationId}
+      canQuery={canQuery}
+      pendingSend={pendingSend}
+      endedTurn={endedTurn}
+      emptyState={<NotebookAgentEmptyState />}
     />
   )
 }
