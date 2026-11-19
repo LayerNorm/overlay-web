@@ -10,18 +10,24 @@ const update = (sequence: number, fromSegmentIndex: number, segments: string[], 
 test('incremental reads extend the growing segment and append new ones', () => {
   let held = mergePublicStreamUpdates(new Map(), [update(0, 0, ['Hel'])])
   expect(publicStreamCursors(held, ['reply'])).toEqual([{
-    assistantMessageId: 'reply', runId: 'run', executionGeneration: 0, invocation: 0, sequence: 0, segmentIndex: 0,
+    assistantMessageId: 'reply', runId: 'run', executionGeneration: 0, invocation: 0, segmentIndex: 0,
   }])
+  const growing = mergePublicStreamUpdates(held, [update(1, 0, ['Hello'])])
+  // The cursor does not move while a segment grows, so the read keeps one subscription.
+  expect(publicStreamCursors(growing, ['reply'])).toEqual(publicStreamCursors(held, ['reply']))
   held = mergePublicStreamUpdates(held, [update(1, 0, ['Hello', ' world'])])
   expect(held.get('reply')?.snapshot.text).toBe('Hello world')
   held = mergePublicStreamUpdates(held, [update(2, 1, [' world!'])])
   expect(held.get('reply')?.snapshot).toMatchObject({ text: 'Hello world!', sequence: 2 })
-  expect(publicStreamCursors(held, ['reply'])[0]).toMatchObject({ sequence: 2, segmentIndex: 1 })
+  expect(publicStreamCursors(held, ['reply'])[0]).toMatchObject({ segmentIndex: 1 })
+  expect(publicStreamCursors(held, ['reply'])[0]).not.toHaveProperty('sequence')
 })
 
 test('an unchanged read keeps the same map, and a stale read never rolls text back', () => {
   const held = mergePublicStreamUpdates(new Map(), [update(3, 0, ['Done'])])
   expect(mergePublicStreamUpdates(held, [update(3, 1, [])])).toBe(held)
+  // The reader re-reads its last segment every time; the same text keeps the same map.
+  expect(mergePublicStreamUpdates(held, [update(3, 0, ['Done'])])).toBe(held)
   expect(mergePublicStreamUpdates(held, [update(2, 0, ['Do'])])).toBe(held)
 })
 
