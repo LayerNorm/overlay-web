@@ -71,28 +71,12 @@
 /* Hero */
 .sl .hero { padding: 104px 40px 96px; text-align: center; }
 .sl .hero .h1 { max-width: 1000px; margin: 0 auto; }
-.sl .headline-reel { display: grid; overflow: hidden; padding-block: .12em; }
-.sl .headline-face { grid-area: 1 / 1; display: grid; align-items: center; visibility: hidden; min-width: 0; }
-.sl .headline-face[data-active='true'] { visibility: visible; }
-.sl .headline-reel[data-animated] .headline-face[data-active='true'] { animation: headline-roll-in 720ms cubic-bezier(.22, 1, .36, 1) both; }
-.sl .headline-reel[data-animated] .headline-face[data-active='false'] { animation: headline-roll-out 720ms cubic-bezier(.22, 1, .36, 1) both; }
-@keyframes headline-roll-in {
-  from { transform: translateY(calc(100% + 8px)); }
-  to { transform: translateY(0); }
-}
-@keyframes headline-roll-out {
-  from { transform: translateY(0); visibility: visible; }
-  to { transform: translateY(calc(-100% - 8px)); visibility: hidden; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sl .headline-reel[data-animated] .headline-face[data-active] { animation: none; }
-}
 .sl .hero .backed { display: inline-block; margin-bottom: 26px; font-family: var(--sl-sans); font-size: 17px; line-height: 1; letter-spacing: 0; color: var(--sl-muted); transition: color .15s; }
 .sl .hero .backed span { font-family: var(--font-lusitana), Georgia, serif; color: var(--sl-text); font-size: 24px; margin-left: 2px; }
 .sl .hero .backed:hover { color: var(--sl-text); }
-.sl .br-lg { display: block; }
-.sl .hero .k, .sl .page-head .k { white-space: nowrap; text-decoration: underline; text-decoration-color: var(--k); text-decoration-thickness: .075em; text-underline-offset: .14em; text-decoration-skip-ink: none; transition: text-decoration-thickness .15s; }
-.sl .hero .k:hover, .sl .page-head a.k:hover { text-decoration-thickness: .12em; }
+.sl .br-lg, .sl .br-md { display: block; }
+.sl .hero .k, .sl .page-head .k, .sl .head .k { white-space: nowrap; text-decoration: underline; text-decoration-color: var(--k); text-decoration-thickness: .075em; text-underline-offset: .14em; text-decoration-skip-ink: none; transition: text-decoration-thickness .15s; }
+.sl .hero .k:hover, .sl .page-head a.k:hover, .sl .head a.k:hover { text-decoration-thickness: .12em; }
 .sl .hero .lead { max-width: 560px; margin: 22px auto 0; }
 .sl .actions { margin-top: 32px; display: flex; gap: 10px; justify-content: center; }
 .sl .byoa { margin-top: 28px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--sl-muted); }
@@ -174,6 +158,7 @@
 /* Section heads */
 .sl .head { max-width: 640px; }
 .sl .head.center { margin: 0 auto; text-align: center; }
+.sl .head.wide { max-width: 760px; }
 .sl .head .lead { margin-top: 16px; }
 
 /* Superpowers: three soft cards */
@@ -219,9 +204,10 @@
 
 /* Hairline grid (anywhere / together / sovereignty) */
 .sl .grid3 { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--sl-line); border-left: 1px solid var(--sl-line); }
-.sl .cell { border-right: 1px solid var(--sl-line); border-bottom: 1px solid var(--sl-line); padding: 28px; display: flex; flex-direction: column; }
+.sl .cell { min-width: 0; border-right: 1px solid var(--sl-line); border-bottom: 1px solid var(--sl-line); padding: 28px; display: flex; flex-direction: column; }
 .sl .cell .art { height: 190px; border-radius: 12px; background: var(--sl-panel); display: grid; place-items: center; margin-bottom: 22px; padding: 18px; }
-.sl .plats { display: grid; grid-template-columns: repeat(3, auto); gap: 8px; }
+.sl .plats { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 320px; }
+.sl .plats .tool { white-space: nowrap; }
 .sl .share-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; }
 .sl .share-row .role { margin-left: auto; font-size: 11px; color: var(--sl-faint); }
 .sl .code-card { width: 100%; max-width: 260px; line-height: 1.8; }
@@ -334,4 +320,7 @@
   .sl .h1 { font-size: 34px; }
   .sl .platforms { grid-template-columns: 1fr; }
   .sl .actions { flex-wrap: wrap; }
+}
+@media (max-width: 640px) {
+  .sl .br-md { display: inline; }
 }

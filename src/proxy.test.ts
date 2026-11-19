@@ -205,3 +205,23 @@ test('legacy workspace rewrites preserve ID casing and reject unsupported nested
   assert.equal(dottedHandle.status, 404)
   assert.equal(dottedHandle.headers.get('cache-control'), 'private, no-store')
 })
+
+const desktopUserAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Overlay/0.3.1 Chrome/148.0.7778.280 Electron/42.11.18 Safari/537.36'
+
+test('the signed-out desktop app opening a workspace page goes to its own home', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  for (const path of ['/w/acme', '/w/acme/personal/work']) {
+    const response = await proxy(new NextRequest(origin + path, { headers: { 'user-agent': desktopUserAgent } }))
+    assert.equal(response.status, 307, path)
+    assert.equal(new URL(response.headers.get('location')!).href, origin + '/auth/desktop', path)
+  }
+})
+
+test('the browser half of desktop sign-in still reaches the sign-in page', async () => {
+  process.env.AUTH_PROVIDER = 'workos'
+  const destination = '/account?desktop_code_challenge=pkce-fixture'
+  const response = await proxy(new NextRequest(origin + destination, { headers: { 'user-agent': desktopUserAgent } }))
+  const location = new URL(response.headers.get('location')!)
+  assert.equal(location.pathname, '/auth/sign-in')
+  assert.equal(location.searchParams.get('redirect'), destination)
+})
