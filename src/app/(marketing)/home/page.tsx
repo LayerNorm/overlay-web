@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { StaticLanding } from '@/features/marketing/landing/StaticLanding'
 
 export const metadata: Metadata = {
-  title: { absolute: 'Overlay: The control plane for AI employees' },
+  title: { absolute: 'Overlay: Enabling self-driving companies with AI employees' },
   description:
     'Create, deploy and manage AI employees with memory, tools and their own computer. Open source, multiplayer, and accessible from anywhere. Bring your own agents (Codex, Claude Code, Cursor).',
   alternates: {
