@@ -87,8 +87,13 @@ export function buildMemoryContext(
  * instructions). The agent can call list_skills to load full instructions
  * on demand when a skill is relevant to the current task.
  */
+/** Always present, so an agent without workspace skills still knows how to acquire them. */
+export const SELF_VERTICALIZE_CONTEXT =
+  '\n\nSkills: for specialized work call find_skills first. If no workspace skill fits well and the task needs specialist or current knowledge, ' +
+  'load_skill("builtin:self-verticalize") and follow it to acquire skills (reuse public ones via search_skill_registries, research the rest, test, then save_skill).'
+
 export function buildSkillDirectoryContext(skills: Array<{ name: string; description: string }>): string {
-  if (skills.length === 0) return ''
+  if (skills.length === 0) return SELF_VERTICALIZE_CONTEXT
   let directory = skills.map((s) => `- ${s.name}: ${s.description}`).join('\n')
   if (directory.length > SKILL_DIRECTORY_CHAR_BUDGET) {
     const truncated = directory.slice(0, SKILL_DIRECTORY_CHAR_BUDGET)
@@ -96,9 +101,10 @@ export function buildSkillDirectoryContext(skills: Array<{ name: string; descrip
     directory = (lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated) + '\n- [additional skills omitted to fit context budget]'
   }
   return (
-    '\n\nIMPORTANT — User-configured skills are available. Before acting, check whether any skill applies to this task. Call the list_skills tool to load full instructions for a relevant skill.\n<skill-directory>\n' +
+    '\n\nIMPORTANT — User-configured skills are available. Before acting, check whether any skill applies to this task. Call load_skill (or list_skills) to load full instructions for a relevant skill.\n<skill-directory>\n' +
     directory +
-    '\n</skill-directory>'
+    '\n</skill-directory>' +
+    SELF_VERTICALIZE_CONTEXT
   )
 }
 

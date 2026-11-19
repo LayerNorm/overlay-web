@@ -1,6 +1,6 @@
 'use client'
 
-import { notifyDesktopSignedOut } from '@overlay/desktop-bridge'
+import { notifyDesktopSignedOut } from '@/components/desktop/desktop-bridge-loader'
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { requestSessionState, type BrowserAuthUser } from '@/shared/auth/browser-session'
