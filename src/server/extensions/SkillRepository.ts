@@ -1,6 +1,24 @@
 import 'server-only'
 
-export type SkillRecord = {
+export type SkillKind = 'skill' | 'domain_map'
+export type SkillOrigin = 'user' | 'agent' | 'registry'
+export type SkillProvenance = {
+  kind: 'web' | 'registry' | 'workspace' | 'chat'
+  ref: string
+  title?: string
+  retrievedAt?: number
+}
+
+/** Self-verticalization metadata a skill may carry. All optional: older skills have none. */
+export type SkillVerticalFields = {
+  domain?: string
+  kind?: SkillKind
+  triggers?: string[]
+  origin?: SkillOrigin
+  provenance?: SkillProvenance[]
+}
+
+export type SkillRecord = SkillVerticalFields & {
   _id: string
   userId: string
   name: string
@@ -15,7 +33,7 @@ export type SkillRecord = {
   updatedAt: number
 }
 
-export type CreateSkillInput = {
+export type CreateSkillInput = SkillVerticalFields & {
   userId: string
   name: string
   description: string
@@ -25,7 +43,7 @@ export type CreateSkillInput = {
   scope?: 'personal' | 'workspace'
 }
 
-export type UpdateSkillInput = {
+export type UpdateSkillInput = Pick<SkillVerticalFields, 'domain' | 'triggers' | 'provenance'> & {
   skillId: string
   userId: string
   name?: string
