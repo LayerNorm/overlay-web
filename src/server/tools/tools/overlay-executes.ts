@@ -1277,23 +1277,21 @@ async function computerDownloadWriteToComputer(
   try {
     const path = await resolved.operate(async (instance) => {
       const local = resolved.computer.location === 'local'
-      const temporaryParent = local ? await instance.workingDirectory() : '/tmp'
-      if (!temporaryParent.startsWith('/') || temporaryParent.includes('\n')) {
-        throw new Error('Computer returned an invalid temporary directory.')
-      }
       const handle = await instance.runCommand({
         command: local
-          ? 'mktemp -d "$PWD"/.overlay-download.XXXXXXXXXX'
+          ? 'mktemp -d "$(pwd -P)/.overlay-download.XXXXXXXXXX"'
           : 'mktemp -d /tmp/overlay-download.XXXXXXXXXX',
-        ...(local ? { cwd: temporaryParent } : {}),
         timeoutMs: 5_000,
       })
       const result = await handle.wait()
       const directory = result.stdout.trim()
-      const parentPrefix = temporaryParent === '/' ? '/' : `${temporaryParent.replace(/\/+$/, '')}/`
-      const expectedPrefix = `${parentPrefix}${local ? '.overlay-download.' : 'overlay-download.'}`
-      const randomSuffix = directory.startsWith(expectedPrefix) ? directory.slice(expectedPrefix.length) : ''
-      if (result.exitCode !== 0 || !/^[A-Za-z0-9]{10,}$/.test(randomSuffix)) {
+      const separator = directory.lastIndexOf('/')
+      const parent = separator > 0 ? directory.slice(0, separator) : separator === 0 ? '/' : ''
+      const directoryName = separator >= 0 ? directory.slice(separator + 1) : directory
+      const expectedPrefix = local ? '.overlay-download.' : 'overlay-download.'
+      const randomSuffix = directoryName.startsWith(expectedPrefix) ? directoryName.slice(expectedPrefix.length) : ''
+      if (result.exitCode !== 0 || (local ? !directory.startsWith('/') : parent !== '/tmp')
+        || !/^[A-Za-z0-9]{10,}$/.test(randomSuffix)) {
         throw new Error('Could not create a private temporary directory.')
       }
       failureStage = 'write'

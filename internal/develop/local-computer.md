@@ -58,8 +58,10 @@ revokes its credentials. Connecting a machine follows the Computers feature
   are never sent to the machine.
 - **Host executor** (`packages/overlay-agent-host/src/local-tools*.ts`). Shell
   commands run in the user's login shell inside approved folders; paths are
-  resolved through symlinks before the folder check. Terminal sessions mirror
-  the cloud driver (ids, eight-session limit, output limits). macOS screen
+  resolved through symlinks before the folder check. Computer transfers leave
+  `cwd` unset so temporary destinations use the host's first approved folder,
+  not the advertised home directory. Terminal sessions mirror the cloud driver
+  (ids, eight-session limit, output limits). macOS screen
   control uses only built-in tools (`screencapture`, `sips`, JavaScript for
   Automation) and needs the Screen Recording and Accessibility permissions of
   the app that started the host. Typing pastes through the clipboard and

@@ -31,8 +31,9 @@ type FixtureInput = {
 
 const defaultBytes = new Uint8Array([0, 255, 11, 128, 3])
 const defaultTempDirectory = '/tmp/overlay-download.ABCdef1234'
-const localWorkingDirectory = '/Users/test/Approved'
-const localTempDirectory = `${localWorkingDirectory}/.overlay-download.ABCdef1234`
+const localHomeDirectory = '/Users/test'
+const localApprovedDirectory = `${localHomeDirectory}/Work`
+const localTempDirectory = `${localApprovedDirectory}/.overlay-download.ABCdef1234`
 const metadata: FileMetadata = {
   type: 'file',
   name: 'source-video.mp4',
@@ -87,7 +88,7 @@ function fixture(input: FixtureInput = {}) {
       }
     },
     async workingDirectory() {
-      return localWorkingDirectory
+      return localHomeDirectory
     },
     async writeFiles(writes: Array<{ path: string; contents: Uint8Array }>) {
       calls.writes.push(...writes)
@@ -207,8 +208,8 @@ test('local Computer downloads stay inside the approved working directory', asyn
   assert.equal(result.success, true)
   if (!result.success) return
   assert.equal(result.path, `${localTempDirectory}/source-video.mp4`)
-  assert.equal(state.calls.command?.command, 'mktemp -d "$PWD"/.overlay-download.XXXXXXXXXX')
-  assert.equal(state.calls.command?.cwd, localWorkingDirectory)
+  assert.equal(state.calls.command?.command, 'mktemp -d "$(pwd -P)/.overlay-download.XXXXXXXXXX"')
+  assert.equal(state.calls.command?.cwd, undefined)
 })
 
 test('computer_download_file rejects a malformed mktemp path', async () => {
