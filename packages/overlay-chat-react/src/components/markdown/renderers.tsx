@@ -81,7 +81,9 @@ export function ConnectServiceCard({ serviceName, href }: { serviceName: string;
       </span>
     </>
   )
-  const cardClass = 'my-1.5 inline-flex max-w-[360px] min-w-[260px] items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5'
+  // A block-level flex box, so the card always sits on its own line even when
+  // the model writes the link mid-sentence.
+  const cardClass = 'my-2 flex w-full max-w-[360px] items-center gap-3 rounded-xl border border-(--border) bg-(--surface-elevated) px-3 py-2.5'
   if (connected) {
     return (
       <span data-slot="connect-card" data-state="connected" className={cardClass}>
@@ -93,25 +95,20 @@ export function ConnectServiceCard({ serviceName, href }: { serviceName: string;
       </span>
     )
   }
-  if (actions?.connect && (actions.canConnect?.(serviceName) ?? true)) {
-    return (
-      <span data-slot="connect-card" data-state="disconnected" className={cardClass}>
-        {body}
-        <Button size="sm" variant="primary" className="shrink-0" onClick={() => void actions.connect?.(serviceName)}>
+  const canConnectInApp = Boolean(actions?.connect && (actions.canConnect?.(serviceName) ?? true))
+  return (
+    <span data-slot="connect-card" data-state="disconnected" className={cardClass}>
+      {body}
+      {canConnectInApp ? (
+        <Button size="sm" variant="primary" className="shrink-0" onClick={() => void actions?.connect?.(serviceName)}>
           Connect
         </Button>
-      </span>
-    )
-  }
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="no-underline">
-      <span data-slot="connect-card" data-state="disconnected" className={`${cardClass} transition-colors hover:bg-(--surface-subtle)`}>
-        {body}
-        <span className="shrink-0 whitespace-nowrap rounded-md bg-(--foreground) px-3 py-1.5 text-xs text-(--background)">
-          Connect
-        </span>
-      </span>
-    </a>
+      ) : (
+        <Button asChild size="sm" variant="primary" className="shrink-0 no-underline">
+          <a href={href} target="_blank" rel="noopener noreferrer">Connect</a>
+        </Button>
+      )}
+    </span>
   )
 }
 

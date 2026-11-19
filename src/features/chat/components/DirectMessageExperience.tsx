@@ -34,6 +34,8 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 import { useThreadWork } from './thread-work/useThreadWork'
+import { useGeneratedUiConnectorActions } from './chat/useGeneratedUiConnectorActions'
+import { RoomConnectorActionsContext } from './collaboration/room-connector-actions'
 
 function RoomComposerArea({
   safety,
@@ -244,6 +246,7 @@ export function DirectMessageExperience({
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
+  const connectorActions = useGeneratedUiConnectorActions({ enabled: capabilities.integrations })
   const { markConversationRead } = useCollaborationRealtime()
   const { settings: appSettings } = useAppSettings()
   const router = useRouter()
@@ -312,6 +315,7 @@ export function DirectMessageExperience({
   })
 
   return (
+    <RoomConnectorActionsContext.Provider value={connectorActions}>
     <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={room.nativeThreadSafety.readOnly || shouldDisableQuestionnaireSuggestions(Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
@@ -431,5 +435,6 @@ export function DirectMessageExperience({
         onParticipantsAdded={() => room.setAddPeopleOpen(false)}
       />
     </QuestionnaireComposerProvider>
+    </RoomConnectorActionsContext.Provider>
   );
 }

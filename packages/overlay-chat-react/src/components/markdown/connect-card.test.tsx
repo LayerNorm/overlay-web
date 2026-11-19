@@ -23,6 +23,14 @@ test('connect cards show the app logo and a Connect action', () => {
   assert.match(markup, />Connect</)
 })
 
+// The card is a block-level box, so a link written mid-sentence never shares a line with text.
+test('connect cards render as a block on their own line', () => {
+  for (const markup of [render({ isConnected: () => false, connect: () => undefined }), render()]) {
+    assert.match(markup, /data-slot="connect-card"[^>]*class="my-2 flex /)
+    assert.doesNotMatch(markup, /inline-flex max-w/)
+  }
+})
+
 test('connect cards flip to Connected once the app is linked', () => {
   const markup = render({ getLogoUrl: () => null, isConnected: () => true })
   assert.match(markup, /data-state="connected"/)
