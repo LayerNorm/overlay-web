@@ -16,6 +16,7 @@ import {
 import { AUTOMATION_THREAD_RUN_OWNER_PREFIX, automationRunTurnId } from '../../src/shared/automations/run-identity'
 import { createAgentThread } from '../agents/agentThreads'
 import { recordConversationEvent } from '../collaboration/events'
+import { isWaitingForOwner, threadAgentRunFor } from '../lib/automationThreadRuns'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 const automationSchedule = v.object({
@@ -939,10 +940,7 @@ async function threadRunOutcome(ctx: QueryCtx, run: Doc<'automationRuns'>, now: 
       ? { status: 'failed', error: 'The automation message was not delivered to its thread.' }
       : { status: 'pending' }
   }
-  const recent = await ctx.db.query('conversationAgentRuns')
-    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', run.conversationId!).gte('createdAt', startedAt))
-    .take(50)
-  const agentRun = recent.find(candidate => candidate.userMessageId === run.messageId)
+  const agentRun = await threadAgentRunFor(ctx, run)
   if (!agentRun) {
     return now - startedAt > THREAD_RUN_START_TIMEOUT_MS
       ? { status: 'failed', error: 'The thread did not start a turn for the automation message.' }
@@ -1030,11 +1028,15 @@ async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automat
       updatedAt: now,
     })
   }
+  // A run whose turn waits for the owner's answer or approval does not hold the schedule.
   const running = await ctx.db
     .query('automationRuns')
     .withIndex('by_automationId_status', (q) => q.eq('automationId', automationId).eq('status', 'running'))
-    .first()
-  return Boolean(running)
+    .take(20)
+  for (const run of running) {
+    if (!await isWaitingForOwner(ctx, run)) return true
+  }
+  return false
 }
 
 export const claimDueRuns = internalMutation({

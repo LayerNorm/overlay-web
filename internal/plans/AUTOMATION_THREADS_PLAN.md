@@ -1,7 +1,7 @@
 # Automation threads
 
 Status: fixes 2–4 implemented on PR #560 (`codex/automation-thread-composer`) and browser-tested on its Preview; not
-merged, deployed or accepted yet. Fix 1 is not started.
+merged, deployed or accepted yet. Fix 1 is implemented on the same PR.
 
 ## Goal
 
@@ -62,7 +62,7 @@ pipeline itself is not down.
 
 | Fix | State |
 | --- | --- |
-| 1. Waiting runs keep the schedule | Not started. The details panel shows a waiting run as "Running"; "Waiting for you" needs the run's thread state. |
+| 1. Waiting runs keep the schedule | Implemented: a running run whose thread turn waits for the owner's answer or approval no longer holds the schedule, so the next tick starts a new run in the same thread. The waiting run settles once the owner answers. The details panel shows it as "Waiting for you". Covered by Convex tests; preview check pending. |
 | 2. Local time and IANA zone, every weekday | Implemented (bd641f1b, e0a4b100). On the Preview a daily 9:00 AM America/Los_Angeles automation stored `hour: 9`, `hourUTC: 17`, and its scheduled 9:00 AM Pacific tick ran and replied. DST transitions are covered by unit tests only. |
 | 3. Composer pickers, thread as the detail view | Implemented: Schedule and Agent pickers, create then Run now on send, Automation details panel, Chat/Edit tabs and the editor removed. Browser-tested on the Preview: a chat automation and an agent automation were created from the composer, ran once and opened their threads with the details panel. The agent picker lists only the current scope's agents, and an agent automation's thread opens in the agent thread view (the chat view refused agent threads as read-only). Run now, pause and resume, and Delete were tested in the details panel; Delete now stays on Automations. |
 | 4. Keep the user's words as instructions | The new composer sends the typed text as the instructions; the server names it from the first line. Chat drafting (`draft_automation_from_chat`) is unchanged. |

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronRight, CircleAlert, LoaderCircle } from 'lucide-react'
+import { Check, ChevronRight, CircleAlert, CircleDot, LoaderCircle } from 'lucide-react'
 import type { AutomationRunSummary } from '@overlay/app-core'
 import { formatAutomationRunError } from '@overlay/app-core/automations'
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Input } from '@overlay/ui/primitives'
@@ -86,13 +86,14 @@ const RUN_LABELS: Record<Exclude<RunTone, 'failed'>, string> = { completed: 'Com
 
 export function RunRow({ run, onRetry }: { run: AutomationRunSummary; onRetry: () => void }) {
   const tone = runTone(run.status)
-  const Icon = tone === 'failed' ? CircleAlert : tone === 'running' ? LoaderCircle : Check
-  const label = run.status === 'cancelled' ? 'Cancelled' : tone === 'failed' ? null : RUN_LABELS[tone]
+  const spinning = tone === 'running' && !run.waitingForOwner
+  const Icon = tone === 'failed' ? CircleAlert : run.waitingForOwner ? CircleDot : spinning ? LoaderCircle : Check
+  const label = run.waitingForOwner ? 'Waiting for you' : run.status === 'cancelled' ? 'Cancelled' : tone === 'failed' ? null : RUN_LABELS[tone]
   const error = tone === 'failed' ? formatAutomationRunError(run.errorMessage ?? run.error) : null
   return (
     <li className="flex h-8 items-center gap-2 px-1 text-xs" title={error ?? undefined}>
       <span className="agent-thread-status" data-status={tone === 'failed' ? 'failed' : undefined}>
-        <Icon size={13} aria-hidden className={tone === 'running' ? 'animate-spin motion-reduce:animate-none' : undefined} />
+        <Icon size={13} aria-hidden className={spinning ? 'animate-spin motion-reduce:animate-none' : undefined} />
       </span>
       <span className="min-w-0 flex-1 truncate text-(--foreground)">
         {formatRunTime(run.startedAt ?? run.scheduledFor ?? run.createdAt)}

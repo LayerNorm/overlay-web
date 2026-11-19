@@ -136,6 +136,8 @@ export interface AutomationRunSummary {
   turnId?: string
   /** The user message this run posted into its automation's thread. */
   messageId?: string
+  /** A running run whose thread turn waits for the owner's answer or approval; it does not hold the schedule. */
+  waitingForOwner?: boolean
   error?: string
   errorCode?: string
   errorMessage?: string

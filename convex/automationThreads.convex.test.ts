@@ -94,7 +94,7 @@ test('a run settles from the thread turn its message started', async () => {
     turnId: `automation-run:${runId}`, mode: 'chat', runner: 'workflow', status: 'waiting_for_input',
     createdAt: now + 1, updatedAt: now + 1,
   }))
-  // A turn waiting for its owner keeps the run open, so the schedule skips while it waits.
+  // A turn waiting for its owner keeps the run open until the owner answers.
   expect(await convex.query(outcome, { runId, serverSecret: secret })).toEqual({ status: 'pending' })
   expect(await convex.query(settleable, { now: now + 2 })).toEqual([])
 
@@ -116,4 +116,46 @@ test('a run whose message never reached its thread fails after the start timeout
   })
   expect(await convex.query(settleable, { now: now + 60_000 })).toEqual([])
   expect(await convex.query(settleable, { now: now + 16 * 60_000 })).toEqual([{ runId, userId: 'alice' }])
+})
+
+test('a run waiting for its owner does not hold the schedule; a working run does', async () => {
+  const { convex, automationId, now } = await fixture()
+  const claim = makeFunctionReference<'mutation'>('automations/automations:claimDueRuns')
+  const { conversationId } = await convex.mutation(bindThread, { automationId, userId: 'alice', serverSecret: secret })
+  const { runId, agentRunId } = await convex.run(async ctx => {
+    await ctx.db.insert('billingAccounts', { billingAccountId: 'paid', workspaceId: 'workspace', scope: 'workspace',
+      status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2500, createdAt: now, updatedAt: now })
+    await ctx.db.insert('billingAccountSubscriptions', { billingAccountId: 'paid', provider: 'stripe', planKind: 'paid',
+      planVersion: 'variable_v2', planAmountCents: 2000, markupBasisPoints: 2500, status: 'active',
+      autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: now, updatedAt: now })
+    await ctx.db.patch(automationId, { enabled: true, nextRunAt: now - 1_000 })
+    const runId = await ctx.db.insert('automationRuns', {
+      automationId, userId: 'alice', status: 'running', scheduledFor: now - 60_000, startedAt: now - 60_000,
+      conversationId, createdAt: now - 60_000, updatedAt: now - 60_000,
+    })
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId, userId: 'alice', turnId: `automation-run:${runId}`, role: 'user', mode: 'act',
+      content: 'Triage my inbox.', contentType: 'text', createdAt: now - 60_000,
+    })
+    await ctx.db.patch(runId, { messageId, workflowRunId: `automation-thread:${runId}`, turnId: `automation-run:${runId}` })
+    const agentRunId = await ctx.db.insert('conversationAgentRuns', {
+      conversationId, userId: 'alice', userMessageId: messageId, assistantMessageId: messageId,
+      turnId: `automation-run:${runId}`, mode: 'chat', runner: 'workflow', status: 'waiting_for_input',
+      createdAt: now - 59_000, updatedAt: now - 59_000,
+    })
+    return { runId, agentRunId }
+  })
+
+  // Waiting for the owner: the due tick starts a new run instead of skipping.
+  expect(await convex.mutation(claim, { now })).toHaveLength(1)
+  expect(await convex.run(ctx => ctx.db.get(runId))).toMatchObject({ status: 'running' })
+
+  // Still working: the next due tick is skipped.
+  await convex.run(async ctx => {
+    const queued = await ctx.db.query('automationRuns').withIndex('by_automationId_status', q => q.eq('automationId', automationId).eq('status', 'queued')).collect()
+    for (const run of queued) await ctx.db.patch(run._id, { status: 'completed', completedAt: now })
+    await ctx.db.patch(agentRunId, { status: 'running' })
+    await ctx.db.patch(automationId, { nextRunAt: now - 1_000 })
+  })
+  expect(await convex.mutation(claim, { now })).toEqual([])
 })
