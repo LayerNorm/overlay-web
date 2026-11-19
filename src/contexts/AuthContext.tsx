@@ -1,6 +1,7 @@
 'use client'
 
-import { notifyDesktopSignedOut } from '@/components/desktop/desktop-bridge-loader'
+import { isDesktopShell, notifyDesktopSignedOut } from '@/components/desktop/desktop-bridge-loader'
+import { DESKTOP_HOME_PATH } from '@/shared/auth/desktop-home'
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { requestSessionState, type BrowserAuthUser } from '@/shared/auth/browser-session'
@@ -91,7 +92,8 @@ export function AuthProvider({
         // ignore
       }
       setUser(null)
-      window.location.href = '/'
+      // The desktop app has its own signed-out home instead of the website.
+      window.location.href = isDesktopShell() ? DESKTOP_HOME_PATH : '/'
     } catch (error) {
       console.error('[Auth] Sign out failed:', error)
     }
