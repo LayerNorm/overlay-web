@@ -58,7 +58,9 @@ export function useLivePublicStreams({
   const whole = useQuery(fullQuery, active && !incremental ? { ...scope, messageIds: [...messageIds] } : 'skip')
 
   if (active && incremental && updates !== undefined && (updates !== state.applied || state.scopeKey !== scopeKey)) {
-    setState({ scopeKey, held: mergePublicStreamUpdates(held, updates), applied: updates })
+    // Merging is idempotent, so a read that brings nothing new (the same segment again) changes no state.
+    const merged = mergePublicStreamUpdates(held, updates)
+    if (merged !== held || state.scopeKey !== scopeKey) setState({ scopeKey, held: merged, applied: updates })
   }
 
   const streams = useMemo(() => {

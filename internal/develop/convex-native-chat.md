@@ -216,9 +216,13 @@ Every thread kind reads live text through one hook, `useLivePublicStreams`
 (`ConvexRoomMessageSubscription`). It subscribes only while a reply is generating.
 Reads are incremental: `chat/personal:activePublicStreamUpdates` and
 `collaboration/rooms:activePublicStreamUpdates` take a cursor per reply (run,
-generation, invocation, last sequence and last segment index held) and return only
-the segments from that last, still-growing segment onward, or none when the stream
-has not moved. A cursor from another run, generation or invocation is ignored and
+generation, invocation and last segment index held) and return the segments from
+that last, still-growing segment onward. The cursor carries no sequence, so it only
+changes when a new segment starts: while a segment grows the reader keeps one
+reactive subscription and each re-run reads that segment (an older client's
+`sequence` is accepted and ignored). Readers wait for `uiSettings` before reading,
+so they never switch from whole to incremental reads mid-reply. A cursor from
+another run, generation or invocation is ignored and
 the whole stream comes back; segments from another attempt are never returned. The
 client joins segments in `src/shared/chat/public-stream-updates.ts`, keeps on-screen
 text while a re-read loads or after a gap (and re-reads from the first segment), and
