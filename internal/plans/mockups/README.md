@@ -103,7 +103,9 @@ them. Besides the canonical app mockup, this folder holds only:
 - `tabbed-right-panel.html` (feature `tabbed-right-panel`): the proposed thread panel. Everything beside an agent
   thread opens as a tab in one docked panel: Progress (plan and activity), Computer, Changes (pull request and diff),
   Terminal, Files and the agent's settings, plus any opened file. "+" (⌥T) opens a launcher with search and a Computer
-  preview; ⌘P opens Files and ⌘J the Terminal. The panel is wider by default, drag-resizable and can expand over most of
+  preview under the agent's avatar and name; ⌘P opens Files and ⌘J the Terminal. In the Agents sidebar the pinned
+  Overlay agent is a tile (avatar and name) above the other agents in Personal and Workspace; its threads list under it
+  while it is open. The panel is wider by default, drag-resizable and can expand over most of
   the thread. Details, Files and the agent settings are the production components. Open
   `tabbed-right-panel.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`. Delete
   it when the design ships or is rejected.

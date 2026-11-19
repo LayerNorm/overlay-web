@@ -27,6 +27,8 @@ export type WorkspacePanelProps = {
   conversationId: string
   agentName: string
   hero: { avatar: ReactNode; title: ReactNode; titleText: string; subtitle?: ReactNode }
+  /** The agent's avatar at launcher size; read-only, unlike the hero's avatar picker. */
+  avatar: ReactNode
   agent: ReactNode
   files: ReactNode
   computer: ReactNode
@@ -146,7 +148,7 @@ function PanelBody({ tab, ...props }: WorkspacePanelProps & { tab: PanelTab }) {
   }
 }
 
-function Launcher({ tabId, conversationId, agentName }: WorkspacePanelProps & { tabId: string }) {
+function Launcher({ tabId, conversationId, agentName, avatar }: WorkspacePanelProps & { tabId: string }) {
   const [query, setQuery] = useState('')
   const rows = (['progress', 'changes', 'files', 'terminal', 'agent'] as const)
     .filter((kind) => `${KINDS[kind].label} ${KINDS[kind].hint}`.toLowerCase().includes(query.trim().toLowerCase()))
@@ -154,6 +156,10 @@ function Launcher({ tabId, conversationId, agentName }: WorkspacePanelProps & { 
   const live = conversationId === PRICING_THREAD
   return (
     <div className="mx-auto flex w-full max-w-[340px] flex-1 flex-col justify-center px-5 py-10">
+      <div className="mb-6 flex flex-col items-center gap-2.5">
+        {avatar}
+        <span className="text-[15px] font-medium text-(--foreground)">{agentName}</span>
+      </div>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-(--muted)" />
         <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)}
