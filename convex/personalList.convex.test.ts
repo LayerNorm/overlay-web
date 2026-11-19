@@ -123,6 +123,17 @@ test('a note chat is found by its client id only for its owner, before and after
   expect(await user.query(getByClientId, lookup)).toBe(id)
   expect(await user.query(getByClientId, { ...lookup, clientId: 'notebook:note-2' })).toBeNull()
   await expect(t.withIdentity({ subject: 'other' }).query(getByClientId, lookup)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  // Someone who can read notes but not chats still gets a usable note: the lookup answers null, never throws.
+  await t.run(async ctx => {
+    const role = await ctx.db.query('authorizationRoles').withIndex('by_roleId', q => q.eq('roleId', 'member')).unique()
+    await ctx.db.patch(role!._id, { capabilities: ['conversations.edit'] })
+  })
+  expect(await user.query(getByClientId, lookup)).toBeNull()
+  await t.run(async ctx => {
+    const role = await ctx.db.query('authorizationRoles').withIndex('by_roleId', q => q.eq('roleId', 'member')).unique()
+    await ctx.db.patch(role!._id, { capabilities: ['conversations.read', 'conversations.edit', 'conversations.create'] })
+  })
+  expect(await user.query(getByClientId, lookup)).toBe(id)
   await t.run(ctx => ctx.db.patch(id, { deletedAt: 3 }))
   expect(await user.query(getByClientId, lookup)).toBeNull()
 })

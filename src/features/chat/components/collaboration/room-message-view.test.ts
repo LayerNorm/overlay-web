@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { captureRoomScrollAnchor, createRoomScrollIntent, holdRoomScrollAnchor, isRoomAgentResponding, mergeRoomMessages, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
+import { captureRoomScrollAnchor, createRoomScrollIntent, holdRoomScrollAnchor, isRoomAgentResponding, mergeRoomMessages, showsResponseMark, roomMessageRowKey, scrollRoomMessageIntoView, toRoomMessageView, type RoomMessageRecord } from './room-message-view'
 
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
@@ -401,4 +401,11 @@ test('live updates keep unchanged room rows and replace only the rows that chang
   const settled = mergeRoomMessages([fresh(edited[0]!), { ...fresh(edited[1]!), status: 'completed', updatedAt: 2_200 }], edited)
   assert.equal(settled[0], edited[0])
   assert.equal(settled[1]!.status, 'completed')
+})
+
+test('the responding mark hides while an agent waits for an approval or an answer, and after a failure', () => {
+  assert.equal(showsResponseMark({}), true)
+  assert.equal(showsResponseMark({ nativeApproval: { token: 't' } as never }), false)
+  assert.equal(showsResponseMark({ nativeInput: { token: 't' } as never }), false)
+  assert.equal(showsResponseMark({ generationError: 'The model failed.' }), false)
 })
