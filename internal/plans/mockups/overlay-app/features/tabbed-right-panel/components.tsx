@@ -155,7 +155,7 @@ function Launcher({ tabId, conversationId, agentName, avatar }: WorkspacePanelPr
   const showComputer = 'computer watch take control'.includes(query.trim().toLowerCase())
   const live = conversationId === PRICING_THREAD
   return (
-    <div className="mx-auto flex w-full max-w-[340px] flex-1 flex-col justify-center px-5 py-10">
+    <div className="mx-auto flex w-full max-w-[340px] flex-col px-5 pb-10 pt-8">
       <div className="mb-6 flex flex-col items-center gap-2.5">
         {avatar}
         <span className="text-[15px] font-medium text-(--foreground)">{agentName}</span>
