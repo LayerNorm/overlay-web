@@ -43,20 +43,6 @@ async function loadNativeParentRun(
   return parent
 }
 
-async function loadNativeRootWorkflowRunId(
-  repository: ConvexHarnessRepository,
-  access: NativeHarnessAccess,
-  parent: HarnessSnapshot,
-): Promise<string> {
-  const root = parent.runId === parent.rootRunId ? parent
-    : await repository.get({ actorUserId: access.actorUserId, runId: parent.rootRunId })
-  if (!root?.workflowRunId || root.runId !== parent.rootRunId
-    || root.policy.actorUserId !== access.actorUserId || root.policy.workspaceId !== access.workspaceId) {
-    throw new FatalError('Native root run is no longer available.')
-  }
-  return root.workflowRunId
-}
-
 async function freshTooling(call: NativeToolCall) {
   const authority = await refreshNativeHarnessAccess(call.access, call.context, call.toolName)
   const { agent } = authority
@@ -348,15 +334,12 @@ export async function dispatchNativeHarnessAgentRequest(
       })
       try {
         const parent = await loadNativeParentRun(repository, access)
-        const expectedSurfaceWorkflowRunId = await loadNativeRootWorkflowRunId(repository, access, parent)
         const workflowInput = await buildNativeHarnessWorkflowInput({
           actorUserId: access.actorUserId,
           workspaceId: args.workspaceId,
           conversationId: args.conversationId,
           runId: turn.runId,
           memoryEnabled: false,
-          surfaceRootRunId: parent.rootRunId,
-          expectedSurfaceWorkflowRunId,
         })
         const allowedToolIds = [...new Set(workflowInput.definitions
           .map(definition => definition.name)

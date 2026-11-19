@@ -21,8 +21,6 @@ import {
 } from './AgentEditorPresentation'
 import type { useAgentComputer } from './use-agent-computer'
 import type { useAgentEditorForm } from './use-agent-editor-form'
-import type { useAgentSurfaces } from './use-agent-surfaces'
-import { AgentSurfacesField } from './AgentSurfacesField'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
 import { usesOverlayMark } from '@/shared/agents/chief-identity'
 
@@ -44,7 +42,6 @@ type AgentEditorFormSectionProps = {
   busy: boolean
   form: ReturnType<typeof useAgentEditorForm>
   computer: ReturnType<typeof useAgentComputer>
-  surfaces: ReturnType<typeof useAgentSurfaces>
   closeEditor(): void
   persistNew(): void
   saveEdit(): void
@@ -62,16 +59,15 @@ function AgentEditorFormSection({
   busy,
   form,
   computer,
-  surfaces,
   closeEditor,
   persistNew,
   saveEdit,
   cancelEdit,
   archiveAgent,
 }: AgentEditorFormSectionProps) {
-  // One loading state for the whole form: it shows when everything (computer, reachability, memories) has loaded,
+  // One loading state for the whole form: it shows when everything (computer, memories) has loaded,
   // not piece by piece.
-  useEditorLoad(surfaces.initialLoading || computer.initialLoading)
+  useEditorLoad(computer.initialLoading)
   const {
     name,
     description,
@@ -169,8 +165,6 @@ function AgentEditorFormSection({
             onChange={(value) => { setPermissionMode(value); markDirty() }}
           />
 
-          <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />
-
           {controls.showAccessSelector ? <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} /> : null}
 
           {mode === 'edit' && agent?.principalId ? (
@@ -266,7 +260,6 @@ export function AgentEditorView({
   modelField,
   form,
   computer,
-  surfaces,
   closeEditor,
   sayHello,
   persistNew,
@@ -293,7 +286,6 @@ export function AgentEditorView({
   modelField: AgentModelFieldProps
   form: ReturnType<typeof useAgentEditorForm>
   computer: ReturnType<typeof useAgentComputer>
-  surfaces: ReturnType<typeof useAgentSurfaces>
   closeEditor(): void
   sayHello(): void
   persistNew(): void
@@ -356,7 +348,6 @@ export function AgentEditorView({
             busy={busy}
             form={form}
             computer={computer}
-            surfaces={surfaces}
             closeEditor={closeEditor}
             persistNew={persistNew}
             saveEdit={saveEdit}

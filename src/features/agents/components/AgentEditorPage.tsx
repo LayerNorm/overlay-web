@@ -22,7 +22,6 @@ import {
   workspaceAgentReasoningForSave,
 } from '../lib/agent-editor-input'
 import { getInitialEditorState } from '../lib/agent-editor-state'
-import { useAgentSurfaces } from './use-agent-surfaces'
 import { useAgentEditorBootstrap } from './use-agent-editor-bootstrap'
 import { useAgentEditorForm } from './use-agent-editor-form'
 import { useAgentComputer } from './use-agent-computer'
@@ -97,7 +96,6 @@ export function useAgentEditorController({
 
   const form = useAgentEditorForm({ initial, agent, activeWorkspaceId })
 
-  const surfaces = useAgentSurfaces({ activeWorkspaceId, agent })
   const computer = useAgentComputer({
     computersAvailable, activeWorkspaceId, agent,
     enabledToolGroups: form.enabledToolGroups, setEnabledToolGroups: form.setEnabledToolGroups,
@@ -216,7 +214,6 @@ export function useAgentEditorController({
     modelField,
     form,
     computer,
-    surfaces,
     closeEditor,
     sayHello,
     persistNew,
@@ -239,7 +236,6 @@ export function useAgentEditorController({
     modelField,
     form,
     computer,
-    surfaces,
     saveEdit,
     archiveAgent,
   }

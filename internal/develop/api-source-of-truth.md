@@ -485,7 +485,7 @@ A source the person cannot read returns null and is reported as unavailable; the
 
 Settings → Webhooks reads `webhooks/browse:subscriptions` and `webhooks/browse:deliveries` live for the active workspace. Both need an active membership and `webhooks.manage`, and `CAPABILITY_FEATURE` now maps that capability to the `webhooks` deployment feature for the server and native paths alike. Neither query returns the signing secret or `payloadJson`. Create and update stay on `/api/v1/webhooks` because they resolve the endpoint address for SSRF checks. Rotate, delete and redrive also stay on the server, and the HTTP list remains for API clients.
 
-## Connections in the browser (MCP, providers, Computers, environments, surfaces)
+## Connections in the browser (MCP, providers, Computers, environments)
 
 Browsers read connection state natively; every write stays on its route because it encrypts credentials, checks
 network addresses, runs OAuth or device flows, calls a provider, or checks billing.
@@ -503,8 +503,6 @@ network addresses, runs OAuth or device flows, calls a provider, or checks billi
   pending environments; `:bindings` is for owners and admins. The online window lives in
   `src/shared/agents/environment-status.ts` and is applied in the browser on a local clock, because a stale
   heartbeat writes nothing to re-run a query.
-- `surfaces/browse:forAgent` returns an agent's workspace surface connections, bindings and `canBind` with the
-  `SurfaceService` rules. Channel listing, binding and Slack OAuth stay on `/api/v1/surfaces`.
 
 There is no connection polling in the browser.
 

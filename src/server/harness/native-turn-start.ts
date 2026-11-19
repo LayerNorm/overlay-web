@@ -19,8 +19,6 @@ type NativeTurnStartInput = {
   runId: string
   memoryEnabled: boolean
   threadRootMessageId?: string
-  expectedSurfaceWorkflowRunId?: string
-  surfaceRootRunId?: string
 }
 
 export type PreparedNativeHarnessTurn = {
@@ -33,7 +31,6 @@ export type NativeTurnStartDependencies = {
   getAgentRun?: (args: { actorUserId: string; conversationId: string; runId: string }) => Promise<AgentRun | null>
   getPaid?: (run: AgentRun, workflowInput: NativeHarnessWorkflowInput) => Promise<boolean>
   repository?: Pick<ConvexHarnessRepository, 'admit' | 'get'>
-  getSurfaceExecution?: (rootRunId: string) => ReturnType<ConvexHarnessRepository['getSurfaceExecutionByHarnessRunId']>
   startWorkflow?: (workflow: typeof nativeHarnessWorkflow, args: [NativeHarnessWorkflowInput]) => Promise<unknown>
 }
 
@@ -47,30 +44,7 @@ function admissionGoal(input: NativeHarnessWorkflowInput): string {
     : goal
 }
 
-async function loadSurfaceExecution(
-  input: NativeTurnStartInput,
-  repository: ConvexHarnessRepository,
-  dependencies: NativeTurnStartDependencies,
-) {
-  const rootRunId = input.surfaceRootRunId ?? `workspace:${input.runId}`
-  const surfaceExecution = await (dependencies.getSurfaceExecution
-    ?? (id => repository.getSurfaceExecutionByHarnessRunId(id)))(rootRunId)
-  if (!surfaceExecution && !input.expectedSurfaceWorkflowRunId) return null
-  if (!surfaceExecution) throw new Error('Native surface execution record is unavailable.')
-  const isOwned = Boolean(input.expectedSurfaceWorkflowRunId)
-    && surfaceExecution.workflowRunId === input.expectedSurfaceWorkflowRunId
-    && surfaceExecution.actorUserId === input.actorUserId
-    && surfaceExecution.workspaceId === input.workspaceId
-    && surfaceExecution.conversationId === input.conversationId
-    && (input.surfaceRootRunId !== undefined || surfaceExecution.agentRunId === input.runId)
-  if (!isOwned) throw new Error('Native surface workflow ownership changed.')
-  const { assertPersistedSurfaceSource } = await import('./surface-access')
-  await assertPersistedSurfaceSource(surfaceExecution, input.expectedSurfaceWorkflowRunId)
-  return surfaceExecution
-}
-
 async function loadNativeDelivery(
-  input: NativeTurnStartInput,
   workflowInput: NativeHarnessWorkflowInput,
   dependencies: NativeTurnStartDependencies,
   server: ReturnType<typeof getOverlayServerContext>,
@@ -90,9 +64,7 @@ async function loadNativeDelivery(
     || run.mode !== 'room' || run.runner !== 'workflow' || run.userId !== access.actorUserId
     || run.conversationId !== access.conversationId || run.agentId !== access.agentId
     || run.agentPrincipalId !== access.agentPrincipalId || run.turnId !== access.turnId
-    || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId
-    || (input.expectedSurfaceWorkflowRunId && run.workflowRunId
-      && run.workflowRunId !== input.expectedSurfaceWorkflowRunId)) {
+    || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
     throw new Error('The native agent delivery is no longer available.')
   }
   return run
@@ -101,7 +73,6 @@ async function loadNativeDelivery(
 async function isNativeDeliveryPaid(
   run: AgentRun,
   workflowInput: NativeHarnessWorkflowInput,
-  surfaceExecution: Awaited<ReturnType<ConvexHarnessRepository['getSurfaceExecutionByHarnessRunId']>>,
   dependencies: NativeTurnStartDependencies,
   server: ReturnType<typeof getOverlayServerContext>,
 ): Promise<boolean> {
@@ -111,26 +82,18 @@ async function isNativeDeliveryPaid(
     usagePolicy: server.chatUsagePolicy,
   }).gateModelAccess({
     effectiveModelId: workflowInput.context.modelId,
-    programmaticSubjectId: surfaceExecution?.bindingId
-      ? `surface:slack:${surfaceExecution.bindingId}`
-      : `agent:${run.agentId}`,
+    programmaticSubjectId: `agent:${run.agentId}`,
     userId: run.userId,
     workspaceId: workflowInput.access.workspaceId,
   })).paid
 }
 
-function assertAdmissionCanStart(
-  admitted: Awaited<ReturnType<ConvexHarnessRepository['admit']>>,
-  expectedSurfaceWorkflowRunId?: string,
-): boolean {
+/** A duplicate admission that already owns a workflow reconnects to it instead of starting another. */
+function assertAdmissionCanStart(admitted: Awaited<ReturnType<ConvexHarnessRepository['admit']>>): boolean {
   if (['completed', 'failed', 'cancelled'].includes(admitted.status)) {
     throw new Error('This native Harness run has already ended.')
   }
-  if (!admitted.workflowRunId) return true
-  if (expectedSurfaceWorkflowRunId && admitted.workflowRunId !== expectedSurfaceWorkflowRunId) {
-    throw new Error('Native Harness admission belongs to another workflow.')
-  }
-  return Boolean(expectedSurfaceWorkflowRunId)
+  return !admitted.workflowRunId
 }
 
 export async function prepareNativeHarnessTurn(
@@ -138,15 +101,10 @@ export async function prepareNativeHarnessTurn(
   dependencies: NativeTurnStartDependencies = {},
 ): Promise<PreparedNativeHarnessTurn | undefined> {
   const repository = new ConvexHarnessRepository()
-  const surfaceExecution = await loadSurfaceExecution(input, repository, dependencies)
-  const workflowInput = await (dependencies.buildInput ?? buildNativeHarnessWorkflowInput)({
-    ...input,
-    surfaceRootRunId: input.surfaceRootRunId,
-    expectedSurfaceWorkflowRunId: input.expectedSurfaceWorkflowRunId,
-  })
+  const workflowInput = await (dependencies.buildInput ?? buildNativeHarnessWorkflowInput)(input)
   const server = getOverlayServerContext()
-  const run = await loadNativeDelivery(input, workflowInput, dependencies, server)
-  const paid = await isNativeDeliveryPaid(run, workflowInput, surfaceExecution, dependencies, server)
+  const run = await loadNativeDelivery(workflowInput, dependencies, server)
+  const paid = await isNativeDeliveryPaid(run, workflowInput, dependencies, server)
   const admissionRepository = dependencies.repository ?? repository
   const existing = admissionRepository.get
     ? await admissionRepository.get({ actorUserId: workflowInput.access.actorUserId, runId: workflowInput.access.runId })
@@ -171,7 +129,7 @@ export async function prepareNativeHarnessTurn(
     event: 'admission_accepted', runId: workflowInput.access.runId,
     generation: admitted.executionGeneration ?? 0, modelId: workflowInput.context.modelId,
   })
-  if (!assertAdmissionCanStart(admitted, input.expectedSurfaceWorkflowRunId)) return
+  if (!assertAdmissionCanStart(admitted)) return
   return { workflowInput, admitted }
 }
 

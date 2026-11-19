@@ -27,9 +27,6 @@ export async function prepareWorkspaceAgentInputs(input: {
   memoryEnabled: boolean
   workspaceId: string
   includeAutoRetrieval?: boolean
-  turnIdOverride?: string
-  requestFingerprintOverride?: string
-  billingProgrammaticSubjectId?: string
   /** The thread's computer and folders: a local thread is offered the computer tools (thread-folders.md). */
   work?: ThreadWork
 }) {
@@ -37,13 +34,7 @@ export async function prepareWorkspaceAgentInputs(input: {
   const agent = room.directory.agents.find(candidate => candidate.id === input.agentId)
   if (!agent || agent.archivedAt) throw new Error('The agent is no longer available.')
   const server = getOverlayServerContext()
-  const identity = input.turnIdOverride
-    ? {
-        invocationNonce: `surface:${input.turnIdOverride}`,
-        requestFingerprint: input.requestFingerprintOverride ?? hashOperationalIdentifier('workspace-agent-invocation', input.turnIdOverride),
-        turnId: input.turnIdOverride,
-      }
-    : workspaceAgentInvocationIdentity(input.messageId, input.agentId)
+  const identity = workspaceAgentInvocationIdentity(input.messageId, input.agentId)
   const entitlementService = new ActEntitlementService({
     repository: server.appData.repositories.conversations,
     usagePolicy: server.chatUsagePolicy,
@@ -51,7 +42,7 @@ export async function prepareWorkspaceAgentInputs(input: {
   const modelId = agent.modelId
   const gate = await entitlementService.gateModelAccess({
     effectiveModelId: modelId,
-    programmaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
+    programmaticSubjectId: `agent:${agent.id}`,
     userId: input.actorUserId,
     workspaceId: input.workspaceId,
   })
@@ -77,7 +68,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     actorUserId: input.actorUserId,
     agentName: agent.name,
     agentPrincipalId: agent.principalId,
-    billingProgrammaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
+    billingProgrammaticSubjectId: `agent:${agent.id}`,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     conversationTitle: room.conversation.title,
     conversationType: room.conversationType,

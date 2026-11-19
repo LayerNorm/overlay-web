@@ -126,18 +126,6 @@ crons.interval(
   {},
 )
 
-// Process queued or stuck Slack import jobs. The cron picks up jobs that
-// are either newly queued or stuck in 'importing' status (worker was killed
-// by the serverless function timeout). Each job is processed by calling the
-// BFF backfill endpoint, which runs the full Slack backfill worker.
-crons.interval(
-  'slack import job processor',
-  { minutes: 1 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).imports.slackRunner.runMinuteTick,
-  {},
-)
-
 // knowledgeChunks have no tombstone — a chunk is dead when its source row is.
 // Interrupted purges can strand retrievable chunks; a daily whole-table scan
 // deletes provable orphans (missing source row, tombstoned memory). The action
@@ -149,15 +137,6 @@ crons.daily(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).knowledge.knowledge.sweepOrphanedChunks,
   {},
-)
-
-// Chat SDK dedupe keys, locks, and queue entries carry TTLs; reads already
-// ignore expired rows, so this only bounds table growth.
-crons.interval(
-  'surface chat state expiry sweep',
-  { minutes: 15 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).surfaces.chatState.pruneExpired,
 )
 
 // Counts yesterday (UTC) for the admin console's growth panel. Runs a little

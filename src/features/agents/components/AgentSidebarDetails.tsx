@@ -82,7 +82,6 @@ export function AgentSidebarDetails({
 }) {
   const { form, modelField } = editor
   const detailsLoading = editor.loading
-    || editor.surfaces.initialLoading
     || editor.computer.initialLoading
 
   if (detailsLoading) {

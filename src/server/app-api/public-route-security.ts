@@ -29,34 +29,9 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result': agentHostException(['POST'], 'Signed, size-limited answer to one claimed local tool call.'),
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated machine lease metering, idle checks and retired cloud cleanup.'),
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
-  '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
   '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
   '/api/v1/harness/continuation': internalContinuationException(),
   '/api/v1/work/resume-assignment': internalServiceException(['POST'], 'Internal-secret authenticated dependency release; generation-fenced assignment claim and current permissions/budget are rechecked.'),
-  '/api/v1/surfaces/slack/connect': {
-    methods: ['GET'],
-    reason: 'Browser navigation that must end in a redirect to Slack consent, not a JSON envelope.',
-    controls: {
-      authentication: 'Overlay session required; unauthenticated callers are redirected to sign-in',
-      authorization: 'SurfaceService.requireBindableAgent: visible agent, no guests, personal agents only by their creator',
-      rateLimit: 'endpoint-specific IP limit',
-      csrf: 'read-only redirect; nothing is bound until the user approves on Slack and the callback succeeds',
-      idempotency: 'not-applicable-redirect-only',
-      audit: 'the successful callback writes surface.slack.connected',
-    },
-  },
-  '/api/v1/surfaces/slack/callback': {
-    methods: ['GET'],
-    reason: 'Slack OAuth redirect target; the response must redirect back into the app.',
-    controls: {
-      authentication: 'HMAC-sealed state (10-minute TTL) plus a live Overlay session for the same user',
-      authorization: 'state binds user, workspace, and agent; bind permission is re-checked before the token exchange',
-      rateLimit: 'endpoint-specific IP limit',
-      csrf: 'sealed OAuth state must match the completing session user',
-      idempotency: 'connections upsert by Slack team id',
-      audit: 'surface.slack.connected workspace audit event',
-    },
-  },
   '/api/v1/github/connect': {
     methods: ['GET'],
     reason: 'Browser navigation that must end in a redirect to GitHub sign-in (or, with install=1, the GitHub App install page), not a JSON envelope.',
@@ -79,18 +54,6 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
       csrf: 'sealed state must match the completing session user',
       idempotency: 'installations upsert by workspace and installation id',
       audit: 'integration.github.connected workspace audit event',
-    },
-  },
-  '/api/v1/webhooks/slack': {
-    methods: ['POST'],
-    reason: 'Slack Events API ingress; Slack calls it without an Overlay session.',
-    controls: {
-      authentication: "Slack v0 request signature (Chat SDK adapter; verified explicitly for lifecycle events)",
-      authorization: 'team and channel resolve to an active binding; unbound events are ignored',
-      rateLimit: 'Slack-controlled delivery; acknowledged within Slack\'s 3s window',
-      csrf: 'no browser cookie authority',
-      idempotency: 'Chat SDK event dedupe in Convex state; lifecycle transitions are idempotent',
-      audit: 'lifecycle transitions are logged; turns persist to the surface conversation transcript',
     },
   },
   '/api/v1/capabilities': {

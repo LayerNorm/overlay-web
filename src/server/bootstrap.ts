@@ -65,9 +65,6 @@ import { ComputerService, type ComputerLimits } from '@/server/computers/Compute
 import { ConvexLocalToolCallRepository, LocalComputerService } from '@/server/computers/local/LocalComputerService'
 import { ComputerBilling } from '@/server/computers/ComputerBilling'
 import { ComputerLifecycleService } from '@/server/computers/ComputerLifecycleService'
-import { SurfaceService } from '@/server/surfaces/SurfaceService'
-import { listSlackChannels } from '@/server/surfaces/slack-directory'
-import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -125,7 +122,6 @@ export interface OverlayServerContext extends OverlayProviderContext {
   computerService: ComputerService
   /** The user's own connected machine used as a Computer through its Agent Host. */
   localComputerService: LocalComputerService
-  surfaceService: SurfaceService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   authorizationService: AuthorizationService
@@ -282,13 +278,6 @@ export function createOverlayServerContext(
     repository: new ConvexLocalToolCallRepository(),
     listEnvironments: (input) => appData.repositories.connectedAgents.listEnvironments(input),
   })
-  const surfaceService = new SurfaceService({
-    repository: appData.repositories.surfaces,
-    agents: workspaceAgentRepository,
-    channelLister: (connection, adapter) =>
-      listSlackChannels(connection, adapter as SlackAdapter),
-    resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
-  })
   const mcpAccess = new McpAccessService({
     grants: appData.repositories.mcpGrants,
     workspaces: workspaceService,
@@ -395,7 +384,6 @@ export function createOverlayServerContext(
     managedAgentSandboxBilling,
     computerService,
     localComputerService,
-    surfaceService,
     workspaceSharingService,
     workspaceSearchService,
     authorizationService,

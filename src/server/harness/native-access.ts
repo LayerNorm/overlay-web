@@ -14,7 +14,6 @@ import { loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
-import { assertPersistedSurfaceSource } from './surface-access'
 import type { HarnessExecutionReference } from './state-steps'
 
 export type NativeHarnessAccess = HarnessExecutionReference & {
@@ -277,19 +276,6 @@ export async function refreshNativeHarnessAccess(
     ? state
     : await new ConvexHarnessRepository().get({ actorUserId: access.actorUserId, runId: state.rootRunId })
   if (!root) throw new FatalError('Native harness root is unavailable.')
-  const surfaceExecution = await new ConvexHarnessRepository()
-    .getSurfaceExecutionByHarnessRunId(root.runId)
-  if (surfaceExecution) {
-    if (root.runId !== surfaceExecution.harnessRunId
-      || root.workflowRunId !== surfaceExecution.workflowRunId
-      || root.policy.actorUserId !== surfaceExecution.actorUserId
-      || root.policy.workspaceId !== surfaceExecution.workspaceId
-      || access.actorUserId !== surfaceExecution.actorUserId
-      || access.workspaceId !== surfaceExecution.workspaceId) {
-      throw new FatalError('Native surface source ownership changed.')
-    }
-    await assertPersistedSurfaceSource(surfaceExecution, root.workflowRunId)
-  }
   const [room, workspace, run] = await Promise.all([
     loadRoomTurnContext({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
       conversationId: access.conversationId, messageId: access.userMessageId }),
@@ -302,9 +288,7 @@ export async function refreshNativeHarnessAccess(
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
   const agent = assertRoomIdentity(access, context, room, humanPrincipalId)
   await assertNativeCapabilities(access, context, toolName)
-  const billingProgrammaticSubjectId = surfaceExecution
-    ? `surface:slack:${surfaceExecution.bindingId}`
-    : `agent:${access.agentId}`
+  const billingProgrammaticSubjectId = `agent:${access.agentId}`
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
   if (isByokModelId(context.modelId)) {

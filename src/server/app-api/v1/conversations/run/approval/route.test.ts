@@ -178,15 +178,11 @@ test('a room creator with current participation can decide a pending approval', 
   assert.equal(resumed, true)
 })
 
-test('the initiator can approve an active native Harness room run in a Slack channel', async () => {
+test('the initiator can approve an active native Harness room run in a channel', async () => {
   const channel = {
     ...conversation,
     userId: 'room-creator',
     conversationType: 'channel' as const,
-    externalPlatform: 'slack' as const,
-    externalChannelId: 'channel',
-    externalThreadId: 'thread',
-    surfaceBindingId: 'binding',
   }
   const nativeRun = { ...run, executionEngine: 'overlay_harness' as const }
   let resumed = false

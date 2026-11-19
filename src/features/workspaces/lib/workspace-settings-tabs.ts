@@ -1,4 +1,4 @@
-import { Bot, Download, Link2, Shield, UserPlus, Users, UsersRound, WalletCards } from 'lucide-react'
+import { Bot, Link2, Shield, UserPlus, Users, UsersRound, WalletCards } from 'lucide-react'
 import type { WorkspaceSettingsTab } from '@/shared/workspaces/types'
 
 export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
@@ -64,14 +64,6 @@ export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
     emptyTitle: 'Workspace billing',
     emptyDescription: 'Manage shared credits and usage.',
     action: 'Manage billing',
-  },
-  {
-    id: 'import',
-    label: 'Import',
-    icon: Download,
-    emptyTitle: 'No imports yet',
-    emptyDescription: 'Bring data from external platforms into this workspace.',
-    action: 'Start import',
   },
 ]
 
