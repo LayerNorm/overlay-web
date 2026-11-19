@@ -30,6 +30,10 @@ function gmailComposeUrl(data: GeneratedEmailDraftData): string {
 const PENDING_POLL_INTERVAL_MS = 3_000
 const PENDING_POLL_TIMEOUT_MS = 120_000
 
+function composioLogoUrl(slug: string): string {
+  return `https://logos.composio.dev/api/${encodeURIComponent(slug)}`
+}
+
 function resolveConnectorSlug(serviceName: string, slug?: string): string | null {
   return slug?.trim() || resolveSlugFromName(serviceName)
 }
@@ -99,7 +103,10 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
 
   const getLogoUrl = useCallback((serviceName: string, slug?: string) => {
     const resolved = resolveConnectorSlug(serviceName, slug)
-    return resolved ? getIntegrationLogoUrl(resolved) : null
+    if (!resolved) return null
+    // The catalog logo cache warms in the background and doesn't re-render
+    // cards, so fall back to Composio's stable logo URL for the slug.
+    return getIntegrationLogoUrl(resolved) ?? composioLogoUrl(resolved)
   }, [])
 
   const isConnected = useCallback((serviceName: string, slug?: string) => {

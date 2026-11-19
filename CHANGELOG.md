@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Fix "Connect <app>" cards in agent threads. They now show the app's logo, sit on their own line instead of inside the sentence, and switch to Connected once you finish signing in. Agent threads previously had no live connector state, so the card fell back to a plain link that never updated. After you click Connect, Overlay re-checks your connections every few seconds for up to two minutes, so the card updates even if you don't return to the tab. Cards in chats get the same layout.
+- Fix "Connect <app>" cards in agent threads. They now show the app's logo, sit on their own line instead of inside the sentence, and switch to Connected once you finish signing in. Agent threads previously had no live connector state, so the card fell back to a plain link that never updated. After you click Connect, Overlay re-checks your connections every few seconds for up to two minutes, so the card updates even if you don't return to the tab. Cards in chats get the same layout. A card shown right after a page load now shows the logo too, instead of a plug icon, because it no longer waits for the full app catalog to load.
 
 - Let connectors use our own OAuth app when one is registered in Composio. Starting a connection now skips disabled auth configs and uses a custom config before Composio's shared managed app, instead of whichever config came first. Reddit currently fails with "invalid client id" because Reddit rejects Composio's shared Reddit app; once an approved Overlay Reddit app is added as a custom auth config, Reddit connections will use it without another deploy.
 
