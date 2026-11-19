@@ -1147,8 +1147,8 @@ type ComputerDownloadDependencies = {
 }
 
 function computerDownloadFileName(name: string): string | null {
-  const cleaned = name.normalize('NFC').replace(/[\\/:\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim()
-  if (!cleaned) return null
+  const cleaned = name.normalize('NFC').trim().replace(/[\\/:\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim()
+  if (!cleaned || cleaned === '.' || cleaned === '..') return null
   const dot = cleaned.lastIndexOf('.')
   const hasExtension = dot > 0 && dot < cleaned.length - 1
   const extension = hasExtension ? cleaned.slice(dot) : ''

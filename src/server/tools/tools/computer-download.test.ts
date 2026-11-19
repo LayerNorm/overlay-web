@@ -300,3 +300,14 @@ test('computer_download_file preserves a long basename extension within the file
   assert.equal(basename.length, 120)
   assert.equal(basename.endsWith('.mp4'), true)
 })
+
+test('computer_download_file rejects dot-segment names after trimming whitespace', async () => {
+  for (const name of ['.', '..', ' . ', ' .. ']) {
+    const state = fixture({ metadata: { name } })
+    const result = await executeComputerDownloadFile(options(), { fileId: 'file_1' }, state.dependencies)
+    assert.equal(result.success, false)
+    assert.match(result.error ?? '', /file name/i)
+    assert.equal(state.calls.command, undefined)
+    assert.equal(state.calls.writes.length, 0)
+  }
+})
