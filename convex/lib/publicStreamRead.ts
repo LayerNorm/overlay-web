@@ -147,8 +147,11 @@ export type PublicStreamCursor = {
   runId: string
   executionGeneration: number
   invocation: number
-  /** The last stream sequence the reader holds. */
-  sequence: number
+  /**
+   * Ignored. Readers no longer send it: a cursor that changed on every update made each update a new
+   * subscription. Kept optional so an older client's read still validates.
+   */
+  sequence?: number
   /** The last segment the reader holds; it can still grow, so it is sent again when it does. */
   segmentIndex: number
 }
@@ -158,14 +161,16 @@ export const publicStreamCursorValidator = v.object({
   runId: v.string(),
   executionGeneration: v.number(),
   invocation: v.number(),
-  sequence: v.number(),
+  sequence: v.optional(v.number()),
   segmentIndex: v.number(),
 })
 
 /**
- * Incremental live text: with a matching cursor, only the segments from the reader's
- * last (still growing) segment onward, or none when the stream has not moved. Without
- * one, every segment from the first. The same per-viewer and generation checks apply.
+ * Incremental live text: with a matching cursor, the segments from the reader's last (still
+ * growing) segment onward; without one, every segment from the first. The cursor only moves
+ * when a new segment starts, so while a segment grows the reader keeps one reactive
+ * subscription and each re-run reads that one segment. The same per-viewer and generation
+ * checks apply.
  */
 export async function readActivePublicStreamUpdates(
   ctx: QueryCtx,
@@ -183,9 +188,9 @@ export async function readActivePublicStreamUpdates(
     const cursor = held.get(assistantMessageId)
     const sameStream = cursor !== undefined && cursor.runId === stream.runId
       && cursor.executionGeneration === stream.executionGeneration && cursor.invocation === stream.invocation
-      && Number.isSafeInteger(cursor.segmentIndex) && cursor.segmentIndex >= 0 && cursor.sequence <= sequence
-    const fromSegmentIndex = !sameStream ? 0 : cursor.sequence === sequence ? cursor.segmentIndex + 1 : cursor.segmentIndex
-    const segments = sameStream && cursor.sequence === sequence ? [] : (await ctx.db.query('harnessPublicStreamSegments')
+      && Number.isSafeInteger(cursor.segmentIndex) && cursor.segmentIndex >= 0
+    const fromSegmentIndex = sameStream ? cursor.segmentIndex : 0
+    const segments = (await ctx.db.query('harnessPublicStreamSegments')
       .withIndex('by_runId_receiptId_segmentIndex', q =>
         q.eq('runId', stream.runId).eq('receiptId', stream.receiptId).gte('segmentIndex', fromSegmentIndex))
       .order('asc').take(100))

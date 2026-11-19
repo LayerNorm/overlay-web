@@ -36,7 +36,6 @@ export type PublicStreamCursor = {
   runId: string
   executionGeneration: number
   invocation: number
-  sequence: number
   segmentIndex: number
 }
 
@@ -82,7 +81,10 @@ function mergeOne(prior: HeldPublicStream | undefined, update: PublicStreamUpdat
     // A gap: keep what is on screen and read the whole stream again.
     return prior && sameStream(prior, update) ? { ...prior, resync: true } : toHeld(update, [], true)
   }
-  if (continues && update.sequence === prior.sequence && update.segments.length === 0
+  // A re-read that returns the segments already held (same sequence, same text) keeps the held value.
+  if (continues && update.sequence === prior.sequence
+    && update.segments.every((segment) => prior.segments[segment.index] === segment.text)
+    && update.fromSegmentIndex + update.segments.length >= prior.segments.length
     && prior.truncatedMarker === update.truncatedMarker
     && Boolean(prior.continuesPrevious) === Boolean(update.continuesPrevious)) return prior
   const segments = continues ? prior.segments.slice(0, update.fromSegmentIndex) : []
@@ -125,7 +127,6 @@ export function publicStreamCursors(
       runId: stream.runId,
       executionGeneration: stream.executionGeneration,
       invocation: stream.invocation,
-      sequence: stream.sequence,
       segmentIndex: Math.max(0, stream.segments.length - 1),
     }]
   })

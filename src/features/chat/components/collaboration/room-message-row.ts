@@ -32,21 +32,24 @@ export function useStableRoomMessageContext(ctx: RoomMessageContext): RoomMessag
     key,
     (...args: unknown[]) => (latest.current[key] as (...values: unknown[]) => unknown)(...args),
   ])) as RoomMessageHandlers, [])
-  const agentThreadTurns = useMemo<AgentThreadTurnActions>(() => ({
+  // Flags are read from this render's turn actions, so a reply that just settled shows enabled retry and delete;
+  // a new object whenever they change lets the row comparison see the change. Only the callbacks are forwarded.
+  const snapshot = ctx.agentThreadTurns
+  const agentThreadTurns = useMemo<AgentThreadTurnActions | null>(() => snapshot ? ({
     actionsFor: (message, onReply) => {
       const current = () => latest.current.agentThreadTurns?.actionsFor(message, onReply)
-      const actions = current()
+      const actions = snapshot.actionsFor(message, onReply)
       return {
-        retryDisabled: actions?.retryDisabled ?? true,
-        actionsLocked: actions?.actionsLocked ?? false,
+        retryDisabled: actions.retryDisabled,
+        actionsLocked: actions.actionsLocked,
         onReply,
         onDeleteTurn: () => current()?.onDeleteTurn(),
-        ...(actions?.onRegenerate ? { onRegenerate: () => current()?.onRegenerate?.() } : {}),
-        ...(actions?.onBranch ? { onBranch: () => current()?.onBranch?.() } : {}),
+        ...(actions.onRegenerate ? { onRegenerate: () => current()?.onRegenerate?.() } : {}),
+        ...(actions.onBranch ? { onBranch: () => current()?.onBranch?.() } : {}),
       }
     },
-  }), [])
-  return { ...ctx, ...handlers, agentThreadTurns: ctx.agentThreadTurns ? agentThreadTurns : null }
+  }) : null, [snapshot])
+  return { ...ctx, ...handlers, agentThreadTurns }
 }
 
 export type RoomMessageRowProps = {
@@ -61,7 +64,9 @@ const noop = () => {}
 
 function turnFlags(ctx: RoomMessageContext, message: OptimisticMessage) {
   const actions = ctx.agentThreadTurns?.actionsFor(message, noop)
-  return actions ? `${actions.retryDisabled}:${actions.actionsLocked}` : null
+  return actions
+    ? `${actions.retryDisabled}:${actions.actionsLocked}:${Boolean(actions.onRegenerate)}:${Boolean(actions.onBranch)}`
+    : null
 }
 
 /** Whether a context change can alter this row; anything the row does not read is ignored. */

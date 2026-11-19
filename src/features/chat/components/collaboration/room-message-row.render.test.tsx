@@ -115,8 +115,13 @@ test('stable room handlers keep their identity and call the latest committed act
   Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
   const seen: RoomMessageContext[] = []
   const calls: string[] = []
+  const flagsDuringRender: boolean[] = []
   function Probe({ ctx }: { ctx: RoomMessageContext }) {
-    seen.push(useStableRoomMessageContext(ctx))
+    const stable = useStableRoomMessageContext(ctx)
+    seen.push(stable)
+    // Rows read retry/delete flags while rendering; they must come from this render, not the previous commit.
+    const flags = stable.agentThreadTurns?.actionsFor(record('m1'), noop)
+    if (flags) flagsDuringRender.push(flags.retryDisabled)
     return null
   }
   const first = context({ deleteMessage: async (id) => { calls.push(`first:${id}`) }, agentThreadTurns: turns(true, calls) })
@@ -126,11 +131,15 @@ test('stable room handlers keep their identity and call the latest committed act
   await act(async () => renderer!.update(<Probe ctx={second} />))
   const [before, after] = [seen.at(-2)!, seen.at(-1)!]
   assert.equal(before.deleteMessage, after.deleteMessage)
-  assert.equal(before.agentThreadTurns, after.agentThreadTurns)
+  // New turn actions give a new object, so a memoized row compares their flags instead of skipping them.
+  assert.notEqual(before.agentThreadTurns, after.agentThreadTurns)
+  assert.deepEqual(flagsDuringRender, [true, false])
   await before.deleteMessage('m1')
   before.agentThreadTurns!.actionsFor(record('m1'), noop).onDeleteTurn()
   assert.deepEqual(calls, ['second:m1', 'delete:m1:false'])
   assert.equal(after.agentThreadTurns!.actionsFor(record('m1'), noop).retryDisabled, false)
+  await act(async () => renderer!.update(<Probe ctx={second} />))
+  assert.equal(seen.at(-1)!.agentThreadTurns, after.agentThreadTurns, 'unchanged turn actions keep their identity')
   await act(async () => renderer!.update(<Probe ctx={context()} />))
   assert.equal(seen.at(-1)!.agentThreadTurns, null)
   await act(async () => renderer!.unmount())

@@ -3,7 +3,7 @@ import test from 'node:test'
 import React, { act, createRef } from 'react'
 import { createRequire } from 'node:module'
 import type { ChatComposerProps, ComposerViewProps } from './ChatComposerTypes'
-import { sameChatComposerProps, useComposerViewProps, useForwardedHandlers } from './chat-composer-memo'
+import { sameChatComposerProps, sameComposerViewProps, useComposerViewProps, useForwardedHandlers } from './chat-composer-memo'
 
 const { create } = createRequire(import.meta.url)('react-test-renderer') as {
   create(element: React.ReactElement): { update(element: React.ReactElement): void; unmount(): void }
@@ -100,4 +100,27 @@ test('forwarded controls stay the same object until their data or render functio
   await act(async () => renderer!.update(<Probe value={{ folder: 'b', choose: () => {}, label: () => 'other' }} />))
   assert.notEqual(seen[2], seen[3])
   await act(async () => renderer!.unmount())
+})
+
+test('behind a memo boundary, a send handler that alone changed is still the one the composer calls', async () => {
+  // The same wiring as ChatComposer: an unmemoized wrapper records the latest handlers, a memoized view renders.
+  let viewRenders = 0
+  let latestOnSend: (() => unknown) | null = null
+  const View = React.memo(function View({ viewProps }: { viewProps: ComposerViewProps }) {
+    viewRenders += 1
+    latestOnSend = viewProps.onSend as () => unknown
+    return null
+  }, (prev, next) => sameComposerViewProps(prev.viewProps, next.viewProps))
+  function Composer(composerProps: ChatComposerProps) {
+    return <View viewProps={useComposerViewProps(composerProps)} />
+  }
+  const sent: string[] = []
+  let renderer!: ReturnType<typeof create>
+  await act(async () => { renderer = create(<Composer {...props({ send: () => sent.push('stale') })} />) })
+  // Only the handler changes, as when a mention is picked in a non-empty draft.
+  await act(async () => { renderer.update(<Composer {...props({ send: () => sent.push('fresh mentions') })} />) })
+  assert.equal(viewRenders, 1)
+  latestOnSend!()
+  assert.deepEqual(sent, ['fresh mentions'])
+  renderer.unmount()
 })

@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { getFunctionName } from 'convex/server'
 import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
 
-type Cursor = { sequence: number; segmentIndex: number }
+type Cursor = { segmentIndex: number; sequence?: number }
 const mocks = vi.hoisted(() => ({
   respond: (() => undefined) as (args: { cursors: Cursor[] }) => unknown,
   whole: undefined as unknown,
@@ -62,13 +62,15 @@ test('live text grows from incremental reads and hands off to the settled reply 
   await act(() => { renderer = create(<Reply row={live} />) })
   expect(shown.at(-1)).toBe('Hel')
   const sent = mocks.calls.filter(call => call.name === 'chat/personal:activePublicStreamUpdates' && call.args !== 'skip')
-  expect((sent.at(-1)!.args as { cursors: Cursor[] }).cursors).toMatchObject([{ sequence: 0, segmentIndex: 0 }])
+  expect((sent.at(-1)!.args as { cursors: Cursor[] }).cursors).toMatchObject([{ segmentIndex: 0 }])
+  // No sequence: the arguments stay the same while the segment grows, so it is one subscription.
+  expect((sent.at(-1)!.args as { cursors: Cursor[] }).cursors[0]).not.toHaveProperty('sequence')
 
   // The next read is loading: what is on screen stays.
   await act(() => renderer.update(<Reply row={live} />))
   expect(shown.at(-1)).toBe('Hel')
 
-  mocks.respond = ({ cursors }) => cursors[0]?.sequence === 0 ? read(1, 0, ['Hello there.']) : undefined
+  mocks.respond = ({ cursors }) => cursors[0]?.segmentIndex === 0 ? read(1, 0, ['Hello there.']) : undefined
   await act(() => renderer.update(<Reply row={live} />))
   expect(shown.at(-1)).toBe('Hello there.')
 
