@@ -130,7 +130,6 @@ const ChatComposerView = memo(function ChatComposerView({ viewProps }: { viewPro
           visible={viewProps.showCenteredEmptyChat}
           mode={viewProps.mode}
           onEmptySuggestion={viewProps.onEmptySuggestion}
-          onAutomateSuggestion={viewProps.onAutomateSuggestion}
         />
         <div
           data-chat-composer
@@ -278,6 +277,7 @@ function ComposerControls(props: ComposerControlsProps) {
       </PromptInputTools>
       {props.queue?.running ? <QueueShortcutHint /> : null}
       {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
+      {props.composerControls}
       {props.modelControl}
       {props.queue?.running && props.hasComposerText ? (
         <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
