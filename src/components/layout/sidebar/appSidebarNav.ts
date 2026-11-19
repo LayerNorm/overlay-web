@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { notifyDesktopSignedOut } from '@overlay/desktop-bridge'
+import { notifyDesktopSignedOut } from '@/components/desktop/desktop-bridge-loader'
 import {
   Archive,
   Bot,
