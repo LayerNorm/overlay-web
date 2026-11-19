@@ -28,7 +28,7 @@ import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { ChatComposerProps, ComposerViewProps } from './ChatComposerTypes'
-import { sameChatComposerProps, useComposerViewProps } from './chat-composer-memo'
+import { sameComposerViewProps, useComposerViewProps } from './chat-composer-memo'
 import { ComposerQueueTray, steerShortcutLabel } from './ChatComposerQueue'
 
 const DOCUMENT_FILE_ACCEPT = [
@@ -97,9 +97,17 @@ const TOOL_REQUEST_OPTIONS: Array<{
 
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
-export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
-  recordRender('ChatComposer')
+/**
+ * Renders on every parent render so the forwarded handlers always call the latest ones (a new `onSend` that closes
+ * over fresh mentions, for example). Only the view below is memoized; it re-renders when the data changes.
+ */
+export function ChatComposer(props: ChatComposerProps) {
   const viewProps = useComposerViewProps(props)
+  return <ChatComposerView viewProps={viewProps} />
+}
+
+const ChatComposerView = memo(function ChatComposerView({ viewProps }: { viewProps: ComposerViewProps }) {
+  recordRender('ChatComposer')
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
     !viewProps.hasComposerText &&
@@ -146,7 +154,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       </div>
     </>
   )
-}, sameChatComposerProps)
+}, (prev, next) => sameComposerViewProps(prev.viewProps, next.viewProps))
 
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   useEffect(() => {
