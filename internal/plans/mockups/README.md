@@ -107,6 +107,10 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `scope-toggle.html` (feature `scope-toggle`): three proposed placements for the Personal/Workspace scope control
+  in the contextual sidebar, so it stops stacking a second gray bar on the active view row beside the rail. The bar at
+  the top switches between today's control, an aligned segmented control, text tabs and a menu beside the panel
+  title (`?variant=current|aligned|tabs|title`). Delete it when one is chosen and shipped.
 - `agent-working-state.html` (feature `agent-working-state`): the working state, date line, pinned chief tiles and
   response spacing, now built into production; the feature only adds fixtures. A live
   response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
