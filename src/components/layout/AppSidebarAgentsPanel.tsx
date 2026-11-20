@@ -314,6 +314,7 @@ function useAgentActions({
 function AgentListRow({
   agent,
   pinned,
+  pinnedAlone = false,
   isExpanded,
   activityOnly = false,
   isActive,
@@ -330,6 +331,8 @@ function AgentListRow({
 }: {
   agent: WorkspaceAgentDirectoryItem
   pinned: boolean
+  /** The only pinned chief in this tab. */
+  pinnedAlone?: boolean
   isExpanded: boolean
   activityOnly?: boolean
   isActive: boolean
@@ -358,11 +361,12 @@ function AgentListRow({
     />
   ) : null
   // A pinned chief is a tile (avatar and name) in the row of pinned chiefs above the list, like pinned conversations
-  // in iMessage. No background at rest; filled while open. Its threads span the row below the tiles.
+  // in iMessage. The open one is filled; a lone chief is a centred half-width tile. Its threads span the row below the
+  // tiles, a little apart from them.
   if (pinned && !activityOnly) {
     return (
       <>
-        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className="row-start-1 min-w-0">
+        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className={`row-start-1 min-w-0 ${pinnedAlone ? 'mx-auto w-1/2' : ''}`}>
           <div className="group/tile relative">
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
@@ -385,7 +389,7 @@ function AgentListRow({
             </Button>
           </div>
         </div>
-        {threads ? <div className="col-span-full row-start-2">{threads}</div> : null}
+        {threads ? <div className="col-span-full row-start-2 pt-2">{threads}</div> : null}
       </>
     )
   }
@@ -603,6 +607,7 @@ export function AgentsInlinePanel({
           agent={agent}
           activityOnly={activityOnly}
           pinned={isPinnedChief(agent, viewerPrincipalId)}
+          pinnedAlone={pinnedAgents.length === 1}
           isExpanded={isExpanded}
           isActive={activeAgentId === agent.id && !activeConversationId}
           anyOpening={Boolean(openingAgentId)}

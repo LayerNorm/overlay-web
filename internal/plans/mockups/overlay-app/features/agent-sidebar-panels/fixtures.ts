@@ -1,5 +1,5 @@
 import { defineQueries } from '../../fixtures/convex'
-import { MIN, ROOMS, agentRoom, message, text, tool } from '../../fixtures/rooms'
+import { DAY, MIN, ROOMS, agentRoom, message, text, tool } from '../../fixtures/rooms'
 import { AGENTS, PEOPLE, VIEWER_PRINCIPAL } from '../../fixtures/agents'
 
 export const RELAY_THREAD_ID = 'k17convrelaytest0000000000000000'
@@ -39,6 +39,24 @@ export function installAgentWorkingFixtures() {
       ], { status: 'generating' }),
     ]
   }))
+  // Enough older threads that the workspace Overlay and Atlas each pass the five a sidebar agent shows before "Load more".
+  const older: Array<[string, string, string, number]> = [
+    ['k17convchiefpersonal100000000000', 'agent_chief', 'Plan my week', 1],
+    ['k17convoverlayolder1000000000000', 'agent_overlay', 'Board update draft', 2],
+    ['k17convoverlayolder2000000000000', 'agent_overlay', 'Hiring plan for Q1', 4],
+    ['k17convoverlayolder3000000000000', 'agent_overlay', 'Customer advisory board notes', 6],
+    ['k17convoverlayolder4000000000000', 'agent_overlay', 'Offsite agenda', 9],
+    ['k17convatlasolder100000000000000', 'agent_atlas', 'Flaky checkout test', 6],
+    ['k17convatlasolder200000000000000', 'agent_atlas', 'Bump the Stripe SDK', 8],
+    ['k17convatlasolder300000000000000', 'agent_atlas', 'Speed up the CI cache', 10],
+    ['k17convatlasolder400000000000000', 'agent_atlas', 'Dark mode contrast fixes', 12],
+  ]
+  for (const [id, agentId, title, days] of older) {
+    ROOMS.push(agentRoom(id, agentId, title, days * DAY, 'completed', (room, agent) => [
+      message(room, VIEWER_PRINCIPAL, days * DAY + 2 * MIN, title.toLowerCase()),
+      message(room, agent, days * DAY, 'Done. The summary is above.'),
+    ]))
+  }
   defineQueries({
     'collaboration/agentAssignments:forConversation': ({ conversationId }: Record<string, unknown>) => ({
       parent: null,

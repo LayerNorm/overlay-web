@@ -40,12 +40,28 @@ export class AgentAskError extends Error {
 }
 
 /**
- * A refusal the asking agent can act on (a loop, a limit, an unknown name): its tool result, so the agent's turn goes
- * on and it answers with what it has. Anything else (a fault, a permission failure) stays an error.
+ * Refusals raised from the caller's input before anything is written (a bad conversation id, an unknown name, a
+ * limit), which the asking agent can fix or explain. `ask_*` codes are the loop and budget refusals.
+ */
+const ACTIONABLE_REFUSAL_CODES = new Set([
+  'agent_not_found',
+  'agent_not_in_conversation',
+  'not_found',
+  'not_in_conversation',
+  'post_limit',
+  'too_many_mentions',
+  'message_required',
+  'message_too_long',
+])
+
+/**
+ * A refusal the asking agent can act on (a loop, a limit, an unknown name or conversation): its tool result, so the
+ * agent's turn goes on and it answers with what it has. Anything else (a fault, a refusal after a message was
+ * posted, a caller-identity failure) stays an error.
  */
 export function agentAskRefusalResult(error: unknown): { success: false; refused: true; code: string; error: string } | null {
   if (!(error instanceof AgentAskError)) return null
-  if (!error.code.startsWith('ask_') && error.code !== 'agent_not_found' && error.code !== 'agent_not_in_conversation') return null
+  if (!error.code.startsWith('ask_') && !ACTIONABLE_REFUSAL_CODES.has(error.code)) return null
   return { success: false, refused: true, code: error.code, error: error.message }
 }
 
@@ -253,7 +269,11 @@ export class AgentAskService {
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     })
     if (!conversation || (conversation.conversationType ?? 'personal') === 'personal') {
-      throw new AgentAskError('That conversation was not found.', 404, 'not_found')
+      throw new AgentAskError(
+        "That conversation was not found. Pass the conversation's id, not its name; list_chats shows each chat's id.",
+        404,
+        'not_found',
+      )
     }
     const participants = await this.dependencies.collaboration.listParticipants({
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,

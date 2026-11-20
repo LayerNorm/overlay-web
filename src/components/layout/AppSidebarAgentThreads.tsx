@@ -1,6 +1,6 @@
 'use client'
 
-import type { ComponentProps } from 'react'
+import { useState, type ComponentProps } from 'react'
 import { Archive, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
@@ -14,6 +14,9 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@overlay/ui/primitives'
+
+/** An agent shows this many threads at first; "Load more" shows this many more each time. */
+export const AGENT_THREAD_PAGE = 5
 
 function ThreadButton({ children, className, ...props }: ComponentProps<typeof SidebarMenuSubButton>) {
   return <SidebarMenuSubButton className={`font-normal data-[active=true]:font-normal [&>svg]:mx-1 ${className ?? ''}`} {...props}>{children}</SidebarMenuSubButton>
@@ -39,6 +42,7 @@ export function AgentThreadRows({
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
 }) {
   const prefetch = useTranscriptPrefetchIntent()
+  const [limit, setLimit] = useState(AGENT_THREAD_PAGE)
   if (bundle === 'loading') {
     return (
       <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`Loading ${agent.name} threads`}>
@@ -64,10 +68,15 @@ export function AgentThreadRows({
   // An automation is listed as its thread. Only an automation whose thread
   // is not among the agent's threads yet (bound on its next run) keeps its own row.
   const threadIds = new Set(bundle.threads.map((thread) => thread.conversationId))
-  const automations = bundle.automations.filter((automation) => !automation.conversationId || !threadIds.has(automation.conversationId))
+  const unbound = bundle.automations.filter((automation) => !automation.conversationId || !threadIds.has(automation.conversationId))
+  const automations = activityOnly ? [] : unbound
+  // At most `limit` rows, threads first. The open thread stays listed even when it is further down.
+  const shownThreads = threads.filter((thread, index) => index < limit || thread.conversationId === activeConversationId)
+  const shownAutomations = automations.slice(0, Math.max(0, limit - threads.length))
+  const hasMore = threads.length + automations.length > limit
   return (
     <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
-      {threads.map((thread) => {
+      {shownThreads.map((thread) => {
         const active = activeConversationId === thread.conversationId
         // Idle and reviewed threads are plain rows: no icon, and no status in their label.
         const raw = statuses.get(thread.conversationId)
@@ -107,7 +116,7 @@ export function AgentThreadRows({
           </SidebarMenuSubItem>
         )
       })}
-      {(activityOnly ? [] : automations).map((automation) => {
+      {shownAutomations.map((automation) => {
         const target = automation.conversationId
         const active = target != null && activeConversationId === target
         return (
@@ -126,6 +135,16 @@ export function AgentThreadRows({
           </SidebarMenuSubItem>
         )
       })}
+      {hasMore ? (
+        <SidebarMenuSubItem>
+          {/* Laid out like a thread row, with an empty icon slot, so the label lines up with the thread titles. */}
+          <ThreadButton onClick={() => setLimit((current) => current + AGENT_THREAD_PAGE)}
+            className="agent-thread-button gap-[7px] text-xs text-(--muted-light) hover:text-(--foreground)">
+            <span className="agent-thread-icon" aria-hidden />
+            <span className="flex-1 truncate">Load more</span>
+          </ThreadButton>
+        </SidebarMenuSubItem>
+      ) : null}
     </SidebarMenu>
   )
 }

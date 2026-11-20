@@ -142,3 +142,18 @@ test('agent subtitles show only in-progress counts and nothing for an idle agent
   assert.equal(renderToStaticMarkup(<AgentActivitySummary activity={[]} />), '')
   assert.equal(renderToStaticMarkup(<AgentActivitySummary />), '')
 })
+
+test('an agent lists five threads, then Load more, and always keeps the open thread', () => {
+  const many = {
+    threads: Array.from({ length: 8 }, (_, i) => ({ conversationId: `c_${i}`, title: `Thread ${i}` })),
+    automations: [],
+  } as unknown as WorkspaceAgentBundle
+  const html = render(many)
+  assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 5)
+  assert.match(html, />Load more</)
+  assert.doesNotMatch(html, /Thread 5/)
+  const withOpen = render(many, { activeConversationId: 'c_7' })
+  assert.equal(withOpen.match(/aria-label="Archive thread"/g)?.length, 6)
+  assert.match(withOpen, /Thread 7/)
+  assert.doesNotMatch(render(bundle), />Load more</)
+})

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
-  FileText, Folder, GitBranch, GitCompare, ListChecks, Maximize2, Minimize2, Monitor, Plus, Search, SlidersHorizontal,
+  FileText, Folder, GitBranch, GitCompare, ListChecks, Maximize2, Minimize2, Monitor, Plus, SlidersHorizontal,
   X, type LucideIcon,
 } from 'lucide-react'
 import type { WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
-import { Button, Input } from '@overlay/ui/primitives'
+import { Button } from '@overlay/ui/primitives'
 import { useChatFilesHost } from '@overlay/chat-react'
 import type { ThreadPanelKind } from '@/shared/agents/agent-right-sidebar-preferences'
 import {
@@ -14,13 +14,13 @@ import {
 } from '../lib/thread-panel-tabs'
 import { ChangesPanel, ProgressPanel } from './ThreadPanel.parts'
 
-export const PANEL_META: Record<ThreadPanelKind, { label: string; icon: LucideIcon; hint: string; shortcut?: string }> = {
+export const PANEL_META: Record<ThreadPanelKind, { label: string; icon: LucideIcon; hint: string }> = {
   assignments: { label: 'Assignments', icon: GitBranch, hint: 'Work handed to other agents' },
   progress: { label: 'Progress', icon: ListChecks, hint: 'Plan and activity' },
   computer: { label: 'Computer', icon: Monitor, hint: 'Watch or take control' },
   changes: { label: 'Changes', icon: GitCompare, hint: 'Edits and pull requests' },
-  files: { label: 'Files', icon: Folder, hint: 'What this thread made', shortcut: '⌥ F' },
-  agent: { label: 'Agent', icon: SlidersHorizontal, hint: 'Model, instructions, tools' },
+  files: { label: 'Files', icon: Folder, hint: 'What this thread made' },
+  agent: { label: 'Settings', icon: SlidersHorizontal, hint: 'Model, instructions, tools' },
 }
 
 let launcherCount = 0
@@ -48,7 +48,7 @@ export type ThreadPanelProps = {
   onClose(): void
 }
 
-/** Everything beside an agent thread as tabs in one docked panel; "+" opens a launcher for more. */
+/** Everything beside an agent thread as tabs in one docked panel; "+" opens the agent's home as a new tab. */
 export function ThreadPanel(props: ThreadPanelProps) {
   const { tabs, onTabsChange, expanded } = props
   const active = activeTabOf(tabs)
@@ -57,7 +57,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
   return (
     <aside data-slot="right-sidebar" aria-label="Thread panel"
       className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-(--sidebar-surface)">
-      <div className="flex h-[50px] shrink-0 items-center gap-1 border-b border-(--border) pl-2 pr-1.5">
+      <div className="flex h-[50px] shrink-0 items-center gap-1 pl-2 pr-1.5">
         {home ? <div className="flex-1" /> : <div role="tablist" aria-label="Open panels"
           className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {tabs.tabs.map((tab) => (
@@ -66,7 +66,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
               onSelect={() => onTabsChange((current) => selectTab(current, tab.id))}
               onClose={() => close(tab.id)} />
           ))}
-          <Button variant="ghost" size="icon-xs" type="button" aria-label="New tab" title="New tab  ⌥T"
+          <Button variant="ghost" size="icon-xs" type="button" aria-label="New tab" title="New tab"
             onClick={props.onOpenLauncher} className="ml-0.5 shrink-0 text-(--muted)">
             <Plus />
           </Button>
@@ -95,7 +95,7 @@ function PanelTabButton({ tab, active, compact, agentName, onSelect, onClose }: 
   onSelect(): void
   onClose(): void
 }) {
-  const meta = tab.kind === 'file' ? null : tab.kind === 'new' ? { label: 'New tab', icon: Search } : PANEL_META[tab.kind]
+  const meta = tab.kind === 'file' ? null : tab.kind === 'new' ? { label: 'New tab', icon: Plus } : PANEL_META[tab.kind]
   const Icon = meta?.icon ?? FileText
   const text = tab.kind === 'agent' ? agentName : meta?.label
   return (
@@ -125,7 +125,7 @@ function FileTabLabel({ fileId }: { fileId: string }) {
 
 function PanelBody({ tab, onCloseTab, ...props }: ThreadPanelProps & { tab: ThreadPanelTab; onCloseTab(): void }) {
   switch (tab.kind) {
-    case 'new': return <Launcher launcherId={tab.id} {...props} />
+    case 'new': return <Home launcherId={tab.id} {...props} />
     case 'agent': return (
       <>
         <div className="flex shrink-0 flex-col items-center px-5 pb-4 pt-8 text-center">
@@ -154,11 +154,18 @@ const COMPUTER_STATUS: Record<ThreadComputerStatus, { label: string; dot: string
   unavailable: { label: 'Unavailable', dot: 'bg-(--muted-light)' },
 }
 
-const LAUNCHER_ROWS = ['assignments', 'progress', 'changes', 'files', 'agent'] as const
+/** The panels in the order they are listed: the agent's settings first, then the computer and the thread's panels. */
+const PANEL_ORDER: readonly ThreadPanelKind[] = ['agent', 'computer', 'assignments', 'progress', 'changes', 'files']
 
-/** With no tabs open the panel is the agent's home: who it is, and the panels it can open. */
-function Home(props: ThreadPanelProps) {
+/**
+ * With no tabs open the panel is the agent's home: who it is, and the panels it can open. "+" opens the same view as
+ * a new tab, which turns into the panel picked from it.
+ */
+function Home({ launcherId, ...props }: ThreadPanelProps & { launcherId?: string }) {
   const { hero, onTabsChange } = props
+  const open = (kind: ThreadPanelKind) => onTabsChange((current) => (
+    launcherId ? replaceLauncher(current, launcherId, kind) : openPanel(current, kind)
+  ))
   return (
     <div className="mx-auto flex w-full max-w-[340px] flex-col px-5 pb-10 pt-8">
       <div className="mb-6 flex flex-col items-center text-center">
@@ -166,77 +173,31 @@ function Home(props: ThreadPanelProps) {
         <h2 aria-label={hero.titleText} className="mt-[14px] max-w-full text-lg font-medium leading-6 text-(--foreground)">{hero.title}</h2>
         {hero.subtitle ? <div className="mt-0.5 max-w-full text-[13px] leading-5 text-(--muted)">{hero.subtitle}</div> : null}
       </div>
-      <PanelPicker {...props} query="" onOpen={(kind) => onTabsChange((current) => openPanel(current, kind))} />
+      <PanelPicker computerStatus={props.computerStatus} onOpen={open} />
     </div>
   )
 }
 
-/** "+": the same panels as the home, searchable, replacing itself with the one picked. */
-function Launcher({ launcherId, ...props }: ThreadPanelProps & { launcherId: string }) {
-  const [query, setQuery] = useState('')
-  const open = (kind: ThreadPanelKind) => props.onTabsChange((current) => replaceLauncher(current, launcherId, kind))
-  return (
-    <div className="mx-auto flex w-full max-w-[340px] flex-col px-5 pb-10 pt-8">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-(--muted)" />
-        <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search panels"
-          placeholder="Search panels"
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter') return
-            const first = matchingPanels(query, props.agentName)[0]
-            if (first) open(first)
-          }}
-          className="h-9 rounded-lg border-(--border) bg-(--surface-subtle) pl-8 pr-12 text-[13px] focus-visible:border-(--muted-light) focus-visible:ring-0" />
-        <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-sans text-[11px] text-(--muted-light)">⌥ T</kbd>
-      </div>
-      <PanelPicker {...props} query={query} onOpen={open} />
-    </div>
-  )
-}
-
-function panelText(kind: ThreadPanelKind, agentName: string) {
-  return `${kind === 'agent' ? agentName : PANEL_META[kind].label} ${PANEL_META[kind].hint}`.toLowerCase()
-}
-
-/** The computer first, then the other panels, filtered by a search. */
-function matchingPanels(query: string, agentName: string): ThreadPanelKind[] {
-  const needle = query.trim().toLowerCase()
-  return (['computer', ...LAUNCHER_ROWS] as ThreadPanelKind[]).filter((kind) => panelText(kind, agentName).includes(needle))
-}
-
-function PanelPicker({ query, onOpen, agentName, computerStatus }: ThreadPanelProps & { query: string; onOpen(kind: ThreadPanelKind): void }) {
-  const matches = matchingPanels(query, agentName)
+function PanelPicker({ computerStatus, onOpen }: { computerStatus: ThreadComputerStatus; onOpen(kind: ThreadPanelKind): void }) {
   const status = COMPUTER_STATUS[computerStatus]
   return (
-    <>
-      {matches.includes('computer') ? (
-        <Button variant="ghost" type="button" onClick={() => onOpen('computer')}
-          className="mt-3 flex h-11 w-full items-center justify-start gap-2.5 rounded-xl bg-(--surface-subtle)/50 px-3 text-left text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle)">
-          <Monitor className="size-4 text-(--muted)" strokeWidth={1.75} />
-          Computer
-          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-(--muted)">
-            <span className={`size-1.5 rounded-full ${status.dot}`} />
-            {status.label}
-          </span>
-        </Button>
-      ) : null}
-      <div className="mt-2 flex flex-col">
-        {matches.filter((kind) => kind !== 'computer').map((kind) => {
-          const { icon: Icon, label, hint, shortcut } = PANEL_META[kind]
-          return (
-            <Button key={kind} variant="ghost" type="button" onClick={() => onOpen(kind)}
-              className="group/row h-9 justify-start gap-2.5 rounded-lg px-2 text-[13px] font-normal text-(--foreground)">
-              <Icon className="size-4 text-(--muted)" strokeWidth={1.75} />
-              <span className="truncate">{kind === 'agent' ? agentName : label}</span>
-              <span className="ml-auto text-[11px] text-(--muted-light) group-hover/row:hidden">{shortcut ?? ''}</span>
-              <span className="ml-auto hidden text-[11px] text-(--muted) group-hover/row:inline">{hint}</span>
-            </Button>
-          )
-        })}
-        {matches.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[13px] text-(--muted)">Nothing matches “{query}”.</p>
-        ) : null}
-      </div>
-    </>
+    <div className="flex flex-col">
+      {PANEL_ORDER.map((kind) => {
+        const { icon: Icon, label, hint } = PANEL_META[kind]
+        return (
+          <Button key={kind} variant="ghost" type="button" onClick={() => onOpen(kind)}
+            className="group/row h-9 justify-start gap-2.5 rounded-lg px-2 text-[13px] font-normal text-(--foreground)">
+            <Icon className="size-4 text-(--muted)" strokeWidth={1.75} />
+            <span className="truncate">{label}</span>
+            {kind === 'computer' ? (
+              <span className="ml-auto flex items-center gap-1.5 text-[11px] text-(--muted)">
+                <span className={`size-1.5 rounded-full ${status.dot}`} />
+                {status.label}
+              </span>
+            ) : <span className="ml-auto hidden text-[11px] text-(--muted) group-hover/row:inline">{hint}</span>}
+          </Button>
+        )
+      })}
+    </div>
   )
 }
