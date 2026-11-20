@@ -6,7 +6,7 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { usePersonalChatRouteSelection } from './usePersonalChatRouteSelection'
 import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
-import { usePublicStreamMetrics } from './usePublicStreamMetrics'
+import { useLivePublicStreams } from './useLivePublicStreams'
 
 export {
   canSetPendingTranscript,
@@ -87,19 +87,20 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
     .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')
     .slice(0, 50).map(row => row.message._id)
   // Only subscribe while something is generating: idle chats never depend on the stream query.
-  const activeStreams = useQuery(api.chat.personal.activePublicStreams,
-    canReadMessages && generatingMessageIds.length > 0 ? {
-      workspaceId: workspaceId!,
-      conversationId: conversationId as Id<'conversations'>,
-      messageIds: generatingMessageIds,
-    } : 'skip')
-  usePublicStreamMetrics(activeStreams ?? [])
+  const activeStreams = useLivePublicStreams({
+    // Wait for the settings, so a chat opened mid-reply does not switch from whole to incremental reads.
+    scope: canReadMessages && settings !== undefined ? { workspaceId: workspaceId!, conversationId: conversationId! } : null,
+    messageIds: generatingMessageIds,
+    incremental: settings?.livePublicStreamRevision === 'incremental-v1',
+    fullQuery: api.chat.personal.activePublicStreams,
+    updatesQuery: api.chat.personal.activePublicStreamUpdates,
+  })
   const scopedRows = useMemo(
     () => messages.results.filter(row => row.message.conversationId === conversationId),
     [conversationId, messages.results],
   )
   const projectedMessages = useMemo(
-    () => projectActivePublicStreams(scopedRows.map(row => row.message), activeStreams ?? []),
+    () => projectActivePublicStreams(scopedRows.map(row => row.message), activeStreams),
     [activeStreams, scopedRows],
   )
   const rows = useMemo(

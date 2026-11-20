@@ -126,6 +126,11 @@ function pendingResponseKey(responses: ReadonlyMap<string, PersonalTranscriptMes
   return key
 }
 
+function readsLiveReplyFromConvex(response: PersonalTranscriptMessage): boolean {
+  const accepted = (response.metadata as { harnessAccepted?: { liveTransport?: unknown } } | undefined)?.harnessAccepted
+  return accepted?.liveTransport === 'convex'
+}
+
 function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pending: PersonalPendingTurn) {
   const existing = exchanges.get(pending.turnId)
   // An acknowledged row disappearing is not a reason to resurrect a local draft.
@@ -139,6 +144,17 @@ function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pe
     if (canonical?.status === 'completed' || canonical?.status === 'error') continue
     if (canonical?.nativeProgressSequence !== undefined) continue
     if (canonical?.status === 'generating' && response.status === 'error') continue
+    if (canonical && readsLiveReplyFromConvex(response)) {
+      // The saved row already carries the live text; the response adds only its metadata.
+      responses.set(key, {
+        ...canonical,
+        metadata: {
+          ...(canonical.metadata as Record<string, unknown> | undefined),
+          ...(response.metadata as Record<string, unknown> | undefined),
+        },
+      })
+      continue
+    }
     responses.set(key, canonical ? {
       ...canonical, ...response, id: canonical.id, persistedId: canonical.persistedId, model: canonical.model ?? response.model,
       nativeRunId: canonical.nativeRunId, nativeProgressSequence: canonical.nativeProgressSequence,

@@ -1,5 +1,7 @@
 'use client'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
+import { useConvex } from 'convex/react'
+import { waitForNativePersonalTurn } from './native-personal-lifecycle'
 
 import {
   useCallback,
@@ -267,6 +269,11 @@ export function useChatSendController({
   }), [activeChatIdRef, isTemporaryChatRef, pendingFirstSendRef])
 
   const { resolveSession } = useAsyncSessions()
+  const convex = useConvex()
+  const watchNativeTurn = useCallback(
+    (target: { workspaceId: string; conversationId: string; turnId: string }) => waitForNativePersonalTurn(convex, target),
+    [convex],
+  )
   const tryActivatePendingFirstSend = useCallback(() => {
     const pending = pendingFirstSendRef.current
     if (pending?.realChatId && pending.streamDone) resolveSession(PENDING_FIRST_CHAT_ID, pending.realChatId)
@@ -568,6 +575,7 @@ export function useChatSendController({
         nativeWorkspaceId,
         submitNativePersonalTurn,
         setPendingTranscriptConversation,
+        watchNativeTurn,
         onUsageExhaustedError,
         pendingFirstSendRef,
         pendingScrollChatIdRef,
@@ -625,6 +633,7 @@ export function useChatSendController({
     nativeWorkspaceId,
     submitNativePersonalTurn,
     setPendingTranscriptConversation,
+    watchNativeTurn,
     onUsageExhaustedError,
     memoryEnabled,
     mentions,

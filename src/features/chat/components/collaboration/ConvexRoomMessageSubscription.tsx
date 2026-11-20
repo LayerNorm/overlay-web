@@ -7,7 +7,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { RoomMessageRecord } from './room-message-view'
 import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
-import { usePublicStreamMetrics } from '@/components/providers/usePublicStreamMetrics'
+import { useLivePublicStreams } from '@/components/providers/useLivePublicStreams'
 
 export type RoomSummary = {
   title: string
@@ -83,14 +83,18 @@ export function ConvexRoomMessageSubscription({
     }).slice(0, 50).map(message => message.id as Id<'conversationMessages'>)
   }, [conversationId, main.results, permalink, thread.results])
   // Only subscribe while something is generating: idle rooms never depend on the stream query.
-  const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
-    room && activeMessageIds.length > 0 ? {
-      ...args,
-      messageIds: activeMessageIds,
-    } : 'skip')
-  usePublicStreamMetrics(activeStreams ?? [])
+  const settings = useQuery(api.platform.uiSettings.mine, {})
+  const activeStreams = useLivePublicStreams({
+    // Wait for the settings, so a room opened mid-reply does not read the whole stream and then switch to
+    // incremental reads (dropping the text it showed for one round trip).
+    scope: room && settings !== undefined ? { workspaceId, conversationId } : null,
+    messageIds: activeMessageIds,
+    incremental: settings?.livePublicStreamRevision === 'incremental-v1',
+    fullQuery: api.collaboration.rooms.activePublicStreams,
+    updatesQuery: api.collaboration.rooms.activePublicStreamUpdates,
+  })
   const projectedMessages = useMemo(
-    () => projectActivePublicStreams(loadedMessages, activeStreams ?? []) as RoomMessageRecord[],
+    () => projectActivePublicStreams(loadedMessages, activeStreams) as RoomMessageRecord[],
     [activeStreams, loadedMessages],
   )
 

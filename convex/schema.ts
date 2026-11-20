@@ -2962,6 +2962,9 @@ export default defineSchema({
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),
+    /** Denormalized from persistenceJson for live stream readers; absent on older rows. */
+    hasOutput: v.optional(v.boolean()),
+    outputLimitReached: v.optional(v.boolean()),
     fullPersistenceStorageId: v.optional(v.id('_storage')),
     fullPersistenceDigest: v.optional(v.string()),
     createdAt: v.number(),

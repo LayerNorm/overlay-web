@@ -18,7 +18,7 @@ import { userMessageMetadata } from '../lib/userMessageMetadata'
 import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { publicPersonalRun } from '../lib/nativePersonalExecution'
-import { readActivePublicStreams } from '../lib/publicStreamRead'
+import { publicStreamCursorValidator, readActivePublicStreamUpdates, readActivePublicStreams } from '../lib/publicStreamRead'
 import { resolveChatActivity } from '@/shared/agents/thread-activity'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
@@ -167,6 +167,20 @@ export const activePublicStreams = query({
     const access = await requireNativePersonalChat(ctx, args)
     await requireNativeCapability(ctx, access.userId, 'conversations.read')
     return await readActivePublicStreams(ctx, args.conversationId, args.messageIds)
+  },
+})
+
+/** Only live text the reader does not hold yet; see `readActivePublicStreamUpdates`. */
+export const activePublicStreamUpdates = query({
+  args: {
+    ...resourceArgs,
+    messageIds: v.array(v.id('conversationMessages')),
+    cursors: v.array(publicStreamCursorValidator),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.read')
+    return await readActivePublicStreamUpdates(ctx, args.conversationId, args.messageIds, args.cursors)
   },
 })
 
