@@ -202,7 +202,7 @@ test('an agent asks another by name; the question is posted by the asking agent 
   const lineage = (posted[0]!.parts as Array<{ type: string; data?: unknown }>).find((part) => part.type === 'data-agent-lineage')!.data
   assert.deepEqual(lineage, { rootTurnId: 'human-turn-1', hop: 1, chain: ['scout', 'planner'], askedByAgentId: 'scout', askedByName: 'Scout', parentConversationId: 'c1' })
   assert.deepEqual(started[0]!.mentionedPrincipalIds, ['p-planner'])
-  assert.equal(started[0]!.initiatorPrincipalId, 'human-1', 'the asked agent acts for the person, not for the asking agent')
+  assert.equal(started[0]!.initiatorPrincipalId, 'p-scout', 'the turn is started by the agent that wrote the question, which a native run checks against its trigger')
 })
 
 test('the same question asked twice is the same message', async () => {
