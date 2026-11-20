@@ -7,6 +7,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
 import { api } from '../../../../convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
+import { AssignmentTrace } from './AssignmentTrace'
 import { AgentAssignments, assignmentsByResponse, type AssignmentNavigation, type AssignmentNavigationItem } from './AgentAssignments'
 
 type AssignmentView = FunctionReturnType<typeof api.collaboration.agentAssignments.forConversation>
@@ -64,11 +65,11 @@ export function useConversationAssignments(): ConversationAssignments | null {
   return useContext(AssignmentsContext)
 }
 
-/** The assignments one response made, inside that response and as wide as its text. */
+/** The assignments one response made, as a dropdown row under that response's text. */
 export function ResponseAssignments({ messageId }: { messageId: string }) {
   const items = useContext(AssignmentsContext)?.byMessage.get(messageId)
   if (!items) return null
-  return <AgentAssignments parent={null} assignments={items} className="mb-1 ml-1 mt-3" />
+  return <AssignmentTrace items={items} />
 }
 
 /**

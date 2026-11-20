@@ -4,6 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentAssignments, assignmentSummary, assignmentsByResponse } from './AgentAssignments'
 import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
+import { AssignmentTrace, AssignmentTraceLine, assignmentTraceSummary } from './AssignmentTrace'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -68,4 +69,30 @@ test('failed assignments say why and the summary counts them', () => {
   const html = renderToStaticMarkup(<AgentAssignments parent={null} assignments={rows} />)
   assert.match(html, /Sales · Failed/)
   assert.match(html, /The model is not available on this plan/)
+})
+
+test('a response shows its assignments as one collapsed row that summarises them', () => {
+  const rows = [
+    { assignmentId: 'one', title: 'Syllabus', agentName: 'Tutor', status: 'completed', href: '/a' },
+    { assignmentId: 'two', title: 'Glossary', agentName: 'Quill', status: 'running', href: '/b' },
+    { assignmentId: 'three', title: 'Review', agentName: 'Reviewer', status: 'failed', failureReason: 'Did not start', href: '/c' },
+  ]
+  assert.equal(assignmentTraceSummary(rows), 'Assigned 3 tasks · 1 completed · 1 working · 1 failed')
+  assert.equal(assignmentTraceSummary(rows.slice(0, 1)), 'Assigned 1 task · 1 completed')
+  const html = renderToStaticMarkup(<AssignmentTrace items={rows} />)
+  assert.match(html, /aria-expanded="false"/)
+  assert.match(html, /Assigned 3 tasks/)
+  assert.doesNotMatch(html, /Glossary/)
+  assert.equal(renderToStaticMarkup(<AssignmentTrace items={[]} />), '')
+})
+
+test('an assignment line links to its thread and a failed one says why', () => {
+  const failed = renderToStaticMarkup(<AssignmentTraceLine item={{ assignmentId: 'x', title: 'Review', agentName: 'Reviewer', status: 'failed', failureReason: 'Did not start', href: '/thread' }} />)
+  assert.match(failed, /href="\/thread"/)
+  assert.match(failed, /Reviewer: Review/)
+  assert.match(failed, /data-status="error"/)
+  assert.match(failed, /Did not start/)
+  const done = renderToStaticMarkup(<AssignmentTraceLine item={{ assignmentId: 'y', title: 'Quiz', agentName: 'Tutor', status: 'completed', failureReason: 'stale', href: '/t' }} />)
+  assert.match(done, /Completed/)
+  assert.doesNotMatch(done, /stale|data-status="error"/)
 })

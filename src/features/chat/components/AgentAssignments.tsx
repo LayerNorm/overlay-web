@@ -7,7 +7,7 @@ import { Button } from '@overlay/ui/primitives'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
 import { THREAD_ACTIVITY_LABELS, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
 
-function assignmentActivityStatus(status: string): ThreadActivityStatus {
+export function assignmentActivityStatus(status: string): ThreadActivityStatus {
   switch (status) {
     case 'queued':
     case 'publication_pending':
@@ -79,16 +79,15 @@ export function AssignmentRow({ item }: { item: AssignmentNavigationItem }) {
   )
 }
 
-export function AgentAssignments({ parent, assignments, className = 'my-3' }: {
+export function AgentAssignments({ parent, assignments }: {
   parent: AssignmentNavigation | null
   assignments: AssignmentNavigationItem[]
-  className?: string
 }) {
   const [expanded, setExpanded] = useState(true)
   const listId = useId()
   if (!parent && assignments.length === 0) return null
   return (
-    <section aria-label="Delegated work" className={`${className} min-w-0 space-y-3`}>
+    <section aria-label="Delegated work" className="my-3 min-w-0 space-y-3">
       {parent ? (
         <Button asChild variant="ghost" className="h-auto max-w-full justify-start gap-2 px-2 py-2 text-left font-normal">
           <Link href={parent.href} title={`Back to ${parent.title}`}>

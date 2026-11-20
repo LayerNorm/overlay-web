@@ -108,8 +108,11 @@ the response that made it (`messageId`: the parent harness run's
 `deliveryAgentRunId` -> `conversationAgentRuns.assistantMessageId`), its
 `createdAt` and a `failureReason`. `AgentAssignmentsProvider` (in
 `DirectMessageExperience`) loads it once per conversation. Each agent response
-renders its own assignments (`ResponseAssignments`) inside its text column,
-inset with `ml-1`; failed rows show their reason. Assignments with no
+ends with one collapsed row for its own assignments (`ResponseAssignments` ->
+`AssignmentTrace`), built from the same `Trace` parts as tool-call and "Worked
+for" rows: the branch icon and "Assigned N tasks · …". Opened, each line shows
+state, agent and task and links to its thread; a failed line is red with its
+reason underneath. Assignments with no
 traceable response and the "Assigned from" link stay below the transcript.
 `AssignmentsPanel` lists every assignment grouped by response with "Show in
 conversation"; it is the Assignments tab of the agent thread panel and the first
