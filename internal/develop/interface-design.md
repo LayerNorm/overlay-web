@@ -597,7 +597,7 @@ screen again.
 
 ## Brand lockup
 
-Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free. Active assistant responses show one 24px `OverlayMark motion="look"` below the complete output, and the mark disappears when the response settles. Only its eyes move. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
+Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free, except for the working orb on a running tool's row. Active assistant responses show the working orb (on the running tool's row, or between tools on one line below the output saying "Thinking" or "Writing the reply"), and it disappears when the response settles. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
 
 `BrandLockup` (`src/components/brand/BrandLockup.tsx`, re-exported from `@overlay/ui`) is the canonical "Overlay" wordmark: the O-with-eyes `OverlayMark` followed by "verlay" in Libre Baskerville Regular. Size it with `font-size`. Shared styles in `packages/overlay-ui/src/styles.css` use a `0.86em` mark, a `0.043em` gap and a `0.045em` baseline translation. The word sits inside the overflow-hidden `.brand-lockup-mask` so the boot entrance can reveal it from behind the mark. Use the shared component for loader, auth, marketing and shell branding rather than composing a separate mark and full word.
 
@@ -689,9 +689,15 @@ unbroken value must not force an otherwise narrow table beyond the chat pane.
 
 Render streamed text as complete formatted chunks. Markdown defaults to paragraph
 blocks plus a shimmed in-flight tail, with no per-character pacing or character
-spans. Room/agent transcripts suppress inline markers and keep one 24px
-`OverlayMark motion="look"` at the bottom throughout the run, including while
-tools are working.
+spans. Room/agent transcripts suppress inline markers. A live response shows one working orb: on the
+running tool's row while a tool works, otherwise on one line at the bottom ("Thinking", "Writing the
+reply") with the seconds it has run.
+
+Every block of a response (text, tool rows, the assignment row, the action buttons) sits the same
+distance apart: the assignment row has no top margin and an 8px bottom margin. Date lines are the date
+alone, centred, with no rules. The pinned chiefs (workspace and the viewer's own) sit side by side as
+equal tiles above the agent list, like pinned conversations in iMessage: no background at rest, filled
+while open, one open at a time (`useAgentExpansion` exclusive ids) with its threads full width below.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain

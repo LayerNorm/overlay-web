@@ -1,7 +1,7 @@
 'use client'
 
 import { useConvexAuth, useQuery } from 'convex/react'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import type { WorkspaceAgentDirectoryItem, WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
 import { api } from '../../../../convex/_generated/api'
 
 /**
@@ -24,8 +24,11 @@ export function useAgentThreadScope({ workspaceId, agentId, conversationId, dire
       : 'skip',
   )
 
-  return agentThreadScopeState({ agentId, conversationId, directory, bundle })
+  const pullRequests = bundle?.threads.find((thread) => thread.conversationId === conversationId)?.pullRequests ?? NO_PULL_REQUESTS
+  return { ...agentThreadScopeState({ agentId, conversationId, directory, bundle }), pullRequests }
 }
+
+const NO_PULL_REQUESTS: readonly WorkspaceThreadPullRequest[] = []
 
 /** The scope decision, kept pure so it can be tested without a Convex client. */
 export function agentThreadScopeState({ agentId, conversationId, directory, bundle }: {

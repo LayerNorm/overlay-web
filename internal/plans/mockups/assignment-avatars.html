@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assignment row: agent avatars</title>
+<style>
+  :root { --bg:#fafafa; --panel:#fff; --fg:#0a0a0a; --muted:#737373; --light:#a3a3a3; --border:#e5e5e5; --bubble:#f0f0f0; --err:#dc2626; }
+  [data-theme="dark"] { --bg:#0a0a0a; --panel:#141414; --fg:#f5f5f5; --muted:#a3a3a3; --light:#737373; --border:#262626; --bubble:#1f1f1f; --err:#f87171; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system,"Inter",system-ui,sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:18px; margin:0 0 4px; } p.lede { color:var(--muted); margin:0 0 24px; max-width:70ch; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:16px; }
+    .card, .body, .lines { min-width:0; } .stack, .more, .row svg.chev, .line .state { flex:none; } .row { max-width:100%; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; }
+  .card h2 { font-size:12px; font-weight:500; color:var(--muted); margin:0 0 14px; }
+  .bubble { margin-left:auto; width:fit-content; max-width:85%; background:var(--bubble); border-radius:16px; padding:8px 14px; margin-bottom:16px; }
+  .author { display:flex; gap:10px; align-items:center; font-weight:600; font-size:13px; } .author small { font-weight:400; color:var(--light); }
+  .body { padding-left:34px; } .body p { margin:6px 0; }
+  .row { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); padding:4px 0; cursor:pointer; width:fit-content; }
+  .row svg.chev { width:14px; height:14px; } .lines { display:grid; gap:2px; padding:2px 0 0; }
+  .line { display:flex; min-width:0; align-items:center; gap:8px; font-size:13px; color:var(--muted); padding:2px 0; } .line .state { color:var(--light); }
+  .line .t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; } .line.err, .line.err .state { color:var(--err); }
+  .reason { font-size:12px; color:var(--muted); padding:0 0 4px 24px; }
+  .stack { display:flex; } .stack .av { border-radius:999px; box-shadow:0 0 0 2px var(--panel); background:var(--panel); } .stack .av + .av { margin-left:-6px; }
+  .more { font-size:11px; color:var(--light); margin-left:4px; } .av { display:flex; flex:none; }
+  .note { font-size:12px; color:var(--light); margin-top:14px; } button { font:inherit; border:1px solid var(--border); background:var(--panel); color:var(--fg); border-radius:8px; padding:6px 12px; cursor:pointer; float:right; }
+</style>
+</head>
+<body>
+<main>
+  <button onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">Light / dark</button>
+  <h1>Assignment row: agent avatars</h1>
+  <p class="lede">Under a response, the collapsed assignment row starts with the avatars of the agents the work went to, instead of the branch icon. Each agent appears once; more than three show "+N". Opened, each line starts with its agent's avatar and ends with its state.</p>
+  <div class="grid" id="grid"></div>
+</main>
+<script>
+  // Creature avatars: a colored body with two eyes. The default Overlay agent is the O-with-eyes mark.
+  const creature = (color, shape = 'round', size = 16) => {
+    const body = shape === 'hex' ? '<path d="M12 1.5 21 6.75v10.5L12 22.5 3 17.25V6.75z" fill="' + color + '"/>'
+      : shape === 'square' ? '<rect x="2" y="2" width="20" height="20" rx="6" fill="' + color + '"/>'
+      : '<circle cx="12" cy="12" r="10.5" fill="' + color + '"/>'
+    return '<span class="av"><svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' + body + '<rect x="8.2" y="9" width="2.4" height="6" rx="1.2" fill="#fff"/><rect x="13.4" y="9" width="2.4" height="6" rx="1.2" fill="#fff"/></svg></span>'
+  }
+  const overlay = (size = 16) => '<span class="av"><svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="3" style="color:var(--fg)"/><rect x="8.6" y="9" width="2.2" height="6" rx="1.1" style="fill:var(--fg)"/><rect x="13.2" y="9" width="2.2" height="6" rx="1.1" style="fill:var(--fg)"/></svg></span>'
+  const A = {
+    product: { name: 'Product Agent', av: (s) => creature('#38bdf8', 'hex', s) },
+    reddit: { name: 'Reddit Agent', av: (s) => creature('#f97316', 'hex', s) },
+    video: { name: 'Video Agent', av: (s) => creature('#e11d48', 'square', s) },
+    linkedin: { name: 'LinkedIn Agent', av: (s) => creature('#2563eb', 'hex', s) },
+    personal: { name: 'Overlay', av: (s) => creature('#64748b', 'round', s) },
+  }
+  const chev = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m6 9 6 6 6-6"/></svg>'
+  const row = (items, open) => {
+    const agents = [...new Map(items.map((i) => [i.agent.name, i.agent])).values()]
+    const counts = ['completed', 'working', 'needs you', 'failed'].map((s) => [items.filter((i) => i.state === s).length, s]).filter(([n]) => n).map(([n, s]) => n + ' ' + s)
+    const summary = ['Assigned ' + items.length + ' task' + (items.length === 1 ? '' : 's'), ...counts].join(' · ')
+    const stack = '<span class="stack">' + agents.slice(0, 3).map((a) => a.av(16)).join('') + '</span>' + (agents.length > 3 ? '<span class="more">+' + (agents.length - 3) + '</span>' : '')
+    const lines = open ? '<div class="lines">' + items.map((i) => '<div class="line' + (i.state === 'failed' ? ' err' : '') + '">' + i.agent.av(16) + '<span class="t">' + i.agent.name + ': ' + i.task + '</span><span class="state">' + i.state[0].toUpperCase() + i.state.slice(1) + '</span></div>' + (i.reason ? '<div class="reason">' + i.reason + '</div>' : '')).join('') + '</div>' : ''
+    return '<div class="row">' + stack + '<span>' + summary + '</span>' + chev + '</div>' + lines
+  }
+  const card = (title, ask, reply, items, open) => '<section class="card"><h2>' + title + '</h2><div class="bubble">' + ask + '</div><div class="author">' + overlay(24) + 'Overlay <small>5:27 PM</small></div><div class="body"><p>' + reply + '</p>' + row(items, open) + '</div></section>'
+  const one = [{ agent: A.product, task: 'What do you know about the launch plan?', state: 'completed' }]
+  const three = [
+    { agent: A.product, task: 'Summarize open launch blockers', state: 'completed' },
+    { agent: A.reddit, task: 'Draft the launch thread', state: 'working' },
+    { agent: A.video, task: 'Cut a 30-second teaser', state: 'failed', reason: 'The selected model can no longer run this task.' },
+  ]
+  const five = [...three.slice(0, 2), { agent: A.linkedin, task: 'Write the announcement post', state: 'needs you' }, { agent: A.personal, task: 'Collect my notes on pricing', state: 'completed' }, { agent: A.product, task: 'Check the changelog', state: 'completed' }]
+  document.getElementById('grid').innerHTML =
+    card('One agent, collapsed', 'Ask the Product Agent about the launch plan.', 'The Product Agent has the plan; here is what it said.', one, false)
+    + card('Three agents, collapsed', 'Get everyone started on the launch.', 'I handed the launch work to three agents.', three, false)
+    + card('Three agents, opened (one failed)', 'Get everyone started on the launch.', 'I handed the launch work to three agents.', three, true)
+    + card('Five tasks across four agents: "+1"', 'Get everyone started on the launch.', 'I split this into five tasks.', five, true)
+</script>
+</body>
+</html>

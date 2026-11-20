@@ -43,6 +43,7 @@ import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import type { NativeAgentInput } from '@/shared/agents/native-agent-input'
 import type { FolderSavesData } from '@/shared/agents/folder-saves'
 import { FolderSavesCard } from '../thread-work/FolderSavesCard'
+import { ResponseAssignments } from '../AgentAssignmentSubscription'
 
 export type RoomMessageReaction = {
   emoji: string
@@ -754,7 +755,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         generatedUiReadOnly={readOnly}
       />
       {showsResponseMark(message)
-        ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} />
+        ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} blocks={message.blocks} />
         : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
@@ -849,6 +850,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
         ) : (
           <HumanMessageText message={message} />
         )}
+        {isAgent ? <ResponseAssignments messageId={message.id} /> : null}
         {content.chatActions ? null : (
           <>
             <RoomReactionRow reactions={content.reactions} alignEnd={message.mine} onToggleReaction={content.onToggleReaction} />

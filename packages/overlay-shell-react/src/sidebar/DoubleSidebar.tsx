@@ -111,7 +111,7 @@ export function DoubleSidebar({
   return (
     <div data-double-sidebar data-shell-preset={themePreset} className={cn('double-sidebar flex h-full shrink-0', className)}>
       <Sidebar ref={railRef} aria-label="Primary navigation" className="double-sidebar-rail w-[60px] overflow-visible border-0 bg-transparent px-2.5 py-1.5">
-        <div className="mb-2.5 flex size-10 shrink-0 items-center justify-center">{railBrand}</div>
+        <div className="-mb-px flex size-10 shrink-0 items-center justify-center">{railBrand}</div>
         <SidebarContent className="overflow-visible">
           <nav aria-label="Primary">
             <SidebarMenu className="gap-1">
