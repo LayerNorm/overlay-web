@@ -18,6 +18,7 @@ async function seedWritableStream(
   runId = 'personal:stream-run',
   conversationScope?: 'personal' | 'workspace',
   agentMode: 'chat' | 'work' = 'chat',
+  conversationFields: Record<string, unknown> = {},
 ) {
   const now = Date.now()
   const workspaceId = `personal:${runId}:workspace`
@@ -39,7 +40,8 @@ async function seedWritableStream(
     userId: 'owner', title: 'Stream test', lastModified: now, createdAt: now, updatedAt: now,
     lastMode: 'act', askModelIds: ['fixture/model'], actModelId: 'fixture/model',
     workspaceId, conversationType: 'personal', ...(conversationScope ? { scope: conversationScope } : {}),
-  }))
+    ...conversationFields,
+  } as never))
   const base = {
     conversationId, userId: 'owner', turnId: 'turn', mode: 'act' as const,
     contentType: 'text' as const, createdAt: now, updatedAt: now,
@@ -81,7 +83,7 @@ async function seedWritableStream(
     source: { conversationId }, deliveryAgentRunId: deliveryId,
     serverSecret: secret,
   }
-  const admitted = await convex.mutation(mutation('admit'), admission) as { revision: number }
+  const admitted = await convex.mutation(mutation('admit'), admission) as { revision: number; policy: { publicStreamVersion?: 1 } }
   const workflowRunId = `workflow:${runId}`
   const apply = async (operationId: string, expectedRevision: number, operation: Record<string, unknown>) =>
     await convex.mutation(mutation('apply'), {
@@ -110,6 +112,7 @@ async function seedWritableStream(
     workflowRunId,
     serverSecret: secret,
     revision: result.snapshot.revision,
+    admittedStreamVersion: admitted.policy.publicStreamVersion,
   }
 }
 
@@ -769,3 +772,100 @@ test('the continuation flag is read from stored step fields, and from JSON for o
   expect((await reader())[0]?.continuesPrevious).toBeUndefined()
 })
 
+
+
+async function nextModelCall(
+  settled: Awaited<ReturnType<typeof settleStep>>,
+  sequence: number,
+) {
+  const revision = (await settled.apply(`reserve:${sequence}`, settled.revision, {
+    type: 'reserve_model', id: `model:${sequence}`, maxCostMicros: 0,
+  })).snapshot.revision
+  return (await settled.apply(`dispatch:${sequence}`, revision, {
+    type: 'bind_model_dispatch', id: `model:${sequence}`, modelId: 'fixture/model', billingReservationId: 'billing',
+  })).snapshot.revision
+}
+
+const conversationKinds = [
+  { kind: 'a personal chat', fields: {}, streams: true },
+  { kind: 'a workspace-scope chat', fields: { scope: 'workspace' }, streams: true },
+  { kind: 'an agent-linked chat', fields: { agentId: 'agent-1' }, streams: true },
+  { kind: 'an agent-linked workspace chat', fields: { agentId: 'agent-1', scope: 'workspace' }, streams: true },
+  { kind: 'an unbound automation chat', fields: { isAutomation: true }, streams: false },
+  { kind: 'a Slack-mirrored chat', fields: { externalPlatform: 'slack', externalChannelId: 'C1' }, streams: false },
+  { kind: 'a surface-bound chat', fields: { surfaceBindingId: 'binding-1' }, streams: false },
+] as const
+
+for (const { kind, fields, streams } of conversationKinds) {
+  test(`${kind} is ${streams ? 'admitted on' : 'kept off'} the unified stream, and both writers agree`, async () => {
+    const convex = convexTest(schema, modules)
+    const stream = await seedWritableStream(convex, `personal:kind:${kind}`, undefined, 'chat', fields)
+    expect(stream.admittedStreamVersion).toBe(streams ? 1 : undefined)
+    if (!streams) {
+      await expect(convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Live text')))
+        .rejects.toThrow('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+      return
+    }
+    await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Step one.'))
+    await settleStep(convex, stream, 0, stream.revision, { content: 'Step one.', parts: [{ type: 'text', text: 'Step one.' }] })
+    const settled = await convex.run(async ctx => ({
+      message: await ctx.db.get(stream.assistantMessageId),
+      active: await ctx.db.query('harnessPublicStreams').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique(),
+    }))
+    expect(settled.message?.content).toBe('Step one.')
+    expect(settled.message?.publicStreamCheckpoint).toMatchObject({ runId: stream.runId, receiptId: 'model:0' })
+    expect(settled.active).toBeNull()
+  })
+}
+
+test('chat replies cannot be admitted into DMs, channels or agent threads, which stream as room replies', async () => {
+  for (const fields of [{ conversationType: 'dm' }, { conversationType: 'dm', agentId: 'agent-1' }, { conversationType: 'channel' }]) {
+    const convex = convexTest(schema, modules)
+    await expect(seedWritableStream(convex, `personal:room-kind:${JSON.stringify(fields)}`, undefined, 'chat', fields))
+      .rejects.toThrow(/ACCESS_DENIED|SOURCE_DENIED/)
+  }
+})
+
+test('a conversation that becomes a mirrored surface mid-run stops taking live text and checkpoints together', async () => {
+  for (const fields of [{ externalPlatform: 'slack' }, { surfaceBindingId: 'binding-1' }]) {
+    const convex = convexTest(schema, modules)
+    const stream = await seedWritableStream(convex, `personal:became:${Object.keys(fields)[0]}`)
+    expect(stream.admittedStreamVersion).toBe(1)
+    await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Before.'))
+    await convex.run(ctx => ctx.db.patch(stream.conversationId, fields))
+    await expect(convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 1, ' After.')))
+      .rejects.toThrow('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    await settleStep(convex, stream, 0, stream.revision, { content: 'Before.', parts: [{ type: 'text', text: 'Before.' }] })
+    const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+    expect(message?.publicStreamCheckpoint).toBeUndefined()
+    expect(message?.nativeProgressSequence).toBeUndefined()
+  }
+})
+
+test('a refused conversation is re-admitted idempotently on the legacy path', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:retry-surface', undefined, 'chat', { surfaceBindingId: 'binding-1' })
+  const run = await convex.run(ctx => ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique())
+  const admission = JSON.parse(run!.admissionJson) as Record<string, unknown> & { policy: Record<string, unknown> }
+  expect(admission.policy.publicStreamVersion).toBeUndefined()
+  const retried = await convex.mutation(mutation('admit'), {
+    ...admission, policy: { ...admission.policy, publicStreamVersion: 1 }, serverSecret: secret,
+  }) as { policy: { publicStreamVersion?: 1 } }
+  expect(retried.policy.publicStreamVersion).toBeUndefined()
+})
+
+test('an agent-linked chat keeps step one visible while step two streams', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:agent-linked-steps', undefined, 'chat', { agentId: 'agent-1' })
+  await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Looking up the order.'))
+  const settled = await settleStep(convex, stream, 0, stream.revision, {
+    content: 'Looking up the order.', parts: [{ type: 'text', text: 'Looking up the order.' }],
+  })
+  await nextModelCall(settled, 1)
+  await convex.mutation(mutation('appendPublicStream'), { ...appendArgs(stream, 0, 'It shipped on'), receiptId: 'model:1' })
+
+  const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+  const live = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+  expect(message?.content).toBe('Looking up the order.')
+  expect(live).toMatchObject([{ receiptId: 'model:1', text: 'It shipped on' }])
+})

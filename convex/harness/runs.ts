@@ -10,6 +10,7 @@ import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
+import { isPublicStreamConversation } from '../lib/publicStreamEligibility'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
 import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
 import { readActivePublicStreams, transcriptStepHasOutput } from '../lib/publicStreamRead'
@@ -536,6 +537,26 @@ async function bindLegacyPersonalSource(ctx: MutationCtx, admission: HarnessAdmi
   // Materialize only the owner's implicit personal scope, in the same transaction
   // as admission. Never move legacy chats into a selected organization workspace.
   await ctx.db.patch(conversation._id, { workspaceId: workspace.workspaceId })
+}
+
+/** A root whose conversation cannot settle stream checkpoints is admitted on the legacy path instead. */
+async function withEligiblePublicStream(
+  ctx: ReadContext,
+  input: HarnessAdmission,
+  source: HarnessSource,
+): Promise<HarnessAdmission> {
+  if (input.policy.publicStreamVersion !== 1) return input
+  const conversationId = 'conversationId' in source && typeof source.conversationId === 'string'
+    ? ctx.db.normalizeId('conversations', source.conversationId) : null
+  const deliveryId = input.deliveryAgentRunId ? ctx.db.normalizeId('conversationAgentRuns', input.deliveryAgentRunId) : null
+  const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+  if (conversationId && delivery && await isPublicStreamConversation(ctx, {
+    conversation: await ctx.db.get(conversationId), actorUserId: input.policy.actorUserId,
+    workspaceId: input.policy.workspaceId, mode: delivery.mode,
+  })) return input
+  const policy = { ...input.policy }
+  delete policy.publicStreamVersion
+  return { ...input, policy }
 }
 
 async function validateHarnessDeliveryAdmission(
@@ -1607,7 +1628,7 @@ export const admit = mutation({
       input.policy,
       serverSecret,
     )
-    const admission = canonicalAdmission(input, source)
+    const admission = canonicalAdmission(await withEligiblePublicStream(ctx, input, source), source)
     const admissionJson = stableJson(admission)
     const existing = await findRun(ctx, admission.runId)
     if (existing) {
@@ -2125,11 +2146,10 @@ export const appendPublicStream = mutation({
       || delivery.executionEngine !== 'overlay_harness' || delivery.runner !== 'workflow') {
       throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
     }
-    const conversation = await ctx.db.get(conversationId)
-    if (!conversation || conversation.deletedAt !== undefined) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
-    if (delivery.mode !== 'room' && delivery.mode !== 'work' && conversation.userId !== args.actorUserId) {
-      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
-    }
+    if (!await isPublicStreamConversation(ctx, {
+      conversation: await ctx.db.get(conversationId), actorUserId: args.actorUserId,
+      workspaceId: metadata.policy.workspaceId, mode: delivery.mode,
+    })) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
     const deliveryAssistantMessageId = delivery.assistantMessageId
     if (!deliveryAssistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
     const assistantMessageId = ctx.db.normalizeId('conversationMessages', deliveryAssistantMessageId)
