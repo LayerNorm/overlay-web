@@ -69,7 +69,7 @@ function publicMetadata(row: {
   }
 }
 
-async function assertSourceReadable(ctx: QueryCtx, run: { metadataJson: string }, actorUserId: string, row: {
+export async function assertSourceReadable(ctx: QueryCtx, run: { metadataJson: string }, actorUserId: string, row: {
   toolName: string; resource?: { id: string }
 }) {
   if (!row.resource) return

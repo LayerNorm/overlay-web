@@ -5,23 +5,19 @@ export type PersonalHarnessBudget = { durationMs?: number }
 
 const DAY_MS = 24 * 60 * 60 * 1_000
 
-function selectPublicStreamVersion(
-  existingPolicy: HarnessPolicy | null | undefined,
-  workspaceId: string,
-): 1 | undefined {
+function selectPublicStreamVersion(existingPolicy: HarnessPolicy | null | undefined): 1 | undefined {
   if (existingPolicy) return existingPolicy.publicStreamVersion === 1 ? 1 : undefined
-  return isUnifiedStreamingWorkspaceEnabled(workspaceId) ? 1 : undefined
+  return isUnifiedStreamingEnabled() ? 1 : undefined
 }
 
-export function isUnifiedStreamingWorkspaceEnabled(
-  workspaceId: string,
-  allowlist = process.env.OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS ?? '',
-): boolean {
-  if (!workspaceId.trim() || !allowlist.trim()) return false
-  return allowlist.split(',').some(candidate => {
-    const id = candidate.trim()
-    return id !== '*' && id === workspaceId
-  })
+/**
+ * New roots use the unified stream unless OVERLAY_UNIFIED_STREAMING disables it.
+ * Unset, empty or `on` enables it; `off` or any other value turns it off, so a
+ * mistyped kill switch still falls back to the legacy path.
+ */
+export function isUnifiedStreamingEnabled(setting = process.env.OVERLAY_UNIFIED_STREAMING): boolean {
+  const value = setting?.trim().toLowerCase() ?? ''
+  return value === '' || value === 'on'
 }
 
 export function personalHarnessPolicy(input: {
@@ -40,7 +36,7 @@ export function personalHarnessPolicy(input: {
     throw new Error('Invalid personal harness budget.')
   }
   const byok = isByokModelId(input.modelId)
-  const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy, input.workspaceId)
+  const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy)
   return {
     publicProgressVersion: 1,
     ...(publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),

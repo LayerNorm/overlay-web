@@ -3,7 +3,7 @@
 > Overlay is the control plane for AI employees: one workspace to create,
 > deploy, and manage every AI agent in one place. Bring your own agents
 > (Codex, Claude Code, Hermes) or run Overlay's own, and put them to work in
-> chat, Slack, Telegram, iMessage, and the web. Built by LayerNorm Inc.
+> one shared workspace on the web and desktop. Built by LayerNorm Inc.
 > Open source under AGPL-3.0, with hosted and self-hosted options.
 
 Overlay unifies AI agents: a single roster, shared context and memory,

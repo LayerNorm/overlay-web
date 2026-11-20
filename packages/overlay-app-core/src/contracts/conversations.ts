@@ -12,7 +12,7 @@ export interface ConversationSummary {
   conversationType?: 'personal' | 'dm' | 'channel'
   /** Sidebar scope for AI chats; missing means personal. */
   scope?: 'personal' | 'workspace'
-  /** Set on conversations mapped to an external surface thread (e.g. Slack). */
+  /** Set on conversations mirrored from Slack by the retired Slack bot; such threads are read-only. */
   externalPlatform?: string
   externalChannelId?: string
   externalThreadId?: string

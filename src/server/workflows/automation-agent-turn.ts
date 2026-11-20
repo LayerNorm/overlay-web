@@ -36,19 +36,17 @@ async function prepareTurnStep(
 ): Promise<AutomationAgentTurnPlan> {
   'use step'
   try {
-    if (!input.surface) {
-      if (!input.automationId || !input.originWorkflowRunId) {
-        throw new FatalError('Automation source identity is required.')
-      }
-      await assertAutomationAdmissionSource({
-        automationId: input.automationId,
-        actorUserId: input.userId,
-        originWorkflowRunId: input.originWorkflowRunId,
-        runId: input.runId,
-        conversationId: input.conversationId,
-        workspaceId: input.workspaceId,
-      })
+    if (!input.automationId || !input.originWorkflowRunId) {
+      throw new FatalError('Automation source identity is required.')
     }
+    await assertAutomationAdmissionSource({
+      automationId: input.automationId,
+      actorUserId: input.userId,
+      originWorkflowRunId: input.originWorkflowRunId,
+      runId: input.runId,
+      conversationId: input.conversationId,
+      workspaceId: input.workspaceId,
+    })
     return await prepareAutomationAgentTurn(input)
   } catch (error) {
     // Terminal denials (unsupported model, policy denial, budget refusal) can
@@ -273,7 +271,6 @@ async function runAdmittedAutomationHarness(
 export async function runAutomationAgentTurn(
   input: AutomationAgentTurnInput,
 ): Promise<{ conversationId: string; replyText: string; status: string }> {
-  if (input.surface) throw new FatalError('Surface turns must use the surface workflow.')
   const { workflowRunId } = getWorkflowMetadata()
   if (!input.automationId) throw new FatalError('Automation identity is required.')
   if (!input.runId) throw new FatalError('Automation run identity is required.')

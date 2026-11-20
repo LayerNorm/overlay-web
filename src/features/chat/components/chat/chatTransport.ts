@@ -21,6 +21,35 @@ export interface StartActTextStreamParams {
   onError: (error: unknown, fallbackMessage: string) => void
   logPrefix: string
   isRuntimeCurrent?: (chatId: string, runtime: ConversationRuntime) => boolean
+  /**
+   * When the act response hands the live reply to Convex, resolves once the run is
+   * terminal there, so the turn completes then and not when the response ends.
+   */
+  awaitLiveSettlement?: () => Promise<LiveSettlement>
+}
+
+export type LiveSettlement = 'completed' | 'failed' | 'cancelled' | 'unavailable'
+
+/** Whether the act response ended at admission because the client reads the live reply from Convex. */
+export function liveReplyReadFromConvex(runtime: ConversationRuntime): boolean {
+  const reply = [...runtime.actChat.messages].reverse().find(message => message.role === 'assistant')
+  const accepted = (reply?.metadata as { harnessAccepted?: { liveTransport?: unknown } } | undefined)?.harnessAccepted
+  return accepted?.liveTransport === 'convex'
+}
+
+async function settleTextTurn(params: StartActTextStreamParams, fallbackMessage: string): Promise<boolean> {
+  const error = resolvedChatError(params.targetRuntime)
+  if (error) {
+    failTextTurn(params, error, fallbackMessage)
+    return false
+  }
+  if (params.awaitLiveSettlement && liveReplyReadFromConvex(params.targetRuntime)
+    && await params.awaitLiveSettlement() === 'failed') {
+    failTextTurn(params, new Error('The durable run failed.'), fallbackMessage)
+    return false
+  }
+  finishTextTurn(params)
+  return true
 }
 
 function finishTextTurn(params: Pick<
@@ -60,11 +89,7 @@ export function startActTextStream(params: StartActTextStreamParams) {
         },
       },
     )
-    .then(() => {
-      const error = resolvedChatError(params.targetRuntime)
-      if (error) failTextTurn(params, error, 'Could not complete Act request. Try again.')
-      else finishTextTurn(params)
-    })
+    .then(() => settleTextTurn(params, 'Could not complete Act request. Try again.'))
     .catch((error) => {
       failTextTurn(params, error, 'Could not complete Act request. Try again.')
     })

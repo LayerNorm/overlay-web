@@ -43,10 +43,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     conversationType?: 'personal' | 'dm' | 'channel'
     scope?: 'personal' | 'workspace'
     createdByPrincipalId?: string
-    externalPlatform?: string
-    externalChannelId?: string
-    externalThreadId?: string
-    surfaceBindingId?: string
   }): Promise<ConversationId> {
     const id = await convex.mutation<Id<'conversations'>>('chat/conversations:create', {
       ...args,
@@ -208,9 +204,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
     variantIndex?: number
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
-    importedAuthorName?: string
-    importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   }): Promise<Id<'conversationMessages'> | null> {
     await requireNativeThreadCompatibilityBackend(args.userId)
     return await convex.mutation<Id<'conversationMessages'> | null>('chat/conversations:addMessage', {

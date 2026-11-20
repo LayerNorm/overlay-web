@@ -57,6 +57,8 @@ export interface CreateAutomationRequest {
   graph?: AutomationGraph
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  /** Runs the automation as this workspace agent, in a thread with it. */
+  agentId?: string
   /** Defaults to personal. */
   scope?: 'personal' | 'workspace'
 }

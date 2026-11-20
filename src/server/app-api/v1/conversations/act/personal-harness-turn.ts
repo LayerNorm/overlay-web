@@ -233,6 +233,8 @@ export async function startPersonalHarnessTurn(input: {
   goal: string
   hasDynamicApproval: boolean
   instructions: string
+  /** The client reads the live reply from Convex, so the response ends once the run is admitted. */
+  liveTransport?: 'convex'
   messagesForModel: UIMessage[]
   paid: boolean
   principalId: string
@@ -316,17 +318,22 @@ export async function startPersonalHarnessTurn(input: {
           }
           input.signal?.addEventListener('abort', stop, { once: true })
           controller.enqueue({ type: 'start', messageId: input.agentRun.assistantMessageId })
-          controller.enqueue({
-            type: 'message-metadata',
-            messageMetadata: {
-              harnessAccepted: {
-                runId: workflowRun.runId,
-                executionGeneration: workflowRun.executionGeneration,
-                status: 'running',
-              },
-              ...(Object.keys(input.sourceCitations).length > 0 ? { sourceCitations: input.sourceCitations } : {}),
+          const messageMetadata = {
+            harnessAccepted: {
+              runId: workflowRun.runId,
+              executionGeneration: workflowRun.executionGeneration,
+              status: 'running',
+              ...(input.liveTransport === 'convex' ? { liveTransport: 'convex' as const } : {}),
             },
-          })
+            ...(Object.keys(input.sourceCitations).length > 0 ? { sourceCitations: input.sourceCitations } : {}),
+          }
+          controller.enqueue({ type: 'message-metadata', messageMetadata })
+          if (input.liveTransport === 'convex') {
+            controller.enqueue({ type: 'finish', finishReason: 'stop', messageMetadata })
+            input.signal?.removeEventListener('abort', stop)
+            stop()
+            return
+          }
           void pollPersistedPublicStream({
             controller,
             repository,

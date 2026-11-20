@@ -8,6 +8,9 @@ import {
 } from '@overlay/ui/ai'
 import type { ReactNode, RefCallback, RefObject } from 'react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranscriptCacheScope } from '@/components/providers/transcript-cache-client'
+import { useTranscriptScrollMemory } from './chat/useTranscriptScrollMemory'
+import { transcriptCacheKey } from '@/shared/chat/transcript-cache'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
@@ -115,6 +118,7 @@ export function ChatMessageList({
   runtime,
   actions,
 }: ChatMessageListProps) {
+  recordRender('ChatMessageList')
   const conversationId = transcriptKey ?? null
   const paginationAnchorRef = useRef<{ conversationId: string | null; turnId: string; top: number } | null>(null)
   const loadingMoreRef = useRef(false)
@@ -124,6 +128,11 @@ export function ChatMessageList({
   const [identity, setIdentity] = useState({ conversationId, firstTurnId, key: 0 })
   const nextIdentity = reconcileTranscriptIdentity(identity, conversationId, firstTurnId)
   if (nextIdentity !== identity) setIdentity(nextIdentity)
+  const cacheScope = useTranscriptCacheScope()
+  const scrollKey = cacheScope && conversationId
+    ? transcriptCacheKey(cacheScope, { kind: 'personal', conversationId })
+    : null
+  useTranscriptScrollMemory(messagesScrollRef, scrollKey, nextIdentity.key, state.primaryMessages.length)
   useLayoutEffect(() => {
     const anchor = paginationAnchorRef.current
     if (!runtime.transcriptPagination?.loadingMore) loadingMoreRef.current = false

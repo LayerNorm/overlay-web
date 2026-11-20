@@ -1,20 +1,15 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
 import { useMessageEntrance } from './message-entrance'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
   appendInterruptionNotice,
   assistantBlocksToPlainText,
-  buildAssistantVisualSegments,
-  computeToolChainFlags,
   hasInterruptionNotice,
   INTERRUPTED_RESPONSE_NOTICE,
   isUsageExhaustedError,
-  planAssistantWorkCollapse,
-  summarizeTurnDiff,
 } from '@overlay/chat-core'
 import type { SourceCitationMap } from '../../lib/source-citations'
 import type { WebSourceItem } from '../../lib/web-sources'
@@ -27,21 +22,15 @@ import type {
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
 import { Message, MessageContent } from '@overlay/ui/ai'
-import { isRunPlanSettled, RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
+import type { RunPlanPhase, RunPlanStep } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
-import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
+import { ExchangeLoadingState, responseLoadingPresentation } from './ExchangeLoadingState'
+import { AssistantVisualBlocks } from './AssistantVisualBlocks'
 import { UserMessageActions } from './UserMessageActions'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 import { useChatExchangeSources } from './chat-exchange-sources'
-import { collectCreatedFileIds, collectToolResourceHrefs } from '../markdown/tool-resource-links'
-import { ChatFileCardStrip } from '../files/ChatFileCards'
-import {
-  AssistantSegmentItem,
-  assistantSegmentKey,
-  type AssistantSegmentRenderContext,
-} from './AssistantSegmentItem'
 
 export type UserImageAttachment = {
   url: string
@@ -111,48 +100,6 @@ export interface ChatExchangeProps {
   presentation?: Partial<ChatTranscriptPresentation>
 }
 
-function useExchangeSegments(assistantVisualBlocks: Parameters<typeof buildAssistantVisualSegments>[0]) {
-  const assistantSegments = useMemo(
-    () => buildAssistantVisualSegments(assistantVisualBlocks),
-    [assistantVisualBlocks],
-  )
-  const toolChainFlags = useMemo(() => computeToolChainFlags(assistantSegments), [assistantSegments])
-  return { assistantSegments, toolChainFlags }
-}
-
-function useCollapsePlan(
-  assistantSegments: ReturnType<typeof buildAssistantVisualSegments>,
-  isStreaming: boolean,
-  foldText: boolean,
-) {
-  const collapsePlan = useMemo(
-    () => isStreaming
-      ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
-      : planAssistantWorkCollapse(assistantSegments, { foldTextBeforeLastWork: foldText }),
-    [assistantSegments, isStreaming, foldText],
-  )
-  const collapsedSet = useMemo(
-    () => new Set(collapsePlan.collapsedIndexes),
-    [collapsePlan],
-  )
-  return { collapsePlan, collapsedSet }
-}
-
-function useWorkedMs(isStreaming: boolean, workedDurationMs: number | null | undefined): number | null {
-  const streamStartedAtRef = useRef<number | null>(null)
-  const [measuredWorkMs, setMeasuredWorkMs] = useState<number | null>(null)
-  useEffect(() => {
-    if (isStreaming) {
-      if (streamStartedAtRef.current == null) streamStartedAtRef.current = Date.now()
-      return
-    }
-    if (streamStartedAtRef.current != null && measuredWorkMs == null) {
-      setMeasuredWorkMs(Math.max(0, Date.now() - streamStartedAtRef.current))
-    }
-  }, [isStreaming, measuredWorkMs])
-  return workedDurationMs ?? measuredWorkMs
-}
-
 export function ChatExchange({
   userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, plan, planPhase = 'ended', errorMessage,
   responseInProgress, status, sourceCitations,
@@ -162,44 +109,13 @@ export function ChatExchange({
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
-    const lastTextBlockIndex = findLastTextBlockIndex(assistantVisualBlocks)
-    const toolResourceHrefs = useMemo(() => collectToolResourceHrefs(assistantVisualBlocks), [assistantVisualBlocks])
-    const createdFileIds = useMemo(() => collectCreatedFileIds(assistantVisualBlocks), [assistantVisualBlocks])
-    const workDiff = useMemo(() => summarizeTurnDiff(assistantVisualBlocks), [assistantVisualBlocks])
-    const { assistantSegments, toolChainFlags } = useExchangeSegments(assistantVisualBlocks)
-    const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
+    const { allSources, effectiveSourceCitations } = useChatExchangeSources({
       assistantPlainText,
       assistantVisualBlocks,
       responseSources,
       sourceCitations,
     })
-    const { loadingPresentation, responseSettled } = resolveLoadingPresentation(status, responseInProgress, assistantVisualBlocks)
-
-    // Turn duration: the persisted createdAt→updatedAt span wins when present;
-    // live turns still measure on the streaming→settled edge.
-    const workedMs = useWorkedMs(isStreaming, workedDurationMs)
-
-    const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming || !responseSettled, !interrupted && !errorMessage)
-    const [workExpanded, setWorkExpanded] = useState(false)
-    useEffect(() => { onWorkExpandedChange?.(workExpanded) }, [workExpanded, onWorkExpandedChange])
-    const segmentCtx: AssistantSegmentRenderContext = {
-      keyPrefix: exchIdx,
-      markdownKeyPrefix: `${userMsgId}-${responseModelId}`,
-      blockCount: assistantVisualBlocks.length,
-      lastTextBlockIndex,
-      isStreaming,
-      isTextStreaming,
-      sourceCitations: effectiveSourceCitations,
-      webSources,
-      toolResourceHrefs,
-      suppressTypingIndicator: !loadingPresentation.inlineTextMarker,
-      onOpenDraft,
-      onCreateAutomationDraft,
-      onOpenAttachmentPreview,
-      generatedUiConnectorActions,
-      generatedUiReadOnly,
-      onGeneratedUiChange,
-    }
+    const { loadingPresentation, responseSettled } = responseLoadingPresentation(status, responseInProgress, assistantVisualBlocks)
     const copyPlainText = interruptedCopyText(assistantPlainText, interrupted, errorMessage)
     const showFooter =
       presentation?.showActions !== false &&
@@ -220,7 +136,6 @@ export function ChatExchange({
         data-overlay-link-scope=""
         data-exchange-turn={turnIdForActions ?? undefined}
       >
-        {/* User message */}
         <ExchangeUserMessage
           replyThreadMeta={replyThreadMeta}
           onJumpToReply={onJumpToReply}
@@ -234,218 +149,68 @@ export function ChatExchange({
           isExiting={isExiting}
         />
 
-        <ChatExchangeAssistantBody
-          createdFileIds={createdFileIds}
-          workDiff={workDiff}
-          collapsePlan={collapsePlan}
-          workedMs={workedMs}
-          workExpanded={workExpanded}
-          setWorkExpanded={setWorkExpanded}
-          workDetails={workDetails}
-          assistantSegments={assistantSegments}
-          collapsedSet={collapsedSet}
-          toolChainFlags={toolChainFlags}
-          exchIdx={exchIdx}
-          isStreaming={isStreaming}
-          segmentCtx={segmentCtx}
-          plan={plan}
-          planPhase={planPhase}
-          errorMessage={errorMessage}
-          loadingPresentation={loadingPresentation}
-          hasPersistedInterruptionNotice={hasInterruptionNotice(assistantPlainText)}
-          responseInProgress={responseInProgress}
-          interrupted={interrupted}
-          responseSettled={responseSettled}
-          onContinue={onContinue}
-          showFooter={showFooter}
-          copyPlainText={copyPlainText}
-          isExiting={isExiting}
-          onRetry={onRetry}
-          retryDisabled={retryDisabled}
-          onDeleteTurn={onDeleteTurn}
-          onReply={onReply}
-          onBranch={onBranch}
-          turnIdForActions={turnIdForActions}
-          actionsLocked={actionsLocked}
-          allSources={allSources}
-          onOpenSources={onOpenSources}
-          userMsgId={userMsgId}
-          isSourcesOpenForThis={isSourcesOpenForThis}
-          modelLabel={modelLabel}
-          actionVisibility={presentation?.actionVisibility}
-          showModelLabel={presentation?.showModelLabel}
-        />
+        <Message>
+          <MessageContent className="gap-2">
+            <AssistantVisualBlocks
+              blocks={assistantVisualBlocks}
+              blockKeyPrefix={exchIdx}
+              markdownKeyPrefix={`${userMsgId}-${responseModelId}`}
+              isStreaming={isStreaming}
+              isTextStreaming={isTextStreaming}
+              sourceCitations={effectiveSourceCitations}
+              suppressTypingIndicator={!loadingPresentation.inlineTextMarker}
+              workedDurationMs={workedDurationMs}
+              collapseWork={responseSettled}
+              foldWorkIntoSummary={!interrupted && !errorMessage}
+              plan={plan}
+              planPhase={planPhase}
+              onOpenDraft={onOpenDraft}
+              onCreateAutomationDraft={onCreateAutomationDraft}
+              onOpenAttachmentPreview={onOpenAttachmentPreview}
+              generatedUiConnectorActions={generatedUiConnectorActions}
+              generatedUiReadOnly={generatedUiReadOnly}
+              onGeneratedUiChange={onGeneratedUiChange}
+              onWorkExpandedChange={onWorkExpandedChange}
+              workDetails={workDetails}
+            />
+
+            {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
+
+            {errorMessage && !responseInProgress && (
+              <ExchangeErrorNotice errorMessage={errorMessage} />
+            )}
+
+            <ExchangeSettledNotices
+              interrupted={interrupted && !hasInterruptionNotice(assistantPlainText)}
+              responseSettled={responseSettled}
+              errorMessage={errorMessage}
+              onContinue={onContinue}
+            />
+
+            {showFooter && (
+              <ExchangeActions
+                copyPlainText={copyPlainText}
+                isExiting={isExiting}
+                onRetry={onRetry}
+                retryDisabled={retryDisabled}
+                onDeleteTurn={onDeleteTurn}
+                onReply={onReply}
+                onBranch={onBranch}
+                turnIdForActions={turnIdForActions}
+                actionsLocked={actionsLocked}
+                sources={allSources}
+                onOpenSources={onOpenSources}
+                userMsgId={userMsgId}
+                isSourcesOpenForThis={isSourcesOpenForThis}
+                modelLabel={modelLabel}
+                actionVisibility={presentation?.actionVisibility}
+                showModelLabel={presentation?.showModelLabel}
+              />
+            )}
+          </MessageContent>
+        </Message>
       </div>
     )
-}
-
-type ChatExchangeAssistantBodyProps = {
-  createdFileIds: string[]
-  workDiff: { added: number; removed: number } | null
-  workDetails?: import('react').ReactNode
-  collapsePlan: ReturnType<typeof useCollapsePlan>['collapsePlan']
-  workedMs: number | null
-  workExpanded: boolean
-  setWorkExpanded: Dispatch<SetStateAction<boolean>>
-  assistantSegments: ReturnType<typeof useExchangeSegments>['assistantSegments']
-  collapsedSet: ReturnType<typeof useCollapsePlan>['collapsedSet']
-  toolChainFlags: ReturnType<typeof useExchangeSegments>['toolChainFlags']
-  exchIdx: number
-  isStreaming: boolean
-  segmentCtx: AssistantSegmentRenderContext
-  plan: ChatExchangeProps['plan']
-  planPhase: RunPlanPhase
-  errorMessage: ChatExchangeProps['errorMessage']
-  loadingPresentation: ReturnType<typeof exchangeLoadingPresentation>
-  hasPersistedInterruptionNotice: boolean
-  responseInProgress: ChatExchangeProps['responseInProgress']
-  interrupted: boolean
-  responseSettled: boolean
-  onContinue: ChatExchangeProps['onContinue']
-  showFooter: boolean
-  copyPlainText: string
-  isExiting: boolean
-  onRetry: ChatExchangeProps['onRetry']
-  retryDisabled: boolean
-  onDeleteTurn: ChatExchangeProps['onDeleteTurn']
-  onReply: ChatExchangeProps['onReply']
-  onBranch: ChatExchangeProps['onBranch']
-  turnIdForActions: ChatExchangeProps['turnIdForActions']
-  actionsLocked: ChatExchangeProps['actionsLocked']
-  allSources: ReturnType<typeof useChatExchangeSources>['allSources']
-  onOpenSources: ChatExchangeProps['onOpenSources']
-  userMsgId: string
-  isSourcesOpenForThis: ChatExchangeProps['isSourcesOpenForThis']
-  modelLabel: string
-  actionVisibility?: 'always' | 'hover'
-  showModelLabel?: boolean
-}
-
-function ChatExchangeAssistantBody({
-  createdFileIds,
-  workDiff,
-  workDetails,
-  collapsePlan,
-  workedMs,
-  workExpanded,
-  setWorkExpanded,
-  assistantSegments,
-  collapsedSet,
-  toolChainFlags,
-  exchIdx,
-  isStreaming,
-  segmentCtx,
-  plan,
-  planPhase,
-  errorMessage,
-  loadingPresentation,
-  hasPersistedInterruptionNotice,
-  responseInProgress,
-  interrupted,
-  responseSettled,
-  onContinue,
-  showFooter,
-  copyPlainText,
-  isExiting,
-  onRetry,
-  retryDisabled,
-  onDeleteTurn,
-  onReply,
-  onBranch,
-  turnIdForActions,
-  actionsLocked,
-  allSources,
-  onOpenSources,
-  userMsgId,
-  isSourcesOpenForThis,
-  modelLabel,
-  actionVisibility,
-  showModelLabel,
-}: ChatExchangeAssistantBodyProps) {
-  const planSettled = Boolean(plan && isRunPlanSettled(plan, planPhase))
-  return (
-    <Message>
-      <MessageContent className="gap-2">
-        {(collapsePlan.collapsedIndexes.length > 0 || planSettled) && (
-          <WorkedForGroup
-            durationMs={workedMs}
-            toolCallCount={collapsePlan.collapsedToolCallCount}
-            expanded={workExpanded}
-            onToggle={() => setWorkExpanded((v) => !v)}
-            diff={workDiff}
-          />
-        )}
-        {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
-        {workExpanded ? workDetails : null}
-        {assistantSegments.map((seg, segIdx) => {
-          if (!workExpanded && collapsedSet.has(segIdx)) return null
-          const chain = toolChainFlags[segIdx]!
-          return (
-            <AssistantSegmentItem
-              key={assistantSegmentKey(exchIdx, seg, isStreaming)}
-              seg={seg}
-              chainTop={chain.chainTop}
-              chainBottom={chain.chainBottom}
-              ctx={segmentCtx}
-            />
-          )
-        })}
-
-        {createdFileIds.length ? <ChatFileCardStrip fileIds={createdFileIds} /> : null}
-
-        {plan?.length && !planSettled ? <RunPlan steps={plan} phase={planPhase} /> : null}
-
-        {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
-
-        {errorMessage && !responseInProgress && (
-          <ExchangeErrorNotice errorMessage={errorMessage} />
-        )}
-
-        <ExchangeSettledNotices
-          interrupted={interrupted && !hasPersistedInterruptionNotice}
-          responseSettled={responseSettled}
-          errorMessage={errorMessage}
-          onContinue={onContinue}
-        />
-
-        {showFooter && (
-          <ExchangeActions
-            copyPlainText={copyPlainText}
-            isExiting={isExiting}
-            onRetry={onRetry}
-            retryDisabled={retryDisabled}
-            onDeleteTurn={onDeleteTurn}
-            onReply={onReply}
-            onBranch={onBranch}
-            turnIdForActions={turnIdForActions}
-            actionsLocked={actionsLocked}
-            sources={allSources}
-            onOpenSources={onOpenSources}
-            userMsgId={userMsgId}
-            isSourcesOpenForThis={isSourcesOpenForThis}
-            modelLabel={modelLabel}
-            actionVisibility={actionVisibility}
-            showModelLabel={showModelLabel}
-          />
-        )}
-      </MessageContent>
-    </Message>
-  )
-}
-
-function resolveLoadingPresentation(
-  status: ChatExchangeStatus | undefined,
-  responseInProgress: boolean | undefined,
-  assistantVisualBlocks: AssistantVisualBlock[],
-) {
-  const liveStatus: ChatExchangeStatus = responseInProgress
-    ? (assistantVisualBlocks.length > 0 ? 'streaming' : 'submitted')
-    : 'completed'
-  const normalizedStatus = responseInProgress && (status === undefined || status === 'completed')
-    ? liveStatus
-    : status ?? liveStatus
-  const loadingPresentation = exchangeLoadingPresentation(normalizedStatus, assistantVisualBlocks)
-  return { loadingPresentation, responseSettled: !loadingPresentation.active }
 }
 
 function interruptedCopyText(
@@ -456,14 +221,6 @@ function interruptedCopyText(
   return interrupted && !errorMessage
     ? appendInterruptionNotice(assistantPlainText)
     : assistantPlainText
-}
-
-function findLastTextBlockIndex(blocks: AssistantVisualBlock[]): number {
-  let idx = -1
-  for (let i = 0; i < blocks.length; i++) {
-    if (blocks[i]!.kind === 'text') idx = i
-  }
-  return idx
 }
 
 function ExchangeUserMessage({

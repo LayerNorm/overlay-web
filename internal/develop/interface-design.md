@@ -330,7 +330,7 @@ preserve Computer takeover/handback controls when regrouping the fields.
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,
 agent defaults/accounts); an unmatched controlled value retains its display text
-(the Slack channel prompt). Groups preserve source order; disabled options/groups
+(for example a prompt whose saved option is gone). Groups preserve source order; disabled options/groups
 stay visible and cannot be selected. No domain model-picker ordering changes.
 
 `Select` keeps a visually hidden native select for original FormData values,
@@ -573,7 +573,7 @@ still mark the row that opened it.
 
 ## Agent settings load together
 
-The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, reachability surfaces, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
+The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
 
 ## One boot loader
 
@@ -638,6 +638,27 @@ user message. Consume it only when the human and expected solo agent are loaded;
 expire it after 60 seconds. Use the static greeting only for empty instructions.
 Agent-created automations also appear in Automations with the owning creature
 avatar. Sidebar rows without a conversation open the automation itself.
+
+## Automation threads
+
+An automation is an ordinary chat that gets a message on a schedule. A new
+automation uses the chat empty state and composer with two pickers beside the
+model control (`ChatComposerSurface.composerControls`): Schedule (Every
+hour/day/weekday/week/month, a Monday-first weekday row, day of the month up to
+28, a time field and the muted browser time zone) and Agent (No agent, shown with
+the Overlay mark, or a workspace agent's creature). Both share the composer model
+trigger style and become 32px icon buttons below the `sm` breakpoint. Sending
+creates the automation with the composer's model, runs it once and opens its
+thread. The thread composer is a normal follow-up composer without the pickers;
+its model control shows and saves the automation's model.
+
+An automation's thread docks the Automation details panel (`RightSidebar`, 380px,
+open by default at 1024px and wider, toggled from the header like agent threads):
+the inline-renamed name, Active switch with the next run, Run now, Schedule and
+Time zone disclosures, a read-only Agent row (the agent cannot change after
+creation), Model, the five most recent runs (Failed rows offer Retry) and Delete
+with an inline confirm. The Automations route has no Chat/Edit tabs, header model
+control or temporary-chat control.
 
 ## Chat AI primitives (`@overlay/ui/ai`)
 

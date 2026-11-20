@@ -42,11 +42,11 @@ test('native dispatch refreshes authority then binds the call with no billing re
 
 test('a low workspace budget tries an auto top-up for the refreshed agent subject before refusing', async () => {
   const low = { ...funded, budgetRemainingCents: 150, budgetUsedCents: 9_850 }
-  mocks.refresh.mockResolvedValue({ entitlements: low, billingProgrammaticSubjectId: 'surface:slack:binding' })
+  mocks.refresh.mockResolvedValue({ entitlements: low, billingProgrammaticSubjectId: 'agent:agent' })
   mocks.ensure.mockResolvedValue({ entitlements: low, remainingCents: 150 })
   await expect(authorizeNativeHarnessModelDispatch(reference, options)).rejects.toThrow('The workspace budget is under 2%.')
   expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-    userId: 'user', workspaceId: 'workspace', programmaticSubjectId: 'surface:slack:binding', minimumRequiredCents: 200,
+    userId: 'user', workspaceId: 'workspace', programmaticSubjectId: 'agent:agent', minimumRequiredCents: 200,
   }))
   expect(mocks.apply).not.toHaveBeenCalled()
 })

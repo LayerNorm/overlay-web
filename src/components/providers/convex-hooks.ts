@@ -1,3 +1,3 @@
 'use client'
 
-export { useQuery } from 'convex/react'
+export { useConvexAuth, useQueries, useQuery, type RequestForQueries } from 'convex/react'

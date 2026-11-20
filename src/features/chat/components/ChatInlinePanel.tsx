@@ -62,6 +62,7 @@ import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
 import { useWorkspacePrincipalDirectory } from '@/hooks/use-workspace-members'
 import { hasThreadActivity, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
+import { useTranscriptPrefetchIntent } from '@/components/providers/transcript-cache-client'
 
 type Conversation = {
   _id: string
@@ -597,6 +598,11 @@ function ChatListRow({
   onCancelRename: () => void
 }) {
   const canRename = chat.conversationType !== 'dm' && chat.conversationType !== 'channel'
+  const prefetch = useTranscriptPrefetchIntent()
+  const intendOpen = () => {
+    if (active || isDeleting) return
+    prefetch.intend({ kind: canRename ? 'personal' : 'room', conversationId: chat._id })
+  }
   const hoverAction = 'top-1.5 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100'
   return (
     <SidebarMenuSubItem
@@ -646,6 +652,10 @@ function ChatListRow({
             isActive={active}
             aria-current={active ? 'page' : undefined}
             onClick={() => { if (!isDeleting) onOpenChat(chat) }}
+            onPointerEnter={intendOpen}
+            onPointerLeave={prefetch.cancel}
+            onFocus={intendOpen}
+            onBlur={prefetch.cancel}
             className={cn('h-8 gap-2.5 text-sm', canRename ? 'pr-14' : 'pr-8')}
           >
             <ChatConversationIcon chat={chat} size={12} className="shrink-0" principals={principals} />

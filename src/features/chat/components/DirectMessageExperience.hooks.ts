@@ -8,7 +8,14 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { RoomPaging, RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useRoomState, type RoomStateApi } from './collaboration/useRoomState'
+import {
+  transcriptCache,
+  useTranscriptCacheKey,
+  type RoomCachedAccess,
+  type RoomCachedMessage,
+} from '@/components/providers/transcript-cache-client'
 import { useRoomCompatibility } from './collaboration/useRoomCompatibility'
+import { useStableRoomMessageContext } from './collaboration/room-message-row'
 import {
   useCallback,
   useEffect,
@@ -279,6 +286,7 @@ export function useRoomCollaboration({ room }: { room: RoomStateApi }) {
 
 export function useRoomTranscript({
   conversationId,
+  workspaceId,
   rosterReady,
   anchorAgentTurns = false,
 
@@ -288,6 +296,7 @@ export function useRoomTranscript({
   setNewMessageCount,
 }: {
   conversationId: string
+  workspaceId?: string | null
   rosterReady: boolean
   anchorAgentTurns?: boolean
 
@@ -296,23 +305,41 @@ export function useRoomTranscript({
   markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
 }) {
+  const cacheKey = useTranscriptCacheKey({ kind: 'room', conversationId }, workspaceId)
+  // A remembered timeline and scroll position paint at once; live authorized rows replace them.
+  const [restored] = useState(() => {
+    const entry = cacheKey ? transcriptCache.get<RoomCachedMessage, RoomCachedAccess>(cacheKey) : null
+    if (!entry) return null
+    return {
+      messages: [...entry.items].reverse() as unknown as OptimisticMessage[],
+      access: entry.summary,
+      isDone: entry.isDone,
+      scroll: transcriptCache.scroll(cacheKey!),
+    }
+  })
+  const restoredIdsRef = useRef<Set<string> | null>(restored ? new Set(restored.messages.map((message) => message.id)) : null)
   const [messages, setMessages] = useState<OptimisticMessage[]>(
-    [],
+    () => restored?.messages ?? [],
   )
-  const [paging, setPaging] = useState<RoomPaging>({ hasMore: false, loadingMore: false, loadMore: () => undefined })
+  const [paging, setPaging] = useState<RoomPaging>({ hasMore: Boolean(restored && !restored.isDone), loadingMore: false, loadMore: () => undefined })
   const hasMoreMessages = paging.hasMore
   const loadingOlderMessages = paging.loadingMore
   // undefined while the room is resolving, null when this member cannot read it.
   const [room, setRoom] = useState<{ conversationId: string; summary: RoomSummary | null | undefined; transcriptReady: boolean }>(
-    { conversationId, summary: undefined, transcriptReady: false },
+    () => ({ conversationId, summary: restored?.access, transcriptReady: Boolean(restored) }),
   )
   const currentRoom = room.conversationId === conversationId ? room : { summary: undefined, transcriptReady: false }
   const loading = !rosterReady || (currentRoom.summary !== null && !currentRoom.transcriptReady)
-  const [conversationTitle, setConversationTitle] = useState<string | null>(null)
+  const [conversationTitle, setConversationTitle] = useState<string | null>(() => restored?.access.title?.trim() || null)
   /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
-  const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
-  const [stickToBottom, updateStickToBottom] = useState(true)
-  const [scrollIntent] = useState(createRoomScrollIntent)
+  const [surfacePlatform, setSurfacePlatform] = useState<string | null>(() => restored?.access.externalPlatform ?? null)
+  const restoredScroll = restored?.scroll && !restored.scroll.atBottom && restored.scroll.anchorId ? restored.scroll : null
+  const [stickToBottom, updateStickToBottom] = useState(!restoredScroll)
+  const [scrollIntent] = useState(() => {
+    const intent = createRoomScrollIntent()
+    if (restoredScroll) intent.navigate(false)
+    return intent
+  })
   const setStickToBottom = useCallback((latest: boolean) => {
     scrollIntent.navigate(latest)
     updateStickToBottom(latest)
@@ -361,24 +388,42 @@ export function useRoomTranscript({
   }, [paging])
 
   const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
-    setMessages((current) => mergeRoomMessages(liveMessages, current))
+    const restoredIds = restoredIdsRef.current
+    restoredIdsRef.current = null
+    // The first live page replaces the remembered rows outright, so a row deleted meanwhile does not linger.
+    setMessages((current) => mergeRoomMessages(liveMessages,
+      restoredIds ? current.filter((message) => !restoredIds.has(message.id)) : current))
     setRoom((current) => current.conversationId === conversationId && current.transcriptReady
       ? current
       : { conversationId, summary: current.conversationId === conversationId ? current.summary : undefined, transcriptReady: true })
   }, [conversationId])
 
   const applyRoomSummary = useCallback((summary: RoomSummary | null | undefined) => {
-    setRoom((current) => ({
-      conversationId,
-      summary,
-      transcriptReady: current.conversationId === conversationId && current.transcriptReady,
-    }))
+    setRoom((current) => {
+      const sameRoom = current.conversationId === conversationId
+      return {
+        conversationId,
+        // Keep a restored summary while the live one is still loading.
+        summary: summary === undefined && sameRoom ? current.summary : summary,
+        transcriptReady: sameRoom && current.transcriptReady,
+      }
+    })
+    if (summary === null) {
+      // This member can no longer read the room (removed, or the room was deleted): drop anything shown from the
+      // transcript cache, so its messages do not stay on screen behind the unavailable state.
+      restoredIdsRef.current = null
+      setMessages([])
+      setPaging({ hasMore: false, loadingMore: false, loadMore: () => undefined })
+    }
     const loadedTitle = summary?.title?.trim()
     if (loadedTitle) setConversationTitle((current) => mergeChatTitle(current ?? 'New thread', loadedTitle))
     if (summary !== undefined) setSurfacePlatform(summary?.externalPlatform ?? null)
   }, [conversationId])
 
+  const titleConversationRef = useRef(conversationId)
   useEffect(() => {
+    if (titleConversationRef.current === conversationId) return
+    titleConversationRef.current = conversationId
     queueMicrotask(() => setConversationTitle(null))
   }, [conversationId])
 
@@ -423,6 +468,26 @@ export function useRoomTranscript({
     releasePrependAnchorRef.current = null
     prependScrollRef.current = null
   }, [conversationId])
+
+  // Return a revisiting reader to the row they were reading, then let them take over.
+  const restoredScrollRef = useRef(restoredScroll)
+  useLayoutEffect(() => {
+    const node = listRef.current
+    const pending = restoredScrollRef.current
+    if (loading || !node || !pending?.anchorId) return
+    restoredScrollRef.current = null
+    if (!document.getElementById(roomMessageDomId(pending.anchorId))) {
+      queueMicrotask(() => setStickToBottom(true))
+      return
+    }
+    releasePrependAnchorRef.current?.()
+    releasePrependAnchorRef.current = holdRoomScrollAnchor(node, { messageId: pending.anchorId, offset: pending.offset })
+  }, [loading, setStickToBottom])
+
+  const scrollSaveFrameRef = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (scrollSaveFrameRef.current !== null) window.cancelAnimationFrame(scrollSaveFrameRef.current)
+  }, [])
 
   // Pin to latest after the initial transcript paint (and when stick-to-bottom).
   // Double rAF waits for layout of markdown/images so open-room no longer starts
@@ -473,11 +538,21 @@ export function useRoomTranscript({
     const node = listRef.current
     if (node) {
       const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight
-      updateStickToBottom(scrollIntent.onScroll(!turnScroll.anchored.current && distanceFromBottom <= 96))
+      const following = scrollIntent.onScroll(!turnScroll.anchored.current && distanceFromBottom <= 96)
+      updateStickToBottom(following)
       if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
+      if (cacheKey && scrollSaveFrameRef.current === null) {
+        scrollSaveFrameRef.current = window.requestAnimationFrame(() => {
+          scrollSaveFrameRef.current = null
+          const anchor = following ? null : captureRoomScrollAnchor(node)
+          transcriptCache.saveScroll(cacheKey, {
+            atBottom: following || !anchor, anchorId: anchor?.messageId ?? null, offset: anchor?.offset ?? 0,
+          })
+        })
+      }
     }
     void markVisibleRead(roomScrollReadKey(conversationId, messagesRef.current))
-  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent, turnScroll.anchored])
+  }, [cacheKey, conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead, scrollIntent, turnScroll.anchored])
 
   return {
     messages,
@@ -2260,6 +2335,7 @@ export function useDirectMessageRoom({
   ])
   const transcript = useRoomTranscript({
     conversationId,
+    workspaceId: activeWorkspaceId,
     rosterReady: roster.ready,
     anchorAgentTurns: conversationType === 'dm' && roster.participants.some(participant => participant.principalType === 'agent'),
 
@@ -2476,7 +2552,7 @@ export function useDirectMessageRoom({
     sendMessage,
     router,
   })
-  const messageCtx = buildRoomMessageContext({
+  const messageCtx = useStableRoomMessageContext(buildRoomMessageContext({
     isReadOnlyMessage,
     conversationId,
     conversationType,
@@ -2492,7 +2568,7 @@ export function useDirectMessageRoom({
     remoteControls: { ...remoteControls, stopAgentResponse: composerQueue.stopMessage },
     agentThreadTurns,
     onOpenAttachmentPreview,
-  })
+  }))
 
   return {
 

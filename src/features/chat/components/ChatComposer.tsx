@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { markComposerReady } from '../lib/realtime-baseline'
@@ -29,7 +29,8 @@ import { ReplyContextBar } from './chat-interface/ReplyContextBar'
 import { ChatEmptyHero, ChatEmptyState } from './ChatEmptyState'
 import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAttachments'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
-import { toComposerViewProps, type ChatComposerProps, type ComposerViewProps } from './ChatComposerTypes'
+import type { ChatComposerProps, ComposerViewProps } from './ChatComposerTypes'
+import { sameComposerViewProps, useComposerViewProps } from './chat-composer-memo'
 import { ComposerQueueTray, queueShortcutLabel } from './ChatComposerQueue'
 
 const DOCUMENT_FILE_ACCEPT = [
@@ -98,9 +99,17 @@ const TOOL_REQUEST_OPTIONS: Array<{
 
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
+/**
+ * Renders on every parent render so the forwarded handlers always call the latest ones (a new `onSend` that closes
+ * over fresh mentions, for example). Only the view below is memoized; it re-renders when the data changes.
+ */
 export function ChatComposer(props: ChatComposerProps) {
+  const viewProps = useComposerViewProps(props)
+  return <ChatComposerView viewProps={viewProps} />
+}
+
+const ChatComposerView = memo(function ChatComposerView({ viewProps }: { viewProps: ComposerViewProps }) {
   recordRender('ChatComposer')
-  const viewProps = toComposerViewProps(props)
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
     !viewProps.hasComposerText &&
@@ -123,7 +132,6 @@ export function ChatComposer(props: ChatComposerProps) {
           visible={viewProps.showCenteredEmptyChat}
           mode={viewProps.mode}
           onEmptySuggestion={viewProps.onEmptySuggestion}
-          onAutomateSuggestion={viewProps.onAutomateSuggestion}
         />
         <div
           data-chat-composer
@@ -147,7 +155,7 @@ export function ChatComposer(props: ChatComposerProps) {
       </div>
     </>
   )
-}
+}, (prev, next) => sameComposerViewProps(prev.viewProps, next.viewProps))
 
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
   useEffect(() => {
@@ -271,6 +279,7 @@ function ComposerControls(props: ComposerControlsProps) {
       </PromptInputTools>
       {props.queue?.running ? <QueueShortcutHint /> : null}
       {props.contextUsage ? <ContextMeter {...props.contextUsage} /> : null}
+      {props.composerControls}
       {props.modelControl}
       {props.queue?.running && props.hasComposerText ? (
         <DelayedTooltip label={`Steer now (↵) · queue (${queueShortcutLabel()}↵)`} side="top">
