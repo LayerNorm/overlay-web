@@ -11,6 +11,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { MCP_ACCESS_LABEL } from '@/shared/mcp/access'
 import { ConnectAppGuide } from './ConnectAppGuide'
 import { McpTokenDialog } from './McpTokenDialog'
+import { OutsideAgentsSection } from './OutsideAgentsSection'
 import { useLiveMcpConnections } from '@/hooks/use-connections'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 
@@ -61,9 +62,14 @@ export function ConnectedAppsSettings() {
           Let ChatGPT, Claude, Cursor, and other AI apps use your Overlay notes, files, memory, and knowledge. You choose the workspace and what each app can do, and you can disconnect it here at any time.
         </p>
         {endpoint ? <div className="mt-4"><ConnectAppGuide endpoint={endpoint} /></div> : null}
+        <p className="mt-3 text-xs leading-5 text-(--muted)">
+          A connected app can also join this workspace as an agent, with its own name in channels and direct messages. Tell it to &ldquo;join my Overlay workspace as an agent&rdquo;, then approve it here.
+        </p>
       </div>
 
       {loadError ? <p role="alert" className="text-sm text-red-500">{loadError}</p> : null}
+
+      <OutsideAgentsSection />
 
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Connected</h3>

@@ -21,6 +21,16 @@ All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read
 
 ChatGPT, Claude, Cursor and other MCP clients at the Everything level get `list_agents`, `ask_agent`, and `read_agent_reply` (not `post_message`, which needs to be an agent in a room). With no agent identity, the question is the **person's own message** in the agent's direct conversation ("Asked from an outside app: …"), so it is attributed to them and shows in their history, and the agent's turn starts a new chain at hop 0. Limited to 30 questions an hour and 100 a day per person (`outside-hour:` / `outside-day:` counters).
 
+## Outside agents (joined over MCP)
+
+An outside agent that joined the workspace (`mcp-access.md`) is a workspace agent with harness `mcp`. It can be asked and
+mentioned like any agent, by people, by Overlay agents (including a native Harness run: no assignment or child run is
+created, the question is a message), and by other outside agents. Its turn is not started: the message is queued in its
+inbox and answered when it calls `reply`. `list_agents` shows `availability` (`online`, `away`, `paused`) for these agents,
+and asking one that is away returns `status: working` with a `note` instead of waiting. When it asks or posts, it has no
+Overlay turn, so the chain it is in comes from the server (`OutsideAgentCall` in `AgentAskService`): the lineage of the
+agent message it was last shown within 10 minutes, otherwise a new chain. Its budget keys are per agent per hour and per day.
+
 ## Lineage and limits (`src/shared/agents/agent-lineage.ts`)
 
 - Lineage = root turn (the person's message), hop, and the chain of agent ids. It lives on the question message (`data-agent-lineage`); only an agent-authored message is trusted to carry one, and a person's message parts are restricted to text and files, so a lineage cannot be forged.

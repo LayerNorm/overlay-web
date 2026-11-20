@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useConvexAuth, useQuery } from 'convex/react'
 import type { McpServerSummary } from '@overlay/app-core'
-import type { AgentEnvironmentResource, McpConnectionResource } from '@overlay/api-client'
+import type { AgentEnvironmentResource, McpAgentResource, McpConnectionResource } from '@overlay/api-client'
 import { effectiveAgentEnvironmentStatus } from '@/shared/agents/environment-status'
 import type { Computer } from '@overlay/workspace-contracts'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -33,6 +33,12 @@ export function useLiveMcpServers(view: PanelScope | undefined): Array<McpServer
 export function useLiveMcpConnections(): McpConnectionResource[] | null | undefined {
   const signedIn = useSignedIn()
   return useQuery(api.integrations.mcpBrowse.connections, signedIn ? {} : 'skip') as McpConnectionResource[] | null | undefined
+}
+
+/** Outside agents that joined, or asked to join, the workspace over MCP, live. Undefined while loading, null without access. */
+export function useLiveOutsideAgents(): { canApprove: boolean; agents: McpAgentResource[] } | null | undefined {
+  const workspaceId = useConnectionWorkspace()
+  return useQuery(api.integrations.mcpBrowse.outsideAgents, workspaceId ? { workspaceId } : 'skip') as { canApprove: boolean; agents: McpAgentResource[] } | null | undefined
 }
 
 /** Computers visible in the workspace, live through provisioning, start, stop and control. Undefined while loading. */

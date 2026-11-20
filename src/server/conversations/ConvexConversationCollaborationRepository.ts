@@ -365,7 +365,9 @@ implements ConversationCollaborationRepository {
   }
 
   async readAgentAssignmentResult(args: { actorUserId: string; workspaceId: string; conversationId: string; turnId: string }) {
-    return await convex.query<AssignmentResultView | null>('collaboration/assignmentResults:read', { ...args,
+    // Named fields only: callers pass wider objects (a reply handle also names the agent), and Convex rejects extras.
+    return await convex.query<AssignmentResultView | null>('collaboration/assignmentResults:read', {
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId, turnId: args.turnId,
       serverSecret: this.serverSecret }, { throwOnError: true })
   }
 

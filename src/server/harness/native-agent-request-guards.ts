@@ -40,13 +40,15 @@ export async function assertNativeAskTargetAccess(
   actorUserId: string,
   workspaceId: string,
   target: string,
-): Promise<void> {
+): Promise<{ outsideAgent: boolean }> {
   const directory = await server.workspaceAgentService.list({ actorUserId, workspaceId })
   const normalizedTarget = target.trim().toLocaleLowerCase()
   const targetAgent = directory.agents.find(agent => agent.id === target.trim()
     || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
-  if (!targetAgent) return
-  if (targetAgent.harness !== 'overlay') {
+  if (!targetAgent) return { outsideAgent: false }
+  // An outside agent (joined over MCP) is asked through its inbox; other runtimes have no path from a native run.
+  if (targetAgent.harness !== 'overlay' && targetAgent.harness !== 'mcp') {
     throw new FatalError("External agents can't be asked from this run yet.")
   }
+  return { outsideAgent: targetAgent.harness === 'mcp' }
 }
