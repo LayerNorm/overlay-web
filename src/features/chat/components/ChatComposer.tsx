@@ -9,8 +9,10 @@ import {
   Check,
   FileText,
   Globe2,
+  ArrowUp,
+  Command,
+  CornerDownLeft,
   Image as ImageIcon,
-  ListEnd,
   MousePointerClick,
   Plus,
   Video,
@@ -29,7 +31,7 @@ import { AttachmentPreviewTray, useComposerAlertToasts } from './ChatComposerAtt
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { ChatComposerProps, ComposerViewProps } from './ChatComposerTypes'
 import { sameComposerViewProps, useComposerViewProps } from './chat-composer-memo'
-import { ComposerQueueTray, steerShortcutLabel } from './ChatComposerQueue'
+import { ComposerQueueTray, queueShortcutLabel } from './ChatComposerQueue'
 
 const DOCUMENT_FILE_ACCEPT = [
   '.pdf',
@@ -168,8 +170,8 @@ function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean })
       event.preventDefault()
       if (props.queue?.running) {
         if (!props.hasComposerText) return
-        if (event.metaKey || event.ctrlKey) props.queue.onSteerDraft()
-        else props.queue.onQueueDraft()
+        if (event.metaKey || event.ctrlKey) props.queue.onQueueDraft()
+        else props.queue.onSteerDraft()
         return
       }
       if (!props.isSendBlocked && props.hasComposerText) void props.onSend()
@@ -280,9 +282,9 @@ function ComposerControls(props: ComposerControlsProps) {
       {props.composerControls}
       {props.modelControl}
       {props.queue?.running && props.hasComposerText ? (
-        <DelayedTooltip label={`Queue (↵) · steer now (${steerShortcutLabel()}↵)`} side="top">
-          <Button variant="primary" size="icon" type="button" aria-label="Queue message" className="shrink-0" onClick={props.queue.onQueueDraft}>
-            <ListEnd size={17} strokeWidth={2} />
+        <DelayedTooltip label={`Steer now (↵) · queue (${queueShortcutLabel()}↵)`} side="top">
+          <Button variant="primary" size="icon" type="button" aria-label="Steer now" className="shrink-0" onClick={props.queue.onSteerDraft}>
+            <ArrowUp size={17} strokeWidth={2} />
           </Button>
         </DelayedTooltip>
       ) : (
@@ -300,14 +302,29 @@ function ComposerControls(props: ComposerControlsProps) {
 }
 
 function QueueShortcutHint() {
+  const modifier = queueShortcutLabel()
   return (
-    <span className="mr-1 flex shrink-0 items-center gap-1 text-[11px] text-(--muted-light) max-sm:hidden" aria-hidden>
-      <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">↵</kbd>
-      queue
-      <span className="px-0.5">·</span>
-      <kbd className="rounded border border-(--border) px-1 font-sans text-[10px] text-(--muted)">{steerShortcutLabel()}↵</kbd>
-      steer
+    <span className="mr-1.5 flex shrink-0 items-center gap-3 text-[11px] text-(--muted-light) max-sm:hidden" aria-hidden>
+      <span className="flex items-center gap-1.5">
+        <ShortcutKey><CornerDownLeft size={11} strokeWidth={2} /></ShortcutKey>
+        steer
+      </span>
+      <span className="flex items-center gap-1.5">
+        <ShortcutKey>
+          {modifier === '⌘' ? <Command size={10} strokeWidth={2} /> : <span className="text-[10px] leading-none">Ctrl</span>}
+          <CornerDownLeft size={11} strokeWidth={2} />
+        </ShortcutKey>
+        queue
+      </span>
     </span>
+  )
+}
+
+function ShortcutKey({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center gap-0.5 rounded-[5px] bg-(--surface-subtle) px-1 font-sans text-(--muted)">
+      {children}
+    </kbd>
   )
 }
 
