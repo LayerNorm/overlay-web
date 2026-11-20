@@ -19,7 +19,7 @@
     "@overlay/ui": "file:../../packages/overlay-ui",
     "@workos-inc/node": "^8.7.0",
     "lucide-react": "^0.575.0",
-    "next": "16.4.1",
+    "next": "16.4.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1"
