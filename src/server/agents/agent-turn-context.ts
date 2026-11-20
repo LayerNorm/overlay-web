@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { MCP_AGENT_MODEL_ID, OUTSIDE_AGENT_AUTHOR_NOTE } from '@/shared/mcp/agent-network'
 import type { ModelMessage } from 'ai'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
@@ -21,6 +22,8 @@ export type AgentRoomMessage = {
   authorPrincipalId?: string
   content: string
   deletedAt?: number
+  /** `mcp:external` marks a message an outside agent wrote. */
+  modelId?: string
   status?: 'generating' | 'completed' | 'error'
 }
 
@@ -257,6 +260,7 @@ export function buildAgentMessages(args: {
       const author = (message.authorPrincipalId
         ? namesByPrincipalId.get(message.authorPrincipalId)
         : undefined) ?? fallback
-      return { role: 'user' as const, content: `${author}: ${message.content}` }
+      const outside = message.authorKind === 'agent' && message.modelId === MCP_AGENT_MODEL_ID
+      return { role: 'user' as const, content: `${author}${outside ? ` ${OUTSIDE_AGENT_AUTHOR_NOTE}` : ''}: ${message.content}` }
     })
 }

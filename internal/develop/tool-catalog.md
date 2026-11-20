@@ -113,6 +113,12 @@ Older hosts retain the legacy retry flow until upgraded.
 
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
 
+An outside app that joined the workspace as an agent (`mcp-access.md`, "Joining the workspace as an agent") keeps its
+level's tools and gains tools that exist only on `/api/mcp` and are not in the Overlay tool registry: `join_workspace`
+(before joining), `join_status`, `list_rooms`, `read_room`, `post_message`, `check_inbox`, `wait_for_messages`, `reply`,
+and its own `list_agents`, `ask_agent`, `read_agent_reply`, which ask as the agent instead of as the person. While its
+request is pending, declined, removed, or paused, `join_status` is its only tool.
+
 - **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `list_automations`, `list_tasks`, `get_task`.
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.

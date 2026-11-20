@@ -767,6 +767,15 @@ export const webApiBoundaryDefinitions = [
     schema: { json: z.object({ action: z.enum(['list', 'ask', 'post', 'read']) }).passthrough(), response: UnknownResponse },
     summary: 'Agents asking agents: list who can be asked, ask one, or read a reply that was still being written', tag: 'Agents',
   },
+  { method: 'GET', path: '/api/v1/mcp/agents', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List outside agents that joined, or asked to join, the workspace over MCP', tag: 'MCP access', publicReference: false },
+  {
+    method: 'POST', path: '/api/v1/mcp/agents',
+    schema: {
+      json: z.object({ id: z.string().min(1).max(64), action: z.enum(['approve', 'decline', 'pause', 'resume', 'remove']) }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Approve, decline, pause, resume, or remove an outside agent', tag: 'MCP access', publicReference: false,
+  },
   {
     method: 'POST', path: '/api/v1/mcp/authorize',
     schema: {

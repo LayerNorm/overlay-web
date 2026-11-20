@@ -62,6 +62,8 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { McpAccessService } from '@/server/mcp/McpAccessService'
+import { McpAgentNetworkService } from '@/server/mcp/agent-network/McpAgentNetworkService'
+import { ConvexMcpAgentNetworkRepository } from '@/server/mcp/agent-network/McpAgentNetworkRepository'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { ConvexLocalToolCallRepository, LocalComputerService } from '@/server/computers/local/LocalComputerService'
 import { ComputerBilling } from '@/server/computers/ComputerBilling'
@@ -118,6 +120,8 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
   mcpAccess: McpAccessService
+  /** Outside agents that joined a workspace over MCP: requests, approval, rooms, and their inbox. */
+  mcpAgentNetwork: McpAgentNetworkService
   agentAsks: AgentAskService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
@@ -281,13 +285,24 @@ export function createOverlayServerContext(
     repository: new ConvexLocalToolCallRepository(),
     listEnvironments: (input) => appData.repositories.connectedAgents.listEnvironments(input),
   })
+  // Declared before the services it calls: it reads `agentAsks` lazily, and `agentAsks` reads its availability.
+  const mcpAgentNetwork: McpAgentNetworkService = new McpAgentNetworkService({
+    network: new ConvexMcpAgentNetworkRepository(),
+    agents: workspaceAgentRepository,
+    workspaces: workspaceService,
+    collaboration: appData.repositories.conversationCollaboration,
+    asks: () => agentAsks,
+    audit: auditService,
+  })
   const mcpAccess = new McpAccessService({
     grants: appData.repositories.mcpGrants,
     workspaces: workspaceService,
     audit: auditService,
+    onRevoked: (grantId) => mcpAgentNetwork.onGrantRevoked(grantId),
   })
-  const agentAsks = new AgentAskService({
+  const agentAsks: AgentAskService = new AgentAskService({
     collaboration: appData.repositories.conversationCollaboration,
+    availability: (_workspaceId, agentIds) => mcpAgentNetwork.availability(agentIds),
     getCallerRun: ({ actorUserId, conversationId, turnId, agentId }) => appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(conversationId),
       userId: actorUserId,
@@ -308,7 +323,10 @@ export function createOverlayServerContext(
       const { startWorkspaceAgentTurns } = await import('@/server/agents/start-agent-turns')
       // No recalled memory for a delegated question: the answer should come from the question, not from whatever the person said elsewhere.
       const invocations = await startWorkspaceAgentTurns({ ...args, memoryEnabled: false, extractHumanMemory: false })
-      return invocations.map((invocation) => ({ agentId: invocation.agentId, turnId: invocation.turnId }))
+      return invocations.map((invocation) => ({
+        agentId: invocation.agentId, turnId: invocation.turnId,
+        ...(invocation.availability ? { availability: invocation.availability } : {}),
+      }))
     },
   })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
@@ -383,6 +401,7 @@ export function createOverlayServerContext(
     workspaceAgentService,
     connectedAgentControlPlane,
     mcpAccess,
+    mcpAgentNetwork,
     agentAsks,
     managedAgentSandboxBilling,
     computerService,

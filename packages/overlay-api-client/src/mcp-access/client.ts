@@ -13,6 +13,18 @@ export type McpConnectionResource = {
   expiresAt: number | null
 }
 
+export type McpAgentResource = {
+  id: string
+  name: string
+  description: string
+  status: 'pending' | 'approved'
+  paused: boolean
+  ownedByYou: boolean
+  agentId: string | null
+  requestedAt: number
+  lastSeenAt: number | null
+}
+
 /** Other AI apps (ChatGPT, Claude, Cursor, local agents) connected to Overlay's MCP server. */
 export class McpAccessClient {
   constructor(private readonly http: HttpContext) {}
@@ -30,6 +42,11 @@ export class McpAccessClient {
 
   revoke(id: string, init?: RequestInit) {
     return this.http.json<{ ok: true }>(`/api/v1/mcp/connections?id=${encodeURIComponent(id)}`, { ...init, method: 'DELETE' })
+  }
+
+  /** Approve or decline a request to join, or pause, resume, or remove an outside agent. The list itself is a live Convex query. */
+  updateAgent(input: { id: string; action: 'approve' | 'decline' | 'pause' | 'resume' | 'remove' }, init?: RequestInit) {
+    return this.http.json<{ ok: true }>('/api/v1/mcp/agents', this.http.jsonRequest(input, { ...init, method: 'POST' }))
   }
 
   describeClient(input: { clientId: string; redirectUri: string }, init?: RequestInit) {

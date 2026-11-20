@@ -296,6 +296,56 @@ export default defineSchema({
     .index('by_userId', ['userId'])
     .index('by_codeId', ['codeId']),
 
+  // An outside agent (ChatGPT, Claude Code, Codex…) asking to be a member of a workspace over MCP.
+  // One row per grant. Nothing is visible to the workspace until an admin approves it, which
+  // creates the agent row (harness `mcp`) named here.
+  mcpAgentJoins: defineTable({
+    grantId: v.string(),
+    userId: v.string(),
+    workspaceId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(v.literal('pending'), v.literal('approved'), v.literal('declined'), v.literal('removed')),
+    agentId: v.optional(v.string()),
+    principalId: v.optional(v.string()),
+    pausedAt: v.optional(v.number()),
+    requestedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByUserId: v.optional(v.string()),
+    // Presence: the last MCP request from this agent, written at most every 20 seconds.
+    lastSeenAt: v.optional(v.number()),
+    // When the owner was last told a message is waiting for their agent, so they are told at most once an hour.
+    lastAwayNoticeAt: v.optional(v.number()),
+  })
+    .index('by_grantId', ['grantId'])
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_agentId', ['agentId']),
+
+  // Messages waiting for a joined MCP agent: a mention, a direct message, or another agent's question.
+  // MCP cannot start a turn, so the agent collects these itself (check_inbox / wait_for_messages).
+  mcpAgentInbox: defineTable({
+    agentId: v.string(),
+    workspaceId: v.string(),
+    conversationId: v.string(),
+    messageId: v.string(),
+    // The turn the agent's reply is written under, so the asker's `read_agent_reply` finds it.
+    turnId: v.string(),
+    // The person the message was sent for; the reply is posted with their access to the room.
+    actorUserId: v.string(),
+    fromName: v.string(),
+    fromKind: v.union(v.literal('person'), v.literal('agent')),
+    text: v.string(),
+    // Agent-to-agent chain this message belongs to (see agent-lineage.ts); absent when a person wrote it.
+    lineage: v.optional(v.any()),
+    threadRootMessageId: v.optional(v.string()),
+    createdAt: v.number(),
+    deliveredAt: v.optional(v.number()),
+    repliedAt: v.optional(v.number()),
+  })
+    .index('by_agentId_createdAt', ['agentId', 'createdAt'])
+    .index('by_agentId_turnId', ['agentId', 'turnId']),
+
   // Where an Overlay Cloud agent is in starting its machine, so the dialog and the agent
   // page can show progress after the request that started it has returned.
   cloudAgentProvisions: defineTable({
@@ -2489,6 +2539,8 @@ export default defineSchema({
       v.literal('opencode'),
       v.literal('pi'),
       v.literal('hermes'),
+      // An outside agent that joined over MCP; it runs on its own machine and collects messages from its inbox.
+      v.literal('mcp'),
     ),
     modelId: v.string(),
     reasoning: v.optional(v.union(

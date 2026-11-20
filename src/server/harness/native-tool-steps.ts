@@ -326,8 +326,18 @@ export async function dispatchNativeHarnessAgentRequest(
     prompt: string
     workspaceId: string
   }) => {
-    const invocations = await resolveWorkspaceAgentInvocations(args)
-    const started: Array<{ agentId: string; turnId: string }> = []
+    const resolved = await resolveWorkspaceAgentInvocations(args)
+    const started: Array<{ agentId: string; turnId: string; availability?: 'online' | 'away' }> = []
+    // An outside agent (joined over MCP) is not a child run: its message waits in its inbox until it collects it.
+    const outside = resolved.filter(invocation => invocation.harness === 'mcp')
+    if (outside.length > 0) {
+      started.push(...await server.mcpAgentNetwork.deliver({
+        actorUserId: access.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+        messageId: args.messageId, prompt: args.prompt,
+        targets: outside.map(invocation => ({ agentId: invocation.agentId, turnId: invocation.turnId })),
+      }))
+    }
+    const invocations = resolved.filter(invocation => invocation.harness !== 'mcp')
     for (const invocation of invocations) {
       const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({
         actorUserId: access.actorUserId,
@@ -450,7 +460,14 @@ export async function dispatchNativeHarnessAgentRequest(
       || (values.expectedAttemptId !== undefined && typeof values.expectedAttemptId !== 'string')) throw new FatalError('Invalid assignment revision input.')
     const target = values.agent
     const message = values.message
-    await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target)
+    const { outsideAgent } = await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target)
+    if (outsideAgent) {
+      // No assignment or child run: the question is a message the outside agent answers when it is connected.
+      return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+        ...await server.agentAsks.ask({ ...actor, target, message, wait: true }),
+        childRunIds,
+      }))
+    }
     const parent = await loadNativeParentRun(repository, access)
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
       ...await server.agentAsks.ask({

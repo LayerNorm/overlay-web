@@ -165,6 +165,7 @@ import type * as lib_workDependencies from "../lib/workDependencies.js";
 import type * as lib_workItems from "../lib/workItems.js";
 import type * as lib_workspaceHandles from "../lib/workspaceHandles.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
+import type * as mcp_agentNetwork from "../mcp/agentNetwork.js";
 import type * as mcp_grants from "../mcp/grants.js";
 import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
 import type * as migrations_backfillAuditWorkspaceIds from "../migrations/backfillAuditWorkspaceIds.js";
@@ -364,6 +365,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workItems": typeof lib_workItems;
   "lib/workspaceHandles": typeof lib_workspaceHandles;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
+  "mcp/agentNetwork": typeof mcp_agentNetwork;
   "mcp/grants": typeof mcp_grants;
   "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;
   "migrations/backfillAuditWorkspaceIds": typeof migrations_backfillAuditWorkspaceIds;
