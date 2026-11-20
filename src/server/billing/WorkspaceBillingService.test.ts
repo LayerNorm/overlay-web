@@ -30,6 +30,40 @@ test('workspace billing checkout binds payment to the account while retaining th
   assert.equal(calls[0]?.workspaceId, 'workspace_1')
 })
 
+test('a workspace with a plan cannot start a second subscription checkout', async () => {
+  let providerCalls = 0
+  const service = fixture({
+    role: 'owner',
+    provider: provider({
+      async createCheckoutSession() {
+        providerCalls += 1
+        return { url: 'https://stripe.test/checkout' }
+      },
+    }),
+    repository: repository({
+      async getBillingAccountSubscriptionByServer() { return { planKind: 'paid', status: 'active' } as never },
+    }),
+  })
+  await assert.rejects(
+    service.createSubscriptionCheckout({ actorUserId: 'owner_1', workspaceId: 'workspace_1', planAmountCents: 1000, topUpAmountCents: 2000 }),
+    (error: unknown) => error instanceof BillingServiceError && error.statusCode === 409,
+  )
+  assert.equal(providerCalls, 0)
+})
+
+test('a canceled plan can be started again', async () => {
+  const service = fixture({
+    role: 'owner',
+    repository: repository({
+      async getBillingAccountSubscriptionByServer() { return { planKind: 'paid', status: 'canceled' } as never },
+    }),
+  })
+  assert.deepEqual(
+    await service.createSubscriptionCheckout({ actorUserId: 'owner_1', workspaceId: 'workspace_1', planAmountCents: 1000, topUpAmountCents: 800 }),
+    { url: 'https://stripe.test/checkout' },
+  )
+})
+
 test('workspace billing rejects members before any Stripe operation', async () => {
   let providerCalls = 0
   const service = fixture({
