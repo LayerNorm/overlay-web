@@ -73,6 +73,8 @@ export class McpAccessService {
     grants: McpGrantRepository
     workspaces: WorkspaceAccessCheck
     audit: Pick<AuditService, 'record'>
+    /** A revoked grant takes the agent it joined a workspace as with it. */
+    onRevoked?: (grantId: string) => Promise<void>
     now?: () => number
   }) {}
 
@@ -167,7 +169,10 @@ export class McpAccessService {
 
   async revoke(userId: string, grantId: string): Promise<boolean> {
     const revoked = await this.dependencies.grants.revoke({ grantId, userId, now: this.now() })
-    if (revoked) await this.audit('mcp.grant.revoked', userId, grantId, {})
+    if (revoked) {
+      await this.audit('mcp.grant.revoked', userId, grantId, {})
+      await this.dependencies.onRevoked?.(grantId).catch((_error) => undefined)
+    }
     return revoked
   }
 

@@ -166,6 +166,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/github/connect`
 - `GET /api/v1/github/repositories`
 - `GET, POST /api/v1/integrations`
+- `GET, POST /api/v1/mcp/agents`
 - `POST /api/v1/mcp/authorize`
 - `GET /api/v1/mcp/client`
 - `DELETE, GET, POST /api/v1/mcp/connections`

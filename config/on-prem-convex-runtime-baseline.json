@@ -128,6 +128,7 @@
     "src/app/api/v1/integrations/route.ts",
     "src/app/api/v1/knowledge/search/route.ts",
     "src/app/api/v1/link-preview/route.ts",
+    "src/app/api/v1/mcp/agents/route.ts",
     "src/app/api/v1/mcp/authorize/route.ts",
     "src/app/api/v1/mcp/client/route.ts",
     "src/app/api/v1/mcp/connections/route.ts",

@@ -409,6 +409,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), POST: authenticated(), PATCH: authenticated() },
   },
   // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
+  // Approval is limited to owners and admins inside McpAgentNetworkService, which also reads the workspace role.
+  { path: '/api/v1/mcp/agents', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
   { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },

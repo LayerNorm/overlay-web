@@ -99,6 +99,10 @@ export type WorkspaceAgentInvocation = {
   modelId: string
   effort?: string
   turnId: string
+  /** `mcp` for an outside agent: its message is queued for it to collect instead of starting a run. */
+  harness?: string
+  /** Set once an outside agent's message is queued: whether it is connected to collect it now. */
+  availability?: 'online' | 'away'
 }
 
 
@@ -273,6 +277,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
     modelId: nativeAgentModelId(agent.modelId),
     ...(agent.effort ? { effort: agent.effort } : {}),
     turnId: `agent_${args.messageId}_${agent.id}`,
+    harness: agent.harness,
   }))
 }
 

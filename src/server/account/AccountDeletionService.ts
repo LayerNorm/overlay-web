@@ -44,6 +44,10 @@ export class AccountDeletionService {
     await this.ctx.appData.repositories.mcpGrants.deleteAllForUser({ userId: args.userId }).catch((error) => {
       logger.error(`[account/delete] MCP grant cleanup failed for ${args.userId}:`, error instanceof Error ? error.name : 'unknown')
     })
+    // The agents those connections joined workspaces as can no longer be reached or act.
+    await this.ctx.mcpAgentNetwork.onAccountDeleted(args.userId).catch((error) => {
+      logger.error(`[account/delete] MCP agent cleanup failed for ${args.userId}:`, error instanceof Error ? error.name : 'unknown')
+    })
     // Before the rows that point at them are gone: a secret nothing references can never be removed.
     await this.deleteStoredCredentials(args.userId)
 
