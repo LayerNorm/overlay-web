@@ -4,6 +4,17 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { HarnessModelReference } from './secure-model'
 import { preserveHarnessSDKFailure } from './execution-failure'
 import { recordPublicStreamMetric } from './public-stream-metrics'
+import { retryWithoutToolImages } from './image-rejection-retry'
+import { logger } from '@/server/observability/logger'
+
+function logImageRetry(reference: HarnessModelReference) {
+  return (detail: { removed: number; status: unknown }) => {
+    logger.warn('[harness] model request rejected; retrying without tool images', {
+      modelId: reference.modelId, removedImages: detail.removed, status: detail.status,
+      runId: (reference.personal ?? reference.native)?.access.runId,
+    })
+  }
+}
 
 async function model(reference: HarnessModelReference) {
   const provider = await getLanguageModel(reference.modelId, undefined, reference.credentialOwnerId, {
@@ -59,7 +70,7 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
   }
   let result: Awaited<ReturnType<Awaited<ReturnType<typeof model>>['doStream']>>
   try {
-    result = await selectedModel.doStream(options)
+    result = await retryWithoutToolImages(options, next => selectedModel.doStream(next), logImageRetry(reference))
   } catch (error) {
     await recordConfirmedRejection(reference, error)
     throw preserveHarnessSDKFailure(error)
@@ -79,7 +90,8 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
 
 export async function secureModelDoGenerate(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
   try {
-    return await (await model(reference)).doGenerate(options)
+    const selectedModel = await model(reference)
+    return await retryWithoutToolImages(options, next => selectedModel.doGenerate(next), logImageRetry(reference))
   } catch (error) {
     await recordConfirmedRejection(reference, error)
     throw preserveHarnessSDKFailure(error)

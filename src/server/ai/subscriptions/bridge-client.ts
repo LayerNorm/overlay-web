@@ -1,4 +1,5 @@
 import 'server-only'
+import { logger } from '@/server/observability/logger'
 
 export type BridgeCredential = {
   backend: 'cliproxyapi'
@@ -241,6 +242,12 @@ export class SubscriptionBridgeClient {
         code = body.error.code
       }
     } catch (_error) { /* use the generic safe error */ }
+    // The caller only ever sees a generic message, so record what the bridge actually answered.
+    logger.warn('[subscription-bridge] request failed', {
+      status: response.status,
+      bridgeCode: typeof code === 'string' && /^[a-z_]{1,64}$/.test(code) ? code : undefined,
+      responseBytes: bytes.byteLength,
+    })
     if (typeof code === 'string' && ['reconnect_required', 'model_unavailable',
       'rate_limited', 'provider_unavailable', 'temporary_failure', 'invalid_callback'].includes(code)) {
       const messages: Record<string, string> = {

@@ -193,6 +193,16 @@ call. Audio, video, other files and hosted tools are still refused. Before
 validation, the subscription model replaces each non-image file part (user
 attachments, assistant files and tool results such as a fetched PDF) with a short
 note telling the model it could not see that file (`unsupported-files-prompt.ts`).
+
+For every model, not only subscriptions, the harness retries a request the provider
+refused as invalid or too large (HTTP 400 or 413) once without the images tools
+returned, each replaced by a note saying it was removed
+(`src/server/harness/image-rejection-retry.ts`). A refused screenshot therefore no
+longer ends the run. Images the person attached are never removed. The retry repeats
+on each later call while the image stays in the history. A bridge failure Overlay
+reports only as a generic 400 is logged with its real HTTP status and bridge code
+(`[subscription-bridge] request failed`), and a request Overlay refuses itself logs
+its fixed validation message (`[subscription] request refused before dispatch`).
 Otherwise one such file in the history would make every later request in the run
 fail validation. A request body may be up to 32 MiB; the bridge accepts 33 MiB to
 leave room for the credential envelope.
