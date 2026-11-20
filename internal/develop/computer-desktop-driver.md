@@ -18,7 +18,7 @@ The browser driver inspects referenced elements and pixel-click targets before c
 
 Screenshots default to 1280 pixels wide. Input coordinates are expressed in the latest screenshot's space and are scaled against the display geometry reported by `xdotool`, using the same maximum width. This keeps coordinate conversion deterministic without server-side display state.
 
-Desktop input actions serialize inside the sandbox with `flock` on `/tmp/overlay-computer/input.lock`. Lock acquisition is bounded and returns `desktop_busy` when another action holds the lock. The server installs a versioned driver under `/tmp/overlay-computer` only when its marker check fails. If input, screenshot, or browser tools are missing and `apt-get` is available, it makes one bounded best-effort `sudo -n apt-get install -y xdotool imagemagick chromium` attempt; missing dependencies remain an explicit `desktop_unsupported` result.
+Desktop input actions serialize inside the sandbox with `flock` on `/tmp/overlay-computer/input.lock`. Lock acquisition is bounded and returns `desktop_busy` when another action holds the lock. The server installs a versioned driver under `/tmp/overlay-computer` only when its marker check fails. If input, screenshot, or browser tools are missing and `apt-get` is available, it makes one bounded best-effort `sudo -n apt-get install -y xdotool imagemagick chromium` attempt; missing dependencies remain an explicit `desktop_unsupported` result. When the driver's `capabilities` check itself fails, the error says why (`desktop_driver_failed` with the stage, exit code and output tail in `detail`); only exit 127 with `python3` in stderr is reported as missing Python 3.
 
 ## Browser control
 

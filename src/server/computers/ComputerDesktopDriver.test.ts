@@ -97,6 +97,75 @@ test('browser snapshot is formatted as text with refs and bounds', async () => {
   }])
 })
 
+test('a failing driver check reports its exit code and error output', async () => {
+  const computer = probeFailingComputer({
+    exitCode: 1,
+    stdout: '',
+    stderr: 'Traceback (most recent call last):\nPermissionError: [Errno 13] Permission denied',
+  })
+  await assert.rejects(
+    run(computer.instance, 'screenshot'),
+    (error: unknown) => error instanceof ComputerDesktopDriverError
+      && error.code === 'desktop_driver_failed'
+      && error.message === 'The desktop driver did not start: the check exited with code 1: PermissionError: [Errno 13] Permission denied.'
+      && error.missing.length === 0
+      && error.detail?.exitCode === 1
+      && String(error.detail?.stderr).includes('Traceback'),
+  )
+  assert.equal(computer.writes.length, 1)
+})
+
+test('a driver check that times out says so', async () => {
+  const computer = probeFailingComputer({ exitCode: 124, stdout: '', stderr: 'command timed out' })
+  await assert.rejects(
+    run(computer.instance, 'screenshot'),
+    (error: unknown) => error instanceof ComputerDesktopDriverError
+      && error.code === 'desktop_driver_failed'
+      && error.message === 'The desktop driver did not start: the check timed out.',
+  )
+})
+
+test('only a missing python3 is reported as missing Python', async () => {
+  const computer = probeFailingComputer({ exitCode: 127, stdout: '', stderr: 'sh: 1: exec: python3: not found' })
+  await assert.rejects(
+    run(computer.instance, 'screenshot'),
+    (error: unknown) => error instanceof ComputerDesktopDriverError
+      && error.code === 'desktop_unsupported'
+      && error.message === 'Python 3 is required to run the desktop driver.'
+      && error.missing.includes('python3'),
+  )
+})
+
+test('an unexpected driver check output is not blamed on Python', async () => {
+  const computer = probeFailingComputer({ exitCode: 0, stdout: 'not json', stderr: '' })
+  await assert.rejects(
+    run(computer.instance, 'screenshot'),
+    (error: unknown) => error instanceof ComputerDesktopDriverError
+      && error.code === 'desktop_driver_failed'
+      && error.message === 'The desktop driver did not start: the check returned unexpected output.'
+      && error.detail?.stdout === 'not json',
+  )
+})
+
+function probeFailingComputer(result: { exitCode: number; stdout: string; stderr: string }) {
+  const writes: Array<{ path: string; contents: Uint8Array; mode?: number }> = []
+  const instance = {
+    provider: 'box',
+    reference: 'desktop-test',
+    name: 'desktop-test',
+    capabilities: { desktop: true },
+    writeFiles: async (files: typeof writes) => { writes.push(...files) },
+    readFile: async () => null,
+    runCommand: async () => ({
+      id: 'desktop-command',
+      events: async function* () {},
+      wait: async () => ({ commandId: 'desktop-command', ...result, startedAt: 0, endedAt: 1 }),
+      cancel: async () => {},
+    }),
+  } as unknown as SandboxInstance
+  return { instance, writes }
+}
+
 function fakeComputer(desktop = true, browserUnsupported = false) {
   const writes: Array<{ path: string; contents: Uint8Array; mode?: number }> = []
   const commands: SandboxCommandRequest[] = []
