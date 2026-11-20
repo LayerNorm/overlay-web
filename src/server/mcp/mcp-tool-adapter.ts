@@ -17,6 +17,8 @@ import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 export const HARNESS_WITHHELD_TOOL_IDS: ReadonlySet<string> = new Set([
   ...COMPUTER_TOOL_IDS,
   'present_generated_ui',
+  // Resolving an assignment needs the Chief's own native Harness run; anywhere else the tool can only refuse.
+  'resolve_assignment',
 ])
 
 export const MCP_APPROVAL_REFUSAL =
