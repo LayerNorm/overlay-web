@@ -10,6 +10,7 @@ import {
   BellOff,
   Hash,
   MoreHorizontal,
+  PanelRight,
   Pin,
   Share2,
   Slack,
@@ -31,6 +32,9 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { RoomViewTabs, isRoomView, type RoomViewKind } from './collaboration/RoomViewTabs'
+import { AssignmentsPanel, useAssignmentCount } from './AssignmentsPanel'
+import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { sameRoomMessageRowProps, type RoomMessageRowProps } from './collaboration/room-message-row'
 import {
@@ -173,7 +177,7 @@ export function RoomHeaderLeading({
 
 export function RoomHeaderActions({
   vm,
-  roster,
+  roomSidebar,
   collab,
   roomActions,
 
@@ -186,7 +190,8 @@ export function RoomHeaderActions({
   onShare,
 }: {
   vm: ReturnType<typeof useRoomViewModels>
-  roster: ReturnType<typeof useRoomRoster>
+  /** False when the host brings its own right sidebar, as agent threads do. */
+  roomSidebar: boolean
   collab: ReturnType<typeof useRoomCollaboration>
   roomActions: ReturnType<typeof useRoomActions>
 
@@ -232,6 +237,17 @@ export function RoomHeaderActions({
             }}
           />
         ) : null}
+        {/* Agent threads have their own panel and no sidebar button, so People stays reachable from here. */}
+        {!roomSidebar ? (
+          <MenuButton
+            icon={UsersRound}
+            label="People"
+            onClick={() => {
+              setMenuOpen(false)
+              setRoomPanel((current) => (current === 'people' ? null : 'people'))
+            }}
+          />
+        ) : null}
         {collab.pins.length > 0 ? (
           <MenuButton
             icon={Pin}
@@ -272,19 +288,20 @@ export function RoomHeaderActions({
           onClick={onArchive}
         />
       </FloatingMenu>
-      <Button
+      {roomSidebar ? <Button
         variant="ghost"
         type="button"
-        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
-        aria-pressed={roomPanel === 'people'}
-        title="People in this room"
-        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
+        size="icon"
+        onClick={() => setRoomPanel((current) => (isRoomView(current) ? null : 'assignments'))}
+        aria-pressed={isRoomView(roomPanel)}
+        aria-label="Toggle sidebar"
+        title="Assignments, people and pinned messages"
+        className={`size-8 rounded-md transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+          isRoomView(roomPanel) ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
         }`}
       >
-        <UsersRound size={14} />
-        {roster.participants.length}
-      </Button>
+        <PanelRight size={15} strokeWidth={1.75} />
+      </Button> : null}
       {headerActions}
     </div>
   )
@@ -593,6 +610,7 @@ export function RoomSidePanel({
   sendMessage,
   onAddPeople,
   onClosePanel,
+  onSelectView,
   ctx,
   readOnlyNotice,
 }: {
@@ -609,6 +627,7 @@ export function RoomSidePanel({
   sendMessage: RoomMessageContext['sendMessage']
   onAddPeople: () => void
   onClosePanel: () => void
+  onSelectView(view: RoomViewKind): void
   ctx: RoomMessageContext
   /** Replaces the thread composer for surface-mirrored rooms. */
   readOnlyNotice?: string
@@ -623,6 +642,14 @@ export function RoomSidePanel({
   } = thread
   const { jumpToMessage } = navigation
   const { togglePinned } = actions
+  const assignmentCount = useAssignmentCount()
+  const header = isRoomView(roomPanel) ? (
+    <RoomViewTabs active={roomPanel} onSelect={onSelectView} onClose={onClosePanel}
+      counts={{ assignments: assignmentCount, people: roster.participants.length, pinned: pinnedSummaries.length }} />
+  ) : null
+  if (roomPanel === 'assignments') {
+    return <AppScreenSidePanel header={header} bodyClassName="flex flex-col"><AssignmentsPanel /></AppScreenSidePanel>
+  }
   if (roomPanel === 'people') {
     return (
       <RoomPeoplePanel
@@ -632,6 +659,7 @@ export function RoomSidePanel({
         currentPrincipalId={roster.currentPrincipalId}
         onAddPeople={onAddPeople}
         onClose={onClosePanel}
+        header={header}
       />
     )
   }
@@ -642,6 +670,7 @@ export function RoomSidePanel({
         onJump={jumpToMessage}
         onUnpin={(messageId) => void togglePinned(messageId)}
         onClose={onClosePanel}
+        header={header}
       />
     )
   }

@@ -2,19 +2,19 @@
 
 import { useCallback, useState } from 'react'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import type { AgentRightSidebarPreferences } from '@/shared/agents/agent-right-sidebar-preferences'
 import { useAgentEditorController } from './AgentEditorPage'
 import { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 
 type ComputerControl = { ticketUrl: string; computerName: string; computerId: string }
 
 export function useAgentConversationComputer({
-  activeWorkspaceId, agentId, conversationId, sidebarPreferences, onClose, onArchived,
+  activeWorkspaceId, agentId, conversationId, computerVisible, onClose, onArchived,
 }: {
   activeWorkspaceId: string | null
   agentId: string | null
   conversationId: string | null
-  sidebarPreferences: AgentRightSidebarPreferences
+  /** The thread panel is open on its Computer tab, so the live screen should connect. */
+  computerVisible: boolean
   onClose(): void
   onArchived(): void
 }) {
@@ -31,7 +31,7 @@ export function useAgentConversationComputer({
     activeWorkspaceId,
     agentId: agentId ?? '',
     enabled: capabilities.computers === true && Boolean(agentId),
-    visible: (sidebarPreferences.open && sidebarPreferences.tab === 'computer')
+    visible: computerVisible
       || (controlState.conversationId === conversationId && Boolean(controlState.control)),
     currentUserId: sidebarEditor.computer.currentUserId,
     state: sidebarEditor.computer,
