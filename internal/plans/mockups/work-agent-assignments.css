@@ -1,0 +1,15 @@
+@import './chief-harness-ui-audit.css';
+@source './work-agent-assignments.tsx';
+@source '../../../src/features/work/components/work-ui.tsx';
+@source '../../../src/components/orb/Creature.tsx';
+@source '../../../packages/overlay-ui/src/components/ui/avatar.tsx';
+@source '../../../packages/overlay-ui/src/components/ui/textarea.tsx';
+
+.work-body{display:flex;flex:1;min-height:0;position:relative}.work-column{display:flex;flex-direction:column;flex:1;min-width:0}.work-column .cos-scroll{padding-top:4px}
+.work-group-header{height:auto!important;border-radius:0!important;justify-content:flex-start!important}.work-group-header:hover{background:transparent!important}
+.work-search{max-width:220px}.work-open-count{font-size:11px;margin-left:4px}
+.work-peek{width:520px;max-width:46%;flex:none;display:flex;flex-direction:column;border-left:1px solid var(--border);background:var(--surface-elevated);min-height:0}
+.work-composer textarea{outline:none}.audit-footer>span:last-child{flex:none}
+@media(max-width:1100px){.work-peek{max-width:52%}}
+@media(max-width:900px){.work-peek{position:absolute;inset:0;max-width:none;width:100%;z-index:5;border-left:0}.work-new-task{display:none}}
+@media(max-width:760px){.work-search{display:none}.work-open-count,.work-crumb{display:none}}

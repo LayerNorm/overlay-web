@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
@@ -11,6 +11,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
+import { AgentAssignmentSubscription } from './AgentAssignmentSubscription'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -34,6 +35,10 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 import { useThreadWork } from './thread-work/useThreadWork'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { useForwardedHandlers } from './chat-composer-memo'
+
+const NO_RENDER_FUNCTIONS = new Set<string>()
 
 function RoomComposerArea({
   safety,
@@ -242,6 +247,7 @@ export function DirectMessageExperience({
   bodyOverlay?: ReactNode;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
+  recordRender('DirectMessageExperience')
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
   const { markConversationRead } = useCollaborationRealtime()
@@ -268,6 +274,18 @@ export function DirectMessageExperience({
     workspaceId: activeWorkspaceId ?? null, agentId: agentId ?? null, conversationId,
     started: vm.mainMessages.length > 0, enabled: threadWorkEnabled,
   })
+  // Stable while the thread's work settings are unchanged, so a streamed reply does not re-render the composer.
+  const threadWorkControls = useForwardedHandlers(threadWork, NO_RENDER_FUNCTIONS)
+  const threadWorkFooter = useMemo(
+    () => threadWorkEnabled ? <ThreadWorkFooter controls={threadWorkControls} /> : undefined,
+    [threadWorkControls, threadWorkEnabled],
+  )
+  const threadFolderMenuItems = useMemo(
+    () => threadWorkEnabled
+      ? (close: () => void) => <ThreadFolderMenuItems controls={threadWorkControls} close={close} />
+      : undefined,
+    [threadWorkControls, threadWorkEnabled],
+  )
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
   useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
   // Guided onboarding writes to this room server-side; the live transcript shows them.
@@ -373,6 +391,7 @@ export function DirectMessageExperience({
               channelTopic={collab.channel?.topic}
               ctx={messageCtx}
               footer={<>
+                <AgentAssignmentSubscription workspaceId={activeWorkspaceId} conversationId={conversationId} />
                 <GuidedPendingMessage pending={pendingMessage} messages={vm.mainMessages} />
                 {guided?.footer}
               </>}
@@ -396,10 +415,8 @@ export function DirectMessageExperience({
                 setMentions: room.setMentions,
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
-                footer: threadWorkEnabled ? <ThreadWorkFooter controls={threadWork} /> : undefined,
-                attachMenuExtra: threadWorkEnabled
-                  ? (close) => <ThreadFolderMenuItems controls={threadWork} close={close} />
-                  : undefined,
+                footer: threadWorkFooter,
+                attachMenuExtra: threadFolderMenuItems,
                 queue: room.composerQueue,
               }}
             />

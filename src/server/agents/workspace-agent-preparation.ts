@@ -27,9 +27,8 @@ export async function prepareWorkspaceAgentInputs(input: {
   memoryEnabled: boolean
   workspaceId: string
   includeAutoRetrieval?: boolean
-  turnIdOverride?: string
-  requestFingerprintOverride?: string
-  billingProgrammaticSubjectId?: string
+  /** A sub-run of a shared-room run, or a run whose source room is shared: private tools and memory stay off. */
+  inheritedSharedRoom?: boolean
   /** The thread's computer and folders: a local thread is offered the computer tools (thread-folders.md). */
   work?: ThreadWork
 }) {
@@ -37,13 +36,7 @@ export async function prepareWorkspaceAgentInputs(input: {
   const agent = room.directory.agents.find(candidate => candidate.id === input.agentId)
   if (!agent || agent.archivedAt) throw new Error('The agent is no longer available.')
   const server = getOverlayServerContext()
-  const identity = input.turnIdOverride
-    ? {
-        invocationNonce: `surface:${input.turnIdOverride}`,
-        requestFingerprint: input.requestFingerprintOverride ?? hashOperationalIdentifier('workspace-agent-invocation', input.turnIdOverride),
-        turnId: input.turnIdOverride,
-      }
-    : workspaceAgentInvocationIdentity(input.messageId, input.agentId)
+  const identity = workspaceAgentInvocationIdentity(input.messageId, input.agentId)
   const entitlementService = new ActEntitlementService({
     repository: server.appData.repositories.conversations,
     usagePolicy: server.chatUsagePolicy,
@@ -51,7 +44,7 @@ export async function prepareWorkspaceAgentInputs(input: {
   const modelId = agent.modelId
   const gate = await entitlementService.gateModelAccess({
     effectiveModelId: modelId,
-    programmaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
+    programmaticSubjectId: `agent:${agent.id}`,
     userId: input.actorUserId,
     workspaceId: input.workspaceId,
   })
@@ -60,6 +53,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     agentPrincipalId: agent.principalId,
     conversationId: input.conversationId,
     effectiveModelId: modelId,
+    inheritedSharedRoom: input.inheritedSharedRoom,
     entitlements: gate.runtimeEntitlements,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
@@ -77,7 +71,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     actorUserId: input.actorUserId,
     agentName: agent.name,
     agentPrincipalId: agent.principalId,
-    billingProgrammaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
+    billingProgrammaticSubjectId: `agent:${agent.id}`,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     conversationTitle: room.conversation.title,
     conversationType: room.conversationType,
@@ -89,6 +83,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     requestFingerprint: identity.requestFingerprint,
     workspaceId: input.workspaceId,
     includeAutoRetrieval: input.includeAutoRetrieval,
+    inheritedSharedRoom: input.inheritedSharedRoom,
   })
   const toolDefinitions = await Promise.all(Object.entries(tooling.tools).map(async ([name, definition]) => ({
     name,

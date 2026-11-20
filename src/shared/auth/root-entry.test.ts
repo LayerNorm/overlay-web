@@ -7,7 +7,7 @@ import {
 } from './root-entry'
 
 test('authenticated root sessions enter the real app', () => {
-  assert.equal(ROOT_APP_DESTINATION, '/app/work')
+  assert.equal(ROOT_APP_DESTINATION, '/app')
   assert.equal(
     resolveRootEntryDestination(classifyRootSessionResponse({
       ok: true,

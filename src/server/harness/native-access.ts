@@ -14,7 +14,6 @@ import { loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
-import { assertPersistedSurfaceSource } from './surface-access'
 import type { HarnessExecutionReference } from './state-steps'
 
 export type NativeHarnessAccess = HarnessExecutionReference & {
@@ -37,6 +36,19 @@ export type NativeHarnessContext = {
   memoryEnabled: boolean
   sharedRoom: boolean
   requestFingerprint: string
+}
+
+async function assertNativeModelAllowed(
+  modelId: string,
+  actorUserId: string,
+  workspaceId: string,
+  entitlements: Parameters<typeof resolveAuthorizedModelIds>[0]['entitlements'],
+): Promise<void> {
+  if (isByokModelId(modelId)) {
+    await assertUserCanUseByokModel(modelId, actorUserId, workspaceId)
+  } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
+    throw new FatalError('The native model is no longer allowed by server policy.')
+  }
 }
 
 function nativeOwnerMatches(access: NativeHarnessAccess, state: HarnessSnapshot): boolean {
@@ -113,9 +125,11 @@ function nativeDeliveryIsCurrent(
     && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
     && (run.status === 'running' || (state.runId !== delivery.runId
       && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
+      // The delivery's own run shows what it is waiting on. That can differ from the
+      // harness status: a child joined inside a tool call leaves the harness running,
+      // and a descendant's question is shown on the root. Ownership is checked above.
       || (renewalMode && state.runId === delivery.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
-        && run.status === state.status)
+        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status))
       || (cancelledToolProgress && run.status === 'cancelled'))
 }
 
@@ -222,6 +236,7 @@ function assertRoomIdentity(
   context: NativeHarnessContext,
   room: NativeRoomTurnContext,
   humanPrincipalId: string,
+  inheritedSharedRoom: boolean,
 ) {
   const agent = room.directory.agents.find(candidate => candidate.id === access.agentId)
   if (!agent || agent.archivedAt || agent.harness !== 'overlay' || agent.principalId !== access.agentPrincipalId
@@ -232,7 +247,7 @@ function assertRoomIdentity(
   const human = room.participants.some(participant => participant.principalId === humanPrincipalId && participant.principalType === 'human')
   const author = room.participants.some(participant => participant.principalId === access.agentPrincipalId && participant.principalType === 'agent')
   if (!human || !author) throw new FatalError('Native room participation was revoked.')
-  const shared = isSharedRoom({
+  const shared = inheritedSharedRoom || isSharedRoom({
     conversationType: room.conversationType,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
@@ -241,7 +256,7 @@ function assertRoomIdentity(
   if (agent.modelId !== context.modelId) {
     throw new FatalError('The model is no longer an admitted native agent candidate.')
   }
-  return agent
+  return { agent, sharedRoom: shared }
 }
 
 async function assertNativeCapabilities(access: NativeHarnessAccess, context: NativeHarnessContext, toolName?: string): Promise<void> {
@@ -275,41 +290,23 @@ export async function refreshNativeHarnessAccess(
     ? state
     : await new ConvexHarnessRepository().get({ actorUserId: access.actorUserId, runId: state.rootRunId })
   if (!root) throw new FatalError('Native harness root is unavailable.')
-  const surfaceExecution = await new ConvexHarnessRepository()
-    .getSurfaceExecutionByHarnessRunId(root.runId)
-  if (surfaceExecution) {
-    if (root.runId !== surfaceExecution.harnessRunId
-      || root.workflowRunId !== surfaceExecution.workflowRunId
-      || root.policy.actorUserId !== surfaceExecution.actorUserId
-      || root.policy.workspaceId !== surfaceExecution.workspaceId
-      || access.actorUserId !== surfaceExecution.actorUserId
-      || access.workspaceId !== surfaceExecution.workspaceId) {
-      throw new FatalError('Native surface source ownership changed.')
-    }
-    await assertPersistedSurfaceSource(surfaceExecution, root.workflowRunId)
-  }
-  const [room, workspace, run] = await Promise.all([
+  const [room, workspace, run, roomRestrictions] = await Promise.all([
     loadRoomTurnContext({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
       conversationId: access.conversationId, messageId: access.userMessageId }),
     server.workspaceService.resolveActiveWorkspace(access.actorUserId, access.workspaceId),
     server.appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
     }),
+    new ConvexHarnessRepository().refreshRoomContextRestrictions({ actorUserId: access.actorUserId, runId: access.runId }),
   ])
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
-  const agent = assertRoomIdentity(access, context, room, humanPrincipalId)
+  const { agent, sharedRoom } = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
   await assertNativeCapabilities(access, context, toolName)
-  const billingProgrammaticSubjectId = surfaceExecution
-    ? `surface:slack:${surfaceExecution.bindingId}`
-    : `agent:${access.agentId}`
+  const billingProgrammaticSubjectId = `agent:${access.agentId}`
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
-  if (isByokModelId(context.modelId)) {
-    await assertUserCanUseByokModel(context.modelId, access.actorUserId, access.workspaceId)
-  } else if (!(await resolveAuthorizedModelIds({ entitlements: gate.runtimeEntitlements })).chat.has(context.modelId)) {
-    throw new FatalError('The native model is no longer allowed by server policy.')
-  }
+  await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements)
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
     const repository = new ConvexHarnessRepository()
     const current = await repository.get({ actorUserId: access.actorUserId, runId: access.runId })
@@ -323,7 +320,7 @@ export async function refreshNativeHarnessAccess(
       now: Date.now(), leaseMs: 24 * 60 * 60 * 1_000,
     })
   }
-  return { agent, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
+  return { agent, sharedRoom, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
     billingProgrammaticSubjectId,
     runStatus: state.status,
     requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true }

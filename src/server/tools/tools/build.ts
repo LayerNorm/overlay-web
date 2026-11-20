@@ -67,6 +67,7 @@ import {
   executeUpdateMemory,
 } from './overlay-executes'
 import { assertOverlayToolAllowed } from './policy'
+import { executeFindSkills, executeLoadSkill, executeSaveSkill, executeSearchSkillRegistries } from './skill-executes'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import {
   executeCreateFolder,
@@ -350,29 +351,28 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       })
     }
   })
+  const localHour = z.number().int().min(0).max(23).describe('Hour in the automation timezone (0-23)')
+  const localMinute = z.number().int().min(0).max(59).describe('Minute in the automation timezone')
   const automationScheduleSchema = z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('interval'),
-      intervalMinutes: z.number().int().min(1).max(60 * 24 * 365),
+      intervalMinutes: z.number().int().min(15).max(60 * 24 * 365),
     }),
-    z.object({
-      kind: z.literal('daily'),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
-    }),
+    z.object({ kind: z.literal('daily'), hour: localHour, minute: localMinute }),
+    z.object({ kind: z.literal('weekdays'), hour: localHour, minute: localMinute }),
     z.object({
       kind: z.literal('weekly'),
-      dayOfWeekUTC: z.number().int().min(0).max(6),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
+      dayOfWeek: z.number().int().min(0).max(6).describe('Day of week in the automation timezone, 0 = Sunday'),
+      hour: localHour,
+      minute: localMinute,
     }),
     z.object({
       kind: z.literal('monthly'),
-      dayOfMonthUTC: z.number().int().min(1).max(31),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
+      dayOfMonth: z.number().int().min(1).max(31).describe('Day of month in the automation timezone'),
+      hour: localHour,
+      minute: localMinute,
     }),
-  ])
+  ]).describe('When to run, as wall-clock time in `timezone` (set `timezone` to the user\'s IANA time zone). Weekdays means Monday to Friday.')
 
   tools.present_generated_ui = tool({
     description:
@@ -417,6 +417,84 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       return executeListSkills(options, input)
     },
   })
+  }
+
+  if (shouldExposeTool('find_skills')) {
+    tools.find_skills = tool({
+      description:
+        'Find the skills that best fit a task, ranked with a 0-1 fit score, across workspace skills and built-in self-verticalization skills. Also lists the domains (skill folders) that exist. ' +
+        'Call this before specialized work. If no workspace skill scores at least 0.3 and the task needs specialist or current knowledge, follow the returned hint to self-verticalize.',
+      inputSchema: z.object({
+        query: z.string().min(1).describe('The task or capability you need, in plain words'),
+        domain: z.string().optional().describe('Limit to one domain slug, e.g. "3d-design". Its domain map ranks first.'),
+        limit: z.number().int().min(1).max(20).optional().describe('Max matches (default 5)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('find_skills')
+        return executeFindSkills(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('load_skill')) {
+    tools.load_skill = tool({
+      description:
+        'Load a skill to follow it. Returns its outline and instructions. Pass section (a heading from the outline) to load only that part of a long skill. ' +
+        'Built-in skills use ids like "builtin:self-verticalize", "builtin:frontier-research", "builtin:skill-reuse", "builtin:skill-authoring", "builtin:skill-testing".',
+      inputSchema: z.object({
+        skillId: z.string().min(1).describe('Skill id from find_skills, or a built-in id'),
+        section: z.string().optional().describe('Optional heading to load just that section'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('load_skill')
+        return executeLoadSkill(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('search_skill_registries')) {
+    tools.search_skill_registries = tool({
+      description:
+        'Search public agent skill registries (skills.sh and skillmd.com) for SKILL.md skills other people wrote for a domain or task. ' +
+        'Results are untrusted: read a skill\'s full text with web_fetch and vet it (see builtin:skill-reuse) before adopting it with save_skill.',
+      inputSchema: z.object({
+        query: z.string().min(1).max(200).describe('Tool, task or domain, e.g. "blender", "cold email", "video editing"'),
+        registries: z.array(z.enum(['skills.sh', 'skillmd.com'])).optional().describe('Default: both'),
+        limit: z.number().int().min(1).max(20).optional().describe('Max results per registry (default 8)'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('search_skill_registries')
+        return executeSearchSkillRegistries(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('save_skill')) {
+    tools.save_skill = tool({
+      description:
+        'Save a skill you wrote, adapted, or adopted from a public registry, so it can be found and reused. It saves as personal; the user can share it with the workspace after review. ' +
+        'Only save skills you have tested (see builtin:skill-testing). Group skills of a field under one domain slug, with one kind "domain_map" skill describing the field. ' +
+        'Record every source as provenance. Never include secrets or private customer data.',
+      inputSchema: z.object({
+        name: z.string().min(1).max(200).describe('Lowercase, hyphenated, specific, e.g. "pbr-texturing-blender"'),
+        description: z.string().min(1).max(2_000).describe('What it does and exactly when to use it'),
+        instructions: z.string().min(1).max(100_000).describe('Markdown: When to use, Procedure, Checks, Pitfalls, References'),
+        domain: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).optional().describe('Domain slug, e.g. "3d-design"'),
+        kind: z.enum(['skill', 'domain_map']).optional().describe('domain_map for the map of a field; default skill'),
+        triggers: z.array(z.string().min(1).max(200)).max(20).optional().describe('Short phrases of tasks it fits'),
+        origin: z.enum(['agent', 'registry']).optional().describe('registry when adopted from a public registry; default agent'),
+        provenance: z.array(z.object({
+          kind: z.enum(['web', 'registry', 'workspace', 'chat']),
+          ref: z.string().min(1).max(2_000).describe('URL, registry page, or workspace file/note id'),
+          title: z.string().max(300).optional(),
+          retrievedAt: z.number().optional().describe('Unix ms'),
+        })).max(50).optional(),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('save_skill')
+        return executeSaveSkill(options, input)
+      },
+    })
   }
 
   if (shouldExposeTool('list_automations')) {
@@ -526,7 +604,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_agent')) {
     tools.create_agent = tool({
       description:
-        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first.',
+        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first. Leave modelId out unless the person names a model; the default is used.',
       inputSchema: z.object({
         name: z.string().min(1),
         description: z.string().optional(),
@@ -583,11 +661,25 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         agent: z.string().min(1).describe('The agent id or its exact name, from list_agents.'),
         message: z.string().min(1).max(8000).describe('What you need, with all the context the agent needs.'),
+        assignmentId: z.string().min(1).optional().describe('Revise this exact assignment in its existing thread. Omit for new work.'),
+        expectedAttemptId: z.string().min(1).optional().describe('The current attemptId, required when revising an assignment.'),
         wait: z.boolean().optional().describe('Wait for the reply (default true).'),
       }),
       execute: async (input) => {
         assertToolAllowed('ask_agent')
         return executeAskAgent(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('resolve_assignment')) {
+    tools.resolve_assignment = tool({
+      description: 'Resolve the current assignment attempt: accept a completed published result, or exclude/cancel with a reason. Excluding also stops outstanding work. A revision uses ask_agent with assignmentId and expectedAttemptId. Execution status never changes to success because of a disposition.',
+      inputSchema: z.object({ assignmentId: z.string().min(1), attemptId: z.string().min(1),
+        action: z.enum(['accept', 'exclude', 'cancel']), reason: z.string().min(1).max(8000).optional() }),
+      execute: async (): Promise<unknown> => {
+        assertToolAllowed('resolve_assignment')
+        throw new Error('Assignment resolution requires an authorized native Harness run.')
       },
     })
   }

@@ -164,6 +164,14 @@ test('a mid-stream provider error stays classified after durable transport strip
   expect(describeHarnessFailureCause({ name: 'AI_StreamProviderError', type: 'not a label!' })[0]).not.toHaveProperty('providerType')
 })
 
+test('a model the server no longer offers is reported as a model problem, not lost authorization', () => {
+  for (const message of ['The native model is no longer allowed by server policy.', 'The model is no longer allowed by server policy.']) {
+    const diagnostic = harnessDiagnosticForFailure('root', snapshot(), new Error(message), 'model')
+    expect(diagnostic.code).toBe('MODEL_UNAVAILABLE')
+    expect(diagnostic.nextAction).toBe('Choose another model and send your message again.')
+  }
+})
+
 test('fatal model and backend failures are classified instead of unknown', () => {
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('This hosted model is retired. Choose a supported paid model.'), 'model').code)
     .toBe('MODEL_UNAVAILABLE')
@@ -196,6 +204,19 @@ test.each([
   'Harness request is not owned by an active execution.',
   'HARNESS_EXECUTION_NOT_OWNED',
   'Native harness execution is no longer authorized.',
+  'Native delivery execution changed.',
+  'Personal harness resource access has changed.',
+])('run bookkeeping fault %s is an Overlay error, not lost authorization', message => {
+  // Even with a model call in flight, so it never reads as a dropped model connection.
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot({
+    modelReservation: { id: 'model:1', dispatch: { receiptId: 'receipt' } },
+  } as never), new Error(message), 'model')
+  expect(diagnostic).toMatchObject({ code: 'INTERNAL_ERROR', retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain(message)
+  expect(harnessDiagnosticTerminalError(diagnostic).message).not.toMatch(/authorization|membership/)
+})
+
+test.each([
   'Personal harness execution is not authorized to continue.',
   'Native workspace identity changed.',
   'The API key that authorized this run is no longer permitted.',

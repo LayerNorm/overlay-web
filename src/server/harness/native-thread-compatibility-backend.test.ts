@@ -90,9 +90,6 @@ const writes = [
   ['room startup error', () => room.recordAgentStartFailure({ ...nativeRoomTurn, content: 'Could not start' })],
   ['room delete', () => room.deleteMessage({ ...roomIdentity, messageId })],
   ['Harness admission', () => harness.admit(root)],
-  ['surface admission', () => harness.beginSurfaceTurn({ ...nativeRoomTurn, workflowRunId: 'workflow', creatorPrincipalId: 'creator',
-    agentPrincipalId: 'agent-principal', platform: 'slack', teamId: 'team', channelId: 'channel', threadId: 'thread',
-    messageId, bindingId: 'binding', connectionId: 'connection', userContent: 'Hello' })],
 ] as const
 
 test.each(writes)('%s cannot persist anything on an older backend', async (_name, write) => {

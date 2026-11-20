@@ -57,9 +57,12 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePersonalChatDirectory, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
 import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
-import type { WorkspaceNotification } from '@overlay/workspace-contracts'
+import type { WorkspaceManagementItem, WorkspaceNotification } from '@overlay/workspace-contracts'
+import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
+import { useWorkspacePrincipalDirectory } from '@/hooks/use-workspace-members'
 import { hasThreadActivity, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
+import { useTranscriptPrefetchIntent } from '@/components/providers/transcript-cache-client'
 
 type Conversation = {
   _id: string
@@ -74,8 +77,11 @@ type Conversation = {
   activity?: ThreadActivityStatus
   lastMessageId?: string
   otherParticipantTypes?: Array<'human' | 'agent'>
+  otherParticipantPrincipalIds?: string[]
   externalPlatform?: string
 }
+
+type PrincipalDirectory = ReadonlyMap<string, WorkspaceManagementItem>
 
 /** `workspace-chats` lists the AI chats filed under Workspace; `personal` lists the rest. */
 export type ChatView = 'personal' | 'workspace-chats' | 'dms' | 'channels' | 'all'
@@ -111,18 +117,35 @@ function DirectMessageIcon({
   return <UsersRound size={size} className={className} />
 }
 
+/** The other person's avatar, or two overlapping avatars for a group. */
+function DirectMessageAvatar({ others }: { others: WorkspaceManagementItem[] }) {
+  if (others.length === 1) {
+    return <span className="-mx-0.5 flex size-5 shrink-0 items-center justify-center"><PrincipalAvatar principal={others[0]!} size={20} /></span>
+  }
+  return (
+    <span className="relative -mx-0.5 block size-5 shrink-0">
+      <span className="absolute left-0 top-0"><PrincipalAvatar principal={others[0]!} size={13} /></span>
+      <span className="absolute bottom-0 right-0 rounded-full ring-[1.5px] ring-(--background)"><PrincipalAvatar principal={others[1]!} size={13} /></span>
+    </span>
+  )
+}
+
 function ChatConversationIcon({
   chat,
   size,
   className,
+  principals,
 }: {
   chat: Conversation
   size: number
   className?: string
+  principals?: PrincipalDirectory
 }) {
   if (chat.externalPlatform === 'slack') return <Slack size={size} className={className} />
   if (chat.conversationType === 'channel') return <Hash size={size} className={className} />
   if (chat.conversationType === 'dm') {
+    const others = (chat.otherParticipantPrincipalIds ?? []).flatMap((id) => principals?.get(id) ?? [])
+    if (others.length > 0) return <DirectMessageAvatar others={others} />
     return <DirectMessageIcon participantTypes={chat.otherParticipantTypes} size={size} className={className} />
   }
   return <MessageSquare size={size} className={className} />
@@ -543,6 +566,7 @@ function useChatArchive({
 
 function ChatListRow({
   chat,
+  principals,
   active,
   isEditing,
   isDeleting,
@@ -558,6 +582,7 @@ function ChatListRow({
   onCancelRename,
 }: {
   chat: Conversation
+  principals: PrincipalDirectory
   active: boolean
   isEditing: boolean
   isDeleting: boolean
@@ -573,6 +598,11 @@ function ChatListRow({
   onCancelRename: () => void
 }) {
   const canRename = chat.conversationType !== 'dm' && chat.conversationType !== 'channel'
+  const prefetch = useTranscriptPrefetchIntent()
+  const intendOpen = () => {
+    if (active || isDeleting) return
+    prefetch.intend({ kind: canRename ? 'personal' : 'room', conversationId: chat._id })
+  }
   const hoverAction = 'top-1.5 md:opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100'
   return (
     <SidebarMenuSubItem
@@ -583,7 +613,7 @@ function ChatListRow({
     >
       {isEditing ? (
         <div className="flex h-7 min-w-0 items-center gap-2 px-2 text-xs text-(--muted)">
-          <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
+          <ChatConversationIcon chat={chat} size={12} className="shrink-0" principals={principals} />
           <Input
             aria-label="Conversation title"
             ref={(el) => { el?.focus() }}
@@ -622,9 +652,13 @@ function ChatListRow({
             isActive={active}
             aria-current={active ? 'page' : undefined}
             onClick={() => { if (!isDeleting) onOpenChat(chat) }}
+            onPointerEnter={intendOpen}
+            onPointerLeave={prefetch.cancel}
+            onFocus={intendOpen}
+            onBlur={prefetch.cancel}
             className={cn('h-8 gap-2.5 text-sm', canRename ? 'pr-14' : 'pr-8')}
           >
-            <ChatConversationIcon chat={chat} size={12} className="shrink-0" />
+            <ChatConversationIcon chat={chat} size={12} className="shrink-0" principals={principals} />
             <span className="flex-1 truncate">{chat.title}</span>
             {chat.activity && hasThreadActivity(chat.activity) ? (
               <ThreadActivityIndicator status={chat.activity} />
@@ -737,6 +771,7 @@ function ChatListBody({
     all: 'No chats yet',
   }[chatView]
   const deletingChatIdSet = new Set(deletingChatIds)
+  const principals = useWorkspacePrincipalDirectory(viewChats.find((chat) => chat.conversationType === 'dm')?.workspaceId)
   const listClassName = 'ml-0 border-l-0 pl-0'
   if (loading) {
     return (
@@ -786,6 +821,7 @@ function ChatListBody({
             <ChatListRow
               key={chat._id}
               chat={chat}
+              principals={principals}
               active={activeId === chat._id}
               isEditing={editingChatId === chat._id}
               isDeleting={deletingChatIdSet.has(chat._id)}

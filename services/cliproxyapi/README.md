@@ -20,7 +20,7 @@ device authorization; Claude and Devin use generated PKCE authorization and a
 locally validated callback URL. Devin session tokens and minted Meta API keys
 are represented as non-expiring only when upstream supplies that credential
 form. No raw-token paste, localhost callback listener, cross-domain fallback,
-or background refresh is used.
+or background credential refresh is used.
 
 Inference accepts text and `input_image` parts for every provider (Codex receives
 Responses input directly; the pinned translators convert images for the others).
@@ -30,7 +30,13 @@ Audio, video, other files and hosted tools are refused. Request bodies may be up
 The internal `/internal/v1/authorize`, `/poll`, `/complete`, `/refresh`,
 `/models`, and `/infer` endpoints are intended only for the bound Overlay web
 service. Do not add public rewrites for this service. Model lists come from the
-pinned upstream provider catalogs; catalog presence does not establish account
+upstream provider catalogs. The pinned source embeds a snapshot of them, and the
+bridge replaces it with the catalogs upstream publishes when it starts and every
+three hours after, so newly released models appear without moving the pin. A
+failed or invalid download keeps the last valid catalog. `/models` and `/infer`
+wait for the first download after a cold start (ten seconds at most). The
+service therefore needs outbound HTTPS to `raw.githubusercontent.com` or
+`models.router-for.me`. Catalog presence does not establish account
 entitlement. The bridge enforces the requested provider and catalog membership
 for every inference request.
 

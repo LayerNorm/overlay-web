@@ -30,6 +30,10 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'update_note',
   'delete_note',
   'list_skills',
+  'find_skills',
+  'load_skill',
+  'search_skill_registries',
+  'save_skill',
   'draft_skill_from_chat',
   'list_automations',
   'list_tasks',
@@ -47,6 +51,7 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'list_agents',
   'ask_agent',
   'read_agent_reply',
+  'resolve_assignment',
   'post_message',
 ])
 

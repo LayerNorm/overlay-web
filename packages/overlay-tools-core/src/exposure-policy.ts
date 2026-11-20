@@ -12,6 +12,11 @@ const DEFAULT_BASE_TOOL_IDS = [
   'list_notes',
   'get_note',
   'list_skills',
+  'find_skills',
+  'load_skill',
+  'search_skill_registries',
+  // Always personal and archivable, so the self-verticalize workflow can persist what it learned on any specialized turn.
+  'save_skill',
 ] as const
 
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const
@@ -87,7 +92,8 @@ function isExplicitBrowserRequest(text: string): boolean {
 
 function isExplicitSkillDraftRequest(text: string): boolean {
   return matchesAny(text, [
-    /\b(skill|template|reusable workflow|standard procedure|standardize)\b/i,
+    /\b(skill|skills|template|reusable workflow|standard procedure|standardize)\b/i,
+    /\b(verticali[sz]e|get (really |very )?good at|become (an )?expert|specialist in|learn (how to|the latest))\b/i,
   ])
 }
 

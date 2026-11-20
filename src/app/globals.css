@@ -204,6 +204,11 @@ body {
 
 .app-brand-loader-tagline { animation: appBrandTagline 2600ms ease both; }
 .app-brand-loader-opening { animation: appBrandWslineFade 400ms ease-out both; }
+
+/* Desktop signed-out home (/auth/desktop): the loading screen settled into a way back in. */
+.desktop-home-drag { -webkit-app-region: drag; }
+.desktop-home-enter { animation: appBrandWslineFade 400ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { .desktop-home-enter { animation: none; } }
 @keyframes appBrandTagline { 0%, 20% { opacity: 0; } 40%, 88% { opacity: 1; } 100% { opacity: 0; } }
 
 /* Settled variant: the identical screen with the entrance already played. Every

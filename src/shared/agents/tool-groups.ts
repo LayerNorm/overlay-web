@@ -56,16 +56,26 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     toolIds: ['search_memory', 'search_messages', 'list_chats', 'read_chat', 'save_memory', 'save_memory_batch', 'update_memory', 'delete_memory'],
   },
   {
-    id: 'knowledge',
-    label: 'Knowledge & file search',
-    description: 'Search, list, and read the workspace knowledge base and files.',
-    toolIds: ['search_knowledge', 'search_in_files', 'list_files', 'read_file'],
-  },
-  {
     id: 'files',
-    label: 'File editing',
-    description: 'Create and edit text files, make folders, and move or rename files.',
-    toolIds: ['write_file', 'create_folder', 'move_file'],
+    label: 'Files',
+    description: 'Search, read, create and edit the workspace\'s files, folders and notes.',
+    toolIds: [
+      'search_knowledge',
+      'search_in_files',
+      'list_files',
+      'read_file',
+      'write_file',
+      'create_folder',
+      'move_file',
+      'list_notes',
+      'get_note',
+      'create_note',
+      'append_to_note',
+      'replace_note_section',
+      'edit_note',
+      'update_note',
+      'delete_note',
+    ],
   },
   {
     id: 'web_search',
@@ -89,25 +99,10 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     capability: 'mcp',
   },
   {
-    id: 'notes',
-    label: 'Notes',
-    description: 'Read and write documents in the workspace.',
-    toolIds: [
-      'list_notes',
-      'get_note',
-      'create_note',
-      'append_to_note',
-      'replace_note_section',
-      'edit_note',
-      'update_note',
-      'delete_note',
-    ],
-  },
-  {
     id: 'skills',
     label: 'Skills',
-    description: 'List available skills and draft new ones from a conversation.',
-    toolIds: ['list_skills', 'draft_skill_from_chat'],
+    description: 'Find, load and save skills, search public skill registries, and draft new skills from a conversation.',
+    toolIds: ['list_skills', 'find_skills', 'load_skill', 'search_skill_registries', 'save_skill', 'draft_skill_from_chat'],
   },
   {
     id: 'automations',
@@ -129,16 +124,11 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     toolIds: ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'],
   },
   {
-    id: 'image',
-    label: 'Image generation',
-    description: 'Generate images.',
-    toolIds: ['generate_image'],
-  },
-  {
-    id: 'video',
-    label: 'Video generation',
-    description: 'Generate and edit video, animate images, apply motion control.',
+    id: 'media',
+    label: 'Media generation',
+    description: 'Generate images, and generate and edit video, animate images and apply motion control.',
     toolIds: [
+      'generate_image',
       'generate_video',
       'generate_video_with_reference',
       'animate_image',
@@ -162,16 +152,10 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     capability: 'local_computer',
   },
   {
-    id: 'agent_chat',
-    label: 'Ask other agents',
-    description: 'Ask other agents in the workspace for help, read their answers, and post into conversations they share. They act for the same person, under a limit on how far a question can be passed on.',
-    toolIds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'],
-  },
-  {
     id: 'agents',
     label: 'Agents',
-    description: 'Create new agents and update existing ones from conversation.',
-    toolIds: ['create_agent', 'update_agent'],
+    description: 'Ask other agents in the workspace for help, read their answers and post into conversations they share, and create or update agents. Agents act for the same person, under a limit on how far a question can be passed on.',
+    toolIds: ['list_agents', 'ask_agent', 'read_agent_reply', 'resolve_assignment', 'post_message', 'create_agent', 'update_agent'],
   },
 ]
 
@@ -219,12 +203,15 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
   // Reading chats joined the memory group.
   { grantedBy: ['search_messages'], adds: ['list_chats', 'read_chat'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+  // Skill discovery, loading, registry search and saving joined the skills group.
+  { grantedBy: ['list_skills', 'draft_skill_from_chat'], adds: ['find_skills', 'load_skill', 'search_skill_registries', 'save_skill'] },
   {
     grantedBy: ['computer_exec', 'computer_read_file', 'computer_write_file', 'computer_list_files', 'computer_open_url'],
     adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal', 'computer_publish_file'],
   },
   // Preserve later-added grants for saved full-toolbox agents, using the retired browser id only as a migration marker.
-  { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'] },
+  { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'resolve_assignment', 'post_message'] },
+  { grantedBy: ['ask_agent'], adds: ['resolve_assignment', 'read_agent_reply'] },
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'] },
 ]
 
@@ -288,13 +275,12 @@ export function allAgentToolGrantIds(): string[] {
   return toolIdsForEnabledGroups(new Set(AGENT_TOOL_GROUPS.map((group) => group.id)))
 }
 
-export type AgentToolPreset = 'everything' | 'standard' | 'readonly'
+export type AgentToolPreset = 'everything' | 'standard'
 
 /** One-click tool sets for the new-agent dialog. None includes `computer`, which is its own explicit opt-in. */
 export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly string[]> = {
   everything: DEFAULT_AGENT_TOOL_GROUP_IDS,
-  standard: ['memory', 'knowledge', 'files', 'web_search', 'notes', 'local_computer'],
-  readonly: ['knowledge', 'web_search'],
+  standard: ['memory', 'files', 'web_search', 'local_computer'],
 }
 
 /** The preset that exactly matches the enabled groups (ignoring `computer`), or null for a custom mix. */

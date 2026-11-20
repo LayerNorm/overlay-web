@@ -23,17 +23,17 @@ import {
   Trash2,
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
-import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks, ExchangeActions, isRecentMessage, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, ExchangeActions, ExchangeLoadingState, isRecentMessage, responseLoadingPresentation, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
+import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
-import { roomMessageDomId } from './room-message-view'
+import { roomMessageDomId, showsResponseMark } from './room-message-view'
 import { roomMessageTime } from './room-message-time'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
@@ -170,15 +170,11 @@ const AUTHOR_STATUS_META = {
   not_invited: { label: 'Not invited', className: 'bg-(--surface-subtle) text-(--muted)' },
 } as const
 
-/** Agent mention chips carry the creature avatar; other types keep their icon. */
+/** Agent mention chips carry the creature avatar and person chips the account photo; other types keep their icon. */
 const renderMentionAvatar = (mention: ChatMessageMention) =>
-  mention.type === 'agent' ? (
-    <AgentCreature
-      isDefault={mention.isDefault}
-      agent={{ name: mention.name, avatarColor: mention.avatarColor, avatarShape: mention.avatarShape }}
-      size={14}
-    />
-  ) : undefined
+  mention.type === 'agent' || mention.type === 'person'
+    ? <PrincipalAvatar principal={{ ...mention, principalType: mention.type === 'agent' ? 'agent' : 'human' }} size={14} />
+    : undefined
 
 type AuthorStatus = keyof typeof AUTHOR_STATUS_META
 
@@ -723,7 +719,6 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
     blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
     <>
-      <AgentResponsePending key={message.id} message={message} />
       {message.askedBy ? (
         <p className="mb-1 text-[11px] text-(--muted)">
           Agent question · step {message.askedBy.hop}
@@ -758,7 +753,9 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
       />
-      {/* The avatar beside the name shows activity; no second indicator under the reply. */}
+      {showsResponseMark(message)
+        ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} />
+        : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
       {message.folderSaves ? <FolderSavesCard data={message.folderSaves} /> : null}

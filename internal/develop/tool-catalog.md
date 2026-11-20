@@ -4,20 +4,18 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 
 ## Overlay tools, by group
 
+One toggle per thing a person would recognise. Reading and writing the same kind of thing share a group (files and notes are both workspace files), as do images and video, and asking and editing agents. Access levels that need a read-only cut, such as outside-app Read only, list read tools explicitly (`READ_TOOL_IDS` in `src/shared/mcp/access.ts`) instead of relying on group boundaries.
+
 | Group | Tools |
 | --- | --- |
 | Memory | `search_memory`, `search_messages`, `list_chats`, `read_chat`, `save_memory`, `save_memory_batch`, `update_memory`, `delete_memory` |
-| Knowledge and files (read) | `search_knowledge`, `search_in_files`, `list_files`, `read_file` |
-| File editing | `write_file`, `create_folder`, `move_file` |
-| Notes | `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
+| Files (files, folders and notes; read and write) | `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `write_file`, `create_folder`, `move_file`, `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
 | Tasks | `list_tasks`, `get_task`, `create_task`, `update_task`, `comment_on_task`, `archive_task`, `restore_task` |
-| Skills | `list_skills`, `draft_skill_from_chat` |
+| Skills | `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `save_skill`, `draft_skill_from_chat` |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
-| Image | `generate_image` |
-| Video | `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
+| Media generation | `generate_image`, `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
 | Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
-| Agents (editing) | `create_agent`, `update_agent` |
-| Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
+| Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
 
 Not tool ids but granted as capabilities:
@@ -115,7 +113,7 @@ Older hosts retain the legacy retry flow until upgraded.
 
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
 
-- **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `list_automations`, `list_tasks`, `get_task`.
+- **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `list_automations`, `list_tasks`, `get_task`.
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
@@ -141,3 +139,13 @@ for); deployment and workspace policy still apply, and calls still go through th
 Agent note/file creation and edits mark `byAgent` through the existing API path;
 Computer binary publication and agent-drive uploads set `createdByAgent` in
 Convex. Growth rollups count their output without human activity credit.
+
+
+## Skill discovery and self-verticalization
+
+- `find_skills`, `load_skill`, `search_skill_registries` and `save_skill` are exposed on every chat turn; `draft_skill_from_chat` still appears only when the user asks about skills or reusable workflows.
+- `find_skills` ranks the caller's visible skills plus the built-in `builtin:*` skills (self-verticalize, frontier-research, skill-reuse, skill-authoring, skill-testing). With a `domain` filter the domain map ranks first. When no non-built-in skill scores at least 0.3, it returns a hint to load `builtin:self-verticalize`.
+- `load_skill` returns the outline by default, or one section by heading (headings inside code fences are ignored), capped at 30,000 characters.
+- `search_skill_registries` calls only skills.sh `/api/search` and skillmd.com `/v1/search`, drops unsafe identifiers, and labels every result untrusted. Agents must read and vet a skill before adopting it.
+- `save_skill` always saves as Personal with `origin: agent`, plus optional `domain`, `kind` (`skill` or `domain_map`), `triggers` and `provenance`. Sharing to the workspace is a human action.
+- Saved agents whose grant has `list_skills` and `draft_skill_from_chat` are migrated to include the four new tools (`LATER_GROUP_MEMBERS` in `src/shared/agents/tool-groups.ts`).

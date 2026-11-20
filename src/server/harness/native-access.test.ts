@@ -4,13 +4,14 @@ import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnes
 
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), room: vi.fn(), workspace: vi.fn(), run: vi.fn(), gate: vi.fn(), subject: vi.fn(),
-  surfaceExecution: vi.fn(), bindings: vi.fn(), conversation: vi.fn(),
+  conversation: vi.fn(),
+  roomRestrictions: vi.fn(),
   capability: vi.fn(), catalog: vi.fn(), models: vi.fn(), byok: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.state
-  getSurfaceExecutionByHarnessRunId = mocks.surfaceExecution
+  refreshRoomContextRestrictions = mocks.roomRestrictions
 } }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({
   loadRoomTurnContext: mocks.room, agentModelAttempts: (modelId: string) => [modelId],
@@ -19,7 +20,6 @@ vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateMod
 vi.mock('@/server/ai/model-policy-authority', () => ({ resolveAuthorizedModelIds: mocks.models }))
 vi.mock('@/server/ai/model-runtime', () => ({ assertUserCanUseByokModel: mocks.byok }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
-  surfaceService: { resolveInboundBindings: mocks.bindings },
   workspaceService: { resolveActiveWorkspace: mocks.workspace },
   appData: { repositories: { conversations: {
     getLatestAgentRun: mocks.run,
@@ -52,7 +52,7 @@ const delivery = () => ({
 })
 const room = () => ({
   conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question',
-  directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask' }] },
+  directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask', visibility: 'workspace' }] },
   participants: [{ principalId: 'human-principal', principalType: 'human' }, { principalId: 'agent-principal', principalType: 'agent' }],
 })
 
@@ -97,6 +97,7 @@ function configureNamedChild(options: {
     harness: 'overlay',
     modelId: 'fixture/model',
     permissionMode: 'ask',
+    visibility: 'workspace',
   }
   const initiatorAgent = {
     id: 'asking-agent',
@@ -104,6 +105,7 @@ function configureNamedChild(options: {
     harness: options.initiatorHarness ?? 'overlay',
     modelId: 'fixture/model',
     permissionMode: 'ask',
+    visibility: 'workspace',
     ...(options.initiatorArchivedAt === undefined ? {} : { archivedAt: options.initiatorArchivedAt }),
   }
   const agents = [childAgent, ...(options.includeInitiator === false ? [] : [initiatorAgent])]
@@ -143,51 +145,9 @@ beforeEach(() => {
   mocks.capability.mockReturnValue({ allowed: true })
   mocks.catalog.mockResolvedValue({ allowed: true })
   mocks.models.mockResolvedValue({ chat: new Set(['fixture/model', 'openrouter/free']) })
-  mocks.surfaceExecution.mockResolvedValue(null)
-  mocks.bindings.mockResolvedValue([])
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.conversation.mockResolvedValue(null)
 })
-
-const surfaceExecution = {
-  turnId: 'surface:slack:binding:message',
-  workflowRunId: 'workflow',
-  actorUserId: 'human',
-  workspaceId: 'workspace',
-  creatorPrincipalId: 'human-principal',
-  agentId: 'agent',
-  agentPrincipalId: 'agent-principal',
-  platform: 'slack' as const,
-  teamId: 'team',
-  channelId: 'channel',
-  threadId: 'thread',
-  messageId: 'message',
-  bindingId: 'binding',
-  connectionId: 'connection',
-  conversationId: 'room',
-  agentRunId: 'delivery',
-  userMessageId: 'question',
-  assistantMessageId: 'answer',
-  harnessRunId: 'workspace:delivery',
-  createdAt: 100,
-  updatedAt: 100,
-}
-const surfaceSource = {
-  binding: { id: 'binding', connectionId: 'connection', channelId: 'channel', agentId: 'agent', status: 'active' },
-  connection: { id: 'connection', platform: 'slack', externalTeamId: 'team', workspaceId: 'workspace', status: 'active' },
-  agent: { id: 'agent', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: [], permissionMode: 'ask' },
-  creatorUserId: 'human',
-  creatorPrincipalId: 'human-principal',
-}
-const surfaceConversation = {
-  userId: 'human',
-  workspaceId: 'workspace',
-  conversationType: 'channel',
-  createdByPrincipalId: 'human-principal',
-  externalPlatform: 'slack',
-  externalChannelId: 'channel',
-  externalThreadId: 'thread',
-  surfaceBindingId: 'binding',
-}
 
 test('rechecks native identity and model policy without reserving or charging usage', async () => {
   const result = await refreshNativeHarnessAccess(access, context, 'read_file')
@@ -261,6 +221,13 @@ test('refuses revoked agents, participants, workspace identity and newly shared 
   await expect(refreshNativeHarnessAccess(access, { ...context, sharedRoom: true })).resolves.toMatchObject({ paid: true })
 })
 
+test('rederives shared-parent restrictions on child refresh', async () => {
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: true })
+  await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/private context/)
+  await expect(refreshNativeHarnessAccess(access, { ...context, sharedRoom: true }))
+    .resolves.toMatchObject({ paid: true })
+})
+
 test('refuses stale execution, capabilities and model access before provider admission', async () => {
   for (const patch of [{ workflowRunId: 'other' }, { status: 'cancelled' }, { policy: { ...snapshot().policy, deadlineAt: 1 } }]) {
     mocks.state.mockResolvedValueOnce({ ...snapshot(), ...patch })
@@ -302,6 +269,21 @@ test('children can execute while their delivery waits, but cannot borrow a sibli
   await expect(refreshNativeHarnessAccess(childAccess, context)).rejects.toThrow(/authorized/)
 })
 
+test('a run joining a child inside a tool call survives the wait renewal', async () => {
+  // The harness stays running during the tool call while the delivery shows what it waits on.
+  for (const status of ['waiting_for_children', 'waiting_for_input', 'waiting_for_approval']) {
+    mocks.run.mockResolvedValue({ ...delivery(), status })
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).resolves.toMatchObject({ paid: true })
+  }
+  mocks.state.mockResolvedValue({ ...snapshot(), status: 'waiting_for_children' })
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_input' })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).resolves.toMatchObject({ paid: true })
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_children', workflowRunId: 'other-workflow' })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).rejects.toThrow(/execution changed/)
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'failed' })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })).rejects.toThrow(/execution changed/)
+})
+
 test('BYOK ownership is checked again for the selected agent model', async () => {
   const modelId = 'byok/connection/model'
   mocks.room.mockResolvedValue({ ...room(), directory: { agents: [{ ...room().directory.agents[0], modelId }] } })
@@ -311,53 +293,42 @@ test('BYOK ownership is checked again for the selected agent model', async () =>
   await expect(refreshNativeHarnessAccess(access, { ...context, modelId })).rejects.toThrow(/revoked/)
 })
 
-test('restored native dispatch revalidates the persisted root Slack source and bills its canonical subject', async () => {
-  const surfaceAccess = { ...access, turnId: surfaceExecution.turnId }
-  mocks.surfaceExecution.mockResolvedValue(surfaceExecution)
-  mocks.bindings.mockResolvedValue([surfaceSource])
-  mocks.conversation.mockResolvedValue(surfaceConversation)
-  mocks.run.mockResolvedValue({ ...delivery(), turnId: surfaceExecution.turnId })
+test.each(['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'])(
+  'renews an in-tool child join projected as %s without authorizing model dispatch', async status => {
+    const state = snapshot()
+    state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
+      costMicros: 0, status: 'running', evidenceRefs: [] }]
+    mocks.state.mockResolvedValue(state)
+    mocks.run.mockResolvedValue({ ...delivery(), status })
 
-  const refreshed = await refreshNativeHarnessAccess(surfaceAccess, context, 'read_file')
-  expect(refreshed.billingProgrammaticSubjectId).toBe('surface:slack:binding')
-  expect(mocks.gate).toHaveBeenCalledWith(expect.objectContaining({
-    programmaticSubjectId: 'surface:slack:binding',
-  }))
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .resolves.toMatchObject({ runStatus: 'running', paid: true })
+    await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow('Native delivery execution changed.')
+  },
+)
 
-  mocks.gate.mockClear()
-  mocks.bindings.mockResolvedValueOnce([])
-  await expect(refreshNativeHarnessAccess(surfaceAccess, context, 'read_file')).rejects.toThrow(/authorization changed/)
-  expect(mocks.gate).not.toHaveBeenCalled()
-
-  mocks.surfaceExecution.mockResolvedValueOnce({ ...surfaceExecution, workflowRunId: 'foreign-workflow' })
-  mocks.state.mockResolvedValueOnce(snapshot())
-  await expect(refreshNativeHarnessAccess(surfaceAccess, context)).rejects.toThrow(/source ownership changed/)
-  expect(mocks.gate).not.toHaveBeenCalled()
+test('child-join renewal still rejects stale ownership, revoked participation and unrelated delivery states', async () => {
+  const state = snapshot()
+  state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
+    costMicros: 0, status: 'running', evidenceRefs: [] }]
+  mocks.state.mockResolvedValue(state)
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_children' })
+  for (const patch of [{ workflowRunId: 'other' }, { status: 'cancelled' }]) {
+    mocks.run.mockResolvedValueOnce({ ...delivery(), status: 'waiting_for_children', ...patch })
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .rejects.toThrow('Native delivery execution changed.')
+  }
+  mocks.room.mockResolvedValue({ ...room(), participants: [room().participants[1]] })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+    .rejects.toThrow('Native room participation was revoked.')
 })
 
-test('named child keeps its native delivery identity while inheriting the verified root Slack source', async () => {
-  const childAccess = configureNamedChild()
-  mocks.surfaceExecution.mockResolvedValue(surfaceExecution)
-  mocks.bindings.mockResolvedValue([surfaceSource])
-  mocks.conversation.mockResolvedValue(surfaceConversation)
-  const rootRun = { ...delivery(), turnId: surfaceExecution.turnId }
-  const childRun = {
-    ...delivery(),
-    id: childAccess.agentRunId,
-    agentId: childAccess.agentId,
-    agentPrincipalId: childAccess.agentPrincipalId,
-    harnessRunId: childAccess.runId,
-    workflowRunId: childAccess.workflowRunId,
-    initiatorPrincipalId: childAccess.principalId,
-  }
-  mocks.run.mockImplementation(async ({ agentRunId }: { agentRunId: string }) =>
-    agentRunId === surfaceExecution.agentRunId ? rootRun : childRun)
+test('native runs retain access to creator-private current agents', async () => {
+  mocks.room.mockResolvedValue({
+    ...room(),
+    directory: { agents: [{ ...room().directory.agents[0], visibility: 'creator' }] },
+  })
 
-  await expect(refreshNativeHarnessAccess(childAccess, context, 'read_file'))
-    .resolves.toMatchObject({ agent: { id: 'child-agent' }, billingProgrammaticSubjectId: 'surface:slack:binding' })
-  expect(mocks.surfaceExecution).toHaveBeenCalledWith(surfaceExecution.harnessRunId)
-  expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ agentRunId: surfaceExecution.agentRunId }))
-  expect(mocks.gate).toHaveBeenCalledWith(expect.objectContaining({
-    programmaticSubjectId: 'surface:slack:binding',
-  }))
+  await expect(refreshNativeHarnessAccess(access, context, 'read_file'))
+    .resolves.toMatchObject({ agent: { id: 'agent', visibility: 'creator' }, sharedRoom: false })
 })

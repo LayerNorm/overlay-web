@@ -93,6 +93,7 @@ function serviceFor(
     deleteThreadError?: string
     resolveThreadError?: string
     archivedThreadRows?: WorkspaceArchivedAgentThread[]
+    assertModelSelectable?: (modelId: string, actorUserId: string, workspaceId: string) => Promise<void>
   } = {},
 ) {
   const store = new Map(seed.map((agent) => [agent.id, agent]))
@@ -212,6 +213,7 @@ function serviceFor(
     mockWorkspaces(principalId, role, principals),
     () => `generated-${++idCounter}`,
     () => NOW,
+    options.assertModelSelectable,
   )
   return { service, created, updated, identityUpdates, archived, unarchived, deletedThreads, deletedAgents, archivedThreads, ensured }
 }
@@ -423,6 +425,39 @@ test('a non-manager cannot archive a creator-only agent they cannot see', async 
   const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'member', seed)
   const error = await serviceError(service.archive({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID, agentId: 'agent-private' }))
   assert.equal(error.code, 'not_found')
+})
+
+test('a model Overlay does not offer is refused on create and on a model change, but not on other edits', async () => {
+  const checked: string[] = []
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [], {}, {
+    assertModelSelectable: async (modelId, actorUserId, workspaceId) => {
+      checked.push([modelId, actorUserId, workspaceId].join('|'))
+      if (modelId === 'made-up-model') throw new WorkspaceAgentServiceError('validation', 'Unknown model')
+    },
+  })
+  const refused = await serviceError(fixture.service.create({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
+    input: { name: 'Tutor', instructions: 'Teach', modelId: 'made-up-model' },
+  }))
+  assert.equal(refused.code, 'validation')
+  assert.equal(fixture.created.length, 0)
+
+  const created = await fixture.service.create({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID,
+    input: { name: 'Tutor', instructions: 'Teach', modelId: 'model-a' },
+  })
+  const changed = await serviceError(fixture.service.update({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id, input: { modelId: 'made-up-model' },
+  }))
+  assert.equal(changed.code, 'validation')
+  assert.equal(fixture.updated.length, 0)
+
+  checked.length = 0
+  await fixture.service.update({
+    actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id, input: { name: 'Tutor 2', modelId: 'model-a' },
+  })
+  assert.deepEqual(checked, [])
+  assert.equal(fixture.updated.length, 1)
 })
 
 test('native agent reasoning validates, persists, clears, and resets when its model changes', async () => {

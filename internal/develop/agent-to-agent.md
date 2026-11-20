@@ -2,14 +2,14 @@
 
 An agent can ask another agent in the workspace for help and read its answer. It works the same for Overlay agents (native tools) and user-owned BYOM agents connected through Agent Host (the same tools over the Overlay MCP server).
 
-## Tools (group `agent_chat`, "Ask other agents")
+## Tools (group `agents`, "Agents", shared with `create_agent` / `update_agent`)
 
 - `list_agents`: the agents the person can see, except the caller.
 - `ask_agent(agent, message, wait?)`: `agent` is an id or exact name. With `wait` (default) it returns the reply, or a handle (`conversationId`, `turnId`) if the agent is still working after about 80 seconds. The message must stand alone: the asked agent does not see the asker's conversation.
 - `read_agent_reply(conversationId, turnId)`: the reply to an earlier ask that was still working.
 - `post_message(conversationId, text, mentions?)`: post into a channel or group chat the person can see and the agent is part of, optionally mentioning up to 20 agents who are in it; they answer there. It does not wait. A mention is a question: the same chain limits and budgets apply, and the message carries the lineage. A post that mentions nobody starts nothing. Refused for a personal chat, a conversation the person cannot see, a room the agent is not in, or a mention of someone not in the room.
 
-All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read`), through `executeListAgents` / `executeAskAgent` / `executePostMessage` / `executeReadAgentReply`. Registered in `OVERLAY_TOOL_IDS`, the `agent_chat` group, and (for `post_message` only) the outside-app withheld list. The route's actions and the boundary schema's action list are tied by a test. Agents that hold the whole toolbox (automations, video, browser) read as holding these too (`LATER_GROUP_MEMBERS`); narrower grants do not get them.
+All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read`), through `executeListAgents` / `executeAskAgent` / `executePostMessage` / `executeReadAgentReply`. Registered in `OVERLAY_TOOL_IDS`, the `agents` group, and (for `post_message`, like `create_agent` / `update_agent`) the outside-app withheld list. The route's actions and the boundary schema's action list are tied by a test. Agents that hold the whole toolbox (automations, video, browser) read as holding these too (`LATER_GROUP_MEMBERS`); narrower grants do not get them.
 
 ## How an ask works (`AgentAskService`)
 
@@ -24,7 +24,7 @@ ChatGPT, Claude, Cursor and other MCP clients at the Everything level get `list_
 ## Lineage and limits (`src/shared/agents/agent-lineage.ts`)
 
 - Lineage = root turn (the person's message), hop, and the chain of agent ids. It lives on the question message (`data-agent-lineage`); only an agent-authored message is trusted to carry one, and a person's message parts are restricted to text and files, so a lineage cannot be forged.
-- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **200 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 50 per turn, 200 per request. These counts only stop a runaway chain; there is no per-chain token or spending limit. The workspace budget is the only spending limit (each asked agent's turn is charged and stops under 2%). Each refusal is a plain tool error the agent can relay.
+- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **50 posts per turn**, and **200 of each per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). Up to 20 agents can be mentioned in one post. These counts only stop a runaway chain: the former 500,000-token chain cap and pre-call cost holds are removed. Workspace-owned model calls use actual usage accounting against the workspace budget; each turn stops when the budget is under 2%. Named subagent work supports up to 16 concurrent subagents and 5 levels. Each refusal is a plain tool error the agent can relay.
 - Visibility: only agents the person can see (`WorkspaceAgentService.list`) can be asked.
 
 ## UI
@@ -53,4 +53,16 @@ separate parent milestone, while ordinary delegated milestones still require
 the parent to complete them with evidence. Stop cancels active same-user named
 descendants across their own conversations, deepest-first, and returns each
 delivery's workflow cleanup descriptor. If an ancestor already terminated,
-its subtree counts are not released a second time.
+its subtree counts are not released a second time. Assignment identity,
+idempotent launch, attempt history and persisted results remain tied to the
+requester and shared root; acceptance, revision or reasoned exclusion are
+coordination dispositions, not replacements for child execution status. A
+parent cannot finalize while assignment issues or live child execution remain.
+
+While a parent joins a child inside a tool call, its harness status stays
+`running` and its delivery run shows what it waits on (`waiting_for_children`,
+or a descendant's input or approval wait). The once-a-minute wait renewal
+(`refreshNativeHarnessAccess` in renewal mode) therefore accepts any waiting
+delivery status and relies on the owner checks (workflow, harness run,
+identity). Requiring the two statuses to match stopped every ask that lasted
+over a minute.

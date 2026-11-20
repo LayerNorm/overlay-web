@@ -37,6 +37,8 @@ const uiSettingsValidator = v.object({
   dismissedZdrWarningModelIds: v.array(v.string()),
   enabledChatModelIds: v.array(v.string()),
   modelOrder: v.array(v.string()),
+  sidebarPinnedPageIds: v.array(v.string()),
+  sidebarMorePageIds: v.array(v.string()),
 })
 
 function defaultUiSettings() {
@@ -59,6 +61,8 @@ function defaultUiSettings() {
     dismissedZdrWarningModelIds: [] as string[],
     enabledChatModelIds: [] as string[],
     modelOrder: [] as string[],
+    sidebarPinnedPageIds: [] as string[],
+    sidebarMorePageIds: [] as string[],
   }
 }
 
@@ -77,6 +81,14 @@ function safeModelIds(values: string[] | undefined, max = MAX_ASK_MODEL_IDS): st
     .filter((value): value is string => Boolean(value))
     .slice(0, max)
   return Array.from(new Set(next))
+}
+
+const MAX_SIDEBAR_PAGE_IDS = 24
+const SIDEBAR_PAGE_ID_PATTERN = /^[a-z][a-z0-9-]{0,39}$/
+
+function safeSidebarPageIds(values: string[] | undefined): string[] | undefined {
+  if (!values) return undefined
+  return Array.from(new Set(values.filter((value) => SIDEBAR_PAGE_ID_PATTERN.test(value)))).slice(0, MAX_SIDEBAR_PAGE_IDS)
 }
 
 function safeAspectRatio(value: string | undefined): string | undefined {
@@ -111,6 +123,7 @@ export const getByServer = query({
     harnessTranscriptRevision: v.literal('settled-public-v1'),
     harnessFullTranscriptRevision: v.literal('full-public-v1'),
     personalChatParallelReadsRevision: v.literal('parallel-reads-v1'),
+    livePublicStreamRevision: v.literal('incremental-v1'),
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -130,6 +143,7 @@ async function uiSettingsFor(ctx: QueryCtx, userId: string) {
     harnessTranscriptRevision: 'settled-public-v1' as const,
     harnessFullTranscriptRevision: 'full-public-v1' as const,
     personalChatParallelReadsRevision: 'parallel-reads-v1' as const,
+    livePublicStreamRevision: 'incremental-v1' as const,
   }
   const settings = {
     theme: existing.theme,
@@ -152,6 +166,8 @@ async function uiSettingsFor(ctx: QueryCtx, userId: string) {
     dismissedZdrWarningModelIds: safeModelIds(existing.dismissedZdrWarningModelIds, 100) ?? [],
     enabledChatModelIds: safeModelIds(existing.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ?? [],
     modelOrder: safeModelIds(existing.modelOrder, MAX_ENABLED_MODEL_IDS) ?? [],
+    sidebarPinnedPageIds: safeSidebarPageIds(existing.sidebarPinnedPageIds) ?? [],
+    sidebarMorePageIds: safeSidebarPageIds(existing.sidebarMorePageIds) ?? [],
   }
   return {
     ...settings,
@@ -162,6 +178,7 @@ async function uiSettingsFor(ctx: QueryCtx, userId: string) {
     harnessTranscriptRevision: 'settled-public-v1' as const,
     harnessFullTranscriptRevision: 'full-public-v1' as const,
     personalChatParallelReadsRevision: 'parallel-reads-v1' as const,
+    livePublicStreamRevision: 'incremental-v1' as const,
     ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
     ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
     ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),
@@ -213,6 +230,8 @@ export const upsertByServer = mutation({
     dismissedZdrWarningModelIds: v.optional(v.array(v.string())),
     enabledChatModelIds: v.optional(v.array(v.string())),
     modelOrder: v.optional(v.array(v.string())),
+    sidebarPinnedPageIds: v.optional(v.array(v.string())),
+    sidebarMorePageIds: v.optional(v.array(v.string())),
   },
   returns: uiSettingsValidator,
   handler: async (ctx, args) => {
@@ -250,6 +269,10 @@ export const upsertByServer = mutation({
         safeModelIds(args.modelOrder, MAX_ENABLED_MODEL_IDS) ??
         safeModelIds(existing?.modelOrder, MAX_ENABLED_MODEL_IDS) ??
         [],
+      sidebarPinnedPageIds:
+        safeSidebarPageIds(args.sidebarPinnedPageIds) ?? safeSidebarPageIds(existing?.sidebarPinnedPageIds) ?? [],
+      sidebarMorePageIds:
+        safeSidebarPageIds(args.sidebarMorePageIds) ?? safeSidebarPageIds(existing?.sidebarMorePageIds) ?? [],
     }
     const optionalNext = {
       ...(safeModelId(args.defaultActModelId) ?? safeModelId(existing?.defaultActModelId)

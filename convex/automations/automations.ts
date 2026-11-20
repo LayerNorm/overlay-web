@@ -9,19 +9,22 @@ import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import { enqueueTerminalWebhook } from './terminalWebhook'
 import {
   computeNextRunAt as sharedComputeNextRunAt,
-  normalizeSchedule as sharedNormalizeSchedule,
+  withUtcFields,
   DEFAULT_SCHEDULE as SHARED_DEFAULT_SCHEDULE,
   MIN_INTERVAL_MINUTES as SHARED_MIN_INTERVAL_MINUTES,
 } from '../../src/shared/automations/schedule'
 import { AUTOMATION_THREAD_RUN_OWNER_PREFIX, automationRunTurnId } from '../../src/shared/automations/run-identity'
 import { createAgentThread } from '../agents/agentThreads'
 import { recordConversationEvent } from '../collaboration/events'
+import { isWaitingForOwner, threadAgentRunFor } from '../lib/automationThreadRuns'
+import { principalIdForUser } from '../lib/workItems'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 const automationSchedule = v.object({
   kind: v.union(
     v.literal('interval'),
     v.literal('daily'),
+    v.literal('weekdays'),
     v.literal('weekly'),
     v.literal('monthly'),
   ),
@@ -30,6 +33,10 @@ const automationSchedule = v.object({
   hourUTC: v.optional(v.number()),
   dayOfWeekUTC: v.optional(v.number()),
   dayOfMonthUTC: v.optional(v.number()),
+  hour: v.optional(v.number()),
+  minute: v.optional(v.number()),
+  dayOfWeek: v.optional(v.number()),
+  dayOfMonth: v.optional(v.number()),
 })
 
 const automationDoc = v.any()
@@ -86,8 +93,23 @@ const AUTOMATION_POLICY_ERRORS = {
   enabledLimitReached: 'automation_enabled_limit_reached',
 } as const
 
-function normalizeSchedule(schedule: AutomationSchedule): AutomationSchedule {
-  return sharedNormalizeSchedule(schedule)
+/**
+ * An automation may run as an agent only when its creator could open a thread with it: a live agent in the
+ * same workspace that they can see. A workspace automation also needs an agent the whole workspace can see.
+ */
+async function assertAutomationAgent(
+  ctx: MutationCtx,
+  args: { agentId: string; workspaceId: string | undefined; userId: string; scope: 'personal' | 'workspace' },
+): Promise<void> {
+  const agent = args.workspaceId
+    ? await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()
+    : null
+  if (!agent || agent.workspaceId !== args.workspaceId || agent.archivedAt) throw new Error('AGENT_NOT_FOUND')
+  const visibility = agent.visibility ?? 'workspace'
+  if (visibility === 'creator') {
+    const principalId = await principalIdForUser(ctx, agent.workspaceId, args.userId)
+    if (agent.createdByPrincipalId !== principalId || args.scope === 'workspace') throw new Error('AGENT_NOT_FOUND')
+  }
 }
 
 function assertSchedulePolicy(schedule: AutomationSchedule): void {
@@ -157,8 +179,8 @@ async function getAutomationRunPolicyViolation(
   return null
 }
 
-export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: number): number {
-  return sharedComputeNextRunAt(scheduleInput, fromMs)
+export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: number, timeZone?: string): number {
+  return sharedComputeNextRunAt(scheduleInput, fromMs, timeZone)
 }
 
 /** The caller's own automations plus other members' workspace-scoped ones, for a view. */
@@ -268,6 +290,8 @@ export const create = mutation({
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
     scope: scopeArg,
     byAgent: v.optional(v.boolean()),
+    /** Runs the automation as this workspace agent, in a thread with it. */
+    agentId: v.optional(v.string()),
   },
   returns: v.id('automations'),
   handler: async (ctx, args) => {
@@ -284,6 +308,10 @@ export const create = mutation({
       // Automations page.
       sourceAgentId = conversation.agentId
     }
+    const agentId = args.agentId?.trim() || undefined
+    if (agentId) {
+      await assertAutomationAgent(ctx, { agentId, workspaceId: args.workspaceId, userId: args.userId, scope })
+    }
     const now = Date.now()
     const enabled = args.enabled ?? true
     await enforceAutomationPolicy(ctx, {
@@ -292,7 +320,8 @@ export const create = mutation({
       enabled,
       schedule: args.schedule,
     })
-    const schedule = normalizeSchedule(args.schedule)
+    const timezone = args.timezone?.trim() || 'UTC'
+    const schedule = withUtcFields(args.schedule, timezone, now)
     const automationId = await ctx.db.insert('automations', {
       userId: args.userId,
       workspaceId: args.workspaceId,
@@ -302,13 +331,13 @@ export const create = mutation({
       instructions: args.instructions.trim(),
       enabled,
       schedule,
-      timezone: args.timezone?.trim() || 'UTC',
-      nextRunAt: enabled ? computeNextRunAt(schedule, now) : undefined,
+      timezone,
+      nextRunAt: enabled ? computeNextRunAt(schedule, now, timezone) : undefined,
       modelId: args.modelId?.trim() || undefined,
       graphSource: args.graphSource?.trim() || undefined,
       graph: args.graph ?? undefined,
       sourceConversationId: args.sourceConversationId,
-      agentId: sourceAgentId,
+      agentId: agentId || sourceAgentId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
       createdByAgent: args.byAgent || undefined,
       createdAt: now,
@@ -380,17 +409,18 @@ export const update = mutation({
     if (updates.graph !== undefined) patch.graph = updates.graph ?? undefined
     if (updates.sourceConversationId !== undefined) patch.sourceConversationId = updates.sourceConversationId
     if (updates.concurrencyPolicy !== undefined) patch.concurrencyPolicy = updates.concurrencyPolicy
-    if (updates.schedule !== undefined) {
-      const schedule = normalizeSchedule(updates.schedule)
+    const timezone = patch.timezone ?? automation.timezone
+    if (updates.schedule !== undefined || updates.timezone !== undefined) {
+      const schedule = withUtcFields(updates.schedule ?? automation.schedule ?? DEFAULT_SCHEDULE, timezone, now)
       patch.schedule = schedule
-      patch.nextRunAt = nextEnabled ? computeNextRunAt(schedule, now) : undefined
+      patch.nextRunAt = nextEnabled ? computeNextRunAt(schedule, now, timezone) : undefined
     }
     if (updates.enabled !== undefined) {
       patch.enabled = updates.enabled
       if (!updates.enabled) {
         patch.nextRunAt = undefined
       } else if (patch.nextRunAt === undefined) {
-        patch.nextRunAt = computeNextRunAt(patch.schedule ?? automation.schedule ?? DEFAULT_SCHEDULE, now)
+        patch.nextRunAt = computeNextRunAt(patch.schedule ?? automation.schedule ?? DEFAULT_SCHEDULE, now, timezone)
       }
     }
     await ctx.db.patch(automationId, patch)
@@ -447,7 +477,7 @@ export const resume = mutation({
     })
     await ctx.db.patch(args.automationId, {
       enabled: true,
-      nextRunAt: computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, now),
+      nextRunAt: computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, now, automation.timezone),
       updatedAt: now,
     })
     return null
@@ -934,10 +964,7 @@ async function threadRunOutcome(ctx: QueryCtx, run: Doc<'automationRuns'>, now: 
       ? { status: 'failed', error: 'The automation message was not delivered to its thread.' }
       : { status: 'pending' }
   }
-  const recent = await ctx.db.query('conversationAgentRuns')
-    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', run.conversationId!).gte('createdAt', startedAt))
-    .take(50)
-  const agentRun = recent.find(candidate => candidate.userMessageId === run.messageId)
+  const agentRun = await threadAgentRunFor(ctx, run)
   if (!agentRun) {
     return now - startedAt > THREAD_RUN_START_TIMEOUT_MS
       ? { status: 'failed', error: 'The thread did not start a turn for the automation message.' }
@@ -1025,11 +1052,15 @@ async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automat
       updatedAt: now,
     })
   }
+  // A run whose turn waits for the owner's answer or approval does not hold the schedule.
   const running = await ctx.db
     .query('automationRuns')
     .withIndex('by_automationId_status', (q) => q.eq('automationId', automationId).eq('status', 'running'))
-    .first()
-  return Boolean(running)
+    .take(20)
+  for (const run of running) {
+    if (!await isWaitingForOwner(ctx, run)) return true
+  }
+  return false
 }
 
 export const claimDueRuns = internalMutation({
@@ -1095,7 +1126,7 @@ export const claimDueRuns = internalMutation({
           })
           continue
         }
-        const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor))
+        const nextRunAt = computeNextRunAt(automation.schedule ?? DEFAULT_SCHEDULE, Math.max(args.now, scheduledFor), automation.timezone)
 
         if (
           (automation.concurrencyPolicy ?? 'skip') === 'skip' &&

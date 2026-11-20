@@ -55,8 +55,8 @@ test('stream and live-plan updates skip completed rows while real changes remain
   const live = message('answer-2', 'turn-2', 'assistant', 'generating')
   const rows = [message('user-1', 'turn-1', 'user'), earlier,
     message('user-2', 'turn-2', 'user'), live].map(message => ({ message, contextUser: null }))
-  function Harness({ rows, revision, allowed = true, readOnly = false, scopeKey = 'owner/workspace/chat' }: {
-    rows: PersonalTranscriptRow[]; revision: number; allowed?: boolean; readOnly?: boolean; scopeKey?: string
+  function Harness({ rows, revision, allowed = true, readOnly = false, scopeKey = 'owner/workspace/chat', act: sessionChat = actChat }: {
+    rows: PersonalTranscriptRow[]; revision: number; allowed?: boolean; readOnly?: boolean; scopeKey?: string; act?: typeof actChat
   }) {
     const { projection } = useNativePersonalTranscript({
       enabled: true, conversationId: 'chat', scopeKey,
@@ -77,7 +77,7 @@ test('stream and live-plan updates skip completed rows while real changes remain
         canonicalResponse={exchange.responses.at(-1)} hasCanonicalResponse
         responseIdentity={exchange.responses.at(-1)?.id}
         exchangeIndex={index} latestExchangeIndex={view.exchanges.length - 1}
-        primaryMessages={view.primaryMessages} actChat={actChat} chatInstances={[]}
+        primaryMessages={view.primaryMessages} actChat={sessionChat} chatInstances={[]}
         exchangeModes={view.exchangeModes} exchangeModels={view.exchangeModels} selectedModels={[]}
         isActiveLoading isOptimisticLoading={false} interruptedExchangeIdx={null}
         exitingTurnIds={[]} sourcesPanel={null} getResponseForExchange={() => null}
@@ -94,6 +94,16 @@ test('stream and live-plan updates skip completed rows while real changes remain
   assert.equal(renders.ChatExchange ?? 0, 0)
   assert.ok(renders['ChatExchange(streaming)'] > 0)
   assert.ok(JSON.stringify(renderer!.toJSON()).includes('New streamed content'))
+  // The session chat holds only the turn sent since load, so its first exchange is the streaming reply.
+  for (const [revision, text] of [[10, 'Partial'], [11, 'Partial and more']] as const) {
+    resetPerfDebugSnapshot()
+    const session = { messages: [
+      { id: 'session-user', role: 'user', parts: [{ type: 'text', text: 'Question' }] },
+      { id: 'session-answer', role: 'assistant', parts: [{ type: 'text', text }] },
+    ] } as unknown as typeof actChat
+    await act(async () => renderer!.update(<Harness rows={changed} revision={revision} act={session} />))
+    assert.equal(getPerfDebugSnapshot().renders.ChatExchange ?? 0, 0)
+  }
   resetPerfDebugSnapshot()
   const edited = changed.map(row => row.message === earlier
     ? { ...row, message: { ...earlier, content: 'Edited completed response' } } : row)

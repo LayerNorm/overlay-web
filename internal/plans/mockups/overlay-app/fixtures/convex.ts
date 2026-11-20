@@ -14,6 +14,8 @@ export function defineQueries(entries: Record<string, Resolver | unknown>) {
   for (const [name, value] of Object.entries(entries)) queries.set(name, typeof value === 'function' ? (value as Resolver) : () => value)
 }
 
+export const queryResolver = (name: string) => queries.get(name)
+
 export function defineMutations(entries: Record<string, (args: never) => unknown>) {
   for (const [name, value] of Object.entries(entries)) mutations.set(name, value as Resolver)
 }

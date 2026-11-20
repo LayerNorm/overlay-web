@@ -1,13 +1,19 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { RoomMessageRecord } from './room-message-view'
 import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
-import { usePublicStreamMetrics } from '@/components/providers/usePublicStreamMetrics'
+import { useLivePublicStreams } from '@/components/providers/useLivePublicStreams'
+import { restoredPageSize } from '@/shared/chat/transcript-cache'
+import {
+  transcriptCache,
+  useTranscriptCacheKey,
+  type RoomCachedAccess,
+  type RoomCachedMessage,
+} from '@/components/providers/transcript-cache-client'
 
 export type RoomSummary = {
   title: string
@@ -48,7 +54,10 @@ export function ConvexRoomMessageSubscription({
 }) {
   const args = { workspaceId, conversationId: conversationId as Id<'conversations'> }
   const room = useQuery(api.collaboration.rooms.access, args)
-  const main = usePaginatedQuery(api.collaboration.rooms.messages, room ? args : 'skip', { initialNumItems: PAGE_SIZE })
+  const cacheKey = useTranscriptCacheKey({ kind: 'room', conversationId }, workspaceId)
+  // The live first page asks for as many rows as the restored snapshot showed, so replacing it does not shift the reader.
+  const [initialNumItems] = useState(() => restoredPageSize(cacheKey ? transcriptCache.get(cacheKey) : null, PAGE_SIZE))
+  const main = usePaginatedQuery(api.collaboration.rooms.messages, room ? args : 'skip', { initialNumItems })
   const thread = usePaginatedQuery(
     api.collaboration.rooms.messages,
     room && threadRootMessageId
@@ -83,18 +92,42 @@ export function ConvexRoomMessageSubscription({
     }).slice(0, 50).map(message => message.id as Id<'conversationMessages'>)
   }, [conversationId, main.results, permalink, thread.results])
   // Only subscribe while something is generating: idle rooms never depend on the stream query.
-  const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
-    room && activeMessageIds.length > 0 ? {
-      ...args,
-      messageIds: activeMessageIds,
-    } : 'skip')
-  usePublicStreamMetrics(activeStreams ?? [])
+  const settings = useQuery(api.platform.uiSettings.mine, {})
+  const activeStreams = useLivePublicStreams({
+    // Wait for the settings, so a room opened mid-reply does not read the whole stream and then switch to
+    // incremental reads (dropping the text it showed for one round trip).
+    scope: room && settings !== undefined ? { workspaceId, conversationId } : null,
+    messageIds: activeMessageIds,
+    incremental: settings?.livePublicStreamRevision === 'incremental-v1',
+    fullQuery: api.collaboration.rooms.activePublicStreams,
+    updatesQuery: api.collaboration.rooms.activePublicStreamUpdates,
+  })
   const projectedMessages = useMemo(
-    () => projectActivePublicStreams(loadedMessages, activeStreams ?? []) as RoomMessageRecord[],
+    () => projectActivePublicStreams(loadedMessages, activeStreams) as RoomMessageRecord[],
     [activeStreams, loadedMessages],
   )
 
   useEffect(() => { onRoom(room) }, [onRoom, room])
+
+  const snapshotRef = useRef<{ key: string; items: RoomCachedMessage[]; access: RoomCachedAccess; isDone: boolean } | null>(null)
+  useEffect(() => {
+    if (!cacheKey) return
+    if (room === null) {
+      transcriptCache.evict(cacheKey)
+      snapshotRef.current = null
+    } else if (room && main.status !== 'LoadingFirstPage') {
+      snapshotRef.current = { key: cacheKey, items: main.results, access: room, isDone: main.status === 'Exhausted' }
+    }
+  }, [cacheKey, main.results, main.status, room])
+  // Write back when the reader leaves, not on every streamed update.
+  useEffect(() => () => {
+    const snapshot = snapshotRef.current
+    snapshotRef.current = null
+    if (snapshot?.key !== cacheKey) return
+    transcriptCache.put<RoomCachedMessage, RoomCachedAccess>(snapshot.key, {
+      items: snapshot.items, summary: snapshot.access, isDone: snapshot.isDone, source: 'live',
+    })
+  }, [cacheKey])
 
   useEffect(() => {
     if (!room || main.status === 'LoadingFirstPage') return

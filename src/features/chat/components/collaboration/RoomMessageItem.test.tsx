@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { ChatExchange } from '@overlay/chat-react/transcript'
 import { RoomMessageItem } from './RoomMessageItem'
 import {
   compareRoomMessageRecords,
@@ -77,20 +78,22 @@ test('streaming agent controls stay hidden until their own response is hovered o
   assert.match(html, /-ml-1\.5/)
 })
 
-test('a streaming agent reply shows one avatar, whose eyes move, and no second indicator', () => {
+test('a streaming agent reply shows one 24px mark below its text until it settles', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Searching memory first.' }), 'Agent', false, true)
   assert.doesNotMatch(html, /animate-pulse rounded-full/)
   assert.doesNotMatch(html, /agent-response-pending/)
-  assert.doesNotMatch(html, /is responding/)
+  assert.equal(html.match(/is responding/g)?.length, 1)
+  assert.ok(html.indexOf('Searching memory first.') < html.indexOf('is responding'))
   const settled = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Agent')
   assert.doesNotMatch(settled, /is responding/)
 })
 
-test('an empty generating reply shows dots immediately below its author', () => {
+test('an empty generating reply shows the chat mark immediately below its author, with no dots row', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: '' }), 'Agent', false, true)
-  assert.match(html, /aria-label="Agent is preparing a response"/)
-  assert.match(html, /class="agent-response-pending"[^>]*><span><\/span><span><\/span><span><\/span>/)
-  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('agent-response-pending'))
+  assert.equal(html.match(/is responding/g)?.length, 1)
+  assert.match(html, /data-loading-presentation="standalone"/)
+  assert.doesNotMatch(html, /agent-response-pending/)
+  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('is responding'))
 })
 
 test('a member’s own message is just the personal gray bubble', () => {
@@ -321,5 +324,52 @@ test('channel messages keep reactions and thread replies', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Atlas')
   assert.match(html, /👍/)
   assert.doesNotMatch(html, /Regenerate response|Branch chat from here/)
+})
+
+
+
+function renderChatReply(responseText: string) {
+  return renderToStaticMarkup(
+    <ChatExchange
+      userMsgId="user-1"
+      userBodyText="Question"
+      userDocumentNames={[]}
+      userImages={[]}
+      exchIdx={0}
+      responseModelId="model"
+      assistantVisualBlocks={responseText ? [{ kind: 'text', text: responseText }] : []}
+      isStreaming
+      isTextStreaming={Boolean(responseText)}
+      errorMessage={null}
+      responseInProgress
+      status={responseText ? 'streaming' : 'submitted'}
+      interrupted={false}
+      turnIdForActions={null}
+      modelLabel="Model"
+      onDeleteTurn={() => {}}
+      onReply={() => {}}
+      actionsLocked={false}
+      replyThreadMeta={null}
+      onJumpToReply={() => {}}
+      onOpenDraft={() => {}}
+      onCreateAutomationDraft={() => {}}
+      isSourcesOpenForThis={false}
+    />,
+  )
+}
+
+const loadingTag = (markup: string) => markup.match(/<[^>]*data-loading-presentation="[^"]*"[^>]*>/g) ?? []
+
+test('chat and agent-thread replies render the same loading indicator for the same live state', () => {
+  for (const content of ['', 'Partial answer']) {
+    const chat = renderChatReply(content)
+    const room = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content }), 'Agent', false, true)
+    assert.equal(loadingTag(chat).length, 1)
+    assert.deepEqual(loadingTag(room), loadingTag(chat))
+    if (content) {
+      assert.ok(chat.indexOf(content) < chat.indexOf('data-loading-presentation'))
+      assert.ok(room.indexOf(content) < room.indexOf('data-loading-presentation'))
+    }
+  }
 })
 

@@ -9,6 +9,7 @@ import {
   nativeRunCommandAllowed,
   nativeRunCommandIdentity,
   toNativePersonalRun,
+  waitForNativePersonalTurn,
 } from './native-personal-lifecycle'
 import { projectPersonalTranscript, type PersonalPendingTurn } from './personal-transcript'
 import {
@@ -193,3 +194,48 @@ test('terminal canonical turns stop stale activity without hiding a newer pendin
     run: null,
   }), false)
 })
+
+test('waiting for a native turn resolves on its terminal run, a later turn, or lost access', async () => {
+  const watch = (values: unknown[]) => {
+    let listener: (() => void) | null = null
+    let index = 0
+    let unsubscribed = false
+    return {
+      client: { watchQuery: () => ({
+        onUpdate: (callback: () => void) => { listener = callback; return () => { unsubscribed = true } },
+        localQueryResult: () => {
+          const value = values[Math.min(index, values.length - 1)]
+          if (value instanceof Error) throw value
+          return value
+        },
+      }) } as never,
+      next: () => { index++; listener?.() },
+      unsubscribed: () => unsubscribed,
+    }
+  }
+  const target = { workspaceId: 'ws', conversationId: 'chat', turnId: 'turn' }
+  const running = { run: { turnId: 'turn', status: 'running' } }
+
+  const failed = watch([undefined, running, { run: { turnId: 'turn', status: 'failed' } }])
+  const failedResult = waitForNativePersonalTurn(failed.client, target)
+  failed.next()
+  failed.next()
+  assert.equal(await failedResult, 'failed')
+  assert.equal(failed.unsubscribed(), true)
+
+  const later = watch([running, { run: { turnId: 'next-turn', status: 'running' } }])
+  const laterResult = waitForNativePersonalTurn(later.client, target)
+  later.next()
+  assert.equal(await laterResult, 'completed')
+
+  const previous = watch([{ run: { turnId: 'older', status: 'completed' } }, { run: { turnId: 'turn', status: 'cancelled' } }])
+  const previousResult = waitForNativePersonalTurn(previous.client, target)
+  previous.next()
+  assert.equal(await previousResult, 'cancelled')
+
+  const lost = watch([running, new Error('CONVERSATION_ACCESS_DENIED')])
+  const lostResult = waitForNativePersonalTurn(lost.client, target)
+  lost.next()
+  assert.equal(await lostResult, 'unavailable')
+})
+

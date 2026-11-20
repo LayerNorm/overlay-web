@@ -55,6 +55,7 @@ import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { assertAgentModelSelectable } from '@/server/agents/agent-model-selection'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -65,9 +66,6 @@ import { ComputerService, type ComputerLimits } from '@/server/computers/Compute
 import { ConvexLocalToolCallRepository, LocalComputerService } from '@/server/computers/local/LocalComputerService'
 import { ComputerBilling } from '@/server/computers/ComputerBilling'
 import { ComputerLifecycleService } from '@/server/computers/ComputerLifecycleService'
-import { SurfaceService } from '@/server/surfaces/SurfaceService'
-import { listSlackChannels } from '@/server/surfaces/slack-directory'
-import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -125,7 +123,6 @@ export interface OverlayServerContext extends OverlayProviderContext {
   computerService: ComputerService
   /** The user's own connected machine used as a Computer through its Agent Host. */
   localComputerService: LocalComputerService
-  surfaceService: SurfaceService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   authorizationService: AuthorizationService
@@ -220,7 +217,9 @@ export function createOverlayServerContext(
   const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
-  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const workspaceAgentService = new WorkspaceAgentService(
+    workspaceAgentRepository, workspaceService, undefined, undefined, assertAgentModelSelectable,
+  )
   const computerLifecycleRef: { current?: ComputerLifecycleService } = {}
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,
@@ -282,13 +281,6 @@ export function createOverlayServerContext(
     repository: new ConvexLocalToolCallRepository(),
     listEnvironments: (input) => appData.repositories.connectedAgents.listEnvironments(input),
   })
-  const surfaceService = new SurfaceService({
-    repository: appData.repositories.surfaces,
-    agents: workspaceAgentRepository,
-    channelLister: (connection, adapter) =>
-      listSlackChannels(connection, adapter as SlackAdapter),
-    resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
-  })
   const mcpAccess = new McpAccessService({
     grants: appData.repositories.mcpGrants,
     workspaces: workspaceService,
@@ -303,7 +295,7 @@ export function createOverlayServerContext(
       agentId,
     }),
     directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
-    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }>(
+    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }>(
       'agents/agentAsks:claimAgentAskByServer',
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
       { throwOnError: true },
@@ -395,7 +387,6 @@ export function createOverlayServerContext(
     managedAgentSandboxBilling,
     computerService,
     localComputerService,
-    surfaceService,
     workspaceSharingService,
     workspaceSearchService,
     authorizationService,

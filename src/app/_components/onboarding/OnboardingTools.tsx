@@ -6,6 +6,8 @@ import { Button } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
+import { rememberIntegrationAttempt, subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { usePendingConnection } from '@/features/integrations/hooks/use-pending-connection'
 import { ONBOARDING_TOOL_LABELS, type OnboardingSession } from '@/shared/onboarding/session'
 import { BrandMark } from './onboarding-logos'
 import { OnboardingSubscriptions } from './OnboardingSubscriptions'
@@ -26,15 +28,17 @@ function useAvailability(workspaceId: string) {
   const [apps, setApps] = useState<Set<string> | false | null>(capabilities.integrations ? null : false)
   const refreshApps = useCallback(async () => {
     const result = await overlayAppClient.integrations.get<{ connected?: string[] }>(undefined, { headers: { 'x-overlay-workspace-id': workspaceId }, cache: 'no-store' })
-    setApps(new Set(result.connected ?? []))
+    const next = new Set(result.connected ?? [])
+    setApps(next)
+    return next
   }, [workspaceId])
   useEffect(() => {
     if (!capabilities.integrations) return
     const reload = () => { void refreshApps().catch(() => setApps((current) => (current instanceof Set ? current : false))) }
     reload()
     window.addEventListener('focus', reload)
-    window.addEventListener('overlay:integrations-changed', reload)
-    return () => { window.removeEventListener('focus', reload); window.removeEventListener('overlay:integrations-changed', reload) }
+    const unsubscribe = subscribeIntegrationsChanged(reload)
+    return () => { window.removeEventListener('focus', reload); unsubscribe() }
   }, [capabilities.integrations, refreshApps])
   return { apps, refreshApps }
 }
@@ -47,13 +51,20 @@ export function OnboardingTools({ session, disabled, onContinue }: {
   const { apps, refreshApps } = useAvailability(session.workspaceId)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [, setPendingConnection] = usePendingConnection({
+    load: refreshApps,
+    onConnected: () => {},
+    onFailed: (slug) => setError(`Could not connect ${ONBOARDING_TOOL_LABELS[slug as ToolSlug] ?? 'the app'}. Try again.`),
+  })
   const technical = /engineer|code|software/i.test(`${session.profile.about} ${session.profile.daily}`)
   const visibleApps = APPS.filter((app) => !app.technical || technical)
   const connectedApps = apps instanceof Set ? visibleApps.filter((app) => apps.has(app.slug)).map((app) => app.slug) : []
   const anyConnected = connectedApps.length > 0
   const nothingAvailable = !(apps instanceof Set)
   const connect = async (slug: ToolSlug) => {
-    const tab = window.open('about:blank', '_blank')
+    const attemptId = window.crypto.randomUUID()
+    let tab = window.open('about:blank', '_blank')
+    rememberIntegrationAttempt(tab, attemptId)
     if (tab) tab.opener = null
     setConnecting(slug)
     setError(null)
@@ -62,9 +73,16 @@ export function OnboardingTools({ session, disabled, onContinue }: {
       const result = await response.json()
       if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : `Could not connect ${ONBOARDING_TOOL_LABELS[slug]}.`)
       const url = safeHttpUrl(result.redirectUrl)
-      if (url && tab) tab.location.href = url
-      else if (url) window.open(url, '_blank', 'noopener,noreferrer')
-      else { tab?.close(); if (!result.connectionId) throw new Error('No connection setup URL was returned.') }
+      if (url) {
+        setPendingConnection({ providerKey: slug, attemptId })
+        if (!tab) {
+          tab = window.open('about:blank', '_blank')
+          rememberIntegrationAttempt(tab, attemptId)
+          if (tab) tab.opener = null
+        }
+        if (tab) tab.location.href = url
+        else window.open(url, '_blank', 'noopener,noreferrer')
+      } else { tab?.close(); if (!result.connectionId) throw new Error('No connection setup URL was returned.') }
       await refreshApps()
     } catch (value) {
       tab?.close()

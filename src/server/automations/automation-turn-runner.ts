@@ -59,7 +59,6 @@ import {
   buildAutomationSystemPrompt,
   buildAutomationUserMessage,
 } from '@/shared/automations/automation-prompts'
-import { buildSurfaceSystemPrompt } from '@/shared/surfaces/surface-prompts'
 import {
   applyAgentCapabilityFilter,
   resolveAgentGrant,
@@ -79,45 +78,6 @@ import { automationService } from './http'
  * Everything on it must stay JSON-serializable — it crosses workflow
  * step boundaries.
  */
-/**
- * Surface provenance for a turn triggered by an external platform message
- * (Slack first). When present, `instructions` carries the raw inbound message
- * text instead of automation instructions, the agent's own persona prompt
- * becomes the system extension, and billing attributes to
- * `surface:<platform>:<bindingId>`.
- */
-export type SurfaceTurnContext = {
-  platform: string
-  bindingId: string
-  connectionId: string
-  /** Platform install key — Slack team_id (or enterprise_id for org installs). */
-  teamId: string
-  channelId: string
-  channelName?: string
-  /** Platform thread key — Slack thread_ts the conversation maps to. */
-  threadId: string
-  /** Inbound platform message id — dedupe key for the persisted user row. */
-  messageId: string
-  agentId: string
-  agentName: string
-  agentInstructions?: string
-  /** The agent's own principal — memory and tooling attribute to it. */
-  agentPrincipalId?: string
-  /** The agent's tool grant — narrows the turn's tool surface. */
-  agentAllowedToolIds?: string[]
-  agentIsDefault?: boolean
-  agentPermissionMode?: 'ask' | 'auto'
-  /** Creator's human principal — owns the surface conversation rows. */
-  creatorPrincipalId?: string
-  authorExternalId?: string
-  authorName?: string
-  authorEmail?: string
-  /** Workspace-membership status of the sender (same convention as imports). */
-  authorStatus?: 'member' | 'invited' | 'not_invited'
-  /** ts of the "working" placeholder the handler posted — the reply edits it. */
-  placeholderTs?: string
-}
-
 export type AutomationAgentTurnInput = {
   automationId?: string
   /** Present for manual "run now" executions backed by an automation_runs row. */
@@ -132,7 +92,6 @@ export type AutomationAgentTurnInput = {
   scheduledFor: number
   workspaceId?: string
   originWorkflowRunId?: string
-  surface?: SurfaceTurnContext
 }
 
 /**
@@ -310,50 +269,16 @@ async function createOwnedAutomationConversation(
   }
 }
 
-/**
- * Billing subject, idempotency key, and operation-id prefix for a turn:
- * surface turns bill to `surface:<platform>:<bindingId>`, automations to the
- * automation (or run).
- */
 function turnRequestFingerprint(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
+/** Billing subject, idempotency key, and operation-id prefix for an automation turn. */
 export function turnBillingKeys(input: AutomationAgentTurnInput) {
-  const surface = input.surface
-  if (surface) {
-    return {
-      billingProgrammaticSubjectId: `surface:${surface.platform}:${surface.bindingId}`,
-      requestIdempotencyKey: `surface:${surface.platform}:${surface.bindingId}:${surface.messageId || input.turnId}`,
-      operationIdPrefix: 'surface.turn',
-    }
-  }
   return {
     billingProgrammaticSubjectId: `automation:${input.automationId ?? input.runId ?? input.turnId}`,
     requestIdempotencyKey: `automation:${input.runId ?? input.automationId ?? 'turn'}:${input.turnId}`,
     operationIdPrefix: 'automation.turn',
-  }
-}
-
-/**
- * A surface turn carries the bound agent's grant: the tool surface is the
- * account's allowed tools intersected with the agent's allowedToolIds (the
- * delegate model — tools still authenticate as the creator). The grant can
- * only ever narrow, never widen.
- */
-function narrowToolIdsToSurfaceAgent(
-  surface: SurfaceTurnContext | undefined,
-  accountAllowedToolIds: string[],
-) {
-  if (!surface) return { agentGrant: undefined, allowedToolIds: accountAllowedToolIds }
-  const agentGrant = resolveAgentGrant({
-    agentId: surface.agentId,
-    allowedToolIds: surface.agentAllowedToolIds ?? [],
-    isDefaultMaster: surface.agentIsDefault === true,
-  })
-  return {
-    agentGrant,
-    allowedToolIds: accountAllowedToolIds.filter((toolId) => agentGrant.overlayToolIds.includes(toolId)),
   }
 }
 
@@ -366,12 +291,11 @@ async function resolveTurnAgentAuthorization(
   userId: string,
   workspaceId: string,
   overlayContext: ReturnType<typeof getOverlayServerContext>,
-  surface: SurfaceTurnContext | undefined,
 ) {
-  let approvalMode: 'ask' | 'auto' = surface?.agentPermissionMode ?? 'ask'
+  let approvalMode: 'ask' | 'auto' = 'ask'
   let automationAgent: AutomationBoundAgent | null = null
   let automationAgentId: string | undefined
-  if (!surface && input.automationId) {
+  if (input.automationId) {
     const automation = await automationService.getAutomationForExecution({
       automationId: input.automationId,
       userId,
@@ -394,22 +318,19 @@ async function resolveTurnAgentAuthorization(
 }
 
 function narrowTurnAgentGrant(
-  surface: SurfaceTurnContext | undefined,
   automationAgent: AutomationBoundAgent | null,
   automationAgentId: string | undefined,
   accountAllowedToolIds: string[],
   accountAllowedConnectorIds: string[],
 ) {
-  let { agentGrant, allowedToolIds } = narrowToolIdsToSurfaceAgent(surface, accountAllowedToolIds)
-  if (!surface && automationAgent) {
-    agentGrant = resolveAgentGrant({
+  if (!automationAgent) return { agentGrant: undefined, allowedToolIds: accountAllowedToolIds }
+  const agentGrant = resolveAgentGrant({
       agentId: automationAgentId ?? '',
       allowedToolIds: automationAgent.allowedToolIds,
       isDefaultMaster: automationAgent.isDefault === true,
-    })
-    allowedToolIds = accountAllowedToolIds.filter(id => agentGrant!.overlayToolIds.includes(id))
-    if (!agentGrant.capabilities.has('integrations')) accountAllowedConnectorIds.length = 0
-  }
+  })
+  const allowedToolIds = accountAllowedToolIds.filter(id => agentGrant.overlayToolIds.includes(id))
+  if (!agentGrant.capabilities.has('integrations')) accountAllowedConnectorIds.length = 0
   return { agentGrant, allowedToolIds }
 }
 
@@ -442,7 +363,6 @@ export async function prepareAutomationAgentTurn(
 
   const effectiveModelId = resolveEffectiveActModelId(input.modelId)
 
-  const surface = input.surface
   const { billingProgrammaticSubjectId, requestIdempotencyKey, operationIdPrefix } = turnBillingKeys(input)
   const requestFingerprint = turnRequestFingerprint({
     automationId: input.automationId,
@@ -491,7 +411,7 @@ export async function prepareAutomationAgentTurn(
     params: Promise.resolve({}),
     auth: { userId, accessToken: '', authType: 'service' },
     parsedQuery: {},
-    parsedJson: { automationId: input.automationId, surfaceBindingId: input.surface?.bindingId },
+    parsedJson: { automationId: input.automationId },
     parsedFormData: null,
     capabilities: {} as CapabilityCheck,
     requestFingerprint,
@@ -515,8 +435,7 @@ export async function prepareAutomationAgentTurn(
     )
   }
 
-  // For surface turns, `instructions` carries the raw inbound platform text.
-  const userText = surface ? input.instructions : buildAutomationUserMessage(input)
+  const userText = buildAutomationUserMessage(input)
   const userMessage: UIMessage = {
     id: input.turnId,
     role: 'user',
@@ -540,9 +459,6 @@ export async function prepareAutomationAgentTurn(
       : undefined,
     billingSpendSubjectId: resolvedBillingPayer.subject.id,
     billingSpendSubjectKind: resolvedBillingPayer.subject.kind,
-    importedAuthorName: surface?.authorName,
-    importedAuthorEmail: surface?.authorEmail,
-    importedAuthorStatus: surface?.authorStatus,
     skip: false,
   }).catch((error) => {
     logger.warn('[automations/turn] user-message persistence failed', {
@@ -659,7 +575,7 @@ export async function prepareAutomationAgentTurn(
   })
 
   const { approvalMode, automationAgent, automationAgentId } = await resolveTurnAgentAuthorization(
-    input, userId, billingWorkspaceId, overlayContext, surface,
+    input, userId, billingWorkspaceId, overlayContext,
   )
   const toolPreloadTasks = preloadActExternalToolTasks({
     userId,
@@ -690,21 +606,21 @@ export async function prepareAutomationAgentTurn(
     accountAllowedConnectorIdsTask,
   ])
 
-  const { agentGrant, allowedToolIds: surfaceAllowedToolIds } = narrowTurnAgentGrant(
-    surface, automationAgent, automationAgentId, accountAllowedToolIds, accountAllowedConnectorIds,
+  const { agentGrant, allowedToolIds: grantedToolIds } = narrowTurnAgentGrant(
+    automationAgent, automationAgentId, accountAllowedToolIds, accountAllowedConnectorIds,
   )
 
   const baseUrl = getBaseUrl()
   const actTooling = await prepareActTooling({
     accountAllowedConnectorIds,
-    accountAllowedToolIds: surfaceAllowedToolIds,
+    accountAllowedToolIds: grantedToolIds,
     accessToken: undefined,
     // An agent-bound automation runs as its agent (memory, computer,
     // attribution), exactly as the harness re-derives on every step.
-    agentId: surface?.agentId ?? automationAgentId,
-    agentPrincipalId: surface?.agentPrincipalId ?? automationAgent?.principalId,
+    agentId: automationAgentId,
+    agentPrincipalId: automationAgent?.principalId,
     automationExecution: true,
-    ...(!surface ? { automationId: input.automationId } : {}),
+    automationId: input.automationId,
     computerApprovalContext: 'automation',
     approvalMode,
     baseUrl,
@@ -713,11 +629,9 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // The agent remembers as itself on surface turns and agent-bound
-    // automations, so what it learns accrues to the agent, not the creator.
-    memoryOwnerId: surface
-      ? agentMemoryOwnerId(surface.agentId)
-      : automationAgentId ? agentMemoryOwnerId(automationAgentId) : undefined,
+    // An agent-bound automation remembers as its agent, so what it learns
+    // accrues to the agent, not the creator.
+    memoryOwnerId: automationAgentId ? agentMemoryOwnerId(automationAgentId) : undefined,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,
     preloadTasks: toolPreloadTasks,
@@ -760,9 +674,7 @@ export async function prepareAutomationAgentTurn(
     requestedToolIds: [],
     skillsContext,
     userSystemPromptExtension: buildSecondarySystemPromptExtension(
-      surface
-        ? buildSurfaceSystemPrompt(surface)
-        : buildAutomationSystemPrompt(input),
+      buildAutomationSystemPrompt(input),
     ),
     automationExecution: true,
     automationMode: false,
@@ -778,7 +690,7 @@ export async function prepareAutomationAgentTurn(
 
   const toolingContext: PersonalChatWorkToolingContext = {
     accountAllowedConnectorIds: [...accountAllowedConnectorIds],
-    accountAllowedToolIds: [...surfaceAllowedToolIds],
+    accountAllowedToolIds: [...grantedToolIds],
     integrationToolIds: [...actTooling.integrationToolIds],
     baseUrl,
     billingProgrammaticSubjectId,
@@ -788,7 +700,6 @@ export async function prepareAutomationAgentTurn(
     latestUserText: userText,
     mediaToolIntent: resolvedMediaToolIntent,
     memoryEnabled,
-    ...(surface ? { memoryOwnerId: agentMemoryOwnerId(surface.agentId) } : {}),
     paid,
     requestFingerprint,
     requestedToolIds: [],
@@ -796,7 +707,8 @@ export async function prepareAutomationAgentTurn(
     userId,
     workspaceId: billingWorkspaceId,
     automationExecution: true,
-    ...(!surface ? { automationId: input.automationId, automationRunId: input.runId } : {}),
+    automationId: input.automationId,
+    automationRunId: input.runId,
     approvalMode,
   }
 

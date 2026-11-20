@@ -4,6 +4,7 @@ import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
 import { getReadableRow } from '../lib/resourceScope'
 import { listWorkspaceAutomations } from './automations'
+import { isWaitingForOwner } from '../lib/automationThreadRuns'
 
 const RUN_HISTORY_LIMIT = 50
 
@@ -60,9 +61,12 @@ export const runs = query({
     if (!viewer) return []
     const automation = await ctx.db.get(automationId)
     if (!automation || automation.userId !== viewer.userId || automation.deletedAt || automation.workspaceId !== workspaceId) return []
-    return await ctx.db.query('automationRuns')
+    const runs = await ctx.db.query('automationRuns')
       .withIndex('by_automationId_createdAt', q => q.eq('automationId', automationId))
       .order('desc')
       .take(RUN_HISTORY_LIMIT)
+    return await Promise.all(runs.map(async run => (
+      await isWaitingForOwner(ctx, run) ? { ...run, waitingForOwner: true } : run
+    )))
   },
 })

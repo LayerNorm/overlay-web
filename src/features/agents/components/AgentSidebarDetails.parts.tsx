@@ -3,19 +3,17 @@
 import {
   BookOpen,
   Blocks,
-  FileImage,
-  Folder,
+  Bot,
+  FileText,
   Globe,
+  ImagePlay,
   Link2,
   Laptop,
+  ListChecks,
   Monitor,
-  PanelsTopLeft,
-  Search,
   Sparkles,
-  StickyNote,
-  Video,
+  Workflow,
   Wrench,
-  Zap,
 } from 'lucide-react'
 import { Toggle, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@overlay/ui/primitives'
 import {
@@ -25,7 +23,6 @@ import {
   DangerZone,
   OverlayAgentPermissionsField,
 } from './AgentEditorForm'
-import { AgentSurfacesField } from './AgentSurfacesField'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import type { ReactNode } from 'react'
 import type { useAgentEditorController } from './AgentEditorPage'
@@ -34,36 +31,32 @@ type Controller = ReturnType<typeof useAgentEditorController>
 
 const toolIcons: Record<string, typeof Wrench> = {
   memory: BookOpen,
-  knowledge: Search,
-  files: Folder,
+  files: FileText,
   web_search: Globe,
   integrations: Link2,
   mcp: Blocks,
-  notes: StickyNote,
   skills: Sparkles,
-  automations: Zap,
-  image: FileImage,
-  video: Video,
-  browser: PanelsTopLeft,
+  automations: Workflow,
+  tasks: ListChecks,
+  media: ImagePlay,
   computer: Monitor,
   local_computer: Laptop,
+  agents: Bot,
 }
 
 const toolLabels: Record<string, string> = {
   memory: 'Memory',
-  knowledge: 'Knowledge',
   files: 'Files',
   web_search: 'Web search',
   integrations: 'Connected apps',
   mcp: 'MCP servers',
-  notes: 'Notes',
   skills: 'Skills',
   automations: 'Automations',
-  image: 'Image generation',
-  video: 'Video generation',
-  browser: 'Browser',
+  tasks: 'Tasks',
+  media: 'Media generation',
   computer: 'Cloud computer',
   local_computer: 'Local computer',
+  agents: 'Agents',
 }
 
 function visibleToolGroups(computersAvailable: boolean) {
@@ -112,7 +105,7 @@ export function AgentSidebarTools({ editor }: { editor: Controller }) {
 }
 
 export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller }) {
-  const { form, agent, computer, surfaces } = editor
+  const { form, agent, computer } = editor
 
   return (
     <div className="space-y-[22px]">
@@ -153,15 +146,6 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
           </div>
         </section>
       ) : null}
-      <section>
-        <div className="mt-2">
-          <AgentSurfacesField
-            agentName={form.name}
-            hasAgent={Boolean(agent)}
-            surfaces={surfaces}
-          />
-        </div>
-      </section>
       {!agent?.agentRole || agent.agentRole === 'agent' ? <section>
         <div className="rounded-[10px] bg-(--surface-subtle) p-3">
           <AccessSelector

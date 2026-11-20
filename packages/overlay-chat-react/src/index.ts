@@ -7,7 +7,6 @@ export {
   ChatExperienceHeader,
   ChatModelControls,
   ChatModelPicker,
-  type AutomationDetailTabId,
   type ChatExperienceHeaderProps,
   type ChatModelPickerProps,
   type ModelQualitiesPosition,
