@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
+import { harnessSpendingMode } from './personal-admission-policy'
 import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -355,6 +357,16 @@ export async function dispatchNativeHarnessAgentRequest(
           .filter(name => parent.policy.allowedToolIds.includes(name)))].sort()
         workflowInput.definitions = workflowInput.definitions.filter(definition => allowedToolIds.includes(definition.name))
         const childRunId = `workspace:${turn.runId}`
+        // The asked agent pays for its own model, which may differ from the asking agent's (subscription vs gateway).
+        const spendingMode = harnessSpendingMode({
+          modelId: workflowInput.context.modelId,
+          paid: (await new ActEntitlementService({
+            repository: server.appData.repositories.conversations, usagePolicy: server.chatUsagePolicy,
+          }).gateModelAccess({
+            effectiveModelId: workflowInput.context.modelId, programmaticSubjectId: `agent:${invocation.agentId}`,
+            userId: access.actorUserId, workspaceId: args.workspaceId,
+          })).paid,
+        })
         const child = {
           id: childRunId,
           stepId: `ask:${toolCallId}:${invocation.agentId}`,
@@ -384,6 +396,7 @@ export async function dispatchNativeHarnessAgentRequest(
               goal: args.prompt.slice(0, 32_000),
               constraints: [],
               target: { deliveryAgentRunId: turn.runId, conversationId: args.conversationId },
+              spendingMode,
             },
           })
           if (!result.conflict) {

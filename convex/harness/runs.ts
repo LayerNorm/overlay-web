@@ -338,6 +338,7 @@ const operationValidator = v.union(
     goal: v.string(),
     constraints: v.array(v.string()),
     target: v.object({ deliveryAgentRunId: v.string(), conversationId: v.string() }),
+    spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   }),
   v.object({ type: v.literal('settle_child'), childRunId: v.string() }),
   v.object({ type: v.literal('finish'), resultSummary: v.optional(v.string()) }),
@@ -1318,7 +1319,7 @@ async function getEvidenceRow(ctx: ReadContext, runId: string, evidenceId: strin
     .unique()
 }
 
-function childAdmission(
+export function childAdmission(
   parent: HarnessSnapshot,
   operation: Extract<HarnessOperation, { type: 'admit_child' | 'admit_named_child' }>,
 ) {
@@ -1334,7 +1335,9 @@ function childAdmission(
     ...(parent.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: parent.policy.taskDeadlineAt } : {}),
     ...(parent.policy.executionPolicyVersion === 2 ? {
       executionPolicyVersion: 2 as const,
-      spendingMode: parent.policy.spendingMode!,
+      // A sub-agent runs on its parent's model and pays the same way. A named child is another agent with its
+      // own model, so the caller states how that model is paid for (a subscription model asking a gateway one).
+      spendingMode: (operation.type === 'admit_named_child' ? operation.spendingMode : undefined) ?? parent.policy.spendingMode!,
     } : {}),
     maxCostMicros: 0,
   }
