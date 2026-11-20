@@ -11,7 +11,8 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
-import { AgentAssignmentSubscription } from './AgentAssignmentSubscription'
+import { AgentAssignmentSubscription, AgentAssignmentsProvider } from './AgentAssignmentSubscription'
+import { isRoomView } from './collaboration/RoomViewTabs'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -94,8 +95,7 @@ function resolveRoomRightPanel({
 
   messageCtx: ReturnType<typeof useDirectMessageRoom>['messageCtx']
 }) {
-  const roomPanelOpen = room.roomPanel === 'people' || room.roomPanel === 'pinned'
-    || (room.roomPanel === 'thread' && Boolean(vm.threadRoot))
+  const roomPanelOpen = isRoomView(room.roomPanel) || (room.roomPanel === 'thread' && Boolean(vm.threadRoot))
   const closeRoomPanel = () => {
     room.setRoomPanel(null)
     thread.setThreadRootId(null)
@@ -117,6 +117,7 @@ function resolveRoomRightPanel({
         sendMessage={room.sendMessage}
         onAddPeople={() => room.setAddPeopleOpen(true)}
         onClosePanel={() => room.setRoomPanel(null)}
+        onSelectView={room.setRoomPanel}
         ctx={messageCtx}
         readOnlyFooter={room.selectedThreadSafety.readOnly
           ? <NativeThreadReadOnlyFooter safety={room.selectedThreadSafety} onNewThread={room.startNewNativeThread} />
@@ -346,6 +347,7 @@ export function DirectMessageExperience({
         onRoom={transcript.applyRoomSummary}
         onPaging={transcript.setPaging}
       />
+      <AgentAssignmentsProvider workspaceId={activeWorkspaceId} conversationId={conversationId}>
       <RoomTranscriptProvider value={transcript.messages}>
       <AppScreenShell
         contentClassName="flex min-h-0"
@@ -370,7 +372,7 @@ export function DirectMessageExperience({
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 vm={vm}
-                roster={roster}
+                roomSidebar={!onExternalRightPanelClose}
                 collab={collab}
                 roomActions={roomActions}
 
@@ -395,7 +397,7 @@ export function DirectMessageExperience({
               channelTopic={collab.channel?.topic}
               ctx={messageCtx}
               footer={<>
-                <AgentAssignmentSubscription workspaceId={activeWorkspaceId} conversationId={conversationId} />
+                <AgentAssignmentSubscription />
                 <GuidedPendingMessage pending={pendingMessage} messages={vm.mainMessages} />
                 {guided?.footer}
               </>}
@@ -434,6 +436,7 @@ export function DirectMessageExperience({
         </div>
       </AppScreenShell>
       </RoomTranscriptProvider>
+      </AgentAssignmentsProvider>
 
       <RoomDialogs
         panels={panels}

@@ -6,7 +6,8 @@ import {
   parseAgentRightSidebarPreferences,
 } from './agent-right-sidebar-preferences'
 
-test('missing or malformed preferences fall back to the default panels', () => {
+test('missing or malformed preferences fall back to a closed panel with no tabs, so it opens on the home', () => {
+  assert.deepEqual(DEFAULT_AGENT_RIGHT_SIDEBAR_PREFERENCES.tabs, [])
   assert.deepEqual(parseAgentRightSidebarPreferences(null), DEFAULT_AGENT_RIGHT_SIDEBAR_PREFERENCES)
   assert.deepEqual(parseAgentRightSidebarPreferences('open'), DEFAULT_AGENT_RIGHT_SIDEBAR_PREFERENCES)
 })
@@ -15,11 +16,11 @@ test('preferences saved before tabs keep the panel open on the matching new pane
   assert.deepEqual(parseAgentRightSidebarPreferences({ open: true, tab: 'details' }), {
     ...DEFAULT_AGENT_RIGHT_SIDEBAR_PREFERENCES,
     open: true,
-    tabs: ['progress', 'computer', 'changes', 'agent'],
+    tabs: ['agent'],
     active: 'agent',
   })
   const library = parseAgentRightSidebarPreferences({ open: false, tab: 'library' })
-  assert.deepEqual(library.tabs, ['progress', 'computer', 'changes', 'files'])
+  assert.deepEqual(library.tabs, ['files'])
   assert.equal(library.active, 'files')
   assert.equal(parseAgentRightSidebarPreferences({ tab: 'computer' }).active, 'computer')
 })

@@ -35,18 +35,60 @@ export type AssignmentNavigationItem = AssignmentNavigation & {
   status: string
   disposition?: string
   dispositionReason?: string
+  failureReason?: string
+  /** The response that made the assignment; absent when its run can no longer be traced. */
+  messageId?: string
+  createdAt?: number
 }
 
-export function AgentAssignments({ parent, assignments }: {
+/** Assignments grouped by the response that made them, in the order they were made. */
+export function assignmentsByResponse(items: readonly AssignmentNavigationItem[]) {
+  const byMessage = new Map<string, AssignmentNavigationItem[]>()
+  const unanchored: AssignmentNavigationItem[] = []
+  for (const item of items) {
+    if (!item.messageId) unanchored.push(item)
+    else byMessage.set(item.messageId, [...(byMessage.get(item.messageId) ?? []), item])
+  }
+  return { byMessage, unanchored }
+}
+
+export function assignmentSummary(items: readonly AssignmentNavigationItem[]) {
+  const completed = items.filter(item => item.status === 'completed').length
+  const failed = items.filter(item => item.status === 'failed').length
+  return `${completed}/${items.length} completed${failed ? ` · ${failed} failed` : ''}`
+}
+
+export function AssignmentRow({ item }: { item: AssignmentNavigationItem }) {
+  const status = assignmentActivityStatus(item.status)
+  const reason = item.disposition === 'excluded' ? `Excluded: ${item.dispositionReason}`
+    : status === 'failed' || status === 'cancelled' ? item.failureReason : undefined
+  return (
+    <li>
+      <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 rounded-lg px-3 py-2.5 text-left font-normal">
+        <Link href={item.href} aria-label={`${item.title}, ${item.agentName}, ${THREAD_ACTIVITY_LABELS[status]}`}>
+          <ThreadActivityIndicator status={status} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm" title={item.title}>{item.title}</span>
+            <span className="block truncate text-xs text-(--muted)">{item.agentName} · {THREAD_ACTIVITY_LABELS[status]}</span>
+            {reason ? <span className="block text-xs text-(--muted)">{reason}</span> : null}
+          </span>
+          <ArrowUpRight size={14} aria-hidden className="shrink-0 text-(--muted)" />
+        </Link>
+      </Button>
+    </li>
+  )
+}
+
+export function AgentAssignments({ parent, assignments, className = 'my-3' }: {
   parent: AssignmentNavigation | null
   assignments: AssignmentNavigationItem[]
+  className?: string
 }) {
   const [expanded, setExpanded] = useState(true)
   const listId = useId()
   if (!parent && assignments.length === 0) return null
-  const completed = assignments.filter(item => item.status === 'completed').length
   return (
-    <section aria-label="Delegated work" className="my-3 min-w-0 space-y-3">
+    <section aria-label="Delegated work" className={`${className} min-w-0 space-y-3`}>
       {parent ? (
         <Button asChild variant="ghost" className="h-auto max-w-full justify-start gap-2 px-2 py-2 text-left font-normal">
           <Link href={parent.href} title={`Back to ${parent.title}`}>
@@ -64,28 +106,11 @@ export function AgentAssignments({ parent, assignments }: {
             aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded(value => !value)}>
             <GitBranch size={15} aria-hidden className="shrink-0 text-(--muted)" />
             <span className="min-w-0 flex-1 text-left text-sm">Assignments</span>
-            <span className="text-xs text-(--muted)">{completed}/{assignments.length} completed</span>
+            <span className="text-xs text-(--muted)">{assignmentSummary(assignments)}</span>
             {expanded ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
           </Button>
           <ul id={listId} hidden={!expanded} className="border-t border-(--border) p-1">
-            {assignments.map(item => {
-              const status = assignmentActivityStatus(item.status)
-              return (
-                <li key={item.assignmentId}>
-                  <Button asChild variant="ghost" className="h-auto w-full justify-start gap-3 rounded-lg px-3 py-2.5 text-left font-normal">
-                    <Link href={item.href} aria-label={`${item.title}, ${item.agentName}, ${THREAD_ACTIVITY_LABELS[status]}`}>
-                      <ThreadActivityIndicator status={status} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm" title={item.title}>{item.title}</span>
-                        <span className="block truncate text-xs text-(--muted)">{item.agentName} · {THREAD_ACTIVITY_LABELS[status]}</span>
-                        {item.disposition === 'excluded' ? <span className="block text-xs text-(--muted)">Excluded: {item.dispositionReason}</span> : null}
-                      </span>
-                      <ArrowUpRight size={14} aria-hidden className="shrink-0 text-(--muted)" />
-                    </Link>
-                  </Button>
-                </li>
-              )
-            })}
+            {assignments.map(item => <AssignmentRow key={item.assignmentId} item={item} />)}
           </ul>
         </div>
       ) : null}

@@ -9,6 +9,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { ChatSurfaceEmptyState } from '@/features/chat/components/ChatSurfaceEmptyState'
+import { AssignmentsPanel } from '@/features/chat/components/AssignmentsPanel'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
 import { ChatFilesProvider, useChatFilesHost, type ChatFilesHost } from '@overlay/chat-react'
@@ -433,6 +434,7 @@ function AgentConversationWorkspaceContent() {
         onToggleExpanded={panel.toggleExpanded}
         onClose={closeRightSidebar}
         pullRequests={threadScope.pullRequests}
+        assignments={<AssignmentsPanel />}
 
         editor={sidebarEditor}
         controlled={Boolean(computerControl)}

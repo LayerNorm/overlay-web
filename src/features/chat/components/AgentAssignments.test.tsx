@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AgentAssignments } from './AgentAssignments'
+import { AgentAssignments, assignmentSummary, assignmentsByResponse } from './AgentAssignments'
 import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -50,4 +50,22 @@ test('Assigned from renders channel parent destinations without an agent filter'
   const html = renderToStaticMarkup(<AgentAssignments parent={{ assignmentId: 'one', title: 'Launch channel', href }} assignments={[]} />)
   assert.match(html, /href="\/app\/chat\?view=channels&amp;id=channel&amp;scope=workspace"/)
   assert.doesNotMatch(html, /agent=chief|\/app\/agents/)
+})
+
+test('assignments group under the response that made them, and untraceable ones stay apart', () => {
+  const item = (assignmentId: string, messageId?: string) => ({ assignmentId, messageId, title: assignmentId, agentName: 'Sales', status: 'running', href: '#' })
+  const { byMessage, unanchored } = assignmentsByResponse([item('a', 'm1'), item('b', 'm2'), item('c', 'm1'), item('d')])
+  assert.deepEqual([...byMessage].map(([id, rows]) => [id, rows.map(row => row.assignmentId)]), [['m1', ['a', 'c']], ['m2', ['b']]])
+  assert.deepEqual(unanchored.map(row => row.assignmentId), ['d'])
+})
+
+test('failed assignments say why and the summary counts them', () => {
+  const rows = [
+    { assignmentId: 'one', title: 'Pipeline', agentName: 'Sales', status: 'failed', failureReason: 'The model is not available on this plan', href: '#' },
+    { assignmentId: 'two', title: 'Launch', agentName: 'Product', status: 'completed', href: '#' },
+  ]
+  assert.equal(assignmentSummary(rows), '1/2 completed · 1 failed')
+  const html = renderToStaticMarkup(<AgentAssignments parent={null} assignments={rows} />)
+  assert.match(html, /Sales · Failed/)
+  assert.match(html, /The model is not available on this plan/)
 })

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react'
 import {
-  FileText, Folder, GitCompare, ListChecks, Maximize2, Minimize2, Monitor, Plus, Search, SlidersHorizontal,
+  FileText, Folder, GitBranch, GitCompare, ListChecks, Maximize2, Minimize2, Monitor, Plus, Search, SlidersHorizontal,
   SquareTerminal, X, type LucideIcon,
 } from 'lucide-react'
 import type { WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
@@ -10,11 +10,12 @@ import { Button, Input } from '@overlay/ui/primitives'
 import { useChatFilesHost } from '@overlay/chat-react'
 import type { ThreadPanelKind } from '@/shared/agents/agent-right-sidebar-preferences'
 import {
-  activeTab as activeTabOf, closeTab, replaceLauncher, selectTab, type ThreadPanelTab, type ThreadPanelTabs,
+  activeTab as activeTabOf, closeTab, openPanel, replaceLauncher, selectTab, type ThreadPanelTab, type ThreadPanelTabs,
 } from '../lib/thread-panel-tabs'
 import { ChangesPanel, ProgressPanel, TerminalPanel } from './ThreadPanel.parts'
 
 export const PANEL_META: Record<ThreadPanelKind, { label: string; icon: LucideIcon; hint: string; shortcut?: string }> = {
+  assignments: { label: 'Assignments', icon: GitBranch, hint: 'Work handed to other agents' },
   progress: { label: 'Progress', icon: ListChecks, hint: 'Plan and activity' },
   computer: { label: 'Computer', icon: Monitor, hint: 'Watch or take control' },
   changes: { label: 'Changes', icon: GitCompare, hint: 'Edits and pull requests' },
@@ -31,10 +32,10 @@ export type ThreadComputerStatus = 'running' | 'starting' | 'asleep' | 'unavaila
 
 export type ThreadPanelProps = {
   agentName: string
-  /** The agent's avatar at launcher size; read-only, unlike the Agent tab's avatar picker. */
-  avatar: ReactNode
   hero: { avatar: ReactNode; title: ReactNode; titleText: string; subtitle?: ReactNode }
   agent: ReactNode
+  /** The conversation's assignments, grouped by the response that made them. */
+  assignments: ReactNode
   files: ReactNode
   computer: ReactNode
   computerStatus: ThreadComputerStatus
@@ -52,12 +53,13 @@ export type ThreadPanelProps = {
 export function ThreadPanel(props: ThreadPanelProps) {
   const { tabs, onTabsChange, expanded } = props
   const active = activeTabOf(tabs)
-  const close = (id: string) => onTabsChange((current) => closeTab(current, id, nextLauncherId()))
+  const close = (id: string) => onTabsChange((current) => closeTab(current, id))
+  const home = tabs.tabs.length === 0
   return (
     <aside data-slot="right-sidebar" aria-label="Thread panel"
       className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-(--sidebar-surface)">
       <div className="flex h-[50px] shrink-0 items-center gap-1 border-b border-(--border) pl-2 pr-1.5">
-        <div role="tablist" aria-label="Open panels"
+        {home ? <div className="flex-1" /> : <div role="tablist" aria-label="Open panels"
           className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {tabs.tabs.map((tab) => (
             <PanelTabButton key={tab.id} tab={tab} agentName={props.agentName}
@@ -69,7 +71,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
             onClick={props.onOpenLauncher} className="ml-0.5 shrink-0 text-(--muted)">
             <Plus />
           </Button>
-        </div>
+        </div>}
         <Button variant="ghost" size="icon-xs" type="button" aria-label={expanded ? 'Restore panel' : 'Expand panel'}
           title={expanded ? 'Restore panel' : 'Expand panel'} onClick={props.onToggleExpanded} className="shrink-0 text-(--muted)">
           {expanded ? <Minimize2 /> : <Maximize2 />}
@@ -79,8 +81,8 @@ export function ThreadPanel(props: ThreadPanelProps) {
           <X />
         </Button>
       </div>
-      <div role="tabpanel" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-        {active ? <PanelBody tab={active} {...props} onCloseTab={() => close(active.id)} /> : null}
+      <div role={home ? undefined : 'tabpanel'} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+        {home ? <Home {...props} /> : active ? <PanelBody tab={active} {...props} onCloseTab={() => close(active.id)} /> : null}
       </div>
     </aside>
   )
@@ -139,6 +141,7 @@ function PanelBody({ tab, onCloseTab, ...props }: ThreadPanelProps & { tab: Thre
     )
     case 'files': return <div className="flex flex-1 flex-col px-5 pb-6 pt-4">{props.files}</div>
     case 'computer': return <div className="flex flex-1 flex-col px-5 pb-6 pt-4">{props.computer}</div>
+    case 'assignments': return props.assignments
     case 'progress': return <ProgressPanel agentName={props.agentName} />
     case 'changes': return <ChangesPanel pullRequests={props.pullRequests} />
     case 'terminal': return <TerminalPanel agentName={props.agentName} />
@@ -153,38 +156,63 @@ const COMPUTER_STATUS: Record<ThreadComputerStatus, { label: string; dot: string
   unavailable: { label: 'Unavailable', dot: 'bg-(--muted-light)' },
 }
 
-const LAUNCHER_ROWS = ['progress', 'changes', 'files', 'terminal', 'agent'] as const
+const LAUNCHER_ROWS = ['assignments', 'progress', 'changes', 'files', 'terminal', 'agent'] as const
 
-function Launcher({ launcherId, agentName, avatar, computerStatus, onTabsChange }: ThreadPanelProps & { launcherId: string }) {
-  const [query, setQuery] = useState('')
-  const needle = query.trim().toLowerCase()
-  const open = (kind: ThreadPanelKind) => onTabsChange((current) => replaceLauncher(current, launcherId, kind))
-  const rows = LAUNCHER_ROWS.filter((kind) => {
-    const meta = PANEL_META[kind]
-    return `${kind === 'agent' ? agentName : meta.label} ${meta.hint}`.toLowerCase().includes(needle)
-  })
-  const showComputer = `computer ${PANEL_META.computer.hint}`.toLowerCase().includes(needle)
-  const status = COMPUTER_STATUS[computerStatus]
+/** With no tabs open the panel is the agent's home: who it is, and the panels it can open. */
+function Home(props: ThreadPanelProps) {
+  const { hero, onTabsChange } = props
   return (
     <div className="mx-auto flex w-full max-w-[340px] flex-col px-5 pb-10 pt-8">
-      <div className="mb-6 flex flex-col items-center gap-2.5">
-        {avatar}
-        <span className="max-w-full truncate text-[15px] font-medium text-(--foreground)">{agentName}</span>
+      <div className="mb-6 flex flex-col items-center text-center">
+        <div className="flex h-[72px] w-[72px] items-center justify-center">{hero.avatar}</div>
+        <h2 aria-label={hero.titleText} className="mt-[14px] max-w-full text-lg font-medium leading-6 text-(--foreground)">{hero.title}</h2>
+        {hero.subtitle ? <div className="mt-0.5 max-w-full text-[13px] leading-5 text-(--muted)">{hero.subtitle}</div> : null}
       </div>
+      <PanelPicker {...props} query="" onOpen={(kind) => onTabsChange((current) => openPanel(current, kind))} />
+    </div>
+  )
+}
+
+/** "+": the same panels as the home, searchable, replacing itself with the one picked. */
+function Launcher({ launcherId, ...props }: ThreadPanelProps & { launcherId: string }) {
+  const [query, setQuery] = useState('')
+  const open = (kind: ThreadPanelKind) => props.onTabsChange((current) => replaceLauncher(current, launcherId, kind))
+  return (
+    <div className="mx-auto flex w-full max-w-[340px] flex-col px-5 pb-10 pt-8">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-(--muted)" />
         <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search panels"
           placeholder="Search panels"
           onKeyDown={(event) => {
             if (event.key !== 'Enter') return
-            const first = showComputer ? 'computer' : rows[0]
+            const first = matchingPanels(query, props.agentName)[0]
             if (first) open(first)
           }}
           className="h-9 rounded-lg border-(--border) bg-(--surface-subtle) pl-8 pr-12 text-[13px] focus-visible:border-(--muted-light) focus-visible:ring-0" />
         <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-sans text-[11px] text-(--muted-light)">⌥ T</kbd>
       </div>
-      {showComputer ? (
-        <Button variant="ghost" type="button" onClick={() => open('computer')}
+      <PanelPicker {...props} query={query} onOpen={open} />
+    </div>
+  )
+}
+
+function panelText(kind: ThreadPanelKind, agentName: string) {
+  return `${kind === 'agent' ? agentName : PANEL_META[kind].label} ${PANEL_META[kind].hint}`.toLowerCase()
+}
+
+/** The computer first, then the other panels, filtered by a search. */
+function matchingPanels(query: string, agentName: string): ThreadPanelKind[] {
+  const needle = query.trim().toLowerCase()
+  return (['computer', ...LAUNCHER_ROWS] as ThreadPanelKind[]).filter((kind) => panelText(kind, agentName).includes(needle))
+}
+
+function PanelPicker({ query, onOpen, agentName, computerStatus }: ThreadPanelProps & { query: string; onOpen(kind: ThreadPanelKind): void }) {
+  const matches = matchingPanels(query, agentName)
+  const status = COMPUTER_STATUS[computerStatus]
+  return (
+    <>
+      {matches.includes('computer') ? (
+        <Button variant="ghost" type="button" onClick={() => onOpen('computer')}
           className="mt-3 flex h-11 w-full items-center justify-start gap-2.5 rounded-xl bg-(--surface-subtle)/50 px-3 text-left text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle)">
           <Monitor className="size-4 text-(--muted)" strokeWidth={1.75} />
           Computer
@@ -195,10 +223,10 @@ function Launcher({ launcherId, agentName, avatar, computerStatus, onTabsChange 
         </Button>
       ) : null}
       <div className="mt-2 flex flex-col">
-        {rows.map((kind) => {
+        {matches.filter((kind) => kind !== 'computer').map((kind) => {
           const { icon: Icon, label, hint, shortcut } = PANEL_META[kind]
           return (
-            <Button key={kind} variant="ghost" type="button" onClick={() => open(kind)}
+            <Button key={kind} variant="ghost" type="button" onClick={() => onOpen(kind)}
               className="group/row h-9 justify-start gap-2.5 rounded-lg px-2 text-[13px] font-normal text-(--foreground)">
               <Icon className="size-4 text-(--muted)" strokeWidth={1.75} />
               <span className="truncate">{kind === 'agent' ? agentName : label}</span>
@@ -207,10 +235,10 @@ function Launcher({ launcherId, agentName, avatar, computerStatus, onTabsChange 
             </Button>
           )
         })}
-        {rows.length === 0 && !showComputer ? (
+        {matches.length === 0 ? (
           <p className="px-2 py-6 text-center text-[13px] text-(--muted)">Nothing matches “{query}”.</p>
         ) : null}
       </div>
-    </div>
+    </>
   )
 }

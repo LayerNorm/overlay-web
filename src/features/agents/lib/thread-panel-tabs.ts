@@ -45,12 +45,12 @@ export function replaceLauncher(state: ThreadPanelTabs, launcherId: string, kind
   return { tabs: state.tabs.map((tab) => (tab.id === launcherId ? { id: kind, kind } : tab)), active: kind }
 }
 
-/** Closing a tab selects its left neighbour; closing the last one leaves a launcher so the panel is never blank. */
-export function closeTab(state: ThreadPanelTabs, id: string, launcherId: string): ThreadPanelTabs {
+/** Closing a tab selects its left neighbour; closing the last one returns the panel to the agent's home. */
+export function closeTab(state: ThreadPanelTabs, id: string): ThreadPanelTabs {
   const index = state.tabs.findIndex((tab) => tab.id === id)
   if (index < 0) return state
   const tabs = state.tabs.filter((tab) => tab.id !== id)
-  if (tabs.length === 0) return { tabs: [{ id: launcherId, kind: 'new' }], active: launcherId }
+  if (tabs.length === 0) return { tabs, active: null }
   return { tabs, active: state.active === id ? tabs[Math.max(0, index - 1)]!.id : state.active }
 }
 
@@ -59,11 +59,11 @@ export function selectTab(state: ThreadPanelTabs, id: string): ThreadPanelTabs {
 }
 
 /** File previews are per thread, so switching threads closes them. */
-export function withoutFileTabs(state: ThreadPanelTabs, launcherId: string): ThreadPanelTabs {
+export function withoutFileTabs(state: ThreadPanelTabs): ThreadPanelTabs {
   if (!state.tabs.some((tab) => tab.kind === 'file')) return state
   return state.tabs
     .filter((tab) => tab.kind === 'file')
-    .reduce((next, tab) => closeTab(next, tab.id, launcherId), state)
+    .reduce((next, tab) => closeTab(next, tab.id), state)
 }
 
 export function activeTab(state: ThreadPanelTabs): ThreadPanelTab | null {

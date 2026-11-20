@@ -130,7 +130,7 @@ async function fixture(v2 = false) {
   expect(await convex.mutation(inheritedRestrictions, {
     actorUserId: 'alice', runId: parentRunId, serverSecret: secret,
   })).toEqual({ inheritedSharedRoom: true })
-  return { convex, ...seeded, parentRunId }
+  return { convex, ...seeded, parentRunId, deliveryAgentRunId: turn.runId }
 }
 
 function args(data: Awaited<ReturnType<typeof fixture>>, overrides: Record<string, unknown> = {}) {
@@ -341,8 +341,9 @@ test('failed parents persist cancellation for never-launched attempts and projec
   await data.convex.mutation(createAssignment, args(data))
   await applyOperation(data, data.parentRunId, 'parent-failure', { type: 'terminate', status: 'failed', reason: 'Tool failed' })
   const alice = data.convex.withIdentity({ subject: 'alice' })
+  const delivery = await data.convex.run(ctx => ctx.db.get(data.deliveryAgentRunId))
   expect((await alice.query(forConversation, { workspaceId: 'workspace', conversationId: data.parentConversationId })).assignments).toMatchObject([
-    { status: 'cancelled' },
+    { status: 'cancelled', messageId: delivery!.assistantMessageId, failureReason: 'Parent run ended before this assignment started' },
   ])
   expect(await data.convex.query(query('collaboration/assignmentCoordination:issues'), {
     serverSecret: secret, actorUserId: 'alice', parentRunId: data.parentRunId,

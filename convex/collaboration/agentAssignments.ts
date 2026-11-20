@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import type { Doc } from '../_generated/dataModel'
+import type { Doc, Id } from '../_generated/dataModel'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireConversationAccess } from './directMessages'
 import { requireServerSecret } from '../lib/auth'
@@ -245,6 +245,10 @@ const assignmentView = v.object({
   currentAttemptId: v.optional(v.string()),
   disposition: v.optional(v.union(v.literal('accepted'), v.literal('revision_requested'), v.literal('excluded'))),
   dispositionReason: v.optional(v.string()),
+  failureReason: v.optional(v.string()),
+  /** The parent response that made the assignment, when its run can still be traced to one. */
+  messageId: v.optional(v.id('conversationMessages')),
+  createdAt: v.number(),
 })
 
 function parentThreadNavigation(conversation: Doc<'conversations'>, caller: Doc<'workspaceAgentDefinitions'>) {
@@ -455,6 +459,14 @@ export const createAgentAssignment = mutation({
   },
 })
 
+/** The assistant message of the parent run that made an assignment: its harness run delivered that response. */
+async function responseMessageId(ctx: QueryCtx, parentRunId: string, conversationId: Id<'conversations'>) {
+  const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', parentRunId)).unique()
+  const deliveryId = run?.deliveryAgentRunId ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
+  const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+  return delivery?.conversationId === conversationId ? delivery.assistantMessageId : undefined
+}
+
 export const forConversation = query({
   args: { workspaceId: v.string(), conversationId: v.string() },
   returns: v.object({ parent: v.union(v.null(), parentView), assignments: v.array(assignmentView) }),
@@ -496,9 +508,12 @@ export const forConversation = query({
       .withIndex('by_parentConversationId', q => q.eq('parentConversationId', conversationId))
       .order('desc').take(RECENT_ASSIGNMENTS)).reverse()
     const assignments = []
+    const responses = new Map<string, Promise<Id<'conversationMessages'> | undefined>>()
     for (const assignment of rows) {
       const execution = await assignmentExecutionForViewer(ctx, viewer, assignment)
       if (!execution) continue
+      if (!responses.has(assignment.parentRunId)) responses.set(assignment.parentRunId, responseMessageId(ctx, assignment.parentRunId, conversationId))
+      const messageId = await responses.get(assignment.parentRunId)!
       assignments.push({
         assignmentId: assignment.assignmentId,
         conversationId: assignment.conversationId,
@@ -510,6 +525,9 @@ export const forConversation = query({
         currentAttemptId: assignment.currentAttemptId,
         disposition: execution.disposition,
         dispositionReason: execution.dispositionReason,
+        ...(execution.result?.failureReason ? { failureReason: execution.result.failureReason } : {}),
+        ...(messageId ? { messageId } : {}),
+        createdAt: execution.createdAt,
       })
     }
     return { parent, assignments }

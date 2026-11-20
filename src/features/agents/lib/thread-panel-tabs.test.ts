@@ -34,20 +34,20 @@ test('a launcher becomes the panel picked from it, or closes when that panel is 
   assert.equal(existing.active, 'computer')
 })
 
-test('closing selects the left neighbour and the last close leaves a launcher', () => {
-  const closed = closeTab(selectTab(start, 'computer'), 'computer', 'new:2')
+test('closing selects the left neighbour and the last close returns to the home', () => {
+  const closed = closeTab(selectTab(start, 'computer'), 'computer')
   assert.equal(closed.active, 'progress')
-  const empty = closeTab(closed, 'progress', 'new:3')
-  assert.deepEqual(empty.tabs, [{ id: 'new:3', kind: 'new' }])
-  assert.equal(activeTab(empty)?.kind, 'new')
-  assert.equal(closeTab(start, 'missing', 'new:4'), start)
+  const empty = closeTab(closed, 'progress')
+  assert.deepEqual(empty, { tabs: [], active: null })
+  assert.equal(activeTab(empty), null)
+  assert.equal(closeTab(start, 'missing'), start)
 })
 
 test('only panels are remembered and file tabs close when the thread changes', () => {
   const state = openLauncher(openFile(start, 'f1'), 'new:5')
   assert.deepEqual(panelsOf(state), { tabs: ['progress', 'computer'], active: null })
   assert.deepEqual(panelsOf(selectTab(state, 'computer')), { tabs: ['progress', 'computer'], active: 'computer' })
-  const switched = withoutFileTabs(selectTab(state, 'file:f1'), 'new:6')
+  const switched = withoutFileTabs(selectTab(state, 'file:f1'))
   assert.deepEqual(switched.tabs.map((tab) => tab.id), ['progress', 'computer', 'new:5'])
   assert.equal(switched.active, 'computer')
 })

@@ -23,8 +23,7 @@ type TabsUpdate = (tabs: ThreadPanelTabs) => ThreadPanelTabs
 
 function initialThreadPanel(): ThreadPanelState {
   const { open, width, expanded, tabs, active } = getAgentRightSidebarPreferences()
-  const restored = tabsFromPanels(tabs, active)
-  return { open, width, expanded, tabs: restored.tabs.length ? restored : openLauncher(restored, nextLauncherId()) }
+  return { open, width, expanded, tabs: tabsFromPanels(tabs, active) }
 }
 
 /** Expanded, the panel takes most of the window but leaves the thread a readable column beside the sidebars. */
@@ -43,7 +42,7 @@ export function useThreadPanel({ conversationId, threadOpen }: { conversationId:
   const [panelConversationId, setPanelConversationId] = useState(conversationId)
   if (panelConversationId !== conversationId) {
     setPanelConversationId(conversationId)
-    setPanel((current) => ({ ...current, tabs: withoutFileTabs(current.tabs, nextLauncherId()) }))
+    setPanel((current) => ({ ...current, tabs: withoutFileTabs(current.tabs) }))
   }
 
   useEffect(() => {

@@ -1,8 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { WorkspaceAgentDirectoryItem, WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
-import { AgentCreature } from '@/components/orb/Creature'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { useAgentEditorController } from './AgentEditorPage'
 import { AgentComputerTabView } from './AgentComputerTab.parts'
@@ -26,6 +25,7 @@ export function AgentRightSidebar({
   onToggleExpanded,
   onClose,
   pullRequests,
+  assignments,
   editor,
   controlled,
   computerAccess,
@@ -40,6 +40,7 @@ export function AgentRightSidebar({
   onToggleExpanded(): void
   onClose(): void
   pullRequests: readonly WorkspaceThreadPullRequest[]
+  assignments: ReactNode
 
   editor: ReturnType<typeof useAgentEditorController>
   controlled: boolean
@@ -87,7 +88,6 @@ export function AgentRightSidebar({
   return (
     <ThreadPanel
       agentName={agentName}
-      avatar={agent ? <AgentCreature agent={agent} isDefault={usesOverlayMark(agent)} size={48} /> : null}
       hero={hero}
       agent={
         <AgentSidebarDetails
@@ -97,6 +97,7 @@ export function AgentRightSidebar({
           onBlurSave={flushSave}
         />
       }
+      assignments={assignments}
       files={<AgentLibraryTab conversationId={conversationId} onOpenFile={(fileId) => onTabsChange((current) => openFile(current, fileId))} />}
       computer={
         <AgentComputerTabView
