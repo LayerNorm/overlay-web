@@ -41,6 +41,7 @@ export function installAgentWorkingFixtures() {
   }))
   // Enough older threads that the workspace Overlay and Atlas each pass the five a sidebar agent shows before "Load more".
   const older: Array<[string, string, string, number]> = [
+    ['k17convchiefpersonal100000000000', 'agent_chief', 'Plan my week', 1],
     ['k17convoverlayolder1000000000000', 'agent_overlay', 'Board update draft', 2],
     ['k17convoverlayolder2000000000000', 'agent_overlay', 'Hiring plan for Q1', 4],
     ['k17convoverlayolder3000000000000', 'agent_overlay', 'Customer advisory board notes', 6],

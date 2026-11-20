@@ -361,8 +361,8 @@ function AgentListRow({
     />
   ) : null
   // A pinned chief is a tile (avatar and name) in the row of pinned chiefs above the list, like pinned conversations
-  // in iMessage. Beside another chief the open one is filled; a lone chief is centred and never filled, since there is
-  // nothing to choose between. Its threads span the row below the tiles, a little apart from them.
+  // in iMessage. The open one is filled; a lone chief is a centred half-width tile. Its threads span the row below the
+  // tiles, a little apart from them.
   if (pinned && !activityOnly) {
     return (
       <>
@@ -371,7 +371,7 @@ function AgentListRow({
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
               className={`flex h-auto w-full flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
-                !pinnedAlone && (isActive || isExpanded) ? 'bg-(--surface-subtle)' : 'bg-transparent'
+                isActive || isExpanded ? 'bg-(--surface-subtle)' : 'bg-transparent'
               }`}>
               {isOpening
                 ? <span className="flex size-10 items-center justify-center"><Loader2 size={18} className="animate-spin" /></span>
