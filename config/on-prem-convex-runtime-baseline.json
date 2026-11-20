@@ -125,8 +125,6 @@
     "src/app/api/v1/github/connect/route.ts",
     "src/app/api/v1/github/repositories/route.ts",
     "src/app/api/v1/harness/continuation/route.ts",
-    "src/app/api/v1/imports/slack/process/route.ts",
-    "src/app/api/v1/imports/slack/route.ts",
     "src/app/api/v1/integrations/route.ts",
     "src/app/api/v1/knowledge/search/route.ts",
     "src/app/api/v1/link-preview/route.ts",
@@ -157,15 +155,8 @@
     "src/app/api/v1/skills/route.ts",
     "src/app/api/v1/subscription/route.ts",
     "src/app/api/v1/subscription/settings/route.ts",
-    "src/app/api/v1/surfaces/bindings/[bindingId]/route.ts",
-    "src/app/api/v1/surfaces/bindings/route.ts",
-    "src/app/api/v1/surfaces/connections/[connectionId]/channels/route.ts",
-    "src/app/api/v1/surfaces/connections/route.ts",
-    "src/app/api/v1/surfaces/slack/callback/route.ts",
-    "src/app/api/v1/surfaces/slack/connect/route.ts",
     "src/app/api/v1/transcribe/route.ts",
     "src/app/api/v1/webhooks/route.ts",
-    "src/app/api/v1/webhooks/slack/route.ts",
     "src/app/api/v1/work/[id]/events/route.ts",
     "src/app/api/v1/work/[id]/move/route.ts",
     "src/app/api/v1/work/[id]/route.ts",
@@ -247,8 +238,7 @@
     "src/features/work/components/WorkDataProvider.tsx",
     "src/features/work/components/WorkPeekSections.tsx",
     "src/features/work/components/WorkTaskComposer.tsx",
-    "src/features/work/lib/use-live-work.ts",
-    "src/features/workspaces/components/SlackImportPanel.tsx"
+    "src/features/work/lib/use-live-work.ts"
   ],
   "convexCronJobs": [
     {
@@ -337,16 +327,6 @@
       "target": "internal.auth.serviceAuth.cleanupExpiredReplayNoncesInternal"
     },
     {
-      "cadence": "{ minutes: 1 }",
-      "name": "slack import job processor",
-      "target": "(internal as any).imports.slackRunner.runMinuteTick"
-    },
-    {
-      "cadence": "{ minutes: 15 }",
-      "name": "surface chat state expiry sweep",
-      "target": "(internal as any).surfaces.chatState.pruneExpired"
-    },
-    {
       "cadence": "{ minutes: 2 }",
       "name": "tool loop agent run lease cleanup",
       "target": "internal.chat.conversations.expireToolLoopAgentRunLeases"
@@ -422,7 +402,6 @@
     "src/features/work/components/WorkPeekSections.tsx",
     "src/features/work/components/WorkTaskComposer.tsx",
     "src/features/work/lib/use-live-work.ts",
-    "src/features/workspaces/components/SlackImportPanel.tsx",
     "src/hooks/use-agent-directory.ts",
     "src/hooks/use-billing.ts",
     "src/hooks/use-connections.ts",
@@ -456,7 +435,6 @@
     "src/server/app-api/v1/conversations/run/input/route.ts",
     "src/server/app-api/v1/conversations/trace/route.ts",
     "src/server/app-api/v1/github/repositories/route.ts",
-    "src/server/app-api/v1/imports/slack/route.ts",
     "src/server/app-api/v1/notes/route.ts",
     "src/server/app-api/v1/onboarding/complete/route.ts",
     "src/server/app-api/v1/onboarding/reset/route.ts",
@@ -531,7 +509,6 @@
     "src/server/harness/state-steps.ts",
     "src/server/idempotency/ConvexIdempotencyRepository.ts",
     "src/server/idempotency/index.ts",
-    "src/server/imports/slack/backfillWorker.ts",
     "src/server/integrations/ConvexWorkspaceConnectorRepository.ts",
     "src/server/integrations/index.ts",
     "src/server/jobs/ConvexOutboxRepository.ts",
@@ -553,10 +530,6 @@
     "src/server/storage/providers/index.ts",
     "src/server/storage/r2-budget.ts",
     "src/server/storage/r2-upload-intents.ts",
-    "src/server/surfaces/ConvexSurfaceRepository.ts",
-    "src/server/surfaces/chat.ts",
-    "src/server/surfaces/convex-chat-state.ts",
-    "src/server/surfaces/surface-authors.ts",
     "src/server/tools/tools/files-executes.ts",
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/usage/ConvexUsageRepository.ts",
@@ -571,7 +544,6 @@
     "src/server/workflows/automation-harness-steps.ts",
     "src/server/workflows/native-harness.ts",
     "src/server/workflows/personal-harness.ts",
-    "src/server/workflows/surface-agent-turn.ts",
     "src/server/workspaces/ConvexWorkspaceRepository.ts"
   ],
   "convexScheduledCallFiles": [
@@ -587,7 +559,6 @@
     "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",
-    "convex/imports/slackRunner.ts",
     "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",

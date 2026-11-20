@@ -47,7 +47,6 @@ export {
 } from './cloud-agents/client'
 export { ComputersClient, type ComputerDesktopTicket } from './computers/client'
 export { McpAccessClient, type McpConnectionResource, type McpAccessLevelResource } from './mcp-access/client'
-export { SurfacesClient } from './surfaces/client'
 export { ChatAuxClient } from './chat/chat-aux-client'
 export { FilesClient } from './files/client'
 export { NotesClient } from './notes/client'

@@ -124,9 +124,6 @@ export class ActMessagePersistenceService {
     userId: string
     mode?: 'ask' | 'act'
     attachmentNames?: string[]
-    importedAuthorName?: string
-    importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   }): Promise<Id<'conversationMessages'> | undefined> {
     if (!args.conversationId) return undefined
     if (args.skip) {
@@ -165,9 +162,6 @@ export class ActMessagePersistenceService {
       billingActorUserId: args.billingActorUserId,
       billingSpendSubjectId: args.billingSpendSubjectId,
       billingSpendSubjectKind: args.billingSpendSubjectKind,
-      importedAuthorName: args.importedAuthorName,
-      importedAuthorEmail: args.importedAuthorEmail,
-      importedAuthorStatus: args.importedAuthorStatus,
     }) ?? undefined
   }
 
@@ -180,7 +174,6 @@ export class ActMessagePersistenceService {
     finishedToolCallIds: Set<string>
     agentRunId?: string
     agentRunMetrics?: Partial<AgentRunMetrics>
-    importedAuthorName?: string
     sourceCitations?: SourceCitationMap
     timedOut: boolean
     timeoutMs: number
@@ -312,7 +305,6 @@ export class ActMessagePersistenceService {
           modelId: args.attemptModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
           variantIndex: 0,
-          importedAuthorName: args.importedAuthorName,
         })
       }
       if (args.emitWebhook && assistantCompleted) {

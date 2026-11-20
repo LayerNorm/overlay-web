@@ -4,7 +4,6 @@ import { getOverlaySession } from '@/server/auth/session'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getEndpointRateLimitSpecs } from '@/server/security/rate-limit-specs'
 import { getBaseUrl } from '@/server/web/app-url'
-import { sanitizeReturnTo } from '@/server/surfaces/slack-oauth'
 import { authorizeUrl, githubAppConfigured, installPageUrl, sealGitHubConnectState } from '@/server/integrations/github/github-app'
 
 /**
@@ -14,6 +13,14 @@ import { authorizeUrl, githubAppConfigured, installPageUrl, sealGitHubConnectSta
  * and workspace through GitHub and back.
  */
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' } as const
+
+/** Only a same-origin path may be a return target, so the redirect cannot leave this deployment. */
+function sanitizeReturnTo(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return undefined
+  return trimmed.slice(0, 512)
+}
 
 function back(returnTo: string | undefined, params: Record<string, string>): NextResponse {
   const url = new URL(returnTo ?? '/app/agents', getBaseUrl())

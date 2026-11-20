@@ -13,9 +13,8 @@
  * (This comment intentionally avoids writing an actual dynamic-import
  * literal — the scanner does not strip comments before matching.)
  *
- * `surfaces/chat.ts` itself is safe to import: it loads the SDK through a
- * specifier that is deliberately invisible to the scan (see the inline
- * comment in that file — it is load-bearing).
+ * Code that needs the SDK must load it through a specifier that is
+ * deliberately invisible to the scan (a computed dynamic import inside a step).
  */
 
 import assert from 'node:assert/strict'
@@ -127,7 +126,6 @@ test('no source file contains a literal specifier resolving to the chat SDK', ()
     'The chat SDK must never be reachable via a literal import specifier: ' +
       'its serde chunk is auto-serialized into the workflow vm bundle and ' +
       'throws `AbortController is not defined` at init, killing every ' +
-      'workflow run. Use the evaded specifier pattern in surfaces/chat.ts ' +
-      'or surface-agent-turn.ts instead.',
+      'workflow run. Load it through a computed specifier inside a step instead.',
   )
 })

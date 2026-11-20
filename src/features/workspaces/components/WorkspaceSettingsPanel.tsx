@@ -56,7 +56,6 @@ import {
   TeamMembersDialog,
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
-import { ImportPanel } from './ImportPanel'
 import { useLiveWorkspacePolicy } from '@/hooks/use-workspace-create-access'
 import { useLiveWorkspaceManagement, useLiveWorkspacePrincipals, type WorkspaceManagementTab } from '@/hooks/use-workspace-members'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -1066,8 +1065,6 @@ function WorkspacePanelBody({
       ) : null}
       {activeTab === 'billing' ? (
         <WorkspaceBillingSection client={client} workspace={activeWorkspace} />
-      ) : activeTab === 'import' ? (
-        <ImportPanel />
       ) : activeTab === 'sharing' ? (
         <WorkspaceSharingTab
           client={client}

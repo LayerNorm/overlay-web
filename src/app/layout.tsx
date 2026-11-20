@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     template: "%s | Overlay",
   },
   description:
-    "Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+    "Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, in one shared workspace on the web and desktop.",
   applicationName: "Overlay",
   keywords: [
     "self-driving companies",
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Overlay: Enabling self-driving companies with AI employees",
     description:
-      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, in one shared workspace on the web and desktop.",
     type: "website",
     url: "https://getoverlay.io",
     siteName: "Overlay",
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Overlay: Enabling self-driving companies with AI employees",
     description:
-      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, across chat, Slack, Telegram, iMessage, and the web.",
+      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, in one shared workspace on the web and desktop.",
     images: ["https://getoverlay.io/assets/overlay-share-linkedin-thumb.png"],
   },
 };

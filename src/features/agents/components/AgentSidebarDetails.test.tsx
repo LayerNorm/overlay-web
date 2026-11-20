@@ -15,7 +15,6 @@ function renderDetails() {
     isDefaultMaster: false,
 
     computersAvailable: false,
-    surfaces: { initialLoading: false },
     computer: { initialLoading: false },
     form: {
       instructions: 'Answer clearly and ask questions when details are missing.',
@@ -64,7 +63,6 @@ test('the sidebar identifies its current Computer operator instead of reporting 
     form: { name: 'QA agent', permissionMode: 'ask', visibility: 'workspace', enabledToolGroups: new Set(['computer']) },
     computer: { currentUserId: 'qa-operator', computerSize: 'small', computerOpenBusy: false, computerLifecycleBusy: null,
       agentComputer: { id: 'owned-computer', status: 'ready', size: 'small', controlledByUserId: 'qa-operator' } },
-    surfaces: { connections: [], bindings: [], loading: false, enabled: false },
   } as unknown as Controller
   const html = renderToStaticMarkup(<AgentSidebarAdvancedSettings editor={editor} />)
   assert.match(html, /You have control\. QA agent is paused\./)

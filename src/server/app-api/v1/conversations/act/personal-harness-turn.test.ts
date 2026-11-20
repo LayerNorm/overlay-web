@@ -143,7 +143,7 @@ test('personal Act policy responses include truthful status, code, message, and 
   await expect(retired.json()).resolves.toMatchObject({
     code: 'legacy_execution_retired',
     error: 'legacy_execution_retired',
-    message: expect.stringContaining('supported durable automation or surface entry point'),
+    message: expect.stringContaining('supported durable automation entry point'),
     requestId: 'request-retired',
   })
 

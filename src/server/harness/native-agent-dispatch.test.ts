@@ -124,15 +124,3 @@ test('native ask gives every target the same workspace budget with no per-child 
   })
   expect(mocks.apply.mock.calls.map(([args]) => args.operation.child.maxCostMicros)).toEqual([0, 0, 0])
 })
-
-test('a descendant dispatch uses the original root workflow for surface preparation', async () => {
-  const root = { ...parent, runId: 'workspace:source', rootRunId: 'workspace:source', workflowRunId: 'source-workflow' }
-  mocks.get.mockImplementation(async ({ runId }) => runId === root.runId ? root : { ...parent, rootRunId: root.runId })
-  await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
-    agent: 'Target', message: 'inspect this',
-  })
-  expect(mocks.build).toHaveBeenCalledWith(expect.objectContaining({
-    conversationId: 'target-room', surfaceRootRunId: root.runId, expectedSurfaceWorkflowRunId: 'source-workflow',
-  }))
-})
-

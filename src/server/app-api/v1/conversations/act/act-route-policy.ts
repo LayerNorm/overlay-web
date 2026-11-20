@@ -40,7 +40,7 @@ export function decideAutomationActRoute(input: {
 
 export function actRoutePolicyResponse(kind: Exclude<ActRoutePolicy['kind'], 'admit'>, requestId: string): Response {
   const message = kind === 'legacy_execution_retired'
-    ? 'Use the supported durable automation or surface entry point for this execution mode.'
+    ? 'Use the supported durable automation entry point for this execution mode.'
     : 'The durable Harness backend is unavailable. Try again when Harness is ready.'
   return Response.json(
     { error: kind, code: kind, message, requestId },

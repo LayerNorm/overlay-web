@@ -4,13 +4,12 @@ import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnes
 
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), room: vi.fn(), workspace: vi.fn(), run: vi.fn(), gate: vi.fn(), subject: vi.fn(),
-  surfaceExecution: vi.fn(), bindings: vi.fn(), conversation: vi.fn(),
+  conversation: vi.fn(),
   capability: vi.fn(), catalog: vi.fn(), models: vi.fn(), byok: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.state
-  getSurfaceExecutionByHarnessRunId = mocks.surfaceExecution
 } }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({
   loadRoomTurnContext: mocks.room, agentModelAttempts: (modelId: string) => [modelId],
@@ -19,7 +18,6 @@ vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateMod
 vi.mock('@/server/ai/model-policy-authority', () => ({ resolveAuthorizedModelIds: mocks.models }))
 vi.mock('@/server/ai/model-runtime', () => ({ assertUserCanUseByokModel: mocks.byok }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
-  surfaceService: { resolveInboundBindings: mocks.bindings },
   workspaceService: { resolveActiveWorkspace: mocks.workspace },
   appData: { repositories: { conversations: {
     getLatestAgentRun: mocks.run,
@@ -143,51 +141,8 @@ beforeEach(() => {
   mocks.capability.mockReturnValue({ allowed: true })
   mocks.catalog.mockResolvedValue({ allowed: true })
   mocks.models.mockResolvedValue({ chat: new Set(['fixture/model', 'openrouter/free']) })
-  mocks.surfaceExecution.mockResolvedValue(null)
-  mocks.bindings.mockResolvedValue([])
   mocks.conversation.mockResolvedValue(null)
 })
-
-const surfaceExecution = {
-  turnId: 'surface:slack:binding:message',
-  workflowRunId: 'workflow',
-  actorUserId: 'human',
-  workspaceId: 'workspace',
-  creatorPrincipalId: 'human-principal',
-  agentId: 'agent',
-  agentPrincipalId: 'agent-principal',
-  platform: 'slack' as const,
-  teamId: 'team',
-  channelId: 'channel',
-  threadId: 'thread',
-  messageId: 'message',
-  bindingId: 'binding',
-  connectionId: 'connection',
-  conversationId: 'room',
-  agentRunId: 'delivery',
-  userMessageId: 'question',
-  assistantMessageId: 'answer',
-  harnessRunId: 'workspace:delivery',
-  createdAt: 100,
-  updatedAt: 100,
-}
-const surfaceSource = {
-  binding: { id: 'binding', connectionId: 'connection', channelId: 'channel', agentId: 'agent', status: 'active' },
-  connection: { id: 'connection', platform: 'slack', externalTeamId: 'team', workspaceId: 'workspace', status: 'active' },
-  agent: { id: 'agent', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: [], permissionMode: 'ask' },
-  creatorUserId: 'human',
-  creatorPrincipalId: 'human-principal',
-}
-const surfaceConversation = {
-  userId: 'human',
-  workspaceId: 'workspace',
-  conversationType: 'channel',
-  createdByPrincipalId: 'human-principal',
-  externalPlatform: 'slack',
-  externalChannelId: 'channel',
-  externalThreadId: 'thread',
-  surfaceBindingId: 'binding',
-}
 
 test('rechecks native identity and model policy without reserving or charging usage', async () => {
   const result = await refreshNativeHarnessAccess(access, context, 'read_file')
@@ -326,53 +281,3 @@ test('BYOK ownership is checked again for the selected agent model', async () =>
   await expect(refreshNativeHarnessAccess(access, { ...context, modelId })).rejects.toThrow(/revoked/)
 })
 
-test('restored native dispatch revalidates the persisted root Slack source and bills its canonical subject', async () => {
-  const surfaceAccess = { ...access, turnId: surfaceExecution.turnId }
-  mocks.surfaceExecution.mockResolvedValue(surfaceExecution)
-  mocks.bindings.mockResolvedValue([surfaceSource])
-  mocks.conversation.mockResolvedValue(surfaceConversation)
-  mocks.run.mockResolvedValue({ ...delivery(), turnId: surfaceExecution.turnId })
-
-  const refreshed = await refreshNativeHarnessAccess(surfaceAccess, context, 'read_file')
-  expect(refreshed.billingProgrammaticSubjectId).toBe('surface:slack:binding')
-  expect(mocks.gate).toHaveBeenCalledWith(expect.objectContaining({
-    programmaticSubjectId: 'surface:slack:binding',
-  }))
-
-  mocks.gate.mockClear()
-  mocks.bindings.mockResolvedValueOnce([])
-  await expect(refreshNativeHarnessAccess(surfaceAccess, context, 'read_file')).rejects.toThrow(/authorization changed/)
-  expect(mocks.gate).not.toHaveBeenCalled()
-
-  mocks.surfaceExecution.mockResolvedValueOnce({ ...surfaceExecution, workflowRunId: 'foreign-workflow' })
-  mocks.state.mockResolvedValueOnce(snapshot())
-  await expect(refreshNativeHarnessAccess(surfaceAccess, context)).rejects.toThrow(/source ownership changed/)
-  expect(mocks.gate).not.toHaveBeenCalled()
-})
-
-test('named child keeps its native delivery identity while inheriting the verified root Slack source', async () => {
-  const childAccess = configureNamedChild()
-  mocks.surfaceExecution.mockResolvedValue(surfaceExecution)
-  mocks.bindings.mockResolvedValue([surfaceSource])
-  mocks.conversation.mockResolvedValue(surfaceConversation)
-  const rootRun = { ...delivery(), turnId: surfaceExecution.turnId }
-  const childRun = {
-    ...delivery(),
-    id: childAccess.agentRunId,
-    agentId: childAccess.agentId,
-    agentPrincipalId: childAccess.agentPrincipalId,
-    harnessRunId: childAccess.runId,
-    workflowRunId: childAccess.workflowRunId,
-    initiatorPrincipalId: childAccess.principalId,
-  }
-  mocks.run.mockImplementation(async ({ agentRunId }: { agentRunId: string }) =>
-    agentRunId === surfaceExecution.agentRunId ? rootRun : childRun)
-
-  await expect(refreshNativeHarnessAccess(childAccess, context, 'read_file'))
-    .resolves.toMatchObject({ agent: { id: 'child-agent' }, billingProgrammaticSubjectId: 'surface:slack:binding' })
-  expect(mocks.surfaceExecution).toHaveBeenCalledWith(surfaceExecution.harnessRunId)
-  expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ agentRunId: surfaceExecution.agentRunId }))
-  expect(mocks.gate).toHaveBeenCalledWith(expect.objectContaining({
-    programmaticSubjectId: 'surface:slack:binding',
-  }))
-})
