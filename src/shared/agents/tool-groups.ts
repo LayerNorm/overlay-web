@@ -155,7 +155,7 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     id: 'agents',
     label: 'Agents',
     description: 'Ask other agents in the workspace for help, read their answers and post into conversations they share, and create or update agents. Agents act for the same person, under a limit on how far a question can be passed on.',
-    toolIds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message', 'create_agent', 'update_agent'],
+    toolIds: ['list_agents', 'ask_agent', 'read_agent_reply', 'resolve_assignment', 'post_message', 'create_agent', 'update_agent'],
   },
 ]
 
@@ -210,7 +210,8 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
     adds: ['computer_screenshot', 'computer_input', 'computer_browser', 'computer_terminal', 'computer_publish_file'],
   },
   // Preserve later-added grants for saved full-toolbox agents, using the retired browser id only as a migration marker.
-  { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'post_message'] },
+  { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_agents', 'ask_agent', 'read_agent_reply', 'resolve_assignment', 'post_message'] },
+  { grantedBy: ['ask_agent'], adds: ['resolve_assignment', 'read_agent_reply'] },
   { grantedBy: ['create_automation', 'generate_video', 'interactive_browser_session'], adds: ['list_tasks', 'get_task', 'create_task', 'update_task', 'comment_on_task', 'archive_task', 'restore_task'] },
 ]
 

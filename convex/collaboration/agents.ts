@@ -14,8 +14,10 @@ const harness = v.union(
   v.literal('opencode'),
   v.literal('pi'),
   v.literal('hermes'),
+  v.literal('mcp'),
 )
-const writableHarness = v.union(v.literal('overlay'), v.literal('claude-code'), v.literal('codex'))
+// `mcp` is written only by McpAgentNetworkService when an admin approves an outside agent's request to join.
+const writableHarness = v.union(v.literal('overlay'), v.literal('claude-code'), v.literal('codex'), v.literal('mcp'))
 const agentVisibility = v.union(v.literal('creator'), v.literal('workspace'))
 const agentRole = v.union(v.literal('workspace_chief'), v.literal('personal_chief'), v.literal('agent'))
 const chiefScope = v.union(v.literal('personal'), v.literal('workspace'))
@@ -524,6 +526,7 @@ export const updateByServer = mutation({
         | 'opencode'
         | 'pi'
         | 'hermes'
+        | 'mcp'
       modelId?: string
       permissionMode?: string
       effort?: string

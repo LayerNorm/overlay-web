@@ -1,7 +1,7 @@
 'use client'
 
 
-import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { memo, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useSearchParams, type useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
@@ -10,6 +10,7 @@ import {
   BellOff,
   Hash,
   MoreHorizontal,
+  PanelRight,
   Pin,
   Share2,
   Slack,
@@ -31,7 +32,11 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { RoomViewTabs, isRoomView, type RoomViewKind } from './collaboration/RoomViewTabs'
+import { AssignmentsPanel, useAssignmentCount } from './AssignmentsPanel'
+import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { sameRoomMessageRowProps, type RoomMessageRowProps } from './collaboration/room-message-row'
 import {
   roomMessageRowKey,
   toRoomMessageView,
@@ -172,7 +177,7 @@ export function RoomHeaderLeading({
 
 export function RoomHeaderActions({
   vm,
-  roster,
+  roomSidebar,
   collab,
   roomActions,
 
@@ -185,7 +190,8 @@ export function RoomHeaderActions({
   onShare,
 }: {
   vm: ReturnType<typeof useRoomViewModels>
-  roster: ReturnType<typeof useRoomRoster>
+  /** False when the host brings its own right sidebar, as agent threads do. */
+  roomSidebar: boolean
   collab: ReturnType<typeof useRoomCollaboration>
   roomActions: ReturnType<typeof useRoomActions>
 
@@ -231,6 +237,17 @@ export function RoomHeaderActions({
             }}
           />
         ) : null}
+        {/* Agent threads have their own panel and no sidebar button, so People stays reachable from here. */}
+        {!roomSidebar ? (
+          <MenuButton
+            icon={UsersRound}
+            label="People"
+            onClick={() => {
+              setMenuOpen(false)
+              setRoomPanel((current) => (current === 'people' ? null : 'people'))
+            }}
+          />
+        ) : null}
         {collab.pins.length > 0 ? (
           <MenuButton
             icon={Pin}
@@ -271,19 +288,20 @@ export function RoomHeaderActions({
           onClick={onArchive}
         />
       </FloatingMenu>
-      <Button
+      {roomSidebar ? <Button
         variant="ghost"
         type="button"
-        onClick={() => setRoomPanel((current) => (current === 'people' ? null : 'people'))}
-        aria-pressed={roomPanel === 'people'}
-        title="People in this room"
-        className={`h-8 gap-1.5 rounded-md px-2 text-xs font-normal transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
-          roomPanel === 'people' ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
+        size="icon"
+        onClick={() => setRoomPanel((current) => (isRoomView(current) ? null : 'assignments'))}
+        aria-pressed={isRoomView(roomPanel)}
+        aria-label="Toggle sidebar"
+        title="Assignments, people and pinned messages"
+        className={`size-8 rounded-md transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) ${
+          isRoomView(roomPanel) ? 'bg-(--surface-subtle) text-(--foreground)' : 'text-(--muted)'
         }`}
       >
-        <UsersRound size={14} />
-        {roster.participants.length}
-      </Button>
+        <PanelRight size={15} strokeWidth={1.75} />
+      </Button> : null}
       {headerActions}
     </div>
   )
@@ -384,19 +402,13 @@ function buildRoomMessageItemProps({
   }
 }
 
-export function RoomMessage({
+export const RoomMessage = memo(function RoomMessage({
   message,
   ctx,
   inThread,
   grouped,
   hideToolbar,
-}: {
-  message: OptimisticMessage
-  ctx: RoomMessageContext
-  inThread?: boolean
-  grouped?: boolean
-  hideToolbar?: boolean
-}) {
+}: RoomMessageRowProps) {
   const author = ctx.participants.find((participant) => participant.principalId === message.authorPrincipalId)
   const authorAgent = message.authorPrincipalId
     ? ctx.directoryAgentsByPrincipal.get(message.authorPrincipalId)
@@ -429,7 +441,7 @@ export function RoomMessage({
     teaserAuthor,
   })
   return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} />
-}
+}, sameRoomMessageRowProps)
 
 function RoomEmptyState({
   conversationType,
@@ -481,6 +493,7 @@ export function RoomTranscript({
   /** Guided onboarding: plain messages without action toolbars. */
   guided?: boolean
 }) {
+  recordRender('RoomTranscript')
   const {
     listRef,
     handleTranscriptScroll: onScroll,
@@ -552,10 +565,8 @@ export function RoomTranscript({
               return (
                 <div key={roomMessageRowKey(message)} className="contents">
                   {showDayDivider ? (
-                    <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">
-                      <span className="h-px flex-1 bg-(--border)" />
+                    <div className="py-1 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">
                       <span>{roomDayLabel(message.createdAt)}</span>
-                      <span className="h-px flex-1 bg-(--border)" />
                     </div>
                   ) : null}
                   {isUnreadBoundary ? (
@@ -597,6 +608,7 @@ export function RoomSidePanel({
   sendMessage,
   onAddPeople,
   onClosePanel,
+  onSelectView,
   ctx,
   readOnlyNotice,
 }: {
@@ -613,6 +625,7 @@ export function RoomSidePanel({
   sendMessage: RoomMessageContext['sendMessage']
   onAddPeople: () => void
   onClosePanel: () => void
+  onSelectView(view: RoomViewKind): void
   ctx: RoomMessageContext
   /** Replaces the thread composer for surface-mirrored rooms. */
   readOnlyNotice?: string
@@ -627,6 +640,14 @@ export function RoomSidePanel({
   } = thread
   const { jumpToMessage } = navigation
   const { togglePinned } = actions
+  const assignmentCount = useAssignmentCount()
+  const header = isRoomView(roomPanel) ? (
+    <RoomViewTabs active={roomPanel} onSelect={onSelectView} onClose={onClosePanel}
+      counts={{ assignments: assignmentCount, people: roster.participants.length, pinned: pinnedSummaries.length }} />
+  ) : null
+  if (roomPanel === 'assignments') {
+    return <AppScreenSidePanel header={header} bodyClassName="flex flex-col"><AssignmentsPanel /></AppScreenSidePanel>
+  }
   if (roomPanel === 'people') {
     return (
       <RoomPeoplePanel
@@ -636,6 +657,7 @@ export function RoomSidePanel({
         currentPrincipalId={roster.currentPrincipalId}
         onAddPeople={onAddPeople}
         onClose={onClosePanel}
+        header={header}
       />
     )
   }
@@ -646,6 +668,7 @@ export function RoomSidePanel({
         onJump={jumpToMessage}
         onUnpin={(messageId) => void togglePinned(messageId)}
         onClose={onClosePanel}
+        header={header}
       />
     )
   }
@@ -685,10 +708,10 @@ export function RoomSidePanel({
 }
 
 export function surfaceReadOnlyNotice(surfacePlatform: string): string {
-  return `Mirrored from ${surfacePlatform === 'slack' ? 'Slack' : surfacePlatform} — reply in the original thread.`
+  return `Mirrored from ${surfacePlatform === 'slack' ? 'Slack' : surfacePlatform}. This thread is read-only.`
 }
 
-/** Stands in for the composer: surface-mirrored rooms are read-only in Overlay. */
+/** Stands in for the composer: rooms mirrored by the retired Slack bot are read-only history. */
 export function SurfaceReadOnlyComposer({ surfacePlatform }: { surfacePlatform: string }) {
   return (
     <div className="px-4 py-3.5">

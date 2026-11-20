@@ -55,19 +55,19 @@ import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
+import { assertAgentModelSelectable } from '@/server/agents/agent-model-selection'
 import { ConnectedAgentControlPlaneService } from '@/server/agents/ConnectedAgentControlPlaneService'
 import { lazyConvex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { AgentAskService } from '@/server/agents/agent-asks/AgentAskService'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { McpAccessService } from '@/server/mcp/McpAccessService'
+import { McpAgentNetworkService } from '@/server/mcp/agent-network/McpAgentNetworkService'
+import { ConvexMcpAgentNetworkRepository } from '@/server/mcp/agent-network/McpAgentNetworkRepository'
 import { ComputerService, type ComputerLimits } from '@/server/computers/ComputerService'
 import { ConvexLocalToolCallRepository, LocalComputerService } from '@/server/computers/local/LocalComputerService'
 import { ComputerBilling } from '@/server/computers/ComputerBilling'
 import { ComputerLifecycleService } from '@/server/computers/ComputerLifecycleService'
-import { SurfaceService } from '@/server/surfaces/SurfaceService'
-import { listSlackChannels } from '@/server/surfaces/slack-directory'
-import type { SlackAdapter } from '@chat-adapter/slack'
 import { computerRuntimeForProvider } from '@/server/computers/computer-runtimes'
 import { connectedAgentPolicyFor } from '@/server/agents/ConnectedAgentPolicy'
 import { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
@@ -120,12 +120,13 @@ export interface OverlayServerContext extends OverlayProviderContext {
   workspaceAgentService: WorkspaceAgentService
   connectedAgentControlPlane: ConnectedAgentControlPlaneService
   mcpAccess: McpAccessService
+  /** Outside agents that joined a workspace over MCP: requests, approval, rooms, and their inbox. */
+  mcpAgentNetwork: McpAgentNetworkService
   agentAsks: AgentAskService
   managedAgentSandboxBilling: ManagedAgentSandboxBilling
   computerService: ComputerService
   /** The user's own connected machine used as a Computer through its Agent Host. */
   localComputerService: LocalComputerService
-  surfaceService: SurfaceService
   workspaceSharingService: WorkspaceSharingService
   workspaceSearchService: WorkspaceSearchService
   authorizationService: AuthorizationService
@@ -220,7 +221,9 @@ export function createOverlayServerContext(
   const conversationCollaboration: ConversationCollaborationRepository = new ConvexConversationCollaborationRepository()
 
   const workspaceAgentRepository = new ConvexWorkspaceAgentRepository()
-  const workspaceAgentService = new WorkspaceAgentService(workspaceAgentRepository, workspaceService)
+  const workspaceAgentService = new WorkspaceAgentService(
+    workspaceAgentRepository, workspaceService, undefined, undefined, assertAgentModelSelectable,
+  )
   const computerLifecycleRef: { current?: ComputerLifecycleService } = {}
   const managedAgentSandboxBilling = new ManagedAgentSandboxBilling({
     policy: generationUsagePolicy,
@@ -282,20 +285,24 @@ export function createOverlayServerContext(
     repository: new ConvexLocalToolCallRepository(),
     listEnvironments: (input) => appData.repositories.connectedAgents.listEnvironments(input),
   })
-  const surfaceService = new SurfaceService({
-    repository: appData.repositories.surfaces,
+  // Declared before the services it calls: it reads `agentAsks` lazily, and `agentAsks` reads its availability.
+  const mcpAgentNetwork: McpAgentNetworkService = new McpAgentNetworkService({
+    network: new ConvexMcpAgentNetworkRepository(),
     agents: workspaceAgentRepository,
-    channelLister: (connection, adapter) =>
-      listSlackChannels(connection, adapter as SlackAdapter),
-    resolvePrincipal: (principalId) => workspaceService.resolvePrincipal(principalId),
+    workspaces: workspaceService,
+    collaboration: appData.repositories.conversationCollaboration,
+    asks: () => agentAsks,
+    audit: auditService,
   })
   const mcpAccess = new McpAccessService({
     grants: appData.repositories.mcpGrants,
     workspaces: workspaceService,
     audit: auditService,
+    onRevoked: (grantId) => mcpAgentNetwork.onGrantRevoked(grantId),
   })
-  const agentAsks = new AgentAskService({
+  const agentAsks: AgentAskService = new AgentAskService({
     collaboration: appData.repositories.conversationCollaboration,
+    availability: (_workspaceId, agentIds) => mcpAgentNetwork.availability(agentIds),
     getCallerRun: ({ actorUserId, conversationId, turnId, agentId }) => appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(conversationId),
       userId: actorUserId,
@@ -303,7 +310,7 @@ export function createOverlayServerContext(
       agentId,
     }),
     directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
-    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }>(
+    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }>(
       'agents/agentAsks:claimAgentAskByServer',
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
       { throwOnError: true },
@@ -316,7 +323,10 @@ export function createOverlayServerContext(
       const { startWorkspaceAgentTurns } = await import('@/server/agents/start-agent-turns')
       // No recalled memory for a delegated question: the answer should come from the question, not from whatever the person said elsewhere.
       const invocations = await startWorkspaceAgentTurns({ ...args, memoryEnabled: false, extractHumanMemory: false })
-      return invocations.map((invocation) => ({ agentId: invocation.agentId, turnId: invocation.turnId }))
+      return invocations.map((invocation) => ({
+        agentId: invocation.agentId, turnId: invocation.turnId,
+        ...(invocation.availability ? { availability: invocation.availability } : {}),
+      }))
     },
   })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
@@ -391,11 +401,11 @@ export function createOverlayServerContext(
     workspaceAgentService,
     connectedAgentControlPlane,
     mcpAccess,
+    mcpAgentNetwork,
     agentAsks,
     managedAgentSandboxBilling,
     computerService,
     localComputerService,
-    surfaceService,
     workspaceSharingService,
     workspaceSearchService,
     authorizationService,

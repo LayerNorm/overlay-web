@@ -2,13 +2,14 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { ChatSurfaceEmptyState } from '@/features/chat/components/ChatSurfaceEmptyState'
+import { AssignmentsPanel } from '@/features/chat/components/AssignmentsPanel'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
 import { ChatFilesProvider, useChatFilesHost, type ChatFilesHost } from '@overlay/chat-react'
@@ -23,11 +24,9 @@ import {
   getAgentEditorPanelMode,
   setAgentEditorPanelMode,
 } from '@/shared/agents/agent-editor-presentation'
-import {
-  getAgentRightSidebarPreferences,
-  setAgentRightSidebarPreferences,
-  type AgentRightSidebarPreferences,
-} from '@/shared/agents/agent-right-sidebar-preferences'
+import { openLauncher } from '../lib/thread-panel-tabs'
+import { nextLauncherId } from './ThreadPanel'
+import { useThreadPanel } from './use-thread-panel'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
@@ -46,6 +45,7 @@ import { openAgentComputerControl } from '../lib/agent-computer-control'
 import { captureNavigationIntent } from '@/shared/app/navigation-intent'
 
 type EditorMode = 'new' | 'edit' | null
+
 
 function AgentSettingsButton({ hasAgent, active, onClick }: {
   hasAgent: boolean
@@ -262,9 +262,7 @@ function AgentConversationWorkspaceContent() {
   const { activeWorkspaceId } = useWorkspace()
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const conversationId = searchParams?.get('id') ?? null
-  const [sidebarPreferences, setSidebarPreferences] = useState<AgentRightSidebarPreferences>(
-    () => getAgentRightSidebarPreferences(),
-  )
+  const panel = useThreadPanel({ conversationId, threadOpen: Boolean(agentId && conversationId) })
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
   const [panelMode, setPanelModeState] = useState<'dialog' | 'side'>(() => getAgentEditorPanelMode())
   const setPanelMode = useCallback((next: 'dialog' | 'side') => {
@@ -274,30 +272,20 @@ function AgentConversationWorkspaceContent() {
   const [error, setError] = useState<string | null>(null)
   const [resolving, setResolving] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
-  const closeRightSidebar = useCallback(() => {
-    setSidebarPreferences((current) => ({ ...current, open: false }))
-  }, [])
-  // The previewed Library file belongs to one thread; switching threads shows the tabs again.
-  const [libraryPreview, setLibraryPreview] = useState<{ conversationId: string | null; fileId: string } | null>(null)
-  const libraryPreviewFileId = libraryPreview?.conversationId === conversationId ? libraryPreview.fileId : null
-  const setLibraryPreviewFileId = useCallback((fileId: string | null) => {
-    setLibraryPreview(fileId ? { conversationId, fileId } : null)
-  }, [conversationId])
+  const closeRightSidebar = () => panel.setOpen(false)
+  const { shownTab } = panel
   const outerFilesHost = useChatFilesHost()
-  // Files opened from this thread's chat cards and tool rows preview in its Library panel, so the user stays here.
-  const filesHost = useMemo<ChatFilesHost>(() => ({
+  // Files opened from this thread's chat cards and tool rows open as tabs in its panel, so the user stays here.
+  const filesHost: ChatFilesHost = {
     useFileSummaries: outerFilesHost.useFileSummaries,
-    openFile: ({ id }) => {
-      setSidebarPreferences((current) => ({ ...current, open: true, tab: 'library' }))
-      setLibraryPreviewFileId(id)
-    },
-    activeFileId: sidebarPreferences.open ? libraryPreviewFileId : null,
-  }), [libraryPreviewFileId, outerFilesHost.useFileSummaries, setLibraryPreviewFileId, sidebarPreferences.open])
+    openFile: ({ id }) => panel.openFile(id),
+    activeFileId: shownTab?.kind === 'file' ? shownTab.fileId : null,
+  }
   const { sidebarEditor, computerAccess, computerControl, updateComputerControl } = useAgentConversationComputer({
     activeWorkspaceId,
     agentId,
     conversationId,
-    sidebarPreferences,
+    computerVisible: shownTab?.kind === 'computer',
     onClose: closeRightSidebar,
     onArchived: () => {
       setEditorMode(null)
@@ -308,24 +296,12 @@ function AgentConversationWorkspaceContent() {
   const releaseComputerControl = () => {
     void computerAccess.changeControl('release').then((confirmed) => {
       if (!confirmed) return
-      if (sidebarPreferences.open) computerAccess.retryTicket()
+      if (panel.open) computerAccess.retryTicket()
       updateComputerControl(null)
     })
   }
 
   const [createOpen, setCreateOpen] = useState(false)
-  useEffect(() => {
-    setAgentRightSidebarPreferences(sidebarPreferences)
-  }, [sidebarPreferences])
-
-  const updateSidebarOpen = useCallback((open: boolean) => {
-    setSidebarPreferences((current) => ({ ...current, open }))
-  }, [])
-
-  const updateSidebarTab = useCallback((id: string) => {
-    if (id !== 'details' && id !== 'library' && id !== 'computer') return
-    setSidebarPreferences((current) => ({ ...current, tab: id }))
-  }, [])
 
   // "New agent" opens the creation dialog; nothing is created until the
   // person confirms.
@@ -448,14 +424,17 @@ function AgentConversationWorkspaceContent() {
   if (detailState === 'pending' || threadScope.pending) return null
 
   if (conversationId && threadScope.allowed) {
-    const agentSidebar = agentId && sidebarPreferences.open ? (
+    const agentSidebar = agentId && panel.open ? (
       <AgentRightSidebar
         conversationId={conversationId}
-        previewFileId={libraryPreviewFileId}
-        onPreviewFileChange={setLibraryPreviewFileId}
-        activeTab={sidebarPreferences.tab}
-        onTabChange={updateSidebarTab}
+        tabs={panel.tabs}
+        onTabsChange={panel.updateTabs}
+        onOpenLauncher={() => panel.updateTabs((tabs) => openLauncher(tabs, nextLauncherId()))}
+        expanded={panel.expanded}
+        onToggleExpanded={panel.toggleExpanded}
         onClose={closeRightSidebar}
+        pullRequests={threadScope.pullRequests}
+        assignments={<AssignmentsPanel />}
 
         editor={sidebarEditor}
         controlled={Boolean(computerControl)}
@@ -481,14 +460,15 @@ function AgentConversationWorkspaceContent() {
           conversationId={conversationId}
           headerActions={agentId ? (
             <RightSidebarToggle
-              open={sidebarPreferences.open}
-              onToggle={() => updateSidebarOpen(!sidebarPreferences.open)}
+              open={panel.open}
+              onToggle={() => panel.setOpen(!panel.open)}
             />
           ) : undefined}
           externalRightPanel={agentSidebar}
-          externalRightPanelLabel="Agent sidebar"
+          externalRightPanelLabel="Thread panel"
           externalRightPanelMode="docked"
-          externalRightPanelWidth={380}
+          externalRightPanelWidth={panel.width}
+          onExternalRightPanelResize={panel.resize}
           onExternalRightPanelClose={closeRightSidebar}
           bodyOverlay={computerControl ? (
             <AgentComputerControlOverlay

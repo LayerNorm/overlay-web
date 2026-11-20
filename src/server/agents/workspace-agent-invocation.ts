@@ -7,6 +7,7 @@ import type { ConversationCollaborationRepository } from '@/server/conversations
 import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
 import { agentFormattingNote, computerCapabilityNote, generatedUiNote, knowledgeNote } from '@/server/agent/shared-agent-instructions'
 import { SHARED_AGENT_BEHAVIOR_CONSTANTS } from '@/server/agent/shared-agent-instruction-constants'
+import { chiefOrchestrationInstructions } from './chief-orchestration'
 
 /**
  * Each mentioned agent gets its own durable run, so an uncapped mass-mention
@@ -98,6 +99,10 @@ export type WorkspaceAgentInvocation = {
   modelId: string
   effort?: string
   turnId: string
+  /** `mcp` for an outside agent: its message is queued for it to collect instead of starting a run. */
+  harness?: string
+  /** Set once an outside agent's message is queued: whether it is connected to collect it now. */
+  availability?: 'online' | 'away'
 }
 
 
@@ -272,6 +277,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
     modelId: nativeAgentModelId(agent.modelId),
     ...(agent.effort ? { effort: agent.effort } : {}),
     turnId: `agent_${args.messageId}_${agent.id}`,
+    harness: agent.harness,
   }))
 }
 
@@ -291,6 +297,7 @@ export const AGENT_CLOSING_SUMMARY_INSTRUCTION =
  */
 export function buildAgentSystemPrompt(args: {
   agentName: string
+  agentRole?: Parameters<typeof chiefOrchestrationInstructions>[0]
   contextBlock: string
   exposedToolIds: readonly string[]
   hasTools: boolean
@@ -305,8 +312,9 @@ export function buildAgentSystemPrompt(args: {
   return [
     `You are ${args.agentName}, a named AI teammate in an Overlay workspace.`,
     args.instructions,
+    chiefOrchestrationInstructions(args.agentRole),
     args.isDefaultMaster
-      ? 'You are the default Overlay master workspace agent with full access to workspace context, files, notes, automations, skills, and tools.'
+      ? 'You are the default Overlay workspace agent. Use only the context, files, skills and tools authorized for this run and its audience.'
       : 'Respond as this agent, not as a generic assistant.',
     args.hasTools
       ? [

@@ -50,9 +50,11 @@ export type CreateAutomationInput = {
   scope?: 'personal' | 'workspace'
   /** An agent, API key or service made it, not the person. */
   byAgent?: boolean
+  /** Runs the automation as this workspace agent, in a thread with it. */
+  agentId?: string
 }
 
-export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId' | 'byAgent'>> & {
+export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId' | 'byAgent' | 'agentId'>> & {
   automationId: string
   userId: string
   /** Refuse the update when the automation changed since this version was read. */

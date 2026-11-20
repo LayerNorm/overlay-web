@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-core'
 import { ChatExchange } from './ChatExchange'
 import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoadingState'
+import { currentWorkingStep } from '../exchange/working-orb'
 
 const text = [{ kind: 'text', text: 'Partial' }] satisfies AssistantVisualBlock[]
 const file = [{ kind: 'file', url: 'data:image/png;base64,AA==', mediaType: 'image/png' }] satisfies AssistantVisualBlock[]
@@ -20,7 +21,7 @@ const chatSurfaceCss = readFileSync(
   'utf8',
 )
 
-const lookMarks = (markup: string) => markup.match(/overlay-mark--look/g)?.length ?? 0
+const lookMarks = (markup: string) => markup.match(/data-working-line/g)?.length ?? 0
 
 function renderChatExchange(responseText: string, responseInProgress: boolean, status?: ChatExchangeStatus) {
   const blocks = [{ kind: 'text', text: responseText }] satisfies AssistantVisualBlock[]
@@ -53,16 +54,16 @@ function renderChatExchange(responseText: string, responseInProgress: boolean, s
   )
 }
 
-test('active exchange statuses show one 24px footer mark and suppress inline markers', () => {
+test('active exchange statuses show one working line between tools and none while a tool runs', () => {
   const activeCases = [
-    ['submitted', []],
-    ['streaming', text],
-    ['streaming', file],
-    ['executing-tool', tool],
-    ['awaiting-approval', tool],
+    ['submitted', [], 'Thinking'],
+    ['streaming', text, 'Writing the reply'],
+    ['streaming', file, 'Thinking'],
+    ['executing-tool', tool, null],
+    ['awaiting-approval', tool, null],
   ] as const
 
-  for (const [status, blocks] of activeCases) {
+  for (const [status, blocks, line] of activeCases) {
     const presentation = exchangeLoadingPresentation(status, blocks)
     assert.deepEqual(presentation, {
       active: true,
@@ -70,13 +71,24 @@ test('active exchange statuses show one 24px footer mark and suppress inline mar
       marker: 'standalone',
     })
 
-    const markup = renderToStaticMarkup(<ExchangeLoadingState presentation={presentation} />)
+    const markup = renderToStaticMarkup(<ExchangeLoadingState presentation={presentation} blocks={blocks} />)
+    if (line === null) {
+      assert.equal(markup, '', `${status}: the running tool row carries the orb`)
+      continue
+    }
     assert.equal(lookMarks(markup), 1, status)
-    assert.match(markup, /width="24"/, status)
-    assert.match(markup, /height="24"/, status)
+    assert.match(markup, /data-working-orb="thinking"/, status)
+    assert.match(markup, new RegExp(line), status)
     assert.match(markup, /data-loading-presentation="standalone"/, status)
-    assert.doesNotMatch(markup, /Thinking|Contemplating|Comprehending|Reasoning|Pondering|Considering/, status)
+    assert.doesNotMatch(markup, /overlay-mark/, status)
   }
+})
+
+test('the working line names the running step in the transcript wording', () => {
+  const asking = [{ kind: 'tool', key: 'a', name: 'ask_agent', state: 'input-available', toolInput: { agent: 'Quill', message: 'What did you do?' } }] satisfies AssistantVisualBlock[]
+  assert.deepEqual(currentWorkingStep(asking), { orb: 'asking', lead: 'Asking Quill', rest: 'What did you do?' })
+  assert.equal(currentWorkingStep([]).lead, 'Thinking')
+  assert.equal(currentWorkingStep(text).lead, 'Writing the reply')
 })
 
 test('settled exchange statuses render no loading mark', () => {
@@ -91,7 +103,7 @@ test('settled exchange statuses render no loading mark', () => {
   }
 })
 
-test('legacy compact presentation remains accepted as the same footer mark', () => {
+test('legacy compact presentation remains accepted as the same working line', () => {
   const markup = renderToStaticMarkup(
     <ExchangeLoadingState
       presentation={{ active: true, inlineTextMarker: false, marker: 'compact' }}
@@ -99,7 +111,6 @@ test('legacy compact presentation remains accepted as the same footer mark', () 
   )
 
   assert.equal(lookMarks(markup), 1)
-  assert.match(markup, /width="24"/)
   assert.match(markup, /data-loading-presentation="standalone"/)
   assert.equal(
     renderToStaticMarkup(
@@ -111,9 +122,9 @@ test('legacy compact presentation remains accepted as the same footer mark', () 
   )
 })
 
-test('ChatExchange places its only loading mark after active tool and text output', () => {
+test('ChatExchange places its only working line after finished tool and text output', () => {
   const blocks = [
-    ...tool,
+    { ...tool[0], state: 'output-available' },
     { kind: 'text', text: 'Assistant output sentinel' },
   ] satisfies AssistantVisualBlock[]
   const markup = renderToStaticMarkup(
@@ -148,7 +159,7 @@ test('ChatExchange places its only loading mark after active tool and text outpu
   assert.ok(outputIndex >= 0)
   assert.ok(loadingIndex > outputIndex)
   assert.equal(lookMarks(markup), 1)
-  assert.match(markup.slice(loadingIndex), /width="24"/)
+  assert.match(markup.slice(loadingIndex), /data-working-orb=/)
   assert.doesNotMatch(markup, /overlay-stream-marker/)
 })
 
@@ -157,7 +168,7 @@ test('a live response overrides completed status until the final text settles', 
   const initialMarkIndex = initial.indexOf('data-loading-presentation="standalone"')
   assert.ok(initial.indexOf('A river is a natural') < initialMarkIndex)
   assert.equal(lookMarks(initial), 1)
-  assert.match(initial.slice(initialMarkIndex), /width="24"/)
+  assert.match(initial.slice(initialMarkIndex), /data-working-orb=/)
   assert.match(initial, /data-text-streaming="true"/)
 
   const updated = renderChatExchange('A river is a natural flowing river.', true, 'completed')

@@ -6,6 +6,7 @@ import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
 import { ThreadPullRequests } from './sidebar/ThreadPullRequests'
 import { hasThreadActivity, THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
+import { useTranscriptPrefetchIntent } from '@/components/providers/transcript-cache-client'
 import {
   SidebarMenuAction,
   SidebarMenuSkeleton,
@@ -37,6 +38,7 @@ export function AgentThreadRows({
   onOpenAutomation(automationId: string): void
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
 }) {
+  const prefetch = useTranscriptPrefetchIntent()
   if (bundle === 'loading') {
     return (
       <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`Loading ${agent.name} threads`}>
@@ -78,6 +80,10 @@ export function AgentThreadRows({
               aria-label={status ? `${thread.title}, ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               title={status ? `${thread.title} · ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               onClick={() => onOpenThread(agent, thread.conversationId)}
+              onPointerEnter={() => { if (!active) prefetch.intend({ kind: 'room', conversationId: thread.conversationId }) }}
+              onPointerLeave={prefetch.cancel}
+              onFocus={() => { if (!active) prefetch.intend({ kind: 'room', conversationId: thread.conversationId }) }}
+              onBlur={prefetch.cancel}
               className={`agent-thread-button min-w-0 flex-1 gap-[7px] ${thread.pullRequests?.length ? 'pr-1' : 'pr-8'}`}
             >
               <span className="agent-thread-icon"><ThreadActivityIndicator status={status} /></span>

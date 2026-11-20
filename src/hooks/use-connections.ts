@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useConvexAuth, useQuery } from 'convex/react'
 import type { McpServerSummary } from '@overlay/app-core'
-import type { AgentEnvironmentResource, McpConnectionResource } from '@overlay/api-client'
+import type { AgentEnvironmentResource, McpAgentResource, McpConnectionResource } from '@overlay/api-client'
 import { effectiveAgentEnvironmentStatus } from '@/shared/agents/environment-status'
-import type { Computer, SurfaceBinding, SurfaceConnection } from '@overlay/workspace-contracts'
+import type { Computer } from '@overlay/workspace-contracts'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { api } from '../../convex/_generated/api'
@@ -35,6 +35,12 @@ export function useLiveMcpConnections(): McpConnectionResource[] | null | undefi
   return useQuery(api.integrations.mcpBrowse.connections, signedIn ? {} : 'skip') as McpConnectionResource[] | null | undefined
 }
 
+/** Outside agents that joined, or asked to join, the workspace over MCP, live. Undefined while loading, null without access. */
+export function useLiveOutsideAgents(): { canApprove: boolean; agents: McpAgentResource[] } | null | undefined {
+  const workspaceId = useConnectionWorkspace()
+  return useQuery(api.integrations.mcpBrowse.outsideAgents, workspaceId ? { workspaceId } : 'skip') as { canApprove: boolean; agents: McpAgentResource[] } | null | undefined
+}
+
 /** Computers visible in the workspace, live through provisioning, start, stop and control. Undefined while loading. */
 export function useLiveComputers(): Computer[] | null | undefined {
   const workspaceId = useConnectionWorkspace()
@@ -62,10 +68,3 @@ export function useLiveAgentEnvironments(): AgentEnvironmentResource[] | null | 
   return useMemo(() => rows?.map((row) => ({ ...row, status: effectiveAgentEnvironmentStatus(row, now) as AgentEnvironmentResource['status'] })) ?? rows, [now, rows])
 }
 
-/** An agent's Slack (and later other) surface connections and bindings, live. Null when the agent is not visible. */
-export function useLiveAgentSurfaces(agentId: string | null):
-  { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined {
-  const workspaceId = useConnectionWorkspace()
-  return useQuery(api.surfaces.browse.forAgent, workspaceId && agentId ? { workspaceId, agentId } : 'skip') as
-    { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined
-}

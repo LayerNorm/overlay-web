@@ -269,6 +269,11 @@ export default defineSchema({
     replies: v.optional(v.array(v.object({ conversationId: v.string(), turnId: v.string() }))),
   }).index('by_workspaceId_key', ['workspaceId', 'key']),
 
+  agentAskDispatchClaims: defineTable({
+    workspaceId: v.string(), dispatchId: v.string(), rootKey: v.string(), turnKey: v.string(),
+    state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
+  }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
+
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
   // them. No secret is stored here.
@@ -290,6 +295,56 @@ export default defineSchema({
   })
     .index('by_userId', ['userId'])
     .index('by_codeId', ['codeId']),
+
+  // An outside agent (ChatGPT, Claude Code, Codex…) asking to be a member of a workspace over MCP.
+  // One row per grant. Nothing is visible to the workspace until an admin approves it, which
+  // creates the agent row (harness `mcp`) named here.
+  mcpAgentJoins: defineTable({
+    grantId: v.string(),
+    userId: v.string(),
+    workspaceId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(v.literal('pending'), v.literal('approved'), v.literal('declined'), v.literal('removed')),
+    agentId: v.optional(v.string()),
+    principalId: v.optional(v.string()),
+    pausedAt: v.optional(v.number()),
+    requestedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByUserId: v.optional(v.string()),
+    // Presence: the last MCP request from this agent, written at most every 20 seconds.
+    lastSeenAt: v.optional(v.number()),
+    // When the owner was last told a message is waiting for their agent, so they are told at most once an hour.
+    lastAwayNoticeAt: v.optional(v.number()),
+  })
+    .index('by_grantId', ['grantId'])
+    .index('by_userId', ['userId'])
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_agentId', ['agentId']),
+
+  // Messages waiting for a joined MCP agent: a mention, a direct message, or another agent's question.
+  // MCP cannot start a turn, so the agent collects these itself (check_inbox / wait_for_messages).
+  mcpAgentInbox: defineTable({
+    agentId: v.string(),
+    workspaceId: v.string(),
+    conversationId: v.string(),
+    messageId: v.string(),
+    // The turn the agent's reply is written under, so the asker's `read_agent_reply` finds it.
+    turnId: v.string(),
+    // The person the message was sent for; the reply is posted with their access to the room.
+    actorUserId: v.string(),
+    fromName: v.string(),
+    fromKind: v.union(v.literal('person'), v.literal('agent')),
+    text: v.string(),
+    // Agent-to-agent chain this message belongs to (see agent-lineage.ts); absent when a person wrote it.
+    lineage: v.optional(v.any()),
+    threadRootMessageId: v.optional(v.string()),
+    createdAt: v.number(),
+    deliveredAt: v.optional(v.number()),
+    repliedAt: v.optional(v.number()),
+  })
+    .index('by_agentId_createdAt', ['agentId', 'createdAt'])
+    .index('by_agentId_turnId', ['agentId', 'turnId']),
 
   // Where an Overlay Cloud agent is in starting its machine, so the dialog and the agent
   // page can show progress after the request that started it has returned.
@@ -773,10 +828,10 @@ export default defineSchema({
     .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId'])
     .index('by_provider_providerRef', ['provider', 'providerRef']),
 
-  // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
-  // is metadata for one platform install — the Chat SDK state adapter owns
-  // token resolution keyed on externalTeamId. surfaceBindings maps an agent
-  // onto a platform channel; channel membership is the access policy.
+  // RETIRED: the Slack bot ("surfaces") integration was removed. The four
+  // surface tables below (surfaceConnections, surfaceBindings,
+  // surfaceTurnExecutions, surfaceChatState) are kept only so existing stored
+  // rows stay valid; no code reads or writes them.
   surfaceConnections: defineTable({
     id: v.string(),
     workspaceId: v.string(),
@@ -841,10 +896,7 @@ export default defineSchema({
     .index('by_turnId', ['turnId'])
     .index('by_harnessRunId', ['harnessRunId']),
 
-  // Chat SDK state for surfaces (installations and bot tokens, thread
-  // subscriptions, locks, dedupe keys, lists, queues). Serverless instances
-  // share it through surfaces/chatState; values are JSON strings. List and
-  // queue entries are separate rows ordered by _creationTime within a key.
+  // RETIRED with the Slack bot; kept only for stored rows (see surfaceConnections).
   surfaceChatState: defineTable({
     namespace: v.union(
       v.literal('cache'),
@@ -995,6 +1047,7 @@ export default defineSchema({
       kind: v.union(
         v.literal('interval'),
         v.literal('daily'),
+        v.literal('weekdays'),
         v.literal('weekly'),
         v.literal('monthly'),
       ),
@@ -1003,6 +1056,11 @@ export default defineSchema({
       hourUTC: v.optional(v.number()),
       dayOfWeekUTC: v.optional(v.number()),
       dayOfMonthUTC: v.optional(v.number()),
+      // Wall-clock fields in the automation's time zone; preferred when set.
+      hour: v.optional(v.number()),
+      minute: v.optional(v.number()),
+      dayOfWeek: v.optional(v.number()),
+      dayOfMonth: v.optional(v.number()),
     })),
     timezone: v.optional(v.string()),
     nextRunAt: v.optional(v.number()),
@@ -1310,9 +1368,8 @@ export default defineSchema({
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
-    // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
-    // externalThreadId is the platform's thread key (Slack thread_ts); the pair
-    // (surfaceBindingId, externalThreadId) identifies the conversation.
+    // Set on conversations mirrored from Slack by the retired Slack bot. Kept
+    // for stored rows: such conversations stay read-only (see directMessages).
     externalPlatform: v.optional(v.string()),
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
@@ -1471,6 +1528,84 @@ export default defineSchema({
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
     .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
+
+  agentAssignments: defineTable({
+    workspaceId: v.string(),
+    assignmentId: v.string(),
+    idempotencyKey: v.string(),
+    parentConversationId: v.id('conversations'),
+    parentRunId: v.string(),
+    rootRunId: v.string(),
+    callerAgentId: v.string(),
+    assignedAgentId: v.string(),
+    requesterUserId: v.string(),
+    conversationId: v.id('conversations'),
+    brief: v.string(),
+    questionTurnId: v.string(),
+    currentAttemptId: v.optional(v.string()),
+    coordinationRevision: v.optional(v.number()),
+    expectedDeliverable: v.optional(v.string()),
+    contextRefs: v.optional(v.array(v.object({ type: v.string(), id: v.string() }))),
+    dependsOnAssignmentIds: v.optional(v.array(v.string())),
+    authorityPolicyVersion: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
+    .index('by_workspaceId_idempotencyKey', ['workspaceId', 'idempotencyKey'])
+    .index('by_assignmentId', ['assignmentId'])
+    .index('by_parentConversationId', ['parentConversationId'])
+    .index('by_conversationId', ['conversationId']),
+
+  agentAssignmentAttempts: defineTable({
+    workspaceId: v.string(), assignmentId: v.string(), conversationId: v.id('conversations'),
+    attemptId: v.string(), ordinal: v.number(), dispatchKey: v.string(), dispatchFingerprint: v.string(),
+    expectedAttemptId: v.optional(v.string()), parentRunId: v.string(), rootRunId: v.string(),
+    requesterUserId: v.string(), brief: v.string(), questionTurnId: v.string(),
+    questionMessageId: v.optional(v.id('conversationMessages')), replyTurnId: v.optional(v.string()),
+    deliveryAgentRunId: v.optional(v.id('conversationAgentRuns')), childRunId: v.optional(v.string()),
+    assistantMessageId: v.optional(v.id('conversationMessages')), resultId: v.optional(v.id('agentAssignmentResults')),
+    disposition: v.optional(v.union(v.literal('accepted'), v.literal('revision_requested'), v.literal('excluded'))),
+    dispositionReason: v.optional(v.string()), disposedByRunId: v.optional(v.string()), disposedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()), cancellationReason: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index('by_attemptId', ['attemptId'])
+    .index('by_parentRunId', ['parentRunId'])
+    .index('by_workspaceId_dispatchKey', ['workspaceId', 'dispatchKey'])
+    .index('by_assignmentId_ordinal', ['assignmentId', 'ordinal'])
+    .index('by_childRunId', ['childRunId'])
+    .index('by_conversationId_replyTurnId', ['conversationId', 'replyTurnId'])
+    .index('by_conversationId_questionTurnId', ['conversationId', 'questionTurnId']),
+
+  agentAssignmentResults: defineTable({
+    workspaceId: v.string(), assignmentId: v.string(), attemptId: v.string(), childRunId: v.string(),
+    deliveryAgentRunId: v.id('conversationAgentRuns'), sourceRevision: v.number(), runStatus: v.string(),
+    terminal: v.boolean(), publicationPending: v.boolean(), blocker: v.optional(v.any()), summary: v.string(),
+    finalReplyMessageId: v.optional(v.id('conversationMessages')), replyTurnId: v.string(),
+    replyDigest: v.optional(v.string()),
+    artifactRefs: v.array(v.string()), toolResultRefs: v.array(v.string()),
+    failureReason: v.optional(v.string()), usageRef: v.string(), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_attemptId', ['attemptId']).index('by_childRunId', ['childRunId']),
+
+  agentAssignmentLaunchIntents: defineTable({
+    attemptId: v.string(), parentRunId: v.string(), generation: v.number(),
+    state: v.union(v.literal('pending'), v.literal('launched'), v.literal('settled'), v.literal('cancelled')),
+    winnerWorkflowRunId: v.optional(v.string()), attempts: v.number(), nextAttemptAt: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_attemptId', ['attemptId']).index('by_parentRunId', ['parentRunId'])
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt']),
+
+  agentConversationTurnQueue: defineTable({
+    conversationId: v.id('conversations'), deliveryAgentRunId: v.id('conversationAgentRuns'),
+    requesterUserId: v.string(), workspaceId: v.string(), attemptId: v.optional(v.string()),
+    authorityPolicyVersion: v.number(), agentId: v.string(), initiatorPrincipalId: v.string(),
+    memoryEnabled: v.optional(v.boolean()),
+    state: v.union(v.literal('pending'), v.literal('claimed'), v.literal('settled'), v.literal('cancelled')),
+    generation: v.number(), winnerWorkflowRunId: v.optional(v.string()), attempts: v.number(), nextAttemptAt: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_deliveryAgentRunId', ['deliveryAgentRunId'])
+    .index('by_conversationId_state', ['conversationId', 'state', 'createdAt'])
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
@@ -2404,6 +2539,8 @@ export default defineSchema({
       v.literal('opencode'),
       v.literal('pi'),
       v.literal('hermes'),
+      // An outside agent that joined over MCP; it runs on its own machine and collects messages from its inbox.
+      v.literal('mcp'),
     ),
     modelId: v.string(),
     reasoning: v.optional(v.union(
@@ -2687,11 +2824,10 @@ export default defineSchema({
   growthWorkspaceUsage: defineTable(growthTables.growthWorkspaceUsage)
     .index('by_day_workspaceId', ['day', 'workspaceId']).index('by_day_cents', ['day', 'cents']),
 
-  // ─── Slack import jobs ───────────────────────────────────────────────────
-  // Durable jobs for importing Slack workspace data into Overlay conversations
-  // via Composio's Slackbot toolkit. The client creates a job after selecting
-  // channels; a server worker processes it asynchronously and the client
-  // subscribes to status updates via watchSlackImportJob.
+  // ─── Slack import jobs (RETIRED) ─────────────────────────────────────────
+  // External history import was removed. slackImportJobs and
+  // slackImportMappings are kept only so existing stored rows stay valid; no
+  // code reads or writes them.
   slackImportJobs: defineTable({
     userId: v.string(),
     workspaceId: v.string(),
@@ -2727,9 +2863,6 @@ export default defineSchema({
     .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
 
-  // Maps Slack source IDs to Overlay conversation/message IDs for dedup and
-  // resume support. Each (workspaceId, sourceChannelId, sourceMessageTs) tuple
-  // maps to exactly one Overlay conversation + message.
   agentEnvironments: defineTable({
     environmentId: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(),
     status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()),
@@ -2859,6 +2992,7 @@ export default defineSchema({
     .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
     .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
 
+  // RETIRED with history import; kept only for stored rows (see slackImportJobs).
   slackImportMappings: defineTable({
     importJobId: v.id('slackImportJobs'),
     workspaceId: v.string(),
@@ -2881,6 +3015,7 @@ export default defineSchema({
     runId: v.string(),
     actorUserId: v.string(),
     rootRunId: v.string(),
+    sharedRoomRestriction: v.optional(v.boolean()),
     deliveryAgentRunId: v.optional(v.string()),
     parentRunId: v.optional(v.string()),
     activeDescendantCount: v.number(),
@@ -2956,6 +3091,9 @@ export default defineSchema({
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),
+    /** Denormalized from persistenceJson for live stream readers; absent on older rows. */
+    hasOutput: v.optional(v.boolean()),
+    outputLimitReached: v.optional(v.boolean()),
     fullPersistenceStorageId: v.optional(v.id('_storage')),
     fullPersistenceDigest: v.optional(v.string()),
     createdAt: v.number(),

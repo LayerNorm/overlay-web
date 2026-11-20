@@ -65,7 +65,7 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
   - `sharing.get` / `sharing.impact` (Share dialog): per-resource-type manager checks and the who-gains-or-loses-access disclosure run in `WorkspaceSharingService` right before the server-checked grant or revoke.
   - `conversations.participants` (deleting an archived room): a read immediately before the server-audited delete, which decides between leaving the room and deleting it.
   - `workspaces.list` on the OAuth consent page (`/oauth/authorize`): that page sits outside the app shell and has no Convex client.
-- Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
+- Start chat turns through `/api/v1/conversations/act`. For a versioned native turn the browser asks for Convex live delivery: the response ends at admission, and the reply's live text is read from Convex (`chat/personal:activePublicStreamUpdates`, or `collaboration/rooms:activePublicStreamUpdates` in rooms; whole-stream `activePublicStreams` when the backend does not advertise `livePublicStreamRevision: 'incremental-v1'`). API, API-key and other callers that do not ask for it still get the reply streamed over the HTTP response. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
 Interactive browsing uses the Computer API and `computer_browser` tool on the
 bound machine. The separate `/api/v1/browser-task` endpoint and
@@ -485,7 +485,7 @@ A source the person cannot read returns null and is reported as unavailable; the
 
 Settings → Webhooks reads `webhooks/browse:subscriptions` and `webhooks/browse:deliveries` live for the active workspace. Both need an active membership and `webhooks.manage`, and `CAPABILITY_FEATURE` now maps that capability to the `webhooks` deployment feature for the server and native paths alike. Neither query returns the signing secret or `payloadJson`. Create and update stay on `/api/v1/webhooks` because they resolve the endpoint address for SSRF checks. Rotate, delete and redrive also stay on the server, and the HTTP list remains for API clients.
 
-## Connections in the browser (MCP, providers, Computers, environments, surfaces)
+## Connections in the browser (MCP, providers, Computers, environments)
 
 Browsers read connection state natively; every write stays on its route because it encrypts credentials, checks
 network addresses, runs OAuth or device flows, calls a provider, or checks billing.
@@ -503,8 +503,6 @@ network addresses, runs OAuth or device flows, calls a provider, or checks billi
   pending environments; `:bindings` is for owners and admins. The online window lives in
   `src/shared/agents/environment-status.ts` and is applied in the browser on a local clock, because a stale
   heartbeat writes nothing to re-run a query.
-- `surfaces/browse:forAgent` returns an agent's workspace surface connections, bindings and `canBind` with the
-  `SurfaceService` rules. Channel listing, binding and Slack OAuth stay on `/api/v1/surfaces`.
 
 There is no connection polling in the browser.
 
@@ -649,4 +647,6 @@ revision checks still apply.
 
 All AI chats (personal, workspace-filed and automation threads) use native Convex
 queries and mutations in the browser, with no readiness probe or HTTP fallback. Model
-execution, streaming, stop, approval and input response stay on the server path.
+execution, stop, approval and input response stay on the server path. The server writes
+live reply text to Convex, and the browser reads it from there for versioned native
+turns; other callers still receive the HTTP stream.

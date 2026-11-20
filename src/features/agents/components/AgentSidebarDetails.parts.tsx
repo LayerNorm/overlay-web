@@ -23,7 +23,6 @@ import {
   DangerZone,
   OverlayAgentPermissionsField,
 } from './AgentEditorForm'
-import { AgentSurfacesField } from './AgentSurfacesField'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import type { ReactNode } from 'react'
 import type { useAgentEditorController } from './AgentEditorPage'
@@ -106,7 +105,7 @@ export function AgentSidebarTools({ editor }: { editor: Controller }) {
 }
 
 export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller }) {
-  const { form, agent, computer, surfaces } = editor
+  const { form, agent, computer } = editor
 
   return (
     <div className="space-y-[22px]">
@@ -147,15 +146,6 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
           </div>
         </section>
       ) : null}
-      <section>
-        <div className="mt-2">
-          <AgentSurfacesField
-            agentName={form.name}
-            hasAgent={Boolean(agent)}
-            surfaces={surfaces}
-          />
-        </div>
-      </section>
       {!agent?.agentRole || agent.agentRole === 'agent' ? <section>
         <div className="rounded-[10px] bg-(--surface-subtle) p-3">
           <AccessSelector

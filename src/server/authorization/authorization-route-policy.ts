@@ -393,12 +393,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/generate-tab-group-label', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-image', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-video', methods: { POST: capability('models.use') } },
-  {
-    path: '/api/v1/imports/slack',
-    methods: { GET: authenticated(), POST: authenticated() },
-  },
-  // Called by the Slack import cron with the internal API secret.
-  { path: '/api/v1/imports/slack/process', methods: { POST: internal() } },
   // BYOK provider connections are scoped to the caller's own user id.
   {
     path: '/api/v1/providers/connections',
@@ -415,23 +409,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated(), POST: authenticated(), PATCH: authenticated() },
   },
   // Other AI apps connected over MCP: every operation is scoped to the caller's own user id.
+  // Approval is limited to owners and admins inside McpAgentNetworkService, which also reads the workspace role.
+  { path: '/api/v1/mcp/agents', methods: { GET: authenticated(), POST: authenticated() } },
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
   { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
-  // Surfaces: SurfaceService enforces bind permission (visible agent, no
-  // guests, personal agents only by their creator). connect/callback are browser
-  // navigations that check the Overlay session themselves; the Slack webhook
-  // is session-free and verifies Slack's request signature.
-  { path: '/api/v1/surfaces/connections', methods: { GET: authenticated() } },
-  { path: '/api/v1/surfaces/connections/:connectionId/channels', methods: { GET: authenticated() } },
-  {
-    path: '/api/v1/surfaces/bindings',
-    methods: { GET: authenticated(), POST: authenticated() },
-  },
-  { path: '/api/v1/surfaces/bindings/:bindingId', methods: { DELETE: authenticated() } },
-  { path: '/api/v1/surfaces/slack/connect', methods: { GET: authenticated() } },
-  { path: '/api/v1/surfaces/slack/callback', methods: { GET: authenticated() } },
-  { path: '/api/v1/webhooks/slack', methods: { POST: publicPolicy() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
   {

@@ -2,14 +2,19 @@ import { paginationOptsValidator } from 'convex/server'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
+import { bindAssignmentAttempt, settleAssignmentAttempt } from '../collaboration/assignmentResults'
+import { assignmentCompletionIssues, cancelPendingAssignmentLaunches } from '../collaboration/assignmentObligations'
+import { claimNativeLaunch } from '../collaboration/assignmentLaunchOwnership'
+import { cancelOutstandingAssignments } from '../collaboration/assignmentCoordination'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
 import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
-import { readActivePublicStreams } from '../lib/publicStreamRead'
+import { readActivePublicStreams, transcriptStepHasOutput } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
+import { isSharedRoom } from '../../src/shared/agents/room-access'
 import {
   admitHarnessChild,
   admitHarnessNamedChild,
@@ -333,6 +338,7 @@ const operationValidator = v.union(
     goal: v.string(),
     constraints: v.array(v.string()),
     target: v.object({ deliveryAgentRunId: v.string(), conversationId: v.string() }),
+    spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   }),
   v.object({ type: v.literal('settle_child'), childRunId: v.string() }),
   v.object({ type: v.literal('finish'), resultSummary: v.optional(v.string()) }),
@@ -1175,6 +1181,8 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     metadataJson: stableJson(metadataFromSnapshot(snapshot)),
     updatedAt: snapshot.updatedAt,
   })
+  await settleAssignmentAttempt(ctx, run.runId)
+  if (snapshot.status === 'cancelled' || snapshot.status === 'failed') await cancelPendingAssignmentLaunches(ctx, run.runId)
   if (snapshot.diagnostic) await appendHarnessDiagnosticIndex(ctx, run, snapshot)
   if (isTerminalStatus(snapshot.status)) {
     const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
@@ -1185,6 +1193,27 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     await Promise.all(artifacts.filter(artifact => artifact.expiresAt !== expiresAt)
       .map(artifact => ctx.db.patch(artifact._id, { expiresAt })))
   }
+}
+
+export async function settleResolvedAssignmentChild(ctx: MutationCtx, parent: RunRow, child: RunRow, excluded: boolean) {
+  const latestParent = await findRun(ctx, parent.runId)
+  const latestChild = await findRun(ctx, child.runId)
+  if (!latestParent || !latestChild) throw new Error('HARNESS_RUN_NOT_FOUND')
+  const current = await hydrateSnapshot(ctx, latestParent)
+  const actualChild = await hydrateSnapshot(ctx, latestChild)
+  if (isTerminalStatus(current.status) || !isTerminalStatus(actualChild.status) || actualChild.modelReservation
+    || actualChild.children.some(row => row.status === 'running' || row.status === 'cancelled')) return
+  const now = Date.now()
+  let next = settleHarnessChild(current, actualChild, now)
+  const milestone = next.plan.find(step => step.childRunId === child.runId && step.id.startsWith('ask:'))
+  if (excluded && milestone && milestone.status !== 'done') {
+    next = { ...next, plan: next.plan.map(step => step.id === milestone.id ? { ...step, status: 'done', skipReason: undefined } : step),
+      revision: next.revision + 1, planRevision: next.planRevision + 1, updatedAt: now }
+  }
+  await persistMetadata(ctx, latestParent, next)
+  await persistPlan(ctx, parent.runId, current.planRevision, current.plan, next, now)
+  if (stableJson(current.plan) !== stableJson(next.plan)) await projectPlanToDelivery(ctx, latestParent, next.plan, now)
+  await persistChildren(ctx, parent.runId, current.children, next.children)
 }
 
 export async function failUnclaimedNativeHarnessInTransaction(ctx: MutationCtx, input: {
@@ -1290,7 +1319,7 @@ async function getEvidenceRow(ctx: ReadContext, runId: string, evidenceId: strin
     .unique()
 }
 
-function childAdmission(
+export function childAdmission(
   parent: HarnessSnapshot,
   operation: Extract<HarnessOperation, { type: 'admit_child' | 'admit_named_child' }>,
 ) {
@@ -1306,7 +1335,9 @@ function childAdmission(
     ...(parent.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: parent.policy.taskDeadlineAt } : {}),
     ...(parent.policy.executionPolicyVersion === 2 ? {
       executionPolicyVersion: 2 as const,
-      spendingMode: parent.policy.spendingMode!,
+      // A sub-agent runs on its parent's model and pays the same way. A named child is another agent with its
+      // own model, so the caller states how that model is paid for (a subscription model asking a gateway one).
+      spendingMode: (operation.type === 'admit_named_child' ? operation.spendingMode : undefined) ?? parent.policy.spendingMode!,
     } : {}),
     maxCostMicros: 0,
   }
@@ -1495,6 +1526,7 @@ async function applyReducer(
         throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
       }
       const snapshot = admitHarnessNamedChild(current, operation.child, operation.step, now)
+      await bindAssignmentAttempt(ctx, delivery, admission.runId, run.runId, run.rootRunId)
       const childSnapshot = createHarnessSnapshot({
         runId: admission.runId,
         goal: admission.goal,
@@ -1521,6 +1553,7 @@ async function applyReducer(
       const childLineage = await loadLineage(ctx, childRun, current.policy.actorUserId, serverSecret)
       const childMetadata = childLineage[0]!.metadata
       const childSnapshot = await hydrateSnapshot(ctx, childRun)
+      await settleAssignmentAttempt(ctx, childRun.runId)
       let snapshot = settleHarnessChild(current, childSnapshot, now)
       if (childSnapshot.status === 'completed') {
         const rawSummary = childSnapshot.resultSummary?.trim() || childSnapshot.workingSummary.trim() || `Completed child run ${childSnapshot.runId}.`
@@ -1549,8 +1582,11 @@ async function applyReducer(
       }
       return { snapshot }
     }
-    case 'finish':
+    case 'finish': {
+      const issues = await assignmentCompletionIssues(ctx, run.runId)
+      if (issues.length) throw new Error(`ASSIGNMENTS_UNRESOLVED: ${issues.join('; ')}`)
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
+    }
     case 'terminate':
       return { snapshot: terminateHarness(current, operation.status, operation.reason, now, operation.diagnostic) }
   }
@@ -1618,6 +1654,7 @@ export const admit = mutation({
       runId: snapshot.runId,
       actorUserId: admission.policy.actorUserId,
       rootRunId: snapshot.rootRunId,
+      sharedRoomRestriction: await restrictionForSource(ctx, admission.policy.workspaceId, admission.policy.actorUserId, source, serverSecret),
       ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
       activeDescendantCount: 0,
       sourceJson: stableJson(source),
@@ -1646,6 +1683,185 @@ export const get = query({
     if (!run) return null
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     return await currentSnapshot(ctx, run, lineage)
+  },
+})
+
+const MAX_ROOM_RESTRICTION_DEPTH = 32
+
+async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, conversationId: string): Promise<boolean> {
+  const id = ctx.db.normalizeId('conversations', conversationId)
+  const conversation = id ? await ctx.db.get(id) : null
+  if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
+  if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
+  const participants = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
+    .collect()
+  return isSharedRoom({
+    conversationType: conversation.conversationType ?? 'personal',
+    channelVisibility: conversation.channelVisibility,
+    humanParticipants: participants.filter(participant => participant.status === 'active'
+      && participant.principalType === 'human').length,
+  })
+}
+
+function conversationIdFromSource(source: HarnessSource): string | null {
+  return typeof source.conversationId === 'string' && source.conversationId.trim()
+    ? source.conversationId
+    : null
+}
+
+function normalizedWorkspaceId(workspaceId: string | undefined): string | null {
+  return workspaceId || null
+}
+
+async function sourceRoomIsShared(ctx: MutationCtx | QueryCtx, source: HarnessSource): Promise<boolean> {
+  const conversationId = conversationIdFromSource(source)
+  return conversationId ? await conversationAudienceIsShared(ctx, conversationId) : false
+}
+
+type RoomRestrictionTrail = { conversations: Set<string>; runs: Set<string> }
+
+function newRoomRestrictionTrail(): RoomRestrictionTrail {
+  return { conversations: new Set(), runs: new Set() }
+}
+
+async function restrictionForSource(
+  ctx: MutationCtx | QueryCtx,
+  workspaceId: string | undefined,
+  actorUserId: string,
+  source: HarnessSource,
+  serverSecret: string,
+  trail = newRoomRestrictionTrail(),
+  depth = 0,
+): Promise<boolean> {
+  const conversationId = conversationIdFromSource(source)
+  if (!conversationId) return false
+  if (depth > MAX_ROOM_RESTRICTION_DEPTH || trail.conversations.has(conversationId)) {
+    throw new Error('Invalid assignment room restriction ancestry.')
+  }
+  const id = ctx.db.normalizeId('conversations', conversationId)
+  const conversation = id ? await ctx.db.get(id) : null
+  if (!conversation || normalizedWorkspaceId(conversation.workspaceId) !== normalizedWorkspaceId(workspaceId)
+    || conversation.deletedAt !== undefined) {
+    throw new Error('CONVERSATION_ACCESS_DENIED')
+  }
+  const shared = await conversationAudienceIsShared(ctx, conversationId)
+  const assignment = await ctx.db.query('agentAssignments')
+    .withIndex('by_conversationId', q => q.eq('conversationId', conversation._id))
+    .unique()
+  if (!assignment) return shared
+  if (assignment.workspaceId !== workspaceId || assignment.requesterUserId !== actorUserId
+    || assignment.conversationId !== conversation._id) {
+    throw new Error('Invalid assignment room restriction ancestry.')
+  }
+  trail.conversations.add(conversationId)
+  return shared || await restrictionForRun(
+    ctx, workspaceId, actorUserId, assignment.parentRunId, serverSecret, trail, depth + 1,
+  )
+}
+
+async function restrictionForRun(
+  ctx: MutationCtx | QueryCtx,
+  workspaceId: string | undefined,
+  actorUserId: string,
+  runId: string,
+  serverSecret: string,
+  trail = newRoomRestrictionTrail(),
+  depth = 0,
+): Promise<boolean> {
+  if (depth > MAX_ROOM_RESTRICTION_DEPTH || trail.runs.has(runId)) {
+    throw new Error('Invalid assignment run restriction ancestry.')
+  }
+  const run = await findRun(ctx, runId)
+  if (!run || run.actorUserId !== actorUserId) throw new Error('HARNESS_ACCESS_DENIED')
+  trail.runs.add(runId)
+  const lineage = await loadLineage(ctx, run, actorUserId, serverSecret)
+  if (lineage.length > MAX_ROOM_RESTRICTION_DEPTH) throw new Error('Invalid harness parent lineage.')
+  const lineageRunIds = new Set(lineage.map(entry => entry.run.runId))
+  for (const entry of lineage) {
+    // A run from before this flag existed has no stored value: its source room below decides, rather than treating
+    // every older run (and the personal runs that continue it) as shared and removing private tools for good.
+    if (normalizedWorkspaceId(entry.metadata.policy.workspaceId) !== normalizedWorkspaceId(workspaceId)
+      || entry.run.sharedRoomRestriction === true) return true
+    const source = parseJson<HarnessSource>(entry.run.sourceJson)
+    if (await sourceRoomIsShared(ctx, source)) return true
+    const sourceConversationId = conversationIdFromSource(source)
+    if (sourceConversationId) {
+      const conversationId = ctx.db.normalizeId('conversations', sourceConversationId)
+      const assignment = conversationId
+        ? await ctx.db.query('agentAssignments').withIndex('by_conversationId', q => q.eq('conversationId', conversationId)).unique()
+        : null
+      if (assignment && !lineageRunIds.has(assignment.parentRunId)
+        && await restrictionForRun(ctx, workspaceId, actorUserId, assignment.parentRunId, serverSecret, trail, depth + 1)) return true
+    }
+  }
+  return false
+}
+
+async function inheritedRoomRestriction(
+  ctx: MutationCtx | QueryCtx,
+  lineage: LineageEntry[],
+  source: HarnessSource,
+  serverSecret: string,
+): Promise<boolean> {
+  const workspaceId = lineage[0]?.metadata.policy.workspaceId
+  const actorUserId = lineage[0]?.metadata.policy.actorUserId ?? ''
+  if (lineage.some(entry => entry.run.sharedRoomRestriction === true)) return true
+  if (await restrictionForSource(ctx, workspaceId, actorUserId, source, serverSecret, newRoomRestrictionTrail())) return true
+  for (const entry of lineage) {
+    if (await restrictionForSource(ctx, workspaceId, actorUserId, parseJson<HarnessSource>(entry.run.sourceJson),
+      serverSecret, newRoomRestrictionTrail())) return true
+  }
+  return false
+}
+
+export const resolveConversationRoomRestrictions = mutation({
+  args: { actorUserId: v.string(), workspaceId: v.string(), conversationId: v.id('conversations'), serverSecret: v.string() },
+  returns: v.object({ inheritedSharedRoom: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const [workspace, principal] = await Promise.all([
+      ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).unique(),
+      ctx.db.query('workspacePrincipals').withIndex('by_workspaceId_userId', q =>
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId)).unique(),
+    ])
+    const membership = principal ? await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', args.workspaceId)
+        .eq('principalId', principal.principalId)).unique() : null
+    if (!workspace || workspace.status !== 'active' || workspace.archivedAt !== undefined
+      || !principal || principal.type !== 'human' || principal.archivedAt !== undefined
+      || !membership || membership.status !== 'active' || membership.role === 'guest') {
+      throw new Error('WORKSPACE_ACCESS_DENIED')
+    }
+    await requireConversationAccess(ctx, {
+      actorUserId: args.actorUserId, conversationId: args.conversationId,
+      workspaceId: args.workspaceId, serverSecret: args.serverSecret,
+    })
+    return { inheritedSharedRoom: await restrictionForSource(
+      ctx, args.workspaceId, args.actorUserId, { conversationId: args.conversationId }, args.serverSecret,
+    ) }
+  },
+})
+
+export const refreshRoomContextRestrictions = mutation({
+  args: { actorUserId: v.string(), runId: v.string(), serverSecret: v.string() },
+  returns: v.object({ inheritedSharedRoom: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const run = await findRun(ctx, args.runId)
+    if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const inheritedSharedRoom = await restrictionForRun(
+      ctx, lineage[0]!.metadata.policy.workspaceId, args.actorUserId, args.runId, args.serverSecret,
+    )
+    if (inheritedSharedRoom) {
+      for (const entry of lineage) {
+        if (entry.run.sharedRoomRestriction !== true) {
+          await ctx.db.patch(entry.run._id, { sharedRoomRestriction: true })
+        }
+      }
+    }
+    return { inheritedSharedRoom }
   },
 })
 
@@ -1740,7 +1956,9 @@ export const writeTranscriptStep = mutation({
     // A large step is never refused: the stored row keeps a shortened copy that fits
     // Convex's document limit, and the full step lives in file storage when uploaded.
     // Compaction is idempotent, so a replayed write still matches the stored row.
-    const persistenceJson = stableJson(compactTranscriptSnapshot(args.persistence as HarnessTranscriptPersistence))
+    const stored = compactTranscriptSnapshot(args.persistence as HarnessTranscriptPersistence)
+    const persistenceJson = stableJson(stored)
+    const outputFlags = transcriptStepOutputFlags(stored)
     const run = await findRun(ctx, args.runId)
     if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
@@ -1780,6 +1998,7 @@ export const writeTranscriptStep = mutation({
       }
       await ctx.db.patch(existing._id, {
         persistenceJson,
+        ...outputFlags,
         fullPersistenceStorageId: args.fullPersistenceStorageId,
         fullPersistenceDigest: args.fullPersistenceDigest,
       })
@@ -1796,6 +2015,7 @@ export const writeTranscriptStep = mutation({
       sequence: Number(sequenceMatch[1]),
       stepNumber: args.stepNumber,
       persistenceJson,
+      ...outputFlags,
       ...(args.fullPersistenceStorageId ? {
         fullPersistenceStorageId: args.fullPersistenceStorageId,
         fullPersistenceDigest: args.fullPersistenceDigest,
@@ -1819,6 +2039,11 @@ export const writeTranscriptStep = mutation({
     return { persisted: true }
   },
 })
+
+/** Stored beside the step so live readers can tell whether it continues without parsing its JSON. */
+function transcriptStepOutputFlags(step: { content?: unknown; parts?: unknown; outputLimitReached?: unknown }) {
+  return { hasOutput: transcriptStepHasOutput(step), outputLimitReached: step.outputLimitReached === true }
+}
 
 const MAX_PUBLIC_STREAM_SEGMENT_BYTES = 8 * 1024
 const MAX_PUBLIC_STREAM_VISIBLE_CHARS = 160_000
@@ -2336,6 +2561,7 @@ export const apply = mutation({
       if (stableJson(current.plan) !== stableJson(next.plan)) await projectPlanToDelivery(ctx, run, next.plan, now)
       await persistChildren(ctx, run.runId, current.children, next.children)
     }
+    if (operation.type === 'terminate' && next.status === 'cancelled') await cancelOutstandingAssignments(ctx, run.runId, args.serverSecret)
     const operationDiagnostic = operation.type === 'record_diagnostic' || operation.type === 'block' || operation.type === 'terminate'
       ? operation.diagnostic : undefined
     if (operationDiagnostic) {
@@ -2348,6 +2574,7 @@ export const apply = mutation({
       }
     }
     if (operation.type === 'claim_execution') {
+      await claimNativeLaunch(ctx, run, workflowRunId!, executionGeneration, args.serverSecret)
       const outbox = await ctx.db.query('harnessContinuationOutbox')
         .withIndex('by_runId_generation', q => q.eq('runId', run.runId).eq('generation', executionGeneration))
         .unique()
@@ -2397,6 +2624,7 @@ export const apply = mutation({
         runId: snapshot.runId,
         actorUserId: snapshot.policy.actorUserId,
         rootRunId: snapshot.rootRunId,
+        sharedRoomRestriction: await inheritedRoomRestriction(ctx, lineage, source, args.serverSecret),
         parentRunId: snapshot.parentRunId,
         ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
         activeDescendantCount: 0,

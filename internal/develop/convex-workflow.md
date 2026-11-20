@@ -451,9 +451,8 @@ reports the Harness capability. Missing, old, unknown, or unreadable capability
 state returns a truthful unavailable response instead of selecting a legacy
 workflow. The personal Act route returns `410 legacy_execution_retired` for
 automation execution flags; `mode: 'automate'` alone remains a configuration
-chat. Automation run-backed and scheduled turns use the personal Harness adapter;
-Slack surface turns use the native Harness adapter with source/workflow ownership
-fences. This source cutover does not drain already-deployed legacy workers.
+chat. Automation run-backed and scheduled turns use the personal Harness adapter.
+This source cutover does not drain already-deployed legacy workers.
 
 Native Overlay room turns always dispatch through the native Harness. There is
 no environment-flag fallback to the retired workspace-agent workflow. Remote
@@ -651,7 +650,7 @@ and catalog grants at execution time. Admission grants are an upper bound, not a
 cached permission decision. Each child namespaces its tool effects by harness run
 ID while retaining the delivery AgentRun ID. The personal adapter requires
 interactive approval policy and cannot stand in for an agent or automation
-principal. Personal chat, automations and Slack entrypoints use these adapters.
+principal. Personal chat and automation entrypoints use these adapters.
 
 Before provider dispatch, `bind_model_dispatch` associates the held model call
 with its selected model and billing reservation (explicitly `null` for calls
@@ -727,7 +726,7 @@ fails closed with a truthful availability response when it is missing or stale;
 it does not fall back to `personal-chat-work` or a direct tool loop. Named-room
 turns dispatch through native Harness, but this slice does not add a capability
 readiness check to named-room admission. Native agents additionally use native
-Harness dispatch without an environment flag. Automation and Slack source
+Harness dispatch without an environment flag. Automation source
 adapters refresh their bound authority before execution. Recorded retired native
 threads reject new writes while preserving history and an editable new-thread
 handoff. Untracked history and draining already-deployed legacy workers remain

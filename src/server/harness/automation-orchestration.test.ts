@@ -186,16 +186,8 @@ test('queued manual ACK starts before native Harness and never invokes the legac
   expect(mocks.admit.mock.invocationCallOrder[0]).toBeLessThan(mocks.harnessWorkflow.mock.invocationCallOrder[0])
 })
 
-test('legacy capped surface loop is no longer exported or callable', () => {
+test('legacy capped agent loop is no longer exported or callable', () => {
   expect('runDurableAgentTurn' in automationWorkflow).toBe(false)
-})
-
-test('surface inputs are rejected without choosing an automation fallback', async () => {
-  await expect(runAutomationAgentTurn({ ...input, surface: {} as never })).rejects.toThrow(/surface workflow/)
-  expect(mocks.ready).not.toHaveBeenCalled()
-  expect(mocks.ensureConversation).not.toHaveBeenCalled()
-  expect(mocks.prepare).not.toHaveBeenCalled()
-  expect(mocks.harnessWorkflow).not.toHaveBeenCalled()
 })
 
 test('a foreign duplicate admission is returned without entering or settling the other worker', async () => {

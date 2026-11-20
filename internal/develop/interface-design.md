@@ -330,7 +330,7 @@ preserve Computer takeover/handback controls when regrouping the fields.
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,
 agent defaults/accounts); an unmatched controlled value retains its display text
-(the Slack channel prompt). Groups preserve source order; disabled options/groups
+(for example a prompt whose saved option is gone). Groups preserve source order; disabled options/groups
 stay visible and cannot be selected. No domain model-picker ordering changes.
 
 `Select` keeps a visually hidden native select for original FormData values,
@@ -573,7 +573,7 @@ still mark the row that opened it.
 
 ## Agent settings load together
 
-The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, reachability surfaces, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
+The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
 
 ## One boot loader
 
@@ -597,7 +597,7 @@ screen again.
 
 ## Brand lockup
 
-Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free. Active assistant responses show one 24px `OverlayMark motion="look"` below the complete output, and the mark disappears when the response settles. Only its eyes move. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
+Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free, except for the working orb on a running tool's row. Active assistant responses show the working orb (on the running tool's row, or between tools on one line below the output saying "Thinking" or "Writing the reply"), and it disappears when the response settles. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
 
 `BrandLockup` (`src/components/brand/BrandLockup.tsx`, re-exported from `@overlay/ui`) is the canonical "Overlay" wordmark: the O-with-eyes `OverlayMark` followed by "verlay" in Libre Baskerville Regular. Size it with `font-size`. Shared styles in `packages/overlay-ui/src/styles.css` use a `0.86em` mark, a `0.043em` gap and a `0.045em` baseline translation. The word sits inside the overflow-hidden `.brand-lockup-mask` so the boot entrance can reveal it from behind the mark. Use the shared component for loader, auth, marketing and shell branding rather than composing a separate mark and full word.
 
@@ -639,6 +639,27 @@ expire it after 60 seconds. Use the static greeting only for empty instructions.
 Agent-created automations also appear in Automations with the owning creature
 avatar. Sidebar rows without a conversation open the automation itself.
 
+## Automation threads
+
+An automation is an ordinary chat that gets a message on a schedule. A new
+automation uses the chat empty state and composer with two pickers beside the
+model control (`ChatComposerSurface.composerControls`): Schedule (Every
+hour/day/weekday/week/month, a Monday-first weekday row, day of the month up to
+28, a time field and the muted browser time zone) and Agent (No agent, shown with
+the Overlay mark, or a workspace agent's creature). Both share the composer model
+trigger style and become 32px icon buttons below the `sm` breakpoint. Sending
+creates the automation with the composer's model, runs it once and opens its
+thread. The thread composer is a normal follow-up composer without the pickers;
+its model control shows and saves the automation's model.
+
+An automation's thread docks the Automation details panel (`RightSidebar`, 380px,
+open by default at 1024px and wider, toggled from the header like agent threads):
+the inline-renamed name, Active switch with the next run, Run now, Schedule and
+Time zone disclosures, a read-only Agent row (the agent cannot change after
+creation), Model, the five most recent runs (Failed rows offer Retry) and Delete
+with an inline confirm. The Automations route has no Chat/Edit tabs, header model
+control or temporary-chat control.
+
 ## Chat AI primitives (`@overlay/ui/ai`)
 
 Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Trace rows are text-only; `TraceMark`, `ToolLineLogo` and `ToolLogoColumn` remain empty compatibility exports. Running titles may shimmer (CSS in `styles.css`, off under reduced motion). The one active-response mark is 24px and sits after all assistant output.
@@ -668,9 +689,15 @@ unbroken value must not force an otherwise narrow table beyond the chat pane.
 
 Render streamed text as complete formatted chunks. Markdown defaults to paragraph
 blocks plus a shimmed in-flight tail, with no per-character pacing or character
-spans. Room/agent transcripts suppress inline markers and keep one 24px
-`OverlayMark motion="look"` at the bottom throughout the run, including while
-tools are working.
+spans. Room/agent transcripts suppress inline markers. A live response shows one working orb: on the
+running tool's row while a tool works, otherwise on one line at the bottom ("Thinking", "Writing the
+reply") with the seconds it has run.
+
+Every block of a response (text, tool rows, the assignment row, the action buttons) sits the same
+distance apart: the assignment row has no top margin and an 8px bottom margin. Date lines are the date
+alone, centred, with no rules. The pinned chiefs (workspace and the viewer's own) sit side by side as
+equal tiles above the agent list, like pinned conversations in iMessage: no background at rest, filled
+while open, one open at a time (`useAgentExpansion` exclusive ids) with its threads full width below.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { start } from 'workflow/api'
 import { nativeHarnessWorkflow } from '@/server/workflows/native-harness'
 import { personalHarnessWorkflow } from '@/server/workflows/personal-harness'
+import { nativeRecoveryWorkflow } from '@/server/workflows/native-recovery'
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
 
@@ -14,11 +15,19 @@ export async function POST(request: Request) {
   }
   if (!authorized) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  let body: { runId?: unknown; generation?: unknown; checkpointToken?: unknown }
+  let body: { runId?: unknown; generation?: unknown; checkpointToken?: unknown; kind?: unknown; id?: unknown }
   try {
     body = await request.json() as typeof body
   } catch (_error) {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
+  }
+  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
+  if (body.kind === 'assignment' || body.kind === 'turn') {
+    if (typeof body.id !== 'string' || !Number.isSafeInteger(body.generation) || (body.generation as number) < 0) {
+      return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
+    }
+    await start(nativeRecoveryWorkflow, [{ kind: body.kind, id: body.id, generation: body.generation as number }])
+    return NextResponse.json({ accepted: true }, { status: 202 })
   }
   if (typeof body.runId !== 'string' || !Number.isSafeInteger(body.generation)
     || typeof body.checkpointToken !== 'string') {

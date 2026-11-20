@@ -15,7 +15,7 @@ One toggle per thing a person would recognise. Reading and writing the same kind
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Media generation | `generate_image`, `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
 | Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
-| Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps) |
+| Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps), `resolve_assignment` (only in the Chief's native Harness run; withheld from connected agents and outside apps) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
 
 Not tool ids but granted as capabilities:
@@ -94,7 +94,7 @@ purpose, but there is no per-message opt-in yet.
 | --- | --- |
 | **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Cloud computer. The Local computer group (`capability:local_computer`) holds no tool ids of its own: it gives the computer tools to a thread its owner set to run on their own computer (`localThreadComputerToolIds`, `internal/develop/thread-folders.md`). It is never exposed over MCP. |
-| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
+| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, `post_message`, and `resolve_assignment`. |
 
 ## Native agent permissions
 
@@ -112,6 +112,12 @@ override an owner-required Overlay tool policy. Ordinary granted tools run witho
 Older hosts retain the legacy retry flow until upgraded.
 
 ## Outside-app access levels (`src/shared/mcp/access.ts`)
+
+An outside app that joined the workspace as an agent (`mcp-access.md`, "Joining the workspace as an agent") keeps its
+level's tools and gains tools that exist only on `/api/mcp` and are not in the Overlay tool registry: `join_workspace`
+(before joining), `join_status`, `list_rooms`, `read_room`, `post_message`, `check_inbox`, `wait_for_messages`, `reply`,
+and its own `list_agents`, `ask_agent`, `read_agent_reply`, which ask as the agent instead of as the person. While its
+request is pending, declined, removed, or paused, `join_status` is its only tool.
 
 - **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `list_automations`, `list_tasks`, `get_task`.
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.

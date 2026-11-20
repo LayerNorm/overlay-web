@@ -88,6 +88,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `id=k17convatlasiosshare000000000000` for a thread running on the Mac Studio.
   `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
   rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
+- `chief-assignments.html` (feature `chief-assignments`): the proposed Chief assignment design. The assignment box
+  sits inside the response that made it, as wide as the response text. Agent threads, chats and channels share one
+  right sidebar opened by one button: views open as tabs, and "+" opens a new tab listing what the conversation has
+  (Details, Assignments, Library and Computer for an agent; Assignments, People and Pinned in a chat or channel). An
+  agent's sidebar opens on its avatar and that list; opening a view replaces both with the tab. A delegated agent that cannot run is one failed assignment with its reason, and the Chief carries on. The bar at the top switches between an agent
+  thread, a channel and a chat, and between the app today (`?mode=today`) and the proposal; "What changes" lists the
+  changes and the error messages before and after. Delete it when the design ships.
 - `desktop-discovery.html`: how a visitor finds and downloads the desktop app. It is the live marketing page with
   the proposed changes applied, not an app-shell mockup: `node internal/plans/mockups/build-desktop-discovery.mjs`
   reads the production home page and inlines it. The bar at the bottom switches page and visitor and outlines what
@@ -100,6 +107,30 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `agent-working-state.html` (feature `agent-working-state`): the working state, date line, pinned chief tiles and
+  response spacing, now built into production; the feature only adds fixtures. A live
+  response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
+  own tool wording, instead of the 24px Overlay mark. While a tool runs, the orb sits on that tool's row (an agent
+  tool's row says who is asked and what: "Asking Quill: …"); between tools a line at the bottom says "Thinking" or
+  "Writing the reply" with how long it has run. The pinned chiefs (workspace and your own) sit side by side as tiles
+  at the top of the Workspace tab, like pinned conversations in iMessage: no background at rest, filled while open,
+  one open at a time with its threads below. Every block of a response is the same distance apart, including the
+  assignment row and the response controls. The orb follows the kind of step: thinking or writing,
+  using a tool, reading or searching, asking another agent (AICSS lattice orbs S1–S4, MIT). The date line is the
+  date alone, without rules. Open
+  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convrelaytest0000000000000000`
+  (a relay between agents), `...&id=k17convlaunch0000000000000000000` (a command) or
+  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_scout&id=k17convscoutpricing0000000000000`.
+  Delete it when the design ships or is rejected.
+- `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
+  Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
+  Agent picker beside the model picker, and sending opens the automation's chat. Each run posts the instructions again
+  and gets a reply; failed runs use the production error row. The Automation panel docks where an agent thread's
+  sidebar does (toggle in the header) and holds the name, schedule, time zone, agent, model, on/off, Run now, recent
+  runs with Retry and Delete. Automations are listed as thread rows in the contextual panel. Open
+  `automation-threads.html#/w/northwind/workspace/automations` (new automation) or
+  `automation-threads.html#/w/northwind/workspace/automations?id=k17chatautolaunch000000000000000` (a thread with a
+  failed run and one waiting for an answer). Delete it when the design ships or is rejected.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.

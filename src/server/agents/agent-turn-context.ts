@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { MCP_AGENT_MODEL_ID, OUTSIDE_AGENT_AUTHOR_NOTE } from '@/shared/mcp/agent-network'
 import type { ModelMessage } from 'ai'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
@@ -21,6 +22,8 @@ export type AgentRoomMessage = {
   authorPrincipalId?: string
   content: string
   deletedAt?: number
+  /** `mcp:external` marks a message an outside agent wrote. */
+  modelId?: string
   status?: 'generating' | 'completed' | 'error'
 }
 
@@ -71,11 +74,12 @@ export async function buildAgentTurnContext(args: {
   requestFingerprint: string
   workspaceId: string
   includeAutoRetrieval?: boolean
+  inheritedSharedRoom?: boolean
 }): Promise<AgentTurnContext> {
   const server = getOverlayServerContext()
   // The room rule: in a room others can read, the summoner's private memory, files, and skills are not loaded for the agent
   // (its reply is visible to everyone there). What the workspace shares still is.
-  const access = roomContextAccess(isSharedRoom({
+  const access = roomContextAccess(args.inheritedSharedRoom === true || isSharedRoom({
     conversationType: args.conversationType,
     channelVisibility: args.channelVisibility,
     humanParticipants: args.participants.filter((participant) => participant.principalType === 'human').length,
@@ -256,6 +260,7 @@ export function buildAgentMessages(args: {
       const author = (message.authorPrincipalId
         ? namesByPrincipalId.get(message.authorPrincipalId)
         : undefined) ?? fallback
-      return { role: 'user' as const, content: `${author}: ${message.content}` }
+      const outside = message.authorKind === 'agent' && message.modelId === MCP_AGENT_MODEL_ID
+      return { role: 'user' as const, content: `${author}${outside ? ` ${OUTSIDE_AGENT_AUTHOR_NOTE}` : ''}: ${message.content}` }
     })
 }

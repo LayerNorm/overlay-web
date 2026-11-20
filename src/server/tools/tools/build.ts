@@ -351,29 +351,28 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       })
     }
   })
+  const localHour = z.number().int().min(0).max(23).describe('Hour in the automation timezone (0-23)')
+  const localMinute = z.number().int().min(0).max(59).describe('Minute in the automation timezone')
   const automationScheduleSchema = z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('interval'),
-      intervalMinutes: z.number().int().min(1).max(60 * 24 * 365),
+      intervalMinutes: z.number().int().min(15).max(60 * 24 * 365),
     }),
-    z.object({
-      kind: z.literal('daily'),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
-    }),
+    z.object({ kind: z.literal('daily'), hour: localHour, minute: localMinute }),
+    z.object({ kind: z.literal('weekdays'), hour: localHour, minute: localMinute }),
     z.object({
       kind: z.literal('weekly'),
-      dayOfWeekUTC: z.number().int().min(0).max(6),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
+      dayOfWeek: z.number().int().min(0).max(6).describe('Day of week in the automation timezone, 0 = Sunday'),
+      hour: localHour,
+      minute: localMinute,
     }),
     z.object({
       kind: z.literal('monthly'),
-      dayOfMonthUTC: z.number().int().min(1).max(31),
-      hourUTC: z.number().int().min(0).max(23),
-      minuteUTC: z.number().int().min(0).max(59),
+      dayOfMonth: z.number().int().min(1).max(31).describe('Day of month in the automation timezone'),
+      hour: localHour,
+      minute: localMinute,
     }),
-  ])
+  ]).describe('When to run, as wall-clock time in `timezone` (set `timezone` to the user\'s IANA time zone). Weekdays means Monday to Friday.')
 
   tools.present_generated_ui = tool({
     description:
@@ -605,7 +604,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('create_agent')) {
     tools.create_agent = tool({
       description:
-        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first.',
+        'Create a new workspace agent after the user explicitly asks for one. Collect a name and what outcome the agent should own first. Leave modelId out unless the person names a model; the default is used.',
       inputSchema: z.object({
         name: z.string().min(1),
         description: z.string().optional(),
@@ -662,11 +661,25 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         agent: z.string().min(1).describe('The agent id or its exact name, from list_agents.'),
         message: z.string().min(1).max(8000).describe('What you need, with all the context the agent needs.'),
+        assignmentId: z.string().min(1).optional().describe('Revise this exact assignment in its existing thread. Omit for new work.'),
+        expectedAttemptId: z.string().min(1).optional().describe('The current attemptId, required when revising an assignment.'),
         wait: z.boolean().optional().describe('Wait for the reply (default true).'),
       }),
       execute: async (input) => {
         assertToolAllowed('ask_agent')
         return executeAskAgent(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('resolve_assignment')) {
+    tools.resolve_assignment = tool({
+      description: 'Resolve the current assignment attempt: accept a completed published result, or exclude/cancel with a reason. Excluding also stops outstanding work. A revision uses ask_agent with assignmentId and expectedAttemptId. Execution status never changes to success because of a disposition.',
+      inputSchema: z.object({ assignmentId: z.string().min(1), attemptId: z.string().min(1),
+        action: z.enum(['accept', 'exclude', 'cancel']), reason: z.string().min(1).max(8000).optional() }),
+      execute: async (): Promise<unknown> => {
+        assertToolAllowed('resolve_assignment')
+        throw new Error('Assignment resolution requires an authorized native Harness run.')
       },
     })
   }

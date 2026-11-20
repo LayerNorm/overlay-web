@@ -12,7 +12,7 @@ import { PrincipalAvatar } from '@/components/identity/PrincipalAvatar'
  * the same docked surface, slide-in motion, and header treatment the sources
  * panel uses. Nothing here positions itself; the shell owns placement.
  */
-export type RoomPanelKind = 'people' | 'thread' | 'pinned'
+export type RoomPanelKind = 'assignments' | 'people' | 'thread' | 'pinned'
 
 export function RoomPeoplePanel({
   participants,
@@ -21,6 +21,7 @@ export function RoomPeoplePanel({
   currentPrincipalId,
   onAddPeople,
   onClose,
+  header,
 }: {
   participants: ConversationParticipant[]
   /** Each agent's creature identity; an agent missing here shows its initial. */
@@ -29,9 +30,12 @@ export function RoomPeoplePanel({
   currentPrincipalId: string
   onAddPeople?: () => void
   onClose: () => void
+  /** Replaces the title row, as the tabs of the room's views do. */
+  header?: ReactNode
 }) {
   return (
     <AppScreenSidePanel
+      header={header}
       title='People'
       description={`${participants.length} in this room`}
       onClose={onClose}
@@ -184,14 +188,17 @@ export function RoomPinnedPanel({
   onJump,
   onUnpin,
   onClose,
+  header,
 }: {
   pinned: PinnedMessageSummary[]
   onJump: (messageId: string) => void
   onUnpin: (messageId: string) => void
   onClose: () => void
+  header?: ReactNode
 }) {
   return (
     <AppScreenSidePanel
+      header={header}
       title="Pinned"
       description={pinned.length ? `${pinned.length} pinned in this room` : undefined}
       onClose={onClose}

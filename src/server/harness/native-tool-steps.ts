@@ -1,15 +1,23 @@
 import 'server-only'
 
+import { ActEntitlementService } from '@/server/conversations/ActEntitlementService'
+import { harnessSpendingMode } from './personal-admission-policy'
 import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
+import {
+  assertNativeAgentRequest,
+  assertNativeAskTargetAccess,
+  resolveNativeAssignment,
+} from './native-agent-request-guards'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess } from './native-access'
 import { logger } from '@/server/observability/logger'
@@ -43,26 +51,13 @@ async function loadNativeParentRun(
   return parent
 }
 
-async function loadNativeRootWorkflowRunId(
-  repository: ConvexHarnessRepository,
-  access: NativeHarnessAccess,
-  parent: HarnessSnapshot,
-): Promise<string> {
-  const root = parent.runId === parent.rootRunId ? parent
-    : await repository.get({ actorUserId: access.actorUserId, runId: parent.rootRunId })
-  if (!root?.workflowRunId || root.runId !== parent.rootRunId
-    || root.policy.actorUserId !== access.actorUserId || root.policy.workspaceId !== access.workspaceId) {
-    throw new FatalError('Native root run is no longer available.')
-  }
-  return root.workflowRunId
-}
-
 async function freshTooling(call: NativeToolCall) {
   const authority = await refreshNativeHarnessAccess(call.access, call.context, call.toolName)
   const { agent } = authority
   const tooling = await buildWorkspaceAgentTooling({
     actorUserId: call.access.actorUserId, agentPrincipalId: call.access.agentPrincipalId,
     conversationId: call.access.conversationId, effectiveModelId: call.context.modelId,
+    inheritedSharedRoom: authority.sharedRoom,
     entitlements: authority.entitlements, paid: authority.paid,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
@@ -313,14 +308,15 @@ export async function dispatchNativeHarnessAgentRequest(
   input: unknown,
 ): Promise<unknown> {
   'use step'
-  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message'].includes(toolName)) {
-    throw new FatalError('Invalid native agent request.')
-  }
+  assertNativeAgentRequest(toolCallId, toolName)
   await refreshNativeHarnessAccess(access, context, toolName)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
   const repository = new ConvexHarnessRepository()
+  if (toolName === 'resolve_assignment') {
+    return await resolveNativeAssignment(access, values, repository)
+  }
   const childRunIds: string[] = []
   const startTurns = async (args: {
     actorUserId: string
@@ -330,8 +326,18 @@ export async function dispatchNativeHarnessAgentRequest(
     prompt: string
     workspaceId: string
   }) => {
-    const invocations = await resolveWorkspaceAgentInvocations(args)
-    const started: Array<{ agentId: string; turnId: string }> = []
+    const resolved = await resolveWorkspaceAgentInvocations(args)
+    const started: Array<{ agentId: string; turnId: string; availability?: 'online' | 'away' }> = []
+    // An outside agent (joined over MCP) is not a child run: its message waits in its inbox until it collects it.
+    const outside = resolved.filter(invocation => invocation.harness === 'mcp')
+    if (outside.length > 0) {
+      started.push(...await server.mcpAgentNetwork.deliver({
+        actorUserId: access.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+        messageId: args.messageId, prompt: args.prompt,
+        targets: outside.map(invocation => ({ agentId: invocation.agentId, turnId: invocation.turnId })),
+      }))
+    }
+    const invocations = resolved.filter(invocation => invocation.harness !== 'mcp')
     for (const invocation of invocations) {
       const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({
         actorUserId: access.actorUserId,
@@ -348,21 +354,29 @@ export async function dispatchNativeHarnessAgentRequest(
       })
       try {
         const parent = await loadNativeParentRun(repository, access)
-        const expectedSurfaceWorkflowRunId = await loadNativeRootWorkflowRunId(repository, access, parent)
         const workflowInput = await buildNativeHarnessWorkflowInput({
           actorUserId: access.actorUserId,
           workspaceId: args.workspaceId,
           conversationId: args.conversationId,
           runId: turn.runId,
+          parentRunId: parent.runId,
           memoryEnabled: false,
-          surfaceRootRunId: parent.rootRunId,
-          expectedSurfaceWorkflowRunId,
         })
         const allowedToolIds = [...new Set(workflowInput.definitions
           .map(definition => definition.name)
           .filter(name => parent.policy.allowedToolIds.includes(name)))].sort()
         workflowInput.definitions = workflowInput.definitions.filter(definition => allowedToolIds.includes(definition.name))
         const childRunId = `workspace:${turn.runId}`
+        // The asked agent pays for its own model, which may differ from the asking agent's (subscription vs gateway).
+        const spendingMode = harnessSpendingMode({
+          modelId: workflowInput.context.modelId,
+          paid: (await new ActEntitlementService({
+            repository: server.appData.repositories.conversations, usagePolicy: server.chatUsagePolicy,
+          }).gateModelAccess({
+            effectiveModelId: workflowInput.context.modelId, programmaticSubjectId: `agent:${invocation.agentId}`,
+            userId: access.actorUserId, workspaceId: args.workspaceId,
+          })).paid,
+        })
         const child = {
           id: childRunId,
           stepId: `ask:${toolCallId}:${invocation.agentId}`,
@@ -392,6 +406,7 @@ export async function dispatchNativeHarnessAgentRequest(
               goal: args.prompt.slice(0, 32_000),
               constraints: [],
               target: { deliveryAgentRunId: turn.runId, conversationId: args.conversationId },
+              spendingMode,
             },
           })
           if (!result.conflict) {
@@ -429,12 +444,46 @@ export async function dispatchNativeHarnessAgentRequest(
     toolName,
     input,
   }
+  if (toolName === 'list_agents') {
+    return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+      success: true,
+      agents: await server.agentAsks.list({
+        actorUserId: access.actorUserId,
+        workspaceId: access.workspaceId,
+        callerAgentId: access.agentId,
+      }),
+    }))
+  }
   if (toolName === 'ask_agent') {
     if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
+    if ((values.assignmentId !== undefined && typeof values.assignmentId !== 'string')
+      || (values.expectedAttemptId !== undefined && typeof values.expectedAttemptId !== 'string')) throw new FatalError('Invalid assignment revision input.')
     const target = values.agent
     const message = values.message
+    const { outsideAgent } = await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target)
+    if (outsideAgent) {
+      // No assignment or child run: the question is a message the outside agent answers when it is connected.
+      return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+        ...await server.agentAsks.ask({ ...actor, target, message, wait: true }),
+        childRunIds,
+      }))
+    }
+    const parent = await loadNativeParentRun(repository, access)
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
-      ...await server.agentAsks.ask({ ...actor, target, message, wait: false }),
+      ...await server.agentAsks.ask({
+        ...actor,
+        target,
+        message,
+        assignmentId: typeof values.assignmentId === 'string' ? values.assignmentId : undefined,
+        expectedAttemptId: typeof values.expectedAttemptId === 'string' ? values.expectedAttemptId : undefined,
+        wait: false,
+        nativeAssignment: nativeAgentAssignmentContext({
+          parentConversationId: access.conversationId,
+          parentRunId: access.runId,
+          rootRunId: parent.rootRunId,
+          toolCallId,
+        }),
+      }),
       childRunIds,
     }))
   }

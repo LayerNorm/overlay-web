@@ -39,7 +39,7 @@ const input: NativeHarnessToolsInput = {
 }
 const options: HarnessToolExecutionOptions = { toolCallId: 'call', messages: [], context: undefined }
 const authority = { agent: { id: 'agent', principalId: 'agent-principal', name: 'Research', allowedToolIds: ['files'], permissionMode: 'ask' },
-  entitlements: { tools: true }, paid: true, latestUserText: 'Read the source' }
+  entitlements: { tools: true }, paid: true, sharedRoom: true, latestUserText: 'Read the source' }
 const tooling = (needsApproval = false) => ({ tools: { read_file: {
   execute: mocks.execute, inputSchema: z.object({}).passthrough(), needsApproval,
 } }, toolsContext: { read_file: { fresh: true } } })
@@ -61,6 +61,7 @@ test('native tools reconstruct current identity, grants and memory policy with c
   expect(mocks.refresh).toHaveBeenLastCalledWith(input.access, input.context, 'read_file')
   expect(mocks.build).toHaveBeenLastCalledWith(expect.objectContaining({
     actorUserId: 'human', agentPrincipalId: 'agent-principal', conversationId: 'room', workspaceId: 'workspace',
+    inheritedSharedRoom: true,
     grant: { agentId: 'agent', allowedToolIds: ['files'], isDefaultMaster: false }, memoryEnabled: true,
     approvalMode: 'ask', computerApprovalContext: 'work', idempotencyKey: 'harness-run:child:tool:call',
     artifactPublicationAuthority: { kind: 'native', access: input.access, context: input.context },
@@ -315,6 +316,25 @@ test('named-agent ask and post tools dispatch in process without rebuilding ordi
   expect(mocks.dispatch).toHaveBeenCalledTimes(2)
   expect(mocks.dispatch).toHaveBeenNthCalledWith(1, input.access, input.context, 'call', 'ask_agent', { agent: 'Writer', message: 'Review this' })
   expect(mocks.dispatch).toHaveBeenNthCalledWith(2, input.access, input.context, 'call', 'post_message', { agent: 'Writer', message: 'Review this' })
+})
+
+test('list_agents is registered through native dispatch and preserves its metadata result', async () => {
+  const result = { success: true, agents: [{
+    id: 'workspace-agent', name: 'Workspace agent', description: 'Handles shared work', kind: 'Overlay agent',
+  }] }
+  mocks.dispatch.mockResolvedValue(result)
+  const tools = createNativeHarnessTools({
+    ...input,
+    definitions: [{ name: 'list_agents', inputSchema: { type: 'object', properties: {} }, needsApproval: false }],
+  })
+  const definition = tools.list_agents!
+
+  expect(await definition.needsApproval!({}, options)).toBe(false)
+  expect(await definition.execute!({}, options)).toEqual(result)
+  expect(mocks.dispatch).toHaveBeenCalledExactlyOnceWith(input.access, input.context, 'call', 'list_agents', {})
+  expect(mocks.refresh).not.toHaveBeenCalled()
+  expect(mocks.build).not.toHaveBeenCalled()
+  expect(mocks.execute).not.toHaveBeenCalled()
 })
 
 test('native failure evidence preserves returned guidance and classifies thrown failures', () => {

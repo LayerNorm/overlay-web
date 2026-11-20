@@ -767,6 +767,15 @@ export const webApiBoundaryDefinitions = [
     schema: { json: z.object({ action: z.enum(['list', 'ask', 'post', 'read']) }).passthrough(), response: UnknownResponse },
     summary: 'Agents asking agents: list who can be asked, ask one, or read a reply that was still being written', tag: 'Agents',
   },
+  { method: 'GET', path: '/api/v1/mcp/agents', schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'List outside agents that joined, or asked to join, the workspace over MCP', tag: 'MCP access', publicReference: false },
+  {
+    method: 'POST', path: '/api/v1/mcp/agents',
+    schema: {
+      json: z.object({ id: z.string().min(1).max(64), action: z.enum(['approve', 'decline', 'pause', 'resume', 'remove']) }).strict(),
+      response: UnknownResponse,
+    },
+    summary: 'Approve, decline, pause, resume, or remove an outside agent', tag: 'MCP access', publicReference: false,
+  },
   {
     method: 'POST', path: '/api/v1/mcp/authorize',
     schema: {
@@ -1028,16 +1037,9 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-environments/[environmentId]/local-tool-calls', reason: 'This Mac local tool long-poll; protected by device-key authentication and not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result', reason: 'This Mac local tool result; protected by device-key authentication and not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/operations/reconcile', reason: 'Internal reconciliation cron trigger; not part of the public web API reference.' },
-  // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
+  // GitHub sign-in: a third-party browser flow.
   { routePath: '/api/v1/github/connect', reason: 'Starts the GitHub sign-in (or app install) redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/github/callback', reason: 'GitHub sign-in redirect target, protected by signed state and GitHub user authorization rather than the public API authentication scheme.' },
-  { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
-  { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },
-  { routePath: '/api/v1/webhooks/slack', reason: 'Inbound Slack Events API webhook, authenticated by the Slack request signature.' },
-  { routePath: '/api/v1/surfaces/connections', reason: 'Surface connection listing; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/surfaces/connections/[connectionId]/channels', reason: 'Surface channel listing; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/surfaces/bindings', reason: 'Agent surface binding management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/surfaces/bindings/[bindingId]', reason: 'Agent surface binding removal; boundary definition pending. Protected by workspace authorization.' },
   // Automation action routes pending full boundary definitions.
   { routePath: '/api/v1/automations/[id]/approve', reason: 'Automation approval action; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/events', reason: 'Automation event stream; boundary definition pending. Protected by workspace authorization.' },
@@ -1053,9 +1055,6 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/files/ingest-jobs', reason: 'File ingestion job management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/project-events', reason: 'Deployment-secret authenticated Workflow SDK projection callback, not a member BFF route.' },
   { routePath: '/api/v1/files/ingest-jobs/process', reason: 'Internal ingestion job processor; not part of the public web API reference.' },
-  // Import routes pending full boundary definitions.
-  { routePath: '/api/v1/imports/slack', reason: 'Slack import job management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/imports/slack/process', reason: 'Internal Slack import job processor; not part of the public web API reference.' },
   // Mention search and link preview pending full boundary definitions.
   // Search and share routes pending full boundary definitions.
   { routePath: '/api/v1/shares', reason: 'Resource sharing management; boundary definition pending. Protected by workspace authorization.' },

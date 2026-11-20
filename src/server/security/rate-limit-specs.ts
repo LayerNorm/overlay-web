@@ -138,6 +138,10 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'providers/connections:delete:ip', limit: 60, windowMs: TEN_MINUTES },
     { bucket: 'providers/connections:delete:user', limit: 30, windowMs: TEN_MINUTES },
   ],
+  'POST /api/v1/mcp/agents': [
+    { bucket: 'mcp:agents:ip', limit: 120, windowMs: TEN_MINUTES },
+    { bucket: 'mcp:agents:user', limit: 60, windowMs: TEN_MINUTES },
+  ],
   'POST /api/v1/mcp/authorize': [
     { bucket: 'mcp:authorize:ip', limit: 60, windowMs: TEN_MINUTES },
     { bucket: 'mcp:authorize:user', limit: 30, windowMs: TEN_MINUTES },
@@ -202,14 +206,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   // so it is limited by IP only — there is no authenticated user to key on.
   'GET /api/v1/mcps/oauth/callback': [
     { bucket: 'mcps/oauth:callback:ip', limit: 60, windowMs: TEN_MINUTES },
-  ],
-  // Slack surface OAuth is a browser navigation outside handleBffRoute; both
-  // legs rate-limit before reading the session, so they key on IP.
-  'GET /api/v1/surfaces/slack/connect': [
-    { bucket: 'surfaces/slack:connect:ip', limit: 30, windowMs: TEN_MINUTES },
-  ],
-  'GET /api/v1/surfaces/slack/callback': [
-    { bucket: 'surfaces/slack:callback:ip', limit: 60, windowMs: TEN_MINUTES },
   ],
 }
 

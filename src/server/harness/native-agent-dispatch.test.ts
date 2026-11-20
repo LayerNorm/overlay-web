@@ -1,8 +1,11 @@
 import { beforeEach, expect, test, vi } from 'vitest'
+import { ConvexError } from 'convex/values'
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), resolve: vi.fn(), build: vi.fn(), get: vi.fn(), apply: vi.fn(), launch: vi.fn(),
-  startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(),
+  startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(), list: vi.fn(), directory: vi.fn(),
+  remoteTarget: vi.fn(), bindings: vi.fn(),
+  resolveAssignment: vi.fn(), cancel: vi.fn(), cancelSubtree: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -11,8 +14,14 @@ vi.mock('./native-workflow-input-builder', () => ({ buildNativeHarnessWorkflowIn
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.get
   apply = mocks.apply
+  resolveAssignment = mocks.resolveAssignment
 } }))
+vi.mock('./workflow-cancellation', () => ({ cancelHarnessWorkflow: mocks.cancel }))
+vi.mock('./personal-cancellation', () => ({ cancelPersonalHarnessWorkflows: mocks.cancelSubtree }))
 vi.mock('./native-named-child-launch', () => ({ startNativeHarnessNamedChild: mocks.launch }))
+vi.mock('@/server/conversations/ActEntitlementService', () => ({ ActEntitlementService: class {
+  gateModelAccess = async () => ({ paid: true })
+} }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({ resolveWorkspaceAgentInvocations: mocks.resolve }))
 vi.mock('@/server/agents/agent-tooling', () => ({ buildWorkspaceAgentTooling: vi.fn() }))
 vi.mock('@/server/conversations/personal-chat-work-tools', () => ({ executePersonalChatWorkToolResult: vi.fn() }))
@@ -21,8 +30,11 @@ vi.mock('@/server/bootstrap', () => ({
     appData: { repositories: { conversationCollaboration: {
       startAgentTurn: mocks.startTurn,
       failAgentMessage: mocks.failMessage,
+    }, connectedAgents: {
+      findInvocationTarget: mocks.remoteTarget, listBindings: mocks.bindings,
     } } },
-    agentAsks: { ask: mocks.ask, post: vi.fn() },
+    workspaceAgentService: { list: mocks.directory },
+    agentAsks: { ask: mocks.ask, list: mocks.list, post: vi.fn() },
   }),
 }))
 
@@ -48,6 +60,10 @@ const invocation = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.refresh.mockResolvedValue({})
+  mocks.list.mockResolvedValue([])
+  mocks.directory.mockResolvedValue({ agents: [{ ...invocation, id: 'target', name: 'Target' }] })
+  mocks.remoteTarget.mockResolvedValue(null)
+  mocks.bindings.mockResolvedValue([])
   mocks.resolve.mockResolvedValue([invocation])
   mocks.build.mockResolvedValue({
     access: { ...access, principalId: 'parent-principal', agentId: 'target', agentPrincipalId: 'target-principal',
@@ -78,6 +94,8 @@ beforeEach(() => {
 test('native ask uses trusted caller, forces async delivery, intersects tools, and replays the named admission key', async () => {
   const first = await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'Target', message: 'inspect this', wait: true,
+    nativeAssignment: { parentRunId: 'forged', rootRunId: 'forged', toolCallId: 'forged' },
+    actorUserId: 'forged', actorPrincipalId: 'forged', principalId: 'forged', runId: 'forged',
   })
   const second = await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'Target', message: 'inspect this', wait: true,
@@ -86,6 +104,10 @@ test('native ask uses trusted caller, forces async delivery, intersects tools, a
   expect(second).toMatchObject({ childRunIds: ['workspace:target-run'] })
   expect(mocks.ask).toHaveBeenNthCalledWith(1, expect.objectContaining({
     caller: { agentId: 'parent', conversationId: 'parent-room', turnId: 'parent-turn' },
+    actorUserId: 'human', actorPrincipalId: 'parent-principal',
+    nativeAssignment: expect.objectContaining({
+      parentConversationId: 'parent-room', parentRunId: access.runId, rootRunId: parent.rootRunId, toolCallId: 'tool-call',
+    }),
     wait: false,
   }))
   expect(mocks.startTurn).toHaveBeenCalledWith(expect.objectContaining({
@@ -123,16 +145,43 @@ test('native ask gives every target the same workspace budget with no per-child 
     agent: 'Targets', message: 'inspect this', wait: true,
   })
   expect(mocks.apply.mock.calls.map(([args]) => args.operation.child.maxCostMicros)).toEqual([0, 0, 0])
+  // Each asked agent pays for its own model (a gateway model here), whatever the asking run uses.
+  expect(mocks.apply.mock.calls.filter(([call]) => call.operation.type === 'admit_named_child')
+    .every(([call]) => call.operation.spendingMode === 'workspace')).toBe(true)
 })
 
-test('a descendant dispatch uses the original root workflow for surface preparation', async () => {
-  const root = { ...parent, runId: 'workspace:source', rootRunId: 'workspace:source', workflowRunId: 'source-workflow' }
-  mocks.get.mockImplementation(async ({ runId }) => runId === root.runId ? root : { ...parent, rootRunId: root.runId })
-  await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
-    agent: 'Target', message: 'inspect this',
-  })
-  expect(mocks.build).toHaveBeenCalledWith(expect.objectContaining({
-    conversationId: 'target-room', surfaceRootRunId: root.runId, expectedSurfaceWorkflowRunId: 'source-workflow',
-  }))
+test('assignment resolution uses trusted execution identity and the existing cancellation machinery', async () => {
+  const cancellationRoot = { actorUserId: access.actorUserId, agentRunId: 'child-delivery', rootRunId: 'workspace:child-delivery' }
+  mocks.resolveAssignment.mockResolvedValue({ assignmentId: 'assignment', attemptId: 'attempt', disposition: 'excluded',
+    reason: 'Not needed', workflows: ['child-workflow'], cancellationRoot })
+  expect(await dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', { assignmentId: 'assignment', attemptId: 'attempt',
+    action: 'cancel', reason: 'Not needed', actorUserId: 'forged', parentRunId: 'forged', workflowRunId: 'forged' })).toMatchObject({ disposition: 'excluded' })
+  expect(mocks.resolveAssignment).toHaveBeenCalledWith({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
+    parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: 0,
+    assignmentId: 'assignment', attemptId: 'attempt', action: 'cancel', reason: 'Not needed' })
+  expect(mocks.cancel).toHaveBeenCalledWith('child-workflow')
+  expect(mocks.cancelSubtree).toHaveBeenCalledWith(cancellationRoot)
+  expect(mocks.ask).not.toHaveBeenCalled()
 })
 
+test.each([{}, { assignmentId: 'assignment', attemptId: 'attempt', action: 'grade' }])('invalid resolutions cannot invoke the repository: %j', async input => {
+  await expect(dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', input)).rejects.toThrow('Invalid assignment resolution')
+  expect(mocks.resolveAssignment).not.toHaveBeenCalled()
+})
+
+test.each([undefined, 'current-attempt'])('confirmed resolution rejection returns corrective feedback with only authorized handles: %s', async currentAttemptId => {
+  const feedback = { code: 'ASSIGNMENT_RESOLUTION_REJECTED', error: 'ASSIGNMENT_ATTEMPT_NOT_FOUND',
+    hint: 'Use the current attempt ID.', ...(currentAttemptId ? { currentAttemptId } : {}) }
+  mocks.resolveAssignment.mockRejectedValue(new ConvexError(feedback))
+  expect(await dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', {
+    assignmentId: 'assignment', attemptId: 'malformed', action: 'exclude', reason: 'Superseded',
+  })).toEqual({ success: false, ...feedback })
+  expect(mocks.cancel).not.toHaveBeenCalled()
+})
+
+test('unconfirmed resolution failures retain the uncertain-outcome path', async () => {
+  mocks.resolveAssignment.mockRejectedValue(new Error('Connection interrupted'))
+  await expect(dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', {
+    assignmentId: 'assignment', attemptId: 'attempt', action: 'exclude', reason: 'Superseded',
+  })).rejects.toThrow('Connection interrupted')
+})

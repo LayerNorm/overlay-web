@@ -123,6 +123,7 @@ export const getByServer = query({
     harnessTranscriptRevision: v.literal('settled-public-v1'),
     harnessFullTranscriptRevision: v.literal('full-public-v1'),
     personalChatParallelReadsRevision: v.literal('parallel-reads-v1'),
+    livePublicStreamRevision: v.literal('incremental-v1'),
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -142,6 +143,7 @@ async function uiSettingsFor(ctx: QueryCtx, userId: string) {
     harnessTranscriptRevision: 'settled-public-v1' as const,
     harnessFullTranscriptRevision: 'full-public-v1' as const,
     personalChatParallelReadsRevision: 'parallel-reads-v1' as const,
+    livePublicStreamRevision: 'incremental-v1' as const,
   }
   const settings = {
     theme: existing.theme,
@@ -176,6 +178,7 @@ async function uiSettingsFor(ctx: QueryCtx, userId: string) {
     harnessTranscriptRevision: 'settled-public-v1' as const,
     harnessFullTranscriptRevision: 'full-public-v1' as const,
     personalChatParallelReadsRevision: 'parallel-reads-v1' as const,
+    livePublicStreamRevision: 'incremental-v1' as const,
     ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
     ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
     ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),

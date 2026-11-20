@@ -99,6 +99,10 @@ const MODEL_UNAVAILABLE_MESSAGES = [
   'The output limit exceeds the selected model capacity.',
   'The model does not match this harness spending mode.',
   'Paid model execution requires workspace funding or external credentials.',
+  'The model is no longer allowed by server policy.',
+  'The native model is no longer allowed by server policy.',
+  // The agent's model was changed while this run was in flight.
+  'The model is no longer an admitted native agent candidate.',
 ]
 
 export type HarnessFailureCause = {
@@ -283,11 +287,11 @@ export function harnessDiagnosticForFailure(
     || ['CONVERSATION_ACCESS_DENIED',
     'NOTE_ACCESS_DENIED', 'HARNESS_DELIVERY_ACCESS_DENIED', 'Personal harness execution is not authorized to continue.',
     'The API key that authorized this run is no longer permitted.', 'Personal harness permissions have been revoked.', 'Automation agent permissions have been revoked.',
-    'The model is no longer allowed by server policy.', 'Native workspace identity changed.',
+    'Native workspace identity changed.',
     'Native agent or room access changed.', 'Native room participation was revoked.',
     'Room visibility changed; private context cannot be reused.',
-    'The model is no longer an admitted native agent candidate.', 'Native harness permissions were revoked.',
-    'Native harness model permission was revoked.', 'The native model is no longer allowed by server policy.',
+    'Native harness permissions were revoked.',
+    'Native harness model permission was revoked.',
     'Tool is outside this harness run\'s capabilities.',
     'Personal harness authentication is not supported.', ...AUTHORIZATION_MESSAGES].includes(message)) {
     code = 'AUTHORIZATION_REVOKED'

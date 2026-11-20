@@ -667,7 +667,7 @@ export async function createSession(session: AuthSession): Promise<void> {
   cookieStore.set(SESSION_COOKIE_NAME, signedCookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    // Lax (not Strict): third-party OAuth callbacks (Slack surfaces, MCP,
+    // Lax (not Strict): third-party OAuth callbacks (GitHub, MCP,
     // integrations) return via cross-site top-level GET navigations, which
     // withhold Strict cookies — the session check then fails. Lax still
     // blocks cross-site POST/fetch so CSRF posture is unchanged.

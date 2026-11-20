@@ -18,26 +18,13 @@ import type {
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
-import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
-import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../convex/_generated/api'
-import { deploymentEnv } from '@/server/env/deployment-env'
-import { resolveConvexUrl } from '@/server/database/convex-url'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { requireNativeThreadCompatibilityBackend } from '@/server/conversations/native-thread-compatibility-backend'
+import { artifactClient, ConvexHarnessAssignments } from './ConvexHarnessAssignments'
 
-function artifactClient() {
-  const { url, invalid } = resolveConvexUrl(deploymentEnv())
-  if (!url || invalid) throw new Error('Harness artifact storage is unavailable.')
-  return new ConvexHttpClient(url, { logger: false, skipConvexDeploymentUrlCheck: true })
-}
-
-export class ConvexHarnessRepository implements HarnessRepository {
-  private get serverSecret(): string {
-    return getInternalApiSecret()
-  }
+export class ConvexHarnessRepository extends ConvexHarnessAssignments implements HarnessRepository {
 
   async storeContextArtifact(input: {
     actorUserId: string
@@ -167,6 +154,24 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
   }
 
+  async refreshRoomContextRestrictions(input: { actorUserId: string; runId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:refreshRoomContextRestrictions', {
+      ...input,
+      serverSecret: this.serverSecret,
+    })
+    if (!restrictions) throw new Error('Harness room restrictions are unavailable.')
+    return restrictions
+  }
+
+  async resolveConversationRoomRestrictions(input: { actorUserId: string; workspaceId: string; conversationId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:resolveConversationRoomRestrictions', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!restrictions) throw new Error('Conversation room restrictions are unavailable.')
+    return restrictions
+  }
+
   async writeTranscriptStep(input: {
     actorUserId: string
     runId: string
@@ -250,50 +255,6 @@ export class ConvexHarnessRepository implements HarnessRepository {
       token: input.token,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
-  }
-
-  async getSurfaceExecutionByHarnessRunId(harnessRunId: string): Promise<SurfaceTurnExecution | null> {
-    return await convex.query<SurfaceTurnExecution | null>('surfaces/surfaceExecutions:getSurfaceTurnExecutionByHarnessRunId', {
-      harnessRunId,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-  }
-
-  async beginSurfaceTurn(input: {
-    turnId: string; workflowRunId: string; actorUserId: string; workspaceId: string; creatorPrincipalId: string
-    agentId: string; agentPrincipalId: string; platform: 'slack'; teamId: string; channelId: string
-    threadId: string; messageId: string; bindingId: string; connectionId: string; conversationId: string
-    userContent: string; modelId: string; importedAuthorName?: string; importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'; placeholderTs?: string
-  }): Promise<{
-    owner: 'same' | 'foreign'
-    execution: SurfaceTurnExecution | null
-  }> {
-    await requireNativeThreadCompatibilityBackend(input.actorUserId)
-    const result = await convex.mutation<{
-      owner: 'same' | 'foreign'
-      execution: SurfaceTurnExecution | null
-    }>('surfaces/surfaceExecutions:beginSurfaceTurn', {
-      ...input,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!result) throw new Error('Surface turn admission returned no result.')
-    return result
-  }
-
-  async failOwnedSurfaceTurn(input: {
-    turnId: string
-    workflowRunId: string
-    agentRunId: string
-    assistantMessageId: string
-    failure: { code: string; message: string; retryable: boolean }
-  }): Promise<{ persisted: boolean }> {
-    const result = await convex.mutation<{ persisted: boolean }>('surfaces/surfaceExecutions:failOwnedSurfaceTurn', {
-      ...input,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!result) throw new Error('Surface failure persistence returned no result.')
-    return result
   }
 
   async apply(input: HarnessMutationInput): Promise<HarnessMutationResult> {

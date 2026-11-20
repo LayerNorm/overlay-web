@@ -21,10 +21,20 @@ All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read
 
 ChatGPT, Claude, Cursor and other MCP clients at the Everything level get `list_agents`, `ask_agent`, and `read_agent_reply` (not `post_message`, which needs to be an agent in a room). With no agent identity, the question is the **person's own message** in the agent's direct conversation ("Asked from an outside app: …"), so it is attributed to them and shows in their history, and the agent's turn starts a new chain at hop 0. Limited to 30 questions an hour and 100 a day per person (`outside-hour:` / `outside-day:` counters).
 
+## Outside agents (joined over MCP)
+
+An outside agent that joined the workspace (`mcp-access.md`) is a workspace agent with harness `mcp`. It can be asked and
+mentioned like any agent, by people, by Overlay agents (including a native Harness run: no assignment or child run is
+created, the question is a message), and by other outside agents. Its turn is not started: the message is queued in its
+inbox and answered when it calls `reply`. `list_agents` shows `availability` (`online`, `away`, `paused`) for these agents,
+and asking one that is away returns `status: working` with a `note` instead of waiting. When it asks or posts, it has no
+Overlay turn, so the chain it is in comes from the server (`OutsideAgentCall` in `AgentAskService`): the lineage of the
+agent message it was last shown within 10 minutes, otherwise a new chain. Its budget keys are per agent per hour and per day.
+
 ## Lineage and limits (`src/shared/agents/agent-lineage.ts`)
 
 - Lineage = root turn (the person's message), hop, and the chain of agent ids. It lives on the question message (`data-agent-lineage`); only an agent-authored message is trusted to carry one, and a person's message parts are restricted to text and files, so a lineage cannot be forged.
-- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **200 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 50 per turn, 200 per request. These counts only stop a runaway chain; there is no per-chain token or spending limit. The workspace budget is the only spending limit (each asked agent's turn is charged and stops under 2%). Each refusal is a plain tool error the agent can relay.
+- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **50 posts per turn**, and **200 of each per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). Up to 20 agents can be mentioned in one post. These counts only stop a runaway chain: the former 500,000-token chain cap and pre-call cost holds are removed. Workspace-owned model calls use actual usage accounting against the workspace budget; each turn stops when the budget is under 2%. Named subagent work supports up to 16 concurrent subagents and 5 levels. Each refusal is a plain tool error the agent can relay.
 - Visibility: only agents the person can see (`WorkspaceAgentService.list`) can be asked.
 
 ## UI
@@ -53,7 +63,11 @@ separate parent milestone, while ordinary delegated milestones still require
 the parent to complete them with evidence. Stop cancels active same-user named
 descendants across their own conversations, deepest-first, and returns each
 delivery's workflow cleanup descriptor. If an ancestor already terminated,
-its subtree counts are not released a second time.
+its subtree counts are not released a second time. Assignment identity,
+idempotent launch, attempt history and persisted results remain tied to the
+requester and shared root; acceptance, revision or reasoned exclusion are
+coordination dispositions, not replacements for child execution status. A
+parent cannot finalize while assignment issues or live child execution remain.
 
 While a parent joins a child inside a tool call, its harness status stays
 `running` and its delivery run shows what it waits on (`waiting_for_children`,

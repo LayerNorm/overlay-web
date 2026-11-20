@@ -33,6 +33,11 @@ export type WorkspaceAgentTurnDispatcherDependencies = {
   requireExecution?: typeof requireWorkspaceExecution
   getCollaboration?: () => ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversationCollaboration']
   startNative?: typeof startNativeHarnessTurn
+  /** Queues a message for outside agents (joined over MCP), which Overlay cannot start. */
+  deliverToOutsideAgents?: (args: {
+    actorUserId: string; workspaceId: string; conversationId: string; messageId: string; prompt: string
+    threadRootMessageId?: string; targets: Array<{ agentId: string; turnId: string }>
+  }) => Promise<Array<{ agentId: string; turnId: string; availability: 'online' | 'away' }>>
 }
 
 /**
@@ -52,11 +57,28 @@ export async function startWorkspaceAgentTurns(
 ): Promise<WorkspaceAgentInvocation[]> {
   const collaboration = dependencies.getCollaboration?.()
     ?? getOverlayServerContext().appData.repositories.conversationCollaboration
-  const invocations = await (dependencies.resolveInvocations ?? resolveWorkspaceAgentInvocations)(args)
-  if (args.strictErrors && invocations.length === 0) {
+  const resolved = await (dependencies.resolveInvocations ?? resolveWorkspaceAgentInvocations)(args)
+  if (args.strictErrors && resolved.length === 0) {
     throw new WorkspaceAgentInvocationError('no_agent_participant')
   }
   const failures: unknown[] = []
+  // An outside agent runs on its own machine: its message is queued for it to collect, and no run is opened.
+  const outside = resolved.filter((invocation) => invocation.harness === 'mcp')
+  const invocations = resolved.filter((invocation) => invocation.harness !== 'mcp')
+  const queued = outside.length === 0 ? [] : await (dependencies.deliverToOutsideAgents
+    ?? ((delivery) => getOverlayServerContext().mcpAgentNetwork.deliver(delivery)))({
+    actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId, messageId: args.messageId,
+    prompt: args.prompt, ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+    targets: outside.map((invocation) => ({ agentId: invocation.agentId, turnId: invocation.turnId })),
+  }).catch((error) => {
+    logger.error('[conversations/message POST] Failed to queue a message for an outside agent', { conversationId: args.conversationId, error, messageId: args.messageId })
+    failures.push(error)
+    return []
+  })
+  const queuedInvocations = outside.flatMap((invocation) => {
+    const delivered = queued.find((entry) => entry.agentId === invocation.agentId)
+    return delivered ? [{ ...invocation, availability: delivered.availability }] : []
+  })
   if (args.memoryEnabled && args.extractHumanMemory !== false && invocations.length > 0) {
     await collaboration.enqueueMemoryExtraction({
       actorUserId: args.actorUserId,
@@ -143,5 +165,5 @@ export async function startWorkspaceAgentTurns(
   if (args.strictErrors && failures.length > 0) {
     throw failures[0] instanceof Error ? failures[0] : new Error('Agent turn could not be started.')
   }
-  return invocations
+  return [...invocations, ...queuedInvocations]
 }

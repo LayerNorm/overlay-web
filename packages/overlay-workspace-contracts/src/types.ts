@@ -327,7 +327,6 @@ export type WorkspaceManagementView =
   | 'roles'
   | 'chats-agents'
   | 'sharing'
-  | 'import'
 
 export type WorkspaceManagementItem = {
   id: string
@@ -587,6 +586,8 @@ export type WorkspaceChatSearchResult = {
  */
 export const WORKSPACE_AGENT_HARNESSES = [
   'overlay', 'claude-code', 'codex', 'opencode', 'pi', 'hermes',
+  // An outside agent that joined over MCP (`McpAgentNetworkService`). It runs elsewhere and answers from its inbox.
+  'mcp',
 ] as const
 export type WorkspaceAgentHarness = (typeof WORKSPACE_AGENT_HARNESSES)[number]
 

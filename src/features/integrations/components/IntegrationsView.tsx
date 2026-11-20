@@ -28,7 +28,8 @@ import { groupExtensionCatalog } from '@overlay/app-core/extensions'
 import { ConnectorDetailsDialog, ExtensionCatalogPage, type ExtensionCatalogEntry } from '@overlay/modules-react/extensions'
 import { toast } from '@overlay/ui/primitives'
 import { Plug, Server, Settings, Unplug } from 'lucide-react'
-import { INTEGRATIONS_BC_CHANNEL, notifyIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { notifyIntegrationsChanged, rememberIntegrationAttempt, subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
+import { usePendingConnection } from '@/features/integrations/hooks/use-pending-connection'
 import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
@@ -128,10 +129,11 @@ export default function IntegrationsView({
     }
   }, [initialState.catalogItems])
 
-  const loadConnected = useCallback(async () => {
+  const loadConnected = useCallback(async (): Promise<ReadonlySet<string> | null> => {
     try {
       const data = await overlayAppClient.integrations.get<ConnectedIntegrationsResponse>(workspaceScope ? { view: 'workspace' } : undefined)
-      setConnected(new Set(data.connected || []))
+      const next = new Set(data.connected || [])
+      setConnected(next)
       const items = (Array.isArray(data.items) ? data.items : []).map((item) =>
         connectorFromIntegrationSummary({ ...item, isConnected: true }),
       )
@@ -139,8 +141,9 @@ export default function IntegrationsView({
         setCatalogItems((prev) => mergeConnectorCatalogEntries(prev, items))
         rememberLogos(items)
       }
+      return next
     } catch {
-      // ignore
+      return null
     } finally {
       setIsLoading(false)
     }
@@ -187,24 +190,22 @@ export default function IntegrationsView({
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
-  useEffect(() => {
-    const onIntegrationsChanged = () => {
-      void loadConnected()
-      void loadCatalog()
-    }
-    window.addEventListener('overlay:integrations-changed', onIntegrationsChanged)
-    let bc: BroadcastChannel | null = null
-    try {
-      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
-      bc.onmessage = onIntegrationsChanged
-    } catch {
-      /* ignore */
-    }
-    return () => {
-      window.removeEventListener('overlay:integrations-changed', onIntegrationsChanged)
-      bc?.close()
-    }
-  }, [loadConnected, loadCatalog])
+  useEffect(() => subscribeIntegrationsChanged(() => {
+    void loadConnected()
+    void loadCatalog()
+  }), [loadConnected, loadCatalog])
+
+  const [, setPendingConnection] = usePendingConnection({
+    load: loadConnected,
+    onConnected: (providerKey) => {
+      const name = catalogItems.find((item) => item.providerKey === providerKey)?.name ?? 'Connector'
+      toast.success(`${name} connected`)
+    },
+    onFailed: (providerKey) => {
+      const name = catalogItems.find((item) => item.providerKey === providerKey)?.name ?? 'the connector'
+      toast.error(`Could not connect ${name}. Try again.`)
+    },
+  })
 
   // Search reaches the provider's whole catalog, not only the first page loaded above.
   useEffect(() => {
@@ -235,13 +236,20 @@ export default function IntegrationsView({
   async function connect(integration: ConnectorCatalogItem) {
     if (connecting) return
     setConnecting(integration.providerKey)
+    const attemptId = window.crypto.randomUUID()
     // Opened before any await so the browser treats the provider page as user-initiated, not a blocked popup.
-    const oauthTab = window.open('about:blank', '_blank')
+    let oauthTab = window.open('about:blank', '_blank')
+    rememberIntegrationAttempt(oauthTab, attemptId)
     try {
       const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(accountScope ? { scope: accountScope } : {}) })
       const data = await res.json().catch(() => ({}))
       const redirectUrl = res.ok ? safeHttpUrl(data.redirectUrl) : null
       if (redirectUrl) {
+        setPendingConnection({ providerKey: integration.providerKey, attemptId })
+        if (!oauthTab) {
+          oauthTab = window.open('about:blank', '_blank')
+          rememberIntegrationAttempt(oauthTab, attemptId)
+        }
         if (oauthTab) oauthTab.location.href = redirectUrl
         else window.open(redirectUrl, '_blank', 'noopener,noreferrer')
         return

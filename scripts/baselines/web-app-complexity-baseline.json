@@ -258,12 +258,6 @@
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
     {
-      "file": "src/features/workspaces/components/SlackImportPanel.tsx",
-      "loc": 1215,
-      "complexity": 188,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
       "file": "src/features/workspaces/components/WorkspaceSettingsPanel.tsx",
       "loc": 1271,
       "complexity": 141,
@@ -1673,20 +1667,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/api/v1/imports/slack/process/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 6,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/imports/slack/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 16,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/api/v1/integrations/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 15,
@@ -1704,6 +1684,13 @@
       "file": "src/app/api/v1/link-preview/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 6,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/api/v1/mcp/agents/route.ts",
+      "layer": "src/app/api/v1 wrappers",
+      "loc": 9,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -1911,48 +1898,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/api/v1/surfaces/bindings/[bindingId]/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 6,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/surfaces/bindings/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 9,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/surfaces/connections/[connectionId]/channels/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 6,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/surfaces/connections/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 6,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/surfaces/slack/callback/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 97,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/surfaces/slack/connect/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 86,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/api/v1/transcribe/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 6,
@@ -1963,13 +1908,6 @@
       "file": "src/app/api/v1/webhooks/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 15,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/webhooks/slack/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 59,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },

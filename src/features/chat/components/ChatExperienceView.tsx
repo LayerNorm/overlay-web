@@ -8,7 +8,6 @@ import {
   ChatModelControls,
 } from '@overlay/chat-react'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
-import type { AutomationDetail } from '@overlay/app-core'
 import { ChatComposer } from './ChatComposer'
 import { ChatMessageListPlaceholder } from './ChatMessageListSkeleton'
 import { ChatDropOverlay } from './ChatDropOverlay'
@@ -16,6 +15,8 @@ import { UpgradeModelDialog } from './UpgradeModelDialog'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { preloadWhenIdle } from '@/shared/app/preload-when-idle'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { useForwardedHandlers } from './chat-composer-memo'
 
 const ChatMessageList = dynamic(
   () => import('./ChatMessageList').then((mod) => ({ default: mod.ChatMessageList })),
@@ -27,21 +28,16 @@ const DraftReviewModal = dynamic(
   () => import('./chat-interface/Modals').then((mod) => ({ default: mod.DraftReviewModal })),
   { loading: () => null },
 )
-const AutomationEditorPanel = dynamic(
-  () => import('./chat-interface/AutomationEditor').then((mod) => ({ default: mod.AutomationEditorPanel })),
-  { loading: () => null },
-)
+
+/** Header functions the model controls call while rendering; the rest are event handlers. */
+const MODEL_CONTROL_RENDER_FUNCTIONS = new Set(['renderExportMenu', 'resolveModel', 'getChatModelDisplayName', 'isTextModelLocked'])
+/** The composer's model controls never show the export menu, so the transcript-dependent one must not re-render them. */
+const renderNoExportMenu = () => null
 
 type DragHandlers = Pick<
   React.HTMLAttributes<HTMLDivElement>,
   'onDragEnter' | 'onDragOver' | 'onDragLeave' | 'onDrop'
 >
-
-type AutomationEditorProps = {
-  automation: AutomationDetail
-  onSaved: (automation: AutomationDetail) => void
-  onTested: (conversationId: string) => void
-}
 
 export type ChatExperienceViewProps = {
   nativeThreadSafety: NativeThreadSafety
@@ -63,12 +59,9 @@ export type ChatExperienceViewProps = {
   }
   headerProps: React.ComponentProps<typeof ChatExperienceHeader>
   body: {
-    hasAutomationContext: boolean
     isTemporaryChat: boolean
-    selectedAutomationLoading: boolean
-    showAutomationChatTab: boolean
+    automationNotFound: boolean
   }
-  automationEditorProps: AutomationEditorProps | null
   messageListProps: React.ComponentProps<typeof ChatMessageList> | null
   composerProps: React.ComponentProps<typeof ChatComposer> | null
   draftReviewProps: React.ComponentProps<typeof DraftReviewModal>
@@ -85,7 +78,6 @@ export function ChatExperienceView({
   main,
   headerProps,
   body,
-  automationEditorProps,
   messageListProps,
   composerProps,
   draftReviewProps,
@@ -93,7 +85,9 @@ export function ChatExperienceView({
   upgradeModelDialogProps,
   readOnlyFooter,
 }: ChatExperienceViewProps) {
-  const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
+  recordRender('ChatExperienceView')
+  const modelControlsInComposer = Boolean(composerProps)
+  const modelControlProps = useForwardedHandlers(headerProps, MODEL_CONTROL_RENDER_FUNCTIONS)
   return (
     <>
       <AppScreenShell
@@ -120,22 +114,15 @@ export function ChatExperienceView({
           <AppScreenBody
             padding="none"
             maxWidth="none"
-            scroll={automationEditorProps && !body.showAutomationChatTab ? 'auto' : 'hidden'}
+            scroll="hidden"
             className={`flex min-h-0 flex-1 flex-col transition-[background-color,background-image] duration-300 ${
               body.isTemporaryChat ? 'temporary-chat-body-pattern' : ''
             }`}
           >
-            {body.hasAutomationContext &&
-              !body.selectedAutomationLoading &&
-              !automationEditorProps &&
-              !body.showAutomationChatTab && (
-                <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
-                  <p className="text-sm text-(--muted)">Automation not found.</p>
-                </div>
-              )}
-
-            {!body.showAutomationChatTab && automationEditorProps && (
-              <AutomationEditorPanel {...automationEditorProps} />
+            {body.automationNotFound && (
+              <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6">
+                <p className="text-sm text-(--muted)">Automation not found.</p>
+              </div>
             )}
 
             {messageListProps && <ChatMessageList {...messageListProps} />}
@@ -147,7 +134,7 @@ export function ChatExperienceView({
               <ChatComposer
                 {...composerProps}
                 surface={modelControlsInComposer
-                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...headerProps} placement="composer" /> }
+                  ? { ...composerProps.surface, modelControl: <ChatModelControls {...modelControlProps} renderExportMenu={renderNoExportMenu} placement="composer" /> }
                   : composerProps.surface}
               />
               )

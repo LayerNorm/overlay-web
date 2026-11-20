@@ -6,7 +6,7 @@ import type { AttachmentPreview, AttachmentPreviewOpenOptions } from '@overlay/c
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { MentionInputHandle } from './chat-interface/MentionInput'
 import type { AttachedImage, PendingChatDocument } from './chat-interface/types'
-import type { EmptyAutomateSuggestionId, EmptyChatSuggestionId } from './ChatEmptyState'
+import type { EmptyChatSuggestionId } from './ChatEmptyState'
 import type { ChatComposerQueueControls } from './ChatComposerQueue'
 
 export type ReplyContext = { snippet: string; bodyForModel: string; replyToTurnId?: string } | null
@@ -55,7 +55,6 @@ export type ChatComposerActions = {
   onStop: () => void | Promise<void>
   onSend: () => void | Promise<void>
   onEmptySuggestion?: (id: EmptyChatSuggestionId) => void
-  onAutomateSuggestion?: (id: EmptyAutomateSuggestionId) => void
 }
 export type ChatComposerSurface = {
   textOnly?: boolean
@@ -66,6 +65,8 @@ export type ChatComposerSurface = {
   placeholder?: string
   /** Additional mention targets, such as workspace people and named agents. */
   mentionCategories?: MentionCategory[]
+  /** Controls placed before the model control, such as a new automation's schedule and agent. */
+  composerControls?: ReactNode
   /** Model and video sub-mode controls rendered before the send button. */
   modelControl?: ReactNode
   contextUsage?: { usedTokens: number; contextWindow: number } | null

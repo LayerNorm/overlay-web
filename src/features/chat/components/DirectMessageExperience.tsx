@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
@@ -11,6 +11,8 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
+import { AgentAssignmentSubscription, AgentAssignmentsProvider } from './AgentAssignmentSubscription'
+import { isRoomView } from './collaboration/RoomViewTabs'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -34,6 +36,11 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 import { useThreadWork } from './thread-work/useThreadWork'
+import { RoomTranscriptProvider } from '@/components/providers/RoomTranscriptProvider'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { useForwardedHandlers } from './chat-composer-memo'
+
+const NO_RENDER_FUNCTIONS = new Set<string>()
 
 function RoomComposerArea({
   safety,
@@ -88,8 +95,7 @@ function resolveRoomRightPanel({
 
   messageCtx: ReturnType<typeof useDirectMessageRoom>['messageCtx']
 }) {
-  const roomPanelOpen = room.roomPanel === 'people' || room.roomPanel === 'pinned'
-    || (room.roomPanel === 'thread' && Boolean(vm.threadRoot))
+  const roomPanelOpen = isRoomView(room.roomPanel) || (room.roomPanel === 'thread' && Boolean(vm.threadRoot))
   const closeRoomPanel = () => {
     room.setRoomPanel(null)
     thread.setThreadRootId(null)
@@ -111,6 +117,7 @@ function resolveRoomRightPanel({
         sendMessage={room.sendMessage}
         onAddPeople={() => room.setAddPeopleOpen(true)}
         onClosePanel={() => room.setRoomPanel(null)}
+        onSelectView={room.setRoomPanel}
         ctx={messageCtx}
         readOnlyFooter={room.selectedThreadSafety.readOnly
           ? <NativeThreadReadOnlyFooter safety={room.selectedThreadSafety} onNewThread={room.startNewNativeThread} />
@@ -162,7 +169,7 @@ function roomHeaderPresentation({
 }
 
 function roomPanelIsOpen(roomPanel: string | null, hasThreadRoot: boolean) {
-  return roomPanel === 'people' || roomPanel === 'pinned'
+  return isRoomView(roomPanel as Parameters<typeof isRoomView>[0])
     || (roomPanel === 'thread' && hasThreadRoot)
 }
 
@@ -224,6 +231,7 @@ export function DirectMessageExperience({
   externalRightPanelLabel,
   externalRightPanelMode,
   externalRightPanelWidth,
+  onExternalRightPanelResize,
   onExternalRightPanelClose,
   bodyOverlay,
   guided,
@@ -238,10 +246,12 @@ export function DirectMessageExperience({
   externalRightPanelLabel?: string;
   externalRightPanelMode?: "docked" | "floating";
   externalRightPanelWidth?: number;
+  onExternalRightPanelResize?: (width: number) => void;
   onExternalRightPanelClose?: () => void;
   bodyOverlay?: ReactNode;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
+  recordRender('DirectMessageExperience')
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
   const { markConversationRead } = useCollaborationRealtime()
@@ -268,6 +278,18 @@ export function DirectMessageExperience({
     workspaceId: activeWorkspaceId ?? null, agentId: agentId ?? null, conversationId,
     started: vm.mainMessages.length > 0, enabled: threadWorkEnabled,
   })
+  // Stable while the thread's work settings are unchanged, so a streamed reply does not re-render the composer.
+  const threadWorkControls = useForwardedHandlers(threadWork, NO_RENDER_FUNCTIONS)
+  const threadWorkFooter = useMemo(
+    () => threadWorkEnabled ? <ThreadWorkFooter controls={threadWorkControls} /> : undefined,
+    [threadWorkControls, threadWorkEnabled],
+  )
+  const threadFolderMenuItems = useMemo(
+    () => threadWorkEnabled
+      ? (close: () => void) => <ThreadFolderMenuItems controls={threadWorkControls} close={close} />
+      : undefined,
+    [threadWorkControls, threadWorkEnabled],
+  )
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
   useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
   // Guided onboarding writes to this room server-side; the live transcript shows them.
@@ -325,6 +347,8 @@ export function DirectMessageExperience({
         onRoom={transcript.applyRoomSummary}
         onPaging={transcript.setPaging}
       />
+      <AgentAssignmentsProvider workspaceId={activeWorkspaceId} conversationId={conversationId}>
+      <RoomTranscriptProvider value={transcript.messages}>
       <AppScreenShell
         contentClassName="flex min-h-0"
         rightPanel={rightPanel}
@@ -332,7 +356,7 @@ export function DirectMessageExperience({
         rightPanelWidth={panels.shellRightPanel ? panels.shellRightPanelWidth : externalRightPanel ? (externalRightPanelWidth ?? 'lg') : 380}
         rightPanelMode={panels.shellRightPanel ? panels.shellRightPanelMode : (externalRightPanelMode ?? 'docked')}
         onRightPanelClose={rightPanelClose}
-        onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : undefined}
+        onRightPanelResize={panels.shellRightPanel ? panels.shellRightPanelResize : externalRightPanel ? onExternalRightPanelResize : undefined}
         rightPanelOverlayLabel={externalRightPanel ? externalRightPanelLabel : undefined}
       >
         <div
@@ -348,7 +372,7 @@ export function DirectMessageExperience({
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
                 vm={vm}
-                roster={roster}
+                roomSidebar={!onExternalRightPanelClose}
                 collab={collab}
                 roomActions={roomActions}
 
@@ -373,6 +397,7 @@ export function DirectMessageExperience({
               channelTopic={collab.channel?.topic}
               ctx={messageCtx}
               footer={<>
+                <AgentAssignmentSubscription />
                 <GuidedPendingMessage pending={pendingMessage} messages={vm.mainMessages} />
                 {guided?.footer}
               </>}
@@ -396,10 +421,8 @@ export function DirectMessageExperience({
                 setMentions: room.setMentions,
                 onOpenAttachmentPreview: panels.openAttachmentPreview,
                 onOpenFilePreview: panels.openFilePreview,
-                footer: threadWorkEnabled ? <ThreadWorkFooter controls={threadWork} /> : undefined,
-                attachMenuExtra: threadWorkEnabled
-                  ? (close) => <ThreadFolderMenuItems controls={threadWork} close={close} />
-                  : undefined,
+                footer: threadWorkFooter,
+                attachMenuExtra: threadFolderMenuItems,
                 queue: room.composerQueue,
               }}
             />
@@ -412,6 +435,8 @@ export function DirectMessageExperience({
           ) : null}
         </div>
       </AppScreenShell>
+      </RoomTranscriptProvider>
+      </AgentAssignmentsProvider>
 
       <RoomDialogs
         panels={panels}

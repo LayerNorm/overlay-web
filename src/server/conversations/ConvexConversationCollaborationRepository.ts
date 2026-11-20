@@ -1,4 +1,5 @@
 import 'server-only'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 
 import type {
   ChannelSummary,
@@ -332,6 +333,42 @@ implements ConversationCollaborationRepository {
       sourceConversationId: args.sourceConversationId as Id<'conversations'> | undefined,
       serverSecret: this.serverSecret,
     }, { throwOnError: true }) as DirectMessageSummary
+  }
+
+  async createAgentAssignment(args: {
+    workspaceId: string
+    requesterUserId: string
+    assignmentId: string
+    idempotencyKey: string
+    toolCallId: string
+    parentConversationId: string
+    parentRunId: string
+    rootRunId: string
+    callerAgentId: string
+    assignedAgentId: string
+    brief: string
+    questionTurnId: string
+    revisionOfAssignmentId?: string
+    expectedAttemptId?: string
+  }): Promise<{ assignmentId: string; attemptId?: string; conversationId: string; title: string }> {
+    const assignment = await convex.mutation<{ assignmentId: string; attemptId?: string; conversationId: string; title: string }>(
+      'collaboration/agentAssignments:createAgentAssignment',
+      {
+        ...args,
+        parentConversationId: args.parentConversationId as Id<'conversations'>,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    if (!assignment) throw new Error('Agent assignment creation returned no assignment.')
+    return assignment
+  }
+
+  async readAgentAssignmentResult(args: { actorUserId: string; workspaceId: string; conversationId: string; turnId: string }) {
+    // Named fields only: callers pass wider objects (a reply handle also names the agent), and Convex rejects extras.
+    return await convex.query<AssignmentResultView | null>('collaboration/assignmentResults:read', {
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId, turnId: args.turnId,
+      serverSecret: this.serverSecret }, { throwOnError: true })
   }
 
   async listAccessibleConversationIds(args: { actorUserId: string; workspaceId: string }) {

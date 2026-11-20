@@ -449,3 +449,66 @@
     animation: none;
   }
 }
+
+/* The working orb of a live response (components/exchange/working-orb.tsx): a 3×3 dot lattice whose motion follows
+   the kind of step. Adapted from AICSS lattice orbs S1–S4 (https://github.com/kvnkld/aicss), MIT licensed. */
+.working-orb {
+  --k: 0.8571;
+  --rest: 0.16;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
+  color: var(--foreground);
+}
+[data-theme="dark"] .working-orb { --rest: 0.22; }
+.working-orb.small { --k: 0.6429; width: 18px; height: 18px; }
+.working-orb-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  transform-origin: 0 0;
+  transform: scale(var(--k)) translate(6.5px, 6.5px);
+}
+.working-orb i {
+  position: absolute;
+  left: calc(var(--x) * 6px);
+  top: calc(var(--y) * 6px);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: var(--rest);
+}
+.working-orb.thinking i { animation: working-orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both; }
+.working-orb.thinking .c { animation-delay: 990ms; }
+.working-orb.thinking .e { animation-delay: 700ms; }
+.working-orb.thinking .m { animation-delay: -180ms; }
+.working-orb.asking i {
+  animation: working-orb-wave 1.7s cubic-bezier(0.66, 0, 0.34, 1) infinite both;
+  animation-delay: calc((var(--x) + var(--y)) * 200ms);
+}
+.working-orb.searching i {
+  animation: working-orb-wave 1.6s cubic-bezier(0.66, 0, 0.34, 1) infinite both;
+  animation-delay: calc(var(--x) * 260ms);
+}
+.working-orb.tooling i { animation: working-orb-comet 1.7s linear infinite both; animation-delay: calc(var(--p) * -212ms); }
+.working-orb.tooling .m { animation: none; }
+@keyframes working-orb-wave {
+  0% { opacity: var(--rest); transform: scale(1); }
+  28% { opacity: 1; transform: scale(1.18); }
+  56%, 100% { opacity: var(--rest); transform: scale(1); }
+}
+@keyframes working-orb-comet {
+  0% { opacity: 1; transform: scale(1.15); }
+  30% { opacity: 0.45; transform: scale(1); }
+  60%, 100% { opacity: var(--rest); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-orb i { animation: none !important; }
+  .working-orb .m { opacity: 1; }
+}
