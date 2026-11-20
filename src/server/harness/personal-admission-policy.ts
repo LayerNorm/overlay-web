@@ -20,6 +20,12 @@ export function isUnifiedStreamingEnabled(setting = process.env.OVERLAY_UNIFIED_
   return value === '' || value === 'on'
 }
 
+/** How a run pays for its model: the person's own connection, the workspace's funds, or nothing. */
+export function harnessSpendingMode(input: { modelId: string; paid: boolean }): 'workspace' | 'external' | 'none' {
+  if (isByokModelId(input.modelId)) return 'external'
+  return input.paid ? 'workspace' : 'none'
+}
+
 export function personalHarnessPolicy(input: {
   actorUserId: string
   workspaceId: string
@@ -35,7 +41,6 @@ export function personalHarnessPolicy(input: {
     || !Number.isSafeInteger(input.createdAt) || input.createdAt < 0) {
     throw new Error('Invalid personal harness budget.')
   }
-  const byok = isByokModelId(input.modelId)
   const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy)
   return {
     publicProgressVersion: 1,
@@ -43,7 +48,7 @@ export function personalHarnessPolicy(input: {
     actorUserId: input.actorUserId,
     workspaceId: input.workspaceId,
     executionPolicyVersion: 2,
-    spendingMode: input.paid && !byok ? 'workspace' : byok ? 'external' : 'none',
+    spendingMode: harnessSpendingMode({ modelId: input.modelId, paid: input.paid }),
     allowedToolIds: [...new Set(input.allowedToolIds)].sort(),
     requiresPlan: false,
     deadlineAt: input.createdAt + DAY_MS,
