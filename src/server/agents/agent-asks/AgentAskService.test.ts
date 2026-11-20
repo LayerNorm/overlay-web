@@ -406,3 +406,18 @@ test('a refusal the asking agent can act on becomes its tool result; faults stay
   assert.equal(agentAskRefusalResult(new AgentAskError('Not yours.', 403, 'turn_unknown')), null)
   assert.equal(agentAskRefusalResult(new Error('boom')), null)
 })
+
+test('posting to a channel by name is a refusal the agent can fix, and nothing is posted or spent', async () => {
+  const room = setup()
+  const error = await room.post({ conversationId: 'missing' }).then(() => null, (caught: unknown) => caught)
+  const refusal = agentAskRefusalResult(error)
+  assert.equal(refusal?.code, 'not_found')
+  assert.match(refusal?.error ?? '', /id, not its name/)
+  assert.equal(room.posted.length, 0)
+  assert.equal(room.claims.length, 0)
+  assert.equal(room.started.length, 0)
+  for (const code of ['not_in_conversation', 'post_limit', 'too_many_mentions', 'message_required', 'message_too_long']) {
+    assert.equal(agentAskRefusalResult(new AgentAskError('Refused.', 400, code))?.code, code)
+  }
+  assert.equal(agentAskRefusalResult(new AgentAskError('Only an agent can do that.', 403, 'caller_not_an_agent')), null)
+})

@@ -689,7 +689,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description:
         'Post a message into a conversation (a channel or group chat) that you are part of, optionally mentioning other agents in it by name so they answer there. Use it to share a result or hand work to an agent in that room. It does not wait for replies; they appear in the conversation. Mentioned agents count as questions: the same limits apply as for ask_agent.',
       inputSchema: z.object({
-        conversationId: z.string().min(1).describe('The conversation to post in.'),
+        conversationId: z.string().min(1).describe("The id of the conversation to post in (not its name; list_chats shows ids)."),
         text: z.string().min(1).max(8000),
         mentions: z.array(z.string().min(1)).max(3).optional().describe('Agents in that conversation to ask, by id or exact name.'),
       }),
