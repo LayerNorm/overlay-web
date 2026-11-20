@@ -107,6 +107,16 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `agent-working-state.html` (feature `agent-working-state`): the proposed working state and date line. A live
+  response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
+  own tool wording ("Asking Quill: …", "Running python analyze_pricing.py …", "Opening example.com/pricing"), with how
+  long that step has run, instead of the 24px Overlay mark. The orb follows the kind of step: thinking or writing,
+  using a tool, reading or searching, asking another agent (AICSS lattice orbs S1–S4, MIT). The date line is the
+  date alone, without rules. Open
+  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convrelaytest0000000000000000`
+  (a relay between agents), `...&id=k17convlaunch0000000000000000000` (a command) or
+  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_scout&id=k17convscoutpricing0000000000000`.
+  Delete it when the design ships or is rejected.
 - `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
   Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
   Agent picker beside the model picker, and sending opens the automation's chat. Each run posts the instructions again
