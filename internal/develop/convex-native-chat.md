@@ -191,13 +191,22 @@ policy suppresses file metadata without suppressing text history.
 
 ### Unified durable public streaming
 
-New root Harness runs may carry immutable `publicStreamVersion: 1` when their
-workspace ID is an exact entry in the server-only
-`OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` comma-separated allowlist. Empty is
-disabled; `*` is not a wildcard. Personal, workspace-agent and automation
-admissions use the same policy helper. Existing roots keep the publishing path
-recorded in their admission policy when the environment changes; removing an ID
-stops future enrollment but does not switch an in-flight run.
+Every new root Harness run carries immutable `publicStreamVersion: 1`, in every
+workspace including ones created later. The server-only
+`OVERLAY_UNIFIED_STREAMING` variable is the kill switch: unset, empty or `on`
+enrolls new roots; `off` (or any other value, so a typo fails toward the legacy
+path) admits new roots on the legacy message-row path. Personal chat,
+workspace-scope chat, workspace agents (rooms and work) and automations all
+admit through `personalHarnessPolicy`. Child runs never inherit the version:
+their policy is derived from the parent without it, and the stream writer
+accepts only roots. Existing roots keep the publishing path recorded in their
+admission policy when the environment changes, so flipping the switch never
+moves an in-flight run. Rollback is setting `OVERLAY_UNIFIED_STREAMING=off` on
+the web deployment and redeploying; Convex reads no setting.
+
+The former exact-ID allowlist `OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` is
+retired and ignored; it cannot keep specific workspaces enrolled while the
+switch is off. Delete it from deployments at any time.
 
 The versioned path publishes filtered response text from the executor's secure
 model boundary. It does not publish reasoning, child/summary/verification output
