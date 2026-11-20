@@ -271,20 +271,6 @@ test('an earlier progress diagnostic does not label a different terminal failure
   }), new Error('a later unrelated error'), 'delivery')).toBe(persistence)
 })
 
-test('ambiguous tool exceptions use reconciliation instead of an automatic retry', () => {
-  const diagnostic = harnessDiagnosticForFailure('root', snapshot(), {
-    code: 'HARNESS_TOOL_OUTCOME_UNKNOWN',
-    operationId: 'call-7',
-  }, 'tool')
-  expect(diagnostic).toMatchObject({
-    code: 'TOOL_OUTCOME_UNKNOWN',
-    stage: 'tool',
-    operationId: 'call-7',
-    retryability: 'reconcile',
-  })
-  expect(harnessDiagnosticTerminalError(diagnostic).retryable).toBe(false)
-})
-
 test('diagnostic IDs are stable short correlations, not raw operation arguments', () => {
   const first = stableHarnessDiagnosticId('root', 'model:7', 4)
   expect(first).toMatch(/^hd_[a-z0-9]+$/)

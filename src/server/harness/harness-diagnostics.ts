@@ -305,8 +305,6 @@ export function harnessDiagnosticForFailure(
     if (snapshot.latestReceipt.rejectionReason === 'route_capacity') code = 'PROVIDER_RATE_LIMIT'
     else if (snapshot.latestReceipt.rejectionReason === 'route_unavailable') code = 'PROVIDER_UNAVAILABLE'
     else if (snapshot.latestReceipt.rejectionReason === 'route_interrupted') code = 'PROVIDER_TIMEOUT'
-  } else if (stage === 'tool' && value.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN') {
-    code = 'TOOL_OUTCOME_UNKNOWN'
   } else if (stage === 'tool' && snapshot.evidence.some(item => item.kind === 'tool_result' && item.verdict === 'failed')) {
     code = 'TOOL_FAILED'
   }

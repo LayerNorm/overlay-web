@@ -247,15 +247,34 @@ async function postEloSearch(provider: 'tavily' | 'parallel', body: Record<strin
   throw lastError ?? new Error('Web search failed')
 }
 
-async function postTinyfishFetch(body: Record<string, unknown>): Promise<unknown> {
-  const apiKey = await getServerProviderKey('tinyfish')
-  if (!apiKey) throw new Error('TINYFISH_API_KEY is not configured (needed for web_fetch)')
-  const res = await postJson(TINYFISH_FETCH_URL, { 'X-API-Key': apiKey }, body, TINYFISH_TIMEOUT_MS)
-  if (!res.ok) {
+// Reading a page changes nothing, so a dropped connection or a busy provider is
+// retried once here. A timeout is not: the page already had the full budget.
+export async function fetchTinyfishPages(body: Record<string, unknown>, apiKey: string): Promise<unknown> {
+  for (let attempt = 1; ; attempt++) {
+    const retry = attempt < MAX_PROVIDER_RETRIES
+    let res: Response
+    try {
+      res = await postJson(TINYFISH_FETCH_URL, { 'X-API-Key': apiKey }, body, TINYFISH_TIMEOUT_MS)
+    } catch (error) {
+      const name = error instanceof Error ? error.name : ''
+      if (!retry || name === 'AbortError' || name === 'TimeoutError') throw error
+      await new Promise(resolve => setTimeout(resolve, 500))
+      continue
+    }
+    if (res.ok) return res.json()
+    if (retry && [429, 502, 503, 504].includes(res.status)) {
+      await new Promise(resolve => setTimeout(resolve, 1_000))
+      continue
+    }
     const detail = (await res.text()).slice(0, 300)
     throw new Error(`web_fetch failed (TinyFish, HTTP ${res.status}): ${detail}`)
   }
-  return res.json()
+}
+
+async function postTinyfishFetch(body: Record<string, unknown>): Promise<unknown> {
+  const apiKey = await getServerProviderKey('tinyfish')
+  if (!apiKey) throw new Error('TINYFISH_API_KEY is not configured (needed for web_fetch)')
+  return fetchTinyfishPages(body, apiKey)
 }
 
 type WebSearchToolName = 'web_search' | 'deep_search' | 'web_fetch'

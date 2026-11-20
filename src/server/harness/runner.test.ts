@@ -332,29 +332,27 @@ test('v2 commentary follows three silent tool batches and does not become the fi
   expect(result.steps.some(step => step.text?.includes('Three checks are complete'))).toBe(true)
 })
 
-test('an ambiguous write exception settles its step and stops before model retry', async () => {
+test('a tool exception goes back to the agent, which finishes the run', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
-  let applied = 0
-  const write = vi.fn(async () => {
-    applied++
-    throw new Error('private transport details')
-  })
+  const fetchPage = vi.fn(async () => { throw new TypeError('fetch failed') })
   const provider = model(index => index === 0
-    ? [call('write', 'ambiguous-write')]
-    : [call('write', 'model-requested-repeat')])
+    ? [call('read', 'failed-fetch', { id: 'page' })]
+    : 'I could not open that page, so I used the repository instead.')
   const result = await runOverlayHarness({
     ...input,
-    tools: { write: tool({ inputSchema: z.object({}), execute: write }) },
+    tools: { read: tool({ inputSchema: z.object({ id: z.string() }), execute: fetchPage }) },
   }, f.ports)
 
-  expect(write).toHaveBeenCalledOnce()
-  expect(applied).toBe(1)
-  expect(provider.doStreamCalls).toHaveLength(1)
-  expect(result.snapshot).toMatchObject({
-    status: 'failed',
-    diagnostic: { code: 'TOOL_OUTCOME_UNKNOWN', stage: 'tool', retryability: 'reconcile' },
-  })
-  expect(JSON.stringify(result)).not.toContain('private transport details')
+  expect(fetchPage).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls.length).toBeGreaterThan(1)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.diagnostic).toBeUndefined()
+  expect(result.snapshot.resultSummary).toBe('I could not open that page, so I used the repository instead.')
+  expect(result.steps.flatMap(step => step.content)).toContainEqual(expect.objectContaining({
+    type: 'tool-error',
+    toolCallId: 'failed-fetch',
+    error: expect.stringContaining('read failed: fetch failed.'),
+  }))
 })
 
 test('reasoning stays separate from the durable final result shared with parents', async () => {
@@ -1146,12 +1144,16 @@ test('computer result after approval workflow rollover reconciles the original r
   ))).toHaveLength(1)
 })
 
-test('an approved tool exception requires reconciliation without exposing its raw error', async () => {
+test('an approved tool exception goes back to the agent and later calls still run', async () => {
   const f = fixture(false)
-  const execute = vi.fn(async () => { throw new Error('Approved execution failed.') })
+  let calls = 0
+  const execute = vi.fn(async () => {
+    if (calls++ === 0) throw new Error('Approved execution failed with key sk-abcdefghijklmnopqrstuvwxyz123456.')
+    return 'Written.'
+  })
   model(index => index === 0
-    ? [call('write', 'failed-write'), call('write', 'must-not-run')]
-    : 'The approved action failed.')
+    ? [call('write', 'failed-write'), call('write', 'second-write')]
+    : 'The first write failed; the second succeeded.')
   f.ports.waitForApproval = async requests => requests.map(request => ({
     approvalId: request.approvalId,
     approved: true,
@@ -1162,18 +1164,15 @@ test('an approved tool exception requires reconciliation without exposing its ra
     tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute }) },
   }, f.ports)
 
-  expect(execute).toHaveBeenCalledTimes(1)
-  expect(result.snapshot).toMatchObject({
-    status: 'failed',
-    diagnostic: { code: 'TOOL_OUTCOME_UNKNOWN', retryability: 'reconcile' },
-  })
+  expect(execute).toHaveBeenCalledTimes(2)
+  expect(result.snapshot.status).toBe('completed')
   expect(result.steps.flatMap(step => step.content)).toContainEqual(expect.objectContaining({
     type: 'tool-error',
     toolCallId: 'failed-write',
     toolName: 'write',
-    error: expect.stringContaining('without a confirmed outcome'),
+    error: expect.stringContaining('check whether it took effect before repeating it'),
   }))
-  expect(JSON.stringify(result)).not.toContain('Approved execution failed.')
+  expect(JSON.stringify(result)).not.toContain("sk-abcdefghijklmnopqrstuvwxyz123456")
 })
 
 test('ordinary tool results are not duplicated when callback outcomes are merged', async () => {

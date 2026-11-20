@@ -1,7 +1,9 @@
 export type HarnessDiagnosticCode =
   | 'TASK_DEADLINE' | 'TASK_SPEND_LIMIT' | 'WORKSPACE_FUNDS'
   | 'PROVIDER_REJECTED' | 'PROVIDER_REQUEST_INVALID' | 'PROVIDER_ACCOUNT' | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
-  | 'TOOL_FAILED' | 'TOOL_OUTCOME_UNKNOWN' | 'MODEL_OUTCOME_UNKNOWN'
+  | 'TOOL_FAILED' | 'MODEL_OUTCOME_UNKNOWN'
+  /** Stored on runs from when a thrown tool call ended the run. Never produced now: the agent gets the failure. */
+  | 'TOOL_OUTCOME_UNKNOWN'
   | 'AUTHORIZATION_REVOKED' | 'PERSISTENCE_FAILED' | 'STAGNATION'
   | 'MODEL_UNAVAILABLE' | 'BACKEND_UNAVAILABLE' | 'INTERNAL_ERROR'
   /** Stored on runs that failed before every failure was classified. Never produced now. */
