@@ -103,6 +103,28 @@ export const getSummary = query({
   },
 })
 
+/**
+ * The viewer's own chat created with this client id, such as a note's assistant chat; null until one exists.
+ * Also null for a viewer without `conversations.read`: a note stays usable for someone who can read notes but not
+ * chats, so the lookup must not throw into the note editor.
+ */
+export const getByClientId = query({
+  args: { workspaceId: v.string(), clientId: v.string() },
+  returns: v.union(v.null(), v.id('conversations')),
+  handler: async (ctx, args) => {
+    const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+    try {
+      await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CAPABILITY_ACCESS_DENIED') return null
+      throw error
+    }
+    const conversation = await ctx.db.query('conversations')
+      .withIndex('by_userId_clientId', q => q.eq('userId', viewer.userId).eq('clientId', args.clientId.trim())).first()
+    return await nativePersonalChatScope(ctx, viewer, conversation) ? conversation!._id : null
+  },
+})
+
 export const getExecution = query({
   args: resourceArgs,
   handler: async (ctx, args) => {

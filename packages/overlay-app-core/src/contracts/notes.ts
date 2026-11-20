@@ -100,7 +100,6 @@ export interface NotebookEdit {
 }
 
 export type NotebookAgentStreamEvent =
-  | { type: 'thinking'; thinking?: string }
   | { type: 'tool_call'; tool?: string; toolInput?: Record<string, unknown> }
   | { type: 'edit_proposal'; edit?: NotebookEdit }
   | { type: 'text'; text?: string }

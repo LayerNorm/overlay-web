@@ -73,6 +73,8 @@ through text and tool-only periods, and disappears when the reply settles or
 fails. It is also hidden while the reply waits on the person for an approval or an
 answer, because the agent is not working then. Room chrome (avatar with its working eyes, author row, reactions, threads,
 approval and input cards) stays around it. There is no separate dots row.
+The Notebook assistant panel renders its note conversation with `ChatExchange`
+itself (through `EmbeddedPersonalTranscript`), so it shows the same body and mark.
 
 Work task status and priority live in an anchored settings popover. Their values
 remain in the composer draft when the popover closes and reset only after successful

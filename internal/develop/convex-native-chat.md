@@ -329,7 +329,8 @@ produced only thinking (the provider-reported reasoning tokens cover all but a f
 output tokens), `harnessReasoningSetting` runs the continuation with
 `reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
 
-The web chat sends `liveTransport: 'convex'` on native personal Act requests.
+The web chat and the Notebook assistant send `liveTransport: 'convex'` on native
+personal Act requests.
 For an admitted versioned run the response then carries only `start`, the
 `harnessAccepted` run identity (with `liveTransport: 'convex'`) and source
 citations, and finishes at once, so no function stays open relaying text. The
@@ -337,16 +338,25 @@ client renders the reply from Convex like every other thread, merges only that
 metadata into the saved row (`personal-transcript.ts`), and completes the turn
 (session, unread notice, first-turn activation, subscription refresh) when
 `chat/personal:getExecution` reports the run terminal (`waitForNativePersonalTurn`);
-a failed run reports "The durable run failed." as before. Runs that are not admitted
-on the versioned path keep streaming over the response. Requests without the field,
-such as the Notebook assistant, Act retry and public API callers, keep the
-SSE adapter: the request remains pending until the durable root's
+a failed run reports "The durable run failed." as before. The Notebook assistant
+sends on the note's own personal chat (client id `notebook:<noteId>`, found with
+`chat/personal:getByClientId`), waits for the same execution settlement, and renders
+the note conversation in its side panel through `EmbeddedPersonalTranscript`, which
+reads with `usePersonalConversationTranscript` (the route-free half of the chat
+route's read) and projects rows with chat's `personal-transcript` and
+`toChatTranscriptView`. Runs that are not admitted on the versioned path keep
+streaming over the response. Requests without the field, such as Act retry and
+public API callers, keep the SSE adapter: the request remains pending until the durable root's
 authoritative Convex state is terminal. That adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and
 ordered tool-part metadata; it never forwards a losing Workflow handle or raw
 SDK output. It reads only the stream projection rather than repeatedly loading
 the full root snapshot. Runs without `publicStreamVersion` retain their
-existing transport/projector. Rollback is therefore an enrollment change, not
+existing transport/projector. Automation-thread replies are admitted with
+`personalHarnessPolicy`, so they carry `publicStreamVersion` 1 when unified streaming
+is on and render through `usePersonalChatTranscript` like any chat. The automation
+run viewer (`run-viewer-hooks.ts`, `/api/v1/automations/[id]/events`) shows workflow
+step status, not reply text, so it has no live reply to move. Rollback is therefore an enrollment change, not
 a mid-run protocol switch.
 
 Stream timing fields are local monotonic measurements: provider-first-text is
