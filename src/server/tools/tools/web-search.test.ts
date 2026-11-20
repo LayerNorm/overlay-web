@@ -13,6 +13,7 @@ import {
   buildTavilyRequestBody,
   buildTinyfishRequestBody,
   buildTinyfishSearchParams,
+  fetchTinyfishPages,
   fetchTinyfishSearch,
   searchWebWithFallback,
   searchDeepWithFallback,
@@ -60,6 +61,42 @@ test('TinyFish empty results succeed; invalid payloads and HTTP errors fail', as
   await assert.rejects(fetchTinyfishSearch('q', {}, 'test-key'), /invalid response/)
   fetchMock.mock.mockImplementation(async () => new Response('private diagnostic', { status: 500 }))
   await assert.rejects(fetchTinyfishSearch('q', {}, 'test-key'), { message: 'Web search failed (TinyFish, HTTP 500)' })
+})
+
+test('web_fetch retries a dropped connection or busy provider once, never a timeout', async (t) => {
+  let calls = 0
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => {
+    if (calls++ === 0) throw new TypeError('fetch failed')
+    return Response.json({ results: [{ url: 'https://example.com', text: 'Page' }] })
+  })
+  assert.deepEqual(await fetchTinyfishPages({ urls: ['https://example.com'] }, 'test-key'),
+    { results: [{ url: 'https://example.com', text: 'Page' }] })
+  assert.equal(calls, 2)
+
+  calls = 0
+  fetchMock.mock.mockImplementation(async () => calls++ === 0
+    ? new Response('busy', { status: 503 }) : Response.json({ results: [] }))
+  assert.deepEqual(await fetchTinyfishPages({ urls: ['https://example.com'] }, 'test-key'), { results: [] })
+  assert.equal(calls, 2)
+
+  calls = 0
+  fetchMock.mock.mockImplementation(async () => { calls++; throw new TypeError('fetch failed') })
+  await assert.rejects(fetchTinyfishPages({ urls: ['https://example.com'] }, 'test-key'), { message: 'fetch failed' })
+  assert.equal(calls, 2)
+
+  calls = 0
+  fetchMock.mock.mockImplementation(async () => {
+    calls++
+    throw Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' })
+  })
+  await assert.rejects(fetchTinyfishPages({ urls: ['https://example.com'] }, 'test-key'), { name: 'TimeoutError' })
+  assert.equal(calls, 1)
+
+  calls = 0
+  fetchMock.mock.mockImplementation(async () => { calls++; return new Response('bad url', { status: 400 }) })
+  await assert.rejects(fetchTinyfishPages({ urls: ['nope'] }, 'test-key'),
+    { message: 'web_fetch failed (TinyFish, HTTP 400): bad url' })
+  assert.equal(calls, 1)
 })
 
 test('web search prefers TinyFish and does not fall back on empty results', async () => {

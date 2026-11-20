@@ -332,9 +332,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? false)
   let publicProgressActive = false
   let silentToolBatches = input.continuation?.publicProgress?.silentToolBatches ?? 0
-  let uncertainToolOutcome: Error | undefined
   const { tools, approvals } = createHarnessAuthorizedTools(input.tools, ports, controls, input.continuation?.toolApprovals, {
-    publicProgress: () => publicProgressActive, uncertain: error => { uncertainToolOutcome ??= error },
+    publicProgress: () => publicProgressActive,
   })
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
@@ -422,7 +421,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const progress = harnessProgressFingerprint(observedState)
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
         previous = progress
-        return commentaryInvocation || (publicProgressEnabled && publicProgressDue) || Boolean(uncertainToolOutcome)
+        return commentaryInvocation || (publicProgressEnabled && publicProgressDue)
           || observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3
           || (observedState.policy.executionPolicyVersion === 2
             && (modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60 * 1000))
@@ -535,27 +534,6 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     modelCall = invocationResult.modelCall
     pending = invocationResult.pending
     publicProgressActive = false
-    if (uncertainToolOutcome) {
-      const failed = await ports.read()
-      const operationId = (uncertainToolOutcome as Error & { operationId?: string }).operationId ?? `tool:${segment}`
-      const diagnostic = createHarnessDiagnostic({
-        diagnosticId: stableHarnessDiagnosticId(failed.runId, operationId, failed.revision),
-        code: 'TOOL_OUTCOME_UNKNOWN', stage: 'tool', operationId, occurredAt: Date.now(),
-      })
-      // eslint-disable-next-line no-console
-      console.warn('[harness] tool outcome requires reconciliation', {
-        runId: failed.runId,
-        workflowRunId: failed.workflowRunId,
-        operationId,
-        diagnosticId: diagnostic.diagnosticId,
-        toolCallId: operationId,
-        toolName: (uncertainToolOutcome as Error & { toolName?: string }).toolName,
-        failurePhase: 'execution',
-        causeCode: 'HARNESS_TOOL_OUTCOME_UNKNOWN',
-      })
-      await ports.apply(`uncertain-tool:${operationId}`, { type: 'terminate', status: 'failed',
-        reason: diagnostic.safeMessage, diagnostic })
-    }
     const lastStep = invocationSteps.at(-1)
     if (await shouldRecoverModelInvocation(invocationResult.recovered, lastStep, preparedReceiptId, ports)) {
       messages = recoveryMessages

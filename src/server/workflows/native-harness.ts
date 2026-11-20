@@ -153,7 +153,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
         error = authorizationError
       }
     }
-    const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, (error as { code?: string })?.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model')
+    const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, 'model')
     logHarnessFailure(access.runId, diagnostic, error)
     const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
     const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
