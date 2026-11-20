@@ -25,7 +25,6 @@ import { ScopeClient } from './scope/client'
 import { SettingsClient } from './settings/client'
 import { SharingClient } from './sharing/client'
 import { SkillsClient } from './skills/client'
-import { SurfacesClient } from './surfaces/client'
 import { WebhooksClient } from './webhooks/client'
 import { WorkClient } from './work/client'
 import { WorkspacesClient } from './workspaces/client'
@@ -67,7 +66,6 @@ export function createOverlayAppClient(options: CreateOverlayAppClientOptions = 
     computers: new ComputersClient(http),
     cloudAgents: new CloudAgentsClient(http),
     mcpAccess: new McpAccessClient(http),
-    surfaces: new SurfacesClient(http),
     work: new WorkClient(http),
   }
 }

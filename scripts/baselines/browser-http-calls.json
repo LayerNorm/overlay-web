@@ -91,9 +91,6 @@
     "src/features/agents/components/use-agent-computer.ts",
     "src/features/settings/components/ComputerSettings.tsx"
   ],
-  "conversations.actResponse": [
-    "src/features/notebook/lib/notebook-chat-turn.ts"
-  ],
   "conversations.addMessage": [
     "src/features/chat/components/DirectMessageExperience.hooks.ts"
   ],
@@ -127,8 +124,7 @@
   ],
   "conversations.stopResponse": [
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
-    "src/features/chat/components/chat/useChatStopController.ts",
-    "src/features/notebook/lib/notebook-chat-turn.ts"
+    "src/features/chat/components/chat/useChatStopController.ts"
   ],
   "conversations.submitRunApproval": [
     "src/features/chat/components/chat/native-work-command-actions.ts",
@@ -181,8 +177,7 @@
   "integrations.connectResponse": [
     "src/app/_components/onboarding/OnboardingTools.tsx",
     "src/features/chat/components/chat/useGeneratedUiConnectorActions.ts",
-    "src/features/integrations/components/IntegrationsView.tsx",
-    "src/features/workspaces/components/SlackImportPanel.tsx"
+    "src/features/integrations/components/IntegrationsView.tsx"
   ],
   "integrations.disconnectResponse": [
     "src/features/integrations/components/IntegrationsView.tsx"
@@ -280,15 +275,6 @@
   "skills.deleteResponse": [
     "src/features/settings/lib/archived-actions.ts"
   ],
-  "surfaces.createBinding": [
-    "src/features/agents/components/use-agent-surfaces.ts"
-  ],
-  "surfaces.listChannels": [
-    "src/features/agents/components/use-agent-surfaces.ts"
-  ],
-  "surfaces.removeBinding": [
-    "src/features/agents/components/use-agent-surfaces.ts"
-  ],
   "webhooks.createResponse": [
     "src/features/settings/components/WebhookSettings.tsx"
   ],
@@ -333,8 +319,7 @@
   "workspaces.invite": [
     "src/app/_components/onboarding/OnboardingConversation.tsx",
     "src/components/share/ShareDialog.tsx",
-    "src/features/chat/components/NewDirectMessageDialog.tsx",
-    "src/features/workspaces/components/SlackImportPanel.tsx"
+    "src/features/chat/components/NewDirectMessageDialog.tsx"
   ],
   "workspaces.list": [
     "src/app/oauth/authorize/AuthorizeClient.tsx"

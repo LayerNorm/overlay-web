@@ -66,11 +66,16 @@ Both mutations accept only the caller's own, non-automation agent thread.
 
 ## Response and composer behavior
 
-`AgentResponsePending` renders three compact dots beneath the author while the
-response is pending. The first displayed text block permanently dismisses them
-for that reply. Tool steps and pauses must not restart the dots. Terminal states
-and requests for user input hide them. The existing streaming avatar stays intact;
-reduced-motion mode disables the dot animation.
+Agent replies use the chat response renderer and indicator: `AssistantVisualBlocks`
+for the body (shared with `ChatExchange`) and `ExchangeLoadingState` driven by
+`responseLoadingPresentation`, the same rule chat exchanges use. The 24px mark
+appears below the author as soon as the reply is pending, stays below the reply
+through text and tool-only periods, and disappears when the reply settles or
+fails. It is also hidden while the reply waits on the person for an approval or an
+answer, because the agent is not working then. Room chrome (avatar with its working eyes, author row, reactions, threads,
+approval and input cards) stays around it. There is no separate dots row.
+The Notebook assistant panel renders its note conversation with `ChatExchange`
+itself (through `EmbeddedPersonalTranscript`), so it shows the same body and mark.
 
 Work task status and priority live in an anchored settings popover. Their values
 remain in the composer draft when the popover closes and reset only after successful

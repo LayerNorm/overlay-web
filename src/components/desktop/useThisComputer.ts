@@ -77,25 +77,28 @@ export function useThisComputer(workspaceId: string | null | undefined) {
     [environment, run],
   )
 
-  const running = status?.localTools === true && (status.hostState === 'running' || status.hostState === 'starting')
-  return {
-    /** The desktop app is open and can run threads on this computer. */
-    available: bridge !== null,
-    bridge,
-    status,
-    /** Null until this computer connected, and after it was removed. */
-    environment,
-    environmentId: environment?.id ?? null,
-    name: environment?.name ?? status?.computerName ?? null,
-    folders: chosenFolders(approvedRoots(environment), status?.workFolder),
-    online: running && environment?.status === 'online',
-    running,
-    busy,
-    refresh,
-    connect,
-    chooseFolder,
-    removeFolder,
-  }
+  // One object per state, so consumers can pass it to memoized views without re-rendering on unrelated updates.
+  return useMemo(() => {
+    const running = status?.localTools === true && (status.hostState === 'running' || status.hostState === 'starting')
+    return {
+      /** The desktop app is open and can run threads on this computer. */
+      available: bridge !== null,
+      bridge,
+      status,
+      /** Null until this computer connected, and after it was removed. */
+      environment,
+      environmentId: environment?.id ?? null,
+      name: environment?.name ?? status?.computerName ?? null,
+      folders: chosenFolders(approvedRoots(environment), status?.workFolder),
+      online: running && environment?.status === 'online',
+      running,
+      busy,
+      refresh,
+      connect,
+      chooseFolder,
+      removeFolder,
+    }
+  }, [bridge, busy, chooseFolder, connect, environment, refresh, removeFolder, status])
 }
 
 export type ThisComputer = ReturnType<typeof useThisComputer>

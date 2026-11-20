@@ -136,6 +136,9 @@ export const ActConversationRequest = z.object({
     fileIds: z.array(z.string()).optional(),
   })).optional(),
   reasoning: z.enum(['provider-default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  liveTransport: z.enum(['convex']).optional().describe(
+    'The client reads the live reply from Convex. An admitted durable run then answers right after admission with its run identity and source metadata instead of relaying the reply over this response.',
+  ),
 }).passthrough()
 
 export const ChatSuggestionQuery = z.object({})

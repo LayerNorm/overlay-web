@@ -33,3 +33,19 @@ test('when the room cannot be read the answer is shared, the safe side', async (
   const failing = { getAccessibleConversation: async () => { throw new Error('down') }, listParticipants: async () => [] } as never
   assert.equal(await resolveSharedRoom({ ...base, collaboration: failing }), true)
 })
+
+test('a web followup in an assignment thread inherits its persisted parent restriction', async () => {
+  const calls: Array<Record<string, string>> = []
+  const roomRestrictions = {
+    resolveConversationRoomRestrictions: async (args: Record<string, string>) => {
+      calls.push(args)
+      return { inheritedSharedRoom: true }
+    },
+  } as never
+  assert.equal(await resolveSharedRoom({
+    ...base, conversationId: 'assignment-room', roomRestrictions,
+  }), true)
+  assert.deepEqual(calls, [{
+    actorUserId: base.actorUserId, conversationId: 'assignment-room', workspaceId: base.workspaceId,
+  }])
+})

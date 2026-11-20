@@ -1,4 +1,5 @@
 export const HARNESS_STEP_VALIDATION = {
+  unknownStep: 'Unknown milestone.',
   dependencies: 'Dependencies are not complete.',
   // A deployed backend can still return these until it catches up with web.
   evidenceReference: 'Evidence must reference successful observations from this run.',

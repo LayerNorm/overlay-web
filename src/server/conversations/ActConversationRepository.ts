@@ -80,7 +80,7 @@ export type ConversationListRow = {
   /** Active participant types other than the current actor, for DM presentation. */
   otherParticipantTypes?: Array<'human' | 'agent'>
   workspaceId?: string
-  /** Set on conversations mapped to an external surface thread (e.g. Slack). */
+  /** Set on conversations mirrored from Slack by the retired Slack bot; such threads are read-only. */
   externalPlatform?: string
   externalChannelId?: string
   externalThreadId?: string
@@ -179,10 +179,6 @@ export interface ActConversationRepository {
     conversationType?: 'personal' | 'dm' | 'channel'
     scope?: 'personal' | 'workspace'
     createdByPrincipalId?: string
-    externalPlatform?: string
-    externalChannelId?: string
-    externalThreadId?: string
-    surfaceBindingId?: string
   }): Promise<ConversationId>
   getConversationById(args: {
     conversationId: ConversationId
@@ -265,10 +261,6 @@ export interface ActConversationRepository {
     workspaceId?: string
     authorKind?: 'human' | 'agent' | 'model' | 'system'
     authorPrincipalId?: string
-    /** Identity of an external-surface sender who is not an Overlay principal. */
-    importedAuthorName?: string
-    importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
     clientNonce?: string
     threadRootMessageId?: string
   }): Promise<Id<'conversationMessages'> | null>

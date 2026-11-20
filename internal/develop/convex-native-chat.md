@@ -12,7 +12,16 @@ documented in [Convex and Vercel Workflow](./convex-workflow.md#workflow-stream-
 
 Web-first releases keep the old summary-gated request shape until the existing live `platform/uiSettings:mine` query advertises `personalChatParallelReadsRevision: parallel-reads-v1`. The query is already used by account synchronization, so identical subscriptions share Convex's query cache. Older backends never receive the new optional argument during rollout. Once the matching backend is synchronized after web deployment, the marker enables parallel reads. For rollback, revert the frontend optimization while retaining the additive backend argument for already-open clients. Do not remove that contract while cached clients can still send it; newly mounted clients without the marker use the legacy path.
 
-The personal-chat hook requests `getSummary` and the first `getMessages` page together for a well-formed route ID. `getMessages` accepts optional `unavailableAsEmpty: true` for this route bootstrap: authenticated, capable workspace members receive an empty exhausted page for an inaccessible/deleted/non-personal conversation. Authentication, workspace membership and capability failures still reject, and callers omitting the option retain strict rejection. The hook does not expose rows, execution or stream subscriptions until the live summary matches the current conversation and workspace. Parallel loading is independent of the still-planned bounded transcript prefetch/cache.
+The personal-chat hook requests `getSummary` and the first `getMessages` page together for a well-formed route ID. `getMessages` accepts optional `unavailableAsEmpty: true` for this route bootstrap: authenticated, capable workspace members receive an empty exhausted page for an inaccessible/deleted/non-personal conversation. Authentication, workspace membership and capability failures still reject, and callers omitting the option retain strict rejection. The hook does not expose rows, execution or stream subscriptions until the live summary matches the current conversation and workspace. Parallel loading is independent of the recent-transcript cache below.
+
+### Recent-transcript cache and hover prefetch
+
+`usePaginatedQuery` (convex 1.42) adds a per-instance pagination id to its first-page arguments, and `ConvexReactClient.query` unsubscribes after its first result. A hover query therefore cannot seed the destination's paginated hook or the room's `collaboration/rooms:state` subscription. Instead, `src/shared/chat/transcript-cache.ts` is a bounded in-memory cache (32 entries, 100 newest items per entry to match the backend page cap, 8 MiB estimated, 30 minutes) that the transcript hooks read first. Keys carry kind (`personal` or `room`), user, workspace, conversation and variant (a room stores its timeline and its live state as two entries). `TranscriptCacheScopeProvider` (mounted inside `PersonalChatProvider` from the signed-in user and active workspace) clears every entry and bumps a generation on logout, account switch or workspace switch; a prefetch result from an older generation is discarded.
+
+- **Readers.** `usePersonalConversationTranscript` (chat route and note panel), `ConvexRoomMessageSubscription`, `useRoomTranscript` and `useRoomState` (DMs, channels, agent threads) paint the cached snapshot until their live query answers, mark it `restored`, and size the live first page to the snapshot's row count so the live page replaces it without a jump. The first live room page replaces restored rows rather than merging them. A live `null` summary/access/state evicts the entry and the transcript shows as unavailable. Cached data is display-only: every action still goes through an authorized mutation, and `loadMore` waits for the live query.
+- **Write-back.** Each reader snapshots its live settled data and writes it back when the reader leaves the conversation, not on each streamed update.
+- **Scroll.** `ChatMessageList` and `useRoomTranscript` save the first visible exchange/message and its offset (or "following the newest") on scroll, rAF-throttled, and restore it once on a revisit; a missing anchor falls back to the newest message.
+- **Prefetch.** Chat and agent-thread sidebar rows call `useTranscriptPrefetchIntent` on pointer enter and focus; after 120 ms without leaving, `prefetchTranscript` issues one-shot queries only (personal: summary, then first page of 50; room: access, then state and first page), at most two at once, four queued, a 10-second slot timeout, and skips draft ids and snapshots under 20 seconds old. It never mutates and never leaves a subscription running.
 
 ### Directory rendering and agent navigation
 
@@ -182,13 +191,22 @@ policy suppresses file metadata without suppressing text history.
 
 ### Unified durable public streaming
 
-New root Harness runs may carry immutable `publicStreamVersion: 1` when their
-workspace ID is an exact entry in the server-only
-`OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` comma-separated allowlist. Empty is
-disabled; `*` is not a wildcard. Personal, workspace-agent and automation
-admissions use the same policy helper. Existing roots keep the publishing path
-recorded in their admission policy when the environment changes; removing an ID
-stops future enrollment but does not switch an in-flight run.
+Every new root Harness run carries immutable `publicStreamVersion: 1`, in every
+workspace including ones created later. The server-only
+`OVERLAY_UNIFIED_STREAMING` variable is the kill switch: unset, empty or `on`
+enrolls new roots; `off` (or any other value, so a typo fails toward the legacy
+path) admits new roots on the legacy message-row path. Personal chat,
+workspace-scope chat, workspace agents (rooms and work) and automations all
+admit through `personalHarnessPolicy`. Child runs never inherit the version:
+their policy is derived from the parent without it, and the stream writer
+accepts only roots. Existing roots keep the publishing path recorded in their
+admission policy when the environment changes, so flipping the switch never
+moves an in-flight run. Rollback is setting `OVERLAY_UNIFIED_STREAMING=off` on
+the web deployment and redeploying; Convex reads no setting.
+
+The former exact-ID allowlist `OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` is
+retired and ignored; it cannot keep specific workspaces enrolled while the
+switch is off. Delete it from deployments at any time.
 
 The versioned path publishes filtered response text from the executor's secure
 model boundary. It does not publish reasoning, child/summary/verification output
@@ -208,6 +226,35 @@ agent-thread reply, which then showed tool rows and only the latest sentence.
 The browser places live stream text before the trailing tool rows that native tool
 progress stores for the running call (they have no part `id`; settled transcript
 parts do), so a sentence stays ahead of the tool it starts.
+
+Every thread kind reads live text through one hook, `useLivePublicStreams`
+(`src/components/providers/useLivePublicStreams.ts`), and projects it with
+`projectActivePublicStreams`: personal and workspace chats, automation threads
+(both through `usePersonalChatTranscript`) and agent threads, DMs and channels
+(`ConvexRoomMessageSubscription`). It subscribes only while a reply is generating.
+Reads are incremental: `chat/personal:activePublicStreamUpdates` and
+`collaboration/rooms:activePublicStreamUpdates` take a cursor per reply (run,
+generation, invocation and last segment index held) and return the segments from
+that last, still-growing segment onward. The cursor carries no sequence, so it only
+changes when a new segment starts: while a segment grows the reader keeps one
+reactive subscription and each re-run reads that segment (an older client's
+`sequence` is accepted and ignored). Readers wait for `uiSettings` before reading,
+so they never switch from whole to incremental reads mid-reply. A cursor from
+another run, generation or invocation is ignored and
+the whole stream comes back; segments from another attempt are never returned. The
+client joins segments in `src/shared/chat/public-stream-updates.ts`, keeps on-screen
+text while a re-read loads or after a gap (and re-reads from the first segment), and
+keeps object identity when a read brings nothing new. Both queries apply the same
+viewer, run, delivery, checkpoint and generation checks as the whole-stream readers
+(`readableActiveStream` in `convex/lib/publicStreamRead.ts`). The run's metadata
+JSON is still parsed on each read: it is written from several harness paths, and a
+denormalized copy that one path forgot would show a retried generation's stream.
+Settled transcript steps store `hasOutput` and `outputLimitReached` beside their
+JSON, so the continuation check no longer parses up to ten step snapshots per read;
+older rows without the fields are still parsed. During a web-first rollout the hook
+uses the incremental query only once `platform/uiSettings:mine` advertises
+`livePublicStreamRevision: incremental-v1`, and reads whole streams before that. Keep
+both whole-stream queries for already-open clients and server readers.
 
 Model-step checkpoints can precede native tool execution and temporarily contain
 the missing-result fallback. Final delivery reconciles only an explicit later
@@ -291,13 +338,34 @@ produced only thinking (the provider-reported reasoning tokens cover all but a f
 output tokens), `harnessReasoningSetting` runs the continuation with
 `reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
 
-The native personal Act request remains pending until the durable root's
-authoritative Convex state is terminal. Its SSE adapter reads the same persisted
+The web chat and the Notebook assistant send `liveTransport: 'convex'` on native
+personal Act requests.
+For an admitted versioned run the response then carries only `start`, the
+`harnessAccepted` run identity (with `liveTransport: 'convex'`) and source
+citations, and finishes at once, so no function stays open relaying text. The
+client renders the reply from Convex like every other thread, merges only that
+metadata into the saved row (`personal-transcript.ts`), and completes the turn
+(session, unread notice, first-turn activation, subscription refresh) when
+`chat/personal:getExecution` reports the run terminal (`waitForNativePersonalTurn`);
+a failed run reports "The durable run failed." as before. The Notebook assistant
+sends on the note's own personal chat (client id `notebook:<noteId>`, found with
+`chat/personal:getByClientId`), waits for the same execution settlement, and renders
+the note conversation in its side panel through `EmbeddedPersonalTranscript`, which
+reads with `usePersonalConversationTranscript` (the route-free half of the chat
+route's read) and projects rows with chat's `personal-transcript` and
+`toChatTranscriptView`. Runs that are not admitted on the versioned path keep
+streaming over the response. Requests without the field, such as Act retry and
+public API callers, keep the SSE adapter: the request remains pending until the durable root's
+authoritative Convex state is terminal. That adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and
 ordered tool-part metadata; it never forwards a losing Workflow handle or raw
 SDK output. It reads only the stream projection rather than repeatedly loading
 the full root snapshot. Runs without `publicStreamVersion` retain their
-existing transport/projector. Rollback is therefore an enrollment change, not
+existing transport/projector. Automation-thread replies are admitted with
+`personalHarnessPolicy`, so they carry `publicStreamVersion` 1 when unified streaming
+is on and render through `usePersonalChatTranscript` like any chat. The automation
+run viewer (`run-viewer-hooks.ts`, `/api/v1/automations/[id]/events`) shows workflow
+step status, not reply text, so it has no live reply to move. Rollback is therefore an enrollment change, not
 a mid-run protocol switch.
 
 Stream timing fields are local monotonic measurements: provider-first-text is
@@ -328,7 +396,7 @@ chats do not show workspace-filed outputs; workspace and automation chats do.
 | Operation | Path | Why |
 | --- | --- | --- |
 | List, transcript, run state, send, rename, archive, read, delete turn, branch, generated UI edits, media notes | Convex `chat/personal:*` | Shared state, updates every client |
-| Model execution and streaming | `conversations/act` | Server work |
+| Model execution | `conversations/act` (admission; live text from Convex) | Server work |
 | Stop, approval and input response | `conversations/stop`, `run/approval`, `run/input` | They abort provider calls and resume durable workflows; status returns through `getExecution` |
 | Title generation, image and video generation | `generate-*` | Provider calls |
 | Permanent delete of an archived chat | `v1/conversations` DELETE | Moves with unified archive, CN-33 |

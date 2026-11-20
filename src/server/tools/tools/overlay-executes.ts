@@ -16,6 +16,7 @@ import {
   type ComputerActor,
 } from '@/server/computers/ComputerService'
 import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/computers'
+import { NEW_AGENT_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
@@ -719,7 +720,7 @@ export async function executeCreateAgent(
   try {
     const res = await callInternalApi(
       '/api/v1/agents',
-      { ...input, ...toolAuthBody(options) },
+      { ...input, modelId: input.modelId ?? NEW_AGENT_DEFAULT_MODEL_ID, ...toolAuthBody(options) },
       options.accessToken,
       options.baseUrl,
       { forwardCookie: options.forwardCookie },
@@ -1619,8 +1620,9 @@ export function executeListAgents(options: OverlayToolsOptions) {
   return callAgentAsks(options, { action: 'list' })
 }
 
-export function executeAskAgent(options: OverlayToolsOptions, input: { agent: string; message: string; wait?: boolean }) {
-  return callAgentAsks(options, { action: 'ask', agent: input.agent, message: input.message, wait: input.wait !== false })
+export function executeAskAgent(options: OverlayToolsOptions, input: { agent: string; message: string; wait?: boolean; assignmentId?: string; expectedAttemptId?: string }) {
+  return callAgentAsks(options, { action: 'ask', agent: input.agent, message: input.message, wait: input.wait !== false,
+    assignmentId: input.assignmentId, expectedAttemptId: input.expectedAttemptId })
 }
 
 export function executeReadAgentReply(options: OverlayToolsOptions, input: { conversationId: string; turnId: string }) {

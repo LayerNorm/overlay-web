@@ -330,7 +330,7 @@ preserve Computer takeover/handback controls when regrouping the fields.
 Radix forbids empty item values; the adapter uses private index IDs and translates
 back to original public values. Empty options remain selectable (sharing, replay,
 agent defaults/accounts); an unmatched controlled value retains its display text
-(the Slack channel prompt). Groups preserve source order; disabled options/groups
+(for example a prompt whose saved option is gone). Groups preserve source order; disabled options/groups
 stay visible and cannot be selected. No domain model-picker ordering changes.
 
 `Select` keeps a visually hidden native select for original FormData values,
@@ -573,7 +573,7 @@ still mark the row that opened it.
 
 ## Agent settings load together
 
-The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, reachability surfaces, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
+The agent settings (`AgentEditorPage`) have several independent loaders (the agent, its connection and environments, its computer, the Cloud agent's machine and config, memories). They must not pop in one by one. Each part reports `useEditorLoad(loading)` (`EditorLoadGate.tsx`); the gate keeps the form mounted but hidden under one skeleton until none is loading, then reveals it and stays revealed (10 s timeout so a stuck part cannot trap the form). Hooks expose a derived `initialLoading` (keyed by agent id, so the first render already knows) rather than an effect-set flag. Parts that only needed the agent (`CloudAgentAccess`, `CloudAgentModel`) take it from the page instead of fetching it again. New async parts of the form must call `useEditorLoad`.
 
 ## One boot loader
 

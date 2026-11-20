@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import { useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionArgs } from 'convex/server'
 import type { UpdateWorkItemRequest, WorkContext, WorkEvent, WorkItem } from '@overlay/app-core'
@@ -45,6 +45,12 @@ export function useLiveWork(listView: PanelScope | undefined) {
     items: items as WorkItem[] | null | undefined,
     context: (context ?? null) as WorkContext | null,
   }
+}
+
+export function useLiveAssignments(listView: PanelScope | undefined) {
+  const workspaceId = useWorkWorkspace()
+  return usePaginatedQuery(api.work.browse.assignments,
+    workspaceId ? { workspaceId, ...(listView ? { view: listView } : {}) } : 'skip', { initialNumItems: 25 })
 }
 
 /** One task, live, wherever it is (another scope, archived, past the list window). Null when gone or hidden. */

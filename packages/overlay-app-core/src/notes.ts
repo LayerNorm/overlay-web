@@ -31,7 +31,6 @@ export interface CanonicalNoteFile extends Pick<
 
 export type NotebookAgentUiItem =
   | { type: 'user'; text: string }
-  | { type: 'thinking'; text: string }
   | { type: 'tool_call'; tool: string; toolInput?: Record<string, unknown> }
   | { type: 'text'; text: string }
   | { type: 'error'; text: string }
@@ -208,8 +207,6 @@ export function parseNotebookAgentStreamLine(line: string): NotebookAgentStreamE
 
 export function notebookAgentEventToUiItem(event: NotebookAgentStreamEvent): NotebookAgentUiItem | null {
   switch (event.type) {
-    case 'thinking':
-      return event.thinking?.trim() ? { type: 'thinking', text: event.thinking } : null
     case 'tool_call':
       return { type: 'tool_call', tool: event.tool ?? 'tool', toolInput: event.toolInput }
     case 'text':

@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   admit: vi.fn(),
   startWorkflow: vi.fn(),
   workflow: vi.fn(),
-  surface: vi.fn(),
   server: { appData: { repositories: { conversations: {} } }, chatUsagePolicy: {} },
 }))
 
@@ -19,8 +18,8 @@ vi.mock('@/server/conversations/ActEntitlementService', () => ({
 vi.mock('./native-workflow-input-builder', () => ({ buildNativeHarnessWorkflowInput: vi.fn() }))
 vi.mock('./ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class {
+    acquireNativeTurn() { return Promise.resolve(true) }
     admit(input: unknown) { return mocks.admit(input) }
-    getSurfaceExecutionByHarnessRunId(id: string) { return mocks.surface(id) }
   },
 }))
 vi.mock('@/server/workflows/native-harness', () => ({ nativeHarnessWorkflow: mocks.workflow }))
@@ -48,7 +47,6 @@ const run = {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.surface.mockResolvedValue(null)
   mocks.admit.mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
   mocks.startWorkflow.mockResolvedValue({})
 })
@@ -71,8 +69,8 @@ test('read-only native tool sets remain plan-optional and start with the built i
     constraints: [],
     policy: {
       actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read_file', 'search_memory'],
-      publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace', requiresPlan: false,
-      deadlineAt: 86_400_100, maxCostMicros: 0,
+      publicProgressVersion: 1, publicStreamVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace',
+      requiresPlan: false, deadlineAt: 86_400_100, maxCostMicros: 0,
     },
     source: { conversationId: 'room' },
     deliveryAgentRunId: 'agent-run',
