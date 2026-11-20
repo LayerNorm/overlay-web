@@ -1,7 +1,8 @@
 diff --git a/internal/auth/codex/openai_auth.go b/internal/auth/codex/openai_auth.go
 --- a/internal/auth/codex/openai_auth.go
 +++ b/internal/auth/codex/openai_auth.go
-@@ -38,0 +39,7 @@
+@@ -41,0 +42,9 @@ type CodexAuth struct {
++// RefreshHTTPError carries the token endpoint's HTTP status for callers that classify refresh failures.
 +type RefreshHTTPError struct {
 +	statusCode int
 +	message    string
@@ -9,8 +10,8 @@ diff --git a/internal/auth/codex/openai_auth.go b/internal/auth/codex/openai_aut
 +
 +func (err *RefreshHTTPError) Error() string   { return err.message }
 +func (err *RefreshHTTPError) StatusCode() int { return err.statusCode }
-@@ -66,0 +74,9 @@
 +
+@@ -49,0 +59,9 @@ func NewCodexAuth(cfg *config.Config) *CodexAuth {
 +// NewCodexAuthWithHTTPClient creates a CodexAuth with a caller-provided HTTP client.
 +func NewCodexAuthWithHTTPClient(cfg *config.Config, httpClient *http.Client) *CodexAuth {
 +	auth := NewCodexAuth(cfg)
@@ -19,16 +20,20 @@ diff --git a/internal/auth/codex/openai_auth.go b/internal/auth/codex/openai_aut
 +	}
 +	return auth
 +}
-@@ -252 +268,4 @@
--		return nil, fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(body))
-+		return nil, &RefreshHTTPError{
++
+@@ -261 +279,4 @@ func (o *CodexAuth) refreshTokensSingleFlight(ctx context.Context, refreshToken
+-		errResponse := fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(body))
++		var errResponse error = &RefreshHTTPError{
 +			statusCode: resp.StatusCode,
 +			message:    fmt.Sprintf("token refresh failed with status %d: %s", resp.StatusCode, string(body)),
 +		}
 diff --git a/internal/auth/codex/openai_auth_test.go b/internal/auth/codex/openai_auth_test.go
 --- a/internal/auth/codex/openai_auth_test.go
 +++ b/internal/auth/codex/openai_auth_test.go
-@@ -68,0 +69,27 @@
+@@ -4,0 +5 @@ import (
++	"errors"
+@@ -380,0 +382,33 @@ func TestRefreshTokensWithRetry_TerminalGrantErrorsOnlyAttemptOnce(t *testing.T)
++
 +func TestRefreshTokensReturnsTypedStatusError(t *testing.T) {
 +	resetCodexRefreshGroupForTest()
 +	t.Cleanup(resetCodexRefreshGroupForTest)
@@ -48,11 +53,16 @@ diff --git a/internal/auth/codex/openai_auth_test.go b/internal/auth/codex/opena
 +	if err == nil {
 +		t.Fatal("expected refresh error")
 +	}
-+	statusErr, ok := err.(interface{ StatusCode() int })
-+	if !ok || statusErr.StatusCode() != http.StatusTooManyRequests {
++	// Upstream may wrap the response error (an unconfirmed rotation), so the status is read through the chain.
++	var statusErr interface{ StatusCode() int }
++	if !errors.As(err, &statusErr) || statusErr.StatusCode() != http.StatusTooManyRequests {
 +		t.Fatalf("refresh error status = %v, want %d", statusErr, http.StatusTooManyRequests)
 +	}
-+	if got, want := err.Error(), "token refresh failed with status 429: private provider text"; got != want {
++	var httpErr *RefreshHTTPError
++	if !errors.As(err, &httpErr) {
++		t.Fatalf("refresh error = %T, want a wrapped *RefreshHTTPError", err)
++	}
++	if got, want := httpErr.Error(), "token refresh failed with status 429: private provider text"; got != want {
 +		t.Fatalf("refresh error = %q, want %q", got, want)
 +	}
 +}

@@ -1,6 +1,6 @@
 # Private subscription bridge
 
-This service embeds CLIProxyAPI at `01b24f1f95dc9b309765212c52b25b25e005ff01`.
+This service embeds CLIProxyAPI at `6db7d4b839d86c5b24e17bbe73bcd4db18ef1b1a`.
 It is an Overlay-owned stateless bridge, not the stock multi-account proxy.
 Every internal endpoint requires `Authorization: Bearer …`; set
 `OVERLAY_CLIPROXYAPI_SECRET` to a random value of at least 32 characters.
