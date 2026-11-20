@@ -151,7 +151,8 @@ export interface CanonicalNotebookEditorProps {
   headerLeading?: ReactNode
   projectName?: string
   repository: NotebookEditorRepository
-  runAgent(request: NotebookAgentRequest, signal: AbortSignal): Promise<Response>
+  /** Resolves with an NDJSON event stream, or with nothing once a run whose reply renders in `agentTranscript` has ended. */
+  runAgent(request: NotebookAgentRequest, signal: AbortSignal): Promise<Response | void>
   models: readonly NotebookEditorModel[]
   initialModelId: string
   onModelChange?(modelId: string): void
@@ -168,6 +169,8 @@ export interface CanonicalNotebookEditorProps {
     onKeyDown(event: React.KeyboardEvent<HTMLElement>): void
   }): ReactNode
   renderMarkdown?(text: string, streaming: boolean): ReactNode
+  /** Replaces the panel's own items with the note conversation's transcript. */
+  agentTranscript?: ReactNode
   media?: NotebookEditorMediaAdapter
   focusRequest?: number
   contentContainerRef?: Ref<HTMLDivElement>
@@ -693,6 +696,7 @@ export function CanonicalNotebookEditor({
   renderExportMenu,
   renderAgentInput,
   renderMarkdown,
+  agentTranscript,
   media,
   focusRequest,
   contentContainerRef,
@@ -840,6 +844,7 @@ export function CanonicalNotebookEditor({
         <NotebookAgentPanel
           header={assistantHeader}
           items={agent.agentItems}
+          transcript={agentTranscript}
           running={agent.agentRunning}
           footer={<NotebookAgentReviewActions editor={editor} running={agent.agentRunning} />}
           composer={agentComposer}

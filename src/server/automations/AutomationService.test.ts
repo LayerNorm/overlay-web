@@ -833,3 +833,20 @@ test('no event when settlement lost its owner fence, or for cancelled and skippe
   await other.settle('skipped')
   assert.deepEqual(other.published(), [])
 })
+
+test('AutomationService.createAutomation answers 404 for an agent the person cannot use', async () => {
+  const repository = createRepository({
+    async createAutomation() {
+      throw new Error('[CONVEX M(automations/automations:create)] Uncaught Error: AGENT_NOT_FOUND')
+    },
+  })
+  const { service } = createService(repository)
+
+  await assert.rejects(
+    () => service.createAutomation({
+      userId: 'user_1',
+      body: { instructions: 'Check in.', enabled: false, schedule: { kind: 'daily', hour: 9 }, agentId: 'agent_private' },
+    }),
+    (error) => error instanceof AutomationServiceError && error.statusCode === 404 && error.payload.error === 'Agent not found',
+  )
+})

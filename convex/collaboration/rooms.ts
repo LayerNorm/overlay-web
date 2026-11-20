@@ -20,7 +20,7 @@ import {
   updateParticipantStateFor,
   upsertPresenceFor,
 } from './directMessages'
-import { readActivePublicStreams } from '../lib/publicStreamRead'
+import { publicStreamCursorValidator, readActivePublicStreamUpdates, readActivePublicStreams } from '../lib/publicStreamRead'
 import {
   listPinsFor,
   listReactionsFor,
@@ -142,6 +142,19 @@ export const activePublicStreams = query({
   handler: async (ctx, args) => {
     if (!await readableRoom(ctx, args)) return []
     return await readActivePublicStreams(ctx, args.conversationId, args.messageIds)
+  },
+})
+
+/** Only live text the reader does not hold yet; see `readActivePublicStreamUpdates`. */
+export const activePublicStreamUpdates = query({
+  args: {
+    ...roomArgs,
+    messageIds: v.array(v.id('conversationMessages')),
+    cursors: v.array(publicStreamCursorValidator),
+  },
+  handler: async (ctx, args) => {
+    if (!await readableRoom(ctx, args)) return []
+    return await readActivePublicStreamUpdates(ctx, args.conversationId, args.messageIds, args.cursors)
   },
 })
 

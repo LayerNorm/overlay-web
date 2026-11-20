@@ -132,3 +132,44 @@ test('a failed first turn reports its error before completion activates the real
 
   assert.deepEqual(events, ['error', 'complete:true'])
 })
+
+test('a reply read from Convex completes the turn when Convex settles it, not when the act response ends', async () => {
+  const transport = {
+    sendMessages: async () => new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: 'start', messageId: 'assistant-live' })
+        controller.enqueue({ type: 'message-metadata', messageMetadata: { harnessAccepted: { runId: 'run', status: 'running', liveTransport: 'convex' } } })
+        controller.enqueue({ type: 'finish' })
+        controller.close()
+      },
+    }),
+    reconnectToStream: async () => null,
+  } as unknown as ChatTransport<UIMessage>
+  const run = async (outcome: 'completed' | 'failed') => {
+    const runtime = {
+      actChat: new Chat({ id: 'live', messages: [{ id: 'turn', role: 'user', parts: [{ type: 'text', text: 'Hi' }] } as UIMessage], transport }),
+      askChats: [{ messages: [], stop: () => undefined }],
+    } as unknown as ConversationRuntime
+    const events: string[] = []
+    let settle!: (value: 'completed' | 'failed') => void
+    const settled = new Promise<'completed' | 'failed'>((resolve) => { settle = resolve })
+    const done = startActTextStream({
+      chatId: 'live', targetRuntime: runtime, textModelsForTurn: ['model'], selectedActModel: 'model',
+      turnId: 'turn', partsForModel: [{ type: 'text', text: 'Hi' }], commonBody: {},
+      isChatActive: () => true,
+      completeSession: () => { events.push('complete') },
+      loadSubscription: () => undefined,
+      onError: (error) => { events.push(`error:${(error as Error).message}`) },
+      logPrefix: 'test',
+      awaitLiveSettlement: () => { events.push('waiting'); return settled },
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.deepEqual(events, ['waiting'])
+    settle(outcome)
+    await done
+    return events
+  }
+  assert.deepEqual(await run('completed'), ['waiting', 'complete'])
+  assert.deepEqual(await run('failed'), ['waiting', 'error:The durable run failed.', 'complete'])
+})
+

@@ -164,6 +164,14 @@ test('a mid-stream provider error stays classified after durable transport strip
   expect(describeHarnessFailureCause({ name: 'AI_StreamProviderError', type: 'not a label!' })[0]).not.toHaveProperty('providerType')
 })
 
+test('a model the server no longer offers is reported as a model problem, not lost authorization', () => {
+  for (const message of ['The native model is no longer allowed by server policy.', 'The model is no longer allowed by server policy.']) {
+    const diagnostic = harnessDiagnosticForFailure('root', snapshot(), new Error(message), 'model')
+    expect(diagnostic.code).toBe('MODEL_UNAVAILABLE')
+    expect(diagnostic.nextAction).toBe('Choose another model and send your message again.')
+  }
+})
+
 test('fatal model and backend failures are classified instead of unknown', () => {
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('This hosted model is retired. Choose a supported paid model.'), 'model').code)
     .toBe('MODEL_UNAVAILABLE')

@@ -7,8 +7,8 @@ import type { GeneratedUiConnectorActions } from '@overlay/chat-react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import {
-  INTEGRATIONS_BC_CHANNEL,
   notifyIntegrationsChanged,
+  subscribeIntegrationsChanged,
 } from '@/shared/integrations/integrations-events'
 import {
   getIntegrationLogoUrl,
@@ -50,21 +50,13 @@ export function useGeneratedUiConnectorActions({ enabled = true }: { enabled?: b
     const initialLoad = window.setTimeout(() => void loadConnected(), 0)
 
     const onChanged = () => void loadConnected()
-    window.addEventListener('overlay:integrations-changed', onChanged)
+    const unsubscribe = subscribeIntegrationsChanged(onChanged)
     // OAuth finishes in another tab; refresh connected state when the user returns.
     window.addEventListener('focus', onChanged)
-    let bc: BroadcastChannel | null = null
-    try {
-      bc = new BroadcastChannel(INTEGRATIONS_BC_CHANNEL)
-      bc.onmessage = onChanged
-    } catch {
-      bc = null
-    }
     return () => {
       window.clearTimeout(initialLoad)
-      window.removeEventListener('overlay:integrations-changed', onChanged)
+      unsubscribe()
       window.removeEventListener('focus', onChanged)
-      bc?.close()
     }
   }, [enabled, loadConnected])
 

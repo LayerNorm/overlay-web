@@ -809,7 +809,7 @@ export function useNotebookAgent({
   agentReviewRef,
 }: {
   agentReviewRef: AgentReviewRef
-  runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
+  runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response | void>
   editor: TiptapEditor | null
   activeNote: NotebookNote | null
   title: string
@@ -908,6 +908,7 @@ export function useNotebookAgent({
         mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
       }, ac.signal)
 
+      if (!res) return
       if (!res.ok) {
         let errText = `Request failed (${res.status})`
         try {
@@ -921,6 +922,9 @@ export function useNotebookAgent({
           }
         }
         setAgentItems((prev) => [...prev, { type: 'error', text: errText }])
+        // The request was refused before the message was saved, so the prompt is not in the transcript:
+        // put it back in the composer (unless something new was typed) so it can be copied or retried.
+        setAgentInput((current) => current || message)
         return
       }
 

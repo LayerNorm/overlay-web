@@ -76,7 +76,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     if (conversation.externalPlatform) {
       return NextResponse.json(
-        { error: 'Surface conversations are read-only — reply on the connected platform.' },
+        { error: 'Conversations mirrored from an external platform are read-only.' },
         { status: 403 },
       )
     }

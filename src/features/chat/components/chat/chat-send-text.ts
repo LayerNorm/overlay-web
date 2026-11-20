@@ -28,6 +28,7 @@ import {
   type UpdateRuntimeUiState,
 } from './chat-send-body-builders'
 import type { PendingFirstSendState } from './chat-send-pending-first'
+import type { LiveSettlement } from './chatTransport'
 import { workspaceChatsViewActive, type CreateNewChatOptions } from './chat-send-create'
 
 function submissionKey(snapshot: SubmittedComposerSnapshot, replyContext: ReplyContext, workspaceId: string | null | undefined, conversationId: string | null) {
@@ -66,6 +67,7 @@ export async function sendTextTurn({
   nativeWorkspaceId,
   submitNativePersonalTurn,
   setPendingTranscriptConversation,
+  watchNativeTurn,
   onUsageExhaustedError,
   pendingFirstSendRef,
   pendingScrollChatIdRef,
@@ -98,6 +100,8 @@ export async function sendTextTurn({
   nativeWorkspaceId?: string | null
   submitNativePersonalTurn?: (args: NativePersonalSubmitArgs) => Promise<{ conversationId: string; messageId: string }>
   setPendingTranscriptConversation?: (conversationId: string | null, ownerId?: string | null, intentKey?: string) => void
+  /** Reads a native turn's live reply and terminal state from Convex instead of the act response. */
+  watchNativeTurn?: (target: { workspaceId: string; conversationId: string; turnId: string }) => Promise<LiveSettlement>
   onUsageExhaustedError: (message: string) => boolean
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   pendingScrollChatIdRef: MutableRefObject<string | null>
@@ -388,6 +392,9 @@ export async function sendTextTurn({
     memoryEnabledSnapshot: snapshot.memoryEnabledSnapshot,
     reasoning,
   })
+  const liveTarget = nativeSubmitEnabled && nativeSubmittedConversationId && nativeWorkspaceId && watchNativeTurn
+    ? { workspaceId: nativeWorkspaceId, conversationId: nativeSubmittedConversationId, turnId: textTurnId }
+    : null
 
   const refreshAfterActTextTurn = async () => {
     await loadSubscription()
@@ -406,7 +413,8 @@ export async function sendTextTurn({
     turnId: textTurnId,
     partsForModel: transportParts,
     userMetadata: payload.userMetadata,
-    commonBody: commonActBody,
+    commonBody: liveTarget ? { ...commonActBody, liveTransport: 'convex' } : commonActBody,
+    ...(liveTarget && watchNativeTurn ? { awaitLiveSettlement: () => watchNativeTurn(liveTarget) } : {}),
     isChatActive: (id) => isStreamChatActive(id, snapshot.temporaryChatSnapshot),
     completeSession: completeSessionForStream,
     loadSubscription: refreshAfterActTextTurn,
