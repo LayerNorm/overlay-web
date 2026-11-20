@@ -4,7 +4,7 @@ Computer operations release their wake claim if provider reconnection fails. An 
 
 Recovery claims include `recoveryProtocol: 'computer-recovery-v1'`. Older Convex validators reject this marker, so the web-first rollout cannot stop machines without the new atomic recovery guards. Recovery becomes available after the matching backend is synchronized through the canonical-main release workflow.
 
-Overlay's desktop tools use one provider-neutral Python 3 driver installed inside a desktop-capable sandbox. The driver communicates with the server using one JSON request and response per command. It reports capabilities, captures PNG screenshots, and supports click, move, drag, type, key, scroll, and wait actions. Input uses `xdotool`; screenshots select the first available of ImageMagick `import`, `scrot`, or `ffmpeg` with X11 capture.
+Overlay's desktop tools use one provider-neutral Python 3 driver installed inside a desktop-capable sandbox. The driver communicates with the server using one JSON request and response per command. It reports capabilities, captures PNG screenshots, and supports click, move, drag, type, key, scroll, and wait actions. Input uses `xdotool`; screenshots select the first available of ImageMagick `import`, `scrot`, or `ffmpeg` with X11 capture. ImageMagick captures at 8 bits per channel with metadata stripped (`-depth 8 -strip`): its default 16-bit PNG was more than twice the size for the same picture, and every screenshot travels in the model request.
 
 Input failures keep the stable user-facing message and include bounded exit, timeout, or spawn status, the xdotool subcommand, and stderr. Typed text is redacted from stderr.
 

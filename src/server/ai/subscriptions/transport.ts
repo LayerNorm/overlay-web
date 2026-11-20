@@ -7,6 +7,7 @@ import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-clie
 import { createSubscriptionService, type SubscriptionService } from './service'
 import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest, subscriptionStatelessRequest } from './request-validation'
 import { withoutUnsupportedSubscriptionFiles } from './unsupported-files-prompt'
+import { logger } from '@/server/observability/logger'
 
 const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
 // Room for several images; the bridge accepts the same body plus its credential envelope.
@@ -281,6 +282,12 @@ async function validateSubscriptionRequest(
     else assertSupportedSubscriptionRequest(body, modelId)
     return { body, requestedStream: body.stream === true }
   } catch (error) {
+    // These are Overlay's own fixed validation messages, never request content.
+    logger.warn('[subscription] request refused before dispatch', {
+      providerId, modelId,
+      // A JSON syntax error quotes the body it failed on, so only its name is logged.
+      refusal: error instanceof Error && !(error instanceof SyntaxError) ? error.message : 'Invalid subscription request',
+    })
     return {
       response: errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request'),
     }
@@ -372,6 +379,10 @@ export function createSubscriptionLanguageModel(args: {
             return errorResponse(safe.status, safe.message, code)
           }
         }
+        logger.warn('[subscription] request failed without a known cause', {
+          providerId: args.providerId, modelId: args.modelId,
+          failureKind: error instanceof Error ? error.constructor.name : typeof error,
+        })
         return errorResponse(400, safeUpstreamError)
       }
     },

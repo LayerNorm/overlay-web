@@ -1,7 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '10'
+export const DRIVER_VERSION = '11'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -248,7 +248,8 @@ def capture_screenshot(max_width):
 
     try:
         if package == "imagemagick":
-            arguments = [executable, "-window", "root"]
+            # 8 bits per channel: the default 16-bit capture is more than twice the size for the same picture.
+            arguments = [executable, "-window", "root", "-depth", "8", "-strip"]
             if width > max_width:
                 arguments.extend(["-resize", str(max_width) + "x>"])
             arguments.append(SHOT_PATH)
