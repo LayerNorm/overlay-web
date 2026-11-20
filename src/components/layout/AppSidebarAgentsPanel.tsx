@@ -358,7 +358,8 @@ function AgentListRow({
     />
   ) : null
   // A pinned chief is a tile (avatar and name) in the row of pinned chiefs above the list, like pinned conversations
-  // in iMessage. No background at rest; filled while open. Its threads span the row below the tiles.
+  // in iMessage. Like every agent row it only opens its threads, so it is never shown selected: a background on hover
+  // only. Its threads span the row below the tiles.
   if (pinned && !activityOnly) {
     return (
       <>
@@ -366,9 +367,7 @@ function AgentListRow({
           <div className="group/tile relative">
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
-              className={`flex h-auto w-full flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
-                isActive || isExpanded ? 'bg-(--surface-subtle)' : 'bg-transparent'
-              }`}>
+              className="flex h-auto w-full flex-col items-center gap-2 rounded-xl bg-transparent px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle)">
               {isOpening
                 ? <span className="flex size-10 items-center justify-center"><Loader2 size={18} className="animate-spin" /></span>
                 : <AgentCreature isDefault={agent.isDefault} agent={agent} size={40} />}
@@ -385,7 +384,7 @@ function AgentListRow({
             </Button>
           </div>
         </div>
-        {threads ? <div className="col-span-full row-start-2">{threads}</div> : null}
+        {threads ? <div className="col-span-full row-start-2 pt-2">{threads}</div> : null}
       </>
     )
   }
@@ -634,7 +633,8 @@ export function AgentsInlinePanel({
         [
           pinnedAgents.length ? (
             <SidebarMenuItem key="pinned-chiefs" data-pinned-chiefs className="grid gap-x-1.5 pb-2 pt-1"
-              style={{ gridTemplateColumns: `repeat(${pinnedAgents.length}, minmax(0, 1fr))` }}>
+              // At least two columns, so a lone chief is a tile the size it is beside another, not the full width.
+              style={{ gridTemplateColumns: `repeat(${Math.max(2, pinnedAgents.length)}, minmax(0, 1fr))` }}>
               {pinnedAgents.map(renderAgent)}
             </SidebarMenuItem>
           ) : null,

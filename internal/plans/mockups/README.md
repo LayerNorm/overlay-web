@@ -107,20 +107,15 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
-- `agent-working-state.html` (feature `agent-working-state`): the working state, date line, pinned chief tiles and
-  response spacing, now built into production; the feature only adds fixtures. A live
-  response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
-  own tool wording, instead of the 24px Overlay mark. While a tool runs, the orb sits on that tool's row (an agent
-  tool's row says who is asked and what: "Asking Quill: …"); between tools a line at the bottom says "Thinking" or
-  "Writing the reply" with how long it has run. The pinned chiefs (workspace and your own) sit side by side as tiles
-  at the top of the Workspace tab, like pinned conversations in iMessage: no background at rest, filled while open,
-  one open at a time with its threads below. Every block of a response is the same distance apart, including the
-  assignment row and the response controls. The orb follows the kind of step: thinking or writing,
-  using a tool, reading or searching, asking another agent (AICSS lattice orbs S1–S4, MIT). The date line is the
-  date alone, without rules. Open
-  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convrelaytest0000000000000000`
-  (a relay between agents), `...&id=k17convlaunch0000000000000000000` (a command) or
-  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_scout&id=k17convscoutpricing0000000000000`.
+- `agent-sidebar-panels.html` (feature `agent-sidebar-panels`): the proposed agent sidebar changes, built from the
+  production components on branch `codex/agent-sidebar-panels`; the feature only adds fixtures. The right panel opens
+  on the agent's avatar and name with its panels below: Settings first, then Computer (a plain row with its status),
+  Assignments, Progress, Changes and Files, with no search box and no shortcuts. "+" opens that same view as a new tab.
+  In the agents list each agent shows at most five threads, then "Load more" (the open thread always stays listed).
+  The pinned chief tiles are never shown selected (a background on hover only), a lone chief is a half-width tile, and
+  its threads start a little below it. Open
+  `agent-sidebar-panels.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convpricing000000000000000000`
+  and open the panel at the top right, or `agent-sidebar-panels.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`.
   Delete it when the design ships or is rejected.
 - `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
   Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
