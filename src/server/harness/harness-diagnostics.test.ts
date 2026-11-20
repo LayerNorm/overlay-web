@@ -177,6 +177,9 @@ test('fatal model and backend failures are classified instead of unknown', () =>
     .toBe('MODEL_UNAVAILABLE')
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('Harness backend is unavailable.'), 'model').code)
     .toBe('BACKEND_UNAVAILABLE')
+  // The agent's model was changed mid-run: a model problem, not lost authorization.
+  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('The model is no longer an admitted native agent candidate.'), 'model').code)
+    .toBe('MODEL_UNAVAILABLE')
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('This native action requires fresh approval.'), 'tool').code)
     .toBe('AUTHORIZATION_REVOKED')
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('The explicit harness task deadline was reached while waiting.'), 'model').code)
