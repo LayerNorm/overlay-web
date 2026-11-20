@@ -20,6 +20,8 @@ const MAX_ROOM_MESSAGE_CHARS = 4_000
 /** A question an outside agent asks right after being shown another agent's message continues that agent's chain. */
 const CHAIN_WINDOW_MS = 10 * 60_000
 const WAIT_POLL_MS = 2_000
+/** How often a waiting agent's presence is refreshed; the backend ignores anything more frequent. */
+const PRESENCE_TOUCH_MS = 20_000
 export const MAX_WAIT_SECONDS = 50
 
 export class McpAgentNetworkError extends Error {
@@ -130,11 +132,15 @@ export class McpAgentNetworkService {
   async waitForMessages(agent: JoinedMcpAgent, timeoutSeconds?: number) {
     const sleep = this.dependencies.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     const deadline = this.now() + Math.max(1, Math.min(MAX_WAIT_SECONDS, Math.floor(timeoutSeconds ?? MAX_WAIT_SECONDS))) * 1_000
+    let touchedAt = this.now()
     for (;;) {
       if (await this.unreadCount(agent) > 0) return await this.checkInbox(agent, { onlyNew: true })
       if (this.now() >= deadline) return []
       await sleep(WAIT_POLL_MS)
-      void this.dependencies.network.touchPresence({ joinId: agent.join.id, now: this.now() }).catch((_error) => undefined)
+      if (this.now() - touchedAt >= PRESENCE_TOUCH_MS) {
+        touchedAt = this.now()
+        void this.dependencies.network.touchPresence({ joinId: agent.join.id, now: touchedAt }).catch((_error) => undefined)
+      }
     }
   }
 
