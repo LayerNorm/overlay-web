@@ -111,7 +111,10 @@ them. Besides the canonical app mockup, this folder holds only:
   response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
   own tool wording, instead of the 24px Overlay mark. While a tool runs, the orb sits on that tool's row (an agent
   tool's row says who is asked and what: "Asking Quill: …"); between tools a line at the bottom says "Thinking" or
-  "Writing the reply" with how long it has run. The pinned Overlay tile has no background at rest. The orb follows the kind of step: thinking or writing,
+  "Writing the reply" with how long it has run. The pinned chiefs (workspace and your own) sit side by side as tiles
+  at the top of the Workspace tab, like pinned conversations in iMessage: no background at rest, filled while open,
+  one open at a time with its threads below. Every block of a response is the same distance apart, including the
+  assignment row and the response controls. The orb follows the kind of step: thinking or writing,
   using a tool, reading or searching, asking another agent (AICSS lattice orbs S1–S4, MIT). The date line is the
   date alone, without rules. Open
   `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convrelaytest0000000000000000`

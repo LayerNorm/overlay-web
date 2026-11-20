@@ -51,12 +51,82 @@ export default {
       ],
     },
     {
-      // The pinned Overlay tile: no background at rest, the hover colour on hover, filled only when selected.
+      // The pinned chiefs (workspace and personal) sit side by side as tiles at the top, like pinned conversations in
+      // iMessage. A tile has no background at rest and is filled while it is open; one pinned chief is open at a time
+      // and its threads show full width below the tiles.
       file: 'src/components/layout/AppSidebarAgentsPanel.tsx',
-      replace: [[
-        "isActive ? 'bg-(--surface-subtle)' : 'bg-(--surface-subtle)/55'",
-        "isActive ? 'bg-(--surface-subtle)' : 'bg-transparent'",
-      ]],
+      replace: [
+        [
+          "isActive ? 'bg-(--surface-subtle)' : 'bg-(--surface-subtle)/55'",
+          "isActive || isExpanded ? 'bg-(--surface-subtle)' : 'bg-transparent'",
+        ],
+        [
+          `      <SidebarMenuItem data-agent-row={agent.id}>
+        <div className="flex justify-center pb-2 pt-1">
+          <div className="group/tile relative">`,
+          `      <>
+        <div data-pinned-chief={agent.id} className="row-start-1 min-w-0">
+          <div className="group/tile relative">`,
+        ],
+        ['flex h-auto w-auto min-w-[116px] max-w-[200px] flex-col items-center', 'flex h-auto w-full flex-col items-center'],
+        [
+          `        {threads}
+      </SidebarMenuItem>
+    )
+  }
+  return (`,
+          `        {threads ? <div className="col-span-full row-start-2">{threads}</div> : null}
+      </>
+    )
+  }
+  return (`,
+        ],
+        [
+          // Opening one pinned chief closes the other.
+          'if (!activityOnly) { toggleExpanded(agentId); return }',
+          `if (!activityOnly) {
+      const pinnedIds = sortedAgents.filter((agent) => isPinnedChief(agent, viewerPrincipalId)).map((agent) => agent.id)
+      if (pinnedIds.includes(agentId) && !expanded.has(agentId)) {
+        for (const id of pinnedIds) if (id !== agentId && expanded.has(id)) toggleExpanded(id)
+      }
+      toggleExpanded(agentId)
+      return
+    }`,
+        ],
+        [
+          `        sortedAgents.map((agent) => {
+          const isExpanded`,
+          `        (() => { const renderAgent = (agent: WorkspaceAgentDirectoryItem) => {
+          const isExpanded`,
+        ],
+        [
+          `            </ActivityAgentRow>
+          )
+        })
+      ) : (`,
+          `            </ActivityAgentRow>
+          )
+        }
+        const pinnedAgents = activityOnly ? [] : sortedAgents.filter((agent) => isPinnedChief(agent, viewerPrincipalId))
+        const rest = sortedAgents.filter((agent) => !pinnedAgents.includes(agent))
+        return [
+          pinnedAgents.length ? (
+            <SidebarMenuItem key="pinned-chiefs" data-pinned-chiefs className="grid gap-x-1.5 pb-2 pt-1"
+              style={{ gridTemplateColumns: \`repeat(\${pinnedAgents.length}, minmax(0, 1fr))\` }}>
+              {pinnedAgents.map(renderAgent)}
+            </SidebarMenuItem>
+          ) : null,
+          ...rest.map(renderAgent),
+        ] })()
+      ) : (`,
+        ],
+      ],
+    },
+    {
+      // Every block of a response is the same distance apart: the assignment row loses its top margin (the text
+      // already ends with one) and gains it below, before the response controls.
+      file: 'src/features/chat/components/AssignmentTrace.tsx',
+      replace: [['<Trace className="mt-2 px-1 py-0.5" data-response-assignments>', '<Trace className="mb-2 px-1 py-0.5" data-response-assignments>']],
     },
     {
       // The date line in chats: the date alone.
