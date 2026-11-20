@@ -169,7 +169,7 @@ function roomHeaderPresentation({
 }
 
 function roomPanelIsOpen(roomPanel: string | null, hasThreadRoot: boolean) {
-  return roomPanel === 'people' || roomPanel === 'pinned'
+  return isRoomView(roomPanel as Parameters<typeof isRoomView>[0])
     || (roomPanel === 'thread' && hasThreadRoot)
 }
 

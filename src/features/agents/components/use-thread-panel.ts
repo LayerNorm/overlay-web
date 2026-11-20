@@ -52,11 +52,15 @@ export function useThreadPanel({ conversationId, threadOpen }: { conversationId:
   useEffect(() => {
     if (!threadOpen) return
     const show = (update: TabsUpdate) => setPanel((current) => ({ ...current, open: true, tabs: update(current.tabs) }))
+    // Only the platform's own shortcut key: on a Mac, Ctrl+P and Ctrl+J move the caret in a text field.
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform)
     const onKey = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey
+      // A dialog (agent editor, share, create) owns the keyboard while it is open.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      const mod = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
       const plainMod = mod && !event.altKey && !event.shiftKey
       const key = event.key.toLowerCase()
-      if (event.altKey && !mod && event.code === 'KeyT') show((tabs) => openLauncher(tabs, nextLauncherId()))
+      if (event.altKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyT') show((tabs) => openLauncher(tabs, nextLauncherId()))
       else if (plainMod && key === 'j') show((tabs) => openPanel(tabs, 'terminal'))
       else if (plainMod && key === 'p') show((tabs) => openPanel(tabs, 'files'))
       else return

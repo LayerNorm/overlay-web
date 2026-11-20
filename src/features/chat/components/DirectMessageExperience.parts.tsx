@@ -16,6 +16,7 @@ import {
   Slack,
   UserRound,
   UsersRound,
+
 } from 'lucide-react'
 import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
@@ -234,6 +235,17 @@ export function RoomHeaderActions({
             onClick={() => {
               setMenuOpen(false)
               onShare()
+            }}
+          />
+        ) : null}
+        {/* Agent threads have their own panel and no sidebar button, so People stays reachable from here. */}
+        {!roomSidebar ? (
+          <MenuButton
+            icon={UsersRound}
+            label="People"
+            onClick={() => {
+              setMenuOpen(false)
+              setRoomPanel((current) => (current === 'people' ? null : 'people'))
             }}
           />
         ) : null}

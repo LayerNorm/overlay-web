@@ -57,8 +57,10 @@ function LoadedAssignmentsProvider({ children, ...props }: Props & { children: R
 /** Loads a conversation's assignments once, for its responses, its footer and its side panel. */
 export function AgentAssignmentsProvider({ children, ...props }: Props & { children: ReactNode }) {
   const hasConvexClient = useHasConvexClient()
-  if (!hasConvexClient || !props.workspaceId) return <>{children}</>
-  return <LoadedAssignmentsProvider key={`${props.workspaceId}:${props.conversationId}`} {...props}>{children}</LoadedAssignmentsProvider>
+  // The same component whether or not the workspace is known yet (the query is skipped until it is): switching
+  // between a fragment and a provider here would unmount and remount the whole room, composer draft included.
+  if (!hasConvexClient) return <>{children}</>
+  return <LoadedAssignmentsProvider {...props}>{children}</LoadedAssignmentsProvider>
 }
 
 export function useConversationAssignments(): ConversationAssignments | null {
