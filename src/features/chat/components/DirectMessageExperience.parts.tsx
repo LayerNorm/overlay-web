@@ -1,7 +1,7 @@
 'use client'
 
 
-import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { memo, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useSearchParams, type useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
@@ -32,6 +32,7 @@ import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { sameRoomMessageRowProps, type RoomMessageRowProps } from './collaboration/room-message-row'
 import {
   roomMessageRowKey,
   toRoomMessageView,
@@ -384,19 +385,13 @@ function buildRoomMessageItemProps({
   }
 }
 
-export function RoomMessage({
+export const RoomMessage = memo(function RoomMessage({
   message,
   ctx,
   inThread,
   grouped,
   hideToolbar,
-}: {
-  message: OptimisticMessage
-  ctx: RoomMessageContext
-  inThread?: boolean
-  grouped?: boolean
-  hideToolbar?: boolean
-}) {
+}: RoomMessageRowProps) {
   const author = ctx.participants.find((participant) => participant.principalId === message.authorPrincipalId)
   const authorAgent = message.authorPrincipalId
     ? ctx.directoryAgentsByPrincipal.get(message.authorPrincipalId)
@@ -429,7 +424,7 @@ export function RoomMessage({
     teaserAuthor,
   })
   return <RoomMessageItem {...itemProps} hideToolbar={hideToolbar} />
-}
+}, sameRoomMessageRowProps)
 
 function RoomEmptyState({
   conversationType,
@@ -481,6 +476,7 @@ export function RoomTranscript({
   /** Guided onboarding: plain messages without action toolbars. */
   guided?: boolean
 }) {
+  recordRender('RoomTranscript')
   const {
     listRef,
     handleTranscriptScroll: onScroll,

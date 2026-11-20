@@ -115,6 +115,7 @@ export function ChatMessageList({
   runtime,
   actions,
 }: ChatMessageListProps) {
+  recordRender('ChatMessageList')
   const conversationId = transcriptKey ?? null
   const paginationAnchorRef = useRef<{ conversationId: string | null; turnId: string; top: number } | null>(null)
   const loadingMoreRef = useRef(false)
