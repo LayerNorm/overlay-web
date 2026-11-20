@@ -63,3 +63,33 @@ export const connections = query({
       }))
   },
 })
+
+/**
+ * Outside agents in a workspace, live: those that joined over MCP, and requests to join. A member sees who has
+ * joined and their own requests; only an owner or admin sees other people's pending requests. Null without access.
+ * Availability is worked out by the reader from `lastSeenAt`, so the query does not re-run on a clock.
+ */
+export const outsideAgents = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, { workspaceId }) => {
+    let access: Awaited<ReturnType<typeof requireNativeWorkspace>>
+    try {
+      access = await requireNativeWorkspace(ctx, workspaceId)
+    } catch {
+      return null
+    }
+    const canApprove = access.membership.role === 'owner' || access.membership.role === 'admin'
+    const rows = await ctx.db.query('mcpAgentJoins').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).take(500)
+    return {
+      canApprove,
+      agents: rows
+        .filter(row => row.status === 'approved' || (row.status === 'pending' && (canApprove || row.userId === access.userId)))
+        .sort((a, b) => b.requestedAt - a.requestedAt)
+        .map(row => ({
+          id: String(row._id), name: row.name, description: row.description ?? '', status: row.status as 'pending' | 'approved',
+          paused: row.pausedAt !== undefined, ownedByYou: row.userId === access.userId, agentId: row.agentId ?? null,
+          requestedAt: row.requestedAt, lastSeenAt: row.lastSeenAt ?? null,
+        })),
+    }
+  },
+})

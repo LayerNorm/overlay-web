@@ -202,6 +202,9 @@
   "mcpAccess.revoke": [
     "src/features/settings/components/ConnectedAppsSettings.tsx"
   ],
+  "mcpAccess.updateAgent": [
+    "src/features/settings/components/OutsideAgentsSection.tsx"
+  ],
   "mcpServers.createResponse": [
     "src/features/integrations/components/McpServersView.tsx"
   ],

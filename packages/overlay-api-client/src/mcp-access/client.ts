@@ -19,7 +19,6 @@ export type McpAgentResource = {
   description: string
   status: 'pending' | 'approved'
   paused: boolean
-  availability: 'online' | 'away' | 'paused' | null
   ownedByYou: boolean
   agentId: string | null
   requestedAt: number
@@ -45,11 +44,7 @@ export class McpAccessClient {
     return this.http.json<{ ok: true }>(`/api/v1/mcp/connections?id=${encodeURIComponent(id)}`, { ...init, method: 'DELETE' })
   }
 
-  /** Outside agents that joined, or asked to join, the current workspace. */
-  agents(init?: RequestInit) {
-    return this.http.json<{ canApprove: boolean; agents: McpAgentResource[] }>('/api/v1/mcp/agents', { cache: 'no-store', ...init })
-  }
-
+  /** Approve or decline a request to join, or pause, resume, or remove an outside agent. The list itself is a live Convex query. */
   updateAgent(input: { id: string; action: 'approve' | 'decline' | 'pause' | 'resume' | 'remove' }, init?: RequestInit) {
     return this.http.json<{ ok: true }>('/api/v1/mcp/agents', this.http.jsonRequest(input, { ...init, method: 'POST' }))
   }

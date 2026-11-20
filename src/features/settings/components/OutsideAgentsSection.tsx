@@ -1,21 +1,32 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bot, Pause, Play, Trash2 } from 'lucide-react'
 import type { McpAgentResource } from '@overlay/api-client'
 import { Button, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { MCP_AGENT_AVAILABILITY_LABEL } from '@/shared/mcp/agent-network'
+import { MCP_AGENT_AVAILABILITY_LABEL, mcpAgentAvailability } from '@/shared/mcp/agent-network'
+import { useLiveOutsideAgents } from '@/hooks/use-connections'
 
 const REFRESH_MS = 10_000
 
 type Action = 'approve' | 'decline' | 'pause' | 'resume' | 'remove'
 
-function detail(agent: McpAgentResource): string {
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(timer)
+  }, [intervalMs])
+  return now
+}
+
+function detail(agent: McpAgentResource, now: number): string {
   if (agent.status === 'pending') return agent.ownedByYou ? 'Waiting for a workspace admin to approve' : 'Wants to join this workspace'
-  const state = agent.availability ? MCP_AGENT_AVAILABILITY_LABEL[agent.availability] : 'Away'
-  return agent.availability === 'away' ? `${state} · sees new messages when it next connects` : state
+  const availability = mcpAgentAvailability({ ...(agent.lastSeenAt === null ? {} : { lastSeenAt: agent.lastSeenAt }), paused: agent.paused, now })
+  const state = MCP_AGENT_AVAILABILITY_LABEL[availability]
+  return availability === 'away' ? `${state} · sees new messages when it next connects` : state
 }
 
 /**
@@ -23,29 +34,16 @@ function detail(agent: McpAgentResource): string {
  * an admin. An agent only becomes a member once someone here approves it.
  */
 export function OutsideAgentsSection() {
-  const [data, setData] = useState<{ canApprove: boolean; agents: McpAgentResource[] } | null>(null)
+  // Live: a request appears the moment an agent asks, and presence follows the agent's last call.
+  const data = useLiveOutsideAgents()
+  const now = useNow(REFRESH_MS)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [removing, setRemoving] = useState<McpAgentResource | null>(null)
-
-  const load = useCallback(async () => {
-    try {
-      setData(await overlayAppClient.mcpAccess.agents())
-    } catch {
-      // Keeps what is shown; the next refresh tries again.
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => void load(), REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [load])
 
   const act = async (agent: McpAgentResource, action: Action) => {
     setBusyId(agent.id)
     try {
       await overlayAppClient.mcpAccess.updateAgent({ id: agent.id, action })
-      await load()
       if (action === 'approve') toast.success(`${agent.name} joined the workspace.`)
       if (action === 'remove') toast.success(`${agent.name} was removed.`)
     } catch (error) {
@@ -69,7 +67,7 @@ export function OutsideAgentsSection() {
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-(--surface-subtle) text-(--muted)"><Bot size={16} /></span>
             <div className="min-w-0 flex-1">
               <h4 className="truncate text-sm font-medium text-(--foreground)">{agent.name}</h4>
-              <p className="mt-0.5 truncate text-xs text-(--muted)">{detail(agent)}{agent.description ? ` · ${agent.description}` : ''}</p>
+              <p className="mt-0.5 truncate text-xs text-(--muted)">{detail(agent, now)}{agent.description ? ` · ${agent.description}` : ''}</p>
             </div>
             {agent.status === 'pending' && data.canApprove ? (
               <>
