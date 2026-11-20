@@ -8,7 +8,6 @@ import { ThreadPullRequests } from './sidebar/ThreadPullRequests'
 import { hasThreadActivity, THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
 import { useTranscriptPrefetchIntent } from '@/components/providers/transcript-cache-client'
 import {
-  Button,
   SidebarMenuAction,
   SidebarMenuSkeleton,
   SidebarMenu,
@@ -138,10 +137,12 @@ export function AgentThreadRows({
       })}
       {hasMore ? (
         <SidebarMenuSubItem>
-          <Button variant="ghost" type="button" onClick={() => setLimit((current) => current + AGENT_THREAD_PAGE)}
-            className="h-7 w-full justify-start rounded-md px-2 text-left text-xs font-normal text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)">
-            Load more
-          </Button>
+          {/* Laid out like a thread row, with an empty icon slot, so the label lines up with the thread titles. */}
+          <ThreadButton onClick={() => setLimit((current) => current + AGENT_THREAD_PAGE)}
+            className="agent-thread-button gap-[7px] text-xs text-(--muted-light) hover:text-(--foreground)">
+            <span className="agent-thread-icon" aria-hidden />
+            <span className="flex-1 truncate">Load more</span>
+          </ThreadButton>
         </SidebarMenuSubItem>
       ) : null}
     </SidebarMenu>

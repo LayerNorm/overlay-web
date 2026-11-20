@@ -57,7 +57,7 @@ export function ThreadPanel(props: ThreadPanelProps) {
   return (
     <aside data-slot="right-sidebar" aria-label="Thread panel"
       className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-(--sidebar-surface)">
-      <div className="flex h-[50px] shrink-0 items-center gap-1 border-b border-(--border) pl-2 pr-1.5">
+      <div className="flex h-[50px] shrink-0 items-center gap-1 pl-2 pr-1.5">
         {home ? <div className="flex-1" /> : <div role="tablist" aria-label="Open panels"
           className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {tabs.tabs.map((tab) => (

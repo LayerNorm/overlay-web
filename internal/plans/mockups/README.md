@@ -112,8 +112,9 @@ them. Besides the canonical app mockup, this folder holds only:
   on the agent's avatar and name with its panels below: Settings first, then Computer (a plain row with its status),
   Assignments, Progress, Changes and Files, with no search box and no shortcuts. "+" opens that same view as a new tab.
   In the agents list each agent shows at most five threads, then "Load more" (the open thread always stays listed).
-  The pinned chief tiles are never shown selected (a background on hover only), a lone chief is a half-width tile, and
-  its threads start a little below it. Open
+  With two pinned chiefs the open one is filled; a lone chief is a centred half-width tile that is never filled. Their
+  threads start a little below the tiles, and "Load more" lines up with the thread titles. The right panel's header has
+  no dividing line. Open
   `agent-sidebar-panels.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convpricing000000000000000000`
   and open the panel at the top right, or `agent-sidebar-panels.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`.
   Delete it when the design ships or is rejected.

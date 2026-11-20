@@ -149,11 +149,11 @@ test('an agent lists five threads, then Load more, and always keeps the open thr
     automations: [],
   } as unknown as WorkspaceAgentBundle
   const html = render(many)
-  assert.equal(html.match(/agent-thread-button/g)?.length, 5)
+  assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 5)
   assert.match(html, />Load more</)
   assert.doesNotMatch(html, /Thread 5/)
   const withOpen = render(many, { activeConversationId: 'c_7' })
-  assert.equal(withOpen.match(/agent-thread-button/g)?.length, 6)
+  assert.equal(withOpen.match(/aria-label="Archive thread"/g)?.length, 6)
   assert.match(withOpen, /Thread 7/)
   assert.doesNotMatch(render(bundle), />Load more</)
 })
