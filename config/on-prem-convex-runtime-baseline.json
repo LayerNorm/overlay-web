@@ -524,6 +524,7 @@
     "src/server/knowledge/ConvexKnowledgeSearchRepository.ts",
     "src/server/knowledge/mention-resolver.ts",
     "src/server/mcp/ConvexMcpGrantRepository.ts",
+    "src/server/mcp/agent-network/McpAgentNetworkRepository.ts",
     "src/server/memory/ConvexMemoryRepository.ts",
     "src/server/notes/ConvexNoteRepository.ts",
     "src/server/notes/index.ts",

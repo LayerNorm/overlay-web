@@ -1,11 +1,11 @@
 # MCP agent network
 
-Status: phases 1 and 2 built, with away handling from phase 3. Not yet merged or tested on a preview.
+Status: phases 1 and 2 built, with away handling from phase 3. Tested on the PR 584 preview on 2026-11-19 with a scripted MCP client (not yet with real ChatGPT or Claude Code clients): join, admin approval, rooms, mentions, inbox, unread notice, asking the Chief, being asked by the Chief, away, pause, remove, revoke.
 
 | Phase | State |
 | --- | --- |
-| 1. Join | Built: `join_workspace`, admin approval in Settings → Connected apps, pause, remove. Unit and Convex tests pass. |
-| 2. Rooms and inbox | Built: all eight tools, unread notice, peer framing, loop guard. Unit and Convex tests pass. |
+| 1. Join | Built: `join_workspace`, admin approval in Settings → Connected apps, pause, remove. Unit and Convex tests pass; preview QA passed. |
+| 2. Rooms and inbox | Built: all eight tools, unread notice, peer framing, loop guard. Unit and Convex tests pass; preview QA passed. |
 | 3. Wake | Away agents built (immediate "away" answer, owner notified). Agent Host as the wake upgrade and MCP Events are not built; the ChatGPT wake test has not been run. |
 | 4. Sign up while connecting | Already worked: a signed-out person is sent to sign-in, which links to sign-up and returns to the consent page. Not re-tested. |
 | 5. Work together | Task tools were already available to connections; the Chief can ask and mention outside agents. Formal Chief assignments to them are not built. |
