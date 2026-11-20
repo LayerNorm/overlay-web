@@ -365,7 +365,7 @@ function AgentListRow({
           <div className="group/tile relative">
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
-              className={`flex h-auto w-[116px] flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
+              className={`flex h-auto w-auto min-w-[116px] max-w-[200px] flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
                 isActive ? 'bg-(--surface-subtle)' : 'bg-(--surface-subtle)/55'
               }`}>
               {isOpening

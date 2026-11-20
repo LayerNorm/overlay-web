@@ -23,6 +23,16 @@ test('the newest plan is read with whether its run is still going', () => {
   assert.deepEqual(activity.plan, { steps: later, phase: 'active' })
 })
 
+test('a plan whose run asked a question is waiting for the answer', () => {
+  const steps = [{ id: 'a', title: 'Run the command', status: 'running' }]
+  const question = { runId: 'r', conversationId: 'c', userId: 'u', token: 't', requestedAt: 1, question: 'Authorize?' }
+  const activity = threadActivity([{
+    id: '1', authorKind: 'agent', createdAt: 1, status: 'generating', agentPlan: steps,
+    parts: [{ type: 'data-native-agent-input', data: question }],
+  }])
+  assert.equal(activity.plan?.phase, 'waiting')
+})
+
 test('commands keep their output and exit code and hide inline secrets', () => {
   const activity = threadActivity([{
     id: '1', authorKind: 'agent', createdAt: 1, parts: [

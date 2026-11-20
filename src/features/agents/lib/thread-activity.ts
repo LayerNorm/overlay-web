@@ -7,10 +7,11 @@ import {
 } from '@overlay/chat-core'
 
 import type { RoomTranscriptMessage as ActivityMessage } from '@/components/providers/RoomTranscriptProvider'
+import { NATIVE_AGENT_INPUT_PART, readNativeAgentInput } from '@/shared/agents/native-agent-input'
 
 export type ThreadPlan = {
   steps: ReadonlyArray<{ id: string; title: string; status: string }>
-  phase: 'active' | 'ended'
+  phase: 'active' | 'waiting' | 'ended'
 }
 
 export type ThreadCommand = {
@@ -28,6 +29,15 @@ export type ThreadActivity = {
   calls: ToolVisualBlock[]
   commands: ThreadCommand[]
   edits: ThreadEdit[]
+}
+
+function planPhase(message: ActivityMessage): ThreadPlan['phase'] {
+  if (message.status !== 'generating') return 'ended'
+  const asks = message.parts?.some((part) => {
+    const { type, data } = part as { type?: string; data?: unknown }
+    return type === NATIVE_AGENT_INPUT_PART && readNativeAgentInput(data) !== undefined
+  })
+  return asks ? 'waiting' : 'active'
 }
 
 const isAgent = (message: ActivityMessage) => message.authorKind === 'agent' || message.authorKind === 'model'
@@ -64,7 +74,7 @@ export function threadActivity(messages: readonly ActivityMessage[]): ThreadActi
     edits.set(path, { path, added: edit.added + (description.added ?? 0), removed: edit.removed + (description.removed ?? 0) })
   }
   return {
-    plan: planned?.agentPlan ? { steps: planned.agentPlan, phase: planned.status === 'generating' ? 'active' : 'ended' } : null,
+    plan: planned?.agentPlan ? { steps: planned.agentPlan, phase: planPhase(planned) } : null,
     calls,
     commands: calls.flatMap((call) => commandOf(call) ?? []),
     edits: [...edits.values()],
