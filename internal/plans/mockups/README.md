@@ -107,8 +107,8 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
-- `agent-sidebar-panels.html` (feature `agent-sidebar-panels`): the proposed agent sidebar changes, built from the
-  production components on branch `codex/agent-sidebar-panels`; the feature only adds fixtures. The right panel opens
+- `agent-sidebar-panels.html` (feature `agent-sidebar-panels`): the agent sidebar changes, now in production; the
+  feature only adds fixtures. The right panel opens
   on the agent's avatar and name with its panels below: Settings first, then Computer (a plain row with its status),
   Assignments, Progress, Changes and Files, with no search box and no shortcuts. "+" opens that same view as a new tab.
   In the agents list each agent shows at most five threads, then "Load more" (the open thread always stays listed).
@@ -117,7 +117,7 @@ them. Besides the canonical app mockup, this folder holds only:
   no dividing line. Open
   `agent-sidebar-panels.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convpricing000000000000000000`
   and open the panel at the top right, or `agent-sidebar-panels.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`.
-  Delete it when the design ships or is rejected.
+  Delete it once the design is accepted in production.
 - `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
   Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
   Agent picker beside the model picker, and sending opens the automation's chat. Each run posts the instructions again

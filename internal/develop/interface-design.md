@@ -697,7 +697,15 @@ Every block of a response (text, tool rows, the assignment row, the action butto
 distance apart: the assignment row has no top margin and an 8px bottom margin. Date lines are the date
 alone, centred, with no rules. The pinned chiefs (workspace and the viewer's own) sit side by side as
 equal tiles above the agent list, like pinned conversations in iMessage: no background at rest, filled
-while open, one open at a time (`useAgentExpansion` exclusive ids) with its threads full width below.
+while open, one open at a time (`useAgentExpansion` exclusive ids) with its threads full width below,
+8px under the tiles. A lone chief is a centred half-width tile. Each agent lists at most five threads
+(`AGENT_THREAD_PAGE`), then "Load more", laid out as a thread row so its label lines up with the titles;
+the open thread always stays listed.
+
+An agent thread's right panel has no rule under its header. With no tab open it shows the agent's home:
+avatar, name and description, then one plain list of panels (Settings, Computer with its status,
+Assignments, Progress, Changes, Files), with no search and no shortcut hints. "+" opens the same home as
+a new tab, which turns into the panel picked from it.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain
