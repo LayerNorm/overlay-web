@@ -1,10 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
-import { toast } from '@overlay/ui/primitives'
+import type { AutomationDetail } from '@overlay/app-core'
 import { useConvex } from 'convex/react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -12,8 +11,6 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { useChatPreferences } from './useChatPreferences'
-import { usePanelScope } from '@/hooks/use-panel-scope'
-import { newItemScope } from '@/shared/workspaces/panel-scope'
 
 type ChatPrefs = ReturnType<typeof useChatPreferences>
 
@@ -50,7 +47,6 @@ export function useAutomationDetail({
   userAskModelOverrideRef: MutableRefObject<boolean>
   persistChatModel: (askModelIds: string[], actModelId: string) => void
 }) {
-  const creatingAutomationDraftRef = useRef(false)
   // Native one-shot reads; the open editor subscribes to the same automation live.
   const convex = useConvex()
   const { activeWorkspaceId } = useWorkspace()
@@ -134,49 +130,6 @@ export function useAutomationDetail({
     void refreshSelectedAutomation()
   }, [refreshSelectedAutomation])
 
-  // A new automation lands in the scope being viewed.
-  const panelScope = usePanelScope()
-  const selectAutomationDetailTab = useCallback(async (tab: AutomationDetailTab) => {
-    // A brand-new automation has no saved doc yet. Switching to "edit" creates an
-    // empty draft so the full editor can load and persist, then routes to it.
-    if (tab === 'edit' && mode === 'automate' && !automationIdParam && !selectedAutomation) {
-      if (creatingAutomationDraftRef.current) return
-      creatingAutomationDraftRef.current = true
-      try {
-        const res = await overlayAppClient.automations.createResponse({
-          name: 'New automation',
-          description: 'Draft automation',
-          instructions: 'Describe what this automation should do.',
-          schedule: { kind: 'daily', hourUTC: 14, minuteUTC: 0 },
-          modelId: selectedActModel,
-          enabled: false,
-          scope: newItemScope(panelScope),
-        })
-        const payload = (await res.json().catch(() => ({}))) as { id?: string; error?: string }
-        if (!res.ok || !payload.id) {
-          throw new Error(payload.error || 'Failed to create automation draft')
-        }
-        const params = new URLSearchParams(searchParams?.toString() ?? '')
-        params.set('automationId', payload.id)
-        params.set('tab', 'edit')
-        router.replace(`${pathname}?${params.toString()}`)
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to open automation editor.')
-      } finally {
-        creatingAutomationDraftRef.current = false
-      }
-      return
-    }
-    const params = new URLSearchParams(searchParams?.toString() ?? '')
-    if (tab === 'chat') {
-      params.delete('tab')
-    } else {
-      params.set('tab', tab)
-    }
-    const query = params.toString()
-    router.replace(`${pathname}${query ? `?${query}` : ''}`)
-  }, [pathname, router, searchParams, mode, automationIdParam, selectedAutomation, selectedActModel, panelScope])
-
   const saveAutomationHeaderModel = useCallback(async (modelId: string) => {
     // Mark the model as user-chosen so the new-chat-surface default-model effect
     // does not immediately reset it back to the account default.
@@ -206,9 +159,16 @@ export function useAutomationDetail({
 
   const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 
+  // The thread's composer runs follow-ups on the automation's model, the same value as the details panel.
+  const automationModelId = selectedAutomation?.modelId ?? null
+  useEffect(() => {
+    if (!automationModelId) return
+    setSelectedActModel(automationModelId)
+    setSelectedModels([automationModelId])
+  }, [activeChatId, automationModelId, setSelectedActModel, setSelectedModels])
+
   return {
     refreshSelectedAutomation,
-    selectAutomationDetailTab,
     saveAutomationHeaderModel,
     automationHeaderModelId,
   }
