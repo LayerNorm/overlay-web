@@ -13,6 +13,8 @@ import { runAppDataRepositoryContractSuite } from './app-data-repository-contrac
 import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
 import { ConvexComputerRepository } from '@/server/computers/ConvexComputerRepository'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
+import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
+import { ConvexWorkspaceAgentRepository } from '@/server/agents/ConvexWorkspaceAgentRepository'
 
 const enabled = process.env.APP_DATA_CONTRACT_CONVEX === '1'
 const hasConvexUrl = Boolean(process.env.DEV_NEXT_PUBLIC_CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL)

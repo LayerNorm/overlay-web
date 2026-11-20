@@ -8,6 +8,7 @@ import { prepareWorkspaceAgentInputs } from '@/server/agents/workspace-agent-pre
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { isSharedRoom } from '@/shared/agents/room-access'
+import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import type { ThreadWork } from '@/shared/agents/thread-work'
 import { threadWorkInstructions } from '@/server/agents/thread-work/thread-work-prompt'
@@ -25,6 +26,7 @@ type NativeInputArgs = {
   conversationId: string
   runId: string
   memoryEnabled: boolean
+  parentRunId?: string
   threadRootMessageId?: string
 }
 type PreparedWorkspaceInputs = Awaited<ReturnType<typeof prepareWorkspaceAgentInputs>>
@@ -47,6 +49,7 @@ function assertNativeRunIdentity(run: AgentRun | null, args: NativeInputArgs): a
 async function prepareNativeRoomInputs(
   args: NativeInputArgs,
   run: AgentRun,
+  inheritedSharedRoom: boolean,
   work: ThreadWork | undefined,
 ): Promise<PreparedWorkspaceInputs> {
   return await prepareWorkspaceAgentInputs({
@@ -59,6 +62,7 @@ async function prepareNativeRoomInputs(
     memoryEnabled: args.memoryEnabled,
     workspaceId: args.workspaceId,
     includeAutoRetrieval: false,
+    inheritedSharedRoom,
   })
 }
 
@@ -81,11 +85,12 @@ function buildNativeWorkflowInput(
   args: NativeInputArgs,
   run: AgentRun,
   prepared: PreparedWorkspaceInputs,
+  inheritedSharedRoom: boolean,
   work: ThreadWork | undefined,
   workBlock: string,
 ): NativeHarnessWorkflowInput {
   const room = prepared.room
-  const sharedRoom = isSharedRoom({
+  const sharedRoom = inheritedSharedRoom || isSharedRoom({
     conversationType: room.conversationType,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
@@ -115,6 +120,7 @@ function buildNativeWorkflowInput(
     definitions: prepared.toolDefinitions,
     instructions: buildAgentSystemPrompt({
       agentName: prepared.agent.name,
+      agentRole: prepared.agent.agentRole,
       contextBlock: prepared.turnContext.contextBlock,
       exposedToolIds: prepared.toolDefinitions.map(definition => definition.name),
       hasTools: prepared.toolDefinitions.length > 0,
@@ -134,10 +140,22 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
     userId: args.actorUserId,
   })
   assertNativeRunIdentity(run, args)
+  const repository = new ConvexHarnessRepository()
+  // A sub-run inherits its parent's restrictions; a root run keeps those already recorded for it; a new root starts
+  // from its conversation's.
+  const roomRestrictions = await (args.parentRunId
+    ? repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: args.parentRunId })
+    : run.harnessRunId
+      ? repository.get({ actorUserId: args.actorUserId, runId: run.harnessRunId }).then(() =>
+        repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: run.harnessRunId! }))
+      : repository.resolveConversationRoomRestrictions({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+      }))
+  const inheritedSharedRoom = roomRestrictions.inheritedSharedRoom
   // A thread whose choices can't be read runs as before, without folders, rather than failing the turn.
   const work = chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId).catch((_error: unknown) => null))
-  const prepared = await prepareNativeRoomInputs(args, run, work)
+  const prepared = await prepareNativeRoomInputs(args, run, inheritedSharedRoom, work)
   assertPreparedRoomIdentity(args, run, prepared)
   const workBlock = work ? await threadWorkInstructions({ work, workspaceId: args.workspaceId, actorUserId: run.userId }) : ''
-  return buildNativeWorkflowInput(args, run, prepared, work, workBlock)
+  return buildNativeWorkflowInput(args, run, prepared, inheritedSharedRoom, work, workBlock)
 }

@@ -5,11 +5,13 @@ import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnes
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), room: vi.fn(), workspace: vi.fn(), run: vi.fn(), gate: vi.fn(), subject: vi.fn(),
   conversation: vi.fn(),
+  roomRestrictions: vi.fn(),
   capability: vi.fn(), catalog: vi.fn(), models: vi.fn(), byok: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.state
+  refreshRoomContextRestrictions = mocks.roomRestrictions
 } }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({
   loadRoomTurnContext: mocks.room, agentModelAttempts: (modelId: string) => [modelId],
@@ -50,7 +52,7 @@ const delivery = () => ({
 })
 const room = () => ({
   conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question',
-  directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask' }] },
+  directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask', visibility: 'workspace' }] },
   participants: [{ principalId: 'human-principal', principalType: 'human' }, { principalId: 'agent-principal', principalType: 'agent' }],
 })
 
@@ -95,6 +97,7 @@ function configureNamedChild(options: {
     harness: 'overlay',
     modelId: 'fixture/model',
     permissionMode: 'ask',
+    visibility: 'workspace',
   }
   const initiatorAgent = {
     id: 'asking-agent',
@@ -102,6 +105,7 @@ function configureNamedChild(options: {
     harness: options.initiatorHarness ?? 'overlay',
     modelId: 'fixture/model',
     permissionMode: 'ask',
+    visibility: 'workspace',
     ...(options.initiatorArchivedAt === undefined ? {} : { archivedAt: options.initiatorArchivedAt }),
   }
   const agents = [childAgent, ...(options.includeInitiator === false ? [] : [initiatorAgent])]
@@ -141,6 +145,7 @@ beforeEach(() => {
   mocks.capability.mockReturnValue({ allowed: true })
   mocks.catalog.mockResolvedValue({ allowed: true })
   mocks.models.mockResolvedValue({ chat: new Set(['fixture/model', 'openrouter/free']) })
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.conversation.mockResolvedValue(null)
 })
 
@@ -216,6 +221,13 @@ test('refuses revoked agents, participants, workspace identity and newly shared 
   await expect(refreshNativeHarnessAccess(access, { ...context, sharedRoom: true })).resolves.toMatchObject({ paid: true })
 })
 
+test('rederives shared-parent restrictions on child refresh', async () => {
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: true })
+  await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/private context/)
+  await expect(refreshNativeHarnessAccess(access, { ...context, sharedRoom: true }))
+    .resolves.toMatchObject({ paid: true })
+})
+
 test('refuses stale execution, capabilities and model access before provider admission', async () => {
   for (const patch of [{ workflowRunId: 'other' }, { status: 'cancelled' }, { policy: { ...snapshot().policy, deadlineAt: 1 } }]) {
     mocks.state.mockResolvedValueOnce({ ...snapshot(), ...patch })
@@ -281,3 +293,42 @@ test('BYOK ownership is checked again for the selected agent model', async () =>
   await expect(refreshNativeHarnessAccess(access, { ...context, modelId })).rejects.toThrow(/revoked/)
 })
 
+test.each(['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'])(
+  'renews an in-tool child join projected as %s without authorizing model dispatch', async status => {
+    const state = snapshot()
+    state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
+      costMicros: 0, status: 'running', evidenceRefs: [] }]
+    mocks.state.mockResolvedValue(state)
+    mocks.run.mockResolvedValue({ ...delivery(), status })
+
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .resolves.toMatchObject({ runStatus: 'running', paid: true })
+    await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow('Native delivery execution changed.')
+  },
+)
+
+test('child-join renewal still rejects stale ownership, revoked participation and unrelated delivery states', async () => {
+  const state = snapshot()
+  state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
+    costMicros: 0, status: 'running', evidenceRefs: [] }]
+  mocks.state.mockResolvedValue(state)
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_children' })
+  for (const patch of [{ workflowRunId: 'other' }, { status: 'cancelled' }]) {
+    mocks.run.mockResolvedValueOnce({ ...delivery(), status: 'waiting_for_children', ...patch })
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .rejects.toThrow('Native delivery execution changed.')
+  }
+  mocks.room.mockResolvedValue({ ...room(), participants: [room().participants[1]] })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+    .rejects.toThrow('Native room participation was revoked.')
+})
+
+test('native runs retain access to creator-private current agents', async () => {
+  mocks.room.mockResolvedValue({
+    ...room(),
+    directory: { agents: [{ ...room().directory.agents[0], visibility: 'creator' }] },
+  })
+
+  await expect(refreshNativeHarnessAccess(access, context, 'read_file'))
+    .resolves.toMatchObject({ agent: { id: 'agent', visibility: 'creator' }, sharedRoom: false })
+})

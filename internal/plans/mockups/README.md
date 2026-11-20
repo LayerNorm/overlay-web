@@ -88,6 +88,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `id=k17convatlasiosshare000000000000` for a thread running on the Mac Studio.
   `files-on-computers-architecture.html` is the matching architecture diagram (WebDAV over the file service, the
   rclone mount at `/overlay` and the `/workspace` copy). Delete both when the design ships.
+- `chief-assignments.html` (feature `chief-assignments`): the proposed Chief assignment design. The assignment box
+  sits inside the response that made it, as wide as the response text. Agent threads, chats and channels share one
+  right sidebar opened by one button: views open as tabs, and "+" opens a new tab listing what the conversation has
+  (Details, Assignments, Library and Computer for an agent; Assignments, People and Pinned in a chat or channel). An
+  agent's sidebar opens on its avatar and that list; opening a view replaces both with the tab. A delegated agent that cannot run is one failed assignment with its reason, and the Chief carries on. The bar at the top switches between an agent
+  thread, a channel and a chat, and between the app today (`?mode=today`) and the proposal; "What changes" lists the
+  changes and the error messages before and after. Delete it when the design ships.
 - `desktop-discovery.html`: how a visitor finds and downloads the desktop app. It is the live marketing page with
   the proposed changes applied, not an app-shell mockup: `node internal/plans/mockups/build-desktop-discovery.mjs`
   reads the production home page and inlines it. The bar at the bottom switches page and visitor and outlines what

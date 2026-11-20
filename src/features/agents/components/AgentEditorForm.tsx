@@ -4,7 +4,7 @@ import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
 import { Fragment, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
-import { ChevronDown, Hash, Loader2, Lock, Monitor, Plus, Trash2, Users } from 'lucide-react'
+import { ChevronDown, Loader2, Lock, Monitor, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
