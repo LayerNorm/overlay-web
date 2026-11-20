@@ -26,16 +26,19 @@ test('assignment thread destinations follow actual parent kind and preserve agen
   }
 })
 
-test('Chats destinations always select a personal draft, including without a workspace', () => {
+test('Chats opens a new draft in the scope the person is already in, including without a workspace', () => {
   for (const activeWorkspaceId of [null, 'team-a']) {
-    const href = resolveNavItemDestination('/app/chat', {
-      activeWorkspaceId,
-      buildWorkspaceHref: (id, path) => `/app/w/${id}${path.slice(4)}`,
-    })
-    const url = new URL(href, 'https://overlay.invalid')
-    assert.equal(url.searchParams.get('view'), 'personal')
-    assert.equal(url.searchParams.get('scope'), 'personal')
-    assert.equal(url.searchParams.has('id'), false)
+    for (const [scope, view] of [[undefined, 'personal'], ['personal', 'personal'], ['workspace', 'workspace-chats']] as const) {
+      const href = resolveNavItemDestination('/app/chat', {
+        activeWorkspaceId,
+        buildWorkspaceHref: (id, path) => `/app/w/${id}${path.slice(4)}`,
+        scope,
+      })
+      const url = new URL(href, 'https://overlay.invalid')
+      assert.equal(url.searchParams.get('view'), view)
+      assert.equal(url.searchParams.get('scope'), scope ?? 'personal')
+      assert.equal(url.searchParams.has('id'), false)
+    }
   }
 })
 

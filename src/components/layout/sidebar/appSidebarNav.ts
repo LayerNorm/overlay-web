@@ -258,19 +258,23 @@ export function resolveSidebarRouteState({
   }
 }
 
+/**
+ * Where a primary nav item leads. Chats opens a new draft in the scope the person is already in (Personal or
+ * Workspace), so moving between pages never drops them back into Personal.
+ */
 export function resolveNavItemDestination(
   href: string,
   {
-
     activeWorkspaceId,
     buildWorkspaceHref,
+    scope = 'personal',
   }: {
-
     activeWorkspaceId: string | null
     buildWorkspaceHref: (workspaceId: string, href: string) => string
+    scope?: PanelScope
   },
 ): string {
-  if (href === '/app/chat') href = '/app/chat?view=personal&scope=personal'
+  if (href === '/app/chat') href = `/app/chat?view=${normalizeChatViewForScope(scope, null)}&scope=${scope}`
   return activeWorkspaceId
       ? buildWorkspaceHref(activeWorkspaceId, href)
       : href

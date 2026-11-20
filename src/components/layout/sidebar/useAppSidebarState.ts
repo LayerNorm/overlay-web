@@ -184,9 +184,9 @@ function useSidebarNavInteractions(args: {
     pathname,
   })
   const navItemDestination = (href: string) => resolveNavItemDestination(href, {
-
     activeWorkspaceId,
     buildWorkspaceHref,
+    scope: routeState.scope,
   })
   const onSelectNavItem = (item: SidebarNavItem) => selectSidebarNavItem(item, {
     isGuestConfirmed,
