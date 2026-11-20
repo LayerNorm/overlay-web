@@ -45,6 +45,8 @@ export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
   'update_agent',
   // Posting is something an agent does in a conversation it is part of. An outside app can still ask an agent.
   'post_message',
+  // Accepting or excluding an assignment's result belongs to the Chief's native Harness run that made it.
+  'resolve_assignment',
 ]
 
 /**
