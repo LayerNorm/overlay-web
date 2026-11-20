@@ -40,13 +40,13 @@ function panel(reply: PersonalTranscriptRow, endedTurn: EmbeddedTurnEnd | null =
   )
 }
 
-test('the note panel streams a reply with the chat body and the one chat loading mark', () => {
+test('the note panel streams a reply with the chat body and the one chat working line', () => {
   const html = panel(row({
     _id: 'reply-1', role: 'assistant', status: 'generating', content: 'Rewriting the opening',
     parts: [{ type: 'text', text: 'Rewriting the opening' }],
   }))
   assert.equal(html.match(/data-loading-presentation="standalone"/g)?.length, 1)
-  assert.match(html, /aria-label="Overlay is responding"/)
+  assert.match(html, /Writing the reply/)
   assert.match(html, /Rewriting the opening/)
   assert.equal(html.match(/Tighten the intro/g)?.length, 1)
   assert.doesNotMatch(html, /overlay-stream-marker/)

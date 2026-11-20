@@ -755,7 +755,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
         generatedUiReadOnly={readOnly}
       />
       {showsResponseMark(message)
-        ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} />
+        ? <ExchangeLoadingState presentation={responseLoadingPresentation(undefined, Boolean(message.streaming), message.blocks).loadingPresentation} blocks={message.blocks} />
         : null}
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}

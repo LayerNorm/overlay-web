@@ -357,16 +357,17 @@ function AgentListRow({
       onArchiveThread={onArchiveThread}
     />
   ) : null
-  // The pinned chief of staff sits above the other agents as its own tile: avatar and name, nothing else.
+  // A pinned chief is a tile (avatar and name) in the row of pinned chiefs above the list, like pinned conversations
+  // in iMessage. No background at rest; filled while open. Its threads span the row below the tiles.
   if (pinned && !activityOnly) {
     return (
-      <SidebarMenuItem data-agent-row={agent.id}>
-        <div className="flex justify-center pb-2 pt-1">
+      <>
+        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className="row-start-1 min-w-0">
           <div className="group/tile relative">
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
-              className={`flex h-auto w-auto min-w-[116px] max-w-[200px] flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
-                isActive ? 'bg-(--surface-subtle)' : 'bg-(--surface-subtle)/55'
+              className={`flex h-auto w-full flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
+                isActive || isExpanded ? 'bg-(--surface-subtle)' : 'bg-transparent'
               }`}>
               {isOpening
                 ? <span className="flex size-10 items-center justify-center"><Loader2 size={18} className="animate-spin" /></span>
@@ -384,8 +385,8 @@ function AgentListRow({
             </Button>
           </div>
         </div>
-        {threads}
-      </SidebarMenuItem>
+        {threads ? <div className="col-span-full row-start-2">{threads}</div> : null}
+      </>
     )
   }
   return (
@@ -476,7 +477,6 @@ export function AgentsInlinePanel({
   const buildWorkspaceHref = useWorkspaceHref()
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
-  const { expanded, toggle: toggleExpanded } = useAgentExpansion(activeAgentId)
   const [activityCollapsed, setActivityCollapsed] = useState<Set<string>>(new Set())
   const {
     agents,
@@ -515,13 +515,21 @@ export function AgentsInlinePanel({
     () => (void recencyVersion, pinChiefs(sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)), viewerPrincipalId)),
     [tabAgents, workspaceId, viewerPrincipalId, recencyVersion],
   )
+  // The pinned chiefs (workspace and the viewer's own) sit side by side as tiles above the list, one open at a time.
+  const pinnedAgents = useMemo(
+    () => activityOnly ? [] : sortedAgents.filter((agent) => isPinnedChief(agent, viewerPrincipalId)),
+    [activityOnly, sortedAgents, viewerPrincipalId],
+  )
+  const listedAgents = useMemo(() => sortedAgents.filter((agent) => !pinnedAgents.includes(agent)), [sortedAgents, pinnedAgents])
+  const pinnedIds = useMemo(() => pinnedAgents.map((agent) => agent.id), [pinnedAgents])
+  const { expanded, toggle: toggleExpanded } = useAgentExpansion(activeAgentId, pinnedIds)
   const listRef = useRef<HTMLUListElement>(null)
   useFlipReorder(listRef, sortedAgents.map((agent) => agent.id).join('|'))
   const activityAgentIds = useMemo(() => sortedAgents.map(agent => agent.id), [sortedAgents])
   const expandedIds = useMemo(() => activityOnly ? activityAgentIds.filter((id) => !activityCollapsed.has(id)) : [...expanded], [activityOnly, activityAgentIds, activityCollapsed, expanded])
   const { bundles } = useAgentBundles(workspaceId, expandedIds)
   function toggleAgent(agentId: string) {
-    if (!activityOnly) { toggleExpanded(agentId); return }
+    if (!activityOnly) { toggleExpanded(agentId, pinnedIds); return }
     setActivityCollapsed((current) => {
       const next = new Set(current)
       if (next.has(agentId)) next.delete(agentId)
@@ -586,6 +594,34 @@ export function AgentsInlinePanel({
     router.replace(`${route}${params.size ? `?${params.toString()}` : ''}`)
   }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, buildWorkspaceHref, workspaceId])
 
+  function renderAgent(agent: WorkspaceAgentDirectoryItem) {
+    const isExpanded = activityOnly ? !activityCollapsed.has(agent.id) : expanded.has(agent.id)
+    return (
+      <ActivityAgentRow key={agent.id} agentId={agent.id} activityOnly={activityOnly}>
+        <AgentListRow
+          key={agent.id}
+          agent={agent}
+          activityOnly={activityOnly}
+          pinned={isPinnedChief(agent, viewerPrincipalId)}
+          isExpanded={isExpanded}
+          isActive={activeAgentId === agent.id && !activeConversationId}
+          anyOpening={Boolean(openingAgentId)}
+          isOpening={openingAgentId === agent.id}
+          bundle={bundles[agent.id] ?? 'loading'}
+          activeConversationId={activeConversationId}
+          creatingThread={creatingThreadFor === agent.id}
+          onToggleExpanded={toggleAgent}
+          onOpenThread={openThread}
+          onOpenAutomation={openAutomation}
+          onCreateThread={(target) => void createThread(target)}
+          onArchiveThread={(target, conversationId, archived) => {
+            void archiveThread(target, conversationId, archived)
+          }}
+        />
+      </ActivityAgentRow>
+    )
+  }
+
   return (
     <AgentThreadActivityProvider workspaceId={workspaceId} agentIds={activityAgentIds}>
     <SidebarMenu ref={listRef}>
@@ -595,33 +631,15 @@ export function AgentsInlinePanel({
           <SidebarMenuItem key={index}><SidebarMenuSkeleton index={index} /></SidebarMenuItem>
         ))
       ) : sortedAgents.length ? (
-        sortedAgents.map((agent) => {
-          const isExpanded = activityOnly ? !activityCollapsed.has(agent.id) : expanded.has(agent.id)
-          return (
-            <ActivityAgentRow key={agent.id} agentId={agent.id} activityOnly={activityOnly}>
-            <AgentListRow
-              key={agent.id}
-              agent={agent}
-              activityOnly={activityOnly}
-              pinned={isPinnedChief(agent, viewerPrincipalId)}
-              isExpanded={isExpanded}
-              isActive={activeAgentId === agent.id && !activeConversationId}
-              anyOpening={Boolean(openingAgentId)}
-              isOpening={openingAgentId === agent.id}
-              bundle={bundles[agent.id] ?? 'loading'}
-              activeConversationId={activeConversationId}
-              creatingThread={creatingThreadFor === agent.id}
-              onToggleExpanded={toggleAgent}
-              onOpenThread={openThread}
-              onOpenAutomation={openAutomation}
-              onCreateThread={(target) => void createThread(target)}
-              onArchiveThread={(target, conversationId, archived) => {
-                void archiveThread(target, conversationId, archived)
-              }}
-            />
-            </ActivityAgentRow>
-          )
-        })
+        [
+          pinnedAgents.length ? (
+            <SidebarMenuItem key="pinned-chiefs" data-pinned-chiefs className="grid gap-x-1.5 pb-2 pt-1"
+              style={{ gridTemplateColumns: `repeat(${pinnedAgents.length}, minmax(0, 1fr))` }}>
+              {pinnedAgents.map(renderAgent)}
+            </SidebarMenuItem>
+          ) : null,
+          ...listedAgents.map(renderAgent),
+        ]
       ) : (
         <SidebarMenuItem>
           <p className="px-2.5 py-2 text-xs text-(--muted-light)">

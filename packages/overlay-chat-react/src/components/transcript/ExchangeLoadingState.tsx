@@ -1,6 +1,6 @@
 import type { AssistantVisualBlock, ChatExchangeStatus } from '@overlay/chat-core'
-import { OverlayMark } from '@overlay/ui'
 import React from 'react'
+import { WorkingLine, hasRunningTool } from '../exchange/working-orb'
 
 const ACTIVE_EXCHANGE_STATUSES = new Set<ChatExchangeStatus>([
   'submitted',
@@ -25,10 +25,10 @@ export function exchangeLoadingPresentation(
 }
 
 /**
- * The one rule every live reply uses for its loading mark: chat exchanges, agent
+ * The one rule every live reply uses for its working state: chat exchanges, agent
  * threads and rooms. An in-progress reply without an explicit status is
  * `submitted` until it has blocks and `streaming` after; the mark stays through
- * tool-only periods and disappears once the reply settles.
+ * tool-only periods (on the running tool's row) and disappears once the reply settles.
  */
 export function responseLoadingPresentation(
   status: ChatExchangeStatus | undefined,
@@ -45,22 +45,17 @@ export function responseLoadingPresentation(
   return { loadingPresentation, responseSettled: !loadingPresentation.active }
 }
 
+/**
+ * The bottom of a live response between tool calls: a working orb and what the agent is doing ("Thinking",
+ * "Writing the reply"). While a tool runs, that tool's row carries the orb instead, so nothing shows here.
+ */
 export function ExchangeLoadingState({
   presentation,
+  blocks = [],
 }: {
   presentation: ExchangeLoadingPresentation
+  blocks?: readonly AssistantVisualBlock[]
 }) {
-  if (!presentation.active || presentation.marker === 'none') return null
-  return (
-    <div
-      className="flex items-center px-1 py-1 text-(--muted)"
-      aria-live="polite"
-      aria-busy="true"
-      aria-label="Overlay is responding"
-      role="status"
-      data-loading-presentation="standalone"
-    >
-      <OverlayMark motion="look" size={24} label="" />
-    </div>
-  )
+  if (!presentation.active || presentation.marker === 'none' || hasRunningTool(blocks)) return null
+  return <WorkingLine blocks={blocks} />
 }

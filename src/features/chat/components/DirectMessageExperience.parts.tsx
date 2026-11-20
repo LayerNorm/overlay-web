@@ -565,10 +565,8 @@ export function RoomTranscript({
               return (
                 <div key={roomMessageRowKey(message)} className="contents">
                   {showDayDivider ? (
-                    <div className="flex items-center gap-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">
-                      <span className="h-px flex-1 bg-(--border)" />
+                    <div className="py-1 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-(--muted-light)">
                       <span>{roomDayLabel(message.createdAt)}</span>
-                      <span className="h-px flex-1 bg-(--border)" />
                     </div>
                   ) : null}
                   {isUnreadBoundary ? (
