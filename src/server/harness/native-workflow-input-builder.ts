@@ -74,11 +74,11 @@ function assertPreparedRoomIdentity(
   const triggeringMessage = prepared.room.history.find(message => message._id === run.userMessageId)
   // An outside agent (joined over MCP) has no Overlay run to be a parent, so a turn its message starts is opened
   // for the person it acts for: the message is the agent's, the initiator is that person.
-  const fromOutsideAgent = triggeringMessage?.authorKind === 'agent'
+  const fromOutsideAgent = () => triggeringMessage?.authorKind === 'agent'
     && prepared.room.directory.agents.some(agent => agent.principalId === triggeringMessage.authorPrincipalId
       && agent.harness === 'mcp' && !agent.archivedAt)
   const validTriggerAuthor = (triggeringMessage?.authorKind === 'human' || triggeringMessage?.authorKind === 'agent')
-    && (triggeringMessage.authorPrincipalId === run.initiatorPrincipalId || fromOutsideAgent)
+    && (triggeringMessage.authorPrincipalId === run.initiatorPrincipalId || fromOutsideAgent())
   if (!prepared.room.conversation.workspaceId || prepared.room.conversation.workspaceId !== args.workspaceId
     || prepared.agent.harness !== 'overlay' || prepared.agent.principalId !== run.agentPrincipalId
     || !validTriggerAuthor) {
