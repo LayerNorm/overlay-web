@@ -119,6 +119,10 @@ test('a partly spent top-up stays spendable after the monthly allowance is used 
   expect(await as('mark').query(fn.entitlements, { workspaceId: 'ws' })).toMatchObject({
     budgetUsedCents: 1529.45, budgetTotalCents: 1800, budgetRemainingCents: 270.55,
   })
+  // The Billing tab's bar runs over the allowance and the top-ups together, with the allowance as its first part.
+  expect(await as('olivia').query(fn.summary, { workspaceId: 'ws' })).toMatchObject({
+    credits: { total: 18_000, allowance: 10_000, used: 15_295, remaining: 2_706 },
+  })
 })
 
 test('with billing off the entitlements are the member’s own, live, and nothing is gated', async () => {

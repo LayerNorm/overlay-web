@@ -214,6 +214,8 @@ export type WorkspaceBillingSummaryResponse = {
     total: number
     used: number
     remaining: number
+    /** The monthly plan's share of `total`; the rest of `total` is this period's top-ups. */
+    allowance: number
     allowancePercentUsed: number
     topUpBalance: number
   }
