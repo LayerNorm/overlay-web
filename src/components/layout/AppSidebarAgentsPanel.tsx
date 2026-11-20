@@ -345,6 +345,49 @@ function AgentListRow({
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
 }) {
   const activity = useAgentThreadActivity(agent.id)
+  const threads = isExpanded ? (
+    <AgentThreadRows
+      agent={agent}
+      bundle={bundle}
+      activity={activity}
+      activityOnly={activityOnly}
+      activeConversationId={activeConversationId}
+      onOpenThread={onOpenThread}
+      onOpenAutomation={onOpenAutomation}
+      onArchiveThread={onArchiveThread}
+    />
+  ) : null
+  // The pinned chief of staff sits above the other agents as its own tile: avatar and name, nothing else.
+  if (pinned && !activityOnly) {
+    return (
+      <SidebarMenuItem data-agent-row={agent.id}>
+        <div className="flex justify-center pb-2 pt-1">
+          <div className="group/tile relative">
+            <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
+              aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
+              className={`flex h-auto w-auto min-w-[116px] max-w-[200px] flex-col items-center gap-2 rounded-xl px-3 pb-2.5 pt-3.5 text-[13px] font-normal text-(--foreground) hover:bg-(--surface-subtle) ${
+                isActive ? 'bg-(--surface-subtle)' : 'bg-(--surface-subtle)/55'
+              }`}>
+              {isOpening
+                ? <span className="flex size-10 items-center justify-center"><Loader2 size={18} className="animate-spin" /></span>
+                : <AgentCreature isDefault={agent.isDefault} agent={agent} size={40} />}
+              <span className="max-w-full truncate">{agent.name}</span>
+            </Button>
+            <Button variant="ghost" size="icon-xs" type="button" aria-label={`New thread with ${agent.name}`} title="New thread"
+              disabled={creatingThread}
+              onClick={() => {
+                if (!isExpanded) onToggleExpanded(agent.id)
+                onCreateThread(agent)
+              }}
+              className="absolute right-1 top-1 text-(--muted) focus-visible:opacity-100 md:opacity-0 md:group-hover/tile:opacity-100">
+              {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
+            </Button>
+          </div>
+        </div>
+        {threads}
+      </SidebarMenuItem>
+    )
+  }
   return (
     <SidebarMenuItem data-agent-row={agent.id}>
       <div className="group/agent-row relative">
@@ -392,18 +435,7 @@ function AgentListRow({
           <ChevronRight className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden />
         </SidebarMenuAction>
       </div>
-      {isExpanded ? (
-        <AgentThreadRows
-          agent={agent}
-          bundle={bundle}
-          activity={activity}
-          activityOnly={activityOnly}
-          activeConversationId={activeConversationId}
-          onOpenThread={onOpenThread}
-          onOpenAutomation={onOpenAutomation}
-          onArchiveThread={onArchiveThread}
-        />
-      ) : null}
+      {threads}
     </SidebarMenuItem>
   )
 }
