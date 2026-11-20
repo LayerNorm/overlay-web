@@ -23,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "10"
+VERSION = "${DRIVER_VERSION}"
 DEFAULT_MAX_WIDTH = 1280
 LOCK_PATH = os.environ.get("OVERLAY_COMPUTER_INPUT_LOCK_PATH", "/tmp/overlay-computer/input.lock")
 SHOT_PATH = "/tmp/overlay-computer/shot.png"

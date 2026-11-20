@@ -188,6 +188,11 @@ export async function accountEntitlementsFor(ctx: Pick<QueryCtx, 'db'>, args: { 
   const used = balance.usedMicros / 10_000
   const reserved = balance.reservedMicros / 10_000
   const allowanceUsed = balance.allowanceUsedMicros / 10_000
+  // A charge adds to `used` and comes out of the allowance first, then out of `topUpBalance` (finalizeWorkspaceLedger),
+  // so the top-up balance is already net of what top-ups paid for. Subtracting `used` from it again counted that
+  // spend twice and showed a partly spent top-up as $0.
+  const remaining = Math.max(0, Math.max(0, included - allowanceUsed) + topUp - reserved)
+  const total = included + topUp + Math.max(0, used - allowanceUsed)
   return {
     billingAccountId: account.billingAccountId,
     tier: subscription?.planKind === 'paid' ? 'pro' as const : 'free' as const,
@@ -197,8 +202,8 @@ export async function accountEntitlementsFor(ctx: Pick<QueryCtx, 'db'>, args: { 
     ...(subscription?.paidPeriodStart === undefined ? {} : { paidPeriodStart: subscription.paidPeriodStart }),
     ...(subscription?.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: subscription.paidPeriodEnd }),
     budgetUsedCents: used,
-    budgetTotalCents: included + topUp,
-    budgetRemainingCents: Math.max(0, included + topUp - used - reserved),
+    budgetTotalCents: total,
+    budgetRemainingCents: remaining,
     allowanceTotalCents: included,
     allowanceUsedCents: allowanceUsed,
     allowancePercentUsed: included > 0 ? Math.min(100, allowanceUsed / included * 100) : 0,
@@ -207,7 +212,7 @@ export async function accountEntitlementsFor(ctx: Pick<QueryCtx, 'db'>, args: { 
     autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
     autoTopUpConsentGranted: subscription?.offSessionConsentAt !== undefined,
     creditsUsed: used,
-    creditsTotal: included + topUp,
+    creditsTotal: total,
     ...(subscription?.currentPeriodEnd === undefined
       ? {}
       : { billingPeriodEnd: new Date(subscription.currentPeriodEnd).toISOString() }),

@@ -25,6 +25,7 @@ export type WorkspaceBillingBalance = {
   budgetUsedCents: number
   budgetRemainingCents: number
   allowancePercentUsed?: number
+  allowanceTotalCents?: number
   topUpBalanceCents?: number
 }
 
@@ -73,7 +74,7 @@ export function composeWorkspaceBillingSummary(args: {
       canTopUp,
       initialized: false,
       pricingVersion: 'markup_25_v1',
-      credits: { total: 0, used: 0, remaining: 0, allowancePercentUsed: 0, topUpBalance: 0 },
+      credits: { total: 0, used: 0, remaining: 0, allowance: 0, allowancePercentUsed: 0, topUpBalance: 0 },
       subscription: { planKind: 'free', planAmountCents: 0 },
       storage,
       executionAccess: workspaceExecutionAccess({ billingEnabled: args.billingEnabled, remainingCents: 0 }),
@@ -100,6 +101,7 @@ export function composeWorkspaceBillingSummary(args: {
       total: centsToBillingCredits(balance?.budgetTotalCents ?? 0),
       used: centsToBillingCredits(usedCents),
       remaining: centsToBillingCredits(remainingCents),
+      allowance: centsToBillingCredits(balance?.allowanceTotalCents ?? 0),
       allowancePercentUsed: balance?.allowancePercentUsed ?? 0,
       topUpBalance: centsToBillingCredits(balance?.topUpBalanceCents ?? 0),
     },

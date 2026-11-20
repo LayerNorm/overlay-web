@@ -18,7 +18,7 @@ function billingSummary({
     canTopUp: true,
     initialized,
     pricingVersion: 'markup_25_v1',
-    credits: { total: 0, used: 0, remaining: 0, allowancePercentUsed: 0, topUpBalance },
+    credits: { total: 0, used: 0, remaining: 0, allowance: 0, allowancePercentUsed: 0, topUpBalance },
     subscription: { planKind, planAmountCents: 0 },
   }
 }

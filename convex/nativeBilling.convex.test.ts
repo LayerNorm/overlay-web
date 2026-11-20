@@ -94,7 +94,8 @@ test('entitlements show the live balance and follow charges; an unfunded workspa
   expect(JSON.stringify(before)).not.toMatch(/SECRET/)
   await t.run(async ctx => {
     const balance = await ctx.db.query('billingAccountBalances').withIndex('by_billingAccountId', q => q.eq('billingAccountId', 'acct')).unique()
-    await ctx.db.patch(balance!._id, { usedMicros: 9_000_000, reservedMicros: 0 })
+    // A $6 charge: the last $5 of the allowance, then $1 of the $2 top-up.
+    await ctx.db.patch(balance!._id, { allowanceUsedMicros: 8_000_000, topUpBalanceMicros: 1_000_000, usedMicros: 9_000_000, reservedMicros: 0 })
   })
   expect(await as('mark').query(fn.entitlements, { workspaceId: 'ws' })).toMatchObject({ budgetRemainingCents: 100 })
 
@@ -102,6 +103,25 @@ test('entitlements show the live balance and follow charges; an unfunded workspa
   expect(await unfunded.as('olivia').query(fn.entitlements, { workspaceId: 'ws' })).toMatchObject({ planKind: 'free', budgetRemainingCents: 0 })
   expect(await unfunded.as('olivia').query(fn.summary, { workspaceId: 'ws' })).toMatchObject({
     initialized: false, executionAccess: { state: 'subscription_required', canExecute: false },
+  })
+})
+
+test('a partly spent top-up stays spendable after the monthly allowance is used up', async () => {
+  const { t, as } = await fixture()
+  await t.run(async ctx => {
+    const balance = await ctx.db.query('billingAccountBalances').withIndex('by_billingAccountId', q => q.eq('billingAccountId', 'acct')).unique()
+    // $10 allowance used up, $8 top-up bought with $5.29 of it spent: $15.29 used and $2.71 left.
+    await ctx.db.patch(balance!._id, {
+      includedMicros: 10_000_000, allowanceUsedMicros: 10_000_000, topUpPurchasedMicros: 8_000_000,
+      topUpBalanceMicros: 2_705_500, usedMicros: 15_294_500, reservedMicros: 0,
+    })
+  })
+  expect(await as('mark').query(fn.entitlements, { workspaceId: 'ws' })).toMatchObject({
+    budgetUsedCents: 1529.45, budgetTotalCents: 1800, budgetRemainingCents: 270.55,
+  })
+  // The Billing tab's bar runs over the allowance and the top-ups together, with the allowance as its first part.
+  expect(await as('olivia').query(fn.summary, { workspaceId: 'ws' })).toMatchObject({
+    credits: { total: 18_000, allowance: 10_000, used: 15_295, remaining: 2_706 },
   })
 })
 

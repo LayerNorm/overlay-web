@@ -150,6 +150,14 @@ published catalog decides only which model IDs are offered and their reasoning
 levels; credentials, endpoints and executors still come from the pinned source.
 A model newer than the pin can therefore be listed before the pinned executor
 has been checked against it; move the pin when such a model fails.
+Such a failure reaches Overlay as HTTP 502 `provider_unavailable` on every attempt
+for that model while older models on the same connection keep working (logged as
+`[subscription-bridge] request failed`). Claude Fable 5.2 failed this way until the
+pin moved to the upstream revision that added its request rules. When moving the
+pin, run `services/cliproxyapi/build.sh`: it stops on any Overlay patch that no
+longer applies. Regenerate that patch against the new revision as a zero-context
+diff and keep its test. `codex-refresh-status.patch` now reads the HTTP status
+through upstream's wrapped refresh error, so its test uses `errors.As`.
 
 Overlay stores each connection's list and refreshes it without the refresh
 button. Listing connections (`GET /api/v1/providers/connections`, which the app

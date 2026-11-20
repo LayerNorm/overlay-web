@@ -98,7 +98,7 @@ function billing(state: NonNullable<WorkspaceBillingSummaryResponse['executionAc
     workspaceId: 'team-a', canManage, canTopUp: false, initialized: true, pricingVersion: 'markup_25_v1',
     executionAccess: { state, canExecute: state === 'ready' },
     subscription: { planKind: state === 'ready' ? 'paid' : 'free', planAmountCents: state === 'ready' ? 800 : 0 },
-    credits: { total: 800, used: 0, remaining: 800, allowancePercentUsed: 0, topUpBalance: 0 },
+    credits: { total: 800, used: 0, remaining: 800, allowance: 800, allowancePercentUsed: 0, topUpBalance: 0 },
   }
 }
 

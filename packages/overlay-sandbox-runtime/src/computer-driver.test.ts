@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { COMPUTER_DRIVER_SOURCE } from './computer-driver/driver'
+import { COMPUTER_DRIVER_SOURCE, DRIVER_VERSION } from './computer-driver/driver'
 
 const pythonCheck = spawnSync('python3', ['--version'], { encoding: 'utf8' })
 const pythonPath = pythonCheck.status === 0
@@ -31,6 +31,15 @@ if (!pythonPath || shellCheck.status !== 0) {
     assert.match(commands, /click --repeat 1 --delay 80 1/)
     assert.match(commands, /click --repeat 2 --delay 80 4/)
     assert.match(commands, /click --repeat 3 --delay 80 5/)
+  })
+
+  test('the installed driver reports the version the server checks for', (t) => {
+    // The server rejects any capabilities report whose version differs from DRIVER_VERSION, so a stale literal in the
+    // Python source breaks every computer's screen and browser tools.
+    const harness = createHarness(t)
+    const capabilities = harness.run('capabilities', {})
+    assert.equal(capabilities.status, 0)
+    assert.equal((capabilities.payload as { version?: string }).version, DRIVER_VERSION)
   })
 
   test('driver captures and downsizes screenshots with ImageMagick import', (t) => {

@@ -6,6 +6,7 @@ import {
   type SandboxCommandResult,
   type SandboxInstance,
 } from '@overlay/sandbox-runtime'
+import { logger } from '@/server/observability/logger'
 import type { LocalDriverCommand } from '@layernorm/overlay-agent-bridge-protocol'
 import { LocalComputerError } from './local/LocalComputerService'
 import { isLocalHostSandboxInstance, type LocalHostSandboxInstance } from './local/LocalHostSandboxInstance'
@@ -67,6 +68,27 @@ function capabilitiesFrom(value: unknown): DriverCapabilities | null {
   return value as unknown as DriverCapabilities
 }
 
+async function runDriverProcess(
+  instance: SandboxInstance,
+  request: Record<string, unknown>,
+  timeoutMs: number,
+  environment?: Record<string, string>,
+): Promise<SandboxCommandResult> {
+  const handle = await instance.runCommand({
+    command: 'sh',
+    args: [
+      '-c',
+      'mkdir -p /tmp/overlay-computer && exec python3 "$@"',
+      'overlay-computer',
+      DRIVER_PATH,
+      JSON.stringify(request),
+    ],
+    environment,
+    timeoutMs,
+  })
+  return await handle.wait()
+}
+
 async function runCommand(
   instance: SandboxInstance,
   request: Record<string, unknown>,
@@ -74,32 +96,88 @@ async function runCommand(
   environment?: Record<string, string>,
 ): Promise<SandboxCommandResult | null> {
   try {
-    const handle = await instance.runCommand({
-      command: 'sh',
-      args: [
-        '-c',
-        'mkdir -p /tmp/overlay-computer && exec python3 "$@"',
-        'overlay-computer',
-        DRIVER_PATH,
-        JSON.stringify(request),
-      ],
-      environment,
-      timeoutMs,
-    })
-    return await handle.wait()
+    return await runDriverProcess(instance, request, timeoutMs, environment)
   } catch (_error) {
     return null
   }
 }
 
-async function probe(instance: SandboxInstance): Promise<DriverCapabilities | null> {
-  const result = await runCommand(instance, { command: 'capabilities' }, DRIVER_CHECK_TIMEOUT_MS)
-  if (!result || result.exitCode !== 0) return null
+/** Why the driver's capabilities check failed, kept so the error names the real cause instead of guessing. */
+type DriverProbeFailure = {
+  stage: 'start' | 'exit' | 'output'
+  exitCode?: number
+  stdout?: string
+  stderr?: string
+  error?: string
+}
+
+type DriverProbe =
+  | { ok: true; capabilities: DriverCapabilities }
+  | { ok: false; failure: DriverProbeFailure }
+
+const PROBE_OUTPUT_LIMIT = 1_000
+
+function outputTail(value: string): string | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  return trimmed.length > PROBE_OUTPUT_LIMIT ? `…${trimmed.slice(-PROBE_OUTPUT_LIMIT)}` : trimmed
+}
+
+async function probe(instance: SandboxInstance): Promise<DriverProbe> {
+  let result: SandboxCommandResult
   try {
-    return capabilitiesFrom(JSON.parse(result.stdout))
-  } catch (_error) {
-    return null
+    result = await runDriverProcess(instance, { command: 'capabilities' }, DRIVER_CHECK_TIMEOUT_MS)
+  } catch (error) {
+    return {
+      ok: false,
+      failure: { stage: 'start', error: outputTail(error instanceof Error ? error.message : String(error)) },
+    }
   }
+  let capabilities: DriverCapabilities | null = null
+  try {
+    capabilities = capabilitiesFrom(JSON.parse(result.stdout))
+  } catch (_error) {
+    capabilities = null
+  }
+  if (result.exitCode === 0 && capabilities) return { ok: true, capabilities }
+  return {
+    ok: false,
+    failure: {
+      stage: result.exitCode === 0 ? 'output' : 'exit',
+      exitCode: result.exitCode,
+      stdout: outputTail(result.stdout),
+      stderr: outputTail(result.stderr),
+    },
+  }
+}
+
+function lastLine(value: string | undefined): string | undefined {
+  return value?.split('\n').map((line) => line.trim()).filter(Boolean).at(-1)
+}
+
+function probeFailureError(failure: DriverProbeFailure): ComputerDesktopDriverError {
+  const detail = { ...failure }
+  if (failure.exitCode === 127 && /python3/.test(failure.stderr ?? '')) {
+    return new ComputerDesktopDriverError(
+      'desktop_unsupported',
+      'Python 3 is required to run the desktop driver.',
+      ['python3'],
+      detail,
+    )
+  }
+  const reason = failure.stage === 'start'
+    ? `the check command could not run${failure.error ? ` (${failure.error})` : ''}`
+    : failure.exitCode === 124
+      ? 'the check timed out'
+      : failure.stage === 'exit'
+        ? `the check exited with code ${failure.exitCode}${lastLine(failure.stderr) ? `: ${lastLine(failure.stderr)}` : ''}`
+        : 'the check returned unexpected output'
+  return new ComputerDesktopDriverError(
+    'desktop_driver_failed',
+    `The desktop driver did not start: ${reason}.`,
+    [],
+    detail,
+  )
 }
 
 async function prepareMissingTools(instance: SandboxInstance): Promise<boolean> {
@@ -135,30 +213,34 @@ export async function ensureDriver(
     )
   }
 
-  let capabilities = await probe(instance)
-  if (!capabilities) {
+  let probed = await probe(instance)
+  if (!probed.ok) {
     try {
       await instance.writeFiles([{
         path: DRIVER_PATH,
         contents: new TextEncoder().encode(COMPUTER_DRIVER_SOURCE),
         mode: 0o700,
       }])
-    } catch (_error) {
+    } catch (error) {
       throw new ComputerDesktopDriverError(
-        'desktop_unsupported',
+        'desktop_driver_failed',
         'The desktop driver could not be installed.',
-        ['python3'],
+        [],
+        { error: outputTail(error instanceof Error ? error.message : String(error)) },
       )
     }
-    capabilities = await probe(instance)
+    probed = await probe(instance)
   }
-  if (!capabilities) {
-    throw new ComputerDesktopDriverError(
-      'desktop_unsupported',
-      'Python 3 is required to run the desktop driver.',
-      ['python3'],
-    )
+  if (!probed.ok) {
+    logger.warn('[computer-driver] capabilities check failed', {
+      provider: instance.provider,
+      reference: instance.reference,
+      stage: probed.failure.stage,
+      exitCode: probed.failure.exitCode,
+    })
+    throw probeFailureError(probed.failure)
   }
+  let capabilities = probed.capabilities
 
   if (requireDesktop && missingTools(capabilities).length > 0) {
     if (!await prepareMissingTools(instance)) {
@@ -169,7 +251,8 @@ export async function ensureDriver(
         missing,
       )
     }
-    capabilities = await probe(instance) ?? capabilities
+    const reprobed = await probe(instance)
+    if (reprobed.ok) capabilities = reprobed.capabilities
   }
   const missing = requireDesktop ? missingTools(capabilities) : []
   if (missing.length > 0) {

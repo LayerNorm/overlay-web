@@ -122,6 +122,12 @@ export class WorkspaceBillingService {
     legalMetadata?: Record<string, string>
   }): Promise<{ url: string | null }> {
     const { account, workspaceId } = await this.requireAccountManager(args)
+    // A second checkout would start a second Stripe subscription that charges every month but is never applied:
+    // the account keeps the subscription it already has. Plan changes go through the billing portal.
+    const current = await this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId })
+    if (current?.planKind === 'paid' && current.status !== 'canceled') {
+      this.fail('This workspace already has a plan. Use Manage billing to change or cancel it.', 409)
+    }
     if (!Number.isSafeInteger(args.planAmountCents)
       || clampPaidPlanAmountCents(args.planAmountCents) !== args.planAmountCents) {
       this.fail('Unsupported subscription amount.', 400)

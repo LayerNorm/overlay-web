@@ -360,7 +360,10 @@ function WalletOverview({
 }
 
 function WalletCreditsCard({ summary }: { summary: WorkspaceBillingSummaryResponse }) {
-  const allowanceUsed = Math.min(100, Math.max(0, summary.credits.allowancePercentUsed))
+  const { total, used, allowance } = summary.credits
+  const usedPercent = percentOf(used, total)
+  // Top-ups extend the bar past the monthly allowance; the tick marks where the allowance ends.
+  const allowanceEnd = allowance > 0 && allowance < total ? percentOf(allowance, total) : null
   return (
     <div className="rounded-xl border border-(--border) p-4">
       <div className="flex items-baseline justify-between gap-3">
@@ -368,10 +371,19 @@ function WalletCreditsCard({ summary }: { summary: WorkspaceBillingSummaryRespon
           <p className="text-sm font-medium text-(--foreground)">Workspace credits</p>
           <p className="mt-1 text-xs text-(--muted)">{formatCredits(summary.credits.remaining)} remaining</p>
         </div>
-        <span className="text-xs text-(--muted)">{allowanceUsed.toFixed(0)}% allowance used</span>
+        <span className="text-xs text-(--muted)">{usedPercent.toFixed(0)}% used</span>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-(--surface-subtle)" aria-label={`${allowanceUsed.toFixed(0)}% allowance used`}>
-        <div className="h-full rounded-full bg-(--foreground) transition-[width]" style={{ width: `${allowanceUsed}%` }} />
+      <div className="relative mt-4">
+        <div className="h-2 overflow-hidden rounded-full bg-(--surface-subtle)" aria-label={`${usedPercent.toFixed(0)}% of workspace credits used`}>
+          <div className="h-full rounded-full bg-(--foreground) transition-[width]" style={{ width: `${usedPercent}%` }} />
+        </div>
+        {allowanceEnd === null ? null : (
+          <div
+            className="absolute -top-1 -bottom-1 w-0.5 -translate-x-1/2 rounded-full bg-(--muted-light) ring-2 ring-(--background)"
+            style={{ left: `${allowanceEnd}%` }}
+            title="Monthly allowance ends here; top-up credits follow"
+          />
+        )}
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
         <div><dt className="text-(--muted-light)">Used this period</dt><dd className="mt-1 text-(--foreground)">{formatCredits(summary.credits.used)}</dd></div>
@@ -412,13 +424,17 @@ function CheckoutActions({
     setAcceptedCheckoutTerms,
     run,
   } = billing
+  const hasPlan = summary.subscription.planKind === 'paid' && summary.subscription.status !== 'canceled'
 
   return (
     <>
       <div className="grid gap-3 lg:grid-cols-2">
-        {summary.canManage ? <BillingActionCard title="Monthly workspace credits" description="Choose a monthly amount from $8 to $500. It becomes the workspace’s credit each month.">
+        {summary.canManage && hasPlan ? <BillingActionCard title="Monthly workspace credits" description="Change or cancel the monthly amount in the billing portal. Use a top-up to add credits now.">
+          <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('portal', () => client.createBillingPortal(workspaceId))}>{busy === 'portal' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}Change plan</Button>
+        </BillingActionCard> : null}
+        {summary.canManage && !hasPlan ? <BillingActionCard title="Monthly workspace credits" description="Choose a monthly amount from $8 to $500. It becomes the workspace’s credit each month.">
           <DollarAmountInput label="Workspace monthly plan" valueCents={planAmountCents} minCents={PAID_PLAN_MIN_AMOUNT_CENTS} maxCents={PAID_PLAN_MAX_AMOUNT_CENTS} suffix="/month" onChange={setPlanAmountCents} />
-          <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}{summary.subscription.planKind === 'paid' ? 'Change plan' : 'Subscribe'}</Button>
+          <Button size="sm" disabled={busy !== null || !acceptedCheckoutTerms} onClick={() => void run('checkout', () => client.createBillingCheckout(workspaceId, { planAmountCents, topUpAmountCents, autoTopUpEnabled: false, ...currentLegalAcceptancePayload() }))}>{busy === 'checkout' ? <Loader2 size={13} className="animate-spin" /> : <CreditCard size={13} />}Subscribe</Button>
         </BillingActionCard> : null}
         <BillingActionCard title="One-time top-up" description="Add credits to this workspace now. Like the monthly credit, it does not carry over to next month.">
           <DollarAmountInput label="Workspace top-up" valueCents={topUpAmountCents} minCents={TOP_UP_MIN_AMOUNT_CENTS} maxCents={TOP_UP_MAX_AMOUNT_CENTS} suffix="credit" onChange={setTopUpAmountCents} />
@@ -433,6 +449,10 @@ function CheckoutActions({
 
 function BillingActionCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
   return <div className="rounded-xl border border-(--border) p-4"><p className="text-sm font-medium text-(--foreground)">{title}</p><p className="mt-1 min-h-10 text-xs leading-5 text-(--muted)">{description}</p><div className="mt-4 flex items-center gap-2">{children}</div></div>
+}
+
+function percentOf(part: number, whole: number): number {
+  return whole > 0 ? Math.min(100, Math.max(0, (part / whole) * 100)) : 0
 }
 
 const CREDITS_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })

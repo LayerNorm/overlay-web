@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-UPSTREAM_SHA=01b24f1f95dc9b309765212c52b25b25e005ff01
+UPSTREAM_SHA=6db7d4b839d86c5b24e17bbe73bcd4db18ef1b1a
 UPSTREAM_URL=https://github.com/router-for-me/CLIProxyAPI.git
 UPSTREAM_DIR=${UPSTREAM_DIR:-"$ROOT/.build/CLIProxyAPI"}
 OUTPUT=${1:-"$ROOT/.build/overlay-subscriptions"}
