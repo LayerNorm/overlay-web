@@ -34,7 +34,7 @@ function threadPanelWidth({ width, expanded }: ThreadPanelState): number {
 
 /**
  * An agent thread's right panel: open state, tabs, width and expansion, remembered across visits, plus its
- * shortcuts while a thread is open (⌥T opens a launcher, ⌘J the Terminal and ⌘P the Files panel).
+ * shortcuts while a thread is open (⌥T opens a launcher and ⌥F the Files panel).
  */
 export function useThreadPanel({ conversationId, threadOpen }: { conversationId: string | null; threadOpen: boolean }) {
   const [panel, setPanel] = useState<ThreadPanelState>(initialThreadPanel)
@@ -52,17 +52,13 @@ export function useThreadPanel({ conversationId, threadOpen }: { conversationId:
   useEffect(() => {
     if (!threadOpen) return
     const show = (update: TabsUpdate) => setPanel((current) => ({ ...current, open: true, tabs: update(current.tabs) }))
-    // Only the platform's own shortcut key: on a Mac, Ctrl+P and Ctrl+J move the caret in a text field.
-    const mac = /Mac|iPhone|iPad/.test(navigator.platform)
+    // Option shortcuts only: they clash with no browser or text-editing command (the browser owns Cmd+P and Cmd+J).
     const onKey = (event: KeyboardEvent) => {
       // A dialog (agent editor, share, create) owns the keyboard while it is open.
       if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
-      const mod = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
-      const plainMod = mod && !event.altKey && !event.shiftKey
-      const key = event.key.toLowerCase()
-      if (event.altKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyT') show((tabs) => openLauncher(tabs, nextLauncherId()))
-      else if (plainMod && key === 'j') show((tabs) => openPanel(tabs, 'terminal'))
-      else if (plainMod && key === 'p') show((tabs) => openPanel(tabs, 'files'))
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return
+      if (event.code === 'KeyT') show((tabs) => openLauncher(tabs, nextLauncherId()))
+      else if (event.code === 'KeyF') show((tabs) => openPanel(tabs, 'files'))
       else return
       event.preventDefault()
     }

@@ -16,7 +16,6 @@ import {
   Slack,
   UserRound,
   UsersRound,
-
 } from 'lucide-react'
 import { Button, FloatingMenu, MenuItem } from '@overlay/ui/primitives'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'

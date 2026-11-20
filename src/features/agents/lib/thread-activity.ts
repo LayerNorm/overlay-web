@@ -1,8 +1,6 @@
 import {
-  TOOL_UI_DONE_STATES,
   buildAssistantVisualSequence,
   describeToolCall,
-  redactCommand,
   type ToolVisualBlock,
 } from '@overlay/chat-core'
 
@@ -14,20 +12,11 @@ export type ThreadPlan = {
   phase: 'active' | 'waiting' | 'ended'
 }
 
-export type ThreadCommand = {
-  key: string
-  command: string
-  output: string
-  exitCode: number | null
-  running: boolean
-}
-
 export type ThreadEdit = { path: string; added: number; removed: number }
 
 export type ThreadActivity = {
   plan: ThreadPlan | null
   calls: ToolVisualBlock[]
-  commands: ThreadCommand[]
   edits: ThreadEdit[]
 }
 
@@ -42,22 +31,9 @@ function planPhase(message: ActivityMessage): ThreadPlan['phase'] {
 
 const isAgent = (message: ActivityMessage) => message.authorKind === 'agent' || message.authorKind === 'model'
 
-function commandOf(call: ToolVisualBlock): ThreadCommand | null {
-  if (call.name !== 'computer_exec' || typeof call.toolInput?.command !== 'string') return null
-  const output = call.toolOutput && typeof call.toolOutput === 'object' ? call.toolOutput as Record<string, unknown> : {}
-  const text = [output.stdout, output.stderr, output.error].filter((part): part is string => typeof part === 'string' && part.length > 0)
-  return {
-    key: call.key,
-    command: redactCommand(call.toolInput.command),
-    output: text.map((part) => part.replace(/\n+$/, '')).join('\n'),
-    exitCode: typeof output.exitCode === 'number' ? output.exitCode : null,
-    running: !TOOL_UI_DONE_STATES.has(call.state),
-  }
-}
-
 /**
- * What an agent thread did, read from its transcript: the newest plan, every tool call in order, the
- * commands it ran on its computer and the files it changed with line counts.
+ * What an agent thread did, read from its transcript: the newest plan, every tool call in order and the
+ * files it changed with line counts.
  */
 export function threadActivity(messages: readonly ActivityMessage[]): ThreadActivity {
   const agentMessages = messages.filter(isAgent)
@@ -76,7 +52,6 @@ export function threadActivity(messages: readonly ActivityMessage[]): ThreadActi
   return {
     plan: planned?.agentPlan ? { steps: planned.agentPlan, phase: planPhase(planned) } : null,
     calls,
-    commands: calls.flatMap((call) => commandOf(call) ?? []),
     edits: [...edits.values()],
   }
 }

@@ -91,15 +91,17 @@ Side-thread replies do not count as running for the main composer.
 
 The right panel of an agent thread (`ThreadPanel`, rendered by
 `AgentRightSidebar`) shows each surface as a tab: Assignments, Progress,
-Computer, Changes, Files, Terminal, the agent's settings (labelled with the
+Computer, Changes, Files, the agent's settings (labelled with the
 agent's name) and any opened file. Panels open once and are focused when opened
 again; a file opens once per file. With no tab open the panel is the agent's
 home: avatar, name, role and description above a Computer row and a row per
 panel. The avatar appears only there; opening a panel replaces the home with the
 tabs, and closing the last tab returns to it. A first visit starts on the home.
 "+" (⌥T) opens a launcher with search and the same rows; it turns into the panel
-picked from it. ⌘P opens Files and ⌘J opens Terminal, opening the panel when it
-is closed. With four or more tabs, inactive tabs shrink to their icons.
+picked from it. ⌥F opens Files, opening the panel when it is closed. Shortcuts
+use Option only, so they never take a browser or text-editing command, and they
+do nothing while a dialog is open. There is no Terminal tab: commands the agent
+ran are tool rows in the transcript and in Progress. With four or more tabs, inactive tabs shrink to their icons.
 
 ## Assignments
 
@@ -110,8 +112,9 @@ the response that made it (`messageId`: the parent harness run's
 `DirectMessageExperience`) loads it once per conversation. Each agent response
 ends with one collapsed row for its own assignments (`ResponseAssignments` ->
 `AssignmentTrace`), built from the same `Trace` parts as tool-call and "Worked
-for" rows: the branch icon and "Assigned N tasks · …". Opened, each line shows
-state, agent and task and links to its thread; a failed line is red with its
+for" rows: the assigned agents' avatars (each agent once, overlapping, at most three
+then "+N") and "Assigned N tasks · …". Opened, each line shows the agent's
+avatar, agent and task and its state, and links to its thread; a failed line is red with its
 reason underneath. Assignments with no
 traceable response and the "Assigned from" link stay below the transcript.
 `AssignmentsPanel` lists every assignment grouped by response with "Show in
@@ -119,12 +122,10 @@ conversation"; it is the Assignments tab of the agent thread panel and the first
 view of the room sidebar. Chats and channels have one sidebar button
 (`RoomHeaderActions`) that opens Assignments, with People and Pinned as tabs
 (`RoomViewTabs`) and their counts. The button is hidden when the host supplies
-its own right panel, as agent threads do. Thread replies keep their own panel.
+its own right panel, as agent threads do; there People is in the ⋯ menu. Thread replies keep their own panel.
 
 - Progress reads the newest `agentPlan` (shown with `RunPlan`) and every tool
   call in the loaded transcript, in the transcript's row style.
-- Terminal lists `computer_exec` commands with output and a non-zero exit code,
-  redacted with `redactCommand`. It is read-only.
 - Changes lists the thread's pull requests from the agent thread bundle and the
   files its computer edits changed, with summed line counts. There is no stored
   diff text, so it shows no line-by-line diff.

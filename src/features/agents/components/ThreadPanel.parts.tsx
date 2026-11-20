@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, type ReactNode } from 'react'
-import { ExternalLink, FileText, GitCompare, ListChecks, LoaderCircle, SquareTerminal, type LucideIcon } from 'lucide-react'
+import { ExternalLink, FileText, GitCompare, ListChecks, type LucideIcon } from 'lucide-react'
 import type { WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { RunPlan, SingleToolCallRow } from '@overlay/chat-react/exchange'
@@ -116,35 +116,6 @@ export function ChangesPanel({ pullRequests }: { pullRequests: readonly Workspac
           </ul>
         </section>
       ) : null}
-    </div>
-  )
-}
-
-/** Commands the agent ran on its computer, with their output, read-only. */
-export function TerminalPanel({ agentName }: { agentName: string }) {
-  const { commands } = useThreadActivity()
-  if (commands.length === 0) {
-    return <EmptyPanel icon={SquareTerminal} title="No commands yet" body={`Commands ${agentName} runs on its computer appear here.`} />
-  }
-  return (
-    <div className="flex min-h-0 flex-1 flex-col p-3">
-      <pre className="min-h-0 flex-1 overflow-auto rounded-xl border border-(--border) bg-(--surface-subtle)/40 p-3 font-mono text-[11.5px] leading-[19px] text-(--foreground)/90">
-        {commands.map((command, index) => (
-          <div key={command.key} className={index > 0 ? 'mt-3' : undefined}>
-            <div className="flex items-start gap-2">
-              <span className="min-w-0 flex-1 whitespace-pre-wrap break-all">
-                <span className="select-none text-green-700 dark:text-green-400">$ </span>{command.command}
-              </span>
-              {command.running ? (
-                <LoaderCircle className="mt-0.5 size-3 shrink-0 animate-spin text-(--muted)" aria-label="Running" />
-              ) : command.exitCode !== null && command.exitCode !== 0 ? (
-                <span className="shrink-0 text-[10.5px] text-red-600 dark:text-red-400">exit {command.exitCode}</span>
-              ) : null}
-            </div>
-            {command.output ? <div className="whitespace-pre-wrap break-all text-(--muted)">{command.output}</div> : null}
-          </div>
-        ))}
-      </pre>
     </div>
   )
 }

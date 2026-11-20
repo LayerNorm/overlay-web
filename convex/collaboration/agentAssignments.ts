@@ -239,6 +239,8 @@ const assignmentView = v.object({
   conversationId: v.id('conversations'),
   agentId: v.string(),
   agentName: v.string(),
+  /** The assigned agent's avatar, so a response can show who it handed work to. */
+  agent: v.object({ avatarColor: v.optional(v.string()), avatarShape: v.optional(v.string()), isDefault: v.optional(v.boolean()) }),
   title: v.string(),
   status: v.string(),
   scope: navigationScope,
@@ -519,6 +521,7 @@ export const forConversation = query({
         conversationId: assignment.conversationId,
         agentId: assignment.assignedAgentId,
         agentName: execution.agentName,
+        agent: execution.agent,
         title: execution.title,
         status: execution.status,
         scope: execution.scope,

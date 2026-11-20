@@ -14,7 +14,7 @@ export type RoomTranscriptMessage = {
 
 const RoomTranscriptContext = createContext<readonly RoomTranscriptMessage[]>([])
 
-/** The open room's loaded messages, for panels rendered beside the transcript (an agent thread's Progress or Terminal). */
+/** The open room's loaded messages, for panels rendered beside the transcript (an agent thread's Progress or Changes). */
 export const RoomTranscriptProvider = RoomTranscriptContext.Provider
 
 export function useRoomTranscript(): readonly RoomTranscriptMessage[] {

@@ -32,6 +32,7 @@ export type AssignmentNavigation = {
 
 export type AssignmentNavigationItem = AssignmentNavigation & {
   agentName: string
+  agent?: { avatarColor?: string; avatarShape?: string; isDefault?: boolean }
   status: string
   disposition?: string
   dispositionReason?: string

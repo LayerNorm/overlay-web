@@ -1,9 +1,9 @@
 const STORAGE_KEY = 'overlay:agent-right-sidebar'
 
 /** What an agent thread's right panel can show; each opens as one tab. */
-export type ThreadPanelKind = 'assignments' | 'progress' | 'computer' | 'changes' | 'files' | 'terminal' | 'agent'
+export type ThreadPanelKind = 'assignments' | 'progress' | 'computer' | 'changes' | 'files' | 'agent'
 
-export const THREAD_PANEL_KINDS: readonly ThreadPanelKind[] = ['assignments', 'progress', 'computer', 'changes', 'files', 'terminal', 'agent']
+export const THREAD_PANEL_KINDS: readonly ThreadPanelKind[] = ['assignments', 'progress', 'computer', 'changes', 'files', 'agent']
 
 export const THREAD_PANEL_DEFAULT_WIDTH = 480
 export const THREAD_PANEL_MIN_WIDTH = 360

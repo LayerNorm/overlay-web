@@ -26,9 +26,9 @@ test('an open panel or file is focused instead of opened twice', () => {
 
 test('a launcher becomes the panel picked from it, or closes when that panel is already open', () => {
   const launched = openLauncher(start, 'new:1')
-  const terminal = replaceLauncher(launched, 'new:1', 'terminal')
-  assert.deepEqual(terminal.tabs.map((tab) => tab.id), ['progress', 'computer', 'terminal'])
-  assert.equal(terminal.active, 'terminal')
+  const changes = replaceLauncher(launched, 'new:1', 'changes')
+  assert.deepEqual(changes.tabs.map((tab) => tab.id), ['progress', 'computer', 'changes'])
+  assert.equal(changes.active, 'changes')
   const existing = replaceLauncher(launched, 'new:1', 'computer')
   assert.deepEqual(existing.tabs.map((tab) => tab.id), ['progress', 'computer'])
   assert.equal(existing.active, 'computer')

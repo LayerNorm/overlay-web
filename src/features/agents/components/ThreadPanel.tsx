@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import {
   FileText, Folder, GitBranch, GitCompare, ListChecks, Maximize2, Minimize2, Monitor, Plus, Search, SlidersHorizontal,
-  SquareTerminal, X, type LucideIcon,
+  X, type LucideIcon,
 } from 'lucide-react'
 import type { WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
 import { Button, Input } from '@overlay/ui/primitives'
@@ -12,15 +12,14 @@ import type { ThreadPanelKind } from '@/shared/agents/agent-right-sidebar-prefer
 import {
   activeTab as activeTabOf, closeTab, openPanel, replaceLauncher, selectTab, type ThreadPanelTab, type ThreadPanelTabs,
 } from '../lib/thread-panel-tabs'
-import { ChangesPanel, ProgressPanel, TerminalPanel } from './ThreadPanel.parts'
+import { ChangesPanel, ProgressPanel } from './ThreadPanel.parts'
 
 export const PANEL_META: Record<ThreadPanelKind, { label: string; icon: LucideIcon; hint: string; shortcut?: string }> = {
   assignments: { label: 'Assignments', icon: GitBranch, hint: 'Work handed to other agents' },
   progress: { label: 'Progress', icon: ListChecks, hint: 'Plan and activity' },
   computer: { label: 'Computer', icon: Monitor, hint: 'Watch or take control' },
   changes: { label: 'Changes', icon: GitCompare, hint: 'Edits and pull requests' },
-  files: { label: 'Files', icon: Folder, hint: 'What this thread made', shortcut: '⌘ P' },
-  terminal: { label: 'Terminal', icon: SquareTerminal, hint: 'Commands it ran', shortcut: '⌘ J' },
+  files: { label: 'Files', icon: Folder, hint: 'What this thread made', shortcut: '⌥ F' },
   agent: { label: 'Agent', icon: SlidersHorizontal, hint: 'Model, instructions, tools' },
 }
 
@@ -144,7 +143,6 @@ function PanelBody({ tab, onCloseTab, ...props }: ThreadPanelProps & { tab: Thre
     case 'assignments': return props.assignments
     case 'progress': return <ProgressPanel agentName={props.agentName} />
     case 'changes': return <ChangesPanel pullRequests={props.pullRequests} />
-    case 'terminal': return <TerminalPanel agentName={props.agentName} />
     case 'file': return <div className="flex min-h-0 flex-1 flex-col [&>aside]:border-0">{props.renderFile(tab.fileId, onCloseTab)}</div>
   }
 }
@@ -156,7 +154,7 @@ const COMPUTER_STATUS: Record<ThreadComputerStatus, { label: string; dot: string
   unavailable: { label: 'Unavailable', dot: 'bg-(--muted-light)' },
 }
 
-const LAUNCHER_ROWS = ['assignments', 'progress', 'changes', 'files', 'terminal', 'agent'] as const
+const LAUNCHER_ROWS = ['assignments', 'progress', 'changes', 'files', 'agent'] as const
 
 /** With no tabs open the panel is the agent's home: who it is, and the panels it can open. */
 function Home(props: ThreadPanelProps) {

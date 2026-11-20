@@ -27,10 +27,10 @@ test('preferences saved before tabs keep the panel open on the matching new pane
 
 test('stored tabs drop unknown and repeated panels and keep a valid selection', () => {
   const parsed = parseAgentRightSidebarPreferences({
-    open: true, tabs: ['terminal', 'nope', 'terminal', 'library'], active: 'changes', width: 200, expanded: true,
+    open: true, tabs: ['changes', 'nope', 'terminal', 'changes', 'library'], active: 'progress', width: 200, expanded: true,
   })
-  assert.deepEqual(parsed.tabs, ['terminal', 'files'])
-  assert.equal(parsed.active, 'terminal')
+  assert.deepEqual(parsed.tabs, ['changes', 'files'])
+  assert.equal(parsed.active, 'changes')
   assert.equal(parsed.width, THREAD_PANEL_MIN_WIDTH)
   assert.equal(parsed.expanded, true)
   assert.equal(parseAgentRightSidebarPreferences({ tabs: [] }).active, null)
