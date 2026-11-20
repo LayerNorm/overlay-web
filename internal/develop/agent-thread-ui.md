@@ -90,14 +90,33 @@ Side-thread replies do not count as running for the main composer.
 ## Thread panel
 
 The right panel of an agent thread (`ThreadPanel`, rendered by
-`AgentRightSidebar`) shows each surface as a tab: Progress, Computer, Changes,
-Files, Terminal, the agent's settings (labelled with the agent's name) and any
-opened file. Panels open once and are focused when opened again; a file opens
-once per file. "+" (⌥T) opens a launcher headed by the agent's avatar and name,
-with search, a Computer row showing whether the computer is running and a row
-per panel; the launcher turns into the panel picked from it. ⌘P opens Files and
-⌘J opens Terminal, opening the panel when it is closed. Closing the last tab
-leaves a launcher. With four or more tabs, inactive tabs shrink to their icons.
+`AgentRightSidebar`) shows each surface as a tab: Assignments, Progress,
+Computer, Changes, Files, Terminal, the agent's settings (labelled with the
+agent's name) and any opened file. Panels open once and are focused when opened
+again; a file opens once per file. With no tab open the panel is the agent's
+home: avatar, name, role and description above a Computer row and a row per
+panel. The avatar appears only there; opening a panel replaces the home with the
+tabs, and closing the last tab returns to it. A first visit starts on the home.
+"+" (⌥T) opens a launcher with search and the same rows; it turns into the panel
+picked from it. ⌘P opens Files and ⌘J opens Terminal, opening the panel when it
+is closed. With four or more tabs, inactive tabs shrink to their icons.
+
+## Assignments
+
+`collaboration/agentAssignments:forConversation` returns, for each assignment,
+the response that made it (`messageId`: the parent harness run's
+`deliveryAgentRunId` -> `conversationAgentRuns.assistantMessageId`), its
+`createdAt` and a `failureReason`. `AgentAssignmentsProvider` (in
+`DirectMessageExperience`) loads it once per conversation. Each agent response
+renders its own assignments (`ResponseAssignments`) inside its text column,
+inset with `ml-1`; failed rows show their reason. Assignments with no
+traceable response and the "Assigned from" link stay below the transcript.
+`AssignmentsPanel` lists every assignment grouped by response with "Show in
+conversation"; it is the Assignments tab of the agent thread panel and the first
+view of the room sidebar. Chats and channels have one sidebar button
+(`RoomHeaderActions`) that opens Assignments, with People and Pinned as tabs
+(`RoomViewTabs`) and their counts. The button is hidden when the host supplies
+its own right panel, as agent threads do. Thread replies keep their own panel.
 
 - Progress reads the newest `agentPlan` (shown with `RunPlan`) and every tool
   call in the loaded transcript, in the transcript's row style.
