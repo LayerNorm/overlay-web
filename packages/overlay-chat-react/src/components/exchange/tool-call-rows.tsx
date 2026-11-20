@@ -18,6 +18,7 @@ import { getDescriptiveToolLabel } from '../../lib/tool-labels'
 import { ReasoningBlock } from './reasoning-block'
 import { ToolCallDescriptionLine } from './tool-call-description-line'
 import { TraceMark } from './tool-rail'
+import { RunningAgentToolTitle, WorkingOrb, orbForTool, runningToolHasAgentTitle } from './working-orb'
 
 export function ToolCallRowWithReasoning({
   block,
@@ -46,8 +47,10 @@ export function ToolCallRowWithReasoning({
         status={running ? 'running' : err ? 'error' : undefined}
         className={`${variant === 'nested' ? 'py-0.5' : 'py-1'} text-[13px] leading-5`}
       >
-        <TraceMark running={running} />
-        {description ? (
+        {running ? <WorkingOrb kind={orbForTool(block.name)} small /> : null}
+        {running && runningToolHasAgentTitle(block) ? (
+          <TraceTitle className="min-w-0 truncate"><RunningAgentToolTitle block={block} /></TraceTitle>
+        ) : description ? (
           <TraceTitle className="min-w-0 truncate" title={description.title}>
             <ToolCallDescriptionLine description={description} />
           </TraceTitle>
@@ -121,6 +124,7 @@ export function ToolCallsCollapsedGroup({
   const anyRunning =
     running > 0 ||
     items.some((it) => it.kind === 'reasoning' && it.state !== 'done')
+  const runningTool = tools.find((tool) => !TOOL_UI_DONE_STATES.has(tool.state))
   const anyErr = tools.some(
     (t) => t.state === 'input-error' || t.state === 'output-error' || t.state === 'output-denied',
   )
@@ -135,7 +139,7 @@ export function ToolCallsCollapsedGroup({
       <TraceCollapsible open={open} onOpenChange={setOpen}>
         <TraceCollapsibleTrigger className="py-1 text-[13px] leading-5">
           <TraceLine status={anyErr ? 'error' : anyRunning ? 'running' : undefined}>
-            <TraceMark running={anyRunning && !anyErr} />
+            {anyRunning && !anyErr ? <WorkingOrb kind={runningTool ? orbForTool(runningTool.name) : 'thinking'} small /> : null}
             <TraceTitle>{summary}</TraceTitle>
           </TraceLine>
         </TraceCollapsibleTrigger>

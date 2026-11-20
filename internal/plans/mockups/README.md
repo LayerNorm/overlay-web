@@ -107,6 +107,21 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `agent-working-state.html` (feature `agent-working-state`): the working state, date line, pinned chief tiles and
+  response spacing, now built into production; the feature only adds fixtures. A live
+  response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
+  own tool wording, instead of the 24px Overlay mark. While a tool runs, the orb sits on that tool's row (an agent
+  tool's row says who is asked and what: "Asking Quill: …"); between tools a line at the bottom says "Thinking" or
+  "Writing the reply" with how long it has run. The pinned chiefs (workspace and your own) sit side by side as tiles
+  at the top of the Workspace tab, like pinned conversations in iMessage: no background at rest, filled while open,
+  one open at a time with its threads below. Every block of a response is the same distance apart, including the
+  assignment row and the response controls. The orb follows the kind of step: thinking or writing,
+  using a tool, reading or searching, asking another agent (AICSS lattice orbs S1–S4, MIT). The date line is the
+  date alone, without rules. Open
+  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convrelaytest0000000000000000`
+  (a relay between agents), `...&id=k17convlaunch0000000000000000000` (a command) or
+  `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_scout&id=k17convscoutpricing0000000000000`.
+  Delete it when the design ships or is rejected.
 - `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
   Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
   Agent picker beside the model picker, and sending opens the automation's chat. Each run posts the instructions again
