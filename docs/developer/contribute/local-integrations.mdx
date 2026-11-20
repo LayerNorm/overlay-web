@@ -70,6 +70,8 @@ Verify configuration through `GET /api/v1/integrations?action=health`. Catalog r
 
 Connector visibility is workspace-scoped through `workspaceConnectors`. On the first Personal-workspace read after upgrading, active Composio accounts with no mapping in any workspace are assigned to Personal. Existing workspace mappings are never moved or duplicated.
 
+After provider sign-in, the browser returns to `/auth/composio/callback`, which serves a static page instead of booting the app shell. On success, it notifies same-origin Overlay tabs through `BroadcastChannel` with a `localStorage` event fallback, then attempts to close the provider tab; if the browser keeps it open, the page says it can be closed. The original Connectors or onboarding tab refreshes its connection state on cross-tab signals, when visible again, and through bounded polling while sign-in is pending. On failure, the page shows the escaped error and stays open. It reads a per-sign-in attempt ID from that tab's session storage and sends only that ID (never the provider error) in the `failed` BroadcastChannel signal and `overlay:integrations-failed` `localStorage` fallback, so only the matching Connectors or onboarding attempt stops waiting and displays a generic failure.
+
 ## MCP tools
 
 MCP create/update and Test connection preserve the OAuth authentication choice. Testing a saved server uses its stored OAuth session through the runtime auth provider; client-supplied OAuth tokens are ignored. Inaccessible saved servers are rejected before discovery. Connect the server before expecting authenticated tool discovery to succeed.
