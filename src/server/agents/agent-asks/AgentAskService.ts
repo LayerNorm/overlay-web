@@ -412,8 +412,7 @@ export class AgentAskService {
     const turns = await (args.startTurns ?? this.dependencies.startTurns)({
       actorUserId: args.person.actorUserId,
       conversationId: args.conversationId,
-      // The asking agent wrote the message that starts these turns; a native run checks its trigger against this.
-      initiatorPrincipalId: args.caller.principalId,
+      initiatorPrincipalId: args.person.actorPrincipalId,
       mentionedPrincipalIds: args.mentions.map((mention) => mention.principalId),
       messageId,
       prompt: args.content,
