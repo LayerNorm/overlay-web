@@ -19,6 +19,9 @@ vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
 vi.mock('./workflow-cancellation', () => ({ cancelHarnessWorkflow: mocks.cancel }))
 vi.mock('./personal-cancellation', () => ({ cancelPersonalHarnessWorkflows: mocks.cancelSubtree }))
 vi.mock('./native-named-child-launch', () => ({ startNativeHarnessNamedChild: mocks.launch }))
+vi.mock('@/server/conversations/ActEntitlementService', () => ({ ActEntitlementService: class {
+  gateModelAccess = async () => ({ paid: true })
+} }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({ resolveWorkspaceAgentInvocations: mocks.resolve }))
 vi.mock('@/server/agents/agent-tooling', () => ({ buildWorkspaceAgentTooling: vi.fn() }))
 vi.mock('@/server/conversations/personal-chat-work-tools', () => ({ executePersonalChatWorkToolResult: vi.fn() }))
@@ -142,6 +145,9 @@ test('native ask gives every target the same workspace budget with no per-child 
     agent: 'Targets', message: 'inspect this', wait: true,
   })
   expect(mocks.apply.mock.calls.map(([args]) => args.operation.child.maxCostMicros)).toEqual([0, 0, 0])
+  // Each asked agent pays for its own model (a gateway model here), whatever the asking run uses.
+  expect(mocks.apply.mock.calls.filter(([call]) => call.operation.type === 'admit_named_child')
+    .every(([call]) => call.operation.spendingMode === 'workspace')).toBe(true)
 })
 
 test('assignment resolution uses trusted execution identity and the existing cancellation machinery', async () => {

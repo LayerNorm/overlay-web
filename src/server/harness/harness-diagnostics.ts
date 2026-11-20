@@ -101,6 +101,8 @@ const MODEL_UNAVAILABLE_MESSAGES = [
   'Paid model execution requires workspace funding or external credentials.',
   'The model is no longer allowed by server policy.',
   'The native model is no longer allowed by server policy.',
+  // The agent's model was changed while this run was in flight.
+  'The model is no longer an admitted native agent candidate.',
 ]
 
 export type HarnessFailureCause = {
@@ -288,7 +290,7 @@ export function harnessDiagnosticForFailure(
     'Native workspace identity changed.',
     'Native agent or room access changed.', 'Native room participation was revoked.',
     'Room visibility changed; private context cannot be reused.',
-    'The model is no longer an admitted native agent candidate.', 'Native harness permissions were revoked.',
+    'Native harness permissions were revoked.',
     'Native harness model permission was revoked.',
     'Tool is outside this harness run\'s capabilities.',
     'Personal harness authentication is not supported.', ...AUTHORIZATION_MESSAGES].includes(message)) {

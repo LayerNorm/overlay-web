@@ -69,6 +69,11 @@ export type HarnessOperation =
       goal: string
       constraints: string[]
       target: { deliveryAgentRunId: string; conversationId: string }
+      /**
+       * How the asked agent pays for its own model. It is another agent with its own model, so it does not
+       * inherit the asking run's mode. Absent from older callers, which inherit.
+       */
+      spendingMode?: 'workspace' | 'external' | 'none'
     }
   | { type: 'settle_child'; childRunId: string }
   | { type: 'finish'; resultSummary?: string }
