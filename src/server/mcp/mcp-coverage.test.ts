@@ -39,11 +39,14 @@ test('outside apps: every exposed group reaches the client at Everything, and no
   }
 })
 
-test('connected agents: the only tools withheld are the computer group and the UI tool that needs Overlay\'s chat', () => {
+test('connected agents: the only tools withheld are the computer group, the UI tool that needs Overlay\'s chat, and the Chief-only assignment resolution', () => {
   const computer = AGENT_TOOL_GROUPS.find((group) => group.id === 'computer')!
   for (const id of computer.toolIds) assert.ok(HARNESS_WITHHELD_TOOL_IDS.has(id), `${id} should be withheld from connected agents`)
   assert.ok(HARNESS_WITHHELD_TOOL_IDS.has('present_generated_ui'))
-  const otherWithheld = [...HARNESS_WITHHELD_TOOL_IDS].filter((id) => !computer.toolIds.includes(id) && id !== 'present_generated_ui')
+  // resolve_assignment only works inside the Chief's native Harness run, so a connected agent would only ever see it refuse.
+  assert.ok(HARNESS_WITHHELD_TOOL_IDS.has('resolve_assignment'))
+  const otherWithheld = [...HARNESS_WITHHELD_TOOL_IDS].filter((id) => !computer.toolIds.includes(id)
+    && id !== 'present_generated_ui' && id !== 'resolve_assignment')
   assert.deepEqual(otherWithheld, [], 'a new withheld tool needs a reason in MCP_GROUP_COVERAGE')
   for (const [group, entry] of Object.entries(MCP_GROUP_COVERAGE.connectedAgents)) {
     // Both computer groups stay with Overlay's own threads: the cloud machine, and the person's own computer.
