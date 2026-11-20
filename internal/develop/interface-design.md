@@ -639,6 +639,27 @@ expire it after 60 seconds. Use the static greeting only for empty instructions.
 Agent-created automations also appear in Automations with the owning creature
 avatar. Sidebar rows without a conversation open the automation itself.
 
+## Automation threads
+
+An automation is an ordinary chat that gets a message on a schedule. A new
+automation uses the chat empty state and composer with two pickers beside the
+model control (`ChatComposerSurface.composerControls`): Schedule (Every
+hour/day/weekday/week/month, a Monday-first weekday row, day of the month up to
+28, a time field and the muted browser time zone) and Agent (No agent, shown with
+the Overlay mark, or a workspace agent's creature). Both share the composer model
+trigger style and become 32px icon buttons below the `sm` breakpoint. Sending
+creates the automation with the composer's model, runs it once and opens its
+thread. The thread composer is a normal follow-up composer without the pickers;
+its model control shows and saves the automation's model.
+
+An automation's thread docks the Automation details panel (`RightSidebar`, 380px,
+open by default at 1024px and wider, toggled from the header like agent threads):
+the inline-renamed name, Active switch with the next run, Run now, Schedule and
+Time zone disclosures, a read-only Agent row (the agent cannot change after
+creation), Model, the five most recent runs (Failed rows offer Retry) and Delete
+with an inline confirm. The Automations route has no Chat/Edit tabs, header model
+control or temporary-chat control.
+
 ## Chat AI primitives (`@overlay/ui/ai`)
 
 Chat surfaces build on shadcn AI Elements primitives copied into `packages/overlay-ui/src/components/ui` and exported from `@overlay/ui/ai` (kept out of the main barrel so Shiki only loads where chat renders): `Message`, `Bubble`, `Trace`, `CodeBlock` (+ `useHighlightedCode`, Shiki JS engine, GitHub light/dark themes that presets never tint), `MessageScroller` (`@shadcn/react`), `Item`, `InputGroup`, `Attachment`, `HoverCard`, `Collapsible`, `Spinner`. Upstream semantic classes are rewritten to Overlay variables (`bg-(--surface-subtle)`, `text-(--muted)`, `text-(--danger)`); `--muted` is a text color here, so never add a `--color-muted` theme alias. Trace rows are text-only; `TraceMark`, `ToolLineLogo` and `ToolLogoColumn` remain empty compatibility exports. Running titles may shimmer (CSS in `styles.css`, off under reduced motion). The one active-response mark is 24px and sits after all assistant output.

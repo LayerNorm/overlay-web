@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { usePathname, type ReadonlyURLSearchParams } from 'next/navigation'
-import { normalizeAutomationDetailTab } from '@overlay/app-core/automations'
 import type { AutomationDetail } from '@overlay/app-core'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
@@ -73,12 +72,9 @@ export function useChatRouteController({
 
   const idParam = searchParams?.get('id') ?? null
   const automationIdParam = mode === 'automate' ? searchParams?.get('automationId') ?? null : null
-  const automationDetailTab = normalizeAutomationDetailTab(searchParams?.get('tab'))
   // Only the automation-owned thread — sourceConversationId is provenance.
   const automationConversationId = selectedAutomation?.conversationId || null
   const hasAutomationContext = mode === 'automate' && Boolean(automationIdParam)
-  const showAutomationChatTab = !hasAutomationContext || automationDetailTab === 'chat'
-  const showAutomationHeaderControls = mode === 'automate'
   const viewParam = searchParams?.get('view')
   const viewScope = viewParam === 'dms' || viewParam === 'channels' || viewParam === 'workspace-chats'
     ? 'workspace'
@@ -103,10 +99,6 @@ export function useChatRouteController({
         : null
       const automationId = automationIdParam ?? liveSearchParams?.get('automationId')
       if (automationId) params.set('automationId', automationId)
-      const tab = normalizeAutomationDetailTab(
-        liveSearchParams?.get('tab') ?? searchParams?.get('tab'),
-      )
-      if (tab !== 'chat') params.set('tab', tab)
       const query = params.toString()
       replaceUrl(buildWorkspaceHref(null, `/app/automations${query ? `?${query}` : ''}`, routeScope))
       return
@@ -122,7 +114,7 @@ export function useChatRouteController({
     if (chatId) params.set('id', chatId)
     const query = params.toString()
     replaceUrl(buildWorkspaceHref(null, `/app/chat${query ? `?${query}` : ''}`, routeScope))
-  }, [automationIdParam, buildWorkspaceHref, hideSidebar, mode, routeScope, searchParams, viewParam])
+  }, [automationIdParam, buildWorkspaceHref, hideSidebar, mode, routeScope, viewParam])
 
   const resetToBlankChatSurface = useCallback((options: { temporary: boolean }) => {
     invalidateLoadChatRequestRef.current?.()
@@ -277,7 +269,6 @@ export function useChatRouteController({
 
   return {
     automationConversationId,
-    automationDetailTab,
     automationIdParam,
     hasAutomationContext,
     idParam,
@@ -285,8 +276,6 @@ export function useChatRouteController({
     loadChatRef,
     replaceActiveChatRoute,
     resetToBlankChatSurface,
-    showAutomationChatTab,
-    showAutomationHeaderControls,
     syncStandaloneChatUrl,
   }
 }

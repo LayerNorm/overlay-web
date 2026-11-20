@@ -7,9 +7,7 @@ import {
   Check,
   ChevronDown,
   FolderOpen,
-  MessageSquare,
   Pencil,
-  SlidersHorizontal,
 } from 'lucide-react'
 import type {
   ChatModel,
@@ -33,13 +31,6 @@ import { modelReasoningLabel, type ModelReasoningProps } from './ModelReasoningC
 import { useFavoriteModelIds } from './useFavoriteModelIds'
 
 const TEMPORARY_CHAT_ICON_SRC = '/assets/icons/dashed-chat.png'
-
-const AUTOMATION_DETAIL_TABS = [
-  { id: 'chat' as const, label: 'Chat', icon: MessageSquare },
-  { id: 'edit' as const, label: 'Edit', icon: SlidersHorizontal },
-]
-
-export type AutomationDetailTabId = (typeof AUTOMATION_DETAIL_TABS)[number]['id']
 
 export type ModelQualitiesPosition = { x: number; y: number }
 
@@ -115,12 +106,10 @@ export interface ChatExperienceHeaderProps {
   onCommitChatRename: (chatId: string) => void | Promise<void>
   onCancelChatRename: () => void
   headerTitleInputRef: RefObject<HTMLInputElement | null>
-  showAutomationHeaderControls: boolean
   titleLabel: string
   onBeginHeaderChatRename?: () => void
   showRenameButton: boolean
   projectName?: string | null
-  showAutomationChatTab: boolean
   appMode: 'chat' | 'automate'
   isTemporaryChat: boolean
   isActiveLoading: boolean
@@ -141,12 +130,7 @@ export interface ChatExperienceHeaderProps {
   modelQualitiesPos: ModelQualitiesPosition | null
   onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
   resolveModel: (modelId: string) => ChatModel | undefined
-  automationHeaderModelId: string
-  automationHeaderModels: ChatModel[]
-  onSaveAutomationHeaderModel: (modelId: string) => void | Promise<void>
   getChatModelDisplayName: (modelId: string) => string
-  automationDetailTab: AutomationDetailTabId
-  onSelectAutomationDetailTab: (tab: AutomationDetailTabId) => void
   videoSubMode: VideoSubMode
   showVideoSubModePicker: boolean
   onToggleVideoSubModePicker: () => void
@@ -167,7 +151,6 @@ export interface ChatExperienceHeaderProps {
   isTextModelLocked?: (modelId: string) => boolean
   onLockedTextModelSelect?: (model: ChatModel) => void
   modelAccessPending?: boolean
-  hasAutomationContext: boolean
   reasoningByModel?: ModelReasoningProps['reasoningByModel']
   onModelReasoningChange?: ModelReasoningProps['onModelReasoningChange']
   reasoning?: ReasoningLevel
@@ -182,7 +165,6 @@ function HeaderTitleSection({
   onCommitChatRename,
   onCancelChatRename,
   headerTitleInputRef,
-  showAutomationHeaderControls,
   titleLabel,
   onBeginHeaderChatRename,
   showRenameButton,
@@ -195,7 +177,6 @@ function HeaderTitleSection({
   | 'onCommitChatRename'
   | 'onCancelChatRename'
   | 'headerTitleInputRef'
-  | 'showAutomationHeaderControls'
   | 'titleLabel'
   | 'onBeginHeaderChatRename'
   | 'showRenameButton'
@@ -206,9 +187,7 @@ function HeaderTitleSection({
       className={`group/header-title min-w-0 items-center gap-2 md:min-w-0 md:flex-1 ${
         activeChatId && editingChatId === activeChatId
           ? 'flex w-full'
-          : showAutomationHeaderControls
-            ? 'flex w-full flex-wrap md:w-auto md:flex-nowrap'
-            : 'flex w-full md:w-auto'
+          : 'flex w-full md:w-auto'
       }`}
     >
       {activeChatId && editingChatId === activeChatId ? (
@@ -334,179 +313,6 @@ function ModelQualitiesHoverCard({
         </Suspense>
       </PopoverContent>
     </Popover>
-  )
-}
-
-function AutomationModelPicker({
-  modelPickerRef,
-  getChatModelDisplayName,
-  automationHeaderModelId,
-  showModelPicker,
-  hoveredModelId,
-  modelQualitiesPos,
-  onHoveredModelChange,
-  resolveModel,
-  reasoning,
-  reasoningByModel,
-  onModelReasoningChange,
-  modelPickerListScrollRef,
-  textModelsLoading,
-  automationHeaderModels,
-  favoriteScope,
-  modelRecommendations,
-  onSaveAutomationHeaderModel,
-  onSetShowModelPicker,
-}: Pick<
-  ChatExperienceHeaderProps,
-  | 'modelPickerRef'
-  | 'onToggleModelPicker'
-  | 'getChatModelDisplayName'
-  | 'automationHeaderModelId'
-  | 'showModelPicker'
-  | 'hoveredModelId'
-  | 'modelQualitiesPos'
-  | 'onHoveredModelChange'
-  | 'resolveModel'
-  | 'reasoning'
-  | 'onReasoningChange'
-  | 'reasoningByModel'
-  | 'onModelReasoningChange'
-  | 'modelPickerListScrollRef'
-  | 'textModelsLoading'
-  | 'automationHeaderModels'
-  | 'favoriteScope'
-  | 'modelRecommendations'
-  | 'onSaveAutomationHeaderModel'
-  | 'onSetShowModelPicker'
->) {
-  const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
-  const selectedModel = automationHeaderModels.find((model) => model.id === automationHeaderModelId)
-  return (
-    <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
-      <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
-        <DelayedTooltip label="Choose automation model" side="bottom">
-          <PopoverTrigger asChild>
-            <Button variant="ghost"
-              type="button"
-              className={unstyledButton(`flex h-8 min-h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md bg-(--surface-subtle) px-2.5 py-0 text-left text-xs leading-none text-(--muted) hover:bg-(--border) disabled:cursor-default disabled:opacity-70 md:w-auto md:max-w-52`)}
-              aria-label="Automation model"
-            >
-              <span className="min-w-0 truncate">
-                {getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
-              </span>
-              {selectedModel ? <span data-slot="selected-model-reasoning" className="shrink-0 text-[11px] font-normal text-(--muted-light)">
-                {modelReasoningLabel(selectedModel, reasoningByModel ? reasoningByModel[automationHeaderModelId] : reasoning)}
-              </span> : null}
-              <ChevronDown size={11} className="shrink-0" />
-            </Button>
-          </PopoverTrigger>
-        </DelayedTooltip>
-        <PopoverContent
-          ref={modelPickerRef}
-          align="end"
-          aria-label="Choose automation model"
-          data-tour="model-picker"
-          className="w-[min(24rem,calc(100vw-1rem))] rounded-lg p-0"
-        >
-          {hoveredModelId && modelQualitiesPos ? (
-            <ModelQualitiesHoverCard
-              onClosePicker={() => onSetShowModelPicker(false)}
-              modelPickerRef={modelPickerRef}
-              modelId={hoveredModelId}
-              position={modelQualitiesPos}
-              resolveModel={resolveModel}
-              reasoning={reasoning}
-              onHoveredModelChange={onHoveredModelChange}
-            />
-          ) : null}
-          <ModelSelector
-            models={automationHeaderModels}
-            showReasoning
-            reasoningByModel={reasoningByModel ?? { [automationHeaderModelId]: reasoning }}
-            onModelReasoningChange={onModelReasoningChange}
-            recommendedIds={modelRecommendations?.text}
-            favoriteIds={favoriteIds}
-            onToggleFavorite={toggleFavorite}
-          onListChange={() => onHoveredModelChange(null, null)}
-            listRef={modelPickerListScrollRef}
-            isSelected={(m) => m.id === automationHeaderModelId}
-            onSelect={(m) => {
-              void onSaveAutomationHeaderModel(m.id)
-              onSetShowModelPicker(false)
-            }}
-            onRowHover={(m, row) => {
-              const r = row.getBoundingClientRect()
-              onHoveredModelChange(m.id, { x: r.right + 8, y: r.top })
-            }}
-            beforeList={textModelsLoading ? <PremiumModelsLoadingRows /> : null}
-          />
-        </PopoverContent>
-      </div>
-    </Popover>
-  )
-}
-
-function AutomationDetailTabButtons({
-  automationDetailTab,
-  onSelectAutomationDetailTab,
-}: Pick<ChatExperienceHeaderProps, 'automationDetailTab' | 'onSelectAutomationDetailTab'>) {
-  return (
-    <div className="flex h-8 shrink-0 items-center rounded-lg bg-(--surface-subtle) p-0.5">
-      {AUTOMATION_DETAIL_TABS.map((tab) => {
-        const active = automationDetailTab === tab.id
-        const TabIcon = tab.icon
-        return (
-          <Button variant="ghost"
-            key={tab.id}
-            type="button"
-            onClick={() => onSelectAutomationDetailTab(tab.id)}
-            className={unstyledButton(`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-colors ${
-              active
-                ? 'bg-(--surface-elevated) text-(--foreground) shadow-xs'
-                : 'text-(--muted) hover:text-(--foreground)'
-            }`)}
-          >
-            <TabIcon size={12} strokeWidth={1.75} />
-            {tab.label}
-          </Button>
-        )
-      })}
-    </div>
-  )
-}
-
-function AutomationHeaderControls(props: Pick<ChatExperienceHeaderProps,
-  | 'modelPickerRef'
-  | 'onToggleModelPicker'
-  | 'getChatModelDisplayName'
-  | 'automationHeaderModelId'
-  | 'showModelPicker'
-  | 'hoveredModelId'
-  | 'modelQualitiesPos'
-  | 'onHoveredModelChange'
-  | 'resolveModel'
-  | 'reasoning'
-  | 'onReasoningChange'
-  | 'reasoningByModel'
-  | 'onModelReasoningChange'
-  | 'modelPickerListScrollRef'
-  | 'textModelsLoading'
-  | 'automationHeaderModels'
-  | 'favoriteScope'
-  | 'modelRecommendations'
-  | 'onSaveAutomationHeaderModel'
-  | 'onSetShowModelPicker'
-  | 'automationDetailTab'
-  | 'onSelectAutomationDetailTab'
->) {
-  return (
-    <div className="flex w-full shrink-0 items-center justify-end gap-2 md:w-auto">
-      <AutomationModelPicker {...props} />
-      <AutomationDetailTabButtons
-        automationDetailTab={props.automationDetailTab}
-        onSelectAutomationDetailTab={props.onSelectAutomationDetailTab}
-      />
-    </div>
   )
 }
 
@@ -1008,12 +814,7 @@ function ChatHeaderControls(props: ChatExperienceHeaderProps) {
 }
 
 export function ChatExperienceHeader(props: ChatExperienceHeaderProps) {
-  const {
-    hideHeader = false,
-    showAutomationHeaderControls,
-    appMode,
-    showAutomationChatTab,
-  } = props
+  const { hideHeader = false } = props
   return (
     <AppScreenHeader className={`px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:overflow-visible md:px-4 md:py-0 ${hideHeader ? 'hidden' : ''}`}>
       <HeaderTitleSection
@@ -1024,20 +825,13 @@ export function ChatExperienceHeader(props: ChatExperienceHeaderProps) {
         onCommitChatRename={props.onCommitChatRename}
         onCancelChatRename={props.onCancelChatRename}
         headerTitleInputRef={props.headerTitleInputRef}
-        showAutomationHeaderControls={props.showAutomationHeaderControls}
         titleLabel={props.titleLabel}
         onBeginHeaderChatRename={props.onBeginHeaderChatRename}
         showRenameButton={props.showRenameButton}
         projectName={props.projectName}
       />
 
-      {showAutomationHeaderControls ? (
-        <AutomationHeaderControls {...props} />
-      ) : null}
-
-      {appMode !== 'automate' && showAutomationChatTab ? (
-        <ChatHeaderControls {...props} />
-      ) : null}
+      <ChatHeaderControls {...props} />
     </AppScreenHeader>
   )
 }

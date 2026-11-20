@@ -61,6 +61,24 @@ test('run history is newest first and only for the owner', async () => {
   expect(await as('bob').query(runs, { workspaceId: 'ws', automationId: ids.mine })).toEqual([])
 })
 
+test('a running run whose thread turn waits for the owner is marked waiting', async () => {
+  const { t, as, ids } = await fixture()
+  await t.run(async ctx => {
+    const running = (await ctx.db.query('automationRuns').collect()).find(run => run.status === 'running')!
+    const conversationId = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'ws', title: 'x', lastModified: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'm' } as never)
+    const messageId = await ctx.db.insert('conversationMessages', {
+      conversationId, userId: 'alice', turnId: 't', role: 'user', mode: 'act', content: 'do', contentType: 'text', createdAt: 20,
+    } as never)
+    await ctx.db.patch(running._id, { conversationId, messageId, startedAt: 20 })
+    await ctx.db.insert('conversationAgentRuns', {
+      conversationId, userId: 'alice', userMessageId: messageId, assistantMessageId: messageId, turnId: 't',
+      mode: 'chat', runner: 'workflow', status: 'waiting_for_approval', createdAt: 21, updatedAt: 21,
+    } as never)
+  })
+  const history = await as('alice').query(runs, { workspaceId: 'ws', automationId: ids.mine }) as Array<{ status: string; waitingForOwner?: boolean }>
+  expect(history.map(run => [run.status, run.waitingForOwner ?? false])).toEqual([['running', true], ['completed', false]])
+})
+
 test('reads need automations.use, an active membership and the deployment feature', async () => {
   const { t, as, ids } = await fixture()
   expect(await as('carol').query(list, { workspaceId: 'ws' })).toBeNull()
