@@ -19,6 +19,26 @@ function stringInput(block: Extract<AssistantVisualBlock, { kind: 'tool' }>, key
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+/** The orb for one kind of tool call. */
+export function orbForTool(name: string): OrbKind {
+  return AGENT_TOOLS.has(name) ? 'asking' : SEARCH_TOOLS.test(name) ? 'searching' : 'tooling'
+}
+
+/**
+ * A running agent tool's row says who is being asked and what, instead of the bare tool name ("Ask Agent").
+ * Other tools keep the transcript's own description.
+ */
+export function RunningAgentToolTitle({ block }: { block: Extract<AssistantVisualBlock, { kind: 'tool' }> }) {
+  if (!AGENT_TOOLS.has(block.name) && block.name !== 'list_agents') return null
+  const step = currentStep([block])
+  return (
+    <span className="min-w-0 truncate">
+      <span className="text-(--foreground)">{step.lead}</span>
+      {step.rest ? <span className="text-(--muted)">: {step.rest}</span> : null}
+    </span>
+  )
+}
+
 /** What the agent is doing now, read from the live response's last step. */
 export function currentStep(blocks: readonly AssistantVisualBlock[]): Step {
   const running = [...blocks].reverse().find((block): block is Extract<AssistantVisualBlock, { kind: 'tool' }> =>
@@ -46,8 +66,9 @@ export function currentStep(blocks: readonly AssistantVisualBlock[]): Step {
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value)
 
 const CSS = `
-.wl-orb { --k:.8571; position:relative; display:inline-block; width:24px; height:24px; flex:none; color:var(--foreground); --rest:.16; }
+.wl-orb { --k:.8571; position:relative; display:inline-block; width:24px; height:24px; vertical-align:middle; flex:none; color:var(--foreground); --rest:.16; }
 [data-theme="dark"] .wl-orb { --rest:.22; }
+.wl-orb.small { --k:.6429; width:18px; height:18px; }
 .wl-orb .wl-stage { position:absolute; left:0; top:0; width:28px; height:28px; transform-origin:0 0; transform:scale(var(--k)) translate(6.5px, 6.5px); }
 .wl-orb i { position:absolute; left:calc(var(--x) * 6px); top:calc(var(--y) * 6px); width:3px; height:3px; border-radius:50%; background:currentColor; opacity:var(--rest); }
 .wl-orb.thinking i { animation:wl-wave 1.7s cubic-bezier(.66,0,.34,1) infinite both; }
@@ -63,14 +84,14 @@ const CSS = `
 
 const RING: Record<string, number> = { '0,0': 0, '1,0': 1, '2,0': 2, '2,1': 3, '2,2': 4, '1,2': 5, '0,2': 6, '0,1': 7 }
 
-export function WorkingOrb({ kind }: { kind: OrbKind }) {
+export function WorkingOrb({ kind, small = false }: { kind: OrbKind; small?: boolean }) {
   const dots = []
   for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) {
     const cell = x === 1 && y === 1 ? 'm' : (x + y) % 2 === 0 ? 'c' : 'e'
     dots.push(<i key={`${x}${y}`} className={cell} style={{ '--x': x, '--y': y, '--p': RING[`${x},${y}`] ?? 0 } as React.CSSProperties} />)
   }
   return (
-    <span className={`wl-orb ${kind}`} aria-hidden>
+    <span className={`wl-orb ${kind}${small ? ' small' : ''}`} aria-hidden>
       <style>{CSS}</style>
       <span className="wl-stage">{dots}</span>
     </span>
@@ -87,10 +108,14 @@ function StepSeconds() {
   return seconds > 0 ? <span className="shrink-0 tabular-nums text-(--muted-light)">{seconds}s</span> : null
 }
 
-/** Replaces `ExchangeLoadingState` at the bottom of a live response. */
+/**
+ * Replaces `ExchangeLoadingState` at the bottom of a live response, only between tool calls (thinking, writing the
+ * reply). While a tool runs, its own row carries the orb instead, so the step is not shown twice.
+ */
 export function WorkingLine({ presentation, blocks }: { presentation: ExchangeLoadingPresentation; blocks: readonly AssistantVisualBlock[] }) {
   const step = currentStep(blocks)
-  if (!presentation.active || presentation.marker === 'none') return null
+  const toolRunning = blocks.some((block) => block.kind === 'tool' && !TOOL_UI_DONE_STATES.has(block.state))
+  if (!presentation.active || presentation.marker === 'none' || toolRunning) return null
   return (
     <div className="flex min-w-0 items-center gap-2 py-1 text-[13px] leading-5 text-(--muted)" role="status" aria-live="polite" data-working-line>
       <WorkingOrb kind={step.orb} />

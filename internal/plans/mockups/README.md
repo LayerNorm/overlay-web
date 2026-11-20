@@ -109,8 +109,9 @@ them. Besides the canonical app mockup, this folder holds only:
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
 - `agent-working-state.html` (feature `agent-working-state`): the proposed working state and date line. A live
   response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
-  own tool wording ("Asking Quill: …", "Running python analyze_pricing.py …", "Opening example.com/pricing"), with how
-  long that step has run, instead of the 24px Overlay mark. The orb follows the kind of step: thinking or writing,
+  own tool wording, instead of the 24px Overlay mark. While a tool runs, the orb sits on that tool's row (an agent
+  tool's row says who is asked and what: "Asking Quill: …"); between tools a line at the bottom says "Thinking" or
+  "Writing the reply" with how long it has run. The pinned Overlay tile has no background at rest. The orb follows the kind of step: thinking or writing,
   using a tool, reading or searching, asking another agent (AICSS lattice orbs S1–S4, MIT). The date line is the
   date alone, without rules. Open
   `agent-working-state.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convrelaytest0000000000000000`

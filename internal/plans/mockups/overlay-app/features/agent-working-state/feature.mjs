@@ -34,6 +34,31 @@ export default {
       ]],
     },
     {
+      // A running tool call shows the orb on its own row; agent tools also say who is asked and what.
+      file: 'packages/overlay-chat-react/src/components/exchange/tool-call-rows.tsx',
+      imports: `import { RunningAgentToolTitle, WorkingOrb, orbForTool } from ${components}\n`,
+      replace: [
+        [
+          `        <TraceMark running={running} />
+        {description ? (`,
+          `        {running ? <WorkingOrb kind={orbForTool(block.name)} small /> : <TraceMark running={running} />}
+        {running && RunningAgentToolTitle({ block }) ? <RunningAgentToolTitle block={block} /> : description ? (`,
+        ],
+        [
+          `<TraceMark running={anyRunning && !anyErr} />`,
+          `{anyRunning && !anyErr ? <WorkingOrb kind={orbForTool(tools.find((tool) => !TOOL_UI_DONE_STATES.has(tool.state))?.name ?? '')} small /> : <TraceMark running={false} />}`,
+        ],
+      ],
+    },
+    {
+      // The pinned Overlay tile: no background at rest, the hover colour on hover, filled only when selected.
+      file: 'src/components/layout/AppSidebarAgentsPanel.tsx',
+      replace: [[
+        "isActive ? 'bg-(--surface-subtle)' : 'bg-(--surface-subtle)/55'",
+        "isActive ? 'bg-(--surface-subtle)' : 'bg-transparent'",
+      ]],
+    },
+    {
       // The date line in chats: the date alone.
       file: 'packages/overlay-chat-react/src/components/transcript/ChatTranscript.tsx',
       replace: [[
