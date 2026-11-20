@@ -95,7 +95,7 @@ export function AssignmentTrace({ items }: { items: readonly AssignmentNavigatio
   if (items.length === 0) return null
   const working = items.some((item) => stateOf(item) === 'working')
   return (
-    <Trace className="mt-2 px-1 py-0.5" data-response-assignments>
+    <Trace className="mb-2 px-1 py-0.5" data-response-assignments>
       <TraceCollapsible open={open} onOpenChange={setOpen}>
         <TraceCollapsibleTrigger className="py-1 text-[13px] leading-5">
           <TraceLine status={working ? 'running' : undefined}>

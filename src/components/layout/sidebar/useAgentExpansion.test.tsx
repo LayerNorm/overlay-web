@@ -50,3 +50,33 @@ test('selected agent can collapse until navigation selects it again', async (t) 
     await act(() => renderer.unmount())
   }
 })
+
+test('opening one pinned chief closes the other, by click or by navigation', async (t) => {
+  const previousAct = Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
+  t.after(() => {
+    if (previousAct) Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousAct)
+    else Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  })
+
+  const pinned = ['workspace-chief', 'my-chief']
+  let state!: ReturnType<typeof useAgentExpansion>
+  function Probe({ active }: { active: string | null }) {
+    const expansion = useAgentExpansion(active, pinned)
+    useEffect(() => { state = expansion }, [expansion])
+    return null
+  }
+  let renderer!: ReturnType<typeof create>
+  await act(() => { renderer = create(<Probe active="workspace-chief" />) })
+  try {
+    await act(() => state.toggle('scout', pinned))
+    await act(() => state.toggle('my-chief', pinned))
+    assert.deepEqual([...state.expanded].sort(), ['my-chief', 'scout'], 'other agents stay open')
+    await act(() => renderer.update(<Probe active="workspace-chief" />))
+    await act(() => renderer.update(<Probe active={null} />))
+    await act(() => renderer.update(<Probe active="workspace-chief" />))
+    assert.deepEqual([...state.expanded].sort(), ['scout', 'workspace-chief'])
+  } finally {
+    await act(() => renderer.unmount())
+  }
+})

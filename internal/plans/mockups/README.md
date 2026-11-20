@@ -107,7 +107,8 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
-- `agent-working-state.html` (feature `agent-working-state`): the proposed working state and date line. A live
+- `agent-working-state.html` (feature `agent-working-state`): the working state, date line, pinned chief tiles and
+  response spacing, now built into production; the feature only adds fixtures. A live
   response ends with one dot-lattice orb and a sentence saying what the agent is doing right now, in the transcript's
   own tool wording, instead of the 24px Overlay mark. While a tool runs, the orb sits on that tool's row (an agent
   tool's row says who is asked and what: "Asking Quill: …"); between tools a line at the bottom says "Thinking" or

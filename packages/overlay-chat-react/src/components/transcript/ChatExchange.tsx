@@ -174,7 +174,7 @@ export function ChatExchange({
               workDetails={workDetails}
             />
 
-            {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
+            {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} blocks={assistantVisualBlocks} /> : null}
 
             {errorMessage && !responseInProgress && (
               <ExchangeErrorNotice errorMessage={errorMessage} />

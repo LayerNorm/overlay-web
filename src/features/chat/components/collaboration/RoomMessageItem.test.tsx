@@ -78,22 +78,22 @@ test('streaming agent controls stay hidden until their own response is hovered o
   assert.match(html, /-ml-1\.5/)
 })
 
-test('a streaming agent reply shows one 24px mark below its text until it settles', () => {
+test('a streaming agent reply shows one working line below its text until it settles', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Searching memory first.' }), 'Agent', false, true)
   assert.doesNotMatch(html, /animate-pulse rounded-full/)
   assert.doesNotMatch(html, /agent-response-pending/)
-  assert.equal(html.match(/is responding/g)?.length, 1)
-  assert.ok(html.indexOf('Searching memory first.') < html.indexOf('is responding'))
+  assert.equal(html.match(/data-working-line/g)?.length, 1)
+  assert.ok(html.indexOf('Searching memory first.') < html.indexOf('data-working-line'))
   const settled = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: 'Done.' }), 'Agent')
-  assert.doesNotMatch(settled, /is responding/)
+  assert.doesNotMatch(settled, /data-working-line/)
 })
 
-test('an empty generating reply shows the chat mark immediately below its author, with no dots row', () => {
+test('an empty generating reply shows the working line immediately below its author, with no dots row', () => {
   const html = render(record({ authorKind: 'agent', authorPrincipalId: 'agent', content: '' }), 'Agent', false, true)
-  assert.equal(html.match(/is responding/g)?.length, 1)
+  assert.equal(html.match(/data-working-line/g)?.length, 1)
   assert.match(html, /data-loading-presentation="standalone"/)
   assert.doesNotMatch(html, /agent-response-pending/)
-  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('is responding'))
+  assert.ok(html.indexOf('>Agent</span>') < html.indexOf('data-working-line'))
 })
 
 test('a member’s own message is just the personal gray bubble', () => {
