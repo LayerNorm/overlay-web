@@ -104,7 +104,7 @@ rooms.push(
     message(room, agent, 3 * MIN, 'Benchmarking now. I will compare our three plans with the five closest competitors.', [
       tool('t4', 'web_search', { query: 'B2B workspace software pricing per seat 2026' }, { results: [{ title: 'SaaS pricing benchmarks 2026', url: 'https://example.com/benchmarks' }] }),
       tool('t5', 'computer_exec', { command: 'python analyze_pricing.py --competitors 5' }, undefined, 'input-available'),
-    ], { status: 'streaming' }),
+    ], { status: 'generating' }),
   ]),
   agentRoom('k17convpricing000000000000000000', 'agent_overlay', 'Review subscription pricing', 2 * HOUR, 'ready', (room, agent) => [
     message(room, VIEWER_PRINCIPAL, 3 * HOUR, 'Review our subscription pricing and compare it with the current market.'),
@@ -120,7 +120,7 @@ rooms.push(
   ]),
   agentRoom('k17convscoutpricing0000000000000', 'agent_scout', 'Competitor pricing scan', 20 * MIN, 'working', (room, agent) => [
     message(room, VIEWER_PRINCIPAL, 40 * MIN, 'Scan the pricing pages of our five closest competitors and note any changes since September.'),
-    message(room, agent, 20 * MIN, 'Checking pricing pages now.', [tool('s1', 'computer_open_url', { url: 'https://example.com/pricing' }, undefined, 'input-available')], { status: 'streaming' }),
+    message(room, agent, 20 * MIN, 'Checking pricing pages now.', [tool('s1', 'computer_open_url', { url: 'https://example.com/pricing' }, undefined, 'input-available')], { status: 'generating' }),
   ]),
   agentRoom('k17convscoutchurn000000000000000', 'agent_scout', 'Churn interview synthesis', 3 * DAY, 'completed', (room, agent) => [
     message(room, VIEWER_PRINCIPAL, 3 * DAY + HOUR, 'Summarize the churn interviews from October.'),
