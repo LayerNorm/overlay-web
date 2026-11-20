@@ -108,19 +108,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/computers/[computerId]/start`
 - `POST /api/v1/computers/[computerId]/stop`
 
-## Surfaces (Slack)
-
-- `GET /api/v1/surfaces/slack/connect`
-- `GET /api/v1/surfaces/slack/callback`
-- `DELETE, GET /api/v1/surfaces/connections`
-- `GET /api/v1/surfaces/slack/identity/start`
-- `GET /api/v1/surfaces/slack/identity/callback`
-- `POST /api/v1/surfaces/slack/identity/unlink`
-- `GET /api/v1/surfaces/connections/[connectionId]/channels`
-- `GET, POST /api/v1/surfaces/bindings`
-- `DELETE /api/v1/surfaces/bindings/[bindingId]`
-- `POST /api/v1/webhooks/slack`
-
 ## Automations
 
 - `POST /api/v1/automations/project-events`
@@ -172,11 +159,9 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/outputs/[outputId]/content`
 - `DELETE, GET /api/v1/outputs`
 
-## Extensions, imports, integrations, MCPs, memory
+## Extensions, integrations, MCPs, memory
 
 - `DELETE, GET, PATCH, POST, PUT /api/v1/extensions/[extensionId]/[...path]`
-- `POST /api/v1/imports/slack/process`
-- `GET, POST /api/v1/imports/slack`
 - `GET /api/v1/github/callback`
 - `GET /api/v1/github/connect`
 - `GET /api/v1/github/repositories`

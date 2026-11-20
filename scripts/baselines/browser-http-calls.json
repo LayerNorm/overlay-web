@@ -181,8 +181,7 @@
   "integrations.connectResponse": [
     "src/app/_components/onboarding/OnboardingTools.tsx",
     "src/features/chat/components/chat/useGeneratedUiConnectorActions.ts",
-    "src/features/integrations/components/IntegrationsView.tsx",
-    "src/features/workspaces/components/SlackImportPanel.tsx"
+    "src/features/integrations/components/IntegrationsView.tsx"
   ],
   "integrations.disconnectResponse": [
     "src/features/integrations/components/IntegrationsView.tsx"
@@ -280,21 +279,6 @@
   "skills.deleteResponse": [
     "src/features/settings/lib/archived-actions.ts"
   ],
-  "surfaces.createBinding": [
-    "src/features/workspaces/components/use-workspace-slack.ts"
-  ],
-  "surfaces.disconnect": [
-    "src/features/workspaces/components/use-workspace-slack.ts"
-  ],
-  "surfaces.listChannels": [
-    "src/features/workspaces/components/use-workspace-slack.ts"
-  ],
-  "surfaces.removeBinding": [
-    "src/features/workspaces/components/use-workspace-slack.ts"
-  ],
-  "surfaces.unlinkIdentity": [
-    "src/features/workspaces/components/use-workspace-slack.ts"
-  ],
   "webhooks.createResponse": [
     "src/features/settings/components/WebhookSettings.tsx"
   ],
@@ -339,8 +323,7 @@
   "workspaces.invite": [
     "src/app/_components/onboarding/OnboardingConversation.tsx",
     "src/components/share/ShareDialog.tsx",
-    "src/features/chat/components/NewDirectMessageDialog.tsx",
-    "src/features/workspaces/components/SlackImportPanel.tsx"
+    "src/features/chat/components/NewDirectMessageDialog.tsx"
   ],
   "workspaces.list": [
     "src/app/oauth/authorize/AuthorizeClient.tsx"

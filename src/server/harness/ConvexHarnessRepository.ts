@@ -18,7 +18,6 @@ import type {
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
-import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
 import { api } from '../../../convex/_generated/api'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -256,51 +255,6 @@ export class ConvexHarnessRepository extends ConvexHarnessAssignments implements
       token: input.token,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
-  }
-
-  async getSurfaceExecutionByHarnessRunId(harnessRunId: string): Promise<SurfaceTurnExecution | null> {
-    return await convex.query<SurfaceTurnExecution | null>('surfaces/surfaceExecutions:getSurfaceTurnExecutionByHarnessRunId', {
-      harnessRunId,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-  }
-
-  async beginSurfaceTurn(input: {
-    identityLinkId?: string; slackUserId?: string
-    turnId: string; workflowRunId: string; actorUserId: string; workspaceId: string; creatorPrincipalId: string
-    agentId: string; agentPrincipalId: string; platform: 'slack'; teamId: string; channelId: string
-    threadId: string; messageId: string; bindingId: string; connectionId: string; conversationId: string
-    userContent: string; modelId: string; importedAuthorName?: string; importedAuthorEmail?: string
-    importedAuthorStatus?: 'member' | 'invited' | 'not_invited'; placeholderTs?: string
-  }): Promise<{
-    owner: 'same' | 'foreign'
-    execution: SurfaceTurnExecution | null
-  }> {
-    await requireNativeThreadCompatibilityBackend(input.actorUserId)
-    const result = await convex.mutation<{
-      owner: 'same' | 'foreign'
-      execution: SurfaceTurnExecution | null
-    }>('surfaces/surfaceExecutions:beginSurfaceTurn', {
-      ...input,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!result) throw new Error('Surface turn admission returned no result.')
-    return result
-  }
-
-  async failOwnedSurfaceTurn(input: {
-    turnId: string
-    workflowRunId: string
-    agentRunId: string
-    assistantMessageId: string
-    failure: { code: string; message: string; retryable: boolean }
-  }): Promise<{ persisted: boolean }> {
-    const result = await convex.mutation<{ persisted: boolean }>('surfaces/surfaceExecutions:failOwnedSurfaceTurn', {
-      ...input,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!result) throw new Error('Surface failure persistence returned no result.')
-    return result
   }
 
   async apply(input: HarnessMutationInput): Promise<HarnessMutationResult> {

@@ -9,9 +9,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { isSharedRoom } from '@/shared/agents/room-access'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
-import { assertPersistedSurfaceSource } from './surface-access'
 import type { AgentRun } from '@/shared/agents/agent-run'
-import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import type { ThreadWork } from '@/shared/agents/thread-work'
 import { threadWorkInstructions } from '@/server/agents/thread-work/thread-work-prompt'
 
@@ -30,8 +28,6 @@ type NativeInputArgs = {
   memoryEnabled: boolean
   parentRunId?: string
   threadRootMessageId?: string
-  surfaceRootRunId?: string
-  expectedSurfaceWorkflowRunId?: string
 }
 type PreparedWorkspaceInputs = Awaited<ReturnType<typeof prepareWorkspaceAgentInputs>>
 
@@ -50,31 +46,12 @@ function assertNativeRunIdentity(run: AgentRun | null, args: NativeInputArgs): a
   }
 }
 
-async function loadSurfaceExecution(args: NativeInputArgs, run: AgentRun): Promise<SurfaceTurnExecution | null> {
-  const execution = await new ConvexHarnessRepository()
-    .getSurfaceExecutionByHarnessRunId(args.surfaceRootRunId ?? `workspace:${run.id}`)
-  if (!execution) return null
-  const ownsDelivery = execution.actorUserId === args.actorUserId
-    && execution.workspaceId === args.workspaceId
-    && (execution.agentRunId !== run.id || (
-      execution.conversationId === args.conversationId
-      && execution.turnId === run.turnId
-      && execution.userMessageId === run.userMessageId
-      && execution.assistantMessageId === run.assistantMessageId
-    ))
-  if (!ownsDelivery) throw new Error('The persisted surface source does not own this native delivery.')
-  await assertPersistedSurfaceSource(execution, args.expectedSurfaceWorkflowRunId)
-  return execution
-}
-
 async function prepareNativeRoomInputs(
   args: NativeInputArgs,
   run: AgentRun,
-  execution: SurfaceTurnExecution | null,
   inheritedSharedRoom: boolean,
   work: ThreadWork | undefined,
 ): Promise<PreparedWorkspaceInputs> {
-  const isSurfaceRoot = execution?.agentRunId === run.id
   return await prepareWorkspaceAgentInputs({
     // The thread's computer decides which tools the model is offered, not only where they run.
     ...(work ? { work } : {}),
@@ -86,13 +63,6 @@ async function prepareNativeRoomInputs(
     workspaceId: args.workspaceId,
     includeAutoRetrieval: false,
     inheritedSharedRoom,
-    ...(execution ? {
-      ...(isSurfaceRoot ? {
-        turnIdOverride: execution.turnId,
-        requestFingerprintOverride: `surface:${execution.turnId}`,
-      } : {}),
-      billingProgrammaticSubjectId: `surface:slack:${execution.bindingId}`,
-    } : {}),
   })
 }
 
@@ -114,7 +84,6 @@ function assertPreparedRoomIdentity(
 function buildNativeWorkflowInput(
   args: NativeInputArgs,
   run: AgentRun,
-  surfaceExecution: SurfaceTurnExecution | null,
   prepared: PreparedWorkspaceInputs,
   inheritedSharedRoom: boolean,
   work: ThreadWork | undefined,
@@ -152,9 +121,7 @@ function buildNativeWorkflowInput(
     instructions: buildAgentSystemPrompt({
       agentName: prepared.agent.name,
       agentRole: prepared.agent.agentRole,
-      contextBlock: surfaceExecution
-        ? `This request arrived through Slack in the channel bound to this agent. Treat the imported user message as the complete task request. Do not promise that Slack replies will resume an Overlay input or approval wait.\n\n${prepared.turnContext.contextBlock}`
-        : prepared.turnContext.contextBlock,
+      contextBlock: prepared.turnContext.contextBlock,
       exposedToolIds: prepared.toolDefinitions.map(definition => definition.name),
       hasTools: prepared.toolDefinitions.length > 0,
       instructions: prepared.agent.instructions,
@@ -174,30 +141,21 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
   })
   assertNativeRunIdentity(run, args)
   const repository = new ConvexHarnessRepository()
-  const resolveConversationRestrictions = () => repository.resolveConversationRoomRestrictions({
-    actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
-  })
-  const restrictionLookup = args.parentRunId
+  // A sub-run inherits its parent's restrictions; a root run keeps those already recorded for it; a new root starts
+  // from its conversation's.
+  const roomRestrictions = await (args.parentRunId
     ? repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: args.parentRunId })
     : run.harnessRunId
-      ? repository.get({ actorUserId: args.actorUserId, runId: run.harnessRunId }).then(existingRoot => {
-        if (existingRoot || !args.expectedSurfaceWorkflowRunId) {
-          return repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: run.harnessRunId! })
-        }
-        return resolveConversationRestrictions()
-      })
-      : resolveConversationRestrictions()
-  const [surfaceExecution, roomRestrictions] = await Promise.all([
-    loadSurfaceExecution(args, run),
-    restrictionLookup,
-  ])
+      ? repository.get({ actorUserId: args.actorUserId, runId: run.harnessRunId }).then(() =>
+        repository.refreshRoomContextRestrictions({ actorUserId: args.actorUserId, runId: run.harnessRunId! }))
+      : repository.resolveConversationRoomRestrictions({
+        actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+      }))
   const inheritedSharedRoom = roomRestrictions.inheritedSharedRoom
-  // Slack turns and threads without choices keep today's behavior.
   // A thread whose choices can't be read runs as before, without folders, rather than failing the turn.
-  const work = surfaceExecution ? undefined
-    : chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId).catch((_error: unknown) => null))
-  const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution, inheritedSharedRoom, work)
+  const work = chosenWork(await new ConvexThreadWorkRepository().getWork(run.conversationId).catch((_error: unknown) => null))
+  const prepared = await prepareNativeRoomInputs(args, run, inheritedSharedRoom, work)
   assertPreparedRoomIdentity(args, run, prepared)
   const workBlock = work ? await threadWorkInstructions({ work, workspaceId: args.workspaceId, actorUserId: run.userId }) : ''
-  return buildNativeWorkflowInput(args, run, surfaceExecution, prepared, inheritedSharedRoom, work, workBlock)
+  return buildNativeWorkflowInput(args, run, prepared, inheritedSharedRoom, work, workBlock)
 }

@@ -4,11 +4,9 @@ import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder
 const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
   prompt: vi.fn(),
-  surface: vi.fn(),
   get: vi.fn(),
   inherited: vi.fn(),
   preAdmission: vi.fn(),
-  assertSurface: vi.fn(),
   server: {
     appData: { repositories: { conversations: { getLatestAgentRun: vi.fn() } } },
     chatUsagePolicy: { ensureBudgetNotLow: vi.fn() },
@@ -22,11 +20,9 @@ vi.mock('@/server/agents/workspace-agent-preparation', () => ({ prepareWorkspace
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({ buildAgentSystemPrompt: mocks.prompt }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.get
-  getSurfaceExecutionByHarnessRunId = mocks.surface
   refreshRoomContextRestrictions = mocks.inherited
   resolveConversationRoomRestrictions = mocks.preAdmission
 } }))
-vi.mock('./surface-access', () => ({ assertPersistedSurfaceSource: mocks.assertSurface }))
 
 const run = {
   id: 'run', userId: 'user', conversationId: 'room', mode: 'room', runner: 'workflow',
@@ -37,11 +33,9 @@ const run = {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.surface.mockResolvedValue(null)
   mocks.get.mockResolvedValue(null)
   mocks.inherited.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.preAdmission.mockResolvedValue({ inheritedSharedRoom: false })
-  mocks.assertSurface.mockResolvedValue({})
   mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValue(run)
   mocks.prepare.mockResolvedValue({
     room: {
@@ -154,59 +148,6 @@ test('rejects a stored triggering message with a different human principal', asy
   expect(mocks.prompt).not.toHaveBeenCalled()
 })
 
-test('unadmitted surface root resolves conversation restrictions before admission', async () => {
-  const execution = {
-    turnId: 'surface:slack:binding:message',
-    workflowRunId: 'workflow',
-    actorUserId: 'user',
-    workspaceId: 'workspace',
-    creatorPrincipalId: 'human-principal',
-    agentId: 'agent',
-    agentPrincipalId: 'agent-principal',
-    platform: 'slack',
-    teamId: 'team',
-    channelId: 'channel',
-    threadId: 'thread',
-    messageId: 'message',
-    bindingId: 'binding',
-    connectionId: 'connection',
-    conversationId: 'room',
-    agentRunId: 'run',
-    userMessageId: 'question',
-    assistantMessageId: 'answer',
-    harnessRunId: 'workspace:run',
-  }
-  mocks.surface.mockResolvedValue(execution)
-  mocks.get.mockResolvedValueOnce(null)
-  mocks.inherited.mockRejectedValueOnce(new Error('HARNESS_RUN_NOT_FOUND'))
-  mocks.preAdmission.mockResolvedValueOnce({ inheritedSharedRoom: true })
-  mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
-    ...run, turnId: execution.turnId, harnessRunId: execution.harnessRunId,
-  })
-
-  const input = await buildNativeHarnessWorkflowInput({
-    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'run',
-    memoryEnabled: true, expectedSurfaceWorkflowRunId: 'workflow',
-  })
-  expect(mocks.get).toHaveBeenCalledWith({ actorUserId: 'user', runId: execution.harnessRunId })
-  expect(mocks.inherited).not.toHaveBeenCalled()
-  expect(mocks.preAdmission).toHaveBeenCalledWith({
-    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room',
-  })
-  expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ inheritedSharedRoom: true }))
-  expect(input.context.sharedRoom).toBe(true)
-  expect(mocks.assertSurface).toHaveBeenCalledWith(execution, 'workflow')
-  expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({
-    turnIdOverride: execution.turnId,
-    requestFingerprintOverride: `surface:${execution.turnId}`,
-    billingProgrammaticSubjectId: 'surface:slack:binding',
-  }))
-  expect(mocks.prompt).toHaveBeenCalledWith(expect.objectContaining({
-    contextBlock: expect.stringContaining('This request arrived through Slack'),
-  }))
-  expect(mocks.prepare.mock.calls[0]?.[0].messageId).toBe('question')
-})
-
 test('confirmed existing roots refresh inherited restrictions', async () => {
   mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
     ...run, harnessRunId: 'workspace:run',
@@ -225,7 +166,7 @@ test('confirmed existing roots refresh inherited restrictions', async () => {
   expect(input.context.sharedRoom).toBe(true)
 })
 
-test('a missing non-surface root still fails closed instead of falling back to conversation restrictions', async () => {
+test('a missing root still fails closed instead of falling back to conversation restrictions', async () => {
   mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
     ...run, harnessRunId: 'workspace:missing',
   })
@@ -263,53 +204,3 @@ test.each(['HARNESS_RUN_NOT_FOUND', 'HARNESS_RUN_ACCESS_DENIED'])(
     expect(mocks.preAdmission).not.toHaveBeenCalled()
   },
 )
-
-test('named native child in a different room keeps its turn and inherits verified root source billing', async () => {
-  const execution = {
-    turnId: 'surface:slack:binding:message',
-    workflowRunId: 'workflow',
-    actorUserId: 'user',
-    workspaceId: 'workspace',
-    conversationId: 'room',
-    bindingId: 'binding',
-    agentRunId: 'run',
-    userMessageId: 'question',
-    assistantMessageId: 'answer',
-    harnessRunId: 'workspace:run',
-  }
-  mocks.surface.mockResolvedValue(execution)
-  mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValueOnce({
-    ...run,
-    id: 'child-run',
-    conversationId: 'child-room',
-    agentId: 'child-agent',
-    agentPrincipalId: 'child-principal',
-    initiatorPrincipalId: 'parent-principal',
-    turnId: 'child-turn',
-    userMessageId: 'child-question',
-    assistantMessageId: 'child-answer',
-  })
-  mocks.prepare.mockResolvedValueOnce({
-    room: {
-      conversation: { workspaceId: 'workspace', title: 'Room' },
-      conversationType: 'channel',
-      participants: [{ principalId: 'human-principal', principalType: 'human' }],
-      history: [{ _id: 'child-question', authorKind: 'agent', authorPrincipalId: 'parent-principal', content: 'Child task' }],
-    },
-    agent: { id: 'child-agent', name: 'Child', principalId: 'child-principal', instructions: '', harness: 'overlay' },
-    modelId: 'model', requestFingerprint: 'child-fingerprint', turnId: 'child-turn',
-    turnContext: { contextBlock: 'Parent source context', messages: [{ role: 'user', content: 'Child task' }] },
-    toolDefinitions: [],
-  })
-
-  const result = await buildNativeHarnessWorkflowInput({
-    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'child-room', runId: 'child-run',
-    memoryEnabled: true, surfaceRootRunId: 'workspace:run', expectedSurfaceWorkflowRunId: 'workflow',
-  })
-  expect(mocks.surface).toHaveBeenCalledWith('workspace:run')
-  expect(mocks.assertSurface).toHaveBeenCalledWith(execution, 'workflow')
-  expect(mocks.prepare.mock.calls[0]?.[0]).not.toHaveProperty('turnIdOverride')
-  expect(mocks.prepare.mock.calls[0]?.[0]).toMatchObject({ billingProgrammaticSubjectId: 'surface:slack:binding' })
-  expect(result.access.turnId).toBe('child-turn')
-  expect(result.access.agentId).toBe('child-agent')
-})

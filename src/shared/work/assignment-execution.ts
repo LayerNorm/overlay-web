@@ -1,10 +1,3 @@
-export type AssignmentOrigin = {
-  platform: 'slack'
-  channelId: string
-  channelName?: string
-  threadLinkId: string
-}
-
 /** The assigned agent's avatar, as the Work Avatar draws it. */
 export type AssignmentAgent = {
   avatarColor?: string
@@ -29,6 +22,5 @@ export type AssignmentExecution = {
   dispositionReason?: string
   result?: { summary: string; failureReason?: string }
   parent: { conversationId: string; agentId?: string; conversationType?: 'personal' | 'dm' | 'channel'; title: string; scope: 'personal' | 'workspace' }
-  origin?: AssignmentOrigin
   createdAt: number
 }

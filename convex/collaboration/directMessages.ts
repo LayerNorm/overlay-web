@@ -875,7 +875,6 @@ export type StartAgentTurnInTransactionArgs = {
   userMessageId: Id<'conversationMessages'>
   workspaceId: string
   serverSecret?: string
-  harnessRunIdPrefix?: string
 }
 
 export async function startAgentTurnInTransaction(
@@ -930,9 +929,6 @@ export async function startAgentTurnInTransaction(
     createdAt: now,
     updatedAt: now,
   })
-  if (args.harnessRunIdPrefix) {
-    await ctx.db.patch(runId, { harnessRunId: `${args.harnessRunIdPrefix}${runId}` })
-  }
   await enqueueNativeTurn(ctx, (await ctx.db.get(runId))!)
   return { messageId, resumed, runId }
 }

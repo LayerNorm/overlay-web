@@ -6,12 +6,6 @@ export type {
 export { ConvexWorkspaceAgentRepository } from './ConvexWorkspaceAgentRepository'
 export { WorkspaceAgentService, WorkspaceAgentServiceError } from './WorkspaceAgentService'
 export {
-  PlatformAgentAccess,
-  PLATFORM_AGENT_DIRECTORIES,
-  type PlatformActorRef,
-  type PlatformAgentDirectory,
-} from './PlatformAgentAccess'
-export {
   ConnectedAgentControlPlaneError,
   ConnectedAgentControlPlaneService,
   type HostAuthentication,

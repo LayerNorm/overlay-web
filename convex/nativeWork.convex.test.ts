@@ -131,18 +131,9 @@ test.each(['channel', 'dm', 'personal'] as const)('Work projects the authorized 
   expect((await data.read('bob')).page).toEqual([])
 })
 
-test('Work assignment archive is live and origin disappears after connection revocation', async () => {
+test('Work assignment archive is live', async () => {
   const data = await assignmentFixture()
-  const connection = await data.t.run(async ctx => {
-    const id = await ctx.db.insert('surfaceConnections', { id: 'connection', workspaceId: 'ws', platform: 'slack', externalTeamId: 'team',
-      externalTeamName: 'QA', status: 'active', createdAt: 1, updatedAt: 1, installedByUserId: 'alice' })
-    await ctx.db.insert('surfaceThreadLinks', { workspaceId: 'ws', platform: 'slack', connectionId: 'connection', externalTeamId: 'team',
-      channelId: 'channel', threadId: 'thread', conversationId: data.parent, channelName: 'launch', originalBindingId: 'binding', createdAt: 1, updatedAt: 1 })
-    return id
-  })
-  expect((await data.read()).page[0]?.origin?.channelName).toBe('launch')
-  await data.t.run(ctx => ctx.db.patch(connection, { status: 'uninstalled' }))
-  expect((await data.read()).page[0]?.origin).toBeUndefined()
+  expect((await data.read()).page).toHaveLength(1)
   await data.t.run(async ctx => {
     const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.child).eq('principalId', 'p-alice')).unique()
     await ctx.db.patch(participant!._id, { archivedAt: 1 })

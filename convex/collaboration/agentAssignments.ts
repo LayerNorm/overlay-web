@@ -225,27 +225,7 @@ async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments
 }
 
 const navigationScope = v.union(v.literal('workspace'), v.literal('personal'))
-const originView = v.object({ platform: v.literal('slack'), channelName: v.optional(v.string()), channelId: v.string(), threadLinkId: v.string() })
 
-async function authorizedOrigin(ctx: QueryCtx, viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>, workspaceId: string, conversationId: Doc<'conversations'>['_id']) {
-  const visited = new Set<string>()
-  let current = conversationId
-  while (!visited.has(current)) {
-    visited.add(current)
-    if (!await accessibleConversation(ctx, viewer, workspaceId, current)) return undefined
-    const link = await ctx.db.query('surfaceThreadLinks').withIndex('by_conversationId', q => q.eq('conversationId', current)).unique()
-    if (link) {
-      const connection = await ctx.db.query('surfaceConnections').withIndex('by_entityId', q => q.eq('id', link.connectionId)).unique()
-      if (link.workspaceId !== workspaceId || !connection || connection.workspaceId !== workspaceId
-        || connection.status === 'uninstalled' || connection.externalTeamId !== link.externalTeamId) return undefined
-      return { platform: link.platform, channelName: link.channelName, channelId: link.channelId, threadLinkId: String(link._id) }
-    }
-    const assignment = await ctx.db.query('agentAssignments').withIndex('by_conversationId', q => q.eq('conversationId', current)).unique()
-    if (!assignment || assignment.workspaceId !== workspaceId) return undefined
-    current = assignment.parentConversationId
-  }
-  return undefined
-}
 const parentView = v.object({
   assignmentId: v.string(),
   conversationId: v.id('conversations'),
@@ -305,7 +285,6 @@ export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaite
     result: result ? { summary: result.summary, failureReason: result.failureReason }
       : attempt?.cancellationReason ? { summary: '', failureReason: attempt.cancellationReason } : undefined,
     parent: parentThreadNavigation(parent, caller),
-    origin: await authorizedOrigin(ctx, viewer, workspaceId, child._id),
     createdAt: assignment.createdAt,
   }
 }
@@ -478,7 +457,7 @@ export const createAgentAssignment = mutation({
 
 export const forConversation = query({
   args: { workspaceId: v.string(), conversationId: v.string() },
-  returns: v.object({ parent: v.union(v.null(), parentView), assignments: v.array(assignmentView), origin: v.optional(originView) }),
+  returns: v.object({ parent: v.union(v.null(), parentView), assignments: v.array(assignmentView) }),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
@@ -533,7 +512,6 @@ export const forConversation = query({
         dispositionReason: execution.dispositionReason,
       })
     }
-    const origin = await authorizedOrigin(ctx, viewer, args.workspaceId, conversationId)
-    return { parent, assignments, ...(origin ? { origin } : {}) }
+    return { parent, assignments }
   },
 })

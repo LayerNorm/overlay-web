@@ -18,11 +18,9 @@ import {
 } from '@/shared/agents/agent-lineage'
 import type { ConversationMessageRow } from '@/server/conversations/ActConversationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
-import { filterSharedSurfaceAgents, type SharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import type { NativeAgentAssignmentContext } from './native-assignment-context'
 import type { AssignmentResultView } from '@/shared/agents/assignment-result'
-import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import {
   HARNESS_DISPATCH_REQUIRED_CODE,
   HARNESS_DISPATCH_REQUIRED_MESSAGE,
@@ -105,9 +103,9 @@ export class AgentAskService {
     waitMs?: number
   }) {}
 
-  async list(args: { actorUserId: string; workspaceId: string; callerAgentId?: string; sharedSurfaceContext?: SharedSurfaceAgentContext }) {
+  async list(args: { actorUserId: string; workspaceId: string; callerAgentId?: string }) {
     const directory = await this.dependencies.directory(args.actorUserId, args.workspaceId)
-    return filterSharedSurfaceAgents(directory, args.sharedSurfaceContext)
+    return directory
       .filter((agent) => !agent.archivedAt && agent.id !== args.callerAgentId)
       .map((agent) => ({
         id: agent.id,
@@ -121,8 +119,6 @@ export class AgentAskService {
     /** The asking agent and the turn it is in; absent for an outside app asking for the person. */
     caller?: Caller
     nativeAssignment?: NativeAgentAssignmentContext
-    nativeSurfaceTrigger?: SurfaceTurnExecution
-    sharedSurfaceContext?: SharedSurfaceAgentContext
     assignmentId?: string
     expectedAttemptId?: string
     target: string
@@ -138,7 +134,7 @@ export class AgentAskService {
     assertAssignmentContext(args, target)
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 
-    const { caller, lineage } = await this.callerLineage(args, visible, args.caller, args.nativeSurfaceTrigger, args.nativeAssignment)
+    const { caller, lineage } = await this.callerLineage(args, visible, args.caller)
     const next = nextLineage({
       lineage, callerAgentId: caller.id, callerName: caller.name, targetAgentId: target.id, asksSoFarThisTurn: 0,
       parentConversationId: args.caller.conversationId,
@@ -153,9 +149,6 @@ export class AgentAskService {
     if (!claim.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[claim.reason], 429, `ask_${claim.reason}`)
     let assignmentCreated = false
     try {
-      if (args.sharedSurfaceContext && !(await this.visibleAgents(args)).some((agent) => agent.id === target.id)) {
-        throw new AgentAskError(`No agent called "${args.target.trim()}" that you can ask. Use list_agents to see who is available.`, 404, 'agent_not_found')
-      }
       const content = `Asked by ${caller.name}: ${message}`
       const dispatchAssignmentId = args.nativeAssignment
         ? `assignment_${createHash('sha256').update(`${args.nativeAssignment.parentRunId}\0${args.nativeAssignment.toolCallId}\0${target.id}`).digest('hex')}`
@@ -218,7 +211,6 @@ export class AgentAskService {
     conversationId: string
     text: string
     mentions: string[]
-    sharedSurfaceContext?: SharedSurfaceAgentContext
     startTurns?: StartTurns
   }): Promise<AgentPostResult> {
     if (!args.startTurns) await this.refuseHarnessCaller(args, args.caller)
@@ -272,13 +264,6 @@ export class AgentAskService {
         const result = await this.dependencies.claimBudget({ ...askKeys, maxRoot: MAX_AGENT_ASKS_PER_ROOT, maxTurn: MAX_AGENT_ASKS_PER_TURN })
         if (!result.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[result.reason], 429, `ask_${result.reason}`)
         spent.push(askKeys)
-      }
-      if (args.sharedSurfaceContext) {
-        const availableIds = new Set((await this.visibleAgents(args)).map((agent) => agent.id))
-        const unavailableIndex = targets.findIndex((target) => !availableIds.has(target.id))
-        if (unavailableIndex >= 0) {
-          throw new AgentAskError(`No agent called "${args.mentions[unavailableIndex]!.trim()}" that you can mention.`, 404, 'agent_not_found')
-        }
       }
       const turnId = `post_${createHash('sha256').update(`${args.caller.turnId}:${args.conversationId}:${text}`).digest('hex').slice(0, 24)}`
       const posted = await this.postAsAgent({
@@ -338,11 +323,8 @@ export class AgentAskService {
     }
   }
 
-  private async visibleAgents(args: { actorUserId: string; workspaceId: string; sharedSurfaceContext?: SharedSurfaceAgentContext }) {
-    return filterSharedSurfaceAgents(
-      (await this.dependencies.directory(args.actorUserId, args.workspaceId)).filter((agent) => !agent.archivedAt),
-      args.sharedSurfaceContext,
-    )
+  private async visibleAgents(args: { actorUserId: string; workspaceId: string }) {
+    return (await this.dependencies.directory(args.actorUserId, args.workspaceId)).filter((agent) => !agent.archivedAt)
   }
 
   private findAgent(visible: WorkspaceAgentDirectoryItem[], reference: string) {
@@ -354,41 +336,11 @@ export class AgentAskService {
     person: Person,
     visible: WorkspaceAgentDirectoryItem[],
     caller: Caller,
-    nativeSurfaceTrigger?: SurfaceTurnExecution,
-    nativeAssignment?: NativeAgentAssignmentContext,
   ) {
     const agent = visible.find((candidate) => candidate.id === caller.agentId)
     if (!agent) throw new AgentAskError('Only an agent can do that.', 403, 'caller_not_an_agent')
-    const trigger = nativeSurfaceTrigger
-      ? await this.nativeSurfaceTriggerMessage(person, caller, nativeSurfaceTrigger, nativeAssignment, agent)
-      : await this.triggerMessage(person, caller)
+    const trigger = await this.triggerMessage(person, caller)
     return { caller: agent, lineage: lineageForTriggerMessage(trigger, agent.id) }
-  }
-
-  private async nativeSurfaceTriggerMessage(
-    person: Person,
-    caller: Caller,
-    source: SurfaceTurnExecution,
-    nativeAssignment: NativeAgentAssignmentContext | undefined,
-    agent: WorkspaceAgentDirectoryItem,
-  ): Promise<Pick<ConversationMessageRow, 'authorKind' | 'turnId' | 'parts'>> {
-    const invalid = () => new AgentAskError('This turn cannot ask other agents.', 403, 'turn_unknown')
-    if (!nativeAssignment || !source.userMessageId || nativeAssignment.parentConversationId !== caller.conversationId
-      || source.actorUserId !== person.actorUserId || source.creatorPrincipalId !== person.actorPrincipalId
-      || source.workspaceId !== person.workspaceId || source.conversationId !== caller.conversationId
-      || source.agentId !== caller.agentId || source.agentPrincipalId !== agent.principalId
-      || source.turnId !== caller.turnId || source.harnessRunId !== nativeAssignment.parentRunId
-      || source.harnessRunId !== nativeAssignment.rootRunId) throw invalid()
-    const rows = await this.dependencies.collaboration.listMessages({
-      actorUserId: person.actorUserId, conversationId: caller.conversationId, limit: 1,
-      messageId: source.userMessageId, workspaceId: person.workspaceId,
-    })
-    const message = rows[0]
-    if (!message || message._id !== source.userMessageId || message.turnId !== source.turnId || message.deletedAt
-      || message.role !== 'user' || message.authorKind !== 'human' || message.authorPrincipalId !== source.creatorPrincipalId) {
-      throw invalid()
-    }
-    return message
   }
 
   private async triggerMessage(person: Person, caller: Caller): Promise<Pick<ConversationMessageRow, 'authorKind' | 'turnId' | 'parts'>> {

@@ -3,7 +3,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 
 import Link from 'next/link'
 import { useState, type ReactNode, useEffect } from 'react'
-import { ArrowUpRight, Bot, ChevronDown, CircleAlert, CircleDot, CornerDownRight, Hash, RotateCcw } from 'lucide-react'
+import { ArrowUpRight, Bot, ChevronDown, CircleAlert, CircleDot, CornerDownRight, RotateCcw } from 'lucide-react'
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { Button } from '@overlay/ui/primitives'
 import { assignmentThreadHref } from '@/components/layout/sidebar-nav'
@@ -172,11 +172,6 @@ export function WorkAssignmentPeek({ assignmentId, items, loading, onClose }: {
             {`Attempt ${item.attemptOrdinal ?? 1}`}
             {(item.attemptOrdinal ?? 1) > 1 ? <span className="text-(--muted)">· revised in the same thread</span> : null}
           </PropertyRow>
-          {item.origin ? (
-            <PropertyRow icon={<Hash size={13} />} label="Origin">
-              Slack · {item.origin.channelName ? `#${item.origin.channelName.replace(/^#/, '')}` : item.origin.channelId}
-            </PropertyRow>
-          ) : null}
         </div>
         <PeekSection title="Brief"><p className="whitespace-pre-wrap">{item.brief}</p></PeekSection>
         {state.group === 'review' ? (

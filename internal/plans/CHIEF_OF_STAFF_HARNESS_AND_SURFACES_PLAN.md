@@ -1,6 +1,6 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1–3 remain implemented with the previously listed web scenarios and their explicit verification limits. Phase 4 items 1–4 are implemented, item 5 is partial, and items 6–8 plus Phases 5–6 remain incomplete. The core connected Slack flow and selected identity/privacy lifecycle checks passed on exact head `50d369ed5c7bb8d55180028883692736d2e4ae68`; the broader live authorization/privacy matrix remains incomplete. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+Status: Phases 1–3 (assignment contracts, native Chief orchestration, web experience) are implemented in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409) and not yet merged, deployed or accepted on its current head. Phase 4 (Chief-only Slack) was dropped on 2026-11-19 when the owner removed the Slack bot and external history import (PR #582); its Slack code was removed from #409 and chat-platform delivery will return later through Vercel's Chat SDK. The Slack sections below are kept only as history. Phases 5–6 remain not started. See [Progress](#progress).
 
 ## Progress
 
@@ -11,7 +11,7 @@ Legend: `[x]` implemented in PR #409, `[~]` partially implemented, `[ ]` not sta
 | 1. Assignment and authorization contracts | Implemented; listed web scenarios accepted | Personal discovery, isolated assignments, same-thread revision, restricted-member/revocation and shared-room memory privacy including follow-up passed. Private files/credentials and unauthorized attempt-ID redaction are not separately hosted-verified. |
 | 2. Native Chief orchestration | Implemented; listed web scenarios accepted | Two-specialist delegation, actual reads/acceptance, follow-up/revision, blocked-child wait/resume/accept, active-child parent Stop cancellation, waiting-parent recovery deferral with one launch and Chief read/accept, and recoverable bad-attempt feedback passed. Early pending reads have narration, not authoritative call traces. |
 | 3. Web experience | Implemented; listed web scenarios accepted | Work grouping, 40px rows, keyboard, attempts, no-match, channel links, search, archive/Undo, read markers, light/dark and 390px passed, as did the dirty-note warning. Pagination and Slack-origin browser interactions remain unverified. |
-| 4. Chief-only Slack | Items 1–4 implemented; item 5 partial; items 6–8 incomplete; core hosted flow passed; live matrix incomplete | Workspace-scoped settings, verified identity linking, Chief-only admission and canonical inbound turns are implemented. Existing turn/execution deduplication remains; reliable delivery via outbox, echo suppression and receipt reconciliation is not implemented. Exact-head hosted core acceptance passed on `50d369ed5c7bb8d55180028883692736d2e4ae68`; member, revocation, forged-input and descendant-privacy gaps remain. |
+| 4. Chief-only Slack | Dropped | Removed with the Slack bot (PR #582); to be revisited later through Vercel's Chat SDK. |
 | 5. Personal-Chief contributions | Not started | Cross-owner personal-Chief delegation is refused until grants exist. |
 | 6. Connected agents and transports | Not started | External and connected agents are rejected before any assignment is written. |
 

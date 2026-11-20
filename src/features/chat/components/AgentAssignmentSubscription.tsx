@@ -30,7 +30,6 @@ function AssignmentSubscription({ workspaceId, conversationId }: Props) {
   const href = (item: Parameters<typeof assignmentThreadHref>[0]) =>
     workspaceHref(workspaceId, assignmentThreadHref(item), item.scope)
   return <AgentAssignments
-    origin={result.origin}
     parent={result.parent ? { ...result.parent, href: href(result.parent) } : null}
     assignments={result.assignments.map(item => ({ ...item, href: href(item) }))}
   />

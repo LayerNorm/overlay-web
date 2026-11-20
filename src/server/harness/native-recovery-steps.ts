@@ -38,10 +38,9 @@ export async function executeNativeRecoveryWork(work: NativeRecoveryWork) {
   const runId = work.kind === 'assignment' ? work.parentRunId : work.runId
   const state = await repository.get({ actorUserId: work.actorUserId, runId })
   if (!state || state.workflowRunId !== work.workflowRunId || (state.executionGeneration ?? 0) !== work.executionGeneration) return
-  const root = await repository.get({ actorUserId: work.actorUserId, runId: state.rootRunId })
   const input = await buildNativeHarnessWorkflowInput({ actorUserId: work.actorUserId, workspaceId: work.workspaceId,
     conversationId: work.conversationId, runId: work.deliveryRunId, memoryEnabled: false,
-    parentRunId: state.parentRunId, surfaceRootRunId: state.rootRunId, expectedSurfaceWorkflowRunId: root?.workflowRunId })
+    parentRunId: state.parentRunId })
   const access = { ...input.access, runId: state.runId, workflowRunId: work.workflowRunId, executionGeneration: work.executionGeneration }
   if (work.kind === 'assignment') {
     await dispatchNativeHarnessAgentRequest(access, input.context, work.toolCallId, 'ask_agent', {

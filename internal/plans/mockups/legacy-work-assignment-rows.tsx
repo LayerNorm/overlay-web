@@ -19,7 +19,6 @@ export function LegacyAssignmentRows({ items }: { items: AssignmentExecution[] }
           <p>{item.agentName} · {THREAD_ACTIVITY_LABELS[status]}{item.disposition === 'accepted' ? ' · Accepted' : ''}</p>
           {item.disposition === 'excluded' ? <p>Excluded: {item.dispositionReason}</p> : null}
           <a href="#chief" className="block truncate hover:text-(--foreground) hover:underline" title={item.parent.title}>Assigned from {item.parent.title}</a>
-          {item.origin ? <p>Origin: Slack · {item.origin.channelName ? `#${item.origin.channelName.replace(/^#/, '')}` : item.origin.channelId}</p> : null}
         </div>
       </li>
     })}

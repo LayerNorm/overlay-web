@@ -799,27 +799,6 @@ test('settled artifact resource access is rechecked after source visibility is r
   expect((await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).artifactRefs).toEqual([])
 })
 
-test('origin is inherited only while the viewer can access the source', async () => {
-  const data = await fixture()
-  const child = await data.convex.mutation(createAssignment, args(data))
-  await data.convex.run(async ctx => {
-    await ctx.db.insert('surfaceConnections', { id: 'connection', workspaceId: 'workspace', platform: 'slack', externalTeamId: 'T',
-      status: 'active', installedByUserId: 'alice', createdAt: 1, updatedAt: 1 })
-    await ctx.db.insert('surfaceThreadLinks', { workspaceId: 'workspace', platform: 'slack', connectionId: 'connection', externalTeamId: 'T',
-      channelId: 'C', threadId: 'thread', conversationId: data.parentConversationId, channelName: 'private-name',
-      originalBindingId: 'binding', createdAt: 1, updatedAt: 1 })
-  })
-  const alice = data.convex.withIdentity({ subject: 'alice', issuer: 'https://issuer.example.test' })
-  expect((await alice.query(forConversation, { workspaceId: 'workspace', conversationId: child.conversationId })).origin).toMatchObject({ platform: 'slack', channelName: 'private-name' })
-  await data.convex.run(async ctx => {
-    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId).eq('principalId', 'alice')).unique()
-    await ctx.db.patch(participant!._id, { status: 'removed' })
-  })
-  const hidden = await alice.query(forConversation, { workspaceId: 'workspace', conversationId: child.conversationId })
-  expect(hidden.origin).toBeUndefined()
-  expect(JSON.stringify(hidden)).not.toContain('private-name')
-})
-
 test('exact replay reuses an isolated thread and changed input under the key rejects', async () => {
   const data = await fixture()
   const input = args(data)
@@ -957,7 +936,6 @@ test('external surface identity is shared even when only one human remains', asy
     actorUserId: 'alice', workspaceId: 'workspace', conversationId: data.parentConversationId, serverSecret: secret,
   })).toEqual({ inheritedSharedRoom: true })
 })
-
 
 test('assignment writes reject archived workspaces and unsupported harness targets', async () => {
   const archived = await fixture()

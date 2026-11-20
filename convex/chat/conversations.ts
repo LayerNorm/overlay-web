@@ -478,13 +478,6 @@ export const get = query({
       return null
     }
     const conversation = await ctx.db.get(conversationId)
-    if (conversation && !conversation.deletedAt && conversation.externalPlatform === 'slack'
-      && conversation.workspaceId && workspaceId === conversation.workspaceId && serverSecret) {
-      try {
-        await requireConversationAccess(ctx, { actorUserId: userId, conversationId, workspaceId, serverSecret })
-        return normalizeConversationDoc(conversation)
-      } catch { return null }
-    }
     return conversation?.userId === userId && !conversation.deletedAt && (workspaceId === undefined || conversation.workspaceId === workspaceId)
       ? normalizeConversationDoc(conversation)
       : null
@@ -510,12 +503,8 @@ export const create = mutation({
     )),
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     createdByPrincipalId: v.optional(v.string()),
-    externalPlatform: v.optional(v.string()),
-    externalChannelId: v.optional(v.string()),
-    externalThreadId: v.optional(v.string()),
-    surfaceBindingId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation, conversationType, scope, createdByPrincipalId, externalPlatform, externalChannelId, externalThreadId, surfaceBindingId }) => {
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, clientId, title, askModelIds, actModelId, lastMode, isAutomation, conversationType, scope, createdByPrincipalId }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (clientId?.trim()) {
       const existing = await ctx.db
@@ -544,10 +533,6 @@ export const create = mutation({
       conversationType,
       ...(scope === 'workspace' ? { scope } : {}),
       createdByPrincipalId,
-      externalPlatform,
-      externalChannelId,
-      externalThreadId,
-      surfaceBindingId,
     })
     // Emit a conversation event so personal conversation list version
     // subscriptions can detect the change without a full reload.
@@ -851,13 +836,6 @@ export const addMessage = mutation({
       v.literal('system'),
     )),
     authorPrincipalId: v.optional(v.string()),
-    importedAuthorName: v.optional(v.string()),
-    importedAuthorEmail: v.optional(v.string()),
-    importedAuthorStatus: v.optional(v.union(
-      v.literal('member'),
-      v.literal('invited'),
-      v.literal('not_invited'),
-    )),
   },
   handler: async (ctx, args) => {
     await authorizeUserAccess({
@@ -906,9 +884,6 @@ export const addMessage = mutation({
       routedModelId: args.routedModelId,
       ...(args.authorKind ? { authorKind: args.authorKind } : {}),
       ...(args.authorPrincipalId ? { authorPrincipalId: args.authorPrincipalId } : {}),
-      ...(args.importedAuthorName ? { importedAuthorName: args.importedAuthorName } : {}),
-      ...(args.importedAuthorEmail ? { importedAuthorEmail: args.importedAuthorEmail } : {}),
-      ...(args.importedAuthorStatus ? { importedAuthorStatus: args.importedAuthorStatus } : {}),
       status: 'completed' as const,
       updatedAt: now,
       createdAt: match?.createdAt ?? now,

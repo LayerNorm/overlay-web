@@ -6,7 +6,6 @@ import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronRight, GitBranch } from 'l
 import { Button } from '@overlay/ui/primitives'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
 import { THREAD_ACTIVITY_LABELS, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
-import type { AssignmentOrigin } from '@/shared/work/assignment-execution'
 
 function assignmentActivityStatus(status: string): ThreadActivityStatus {
   switch (status) {
@@ -38,18 +37,16 @@ export type AssignmentNavigationItem = AssignmentNavigation & {
   dispositionReason?: string
 }
 
-export function AgentAssignments({ parent, assignments, origin }: {
+export function AgentAssignments({ parent, assignments }: {
   parent: AssignmentNavigation | null
   assignments: AssignmentNavigationItem[]
-  origin?: AssignmentOrigin
 }) {
   const [expanded, setExpanded] = useState(true)
   const listId = useId()
-  if (!parent && assignments.length === 0 && !origin) return null
+  if (!parent && assignments.length === 0) return null
   const completed = assignments.filter(item => item.status === 'completed').length
   return (
     <section aria-label="Delegated work" className="my-3 min-w-0 space-y-3">
-      {origin ? <p className="px-2 text-xs text-(--muted)">Origin: Slack · {origin.channelName ? `#${origin.channelName.replace(/^#/, '')}` : origin.channelId}</p> : null}
       {parent ? (
         <Button asChild variant="ghost" className="h-auto max-w-full justify-start gap-2 px-2 py-2 text-left font-normal">
           <Link href={parent.href} title={`Back to ${parent.title}`}>

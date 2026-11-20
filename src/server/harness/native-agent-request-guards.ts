@@ -2,13 +2,11 @@ import 'server-only'
 
 import { FatalError } from 'workflow'
 import { ConvexError } from 'convex/values'
-import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import { isAvailableToSharedSurface, type SharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
 import type { getOverlayServerContext } from '@/server/bootstrap'
 import type { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { cancelHarnessWorkflow } from './workflow-cancellation'
 import { cancelPersonalHarnessWorkflows } from './personal-cancellation'
-import type { NativeHarnessAccess, refreshNativeHarnessAccess } from './native-access'
+import type { NativeHarnessAccess } from './native-access'
 
 export async function resolveNativeAssignment(access: NativeHarnessAccess, values: Record<string, unknown>, repository: ConvexHarnessRepository) {
   if (typeof values.assignmentId !== 'string' || typeof values.attemptId !== 'string'
@@ -42,25 +40,13 @@ export async function assertNativeAskTargetAccess(
   actorUserId: string,
   workspaceId: string,
   target: string,
-  sharedSurfaceContext: SharedSurfaceAgentContext | undefined,
 ): Promise<void> {
   const directory = await server.workspaceAgentService.list({ actorUserId, workspaceId })
   const normalizedTarget = target.trim().toLocaleLowerCase()
   const targetAgent = directory.agents.find(agent => agent.id === target.trim()
     || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
-  if (!targetAgent || (sharedSurfaceContext && !isAvailableToSharedSurface(targetAgent))) return
+  if (!targetAgent) return
   if (targetAgent.harness !== 'overlay') {
     throw new FatalError("External agents can't be asked from this run yet.")
   }
-}
-
-export function nativeSurfaceTriggerForRoot(
-  surfaceExecution: Awaited<ReturnType<typeof refreshNativeHarnessAccess>>['surfaceExecution'],
-  access: NativeHarnessAccess,
-  parent: HarnessSnapshot,
-) {
-  return surfaceExecution && parent.runId === parent.rootRunId
-    && access.runId === surfaceExecution.harnessRunId && parent.workflowRunId === surfaceExecution.workflowRunId
-    ? surfaceExecution
-    : undefined
 }

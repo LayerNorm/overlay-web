@@ -778,10 +778,10 @@ export default defineSchema({
     .index('by_workspaceId_owner', ['workspaceId', 'ownerType', 'ownerId'])
     .index('by_provider_providerRef', ['provider', 'providerRef']),
 
-  // External agent surfaces (Slack, later Teams/Discord). surfaceConnections
-  // is metadata for one platform install — the Chat SDK state adapter owns
-  // token resolution keyed on externalTeamId. surfaceBindings maps an agent
-  // onto a platform channel; channel membership is the access policy.
+  // RETIRED: the Slack bot ("surfaces") integration was removed. The four
+  // surface tables below (surfaceConnections, surfaceBindings,
+  // surfaceTurnExecutions, surfaceChatState) are kept only so existing stored
+  // rows stay valid; no code reads or writes them.
   surfaceConnections: defineTable({
     id: v.string(),
     workspaceId: v.string(),
@@ -819,22 +819,7 @@ export default defineSchema({
     .index('by_connectionId_channelId', ['connectionId', 'channelId'])
     .index('by_agentId', ['agentId']),
 
-  slackIdentityLinks: defineTable({
-    id: v.string(), teamId: v.string(), slackUserId: v.string(), userId: v.string(),
-    displayName: v.optional(v.string()),
-    workspaceId: v.string(), connectionId: v.string(), status: v.union(v.literal('active'), v.literal('revoked')),
-    createdAt: v.number(), updatedAt: v.number(), revokedAt: v.optional(v.number()),
-  }).index('by_entityId', ['id']).index('by_slack_identity', ['teamId', 'slackUserId'])
-    .index('by_overlay_identity', ['teamId', 'userId']),
-
-  slackIdentityNonces: defineTable({
-    nonce: v.string(), userId: v.string(), workspaceId: v.string(), connectionId: v.string(), teamId: v.string(),
-    createdAt: v.number(), expiresAt: v.number(), consumedAt: v.optional(v.number()),
-  }).index('by_nonce', ['nonce']),
-
   surfaceTurnExecutions: defineTable({
-    identityLinkId: v.optional(v.string()),
-    slackUserId: v.optional(v.string()),
     turnId: v.string(),
     workflowRunId: v.string(),
     actorUserId: v.string(),
@@ -861,10 +846,7 @@ export default defineSchema({
     .index('by_turnId', ['turnId'])
     .index('by_harnessRunId', ['harnessRunId']),
 
-  // Chat SDK state for surfaces (installations and bot tokens, thread
-  // subscriptions, locks, dedupe keys, lists, queues). Serverless instances
-  // share it through surfaces/chatState; values are JSON strings. List and
-  // queue entries are separate rows ordered by _creationTime within a key.
+  // RETIRED with the Slack bot; kept only for stored rows (see surfaceConnections).
   surfaceChatState: defineTable({
     namespace: v.union(
       v.literal('cache'),
@@ -1336,9 +1318,8 @@ export default defineSchema({
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
-    // Surface-linked conversations (Slack thread ↔ one Overlay conversation).
-    // externalThreadId is the platform's thread key (Slack thread_ts); the pair
-    // (surfaceBindingId, externalThreadId) identifies the conversation.
+    // Set on conversations mirrored from Slack by the retired Slack bot. Kept
+    // for stored rows: such conversations stay read-only (see directMessages).
     externalPlatform: v.optional(v.string()),
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
@@ -1555,13 +1536,6 @@ export default defineSchema({
     artifactRefs: v.array(v.string()), toolResultRefs: v.array(v.string()),
     failureReason: v.optional(v.string()), usageRef: v.string(), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_attemptId', ['attemptId']).index('by_childRunId', ['childRunId']),
-
-  surfaceThreadLinks: defineTable({
-    workspaceId: v.string(), platform: v.literal('slack'), connectionId: v.string(), externalTeamId: v.string(),
-    channelId: v.string(), threadId: v.string(), conversationId: v.id('conversations'),
-    channelName: v.optional(v.string()), originalBindingId: v.string(), createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_external_thread', ['platform', 'connectionId', 'externalTeamId', 'channelId', 'threadId'])
-    .index('by_conversationId', ['conversationId']),
 
   agentAssignmentLaunchIntents: defineTable({
     attemptId: v.string(), parentRunId: v.string(), generation: v.number(),
@@ -2798,11 +2772,10 @@ export default defineSchema({
   growthWorkspaceUsage: defineTable(growthTables.growthWorkspaceUsage)
     .index('by_day_workspaceId', ['day', 'workspaceId']).index('by_day_cents', ['day', 'cents']),
 
-  // ─── Slack import jobs ───────────────────────────────────────────────────
-  // Durable jobs for importing Slack workspace data into Overlay conversations
-  // via Composio's Slackbot toolkit. The client creates a job after selecting
-  // channels; a server worker processes it asynchronously and the client
-  // subscribes to status updates via watchSlackImportJob.
+  // ─── Slack import jobs (RETIRED) ─────────────────────────────────────────
+  // External history import was removed. slackImportJobs and
+  // slackImportMappings are kept only so existing stored rows stay valid; no
+  // code reads or writes them.
   slackImportJobs: defineTable({
     userId: v.string(),
     workspaceId: v.string(),
@@ -2838,9 +2811,6 @@ export default defineSchema({
     .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_status_createdAt', ['status', 'createdAt']),
 
-  // Maps Slack source IDs to Overlay conversation/message IDs for dedup and
-  // resume support. Each (workspaceId, sourceChannelId, sourceMessageTs) tuple
-  // maps to exactly one Overlay conversation + message.
   agentEnvironments: defineTable({
     environmentId: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(),
     status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()),
@@ -2970,6 +2940,7 @@ export default defineSchema({
     .index('by_status_cleanupAfter', ['status', 'cleanupAfter'])
     .index('by_status_nextMeterAt', ['status', 'nextMeterAt']),
 
+  // RETIRED with history import; kept only for stored rows (see slackImportJobs).
   slackImportMappings: defineTable({
     importJobId: v.id('slackImportJobs'),
     workspaceId: v.string(),

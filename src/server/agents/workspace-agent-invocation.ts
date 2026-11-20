@@ -8,7 +8,6 @@ import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mentio
 import { agentFormattingNote, computerCapabilityNote, generatedUiNote, knowledgeNote } from '@/server/agent/shared-agent-instructions'
 import { SHARED_AGENT_BEHAVIOR_CONSTANTS } from '@/server/agent/shared-agent-instruction-constants'
 import { chiefOrchestrationInstructions } from './chief-orchestration'
-import { filterSharedSurfaceAgents, type SharedSurfaceAgentContext } from './shared-surface-agent-policy'
 
 /**
  * Each mentioned agent gets its own durable run, so an uncapped mass-mention
@@ -175,7 +174,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
   mentionedPrincipalIds?: string[]
   threadRootMessageId?: string
   workspaceId: string
-}, options: { sharedSurfaceContext?: SharedSurfaceAgentContext } = {}): Promise<WorkspaceAgentInvocation[]> {
+}): Promise<WorkspaceAgentInvocation[]> {
   const server = getOverlayServerContext()
   const collaboration = server.appData.repositories.conversationCollaboration
   const conversation = await loadAccessibleConversation({
@@ -253,7 +252,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
   // directory is read fresh on every trigger.
   const invocableAgents = resolveInvocableAgents({
     candidatePrincipalIds: principalIds.slice(0, MAX_AGENTS_PER_MESSAGE),
-    visibleAgents: filterSharedSurfaceAgents(directory.agents, options.sharedSurfaceContext),
+    visibleAgents: directory.agents,
   })
   const invocablePrincipalIds = new Set(invocableAgents.map((agent) => agent.principalId))
   for (const principalId of principalIds.slice(0, MAX_AGENTS_PER_MESSAGE)) {

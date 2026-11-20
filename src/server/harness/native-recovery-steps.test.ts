@@ -32,7 +32,7 @@ beforeEach(() => {
 test('recovery replays the persisted dispatch identity after fresh native preparation, not a new ask', async () => {
   await executeNativeRecoveryWork(assignment)
   expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: identity.actorUserId, workspaceId: identity.workspaceId,
-    conversationId: identity.conversationId, runId: identity.deliveryRunId, surfaceRootRunId: root.runId, expectedSurfaceWorkflowRunId: root.workflowRunId }))
+    conversationId: identity.conversationId, runId: identity.deliveryRunId }))
   expect(mocks.dispatch).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: identity.actorUserId, workflowRunId: root.workflowRunId }),
     { memoryEnabled: false }, 'original-dispatch', 'ask_agent', { agent: 'specialist', message: 'Original bounded task', assignmentId: undefined, expectedAttemptId: undefined, wait: false })
   expect(mocks.start).not.toHaveBeenCalled()

@@ -6,7 +6,6 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
 import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
-import { sharedSurfaceAgentContext } from '@/server/agents/shared-surface-agent-policy'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
@@ -15,7 +14,6 @@ import { startNativeHarnessNamedChild } from './native-named-child-launch'
 import {
   assertNativeAgentRequest,
   assertNativeAskTargetAccess,
-  nativeSurfaceTriggerForRoot,
   resolveNativeAssignment,
 } from './native-agent-request-guards'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
@@ -49,20 +47,6 @@ async function loadNativeParentRun(
     throw new FatalError('Native parent run is no longer available.')
   }
   return parent
-}
-
-async function loadNativeRootWorkflowRunId(
-  repository: ConvexHarnessRepository,
-  access: NativeHarnessAccess,
-  parent: HarnessSnapshot,
-): Promise<string> {
-  const root = parent.runId === parent.rootRunId ? parent
-    : await repository.get({ actorUserId: access.actorUserId, runId: parent.rootRunId })
-  if (!root?.workflowRunId || root.runId !== parent.rootRunId
-    || root.policy.actorUserId !== access.actorUserId || root.policy.workspaceId !== access.workspaceId) {
-    throw new FatalError('Native root run is no longer available.')
-  }
-  return root.workflowRunId
 }
 
 async function freshTooling(call: NativeToolCall) {
@@ -323,8 +307,7 @@ export async function dispatchNativeHarnessAgentRequest(
 ): Promise<unknown> {
   'use step'
   assertNativeAgentRequest(toolCallId, toolName)
-  const authority = await refreshNativeHarnessAccess(access, context, toolName)
-  const sharedSurfaceContext = sharedSurfaceAgentContext(authority.surfaceExecution, authority.sharedRoom)
+  await refreshNativeHarnessAccess(access, context, toolName)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
@@ -341,7 +324,7 @@ export async function dispatchNativeHarnessAgentRequest(
     prompt: string
     workspaceId: string
   }) => {
-    const invocations = await resolveWorkspaceAgentInvocations(args, { sharedSurfaceContext })
+    const invocations = await resolveWorkspaceAgentInvocations(args)
     const started: Array<{ agentId: string; turnId: string }> = []
     for (const invocation of invocations) {
       const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({
@@ -359,7 +342,6 @@ export async function dispatchNativeHarnessAgentRequest(
       })
       try {
         const parent = await loadNativeParentRun(repository, access)
-        const expectedSurfaceWorkflowRunId = await loadNativeRootWorkflowRunId(repository, access, parent)
         const workflowInput = await buildNativeHarnessWorkflowInput({
           actorUserId: access.actorUserId,
           workspaceId: args.workspaceId,
@@ -367,8 +349,6 @@ export async function dispatchNativeHarnessAgentRequest(
           runId: turn.runId,
           parentRunId: parent.runId,
           memoryEnabled: false,
-          surfaceRootRunId: parent.rootRunId,
-          expectedSurfaceWorkflowRunId,
         })
         const allowedToolIds = [...new Set(workflowInput.definitions
           .map(definition => definition.name)
@@ -448,7 +428,6 @@ export async function dispatchNativeHarnessAgentRequest(
         actorUserId: access.actorUserId,
         workspaceId: access.workspaceId,
         callerAgentId: access.agentId,
-        sharedSurfaceContext,
       }),
     }))
   }
@@ -458,9 +437,8 @@ export async function dispatchNativeHarnessAgentRequest(
       || (values.expectedAttemptId !== undefined && typeof values.expectedAttemptId !== 'string')) throw new FatalError('Invalid assignment revision input.')
     const target = values.agent
     const message = values.message
-    await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target, sharedSurfaceContext)
+    await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target)
     const parent = await loadNativeParentRun(repository, access)
-    const nativeSurfaceTrigger = nativeSurfaceTriggerForRoot(authority.surfaceExecution, access, parent)
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
       ...await server.agentAsks.ask({
         ...actor,
@@ -475,8 +453,6 @@ export async function dispatchNativeHarnessAgentRequest(
           rootRunId: parent.rootRunId,
           toolCallId,
         }),
-        nativeSurfaceTrigger,
-        sharedSurfaceContext,
       }),
       childRunIds,
     }))
@@ -494,7 +470,6 @@ export async function dispatchNativeHarnessAgentRequest(
       conversationId,
       text,
       mentions,
-      sharedSurfaceContext,
     }),
     childRunIds,
   }))

@@ -5,7 +5,7 @@ import { useConvexAuth, useQuery } from 'convex/react'
 import type { McpServerSummary } from '@overlay/app-core'
 import type { AgentEnvironmentResource, McpConnectionResource } from '@overlay/api-client'
 import { effectiveAgentEnvironmentStatus } from '@/shared/agents/environment-status'
-import type { Computer, SurfaceBinding, SurfaceConnection } from '@overlay/workspace-contracts'
+import type { Computer } from '@overlay/workspace-contracts'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { api } from '../../convex/_generated/api'
@@ -62,16 +62,3 @@ export function useLiveAgentEnvironments(): AgentEnvironmentResource[] | null | 
   return useMemo(() => rows?.map((row) => ({ ...row, status: effectiveAgentEnvironmentStatus(row, now) as AgentEnvironmentResource['status'] })) ?? rows, [now, rows])
 }
 
-export type WorkspaceSurfaces = {
-  connections: SurfaceConnection[]
-  bindings: SurfaceBinding[]
-  canManage: boolean
-  identityLinks: { id: string; connectionId: string; slackUserId: string; displayName?: string }[]
-}
-
-/** Workspace Slack connection, Chief channels and only the viewer's identity links, live. */
-export function useLiveWorkspaceSurfaces(workspaceId: string | null): WorkspaceSurfaces | null | undefined {
-  const accessibleWorkspaceId = useConnectionWorkspace()
-  return useQuery(api.surfaces.browse.forWorkspace, workspaceId && workspaceId === accessibleWorkspaceId ? { workspaceId } : 'skip') as
-    WorkspaceSurfaces | null | undefined
-}

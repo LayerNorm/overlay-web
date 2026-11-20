@@ -10,12 +10,10 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { assertUserCanUseByokModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import { isAvailableToSharedSurface } from '@/server/agents/shared-surface-agent-policy'
 import { loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
-import { assertPersistedSurfaceSource } from './surface-access'
 import type { HarnessExecutionReference } from './state-steps'
 
 export type NativeHarnessAccess = HarnessExecutionReference & {
@@ -38,18 +36,6 @@ export type NativeHarnessContext = {
   memoryEnabled: boolean
   sharedRoom: boolean
   requestFingerprint: string
-}
-
-type NativeSurfaceExecution = NonNullable<Awaited<ReturnType<ConvexHarnessRepository['getSurfaceExecutionByHarnessRunId']>>>
-
-function assertCurrentSharedSurfaceAgentEligibility(
-  surfaceExecution: NativeSurfaceExecution | null | undefined,
-  sharedRoom: boolean,
-  agent: Parameters<typeof isAvailableToSharedSurface>[0],
-): void {
-  if (surfaceExecution && sharedRoom && !isAvailableToSharedSurface(agent)) {
-    throw new FatalError('Shared surface execution requires a workspace-visible agent.')
-  }
 }
 
 async function assertNativeModelAllowed(
@@ -304,19 +290,6 @@ export async function refreshNativeHarnessAccess(
     ? state
     : await new ConvexHarnessRepository().get({ actorUserId: access.actorUserId, runId: state.rootRunId })
   if (!root) throw new FatalError('Native harness root is unavailable.')
-  const surfaceExecution = await new ConvexHarnessRepository()
-    .getSurfaceExecutionByHarnessRunId(root.runId)
-  if (surfaceExecution) {
-    if (root.runId !== surfaceExecution.harnessRunId
-      || root.workflowRunId !== surfaceExecution.workflowRunId
-      || root.policy.actorUserId !== surfaceExecution.actorUserId
-      || root.policy.workspaceId !== surfaceExecution.workspaceId
-      || access.actorUserId !== surfaceExecution.actorUserId
-      || access.workspaceId !== surfaceExecution.workspaceId) {
-      throw new FatalError('Native surface source ownership changed.')
-    }
-    await assertPersistedSurfaceSource(surfaceExecution, root.workflowRunId)
-  }
   const [room, workspace, run, roomRestrictions] = await Promise.all([
     loadRoomTurnContext({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
       conversationId: access.conversationId, messageId: access.userMessageId }),
@@ -329,11 +302,8 @@ export async function refreshNativeHarnessAccess(
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
   const { agent, sharedRoom } = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
-  assertCurrentSharedSurfaceAgentEligibility(surfaceExecution, sharedRoom, agent)
   await assertNativeCapabilities(access, context, toolName)
-  const billingProgrammaticSubjectId = surfaceExecution
-    ? `surface:slack:${surfaceExecution.bindingId}`
-    : `agent:${access.agentId}`
+  const billingProgrammaticSubjectId = `agent:${access.agentId}`
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
   await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements)
@@ -351,7 +321,6 @@ export async function refreshNativeHarnessAccess(
     })
   }
   return { agent, sharedRoom, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
-    surfaceExecution: surfaceExecution ?? undefined,
     billingProgrammaticSubjectId,
     runStatus: state.status,
     requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true }

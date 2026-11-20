@@ -44,8 +44,7 @@ test.each(['ordinary-agent', undefined])('list still accepts ordinary and outsid
 test('ask forwards a long Chief identity and its turn to existing authorization', async () => {
   asks.ask.mockResolvedValue({ status: 'working' })
   const response = await request({ action: 'ask', callerAgentId: personalChief, callerConversationId: 'conversation', callerTurnId: 'turn', agent: 'specialist', message: 'Assess the pipeline.',
-    nativeSurfaceTrigger: { userMessageId: 'forged' }, nativeAssignment: { parentRunId: 'forged', rootRunId: 'forged', toolCallId: 'forged' },
-    sharedSurfaceContext: { surfaceExecution: { userMessageId: 'forged' } }, workspaceVisibleOnly: false })
+    nativeAssignment: { parentRunId: 'forged', rootRunId: 'forged', toolCallId: 'forged' }, workspaceVisibleOnly: false })
   expect(response.status).toBe(200)
   expect(asks.ask).toHaveBeenCalledExactlyOnceWith({ actorUserId: userId, actorPrincipalId: 'owner', workspaceId,
     caller: { agentId: personalChief, conversationId: 'conversation', turnId: 'turn' },
