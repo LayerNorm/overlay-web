@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { agentLineagePart, MAX_AGENT_ASKS_PER_ROOT } from '@/shared/agents/agent-lineage'
-import { AgentAskError, AgentAskService } from './AgentAskService'
+import { AgentAskError, agentAskRefusalResult, AgentAskService } from './AgentAskService'
 import { nativeAgentAssignmentContext } from './native-assignment-context'
 import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 
@@ -394,4 +394,15 @@ test('Harness callers are refused before budgets, messages, or turn starts for a
   assert.equal(posted.posted.length, 0)
   assert.equal(posted.personMessages.length, 0)
   assert.equal(posted.started.length, 0)
+})
+
+test('a refusal the asking agent can act on becomes its tool result; faults stay errors', () => {
+  const loop = new AgentAskError('That agent is already part of this chain.', 409, 'ask_cycle')
+  assert.deepEqual(agentAskRefusalResult(loop), {
+    success: false, refused: true, code: 'ask_cycle', error: 'That agent is already part of this chain.',
+  })
+  assert.equal(agentAskRefusalResult(new AgentAskError('No agent called "X".', 404, 'agent_not_found'))?.code, 'agent_not_found')
+  assert.equal(agentAskRefusalResult(new AgentAskError('Unreachable.', 502, 'agent_unreachable')), null)
+  assert.equal(agentAskRefusalResult(new AgentAskError('Not yours.', 403, 'turn_unknown')), null)
+  assert.equal(agentAskRefusalResult(new Error('boom')), null)
 })
