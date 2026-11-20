@@ -39,6 +39,16 @@ export class AgentAskError extends Error {
   }
 }
 
+/**
+ * A refusal the asking agent can act on (a loop, a limit, an unknown name): its tool result, so the agent's turn goes
+ * on and it answers with what it has. Anything else (a fault, a permission failure) stays an error.
+ */
+export function agentAskRefusalResult(error: unknown): { success: false; refused: true; code: string; error: string } | null {
+  if (!(error instanceof AgentAskError)) return null
+  if (!error.code.startsWith('ask_') && error.code !== 'agent_not_found' && error.code !== 'agent_not_in_conversation') return null
+  return { success: false, refused: true, code: error.code, error: error.message }
+}
+
 type Collaboration = Pick<ConversationCollaborationRepository,
   'createDirectMessage' | 'createAgentAssignment' | 'readAgentAssignmentResult' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
 

@@ -8,6 +8,7 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
 import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
+import { agentAskRefusalResult } from '@/server/agents/agent-asks/AgentAskService'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
@@ -149,6 +150,22 @@ async function executeWithNativeHarnessToolProgress<T>(
     await safelyProjectNativeHarnessToolProgress(call, () => toolProgressError(call, error))
     throw error
   }
+}
+
+/** Runs an ask or post. A refusal the agent can act on becomes its tool result instead of failing the whole turn. */
+async function executeNativeAgentRequest<T extends object>(
+  call: NativeToolCall,
+  execute: () => Promise<T>,
+): Promise<T | NonNullable<ReturnType<typeof agentAskRefusalResult>>> {
+  return executeWithNativeHarnessToolProgress(call, async () => {
+    try {
+      return await execute()
+    } catch (error) {
+      const refusal = agentAskRefusalResult(error)
+      if (!refusal) throw error
+      return refusal
+    }
+  })
 }
 
 export async function nativeHarnessToolNeedsApproval(call: NativeToolCall): Promise<boolean> {
@@ -463,13 +480,13 @@ export async function dispatchNativeHarnessAgentRequest(
     const { outsideAgent } = await assertNativeAskTargetAccess(server, access.actorUserId, access.workspaceId, target)
     if (outsideAgent) {
       // No assignment or child run: the question is a message the outside agent answers when it is connected.
-      return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+      return executeNativeAgentRequest(progressCall, async () => ({
         ...await server.agentAsks.ask({ ...actor, target, message, wait: true }),
         childRunIds,
       }))
     }
     const parent = await loadNativeParentRun(repository, access)
-    return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+    return executeNativeAgentRequest(progressCall, async () => ({
       ...await server.agentAsks.ask({
         ...actor,
         target,
@@ -494,7 +511,7 @@ export async function dispatchNativeHarnessAgentRequest(
   const conversationId = values.conversationId
   const text = values.text
   const mentions = (values.mentions as string[] | undefined) ?? []
-  return executeWithNativeHarnessToolProgress(progressCall, async () => ({
+  return executeNativeAgentRequest(progressCall, async () => ({
     ...await server.agentAsks.post({
       ...actor,
       conversationId,
