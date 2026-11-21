@@ -3,8 +3,8 @@ import { CONFIG } from './preview-control.mjs'
 
 export const PRODUCTION = Object.freeze({ ...CONFIG,
   projectId: 'prj_wucEZdZyA2xKUurHLXSuQNcS1YPy', projectName: 'overlay-landing',
-  teamSlug: 'divyansh-lalwanis-projects', hostname: 'www.getoverlay.io',
-  origin: 'https://www.getoverlay.io', backend: 'colorful-chickadee-419',
+  teamSlug: 'divyansh-lalwanis-projects', hostname: 'overlay.works',
+  origin: 'https://overlay.works', backend: 'colorful-chickadee-419',
   backendUrl: 'https://colorful-chickadee-419.convex.cloud',
 })
 
