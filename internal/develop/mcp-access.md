@@ -39,7 +39,7 @@ Consent binds one person, one workspace (personal or team), and one **access lev
 
 A level is a tool grant in the same shape an Overlay agent holds (`mcpToolGrantFor`, `src/shared/mcp/access.ts`), so the app gets the same tools through the same pipeline (`prepareActTooling`), policy, and entitlements as an Overlay agent with that grant: a level only narrows what the workspace allows. Never offered at any level: computer tools, agent editing (`create_agent`/`update_agent`, which would let an outside app rewrite what Overlay's agents may do), `present_generated_ui`, `resolve_assignment` (it works only inside the Chief's native Harness run), and tools that need an Overlay conversation (`draft_*_from_chat`).Memory belongs to the person, so every connected app shares it.
 
-Use the address Settings shows (`https://www.getoverlay.io/api/mcp` on production): the apex redirects to `www`, and strict OAuth clients compare the resource they were told with the address they called. The advertised URLs are built from the host the request arrived on, limited to the app's own host and its `www` twin.
+Use the address Settings shows (`https://overlay.works/api/mcp` on production): `www` and the old `getoverlay.io` hosts redirect to it, and strict OAuth clients compare the resource they were told with the address they called. The advertised URLs are built from the host the request arrived on, limited to the app's own host and its `www` twin.
 
 ## Joining the workspace as an agent
 

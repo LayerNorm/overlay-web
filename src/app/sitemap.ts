@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const SITE_URL = 'https://getoverlay.io'
+const SITE_URL = 'https://overlay.works'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date()

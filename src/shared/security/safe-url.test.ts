@@ -12,8 +12,8 @@ test('safeHttpUrl only allows http and https URLs', () => {
 })
 
 test('redactUrlForTelemetry removes sensitive query values and fragments', () => {
-  const redacted = redactUrlForTelemetry('https://getoverlay.io/auth/callback?code=abc&state=def&ok=1#frag')
-  assert.equal(redacted, 'https://getoverlay.io/auth/callback?code=%5Bredacted%5D&state=%5Bredacted%5D&ok=1')
+  const redacted = redactUrlForTelemetry('https://overlay.works/auth/callback?code=abc&state=def&ok=1#frag')
+  assert.equal(redacted, 'https://overlay.works/auth/callback?code=%5Bredacted%5D&state=%5Bredacted%5D&ok=1')
 })
 
 test('routeForTelemetry redacts identifier-shaped route segments', () => {
@@ -24,15 +24,15 @@ test('routeForTelemetry redacts identifier-shaped route segments', () => {
 
 test('sameOriginPathUrl rejects network-path and external URLs', () => {
   assert.equal(
-    sameOriginPathUrl('https://getoverlay.io', '/account?x=1'),
-    'https://getoverlay.io/account?x=1',
+    sameOriginPathUrl('https://overlay.works', '/account?x=1'),
+    'https://overlay.works/account?x=1',
   )
   assert.equal(
-    sameOriginPathUrl('https://getoverlay.io', '//evil.example/phish'),
-    'https://getoverlay.io/account',
+    sameOriginPathUrl('https://overlay.works', '//evil.example/phish'),
+    'https://overlay.works/account',
   )
   assert.equal(
-    sameOriginPathUrl('https://getoverlay.io', 'https://evil.example/phish'),
-    'https://getoverlay.io/account',
+    sameOriginPathUrl('https://overlay.works', 'https://evil.example/phish'),
+    'https://overlay.works/account',
   )
 })

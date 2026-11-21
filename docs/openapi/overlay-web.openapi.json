@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://getoverlay.io",
+      "url": "https://overlay.works",
       "description": "Hosted Overlay web app"
     },
     {
@@ -2509,6 +2509,13 @@
                       "high",
                       "xhigh"
                     ]
+                  },
+                  "liveTransport": {
+                    "type": "string",
+                    "enum": [
+                      "convex"
+                    ],
+                    "description": "The client reads the live reply from Convex. An admitted durable run then answers right after admission with its run identity and source metadata instead of relaying the reply over this response."
                   }
                 },
                 "additionalProperties": true
@@ -7433,6 +7440,18 @@
                   },
                   "useSecondarySidebar": {
                     "type": "boolean"
+                  },
+                  "sidebarPinnedPageIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sidebarMorePageIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "additionalProperties": true

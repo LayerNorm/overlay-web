@@ -13,15 +13,15 @@ card.
 
 ## Product
 
-- [Home](https://getoverlay.io/home): product overview, the control plane for AI employees
-- [Pricing](https://getoverlay.io/pricing): free tier and paid plans
-- [Download](https://getoverlay.io/download): Overlay Desktop for macOS
-- [Manifesto](https://getoverlay.io/manifesto): why AI should amplify human potential
-- [Self-hosting](https://getoverlay.io/self-hosting): run Overlay on infrastructure you control
+- [Home](https://overlay.works/home): product overview, the control plane for AI employees
+- [Pricing](https://overlay.works/pricing): free tier and paid plans
+- [Download](https://overlay.works/download): Overlay Desktop for macOS
+- [Manifesto](https://overlay.works/manifesto): why AI should amplify human potential
+- [Self-hosting](https://overlay.works/self-hosting): run Overlay on infrastructure you control
 
 ## Docs
 
-- [Documentation](https://getoverlay.io/docs): product and developer documentation
+- [Documentation](https://overlay.works/docs): product and developer documentation
 
 ## Source
 

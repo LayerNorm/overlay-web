@@ -3,6 +3,7 @@
     {
       "allowed": {
         "origins": [
+          "https://overlay.works",
           "https://www.getoverlay.io",
           "https://getoverlay.io",
           "http://localhost:3000",

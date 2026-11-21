@@ -25,7 +25,7 @@ test('only installations of this app that GitHub lists for the person are connec
     const url = String(input)
     calls.push(url)
     if (url === 'https://github.com/login/oauth/access_token') {
-      assert.match(String(init?.body), /"redirect_uri":"https:\/\/www.getoverlay.io\/api\/v1\/github\/callback"/)
+      assert.match(String(init?.body), /"redirect_uri":"https:\/\/overlay.works\/api\/v1\/github\/callback"/)
       return new Response(JSON.stringify({ access_token: 'user-token' }), { status: 200 })
     }
     assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer user-token')
@@ -35,7 +35,7 @@ test('only installations of this app that GitHub lists for the person are connec
     ] }), { status: 200 })
   }) as typeof fetch
   try {
-    const found = await userInstallations('code-1', 'https://www.getoverlay.io/api/v1/github/callback')
+    const found = await userInstallations('code-1', 'https://overlay.works/api/v1/github/callback')
     assert.deepEqual(found, [{ id: 1, account: { login: 'LayerNorm', type: 'Organization' }, repositorySelection: 'all' }])
     assert.ok(calls.some(url => url.startsWith('https://api.github.com/user/installations')))
   } finally {
@@ -47,7 +47,7 @@ test('a rejected sign-in connects nothing', async () => {
   const realFetch = globalThis.fetch
   globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'bad_verification_code' }), { status: 200 })) as typeof fetch
   try {
-    await assert.rejects(userInstallations('stale', 'https://www.getoverlay.io/api/v1/github/callback'))
+    await assert.rejects(userInstallations('stale', 'https://overlay.works/api/v1/github/callback'))
   } finally {
     globalThis.fetch = realFetch
   }

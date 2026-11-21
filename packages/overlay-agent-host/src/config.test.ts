@@ -8,7 +8,7 @@ import { RETIRED_HARNESS_CONFIG_MESSAGE, loadAgentHostConfig, saveAgentHostConfi
 const base = {
   environmentId: 'environment-1',
   workspaceId: 'workspace-1',
-  controlPlaneUrl: 'https://getoverlay.io/api/v1/agent-environments/environment-1/',
+  controlPlaneUrl: 'https://overlay.works/api/v1/agent-environments/environment-1/',
   credentialEnv: 'OVERLAY_AGENT_HOST_CREDENTIAL',
   filesystem: { mode: 'selected_roots' as const, roots: ['/workspace'] },
   localTools: true as const,

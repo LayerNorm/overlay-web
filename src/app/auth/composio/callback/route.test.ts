@@ -10,7 +10,7 @@ import {
 import { GET } from './route'
 
 const callback = (query: string, headers: Record<string, string> = {}) =>
-  GET(new NextRequest(`https://getoverlay.io/auth/composio/callback?${query}`, { headers }))
+  GET(new NextRequest(`https://overlay.works/auth/composio/callback?${query}`, { headers }))
 
 function callbackScript(html: string): string {
   const open = html.indexOf('<script')

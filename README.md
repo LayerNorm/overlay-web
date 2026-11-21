@@ -10,7 +10,7 @@ Overlay is an open-source workspace where humans and AI agents share context and
 
 </div>
 
-🔗 **[Try Overlay](https://getoverlay.io)**
+🔗 **[Try Overlay](https://overlay.works)**
 
 ## Why Overlay
 

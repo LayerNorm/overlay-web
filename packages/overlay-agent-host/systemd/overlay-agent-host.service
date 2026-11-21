@@ -1,6 +1,6 @@
 [Unit]
 Description=Overlay Agent Host
-Documentation=https://getoverlay.io
+Documentation=https://overlay.works
 Wants=network-online.target
 After=network-online.target
 

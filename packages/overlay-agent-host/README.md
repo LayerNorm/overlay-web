@@ -10,7 +10,7 @@ when the machine's default `node` is older:
 ```sh
 npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.6.0 \
   overlay-agent-host connect <enrollment-code> \
-  --server https://getoverlay.io \
+  --server https://overlay.works \
   --kind vps \
   --run
 ```
@@ -80,7 +80,7 @@ The equivalent enrollment form is:
 ```sh
 npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.6.0 \
   overlay-agent-host connect <enrollment-code> \
-  --server https://getoverlay.io \
+  --server https://overlay.works \
   --kind vps \
   --adapter eve \
   --eve-url http://127.0.0.1:3000 \

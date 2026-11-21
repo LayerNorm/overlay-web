@@ -1,4 +1,4 @@
-export const DEFAULT_APP_URL = 'https://getoverlay.io'
+export const DEFAULT_APP_URL = 'https://overlay.works'
 
 /** Stable string for app base (no trailing slash on origin-only URLs). */
 export function formatParsedBaseUrl(u: URL): string {

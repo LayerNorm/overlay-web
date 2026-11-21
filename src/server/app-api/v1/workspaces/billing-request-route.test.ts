@@ -19,13 +19,13 @@ test('billing request route returns 202 and delegates session member identity', 
     assert.deepEqual(args, { actorUserId: 'member-1', workspaceId: 'team-a' })
     return { requested: true }
   })
-  const response = await route.POST(new Request('https://getoverlay.io/api/v1/workspaces/team-a/billing/request', { method: 'POST' }), context())
+  const response = await route.POST(new Request('https://overlay.works/api/v1/workspaces/team-a/billing/request', { method: 'POST' }), context())
   assert.equal(response.status, 202)
   assert.deepEqual(await response.json(), { requested: true })
 })
 
 test('billing request route rejects programmatic callers and serializes service errors', async (t) => {
-  const request = new Request('https://getoverlay.io/api/v1/workspaces/team-a/billing/request', { method: 'POST' })
+  const request = new Request('https://overlay.works/api/v1/workspaces/team-a/billing/request', { method: 'POST' })
   assert.equal((await route.POST(request, context('api-key'))).status, 403)
   for (const status of [400, 403, 409]) {
     const mock = t.mock.method(WorkspaceBillingRequestService.prototype, 'request', async () => { throw new BillingServiceError({ error: 'Not eligible' }, status) })

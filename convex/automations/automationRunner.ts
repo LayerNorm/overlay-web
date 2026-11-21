@@ -32,7 +32,7 @@ export function getAutomationRunnerBaseUrl(): string {
   const devAppUrl = process.env.DEV_NEXT_PUBLIC_APP_URL?.trim()
   if (devAppUrl) return devAppUrl.replace(/\/+$/, '')
 
-  return 'https://getoverlay.io'
+  return 'https://overlay.works'
 }
 
 function getInternalApiSecret(): string {

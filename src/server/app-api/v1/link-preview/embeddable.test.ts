@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { framedByHeaders } from './embeddable'
 
-const APP_ORIGIN = 'https://app.getoverlay.io'
+const APP_ORIGIN = 'https://app.overlay.works'
 
 function headers(entries: Record<string, string>): Headers {
   return new Headers(entries)
@@ -39,7 +39,7 @@ test('frame-ancestors that names another site blocks the preview', () => {
 })
 
 test('frame-ancestors that admits us allows the preview', () => {
-  for (const value of ['*', 'https:', APP_ORIGIN, '*.getoverlay.io']) {
+  for (const value of ['*', 'https:', APP_ORIGIN, '*.overlay.works']) {
     assert.equal(
       framedByHeaders(headers({ 'content-security-policy': `frame-ancestors ${value}` }), APP_ORIGIN),
       true,

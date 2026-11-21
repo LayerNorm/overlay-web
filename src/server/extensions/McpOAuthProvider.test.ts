@@ -26,7 +26,7 @@ function fakeRepository(overrides: Partial<McpServerRepository> = {}) {
 function provider(repository: McpServerRepository, options: Record<string, unknown> = {}) {
   return new McpOAuthProvider({
     mcpServerId: 'mcp_1',
-    redirectUri: 'https://www.getoverlay.io/api/v1/mcps/oauth/callback',
+    redirectUri: 'https://overlay.works/api/v1/mcps/oauth/callback',
     repository,
     serverName: 'Monid',
     userId: 'user_1',
@@ -153,7 +153,7 @@ test('legacy credentials without issuer are withheld until the user reconnects',
 
 test('the redirect URI is fixed so DCR registrations stay valid across surfaces', () => {
   const subject = provider(fakeRepository())
-  assert.equal(subject.redirectUrl, 'https://www.getoverlay.io/api/v1/mcps/oauth/callback')
+  assert.equal(subject.redirectUrl, 'https://overlay.works/api/v1/mcps/oauth/callback')
   assert.deepEqual(subject.clientMetadata.redirect_uris, [subject.redirectUrl])
   assert.deepEqual(subject.clientMetadata.grant_types, ['authorization_code', 'refresh_token'])
 })

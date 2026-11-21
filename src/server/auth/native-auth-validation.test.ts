@@ -22,7 +22,7 @@ test('native auth provider allowlist is strict', () => {
 })
 
 test('native auth redirect URI only allows exact callback route', () => {
-  assert.equal(isAllowedNativeRedirectUri('https://www.getoverlay.io/auth/native/callback'), true)
+  assert.equal(isAllowedNativeRedirectUri('https://overlay.works/auth/native/callback'), true)
   assert.equal(
     isAllowedNativeRedirectUri(
       'https://overlay.example.com/auth/native/callback',
@@ -41,19 +41,19 @@ test('native auth redirect URI only allows exact callback route', () => {
   assert.equal(isAllowedNativeRedirectUri('overlay://auth/callback?code=abc&state=def'), false)
   assert.equal(isAllowedNativeRedirectUri('overlay://auth/callback#code=abc'), false)
   assert.equal(
-    isAllowedNativeRedirectUri('https://www.getoverlay.io/auth/native/callback?code=abc&state=def'),
+    isAllowedNativeRedirectUri('https://overlay.works/auth/native/callback?code=abc&state=def'),
     false,
   )
   assert.equal(
-    isAllowedNativeRedirectUri('https://www.getoverlay.io/auth/native/callback#code=abc'),
+    isAllowedNativeRedirectUri('https://overlay.works/auth/native/callback#code=abc'),
     false,
   )
   assert.equal(isAllowedNativeRedirectUri('overlay://auth/callback/evil'), false)
   assert.equal(isAllowedNativeRedirectUri('overlay://auth/callback.evil'), false)
   assert.equal(isAllowedNativeRedirectUri('overlay://evil/callback'), false)
-  assert.equal(isAllowedNativeRedirectUri('https://www.getoverlay.io/auth/callback'), false)
+  assert.equal(isAllowedNativeRedirectUri('https://overlay.works/auth/callback'), false)
   assert.equal(
-    isAllowedNativeRedirectUri('https://www.getoverlay.io/auth/native/callback/evil'),
+    isAllowedNativeRedirectUri('https://overlay.works/auth/native/callback/evil'),
     false,
   )
   assert.equal(isAllowedNativeRedirectUri('https://evil.example/auth/native/callback'), false)

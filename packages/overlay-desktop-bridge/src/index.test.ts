@@ -6,9 +6,9 @@ test('ordinary browser and server rendering have no desktop bridge', () => {
   assert.equal(getDesktopBridge(), null)
 })
 test('only the pinned origin in the main frame is trusted', () => {
-  const origin = 'https://www.getoverlay.io'
+  const origin = 'https://overlay.works'
   assert.equal(isTrustedFrame(`${origin}/app/chat`, true, origin), true)
-  for (const url of ['about:blank', 'file:///app.html', 'https://www.getoverlay.io.evil.test/app', 'https://evil.test', 'http://www.getoverlay.io/app', 'https://getoverlay.io', 'invalid']) assert.equal(isTrustedFrame(url, true, origin), false, url)
+  for (const url of ['about:blank', 'file:///app.html', 'https://overlay.works.evil.test/app', 'https://evil.test', 'http://overlay.works/app', 'https://www.overlay.works', 'invalid']) assert.equal(isTrustedFrame(url, true, origin), false, url)
   assert.equal(isTrustedFrame(`${origin}/app/chat`, false, origin), false)
 })
 test('external protocol, panel, enrollment and native input boundaries fail closed', () => {

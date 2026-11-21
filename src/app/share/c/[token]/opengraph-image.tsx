@@ -102,7 +102,7 @@ export default async function OpengraphImage(
           }}
         >
           <span>Shared conversation</span>
-          <span>getoverlay.io</span>
+          <span>overlay.works</span>
         </div>
       </div>
     ),

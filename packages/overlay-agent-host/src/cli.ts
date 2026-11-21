@@ -144,7 +144,7 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--local-tools] [--state-dir path] [--name name] [--kind local|vps|external] [--hosting-auth-file path] [--run]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n  overlay-agent-host private --state-dir /absolute/path (started by Overlay Desktop)\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://overlay.works [--local-tools] [--state-dir path] [--name name] [--kind local|vps|external] [--hosting-auth-file path] [--run]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n  overlay-agent-host private --state-dir /absolute/path (started by Overlay Desktop)\n')
   process.exit(2)
 }
 

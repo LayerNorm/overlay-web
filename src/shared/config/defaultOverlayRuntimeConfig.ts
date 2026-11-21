@@ -71,7 +71,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     rateLimit: { provider: 'convex' },
   },
   app: {
-    baseUrl: 'https://getoverlay.io',
+    baseUrl: 'https://overlay.works',
     deploymentEnvironment: 'production',
     cspConnectSrc: [],
     publicEnv: {},

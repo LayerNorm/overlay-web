@@ -15,7 +15,7 @@ test('a preview serves only its canonical PR hostname under the wildcard', () =>
   assert.equal(previewHostnameAllowed('pr-123.preview.getoverlay.io', 'preview', 'http://pr-123.preview.getoverlay.io'), false)
 })
 test('existing app and generated deployment hosts retain their normal behavior', () => {
-  for (const hostname of ['getoverlay.io', 'staging.getoverlay.io', 'localhost', 'deployment.vercel.app']) {
+  for (const hostname of ['overlay.works', 'staging.getoverlay.io', 'localhost', 'deployment.vercel.app']) {
     assert.equal(previewHostnameAllowed(hostname, 'staging', ''), true)
   }
 })

@@ -1,7 +1,7 @@
 import 'server-only'
 
 export const NATIVE_AUTH_ALLOWED_REDIRECT_ORIGINS = [
-  'https://www.getoverlay.io/auth/native/callback',
+  'https://overlay.works/auth/native/callback',
 ] as const
 
 const NATIVE_AUTH_PROVIDERS = ['GoogleOAuth', 'AppleOAuth', 'MicrosoftOAuth', 'authkit'] as const
@@ -14,7 +14,7 @@ export function isNativeAuthProvider(value: unknown): value is NativeAuthProvide
 
 export function isAllowedNativeRedirectUri(
   value: unknown,
-  expectedOrigin = 'https://www.getoverlay.io',
+  expectedOrigin = 'https://overlay.works',
 ): value is string {
   if (typeof value !== 'string') return false
   const trimmed = value.trim()

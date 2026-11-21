@@ -31,7 +31,7 @@ export class OpenRouterGateway implements LLMGateway {
       apiKey,
       compatibility: 'strict',
       headers: {
-        'HTTP-Referer': this.options.referer ?? 'https://getoverlay.io',
+        'HTTP-Referer': this.options.referer ?? 'https://overlay.works',
         'X-Title': this.options.appTitle ?? 'Overlay',
         ...this.options.headers,
         ...modelOptions.headers,

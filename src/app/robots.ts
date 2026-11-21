@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const SITE_URL = 'https://getoverlay.io'
+const SITE_URL = 'https://overlay.works'
 
 const PRIVATE_PATHS = [
   '/account',

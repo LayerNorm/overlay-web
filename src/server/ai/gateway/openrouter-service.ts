@@ -242,7 +242,7 @@ export async function streamOpenRouterChat({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://getoverlay.io',
+      'HTTP-Referer': 'https://overlay.works',
       'X-Title': 'Overlay',
     },
     body: JSON.stringify({

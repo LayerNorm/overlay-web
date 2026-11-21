@@ -60,7 +60,7 @@ export const deliverOne = internalAction({
       const provider = createProvider()
       const content = renderLifecycleEmail(
         event,
-        process.env.NEXT_PUBLIC_APP_URL?.trim() || 'https://getoverlay.io',
+        process.env.NEXT_PUBLIC_APP_URL?.trim() || 'https://overlay.works',
       )
       const from = requiredEnv('OVERLAY_EMAIL_FROM')
       const result = await provider.send({

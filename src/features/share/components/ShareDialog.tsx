@@ -144,7 +144,7 @@ export function ShareDialog({
                 <span>
                   {resource.type === 'chat' ? 'Shared conversation' : 'Shared file'}
                 </span>
-                <span>getoverlay.io</span>
+                <span>overlay.works</span>
               </div>
             </div>
             <div className="bg-(--surface-subtle) px-4 py-3">

@@ -7,7 +7,7 @@ test('invitation email includes optional inviter name and escapes HTML', () => {
     name: 'workspace.invitation_sent', userId: 'user_1', idempotencyKey: 'invite-name',
     attributes: { workspaceName: 'Acme', role: 'admin', inviterName: 'Priya <Shah>' },
     resource: { id: 'invite_1' },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
   assert.match(email.text, /Priya <Shah> invited you to Acme on Overlay/)
   assert.match(email.html, /Priya &lt;Shah&gt; invited you to Acme/)
   assert.doesNotMatch(email.html, /<Shah>/)
@@ -21,12 +21,12 @@ test('invitation email uses Overlay brand treatment', () => {
     idempotencyKey: 'invite-1',
     attributes: { workspaceName: 'Acme Corp', role: 'member' },
     resource: { id: 'inv_123' },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
 
   assert.equal(email.subject, "You've been invited to Acme Corp on Overlay")
   assert.match(email.html, /background:#ffffff/)
   assert.match(email.html, /Libre Baskerville/)
-  assert.match(email.html, /https:\/\/www\.getoverlay\.io\/assets\/overlay-logo\.png/)
+  assert.match(email.html, /https:\/\/overlay\.works\/assets\/overlay-logo\.png/)
   assert.match(email.html, />\s*Overlay\s*</)
   assert.match(email.html, /Join Acme Corp/)
   assert.match(email.html, /Invited you as member/)
@@ -47,7 +47,7 @@ test('notification emails link to email preferences, transactional ones do not',
       mentionedByDisplayName: 'Priya Shah',
     },
     resource: { id: 'mention_1' },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
   assert.match(mention.html, /Manage email preferences/)
   assert.match(mention.html, /\/app\/chat\?view=channels&amp;id=conv_1/)
 
@@ -57,7 +57,7 @@ test('notification emails link to email preferences, transactional ones do not',
     idempotencyKey: 'welcome-1',
     attributes: {},
     resource: { id: 'user_1' },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
   assert.doesNotMatch(welcome.html, /Manage email preferences/)
 })
 
@@ -72,7 +72,7 @@ test('automation failure email shows the automation name', () => {
       failureClass: 'provider',
     },
     resource: { id: 'run_1', automationId: 'auto_1' },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
 
   assert.equal(email.subject, 'An Overlay automation needs attention')
   assert.match(email.html, /Nightly summary/)
@@ -122,7 +122,7 @@ test('email copy never contains em dashes', () => {
   for (const event of events) {
     const email = renderLifecycleEmail(
       { ...event, userId: 'user_1', idempotencyKey: `key-${event.name}` },
-      'https://getoverlay.io',
+      'https://overlay.works',
     )
     assert.doesNotMatch(email.subject, /[—–]|&m(dash|ndash);/, `${event.name} subject`)
     assert.doesNotMatch(email.text, /[—–]|&m(dash|ndash);/, `${event.name} text`)
@@ -137,7 +137,7 @@ test('top-up limit email names the workspace and limit and links to workspace bi
     idempotencyKey: 'billing.auto_topup_limit_reached:ba_1:1:user_1',
     resource: { id: 'ba_1', type: 'billing_account' },
     attributes: { workspaceId: 'ws_1', workspaceName: 'Acme', monthlyLimitCents: 4_000, periodEnd: Date.UTC(2026, 10, 1) },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
   assert.equal(email.subject, 'Acme reached its monthly top-up limit')
   assert.match(email.text, /\$40 automatic top-up limit/)
   assert.match(email.text, /section=workspace&workspace_tab=billing/)
@@ -149,7 +149,7 @@ test('billing request email identifies requester and workspace and links to work
     name: 'workspace.billing_requested', userId: 'owner-1', idempotencyKey: 'billing-request',
     attributes: { requesterName: 'Ada <L>', workspaceName: 'Acme', workspaceId: 'team-a' },
     resource: { id: 'team-a' },
-  }, 'https://getoverlay.io')
+  }, 'https://overlay.works')
   assert.equal(email.subject, 'Ada <L> asked you to subscribe Acme on Overlay')
   assert.match(email.text, /task ready in Acme/)
   assert.match(email.text, /only start when they choose/)

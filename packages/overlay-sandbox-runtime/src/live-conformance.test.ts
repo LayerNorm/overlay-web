@@ -44,7 +44,7 @@ function baseRequest(name: string): SandboxCreateRequest {
     idleTimeoutMs: 2 * 60_000,
     hardTimeoutMs: 10 * 60_000,
     ports: [3000],
-    networkPolicy: { mode: 'allowlist', domains: ['getoverlay.io'] },
+    networkPolicy: { mode: 'allowlist', domains: ['overlay.works'] },
     metadata: { overlay: 'conformance' },
   }
 }

@@ -84,25 +84,26 @@ const nextConfig: NextConfig = {
   async redirects() {
     if (!mintlifyDocsOrigin) return [];
 
-    const docsHost = [{ type: "host" as const, value: "docs.getoverlay.io" }];
+    // The old and new docs subdomains both send readers to the docs on the main site.
+    const docsHost = [{ type: "host" as const, value: "docs\\.(?:getoverlay\\.io|overlay\\.works)" }];
 
     return [
       {
         source: "/docs",
         has: docsHost,
-        destination: "https://www.getoverlay.io/docs",
+        destination: "https://overlay.works/docs",
         permanent: false,
       },
       {
         source: "/docs/:path*",
         has: docsHost,
-        destination: "https://www.getoverlay.io/docs/:path*",
+        destination: "https://overlay.works/docs/:path*",
         permanent: false,
       },
       {
         source: "/:path*",
         has: docsHost,
-        destination: "https://www.getoverlay.io/docs/:path*",
+        destination: "https://overlay.works/docs/:path*",
         permanent: false,
       },
     ];

@@ -120,7 +120,7 @@ main() {
   log "which is equivalent to host-root access. Inspect this script before continuing."
   log ""
   log "Inspectable install flow:"
-  log "  curl -fsSLO https://getoverlay.io/install.sh && less install.sh && bash install.sh"
+  log "  curl -fsSLO https://overlay.works/install.sh && less install.sh && bash install.sh"
   log ""
 
   ensure_docker

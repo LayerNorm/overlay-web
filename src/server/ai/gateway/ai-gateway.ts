@@ -41,7 +41,7 @@ export async function getOpenRouterLanguageModel(modelId: string, accessToken?: 
     apiKey,
     compatibility: 'strict',
     headers: {
-      'HTTP-Referer': 'https://getoverlay.io',
+      'HTTP-Referer': 'https://overlay.works',
       'X-Title': 'Overlay',
     },
     fetch: openRouterFetchWithRetry,
@@ -112,7 +112,7 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
     apiKey,
     compatibility: 'strict',
     headers: {
-      'HTTP-Referer': 'https://getoverlay.io',
+      'HTTP-Referer': 'https://overlay.works',
       'X-Title': 'Overlay',
     },
     fetch: captureFetch,

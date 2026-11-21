@@ -87,7 +87,7 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
     isDefault: false,
     isDeletable: true,
     headers: {
-      'HTTP-Referer': 'https://getoverlay.io',
+      'HTTP-Referer': 'https://overlay.works',
       'X-Title': 'Overlay',
     },
     docsURL: 'https://openrouter.ai',

@@ -5,13 +5,13 @@ import { measureInteraction, openIndependentClients, previewOrigin, previewPath,
 
 test('only canonical isolated preview origins and relative paths are accepted', () => {
   assert.equal(previewOrigin('https://pr-123.preview.getoverlay.io/'), 'https://pr-123.preview.getoverlay.io')
-  for (const origin of ['https://getoverlay.io', 'https://pr-1.preview.getoverlay.io.evil.com',
+  for (const origin of ['https://overlay.works', 'https://pr-1.preview.getoverlay.io.evil.com',
     'http://pr-1.preview.getoverlay.io', 'https://pr-1.preview.getoverlay.io:8443',
     'https://user:secret@pr-1.preview.getoverlay.io', 'https://pr-1.preview.getoverlay.io/?token=secret']) {
     assert.throws(() => previewOrigin(origin))
   }
   assert.equal(previewPath('/app/chat?id=fixture'), '/app/chat?id=fixture')
-  for (const path of ['https://getoverlay.io', '//getoverlay.io', '/\\getoverlay.io', '/\n/getoverlay.io', undefined]) {
+  for (const path of ['https://overlay.works', '//overlay.works', '/\\overlay.works', '/\n/overlay.works', undefined]) {
     assert.throws(() => previewPath(path))
   }
 })

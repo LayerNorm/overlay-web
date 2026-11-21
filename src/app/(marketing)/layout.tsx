@@ -16,13 +16,13 @@ const structuredData = {
   '@graph': [
     {
       '@type': 'Organization',
-      '@id': 'https://getoverlay.io/#organization',
+      '@id': 'https://overlay.works/#organization',
       name: 'LayerNorm Inc',
       alternateName: 'Overlay',
-      url: 'https://getoverlay.io',
+      url: 'https://overlay.works',
       logo: {
         '@type': 'ImageObject',
-        url: 'https://getoverlay.io/assets/overlay-logo.png',
+        url: 'https://overlay.works/assets/overlay-logo.png',
         width: 384,
         height: 384,
       },
@@ -30,19 +30,19 @@ const structuredData = {
     },
     {
       '@type': 'WebSite',
-      '@id': 'https://getoverlay.io/#website',
-      url: 'https://getoverlay.io',
+      '@id': 'https://overlay.works/#website',
+      url: 'https://overlay.works',
       name: 'Overlay',
       description:
         'Overlay: The control plane for AI employees. Create, deploy, and manage every agent in one workspace.',
-      publisher: { '@id': 'https://getoverlay.io/#organization' },
+      publisher: { '@id': 'https://overlay.works/#organization' },
       inLanguage: 'en-US',
     },
     {
       '@type': 'SoftwareApplication',
-      '@id': 'https://getoverlay.io/#application',
+      '@id': 'https://overlay.works/#application',
       name: 'Overlay',
-      url: 'https://getoverlay.io',
+      url: 'https://overlay.works',
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web',
       description:
@@ -53,7 +53,7 @@ const structuredData = {
         priceCurrency: 'USD',
         description: '$8/month usage credit. No trial. Set up your workspace before payment; bring your own model credentials if preferred.',
       },
-      creator: { '@id': 'https://getoverlay.io/#organization' },
+      creator: { '@id': 'https://overlay.works/#organization' },
     },
   ],
 }
