@@ -26,7 +26,7 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
   removeLabelAt = Infinity, wrongCreatedSha = false,
   wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false, files = [{ filename: 'src/runtime.ts' }] } = {}) {
   const calls = []
-  let envs = []; let domain; let alias; let reads = 0; let state = buildState
+  let envs = []; let domain; let legacy; let alias; let reads = 0; let state = buildState
   const github = async (path, options = {}) => {
     calls.push({ service: 'github', path, ...options })
     if (path.endsWith('/pulls/123')) {
@@ -58,8 +58,14 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     if (path.endsWith('/env/env_fixture') && method === 'DELETE') { envs = []; return {} }
     if (path.endsWith('/domains')) {
       if (method === 'POST') { domain = { ...options.body, verified: true }; return domain }
-      return { domains: domain ? [domain] : [], pagination: { next: null } }
+      return { domains: [domain, legacy].filter(Boolean), pagination: { next: null } }
     }
+    if (path.endsWith('/domains/pr-123.preview.getoverlay.io')) {
+      if (method === 'DELETE') { legacy = undefined; return {} }
+      if (!legacy) throw new ApiError('Vercel', 404)
+      return legacy
+    }
+    if (path === '/v4/aliases/pr-123.preview.getoverlay.io') throw new ApiError('Vercel', 404)
     if (path.includes('/domains/pr-123.')) {
       if (method === 'DELETE') { domain = undefined; return {} }
       if (!domain) throw new ApiError('Vercel', 404)
@@ -92,7 +98,7 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
       calls.push({ service: 'https', origin })
       if (failHttps) throw new Error('TLS verification failed')
     } })
-  return { controller, calls, get: () => ({ envs, domain, alias }), setCurrent: pr => { current = pr },
+  return { controller, calls, get: () => ({ envs, domain, legacy, alias }), setLegacy: value => { legacy = value }, setCurrent: pr => { current = pr },
     setEnv: values => { envs = values }, setDomain: value => { domain = value } }
 }
 
@@ -119,7 +125,7 @@ test('removing needs-preview cleans a previously ready preview', async () => {
   const f = fixture(); await f.controller.run(123)
   f.setCurrent(pull({ labels: [] }))
   assert.equal((await f.controller.run(123)).state, 'not-required')
-  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, legacy: undefined, alias: undefined })
   assert.ok(f.calls.some(c => c.service === 'backend-delete' && c.number === 123))
 })
 
@@ -127,7 +133,7 @@ test('label removal before creation prevents spending build minutes', async () =
   const f = fixture({ existing: false, removeLabelAt: 2 })
   assert.equal((await f.controller.run(123)).state, 'not-required')
   assert.ok(!f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
-  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, legacy: undefined, alias: undefined })
 })
 
 test('label removal during a build settles it and removes the preview', async () => {
@@ -241,7 +247,7 @@ test('close cleans managed resources idempotently; retained wildcard is never to
   f.setCurrent(pull({ state: 'closed' }))
   assert.equal((await f.controller.run(123)).state, 'closed')
   assert.equal((await f.controller.run(123)).state, 'closed')
-  assert.deepEqual(f.get(), { envs: [], domain: undefined, alias: undefined })
+  assert.deepEqual(f.get(), { envs: [], domain: undefined, legacy: undefined, alias: undefined })
   assert.ok(!f.calls.some(c => c.path?.includes('*.preview') && c.method && c.method !== 'GET'))
   assert.ok(f.calls.some(c => c.service === 'removed-https' && c.origin === previewAddress(123).origin))
 })
@@ -278,6 +284,30 @@ test('inventory reconciles open PRs and resources left behind by partial provisi
   f.setDomain({ name: 'pr-124.preview.overlay.works', gitBranch: 'codex/closed' })
   f.setEnv([{ key: 'NEXT_PUBLIC_APP_URL', gitBranch: 'codex/partial', comment: 'overlay-preview-control:pr-125' }])
   assert.deepEqual(await f.controller.inventory(), [123, 124, 125, 126])
+})
+test('a ready new-host preview removes the PR\'s pre-move domain', async () => {
+  const f = fixture()
+  f.setLegacy({ name: 'pr-123.preview.getoverlay.io', gitBranch: 'codex/fixture', verified: true })
+  assert.equal((await f.controller.run(123)).state, 'ready')
+  assert.equal(f.get().legacy, undefined)
+})
+test('cleanup also removes the PR\'s pre-move preview.getoverlay.io domain', async () => {
+  const f = fixture(); await f.controller.run(123)
+  f.setLegacy({ name: 'pr-123.preview.getoverlay.io', gitBranch: 'codex/fixture', verified: true })
+  f.setCurrent(pull({ state: 'closed' }))
+  assert.equal((await f.controller.run(123)).state, 'closed')
+  assert.equal(f.get().legacy, undefined)
+})
+test('cleanup leaves an old-host domain bound to another branch', async () => {
+  const f = fixture({ current: pull({ state: 'closed' }) })
+  f.setLegacy({ name: 'pr-123.preview.getoverlay.io', gitBranch: 'another-branch', verified: true })
+  assert.equal((await f.controller.run(123)).state, 'closed')
+  assert.equal(f.get().legacy.gitBranch, 'another-branch')
+})
+test('inventory includes PRs that only have a pre-move domain left', async () => {
+  const f = fixture()
+  f.setLegacy({ name: 'pr-127.preview.getoverlay.io', gitBranch: 'codex/old' })
+  assert.ok((await f.controller.inventory()).includes(127))
 })
 test('API failures never print credentials, bodies, or attacker-controlled messages', async () => {
   const api = apiClient({ token: 'private-fixture', service: 'Vercel', base: 'https://api.vercel.com',

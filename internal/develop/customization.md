@@ -114,7 +114,7 @@ export const overlayAppShell = defineOverlayAppConfig({
     {
       id: 'admin',
       label: 'Admin',
-      href: 'https://admin.getoverlay.io',
+      href: 'https://admin.overlay.works',
       icon: 'shield-check',
       componentKey: 'acme.nav.admin',
     },
