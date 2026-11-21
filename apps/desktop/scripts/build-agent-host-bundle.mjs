@@ -75,6 +75,8 @@ try {
     platform: 'node',
     format: 'esm',
     target: 'node24',
+    // The host's model SDKs pull in CommonJS packages that call require(); an ESM bundle has no require of its own.
+    banner: { js: "import { createRequire as __overlayCreateRequire } from 'node:module'; const require = __overlayCreateRequire(import.meta.url);" },
     logLevel: 'warning'
   })
 
