@@ -15,7 +15,7 @@ const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
   OVERLAY_DEPLOYMENT_ENV: 'preview', VERCEL_GIT_PULL_REQUEST_ID: '123',
   VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web',
-  NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.getoverlay.io',
+  NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.overlay.works',
   CONVEX_DEPLOY_KEY: 'preview:team:project|fixture-key',
 }
 
@@ -49,9 +49,9 @@ test('production builds never push Convex as part of the web build', () => {
 test('native Git builds derive their canonical PR origin before branch provisioning', () => {
   for (const appUrl of [undefined, 'https://preview-unassigned.invalid']) {
     const plan = buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: appUrl })
-    assert.equal(plan.env.NEXT_PUBLIC_APP_URL, 'https://pr-123.preview.getoverlay.io')
+    assert.equal(plan.env.NEXT_PUBLIC_APP_URL, 'https://pr-123.preview.overlay.works')
   }
-  assert.throws(() => buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: 'https://pr-124.preview.getoverlay.io' }))
+  assert.throws(() => buildPlan({ ...preview, NEXT_PUBLIC_APP_URL: 'https://pr-124.preview.overlay.works' }))
 })
 
 test('release builds cannot advertise a disabled provider as an enabled capability', () => {
@@ -139,7 +139,7 @@ test('runtime settings bind callbacks and transfer only approved backend credent
     OVERLAY_USAGE_MARKUP_BPS: '4000',
     STRIPE_WEBHOOK_SECRET: 'owned-by-per-backend-registration' })
   assert.ok(text.includes('OVERLAY_USAGE_MARKUP_BPS="4000"'))
-  assert.ok(text.includes('OVERLAY_BFF_URL="https://pr-123.preview.getoverlay.io"'))
+  assert.ok(text.includes('OVERLAY_BFF_URL="https://pr-123.preview.overlay.works"'))
   assert.ok(text.includes('VERCEL_AUTOMATION_BYPASS_SECRET="hosting-secret"'))
   assert.ok(text.includes('INTERNAL_API_SECRET="api-secret"'))
   assert.ok(!text.includes('SESSION_SECRET'))

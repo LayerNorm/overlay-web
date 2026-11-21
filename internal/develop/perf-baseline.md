@@ -130,7 +130,7 @@ Record these three by hand in a production build with profiling (`next build --p
 
 ## Safety
 
-- The origin must be a canonical PR Preview (`https://pr-N.preview.getoverlay.io`) or loopback `http://localhost`/`127.0.0.1`. Production is rejected.
+- The origin must be a canonical PR Preview (`https://pr-N.preview.overlay.works`) or loopback `http://localhost`/`127.0.0.1`. Production is rejected.
 - The storage state must be private (mode 600).
 - Navigation away from the allowed origin is aborted. Production and third-party destinations must never be supplied as fixtures.
 - Runtime errors are replaced with fixed messages, not copied from Playwright exceptions that may contain selectors, content or private URLs. Check fixture preconditions and configuration on failure.

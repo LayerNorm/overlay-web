@@ -3,7 +3,7 @@ import test from 'node:test'
 import { deploymentEnv } from './deployment-env'
 
 test('isolated server and browser use the same Convex-injected build URL', () => {
-  const built = { appUrl: 'https://pr-123.preview.getoverlay.io', convexUrl: 'https://pr-backend.convex.cloud' }
+  const built = { appUrl: 'https://pr-123.preview.overlay.works', convexUrl: 'https://pr-backend.convex.cloud' }
   const env = { OVERLAY_DEPLOYMENT_ENV: 'preview', NEXT_PUBLIC_CONVEX_URL: 'https://shared.convex.cloud',
     NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io', INTERNAL_API_SECRET: 'fixture' }
   const resolved = deploymentEnv(env, built)

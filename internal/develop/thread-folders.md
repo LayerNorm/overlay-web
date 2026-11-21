@@ -106,8 +106,8 @@ these settings the picker lists no repositories and connecting reports that GitH
 Production and PR previews use separate apps, so preview builds never hold a credential for customers' repositories:
 `overlay-agents` (callback `https://overlay.works/api/v1/github/callback`, production's app URL, because the
 sign-in must return to exactly the `redirect_uri` it was sent; Production settings) and
-`overlay-agents-preview` (callback `https://preview.getoverlay.io/api/v1/github/callback` with wildcard matching, so
-every `pr-<n>.preview.getoverlay.io` is accepted; Preview settings; installed only on LayerNorm test repositories).
+`overlay-agents-preview` (callback `https://preview.overlay.works/api/v1/github/callback` with wildcard matching, so
+every `pr-<n>.preview.overlay.works` is accepted; Preview settings; installed only on LayerNorm test repositories).
 
 ## QA
 

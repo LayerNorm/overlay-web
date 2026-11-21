@@ -8,7 +8,7 @@ const env = {
   VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview',
   WORKOS_CLIENT_ID: PREVIEW_WORKOS_CLIENT_ID,
   WORKOS_API_KEY: 'sk_test_fixture',
-  NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.getoverlay.io',
+  NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.overlay.works',
   PREVIEW_LOGIN_SECRET: secret, PREVIEW_LOGIN_EMAIL: 'preview@example.test',
   PREVIEW_LOGIN_PASSWORD: 'fixture-password', PREVIEW_LOGIN_USER_ID: 'user_preview_fixture',
 }

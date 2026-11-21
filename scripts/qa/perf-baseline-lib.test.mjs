@@ -49,20 +49,20 @@ test('changed text, detached editors and settled streams never count as observed
 })
 
 test('fixture mutations require a Preview origin and an exact deployment name, not an arbitrary URL', () => {
-  assert.equal(fixtureBackendUrl('https://pr-12.preview.getoverlay.io', 'synthetic-fixture-123'), 'https://synthetic-fixture-123.convex.cloud')
+  assert.equal(fixtureBackendUrl('https://pr-12.preview.overlay.works', 'synthetic-fixture-123'), 'https://synthetic-fixture-123.convex.cloud')
   for (const backend of ['https://example.test', '../other', 'synthetic-fixture-123?key=x', undefined]) {
-    assert.throws(() => fixtureBackendUrl('https://pr-12.preview.getoverlay.io', backend))
+    assert.throws(() => fixtureBackendUrl('https://pr-12.preview.overlay.works', backend))
   }
   assert.throws(() => fixtureBackendUrl('http://localhost:3000', 'synthetic-fixture-123'))
 })
 
 test('only PR previews and loopback production servers are accepted', () => {
-  assert.equal(perfOrigin('https://pr-12.preview.getoverlay.io/'), 'https://pr-12.preview.getoverlay.io')
+  assert.equal(perfOrigin('https://pr-12.preview.overlay.works/'), 'https://pr-12.preview.overlay.works')
   assert.equal(perfOrigin('http://localhost:3000'), 'http://localhost:3000')
   assert.equal(perfOrigin('http://127.0.0.1:4000/'), 'http://127.0.0.1:4000')
   for (const origin of [
-    'https://overlay.works', 'https://overlay.works', 'http://pr-1.preview.getoverlay.io',
-    'https://pr-1.preview.getoverlay.io.evil.com', 'https://localhost:3000', 'http://example.com',
+    'https://overlay.works', 'https://overlay.works', 'http://pr-1.preview.overlay.works',
+    'https://pr-1.preview.overlay.works.evil.com', 'https://localhost:3000', 'http://example.com',
     'http://user:secret@localhost:3000', 'http://localhost:3000/app', 'http://localhost:3000/?token=x',
   ]) {
     assert.throws(() => perfOrigin(origin), origin)

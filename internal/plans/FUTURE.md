@@ -444,7 +444,7 @@ Test at multiples of current peak rather than only with one browser session:
 
 ### Phase 4: isolated PR acceptance and soak
 
-Use the current `pr-<number>.preview.getoverlay.io` deployment after its isolated environment passes.
+Use the current `pr-<number>.preview.overlay.works` deployment after its isolated environment passes.
 Exercise the complete product surface for a sustained period:
 
 - Personal Chat and Work mode.

@@ -193,6 +193,7 @@ import type * as providers_cloudAgentProvisions from "../providers/cloudAgentPro
 import type * as providers_connections from "../providers/connections.js";
 import type * as providers_subscriptions from "../providers/subscriptions.js";
 import type * as search_browse from "../search/browse.js";
+import type * as surfaces_surfaceExecutions from "../surfaces/surfaceExecutions.js";
 import type * as webhooks_browse from "../webhooks/browse.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
 import type * as webhooks_deliveryRunner from "../webhooks/deliveryRunner.js";
@@ -393,6 +394,7 @@ declare const fullApi: ApiFromModules<{
   "providers/connections": typeof providers_connections;
   "providers/subscriptions": typeof providers_subscriptions;
   "search/browse": typeof search_browse;
+  "surfaces/surfaceExecutions": typeof surfaces_surfaceExecutions;
   "webhooks/browse": typeof webhooks_browse;
   "webhooks/deliveries": typeof webhooks_deliveries;
   "webhooks/deliveryRunner": typeof webhooks_deliveryRunner;

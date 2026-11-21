@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process'
 import { measureInteraction, openIndependentClients, previewOrigin, previewPath, matchesConversationMutation } from './realtime-baseline.mjs'
 
 test('only canonical isolated preview origins and relative paths are accepted', () => {
-  assert.equal(previewOrigin('https://pr-123.preview.getoverlay.io/'), 'https://pr-123.preview.getoverlay.io')
-  for (const origin of ['https://overlay.works', 'https://pr-1.preview.getoverlay.io.evil.com',
-    'http://pr-1.preview.getoverlay.io', 'https://pr-1.preview.getoverlay.io:8443',
-    'https://user:secret@pr-1.preview.getoverlay.io', 'https://pr-1.preview.getoverlay.io/?token=secret']) {
+  assert.equal(previewOrigin('https://pr-123.preview.overlay.works/'), 'https://pr-123.preview.overlay.works')
+  for (const origin of ['https://overlay.works', 'https://pr-1.preview.overlay.works.evil.com',
+    'http://pr-1.preview.overlay.works', 'https://pr-1.preview.overlay.works:8443',
+    'https://user:secret@pr-1.preview.overlay.works', 'https://pr-1.preview.overlay.works/?token=secret']) {
     assert.throws(() => previewOrigin(origin))
   }
   assert.equal(previewPath('/app/chat?id=fixture'), '/app/chat?id=fixture')
@@ -77,7 +77,7 @@ test('clients use separate contexts, not two pages sharing local storage', async
     return context
   } }
   const clients = await openIndependentClients(browser, {
-    origin: 'https://pr-123.preview.getoverlay.io', path: '/app/chat', storageState: { cookies: [], origins: [] },
+    origin: 'https://pr-123.preview.overlay.works', path: '/app/chat', storageState: { cookies: [], origins: [] },
   })
   assert.equal(contexts.length, 2)
   assert.notEqual(clients.pages[0], clients.pages[1])
@@ -112,7 +112,7 @@ test('navigation stages preserve read and rendered-content timing separately', a
 })
 
 test('mutation acknowledgements exclude other chats, read cursors and failed writes', () => {
-  const origin = 'https://pr-392.preview.getoverlay.io'
+  const origin = 'https://pr-392.preview.overlay.works'
   const response = (path, body, ok = true) => ({
     url: () => origin + path, ok: () => ok,
     request: () => ({ method: () => 'PATCH', postDataJSON: () => body }),
@@ -136,8 +136,8 @@ test('runner setup failures do not print invalid configuration or storage-state 
   const common = { CN01_CHAT_PATH: '/app/chat?id=fixture', CN01_PREVIEW_SHA: 'a'.repeat(40) }
   for (const env of [
     { ...common, CN01_PREVIEW_ORIGIN: privateValue },
-    { ...common, CN01_PREVIEW_ORIGIN: 'https://pr-392.preview.getoverlay.io', CN01_STORAGE_STATE: `/nonexistent/${privateValue}` },
-    { ...common, CN01_PREVIEW_ORIGIN: 'https://pr-392.preview.getoverlay.io', CN01_PREVIEW_SHA: privateValue },
+    { ...common, CN01_PREVIEW_ORIGIN: 'https://pr-392.preview.overlay.works', CN01_STORAGE_STATE: `/nonexistent/${privateValue}` },
+    { ...common, CN01_PREVIEW_ORIGIN: 'https://pr-392.preview.overlay.works', CN01_PREVIEW_SHA: privateValue },
   ]) {
     const result = spawnSync(process.execPath, ['scripts/qa/personal-chat-realtime.mjs'], { env, encoding: 'utf8' })
     assert.equal(result.status, 1)

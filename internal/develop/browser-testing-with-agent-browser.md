@@ -65,7 +65,7 @@ origin validation. Keep share links and bypass credentials out of evidence.
 ### PR preview QA login
 
 For the release-workflow migration, use the canonical
-`https://pr-<number>.preview.getoverlay.io` URL after verifying that its assigned
+`https://pr-<number>.preview.overlay.works` URL after verifying that its assigned
 deployment SHA matches the current PR head. The preview-only
 `POST /api/auth/preview-login` route accepts an `x-overlay-preview-secret` header
 from the agent secret store and creates a normal sandbox session. Do not send
@@ -161,7 +161,7 @@ context's request client, then navigate normally in that same context:
 const secret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
 if (!secret) throw new Error('Missing cloud preview bypass credential')
 const origin = new URL(process.env.PREVIEW_URL).origin
-if (!/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin)) {
+if (!/^https:\/\/pr-[1-9]\d*\.preview\.overlay\.works$/.test(origin)) {
   throw new Error('Expected the canonical PR preview origin')
 }
 // context.request shares its cookie jar with pages in this browser context.
@@ -230,7 +230,7 @@ deployment-protection bypass URLs.
 
 ```bash
 # Open a page
-agent-browser open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
+agent-browser open "https://pr-123.preview.overlay.works/w/<workspace-handle>/workspace/chat?view=channels"
 
 # Wait for it to load
 agent-browser wait --load networkidle
@@ -257,12 +257,12 @@ Use `--session` to run isolated browser sessions for different accounts:
 
 ```bash
 # Owner session
-agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
+agent-browser --session owner --state ~/.config/devin/agent-browser-overlay-auth.json open "https://pr-123.preview.overlay.works/w/<workspace-handle>/workspace/chat?view=channels"
 agent-browser --session owner wait --load networkidle
 agent-browser --session owner get text "body"
 
 # Member session
-agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.getoverlay.io/w/<workspace-handle>/workspace/chat?view=channels"
+agent-browser --session member --state ~/.config/devin/agent-browser-overlay-member-auth.json open "https://pr-123.preview.overlay.works/w/<workspace-handle>/workspace/chat?view=channels"
 agent-browser --session member wait --load networkidle
 agent-browser --session member get text "body"
 

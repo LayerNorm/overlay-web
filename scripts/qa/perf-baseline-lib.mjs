@@ -1,3 +1,4 @@
+import { PREVIEW_HOSTNAME_PATTERN } from '../release/preview-domain.mjs'
 export function installKeystrokeObserver(editor) {
   window.__perfKeyLatency = []
   window.__perfKeyDiagnostics = { inputs: 0, frames: 0, coalesced: 0, rejected: 0 }
@@ -56,7 +57,7 @@ export const TARGETS = {
 export function perfOrigin(value) {
   const url = new URL(value)
   const clean = !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash
-  const preview = url.protocol === 'https:' && !url.port && /^pr-[1-9][0-9]*\.preview\.getoverlay\.io$/.test(url.hostname)
+  const preview = url.protocol === 'https:' && !url.port && PREVIEW_HOSTNAME_PATTERN.test(url.hostname)
   const loopback = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)
   if (!clean || !(preview || loopback)) {
     throw new Error('Use a PR Preview origin or a local production server (http://localhost:PORT)')

@@ -188,7 +188,7 @@ test('PR identifiers cannot become API paths, hostnames, or shell fragments', ()
   for (const value of ['', 0, -1, '1/../../', '1;evil', '001', '1\n', Number.MAX_SAFE_INTEGER + 1]) {
     assert.throws(() => previewAddress(value))
   }
-  assert.equal(previewAddress(123).origin, 'https://pr-123.preview.getoverlay.io')
+  assert.equal(previewAddress(123).origin, 'https://pr-123.preview.overlay.works')
 })
 test('forks, another repository, main as a source, and other bases cannot receive preview secrets', () => {
   assert.equal(trustedPull(pull()).number, 123)
@@ -275,7 +275,7 @@ test('cleanup refuses unmanaged URLs or domains from another branch', async () =
 })
 test('inventory reconciles open PRs and resources left behind by partial provisioning', async () => {
   const f = fixture()
-  f.setDomain({ name: 'pr-124.preview.getoverlay.io', gitBranch: 'codex/closed' })
+  f.setDomain({ name: 'pr-124.preview.overlay.works', gitBranch: 'codex/closed' })
   f.setEnv([{ key: 'NEXT_PUBLIC_APP_URL', gitBranch: 'codex/partial', comment: 'overlay-preview-control:pr-125' }])
   assert.deepEqual(await f.controller.inventory(), [123, 124, 125, 126])
 })

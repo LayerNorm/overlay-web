@@ -15,7 +15,7 @@ part of the release path. Historical staging drills are preserved in git history
    The trusted main controller requests the exact SHA through REST API using the
    existing project token, then manages its URL/backend. Unlabeled PRs pass
    “Preview not requested” and still require normal CI.
-2. Use `https://pr-<number>.preview.getoverlay.io`. The controller assigns
+2. Use `https://pr-<number>.preview.overlay.works`. The controller assigns
    the alias only after the deployment is READY at the current PR head SHA and
    its `preview/pr-<number>` Convex backend exists. The wildcard registration
    branch `codex/preview-unassigned` has no deployment alias.

@@ -33,7 +33,7 @@ beforeEach(() => {
 test('model limits expose the scoped QA budget without changing provider limits', async () => {
   mocks.deploymentEnv.mockReturnValue({
     VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview',
-    NEXT_PUBLIC_APP_URL: 'https://pr-384.preview.getoverlay.io',
+    NEXT_PUBLIC_APP_URL: 'https://pr-384.preview.overlay.works',
     VERCEL_GIT_PULL_REQUEST_ID: '384', PREVIEW_LOGIN_USER_ID: 'user_qa',
     HARNESS_PREVIEW_CONTEXT_TOKENS: '16000',
   })
