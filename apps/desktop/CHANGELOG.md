@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Connect to Overlay Cloud at `overlay.works`, its new main address. New installs start there, and a computer that was set up for `getoverlay.io` moves to `overlay.works` automatically, still treated as Overlay Cloud. The old address only redirects now, so earlier versions should update.
+
 ## [0.4.0] - 2026-11-21
 
 - Run threads on this computer without syncing them to the cloud. With Cloud sync off, a thread's agent runs in the bundled Agent Host (0.6.0, started as `overlay-agent-host private` over an IPC channel with no network port), its transcript stays in `private-threads/private-threads.sqlite` in the app's data folder, and it calls the agent's model with the person's own Anthropic, OpenAI, Google or OpenRouter key. Keys are checked with the provider before they are kept in the system keychain, and are handed to the host only for the run that needs them. A new `localThreads` bridge capability lists, opens, runs, stops and deletes these threads and streams their replies to the page; it is advertised only when the bundled host supports it. A thread may work only in `~/Overlay Files`, a folder chosen in the system folder dialog, or a folder already approved for this computer. Signing out or quitting stops running threads and keeps their transcripts. The bundled host's ESM build now provides `require()` for the CommonJS packages its model SDKs use.

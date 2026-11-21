@@ -5,6 +5,9 @@ import type { OverlayServerDiscovery } from './server-discovery'
 import { readBoundedJson } from './bounded-json-response'
 
 const PROFILE_FILE = 'overlay-server-profile.json'
+const OVERLAY_CLOUD_ORIGIN = 'https://overlay.works'
+/** Overlay Cloud's former addresses; they now redirect to OVERLAY_CLOUD_ORIGIN. */
+const LEGACY_CLOUD_ORIGINS = new Set(['https://www.getoverlay.io', 'https://getoverlay.io'])
 const DESKTOP_VERSION = app.getVersion()
 
 export type OverlayServerProfile = {
@@ -96,7 +99,7 @@ class ServerProfileService {
         return null
       }
       chmodSync(path, 0o600)
-      const origin = normalizeServerOrigin(parsed.origin)
+      const origin = currentCloudOrigin(normalizeServerOrigin(parsed.origin))
       return {
         deploymentId: parsed.deploymentId,
         mode: isOverlayCloudOrigin(origin) ? 'cloud' : 'self-hosted',
@@ -111,7 +114,7 @@ class ServerProfileService {
   private defaultProfile(): OverlayServerProfile {
     const origin = normalizeServerOrigin(
       process.env.APP_SERVER_URL?.trim() ||
-        (app.isPackaged ? 'https://www.getoverlay.io' : 'http://localhost:3000')
+        (app.isPackaged ? OVERLAY_CLOUD_ORIGIN : 'http://localhost:3000')
     )
     return {
       deploymentId: origin,
@@ -144,7 +147,12 @@ export function normalizeServerOrigin(input: string): string {
 }
 
 function isOverlayCloudOrigin(origin: string): boolean {
-  return origin === 'https://www.getoverlay.io' || origin === 'https://getoverlay.io'
+  return origin === OVERLAY_CLOUD_ORIGIN
+}
+
+/** A profile saved before the move to overlay.works keeps working at the new address. */
+function currentCloudOrigin(origin: string): string {
+  return LEGACY_CLOUD_ORIGINS.has(origin) ? OVERLAY_CLOUD_ORIGIN : origin
 }
 
 function compareVersions(left: string, right: string): number {

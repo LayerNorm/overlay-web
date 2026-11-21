@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, statSync } from 'node:fs'
+import { mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -78,6 +78,21 @@ describe('server profile trust boundary', () => {
         verifiedAt: Date.now() - 11 * 60_000
       })
     ).toThrow('server_profile_not_recently_verified')
+  })
+
+  it('moves a profile saved for getoverlay.io to overlay.works as Overlay Cloud', async () => {
+    for (const legacy of ['https://www.getoverlay.io', 'https://getoverlay.io']) {
+      writeFileSync(
+        path.join(mocks.userData, 'overlay-server-profile.json'),
+        JSON.stringify({ deploymentId: 'cloud', mode: 'cloud', origin: legacy, verifiedAt: 1 })
+      )
+      vi.resetModules()
+      const fresh = await import('./server-profile-service')
+      expect(fresh.serverProfileService.getActiveProfile()).toMatchObject({
+        mode: 'cloud',
+        origin: 'https://overlay.works'
+      })
+    }
   })
 
   it('rejects incompatible discovery and minimum-version lockout', async () => {
