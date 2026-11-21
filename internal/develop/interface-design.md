@@ -442,6 +442,13 @@ page (`AgentNotePanel`), not a read-only render. Markdown images go through the
 same cards. Hosts provide file lookup and opening with `ChatFilesProvider`: agent threads open
 files in the Library panel's in-place preview (`AgentLibraryPreview`), other surfaces open the
 Files page. Tool rows stay logo-free; a created file's name in a row opens it the same way.
+A file the turn created stays in the card strip unless the reply embeds it (`![name](url)`); a plain
+text link to it does not hide its card (`collectCreatedFileIds`). A reply's link to an Overlay file
+(its content URL, Files `?file=` or Notes `?id=` page) offers Open in sidebar or Open in Files,
+following the same link preference as external links (`internalFileIdFromHref`,
+`LinkOpenInterceptor`). File and note previews in a panel have no rule under their header; their
+header carries Download and an open-in-Files icon (`ExternalLink`), never an expand icon. Videos
+play on the theme's surface, not a black box.
 
 ## Avatars are edited in place
 

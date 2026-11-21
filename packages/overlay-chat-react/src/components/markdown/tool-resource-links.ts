@@ -46,6 +46,7 @@ export function resolveToolResourceHref(href: string, canonicalHrefs?: readonly 
 
 const CREATING_TOOLS = new Set(['write_file', 'create_note', 'generate_image', 'generate_video', 'animate_image', 'computer_publish_file'])
 const FILE_CONTENT_URL = /\/api\/v1\/files\/([^/?#)\s"']+)\/content/g
+const MARKDOWN_EMBED = /!\[[^\]]*\]\(\s*<?([^)\s>]+)/g
 
 function createdFileId(block: Extract<AssistantVisualBlock, { kind: 'tool' }>): string | undefined {
   const output = record(block.toolOutput)
@@ -65,17 +66,22 @@ function decodedId(raw: string): string | null {
 }
 
 /**
- * Files a turn created that its text and media do not already show, in creation order. The message renders these as
- * a card strip after its body, so a created file appears once: inline where the agent embedded it, here otherwise.
+ * Files a turn created that its text and media do not already embed, in creation order. The message renders these as
+ * a card strip after its body, so a created file appears once: inline where the agent embedded it, here otherwise. A
+ * plain text link to a file ("the video is [here](…)") does not count, so the card stays when the reply finishes.
  */
 export function collectCreatedFileIds(blocks: AssistantVisualBlock[]): string[] {
   const shown = new Set<string>()
-  for (const block of blocks) {
-    const text = block.kind === 'text' ? block.text : block.kind === 'file' ? block.url : ''
-    for (const match of text.matchAll(FILE_CONTENT_URL)) {
+  const markShown = (source: string) => {
+    for (const match of source.matchAll(FILE_CONTENT_URL)) {
       const id = decodedId(match[1]!)
       if (id) shown.add(id)
     }
+  }
+  for (const block of blocks) {
+    if (block.kind === 'file') markShown(block.url)
+    // Only an embed (`![name](url)`) shows the file; a plain link to it still leaves its card to the strip.
+    else if (block.kind === 'text') for (const embed of block.text.matchAll(MARKDOWN_EMBED)) markShown(embed[1]!)
   }
   const created: string[] = []
   for (const block of blocks) {

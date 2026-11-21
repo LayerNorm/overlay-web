@@ -45,6 +45,14 @@ test('a turn shows each created file once: inline where embedded, in the strip o
   assert.deepEqual(collectCreatedFileIds(blocks), ['vid1', 'note1'])
 })
 
+test('a finished reply that only links to its video still shows the video card', () => {
+  const blocks: AssistantVisualBlock[] = [
+    tool('computer_publish_file', { success: true, artifact: { fileId: 'vid1' } }),
+    { kind: 'text', text: 'Version 1 is done. **Video:** [film.mp4](https://getoverlay.io/api/v1/files/vid1/content)' },
+  ]
+  assert.deepEqual(collectCreatedFileIds(blocks), ['vid1'])
+})
+
 test('the strip renders videos, images and notes as compact cards', () => {
   const html = withHost(<ChatFileCardStrip fileIds={['vid1', 'img1', 'note1', 'unreadable']} />)
   assert.match(html, /aria-label="Play day-01\.mp4"/)

@@ -74,7 +74,7 @@ export function ChatVideoCard({ src, name, fileId, caption }: { src: string; nam
   if (playing) {
     return (
       <span className="block min-w-0">
-        <video src={src} controls autoPlay playsInline className="block aspect-video w-full rounded-[10px] border border-(--border) bg-black object-contain" />
+        <video src={src} controls autoPlay playsInline className="block aspect-video w-full rounded-[10px] border border-(--border) bg-(--surface-subtle) object-contain" />
         <VideoCaption name={label} caption={caption} />
       </span>
     )
@@ -86,7 +86,7 @@ export function ChatVideoCard({ src, name, fileId, caption }: { src: string; nam
   return (
     <Button variant="ghost" type="button" onClick={open} aria-label={`Play ${label}`}
       className={cardButton('group/video flex min-w-0 flex-col items-stretch gap-1.5 whitespace-normal hover:bg-transparent')}>
-      <span className="relative block overflow-hidden rounded-[10px] border border-(--border) bg-black transition-colors group-hover/video:border-(--muted-light)">
+      <span className="relative block overflow-hidden rounded-[10px] border border-(--border) bg-(--surface-subtle) transition-colors group-hover/video:border-(--muted-light)">
         <video src={`${src}#t=0.1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1}
           onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
           className="pointer-events-none block aspect-video w-full object-cover" />
