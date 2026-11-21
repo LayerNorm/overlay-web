@@ -76,7 +76,7 @@ function createClient(): WebKnowledgeAppClient & { files: { updateResponse(input
 }
 
 test('web adapters satisfy the platform-neutral knowledge contract', async () => {
-  let currentUrl = new URL('https://getoverlay.io/app/files?layout=list')
+  let currentUrl = new URL('https://overlay.works/app/files?layout=list')
   const route = createWebKnowledgeRouteAdapter({
     currentUrl: () => currentUrl,
     navigate(url) {
@@ -127,9 +127,9 @@ test('web navigation preserves note editor compatibility', () => {
   const adapters = createWebKnowledgeSurfaceAdapters({
     commands: commandsFor(client),
     client,
-    currentUrl: () => new URL('https://getoverlay.io/w/team/workspace/files'),
+    currentUrl: () => new URL('https://overlay.works/w/team/workspace/files'),
     route: createWebKnowledgeRouteAdapter({
-      currentUrl: () => new URL('https://getoverlay.io/app/files'),
+      currentUrl: () => new URL('https://overlay.works/app/files'),
       navigate() {},
       eventTarget: { addEventListener() {}, removeEventListener() {} } as Pick<Window, 'addEventListener' | 'removeEventListener'>,
     }),

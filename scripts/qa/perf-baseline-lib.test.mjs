@@ -61,7 +61,7 @@ test('only PR previews and loopback production servers are accepted', () => {
   assert.equal(perfOrigin('http://localhost:3000'), 'http://localhost:3000')
   assert.equal(perfOrigin('http://127.0.0.1:4000/'), 'http://127.0.0.1:4000')
   for (const origin of [
-    'https://getoverlay.io', 'https://www.getoverlay.io', 'http://pr-1.preview.getoverlay.io',
+    'https://overlay.works', 'https://overlay.works', 'http://pr-1.preview.getoverlay.io',
     'https://pr-1.preview.getoverlay.io.evil.com', 'https://localhost:3000', 'http://example.com',
     'http://user:secret@localhost:3000', 'http://localhost:3000/app', 'http://localhost:3000/?token=x',
   ]) {

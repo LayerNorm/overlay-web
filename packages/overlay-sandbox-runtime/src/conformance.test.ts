@@ -89,6 +89,6 @@ class MemorySandbox implements SandboxInstance {
 function request(name: string): SandboxCreateRequest {
   return {
     name, persistent: true, idleTimeoutMs: 60_000, hardTimeoutMs: 60_000,
-    ports: [3000], networkPolicy: { mode: 'allowlist', domains: ['getoverlay.io'] },
+    ports: [3000], networkPolicy: { mode: 'allowlist', domains: ['overlay.works'] },
   }
 }

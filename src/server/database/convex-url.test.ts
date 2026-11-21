@@ -123,7 +123,7 @@ test('www production still prefers the production Convex deployment', () => {
     prefersDevConvexUrl({
       NODE_ENV: 'production',
       VERCEL_ENV: 'production',
-      NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+      NEXT_PUBLIC_APP_URL: 'https://overlay.works',
     }),
     false,
   )
@@ -131,7 +131,7 @@ test('www production still prefers the production Convex deployment', () => {
   const resolved = resolveConvexUrl({
     NODE_ENV: 'production',
     VERCEL_ENV: 'production',
-    NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+    NEXT_PUBLIC_APP_URL: 'https://overlay.works',
     DEV_NEXT_PUBLIC_CONVEX_URL: DEPLOYMENT,
     NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
   })

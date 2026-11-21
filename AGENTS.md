@@ -109,6 +109,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/compact-api-route-catalog.md` | Any change to a web API route's existence or exported HTTP methods. Keep it synchronized with the full route catalog. |
 | `internal/develop/customization.md` | Any change to theming, settings panels, or workspace configuration. |
 | `internal/develop/desktop-web-shell.md` | Any change to the native desktop bridge, desktop settings, panel surfaces, migration or desktop QA/release contract. |
+| `internal/develop/private-threads.md` | Any change to private threads (Cloud sync off): the `localThreads` bridge, the Agent Host `private` command and its storage, model keys, folder rules, or how the agent page renders private threads. |
 | `internal/develop/interface-design.md` | Any change to shared UI controls, selection layouts, or editor save patterns. |
 | `docs/developer/contribute/local-integrations.mdx` | Any change to local integration setup, connector configuration, or OAuth flow. |
 | `internal/develop/traversing-agent-conversations.md` | Any change to how Devin CLI or Codex sessions are stored/queried, or new query patterns for extracting conversation data from `sessions.db` or Codex JSONL files. |

@@ -13,12 +13,12 @@ import {
 
 test('the OAuth redirect URI is stable regardless of trailing slashes', () => {
   assert.equal(
-    mcpOAuthRedirectUri('https://www.getoverlay.io'),
-    'https://www.getoverlay.io/api/v1/mcps/oauth/callback',
+    mcpOAuthRedirectUri('https://overlay.works'),
+    'https://overlay.works/api/v1/mcps/oauth/callback',
   )
   assert.equal(
-    mcpOAuthRedirectUri('https://www.getoverlay.io/'),
-    'https://www.getoverlay.io/api/v1/mcps/oauth/callback',
+    mcpOAuthRedirectUri('https://overlay.works/'),
+    'https://overlay.works/api/v1/mcps/oauth/callback',
   )
 })
 

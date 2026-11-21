@@ -40,7 +40,7 @@ async function main() {
         'Generated from the overlay-web route boundary registry. This first-pass reference documents stable route inventory and request shapes.',
     },
     servers: [
-      { url: 'https://getoverlay.io', description: 'Hosted Overlay web app' },
+      { url: 'https://overlay.works', description: 'Hosted Overlay web app' },
       { url: 'http://localhost:3000', description: 'Local development web app' },
     ],
     tags,

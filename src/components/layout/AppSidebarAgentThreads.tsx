@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, type ComponentProps } from 'react'
-import { Archive, Workflow } from 'lucide-react'
+import { Archive, CloudOff, Workflow } from 'lucide-react'
+import { isPrivateThreadId } from '@/shared/agents/private-threads'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
 import { ThreadPullRequests } from './sidebar/ThreadPullRequests'
@@ -78,6 +79,8 @@ export function AgentThreadRows({
     <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
       {shownThreads.map((thread) => {
         const active = activeConversationId === thread.conversationId
+        // A private thread lives only on this computer: no prefetch, and it is deleted from its own menu, not archived.
+        const isPrivate = isPrivateThreadId(thread.conversationId)
         // Idle and reviewed threads are plain rows: no icon, and no status in their label.
         const raw = statuses.get(thread.conversationId)
         const status = raw === 'idle' || raw === 'completed' ? undefined : raw
@@ -89,19 +92,20 @@ export function AgentThreadRows({
               aria-label={status ? `${thread.title}, ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               title={status ? `${thread.title} · ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               onClick={() => onOpenThread(agent, thread.conversationId)}
-              onPointerEnter={() => { if (!active) prefetch.intend({ kind: 'room', conversationId: thread.conversationId }) }}
+              onPointerEnter={() => { if (!active && !isPrivate) prefetch.intend({ kind: 'room', conversationId: thread.conversationId }) }}
               onPointerLeave={prefetch.cancel}
-              onFocus={() => { if (!active) prefetch.intend({ kind: 'room', conversationId: thread.conversationId }) }}
+              onFocus={() => { if (!active && !isPrivate) prefetch.intend({ kind: 'room', conversationId: thread.conversationId }) }}
               onBlur={prefetch.cancel}
               className={`agent-thread-button min-w-0 flex-1 gap-[7px] ${thread.pullRequests?.length ? 'pr-1' : 'pr-8'}`}
             >
               <span className="agent-thread-icon"><ThreadActivityIndicator status={status} /></span>
               <span className="flex-1 truncate">{thread.title}</span>
+              {isPrivate ? <CloudOff size={12} strokeWidth={1.75} aria-label="Not synced" className="shrink-0 text-(--muted-light)" /> : null}
             </ThreadButton>
             {thread.pullRequests?.length ? <div className="mr-8 shrink-0">
               <ThreadPullRequests pullRequests={thread.pullRequests} />
             </div> : null}
-            <SidebarMenuAction
+            {isPrivate ? null : <SidebarMenuAction
               aria-label="Archive thread"
               title="Archive thread"
               // Shown by hovering or focusing this thread only, not the agent that contains it.
@@ -112,7 +116,7 @@ export function AgentThreadRows({
               }}
             >
               <Archive aria-hidden />
-            </SidebarMenuAction>
+            </SidebarMenuAction>}
           </SidebarMenuSubItem>
         )
       })}

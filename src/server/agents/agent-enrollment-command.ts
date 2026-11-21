@@ -1,4 +1,4 @@
-export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.5.0'
+export const OVERLAY_AGENT_HOST_PACKAGE_VERSION = '0.6.0'
 export const OVERLAY_AGENT_HOST_PACKAGE_SPEC = `@layernorm/overlay-agent-host@${OVERLAY_AGENT_HOST_PACKAGE_VERSION}`
 export const OVERLAY_AGENT_HOST_NODE_SPEC = 'node@24'
 

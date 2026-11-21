@@ -26,7 +26,7 @@ function tool(name: string, toolOutput: unknown, toolInput: Record<string, unkno
 
 test('Overlay file URLs resolve to their file id; other links do not', () => {
   assert.equal(fileIdFromContentHref('/api/v1/files/abc%3A1/content'), 'abc:1')
-  assert.equal(fileIdFromContentHref('https://getoverlay.io/api/v1/files/abc/content?x=1'), 'abc')
+  assert.equal(fileIdFromContentHref('https://overlay.works/api/v1/files/abc/content?x=1'), 'abc')
   assert.equal(fileIdFromContentHref('https://example.com/pic.png'), null)
   assert.equal(fileIdFromContentHref('/api/v1/files/abc'), null)
 })
@@ -48,7 +48,7 @@ test('a turn shows each created file once: inline where embedded, in the strip o
 test('a finished reply that only links to its video still shows the video card', () => {
   const blocks: AssistantVisualBlock[] = [
     tool('computer_publish_file', { success: true, artifact: { fileId: 'vid1' } }),
-    { kind: 'text', text: 'Version 1 is done. **Video:** [film.mp4](https://getoverlay.io/api/v1/files/vid1/content)' },
+    { kind: 'text', text: 'Version 1 is done. **Video:** [film.mp4](https://overlay.works/api/v1/files/vid1/content)' },
   ]
   assert.deepEqual(collectCreatedFileIds(blocks), ['vid1'])
 })

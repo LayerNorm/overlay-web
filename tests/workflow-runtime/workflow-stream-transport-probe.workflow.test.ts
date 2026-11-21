@@ -50,7 +50,7 @@ test('compiled probe emits the fixed Unicode chunks in order and completes', asy
 test('compiled probe rejects outside Preview without emitting stream chunks', async () => {
   process.env.VERCEL_ENV = 'production'
   process.env.OVERLAY_DEPLOYMENT_ENV = 'production'
-  process.env.NEXT_PUBLIC_APP_URL = 'https://www.getoverlay.io'
+  process.env.NEXT_PUBLIC_APP_URL = 'https://overlay.works'
   try {
     const run = await start(workflowStreamTransportProbe, [])
     const reader = run.getReadable().getReader()

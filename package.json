@@ -155,7 +155,7 @@
     "test:jwt": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/qa/smoke-jwt.ts",
     "test:r2:connectivity": "node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-connectivity.ts",
     "test:r2:presign": "node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-presign.ts",
-    "test:r2:presign:prod-origin": "R2_CORS_ORIGIN=https://www.getoverlay.io node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-presign.ts",
+    "test:r2:presign:prod-origin": "R2_CORS_ORIGIN=https://overlay.works node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-presign.ts",
     "test:r2:budget": "node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-budget.ts",
     "r2:cors:apply:dev": "npx wrangler r2 bucket cors set overlay-dev --file config/r2-cors.json",
     "test:vault:smoke": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/qa/smoke-vault.ts",

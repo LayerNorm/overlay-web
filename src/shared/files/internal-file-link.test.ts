@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { internalFileIdFromHref } from './internal-file-link'
 
-const origin = 'https://www.getoverlay.io'
+const origin = 'https://overlay.works'
 
 test('Overlay file, Files and Notes links resolve to their file id', () => {
   assert.equal(internalFileIdFromHref('/api/v1/files/abc%3A1/content', origin), 'abc:1')

@@ -16,7 +16,7 @@ test('Preview callback credentials reach only the exact canonical app and retain
   expect(new Headers(init.headers).get('x-vercel-protection-bypass')).toBe('test-bypass')
   expect(new Headers(init.headers).get('x-overlay-service-auth')).toBe('test-signature')
   expect(init.redirect).toBe('error')
-  for (const url of ['https://getoverlay.io/api/internal', 'https://pr-124.preview.getoverlay.io/api/internal',
+  for (const url of ['https://overlay.works/api/internal', 'https://pr-124.preview.getoverlay.io/api/internal',
     'https://pr-123.preview.getoverlay.io.evil.test/', 'https://user:pass@pr-123.preview.getoverlay.io/']) {
     expect(() => appCallbackHeaders(url)).toThrow('own PR app')
   }
@@ -28,7 +28,7 @@ test('Preview callback credentials reach only the exact canonical app and retain
 test('Production callback headers do not acquire Preview hosting credentials', () => {
   vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'production')
   vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', 'test-bypass')
-  expect(appCallbackHeaders('https://getoverlay.io/').has('x-vercel-protection-bypass')).toBe(false)
+  expect(appCallbackHeaders('https://overlay.works/').has('x-vercel-protection-bypass')).toBe(false)
 })
 
 test('Preview outbound delivery requires exact test recipients and HTTPS webhook origins', () => {

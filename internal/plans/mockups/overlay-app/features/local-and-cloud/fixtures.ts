@@ -32,6 +32,8 @@ const work = new Map<string, ThreadWork>(done
   ? [[LOCAL_THREAD_ID, { computer: { kind: 'mac', environmentId: ENVIRONMENT_ID }, folders: [{ source: 'mac', environmentId: ENVIRONMENT_ID, path: `${HOME}/code/northwind-web` }] }]]
   : [])
 
+/** Lets another feature mockup add its own thread's computer and folder. */
+export const addThreadWork = (conversationId: string, next: ThreadWork) => work.set(conversationId, next)
 const started = (conversationId: string) => (ROOMS.find((room) => room.id === conversationId)?.messages.length ?? 0) > 0
 const usable = () => environments.filter((environment) => environment.status !== 'pending' && environment.status !== 'revoked')
 

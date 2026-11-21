@@ -9,7 +9,7 @@ import { NativeTitleTooltips } from "@/components/providers/NativeTitleTooltips"
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://getoverlay.io"),
+  metadataBase: new URL("https://overlay.works"),
   title: {
     default: "Overlay: Enabling self-driving companies with AI employees",
     template: "%s | Overlay",
@@ -61,12 +61,12 @@ export const metadata: Metadata = {
     description:
       "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, in one shared workspace on the web and desktop.",
     type: "website",
-    url: "https://getoverlay.io",
+    url: "https://overlay.works",
     siteName: "Overlay",
     locale: "en_US",
     images: [
       {
-        url: "https://getoverlay.io/assets/overlay-share-linkedin-thumb.png",
+        url: "https://overlay.works/assets/overlay-share-linkedin-thumb.png",
         width: 1200,
         height: 627,
         alt: "Overlay: The control plane for AI employees",
@@ -78,7 +78,7 @@ export const metadata: Metadata = {
     title: "Overlay: Enabling self-driving companies with AI employees",
     description:
       "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, in one shared workspace on the web and desktop.",
-    images: ["https://getoverlay.io/assets/overlay-share-linkedin-thumb.png"],
+    images: ["https://overlay.works/assets/overlay-share-linkedin-thumb.png"],
   },
 };
 

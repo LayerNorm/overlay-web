@@ -42,7 +42,7 @@ const SANS = `-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-s
 
 export function renderLifecycleEmail(
   event: LifecycleEmailEvent,
-  appUrl = 'https://getoverlay.io',
+  appUrl = 'https://overlay.works',
 ): LifecycleEmailContent {
   const content = contentForEvent(event, appUrl)
   const preferencesUrl = content.showPreferences ? appPath(appUrl, '/app/settings') : null
@@ -322,16 +322,15 @@ function appPath(appUrl: string, path: string): string {
   try {
     return new URL(path, appUrl).toString()
   } catch {
-    return `https://getoverlay.io${path.startsWith('/') ? path : `/${path}`}`
+    return `https://overlay.works${path.startsWith('/') ? path : `/${path}`}`
   }
 }
 
 function siteOrigin(appUrl: string): string {
   try {
-    const origin = new URL(appUrl).origin
-    return origin === 'https://getoverlay.io' ? 'https://www.getoverlay.io' : origin
+    return new URL(appUrl).origin
   } catch {
-    return 'https://www.getoverlay.io'
+    return 'https://overlay.works'
   }
 }
 
@@ -382,7 +381,7 @@ function renderHtml(content: EmailContent, originUrl: string, preferencesUrl: st
             <td style="padding:18px 6px 0;">
               <div style="font-family:${SANS};font-size:11px;line-height:1.7;color:#a1a1aa;">
                 ${reason}${preferencesLink}<br>
-                LayerNorm Inc &middot; <a href="${escapeHtml(siteOrigin(originUrl))}" style="color:#a1a1aa;text-decoration:underline;text-underline-offset:2px;">getoverlay.io</a>
+                LayerNorm Inc &middot; <a href="${escapeHtml(siteOrigin(originUrl))}" style="color:#a1a1aa;text-decoration:underline;text-underline-offset:2px;">overlay.works</a>
               </div>
             </td>
           </tr>

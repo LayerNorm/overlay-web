@@ -104,9 +104,8 @@ installation" off: with it on, GitHub always returns installs to the first callb
 these settings the picker lists no repositories and connecting reports that GitHub isn't set up.
 
 Production and PR previews use separate apps, so preview builds never hold a credential for customers' repositories:
-`overlay-agents` (callbacks `https://www.getoverlay.io/api/v1/github/callback` and
-`https://getoverlay.io/api/v1/github/callback`, because production's app URL is the bare domain that redirects to `www`
-and the sign-in must return to exactly the `redirect_uri` it was sent; Production settings) and
+`overlay-agents` (callback `https://overlay.works/api/v1/github/callback`, production's app URL, because the
+sign-in must return to exactly the `redirect_uri` it was sent; Production settings) and
 `overlay-agents-preview` (callback `https://preview.getoverlay.io/api/v1/github/callback` with wildcard matching, so
 every `pr-<n>.preview.getoverlay.io` is accepted; Preview settings; installed only on LayerNorm test repositories).
 

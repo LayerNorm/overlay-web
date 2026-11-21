@@ -10,7 +10,7 @@ People connect their own apps from **Settings → Connected apps**; the user-fac
 ## Endpoint
 
 ```text
-https://www.getoverlay.io/api/mcp
+https://overlay.works/api/mcp
 ```
 
 Use the `www` host. The bare domain redirects, and strict OAuth clients compare the resource they were given with the address they called. A self-hosted instance serves the same path on its own host.
@@ -51,7 +51,7 @@ For a client that cannot open a browser, the person creates a token in **Setting
 
 ```http
 POST /api/mcp HTTP/1.1
-Host: www.getoverlay.io
+Host: overlay.works
 Authorization: Bearer ovmcu_p_…
 Content-Type: application/json
 Accept: application/json, text/event-stream

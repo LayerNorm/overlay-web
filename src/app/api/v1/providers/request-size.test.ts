@@ -5,7 +5,7 @@ import { NextRequest } from 'next/server'
 import { requestExceedsByteLimit } from './request-size'
 
 test('rejects oversized provider bodies without relying on Content-Length', async () => {
-  const request = new NextRequest('https://getoverlay.io/api/v1/providers/connections', {
+  const request = new NextRequest('https://overlay.works/api/v1/providers/connections', {
     method: 'POST',
     body: JSON.stringify({ apiKey: 'x'.repeat(128) }),
     headers: { 'content-type': 'application/json' },
@@ -17,7 +17,7 @@ test('rejects oversized provider bodies without relying on Content-Length', asyn
 
 test('preserves valid provider request bodies for downstream parsing', async () => {
   const body = JSON.stringify({ providerId: 'groq' })
-  const request = new NextRequest('https://getoverlay.io/api/v1/providers/connections', {
+  const request = new NextRequest('https://overlay.works/api/v1/providers/connections', {
     method: 'POST',
     body,
     headers: { 'content-type': 'application/json' },

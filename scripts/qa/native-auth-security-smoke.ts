@@ -64,7 +64,7 @@ async function main() {
 
   const badProvider = await post('/api/auth/native/authorize', {
     provider: 'GitHubOAuth',
-    redirectUri: 'https://www.getoverlay.io/auth/native/callback',
+    redirectUri: 'https://overlay.works/auth/native/callback',
     codeChallenge: validChallenge,
     state: validState,
   })
@@ -72,7 +72,7 @@ async function main() {
 
   const badState = await post('/api/auth/native/authorize', {
     provider: 'GoogleOAuth',
-    redirectUri: 'https://www.getoverlay.io/auth/native/callback',
+    redirectUri: 'https://overlay.works/auth/native/callback',
     codeChallenge: validChallenge,
     state: 'bad state',
   })
@@ -80,7 +80,7 @@ async function main() {
 
   const universalLinkRedirect = await post('/api/auth/native/authorize', {
     provider: 'GoogleOAuth',
-    redirectUri: 'https://www.getoverlay.io/auth/native/callback',
+    redirectUri: 'https://overlay.works/auth/native/callback',
     codeChallenge: validChallenge,
     state: validState,
   })
@@ -88,7 +88,7 @@ async function main() {
 
   const universalLinkLookalike = await post('/api/auth/native/authorize', {
     provider: 'GoogleOAuth',
-    redirectUri: 'https://www.getoverlay.io/auth/native/callback/evil',
+    redirectUri: 'https://overlay.works/auth/native/callback/evil',
     codeChallenge: validChallenge,
     state: validState,
   })
@@ -96,7 +96,7 @@ async function main() {
 
   const preseededUniversalLinkRedirect = await post('/api/auth/native/authorize', {
     provider: 'GoogleOAuth',
-    redirectUri: 'https://www.getoverlay.io/auth/native/callback?code=preseeded&state=preseeded',
+    redirectUri: 'https://overlay.works/auth/native/callback?code=preseeded&state=preseeded',
     codeChallenge: validChallenge,
     state: validState,
   })
@@ -104,7 +104,7 @@ async function main() {
 
   const fragmentUniversalLinkRedirect = await post('/api/auth/native/authorize', {
     provider: 'GoogleOAuth',
-    redirectUri: 'https://www.getoverlay.io/auth/native/callback#code=preseeded',
+    redirectUri: 'https://overlay.works/auth/native/callback#code=preseeded',
     codeChallenge: validChallenge,
     state: validState,
   })

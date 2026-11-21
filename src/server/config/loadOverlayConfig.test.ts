@@ -221,7 +221,7 @@ test('production env ignores dev WorkOS fallback variables', async () => {
   const config = await load({
     env: {
       OVERLAY_DEPLOYMENT_ENV: 'production',
-      NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+      NEXT_PUBLIC_APP_URL: 'https://overlay.works',
       NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
       CONVEX_DEPLOYMENT: 'prod:colorful-chickadee-419',
       WORKOS_CLIENT_ID: 'client_prod',
@@ -253,7 +253,7 @@ test('Vercel production keeps production env precedence even with Vercel app URL
     env: {
       VERCEL_ENV: 'production',
       VERCEL_URL: 'overlay-landing-git-main-example.vercel.app',
-      NEXT_PUBLIC_APP_URL: 'https://www.getoverlay.io',
+      NEXT_PUBLIC_APP_URL: 'https://overlay.works',
       NEXT_PUBLIC_CONVEX_URL: 'https://colorful-chickadee-419.convex.cloud',
       DEV_NEXT_PUBLIC_CONVEX_URL: 'https://different-caiman-77.convex.cloud',
       WORKOS_CLIENT_ID: 'client_prod',

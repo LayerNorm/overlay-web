@@ -101,7 +101,7 @@ export default async function OpengraphImage(
           }}
         >
           <span>Shared file</span>
-          <span>getoverlay.io</span>
+          <span>overlay.works</span>
         </div>
       </div>
     ),

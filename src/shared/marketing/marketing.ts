@@ -4,7 +4,7 @@ export const MARKETING_DISCORD_URL = "https://discord.gg/cag4HPkU6Z";
 export const MARKETING_SALES_URL =
   "https://calendar.app.google/9vucWaH2jSE92mzn8";
 /** Canonical documentation surface served from the primary Overlay domain. */
-export const MARKETING_DOCS_URL = "https://getoverlay.io/docs";
+export const MARKETING_DOCS_URL = "https://overlay.works/docs";
 /** Private deployment / design partner inquiries reuse the sales calendar for now. */
 export const MARKETING_DEPLOY_URL = MARKETING_SALES_URL;
 

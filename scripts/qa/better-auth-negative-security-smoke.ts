@@ -78,7 +78,7 @@ async function runHttpFailureChecks() {
     method: 'POST',
     body: JSON.stringify({
       provider: 'GoogleOAuth',
-      redirectUri: 'https://www.getoverlay.io/auth/native/callback',
+      redirectUri: 'https://overlay.works/auth/native/callback',
       codeChallenge: 'B'.repeat(43),
       state: 'C'.repeat(43),
     }),

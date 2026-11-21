@@ -9,7 +9,7 @@ ENV NEXT_OUTPUT_MODE=standalone
 # be repointed at a different Convex URL or app origin at runtime. Defaults
 # point the published image at Overlay's hosted backend.
 ARG NEXT_PUBLIC_CONVEX_URL=https://colorful-chickadee-419.convex.cloud
-ARG NEXT_PUBLIC_APP_URL=https://getoverlay.io
+ARG NEXT_PUBLIC_APP_URL=https://overlay.works
 ENV NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL}
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 

@@ -38,6 +38,8 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { isPrivateThreadId } from '@/shared/agents/private-threads'
+import { PrivateThreadExperience } from '@/features/chat/components/private-threads/PrivateThreadExperience'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
@@ -221,6 +223,22 @@ function useRequestedAgentScopeRedirect(args: {
   }, [agentId, buildHref, pathname, requestedAgent, requestedScope, router, scope, search])
 }
 
+/** A private thread lives only in the desktop app; its id never reaches a Convex query. */
+function threadIdsFrom(requestedThreadId: string | null) {
+  const privateThreadId = isPrivateThreadId(requestedThreadId) ? requestedThreadId : null
+  return { requestedThreadId, privateThreadId, conversationId: privateThreadId ? null : requestedThreadId }
+}
+
+function privateThreadView(args: {
+  privateThreadId: string | null
+  detailState: ReturnType<typeof agentDetailRouteState>
+  agent: WorkspaceAgentDirectoryItem | null
+  workspaceId: string | null
+}) {
+  if (!args.privateThreadId || args.detailState !== 'ready' || !args.agent || !args.workspaceId) return null
+  return <PrivateThreadExperience key={args.privateThreadId} threadId={args.privateThreadId} workspaceId={args.workspaceId} agent={args.agent} />
+}
+
 function agentDetailRouteState(args: {
   conversationId: string | null
   agentId: string | null
@@ -260,7 +278,7 @@ function AgentConversationWorkspaceContent() {
   const searchParams = useSearchParams()
   const { activeWorkspaceId } = useWorkspace()
   const agentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
-  const conversationId = searchParams?.get('id') ?? null
+  const { requestedThreadId, privateThreadId, conversationId } = threadIdsFrom(searchParams?.get('id') ?? null)
   const panel = useThreadPanel({ conversationId, threadOpen: Boolean(agentId && conversationId) })
   const [editorMode, setEditorMode] = useState<EditorMode>(null)
   const [panelMode, setPanelModeState] = useState<'dialog' | 'side'>(() => getAgentEditorPanelMode())
@@ -345,7 +363,7 @@ function AgentConversationWorkspaceContent() {
   const requestedScope = requestedAgentScope(requestedAgent, viewerPrincipalId)
 
   useAgentAutoOpen({
-    conversationId,
+    conversationId: requestedThreadId,
     activeWorkspaceId,
     agentId,
     directory,
@@ -404,7 +422,7 @@ function AgentConversationWorkspaceContent() {
   )
 
   const detailState = agentDetailRouteState({
-    conversationId,
+    conversationId: requestedThreadId,
     agentId,
     activeWorkspaceId,
     loadError,
@@ -425,6 +443,9 @@ function AgentConversationWorkspaceContent() {
     )
   }
   if (detailState === 'pending' || threadScope.pending) return null
+
+  const privateThread = privateThreadView({ privateThreadId, detailState, agent: requestedAgent, workspaceId: activeWorkspaceId })
+  if (privateThread) return privateThread
 
   if (conversationId && threadScope.allowed) {
     const agentSidebar = agentId && panel.open ? (

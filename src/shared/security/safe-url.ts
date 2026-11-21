@@ -39,7 +39,7 @@ function shouldRedactQueryKey(key: string): boolean {
 
 export function redactUrlForTelemetry(raw: string): string {
   try {
-    const parsed = new URL(raw, typeof window !== 'undefined' ? window.location.origin : 'https://getoverlay.io')
+    const parsed = new URL(raw, typeof window !== 'undefined' ? window.location.origin : 'https://overlay.works')
     for (const key of Array.from(parsed.searchParams.keys())) {
       if (shouldRedactQueryKey(key)) {
         parsed.searchParams.set(key, '[redacted]')

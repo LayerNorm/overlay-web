@@ -11,7 +11,7 @@
   "logo": {
     "light": "/assets/overlay-lockup-light.svg",
     "dark": "/assets/overlay-lockup-dark.svg",
-    "href": "https://getoverlay.io"
+    "href": "https://overlay.works"
   },
   "favicon": "/assets/favicon.png",
   "appearance": {
@@ -35,17 +35,17 @@
     "links": [
       {
         "label": "Pricing",
-        "href": "https://getoverlay.io/pricing"
+        "href": "https://overlay.works/pricing"
       },
       {
         "label": "Blog",
-        "href": "https://getoverlay.io/blog"
+        "href": "https://overlay.works/blog"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Open app",
-      "href": "https://getoverlay.io/app"
+      "href": "https://overlay.works/app"
     }
   },
   "footer": {
