@@ -13,9 +13,8 @@ test('Phase 5 enables the named Agents product surface', () => {
   assert.equal(flags.get('channels'), true)
   assert.equal(flags.get('agents'), true)
   assert.equal(overlayAppConfig.brand?.homeHref, '/app/work')
-  // Work is home and sits first in the rail; Agents follows it.
-  assert.equal(overlayAppConfig.navigation?.[0]?.id, 'work')
-  assert.equal(overlayAppConfig.navigation?.[1]?.id, 'agents')
+  // Work stays the brand's home; the rail opens on Agents, then Chats, then Work.
+  assert.deepEqual(overlayAppConfig.navigation?.slice(0, 3).map((item) => item.id), ['agents', 'chat', 'work'])
   assert.equal(overlayAppConfig.navigation?.some((item) => item.id === 'agents' && item.href === '/app/agents'), true)
 })
 

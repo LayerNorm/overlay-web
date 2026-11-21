@@ -229,11 +229,17 @@ export function ThreadWorkFooter({ controls, onMakePrivate, switching = false }:
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
-      {local && onMakePrivate ? <CloudSyncChoice synced disabled={connecting || switching} onChoose={(synced) => { if (!synced) onMakePrivate() }} /> : null}
+      <PrivateSwitch shown={local} onMakePrivate={onMakePrivate} disabled={connecting || switching} />
       <span className="flex-1" />
       {folder?.source === 'mac' ? <CopyToFiles controls={controls} /> : null}
     </div>
   )
+}
+
+/** Cloud sync, offered only for a new thread on this computer in a desktop app that can run private threads. */
+function PrivateSwitch({ shown, onMakePrivate, disabled }: { shown: boolean; onMakePrivate?: () => void; disabled: boolean }) {
+  if (!shown || !onMakePrivate) return null
+  return <CloudSyncChoice synced disabled={disabled} onChoose={(synced) => { if (!synced) onMakePrivate() }} />
 }
 
 function Empty({ children }: { children: ReactNode }) {

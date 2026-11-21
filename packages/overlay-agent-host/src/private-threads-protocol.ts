@@ -1,4 +1,5 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
+import { isAbsolute } from 'node:path'
 import { z } from 'zod'
 
 /**
@@ -26,7 +27,7 @@ export type PrivateModelProvider = (typeof privateModelProviders)[number]
 
 const id = z.string().trim().min(1).max(200)
 const owner = z.object({ userId: id, workspaceId: id }).strict()
-const folder = z.string().trim().min(1).max(4096).startsWith('/')
+const folder = z.string().trim().min(1).max(4096).refine(isAbsolute, 'Folders must be absolute paths.')
 
 export const privateRequestSchema = z.discriminatedUnion('method', [
   z.object({ method: z.literal('list'), owner }).strict(),
