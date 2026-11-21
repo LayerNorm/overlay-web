@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, Maximize2, X } from 'lucide-react'
+import { ArrowLeft, ExternalLink, X } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import { CanonicalNotebookEditor, type NotebookEditorHeaderRenderProps } from '@overlay/modules-react/notes'
 import { useLiveNote } from '@/hooks/use-file-tree'
@@ -24,7 +24,7 @@ function NotePanelHeader({
   onClose(): void
 }) {
   return (
-    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-(--border) px-2">
+    <div className="flex h-12 shrink-0 items-center gap-1 px-2">
       <Button variant="ghost" size="icon-sm" type="button" aria-label="Back to Library" onClick={onBack}>
         <ArrowLeft size={16} />
       </Button>
@@ -43,7 +43,7 @@ function NotePanelHeader({
         </span>
       </span>
       <Button variant="ghost" size="icon-sm" type="button" aria-label="Open in Files" title="Open in Files" onClick={onOpenInFiles}>
-        <Maximize2 size={15} />
+        <ExternalLink size={15} />
       </Button>
       <Button variant="ghost" size="icon-sm" type="button" aria-label="Close" onClick={onClose}>
         <X size={16} />

@@ -234,6 +234,7 @@ export function DirectMessageExperience({
   onExternalRightPanelResize,
   onExternalRightPanelClose,
   onOpenLink,
+  onOpenFile,
   guided,
 }: {
   conversationId: string;
@@ -250,6 +251,8 @@ export function DirectMessageExperience({
   onExternalRightPanelClose?: () => void;
   /** Opens a link from the transcript somewhere of the caller's choosing (an agent thread's panel), instead of the room's own link panel. */
   onOpenLink?: (url: string, title?: string) => void;
+  /** Shows an Overlay file linked from a reply beside the conversation; defaults to the file preview panel. */
+  onOpenFile?: (fileId: string, name: string) => void;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
   recordRender('DirectMessageExperience')
@@ -339,6 +342,7 @@ export function DirectMessageExperience({
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
         onOpenInOverlay={onOpenLink ?? panels.openLinkPreview}
+        onOpenFile={onOpenFile ?? ((fileId, name) => { void panels.openFilePreview(name, [fileId]) })}
       />
       <RoomRealtimeSubscriptions
         conversationId={conversationId}

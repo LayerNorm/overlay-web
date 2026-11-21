@@ -393,8 +393,8 @@ function VideoViewer({ name, source }: { name: string; source: string }) {
   const mediaUrl = resolveSafeViewerUrl(source, 'media')
   if (!mediaUrl) return <UnavailablePreview name={name} />
   return (
-    <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden bg-black p-4">
-      <video controls src={mediaUrl} className="max-h-full max-w-full" />
+    <div className="overlay-file-viewer overlay-file-viewer--video flex flex-1 items-center justify-center overflow-hidden p-4">
+      <video controls src={mediaUrl} className="max-h-full max-w-full rounded-lg" />
     </div>
   )
 }
@@ -689,7 +689,7 @@ export function OutputViewer({
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex min-h-0 flex-1 flex-col">
         {(metadata.length > 0 || prompt) ? (
-          <div className="shrink-0 border-b border-(--border) px-6 py-3">
+          <div className="shrink-0 px-6 py-3">
             {metadata.length > 0 ? (
               <p className="text-xs text-(--muted-light)">{metadata.join(' / ')}</p>
             ) : null}
