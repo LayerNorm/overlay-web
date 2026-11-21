@@ -13,6 +13,7 @@ import { withPreviewHostingAccess } from './preview-hosting.js'
 import { AgentHostRuntime } from './runtime.js'
 import { assertSupportedNodeVersion } from './runtime-version.js'
 import { HttpAgentControlPlaneClient } from './transport.js'
+import { servePrivateThreads } from './private-threads-ipc.js'
 
 const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.5.0'
 
@@ -20,7 +21,11 @@ assertSupportedNodeVersion()
 
 const [command, ...args] = process.argv.slice(2)
 const configPath = option(args, '--config')
-if (command === 'connect') {
+if (command === 'private') {
+  const stateDirectory = option(args, '--state-dir')
+  if (!stateDirectory) usage()
+  await servePrivateThreads(stateDirectory)
+} else if (command === 'connect') {
   await connectFromArgs(args)
 } else if (command === 'service') {
   const action = args[0]
@@ -139,7 +144,7 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--local-tools] [--state-dir path] [--name name] [--kind local|vps|external] [--hosting-auth-file path] [--run]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--local-tools] [--state-dir path] [--name name] [--kind local|vps|external] [--hosting-auth-file path] [--run]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n  overlay-agent-host private --state-dir /absolute/path (started by Overlay Desktop)\n')
   process.exit(2)
 }
 
