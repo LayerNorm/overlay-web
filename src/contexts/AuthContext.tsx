@@ -166,6 +166,11 @@ export function AuthBoundary(props: AuthProviderProps) {
   return <AuthProvider {...props} />
 }
 
+/** The session when an AuthProvider is mounted, otherwise null (isolated components and their tests). */
+export function useOptionalAuth() {
+  return useContext(AuthContext) ?? null
+}
+
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {

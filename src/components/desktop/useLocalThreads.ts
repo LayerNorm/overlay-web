@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DesktopBridge, LocalModelKeys, LocalThread } from '@overlay/desktop-bridge'
-import { useAuth } from '@/contexts/AuthContext'
+import { useOptionalAuth } from '@/contexts/AuthContext'
 import { useDesktopBridge } from './DesktopProvider'
 
 /**
@@ -17,8 +17,7 @@ export function useLocalThreadsBridge(): DesktopBridge | null {
 export type LocalThreadOwner = { userId: string; workspaceId: string }
 
 export function useLocalThreadOwner(workspaceId: string | null | undefined): LocalThreadOwner | null {
-  const { user } = useAuth()
-  const userId = user?.id
+  const userId = useOptionalAuth()?.user?.id
   return useMemo(() => (userId && workspaceId ? { userId, workspaceId } : null), [userId, workspaceId])
 }
 
