@@ -8,7 +8,7 @@ types.
 Install the matching protocol and host versions together:
 
 ```sh
-npm install @layernorm/overlay-agent-bridge-protocol@0.5.0 @layernorm/overlay-agent-host@0.5.0
+npm install @layernorm/overlay-agent-bridge-protocol@0.6.0 @layernorm/overlay-agent-host@0.6.0
 ```
 
 See the repository's `internal/develop/local-computer.md` for the trust and compatibility policy.

@@ -50,6 +50,7 @@ import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
 import { hasThreadActivity } from '@/shared/agents/thread-activity'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMutation, useQueries } from 'convex/react'
+import { useLocalThreadList } from '@/components/desktop/useLocalThreads'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -79,6 +80,8 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
 
 /** Live thread lists for the agents whose rows are open. Each is its own Convex subscription. */
 function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]) {
+  // Private threads come from the desktop app, never from Convex (internal/develop/private-threads.md).
+  const { threads: privateThreads } = useLocalThreadList(workspaceId)
   const agentIdsKey = JSON.stringify(agentIds)
   const queries = useMemo(() => {
     const ids: string[] = JSON.parse(agentIdsKey)
@@ -107,14 +110,18 @@ function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]
     const result = results[agentId] as WorkspaceAgentBundle | null | undefined | Error
     if (result === undefined) return [agentId, 'loading']
     if (!result || result instanceof Error) return [agentId, 'error']
+    const synced = result.threads.map((thread) => ({
+      ...thread,
+      title: mergeChatTitle(titleOverrides[thread.conversationId] ?? thread.title, thread.title),
+    }))
+    const local = (privateThreads ?? []).filter((thread) => thread.agentId === agentId).map((thread) => ({
+      conversationId: thread.id, title: thread.title, lastModified: thread.updatedAt, createdAt: thread.createdAt, isMain: false,
+    }))
     return [agentId, {
       ...result,
-      threads: result.threads.map((thread) => ({
-        ...thread,
-        title: mergeChatTitle(titleOverrides[thread.conversationId] ?? thread.title, thread.title),
-      })),
+      threads: local.length ? [...synced, ...local].sort((a, b) => b.lastModified - a.lastModified) : synced,
     }]
-  })), [queries, results, titleOverrides])
+  })), [privateThreads, queries, results, titleOverrides])
   return { bundles }
 }
 

@@ -36,6 +36,7 @@ import {
 import type { NativeThreadSafety } from './chat/useNativeThreadSafety'
 import { LocalThreadNotice, ThreadFolderMenuItems, ThreadWorkFooter } from './thread-work/ThreadWorkFooter'
 import { useThreadWork } from './thread-work/useThreadWork'
+import { usePrivateThreadSwitch } from './private-threads/usePrivateThreadSwitch'
 import { RoomTranscriptProvider } from '@/components/providers/RoomTranscriptProvider'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { useForwardedHandlers } from './chat-composer-memo'
@@ -284,9 +285,20 @@ export function DirectMessageExperience({
   })
   // Stable while the thread's work settings are unchanged, so a streamed reply does not re-render the composer.
   const threadWorkControls = useForwardedHandlers(threadWork, NO_RENDER_FUNCTIONS)
+  const privateSwitch = usePrivateThreadSwitch(activeWorkspaceId)
+  const privateFolder = threadWork.folder?.source === 'mac' ? threadWork.folder.path : null
+  const { available: privateAvailable, makePrivate: switchToPrivate } = privateSwitch
+  const makePrivate = useMemo(
+    () => privateAvailable && agentId
+      ? () => void switchToPrivate({ agentId, conversationId, folder: privateFolder })
+      : undefined,
+    [agentId, conversationId, privateAvailable, privateFolder, switchToPrivate],
+  )
   const threadWorkFooter = useMemo(
-    () => threadWorkEnabled ? <ThreadWorkFooter controls={threadWorkControls} /> : undefined,
-    [threadWorkControls, threadWorkEnabled],
+    () => threadWorkEnabled
+      ? <ThreadWorkFooter controls={threadWorkControls} onMakePrivate={makePrivate} switching={privateSwitch.switching} />
+      : undefined,
+    [makePrivate, privateSwitch.switching, threadWorkControls, threadWorkEnabled],
   )
   const threadFolderMenuItems = useMemo(
     () => threadWorkEnabled

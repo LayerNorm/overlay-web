@@ -9,6 +9,7 @@ import {
 import { folderName } from '@/components/desktop/this-computer'
 import { folderKey, folderLabel, type ThreadFolder } from '@/shared/agents/thread-work'
 import type { ThreadWorkControls } from './useThreadWork'
+import { CloudSyncChoice } from '../private-threads/CloudSyncChoice'
 
 /**
  * An agent thread's computer and folder (internal/develop/thread-folders.md). The desktop app shows both under the
@@ -114,7 +115,12 @@ function useFolderChoices(controls: ThreadWorkControls): Array<{ label: string; 
   ]
 }
 
-export function ThreadWorkFooter({ controls }: { controls: ThreadWorkControls }) {
+export function ThreadWorkFooter({ controls, onMakePrivate, switching = false }: {
+  controls: ThreadWorkControls
+  /** Cloud sync off: turns this new thread on this computer into a private one (internal/develop/private-threads.md). */
+  onMakePrivate?: () => void
+  switching?: boolean
+}) {
   const router = useRouter()
   const groups = useFolderChoices(controls)
   useGitHubConnectResult()
@@ -223,10 +229,17 @@ export function ThreadWorkFooter({ controls }: { controls: ThreadWorkControls })
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <PrivateSwitch shown={local} onMakePrivate={onMakePrivate} disabled={connecting || switching} />
       <span className="flex-1" />
       {folder?.source === 'mac' ? <CopyToFiles controls={controls} /> : null}
     </div>
   )
+}
+
+/** Cloud sync, offered only for a new thread on this computer in a desktop app that can run private threads. */
+function PrivateSwitch({ shown, onMakePrivate, disabled }: { shown: boolean; onMakePrivate?: () => void; disabled: boolean }) {
+  if (!shown || !onMakePrivate) return null
+  return <CloudSyncChoice synced disabled={disabled} onChoose={(synced) => { if (!synced) onMakePrivate() }} />
 }
 
 function Empty({ children }: { children: ReactNode }) {

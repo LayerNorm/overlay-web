@@ -107,6 +107,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `local-and-cloud.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
   thread), `local-and-cloud.html?setup=done#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalcheckout0000000`
   (a local thread; add `&host=web` to see it read-only) or `local-and-cloud.html#/app/settings?section=desktop`.
+- `private-threads.html` (feature `private-threads`): Phase 0 of `internal/plans/LOCAL_PRIVATE_THREADS_PLAN.md`,
+  built on the Local and Cloud sample data. A new thread on This computer gets a third control, Cloud sync (Synced or
+  Not synced); a thread that is not synced shows "Not synced" once started, a small crossed-out cloud in the thread
+  list, and Sync to cloud (one way, confirmed) in its options menu. Browsers never list it (`?host=web`). Open
+  `private-threads.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaslocalnew000000000000` (a new
+  thread) or `private-threads.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlasprivatestripe0000000`
+  (a thread that is not synced). Delete it when the design ships.
 - `agent-sidebar-panels.html` (feature `agent-sidebar-panels`): the agent sidebar changes, now in production; the
   feature only adds fixtures. The right panel opens
   on the agent's avatar and name with its panels below: Settings first, then Computer (a plain row with its status),
