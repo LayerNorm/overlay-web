@@ -3,7 +3,7 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { Computer } from '@overlay/workspace-contracts'
-import { AgentComputerControlOverlay, AgentComputerTabView } from './AgentComputerTab.parts'
+import { AgentComputerTabView } from './AgentComputerTab.parts'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -144,11 +144,6 @@ test('control actions are disabled while server confirmation is pending', () => 
   const markup = renderComputerTab({ computer, ticketUrl: 'https://computer.example/ticket', controlBusy: true })
   assert.match(markup, /aria-label="Take control"[^>]*disabled/)
   assert.match(markup, /Taking control/)
-  const overlay = renderToStaticMarkup(<AgentComputerControlOverlay
-    computerName="Research" ticketUrl="https://computer.example/ticket" controlBusy onClose={() => {}}
-  />)
-  assert.match(overlay, /aria-label="Back to conversation"[^>]*disabled/)
-  assert.match(overlay, /disabled[^>]*>Releasing control/)
 
   const selfControlled = renderComputerTab({
     computer: { ...computer, controlledByUserId: 'user-1' },
@@ -161,4 +156,16 @@ test('control actions are disabled while server confirmation is pending', () => 
 test('default-agent sleeping computer uses the blinking brand avatar', () => {
   const html = renderComputerTab({ computer: { ...computer, status: 'stopped' }, isDefault: true })
   assert.match(html, /overlay-mark--blink/)
+})
+
+test('taking control streams the computer interactively in the panel with Release control beside it', () => {
+  const html = renderComputerTab({
+    computer: { ...computer, controlledByUserId: 'user-1' },
+    ticketUrl: 'https://computer.example/ticket',
+    controlled: true,
+  })
+  assert.match(html, /data-computer-control/)
+  assert.match(html, /<iframe[^>]*title="[^"]*computer control"/)
+  assert.doesNotMatch(html, /pointer-events-none/)
+  assert.match(html, /Release control/)
 })

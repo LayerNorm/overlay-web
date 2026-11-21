@@ -2,12 +2,13 @@
 
 import type { ReactNode } from 'react'
 import {
-  FileText, Folder, GitBranch, GitCompare, ListChecks, Maximize2, Minimize2, Monitor, Plus, SlidersHorizontal,
+  FileText, Folder, GitBranch, GitCompare, Globe, ListChecks, Maximize2, Minimize2, Monitor, Plus, SlidersHorizontal,
   X, type LucideIcon,
 } from 'lucide-react'
 import type { WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
-import { useChatFilesHost } from '@overlay/chat-react'
+import { LinkPreviewTab, linkTabLabel, useChatFilesHost } from '@overlay/chat-react'
+import { checkLinkEmbeddable } from '@/shared/web/link-preview'
 import type { ThreadPanelKind } from '@/shared/agents/agent-right-sidebar-preferences'
 import {
   activeTab as activeTabOf, closeTab, openPanel, replaceLauncher, selectTab, type ThreadPanelTab, type ThreadPanelTabs,
@@ -95,7 +96,9 @@ function PanelTabButton({ tab, active, compact, agentName, onSelect, onClose }: 
   onSelect(): void
   onClose(): void
 }) {
-  const meta = tab.kind === 'file' ? null : tab.kind === 'new' ? { label: 'New tab', icon: Plus } : PANEL_META[tab.kind]
+  const meta = tab.kind === 'file' ? null
+    : tab.kind === 'link' ? { label: linkTabLabel(tab.url, tab.title), icon: Globe }
+      : tab.kind === 'new' ? { label: 'New tab', icon: Plus } : PANEL_META[tab.kind]
   const Icon = meta?.icon ?? FileText
   const text = tab.kind === 'agent' ? agentName : meta?.label
   return (
@@ -144,6 +147,7 @@ function PanelBody({ tab, onCloseTab, ...props }: ThreadPanelProps & { tab: Thre
     case 'progress': return <ProgressPanel agentName={props.agentName} />
     case 'changes': return <ChangesPanel pullRequests={props.pullRequests} />
     case 'file': return <div className="flex min-h-0 flex-1 flex-col [&>aside]:border-0">{props.renderFile(tab.fileId, onCloseTab)}</div>
+    case 'link': return <LinkPreviewTab key={tab.url} url={tab.url} title={tab.title} onClose={onCloseTab} checkEmbeddable={checkLinkEmbeddable} />
   }
 }
 

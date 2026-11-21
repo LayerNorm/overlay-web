@@ -106,14 +106,17 @@ export function WorkingLine({ blocks }: { blocks: readonly AssistantVisualBlock[
   const step = currentWorkingStep(blocks)
   return (
     <div
-      className="flex min-w-0 items-center gap-2 px-1 py-1 text-[13px] leading-5 text-(--muted)"
+      className="flex min-w-0 items-center gap-2 py-1 pr-1 text-[13px] leading-5 text-(--muted)"
       role="status"
       aria-live="polite"
       aria-busy="true"
       data-loading-presentation="standalone"
       data-working-line
     >
-      <WorkingOrb kind={step.orb} />
+      {/* The lattice sits 5.5px inside its box; pull it back so its first dots line up with the agent's name. */}
+      <span className="-ml-[5.5px] inline-flex">
+        <WorkingOrb kind={step.orb} />
+      </span>
       <span className="min-w-0 truncate">
         <span className="font-medium text-(--foreground)">{step.lead}</span>
         {step.rest ? <span>: {step.rest}</span> : null}

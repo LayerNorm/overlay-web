@@ -233,7 +233,7 @@ export function DirectMessageExperience({
   externalRightPanelWidth,
   onExternalRightPanelResize,
   onExternalRightPanelClose,
-  bodyOverlay,
+  onOpenLink,
   guided,
 }: {
   conversationId: string;
@@ -248,7 +248,8 @@ export function DirectMessageExperience({
   externalRightPanelWidth?: number;
   onExternalRightPanelResize?: (width: number) => void;
   onExternalRightPanelClose?: () => void;
-  bodyOverlay?: ReactNode;
+  /** Opens a link from the transcript somewhere of the caller's choosing (an agent thread's panel), instead of the room's own link panel. */
+  onOpenLink?: (url: string, title?: string) => void;
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
   recordRender('DirectMessageExperience')
@@ -337,7 +338,7 @@ export function DirectMessageExperience({
     <QuestionnaireComposerProvider value={composer.input} readDraft={() => composer.inputRef.current} subscribe={composer.subscribeToInput} disabled={room.nativeThreadSafety.readOnly || shouldDisableQuestionnaireSuggestions(Boolean(guided), Boolean(transcript.surfacePlatform), isRoomAgentResponding(transcript.messages, room.agentResponding))} onChange={(value) => { composer.setInput(value); composer.onComposerInput(value); composer.composerRef.current?.focus() }}>
       <LinkOpenInterceptor
         preference={appSettings.linkOpenPreference}
-        onOpenInOverlay={panels.openLinkPreview}
+        onOpenInOverlay={onOpenLink ?? panels.openLinkPreview}
       />
       <RoomRealtimeSubscriptions
         conversationId={conversationId}
@@ -428,11 +429,6 @@ export function DirectMessageExperience({
             />
             )}
           </AppScreenBody>
-          {bodyOverlay ? (
-            <div className="absolute inset-0 z-30 min-h-0 bg-(--background)">
-              {bodyOverlay}
-            </div>
-          ) : null}
         </div>
       </AppScreenShell>
       </RoomTranscriptProvider>

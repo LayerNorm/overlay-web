@@ -8,7 +8,7 @@ import {
   type AttachmentPreviewMode,
 } from '@overlay/chat-react'
 import { ChatSourcesPanel } from '../ChatSourcesPanel'
-import { checkLinkEmbeddable } from '@/features/chat/lib/link-preview'
+import { checkLinkEmbeddable } from '@/shared/web/link-preview'
 import type { PanelPresentation } from './useChatPanels'
 import type { WebSourceItem } from '@/shared/web/web-sources'
 

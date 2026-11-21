@@ -254,3 +254,56 @@ export function LinkPreviewPanel({
     </AppScreenSidePanel>
   )
 }
+
+/**
+ * A web page as a tab of an agent thread's panel: the page fills the tab under one quiet row with its host, reload and
+ * open-in-new-tab. Sites that refuse framing get the same "open it in a new tab" state as the side panel.
+ */
+export function LinkPreviewTab({
+  url,
+  title,
+  onClose,
+  checkEmbeddable,
+}: {
+  url: string
+  title?: string
+  onClose: () => void
+  checkEmbeddable?: (url: string) => Promise<boolean>
+}) {
+  const safeUrl = safeHttpUrl(url)
+  const [reloadKey, setReloadKey] = useState(0)
+  const { blocked, loadedRef } = useEmbedBlocked(safeUrl, checkEmbeddable, reloadKey)
+  const openInNewTab = () => {
+    if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer')
+  }
+  const showFrame = safeUrl !== null && !blocked
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-link-tab>
+      <div className="flex h-9 shrink-0 items-center gap-1 pl-4 pr-2">
+        <span className="min-w-0 flex-1 truncate text-[12px] text-(--muted)" title={safeUrl ?? url}>{hostOf(url)}</span>
+        <LinkPreviewActions showFrame={showFrame} onReload={() => setReloadKey((value) => value + 1)} onOpenInNewTab={openInNewTab} />
+      </div>
+      {showFrame ? (
+        <iframe
+          key={reloadKey}
+          src={safeUrl}
+          title={title?.trim() || hostOf(url)}
+          className="h-full min-h-0 w-full flex-1 border-0 bg-(--surface)"
+          sandbox={IFRAME_SANDBOX}
+          referrerPolicy="no-referrer"
+          loading="eager"
+          onLoad={() => {
+            loadedRef.current = true
+          }}
+        />
+      ) : (
+        <LinkPreviewFallback url={url} safeUrl={safeUrl} onOpenInNewTab={openInNewTab} onClose={onClose} />
+      )}
+    </div>
+  )
+}
+
+/** The label of a web page's tab: its title, or its host when it has none. */
+export function linkTabLabel(url: string, title?: string): string {
+  return title?.trim() || hostOf(url)
+}

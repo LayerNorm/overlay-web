@@ -29,7 +29,6 @@ import { nextLauncherId } from './ThreadPanel'
 import { useThreadPanel } from './use-thread-panel'
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentRightSidebar } from './AgentRightSidebar'
-import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
 import { sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
 import { useAgentConversationComputer } from './use-agent-conversation-computer'
@@ -293,11 +292,15 @@ function AgentConversationWorkspaceContent() {
       router.replace(buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal'))
     },
   })
+  // Taking control widens the panel over the thread; releasing returns it to the width it had.
+  const widenedForControl = useRef(false)
   const releaseComputerControl = () => {
     void computerAccess.changeControl('release').then((confirmed) => {
       if (!confirmed) return
       if (panel.open) computerAccess.retryTicket()
       updateComputerControl(null)
+      if (widenedForControl.current) panel.setExpanded(false)
+      widenedForControl.current = false
     })
   }
 
@@ -447,7 +450,11 @@ function AgentConversationWorkspaceContent() {
             ticketUrl,
             computerName,
             changeControl: computerAccess.changeControl,
-            onOpen: updateComputerControl,
+            onOpen: (control) => {
+              updateComputerControl(control)
+              if (!panel.expanded) widenedForControl.current = true
+              panel.showComputerExpanded()
+            },
           })
         }}
       />
@@ -470,14 +477,7 @@ function AgentConversationWorkspaceContent() {
           externalRightPanelWidth={panel.width}
           onExternalRightPanelResize={panel.resize}
           onExternalRightPanelClose={closeRightSidebar}
-          bodyOverlay={computerControl ? (
-            <AgentComputerControlOverlay
-              ticketUrl={computerControl.ticketUrl}
-              computerName={computerControl.computerName}
-              controlBusy={computerAccess.controlBusy}
-              onClose={releaseComputerControl}
-            />
-          ) : null}
+          onOpenLink={panel.openLink}
         />
         </ChatFilesProvider>
         {dialogEditor}
