@@ -55,6 +55,7 @@ import { whisperKitService } from './whisperkit-service'
 import { modelDownloadService } from './model-download-service'
 import { cancelPendingNativeAuth } from './security/native-auth-service'
 import { safeStorageService } from './security/safe-storage-service'
+import { privateThreadsService, rememberChosenFolder } from './private-threads-service'
 import { systemUtils } from './system-utils'
 import { configureDiagnostics } from './sentry'
 import { settingsService } from './settings-service'
@@ -124,6 +125,8 @@ export function clearNativeSession(): void {
   cancelPendingNativeAuth()
   safeStorageService.clearAuthSession()
   embeddedHostService.stopImmediately()
+  // Private threads stay on disk for their account; only their runs stop.
+  privateThreadsService.stopAll()
   // Signing out stops this computer serving tools until the user turns it on again.
   try { localComputerPreference().keepAvailable = false } catch { /* best effort */ }
   desktopPanels.closeAll()
@@ -388,7 +391,8 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     capabilities: capabilities.filter(
       (capability) =>
         (capability !== 'diagnostics' || Boolean(process.env.SENTRY_DSN)) &&
-        (capability !== 'localComputer' || process.platform === 'darwin')
+        (capability !== 'localComputer' || process.platform === 'darwin') &&
+        (capability !== 'localThreads' || (process.platform === 'darwin' && privateThreadsService.isSupported()))
     )
   }),
   'window.openDataFolder': async () => {
@@ -562,6 +566,7 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     const parent = getMainWindow()
     const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
     const path = result.canceled ? undefined : result.filePaths[0]
+    if (path) rememberChosenFolder(path)
     return path ? { path } : null
   },
   'localComputer.setKeepAvailable': async ({ enabled }) => {
@@ -570,6 +575,16 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
     if (enabled) await embeddedHostService.resumeLocalTools()
     return localComputerStatus()
   },
+  'localThreads.list': async (input) => { await authenticated(); return privateThreadsService.list(input) },
+  'localThreads.get': async (input) => { await authenticated(); return privateThreadsService.get(input) },
+  'localThreads.create': async (input) => { await authenticated(); return privateThreadsService.create(input) },
+  'localThreads.send': async (input) => { await authenticated(); return privateThreadsService.send(input) },
+  'localThreads.stop': (input) => privateThreadsService.stop(input),
+  'localThreads.update': async (input) => { await authenticated(); return privateThreadsService.update(input) },
+  'localThreads.delete': async (input) => { await authenticated(); return privateThreadsService.delete(input) },
+  'localThreads.keys': async () => { await authenticated(); return privateThreadsService.keys() },
+  'localThreads.setKey': async (input) => { await authenticated(); return privateThreadsService.setKey(input) },
+  'localThreads.models': async (input) => { await authenticated(); return privateThreadsService.models(input) },
   'agentHost.stop': () => embeddedHostService.stop(),
   'agentHost.logs': () => embeddedHostService.getStatus().logTail,
   'diagnostics.status': () => ({ enabled: settingsService.analyticsConsentEnabled }),
@@ -836,6 +851,7 @@ export function registerDesktopRuntime(): void {
     cancelRecording()
     clearNotifications()
     embeddedHostService.stopImmediately()
+    privateThreadsService.stopAll()
     hotkeyManager.unregisterAll()
     parakeetService.stopServer()
     whisperKitService.stopServer()

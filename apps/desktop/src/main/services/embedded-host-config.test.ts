@@ -13,7 +13,7 @@ import {
 describe('embedded-host-config', () => {
   it('pins the same host release line as the web enrollment command', () => {
     const bundle = JSON.parse(readFileSync(join(process.cwd(), 'agent-host-bundle/package.json'), 'utf8'))
-    expect(bundle.dependencies).toEqual({ '@layernorm/overlay-agent-host': '0.5.0' })
+    expect(bundle.dependencies).toEqual({ '@layernorm/overlay-agent-host': '0.6.0' })
   })
 
   it('accepts https origins and http loopback only', () => {
