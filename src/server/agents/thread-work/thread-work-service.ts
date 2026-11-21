@@ -160,7 +160,7 @@ async function cloneRepositories(machine: WorkMachine, run: ThreadRun, folders: 
         `chmod 600 ${quote(tokenFile)}`,
         `if [ -d ${quote(`${directory}/.git`)} ]; then git -C ${quote(directory)} fetch --quiet origin; else git clone --quiet https://github.com/${folder.repository}.git ${quote(directory)}; fi`,
         `git -C ${quote(directory)} config user.name ${quote(`${agentName} (Overlay)`)}`,
-        `git -C ${quote(directory)} config user.email 'agent@getoverlay.io'`,
+        `git -C ${quote(directory)} config user.email 'agent@overlay.works'`,
       ].join(' && '))
       if (cloned.exitCode !== 0) throw new Error(cloned.stderr.trim().slice(0, 300) || 'git clone failed')
       notes.push(`${folder.repository} is cloned at ${directory} (default branch ${defaultBranch}). git push works with the run's token; to open a pull request, call the GitHub API with the token in ${tokenFile}.`)

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     logger.error('[account/delete] Account deletion failed:', error)
     return NextResponse.json(
       {
-        error: 'Could not delete your account data. Please try again or contact support@getoverlay.io.',
+        error: 'Could not delete your account data. Please try again or contact support@overlay.works.',
       },
       { status: 500 },
     )

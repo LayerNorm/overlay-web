@@ -3,7 +3,7 @@
 import { readFileSync, appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { previewPaymentsFromVercel } from './preview-payments.mjs'
-import { PREVIEW_HOSTNAME_PATTERN, PREVIEW_PARENT_DOMAIN } from './preview-domain.mjs'
+import { LEGACY_PREVIEW_HOSTNAME_PATTERN, PREVIEW_HOSTNAME_PATTERN, PREVIEW_PARENT_DOMAIN, legacyPreviewHostname } from './preview-domain.mjs'
 
 export const CONFIG = Object.freeze({
   repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
@@ -191,9 +191,8 @@ export class PreviewController {
     }, verifyHttps = async origin => {
       const result = await fetch(origin, { redirect: 'manual', signal: AbortSignal.timeout(30_000) })
       // A protected preview can return 401/403 or redirect to Vercel sign-in.
-      // Receiving an HTTP response proves TLS issuance; redirects to staging do not.
-      const location = result.headers.get('location')
-      if (result.status >= 500 || (location && new URL(location, origin).hostname === 'staging.getoverlay.io')) {
+      // Receiving an HTTP response proves TLS issuance.
+      if (result.status >= 500) {
         throw new Error('Canonical preview HTTPS probe failed')
       }
     } }) {
@@ -274,6 +273,7 @@ export class PreviewController {
     if (alias && alias.projectId !== CONFIG.projectId) throw new Error('Refusing to remove another project alias')
     if (alias) await remove(this.vercel, `/v2/aliases/${segment(alias.uid)}`)
     if (domain) await remove(this.vercel, domainPath)
+    await this.removeLegacyDomain(pr)
     for (const variable of variables) await remove(this.vercel, `${this.projectPath}/env/${segment(variable.id)}`)
     if (await optional(this.vercel, domainPath) || await optional(this.vercel, `/v4/aliases/${segment(address.hostname)}`)
       || (await this.environment(pr)).some(e => e.comment === address.marker)) {
@@ -283,6 +283,15 @@ export class PreviewController {
     await this.verifyRemoved(address.origin)
     this.report(`PR ${pr.number}: domain, alias, branch app URL, and Convex preview backend removed`)
     return { state: 'closed', number: pr.number }
+  }
+  async removeLegacyDomain(pr) {
+    const hostname = legacyPreviewHostname(pr.number)
+    const path = `${this.projectPath}/domains/${segment(hostname)}`
+    const domain = await optional(this.vercel, path)
+    if (!domain || domain.gitBranch !== pr.head.ref) return
+    const alias = await optional(this.vercel, `/v4/aliases/${segment(hostname)}`)
+    if (alias && alias.projectId === CONFIG.projectId) await remove(this.vercel, `/v2/aliases/${segment(alias.uid)}`)
+    await remove(this.vercel, path)
   }
   async settleBuild(pr, id) {
     const path = `/v13/deployments/${segment(id)}`
@@ -426,6 +435,8 @@ export class PreviewController {
       if (after.state !== 'open' || after.base.ref !== 'main') return this.cleanup(after)
       if (!previewRequested(after)) return this.notRequested(after)
       if (after.head.sha !== pr.head.sha) return { state: 'superseded', number }
+      // The new-host preview is live, so the PR's pre-move address is no longer needed.
+      await this.removeLegacyDomain(pr)
       await this.status(pr, 'success', `READY ${pr.head.sha.slice(0, 12)}; browser QA required`, address.origin)
       const evidence = { number, sha: pr.head.sha, url: address.origin, deploymentId: deployment.id,
         backend: backend.name, backendExpiresAt: backend.expiresAt, state: 'ready' }
@@ -449,7 +460,7 @@ export class PreviewController {
     }
     const domains = await pages(this.vercel, `${this.projectPath}/domains`, 'domains')
     for (const domain of domains) {
-      const match = PREVIEW_HOSTNAME_PATTERN.exec(domain.name)
+      const match = PREVIEW_HOSTNAME_PATTERN.exec(domain.name) ?? LEGACY_PREVIEW_HOSTNAME_PATTERN.exec(domain.name)
       if (match && domain.gitBranch) numbers.add(Number(match[1]))
     }
     // Also reconcile an env provisioned before a domain-creation failure.

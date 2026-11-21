@@ -76,7 +76,7 @@ that integration check.
 
 ## Operator console releases
 
-`apps/admin` is the separate `overlay-admin` Vercel project at `admin.getoverlay.io`. It follows native Git production from main with its own WorkOS allowlist, session secret and dedicated backend secret. It is not an extra release gate for unrelated customer-web changes.
+`apps/admin` is the separate `overlay-admin` Vercel project at `admin.overlay.works`. It follows native Git production from main with its own WorkOS allowlist, session secret and dedicated backend secret. It is not an extra release gate for unrelated customer-web changes.
 
 For admin QA, bind both backend URL settings on the exact feature branch to that PR's isolated Convex backend, reuse the shared Preview admin credentials and provision the matching secret/test operator on that backend, register the test callback, then request an exact-SHA admin Preview through the connected Vercel tools. The existing customer-web preview controller does not configure or clean resources in the admin project. Shared admin Preview backend URLs are blank so unbound builds fail closed. Record the binding and clear branch backend URLs when QA ends; never point an admin PR at shared development or customer production.
 

@@ -1,7 +1,9 @@
 # Admin console (`apps/admin`)
 
 The operator console lives in `apps/admin` — a standalone Next.js app that is
-deployed as its own Vercel project (`overlay-admin`) on `admin.getoverlay.io`
+deployed as its own Vercel project (`overlay-admin`) on `admin.overlay.works`.
+`admin.getoverlay.io` 308-redirects there (moved 2026-11-21); WorkOS Production
+lists both `/auth/callback` URIs.
 It replaces the retired in-app `/app/admin` surface.
 
 ## Status

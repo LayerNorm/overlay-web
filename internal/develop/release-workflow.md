@@ -103,16 +103,18 @@ and `scripts/release/preview-domain.mjs` (controller, build guard, QA scripts).
 certificate issues automatically. Previews moved from `preview.getoverlay.io`
 on 2026-11-21; PRs built earlier keep their old domain until their next build.
 A preview build runs the PR's own `vercel-build.mjs`, so a PR branched before
-the move must merge main before its next preview build,
-and the old wildcard and leftover `pr-<n>.preview.getoverlay.io` domains are
-removed once no open PR uses them.
+the move must merge main before its next preview build. The controller removes
+a PR's old `pr-<n>.preview.getoverlay.io` domain once its new-host preview is
+READY, and on cleanup. When none remain, remove `*.preview.getoverlay.io`, the
+`LEGACY_PREVIEW_*` helpers in `scripts/release/preview-domain.mjs`, and the old
+preview callbacks in the `overlay-agents-preview` GitHub App and WorkOS Staging.
 
 The migration evidence below records the former staging lane historically; it
 is not an instruction to deploy staging or gate production on a candidate.
 
 ## Operator console
 
-`admin.getoverlay.io` has its own Vercel project rooted at `apps/admin`, with outside-root workspace sources enabled and Node 24. Production deploys through native Git from main. Admin Preview builds require explicit branch binding to an isolated PR backend and matching test credentials; the customer-web preview controller does not manage this second project. See [Admin Console](./admin-console.md) for provisioning and cleanup. It adds no staging requirement to ordinary releases.
+`admin.overlay.works` has its own Vercel project rooted at `apps/admin`, with outside-root workspace sources enabled and Node 24. Production deploys through native Git from main. Admin Preview builds require explicit branch binding to an isolated PR backend and matching test credentials; the customer-web preview controller does not manage this second project. See [Admin Console](./admin-console.md) for provisioning and cleanup. It adds no staging requirement to ordinary releases.
 
 ## Activation checkpoint
 
