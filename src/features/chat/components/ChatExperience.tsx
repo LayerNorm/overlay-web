@@ -210,6 +210,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
       <LinkOpenInterceptor
         preference={c.settings.linkOpenPreference}
         onOpenInOverlay={c.openLinkPreview}
+        onOpenFile={(fileId, name) => { void c.openFilePreview(name, [fileId]) }}
       />
       <QuestionnaireComposerProvider value={c.input} readDraft={() => c.inputRef.current} subscribe={c.subscribeToInput} onChange={c.setQuestionnaireDraft} disabled={c.isActiveLoading || c.nativeThreadSafety.readOnly}>
       <RunPlanContext.Provider value={c.agentRunLifecycle.run}>

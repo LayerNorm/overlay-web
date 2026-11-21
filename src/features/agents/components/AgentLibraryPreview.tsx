@@ -84,7 +84,7 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
   return (
     <aside data-slot="right-sidebar" aria-label="File preview"
       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-(--sidebar-surface)">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-(--border) px-2 py-2.5">
+      <div className="flex shrink-0 items-center gap-1 px-2 py-2.5">
         <Button variant="ghost" size="icon-sm" type="button" aria-label="Back to Library" onClick={onBack}>
           <ArrowLeft size={16} />
         </Button>
@@ -92,6 +92,17 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
           <span className="truncate text-[13px] font-medium text-(--foreground)">{name || 'Loading…'}</span>
           <span className="truncate text-[11px] text-(--muted)">{file ? meta : ''}</span>
         </span>
+        {file ? (
+          <>
+            <Button variant="ghost" size="icon-sm" type="button" aria-label="Download" title="Download"
+              onClick={() => downloadFile({ name, url })}>
+              <Download size={15} />
+            </Button>
+            <Button variant="ghost" size="icon-sm" type="button" aria-label="Open in Files" title="Open in Files" onClick={openInFiles}>
+              <ExternalLink size={15} />
+            </Button>
+          </>
+        ) : null}
         <Button variant="ghost" size="icon-sm" type="button" aria-label="Close" onClick={onClose}>
           <X size={16} />
         </Button>
@@ -99,21 +110,10 @@ export function AgentLibraryPreview({ fileId, onBack, onClose }: { fileId: strin
       {summaries && !file ? (
         <p className="p-4 text-xs text-(--muted)">This file is no longer available.</p>
       ) : file ? (
-        <>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&_.overlay-file-viewer:not(.overlay-file-viewer--markdown)]:px-4 [&_.overlay-file-viewer:not(.overlay-file-viewer--markdown)]:py-4">
-            <FileViewer key={fileId} name={viewerName} content={content} url={url}
-              operations={viewerOperations} markdownLayout="panel" />
-          </div>
-          <div className="flex shrink-0 gap-1.5 border-t border-(--border) px-3 py-2.5">
-            <Button variant="secondary" size="sm" type="button"
-              onClick={openInFiles}>
-              <ExternalLink size={14} />Open in Files
-            </Button>
-            <Button variant="ghost" size="sm" type="button" onClick={() => downloadFile({ name, url })}>
-              <Download size={14} />Download
-            </Button>
-          </div>
-        </>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden [&_.overlay-file-viewer:not(.overlay-file-viewer--markdown)]:px-4 [&_.overlay-file-viewer:not(.overlay-file-viewer--markdown)]:py-4">
+          <FileViewer key={fileId} name={viewerName} content={content} url={url}
+            operations={viewerOperations} markdownLayout="panel" />
+        </div>
       ) : null}
     </aside>
   )

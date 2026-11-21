@@ -1,8 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useEffectEvent, useState } from 'react'
-import { ExternalLink, PanelRight } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ExternalLink, FolderOpen, PanelRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import type { LinkOpenPreference } from '@overlay/app-core'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { internalFileIdFromHref } from '@/shared/files/internal-file-link'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { Button, Popover, PopoverAnchor, PopoverContent } from '@overlay/ui'
 
@@ -15,7 +19,18 @@ export const LINK_SCOPE_ATTRIBUTE = 'data-overlay-link-scope'
 
 const CHOOSER_WIDTH = 232
 
-type Choice = { url: string; label: string; x: number; y: number }
+type Choice = { url: string; label: string; x: number; y: number; fileId?: string }
+
+const CHOICE_CLASS = 'h-auto w-full justify-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)'
+
+function ChoiceButton({ icon, onClick, children }: { icon: ReactNode; onClick(): void; children: ReactNode }) {
+  return (
+    <Button variant="ghost" type="button" onClick={onClick} className={CHOICE_CLASS}>
+      {icon}
+      {children}
+    </Button>
+  )
+}
 
 function hostOf(url: string): string {
   try {
@@ -31,7 +46,10 @@ function openInNewTab(url: string) {
 
 /**
  * Intercepts clicks on external links inside chat responses so they can open in
- * the right-hand panel instead of a new tab.
+ * the right-hand panel instead of a new tab. Links to an Overlay file (its
+ * content URL, or its Files or Notes page) get the same choice between the
+ * panel beside the conversation and the Files page, when the host can show
+ * files beside it (`onOpenFile`).
  *
  * Delegation rather than per-link props: links reach the transcript from
  * markdown, citation chips, source rows, and hover cards (some of which render
@@ -40,11 +58,17 @@ function openInNewTab(url: string) {
 export function LinkOpenInterceptor({
   preference,
   onOpenInOverlay,
+  onOpenFile,
 }: {
   preference: LinkOpenPreference
   onOpenInOverlay: (url: string, title?: string) => void
+  /** Shows an Overlay file beside the conversation. Without it, file links navigate as usual. */
+  onOpenFile?: (fileId: string, name: string) => void
 }) {
   const [choice, setChoice] = useState<Choice | null>(null)
+  const router = useRouter()
+  const buildWorkspaceHref = useWorkspaceHref()
+  const openInFiles = (fileId: string) => router.push(buildWorkspaceHref(null, `/app/files?file=${encodeURIComponent(fileId)}`))
 
   const close = useCallback(() => setChoice(null), [])
 
@@ -62,7 +86,19 @@ export function LinkOpenInterceptor({
       if (!anchor.closest(`[${LINK_SCOPE_ATTRIBUTE}]`)) return
       if (anchor.hasAttribute('download')) return
 
-      const url = safeHttpUrl(anchor.getAttribute('href') ?? '')
+      const href = anchor.getAttribute('href') ?? ''
+      const fileId = onOpenFile ? internalFileIdFromHref(href, window.location.origin) : null
+      if (fileId) {
+        event.preventDefault()
+        event.stopPropagation()
+        const name = anchor.textContent?.trim() || 'File'
+        if (preference === 'overlay') onOpenFile!(fileId, name)
+        else if (preference === 'new-tab') openInFiles(fileId)
+        else setChoice({ url: href, label: name, x: event.clientX, y: event.clientY, fileId })
+        return
+      }
+
+      const url = safeHttpUrl(href)
       if (!url) return
 
       event.preventDefault()
@@ -126,34 +162,33 @@ export function LinkOpenInterceptor({
       >
         <p
           className='truncate px-2.5 pb-1 pt-1.5 text-[11px] text-(--muted-light)'
-          title={choice.url}
+          title={choice.fileId ? choice.label : choice.url}
         >
-          {hostOf(choice.url)}
+          {choice.fileId ? choice.label : hostOf(choice.url)}
         </p>
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => {
-            onOpenInOverlay(choice.url, choice.label)
-            close()
-          }}
-          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
-        >
-          <PanelRight size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
-          Open in Overlay
-        </Button>
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => {
-            openInNewTab(choice.url)
-            close()
-          }}
-          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-normal text-(--foreground) transition-colors hover:bg-(--surface-subtle)"
-        >
-          <ExternalLink size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
-          Open in new tab
-        </Button>
+        {choice.fileId ? (
+          <>
+            <ChoiceButton icon={<PanelRight size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />}
+              onClick={() => { onOpenFile?.(choice.fileId!, choice.label); close() }}>
+              Open in sidebar
+            </ChoiceButton>
+            <ChoiceButton icon={<FolderOpen size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />}
+              onClick={() => { openInFiles(choice.fileId!); close() }}>
+              Open in Files
+            </ChoiceButton>
+          </>
+        ) : (
+          <>
+            <ChoiceButton icon={<PanelRight size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />}
+              onClick={() => { onOpenInOverlay(choice.url, choice.label); close() }}>
+              Open in Overlay
+            </ChoiceButton>
+            <ChoiceButton icon={<ExternalLink size={15} strokeWidth={1.75} className="shrink-0 text-(--muted)" />}
+              onClick={() => { openInNewTab(choice.url); close() }}>
+              Open in new tab
+            </ChoiceButton>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   )

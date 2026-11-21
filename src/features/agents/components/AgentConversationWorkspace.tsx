@@ -478,6 +478,7 @@ function AgentConversationWorkspaceContent() {
           onExternalRightPanelResize={panel.resize}
           onExternalRightPanelClose={closeRightSidebar}
           onOpenLink={panel.openLink}
+          onOpenFile={panel.openFile}
         />
         </ChatFilesProvider>
         {dialogEditor}
