@@ -14,6 +14,12 @@ import { deliveryEnabled, requireDeliveryDestination } from '../lib/previewDeliv
 
 const WORKER_ID = 'convex-email-runner-v1'
 
+/** Welcome emails may come from their own friendly address; everything else uses the main sender. */
+function senderFor(event: LifecycleEmailEvent): string {
+  const welcome = event.name === 'user.created' ? process.env.OVERLAY_WELCOME_EMAIL_FROM?.trim() : undefined
+  return welcome || requiredEnv('OVERLAY_EMAIL_FROM')
+}
+
 export const runMinuteTick = internalAction({
   args: {},
   returns: v.null(),
@@ -62,7 +68,7 @@ export const deliverOne = internalAction({
         event,
         process.env.NEXT_PUBLIC_APP_URL?.trim() || 'https://overlay.works',
       )
-      const from = requiredEnv('OVERLAY_EMAIL_FROM')
+      const from = senderFor(event)
       const result = await provider.send({
         from,
         to: job.recipient.trim().toLowerCase(),
