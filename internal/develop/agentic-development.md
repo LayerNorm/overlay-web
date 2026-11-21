@@ -64,7 +64,7 @@ auth/billing/data flows, environment/build changes or uncertainty CI cannot reso
 Ordinary well-tested patch/minor dependency upgrades, docs, tests, CI metadata,
 formatting/comments and type-only changes can use CI alone. Record the rationale.
 For requested previews, wait for `PR Preview`. Verify its SHA equals
-the current PR head before using `https://pr-<number>.preview.getoverlay.io`.
+the current PR head before using `https://pr-<number>.preview.overlay.works`.
 Sign in with the sandbox QA identity or the preview-only login recipe in
 [Browser Testing](./browser-testing-with-agent-browser.md). Keep secrets and
 cookies outside tracked files and PR text.

@@ -10,10 +10,10 @@ Object.assign(process.env, {
 })
 
 test('connecting signs in with GitHub and returns to the deployment that started it', () => {
-  const url = new URL(authorizeUrl('sealed-state', 'https://pr-7.preview.getoverlay.io/api/v1/github/callback'))
+  const url = new URL(authorizeUrl('sealed-state', 'https://pr-7.preview.overlay.works/api/v1/github/callback'))
   assert.equal(url.origin + url.pathname, 'https://github.com/login/oauth/authorize')
   assert.equal(url.searchParams.get('client_id'), 'client-1')
-  assert.equal(url.searchParams.get('redirect_uri'), 'https://pr-7.preview.getoverlay.io/api/v1/github/callback')
+  assert.equal(url.searchParams.get('redirect_uri'), 'https://pr-7.preview.overlay.works/api/v1/github/callback')
   assert.equal(url.searchParams.get('state'), 'sealed-state')
   assert.equal(installPageUrl(), 'https://github.com/apps/overlay-agents-test/installations/new')
 })

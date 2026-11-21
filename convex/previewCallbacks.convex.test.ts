@@ -6,23 +6,23 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
 test('Preview callback credentials reach only the exact canonical app and retain service authentication', async () => {
   vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'preview')
-  vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://pr-123.preview.getoverlay.io')
+  vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://pr-123.preview.overlay.works')
   vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', 'test-bypass')
   const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
-  await fetchAppCallback('https://pr-123.preview.getoverlay.io/api/internal', {
+  await fetchAppCallback('https://pr-123.preview.overlay.works/api/internal', {
     method: 'POST', headers: { 'x-overlay-service-auth': 'test-signature' }, body: '{}',
   })
   const init = fetchSpy.mock.calls[0][1]!
   expect(new Headers(init.headers).get('x-vercel-protection-bypass')).toBe('test-bypass')
   expect(new Headers(init.headers).get('x-overlay-service-auth')).toBe('test-signature')
   expect(init.redirect).toBe('error')
-  for (const url of ['https://overlay.works/api/internal', 'https://pr-124.preview.getoverlay.io/api/internal',
-    'https://pr-123.preview.getoverlay.io.evil.test/', 'https://user:pass@pr-123.preview.getoverlay.io/']) {
+  for (const url of ['https://overlay.works/api/internal', 'https://pr-124.preview.overlay.works/api/internal',
+    'https://pr-123.preview.overlay.works.evil.test/', 'https://user:pass@pr-123.preview.overlay.works/']) {
     expect(() => appCallbackHeaders(url)).toThrow('own PR app')
   }
   expect(fetchSpy).toHaveBeenCalledTimes(1)
   vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', '')
-  expect(() => appCallbackHeaders('https://pr-123.preview.getoverlay.io/')).toThrow('hosting access')
+  expect(() => appCallbackHeaders('https://pr-123.preview.overlay.works/')).toThrow('hosting access')
 })
 
 test('Production callback headers do not acquire Preview hosting credentials', () => {

@@ -1,8 +1,9 @@
+import { PREVIEW_HOSTNAME_PATTERN } from '../release/preview-domain.mjs'
 import { performance } from 'node:perf_hooks'
 
 export function previewOrigin(value) {
   const url = new URL(value)
-  if (url.protocol !== 'https:' || !/^pr-[1-9][0-9]*\.preview\.getoverlay\.io$/.test(url.hostname)
+  if (url.protocol !== 'https:' || !PREVIEW_HOSTNAME_PATTERN.test(url.hostname)
     || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
     throw new Error('An isolated canonical PR Preview origin is required')
   }

@@ -62,7 +62,7 @@ development. The runner rejects noncanonical Preview origins.
    runner creates two independent browser contexts with the same sandbox identity.
 
 ```bash
-CN01_PREVIEW_ORIGIN=https://pr-123.preview.getoverlay.io \
+CN01_PREVIEW_ORIGIN=https://pr-123.preview.overlay.works \
 CN01_PREVIEW_SHA=<verified-full-head-sha> \
 CN01_STORAGE_STATE=<private-storage-state-path> \
 CN01_CHAT_PATH=<relative-personal-chat-url-with-id-query> \

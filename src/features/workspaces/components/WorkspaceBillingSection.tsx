@@ -15,14 +15,15 @@ import {
 } from '@/shared/billing/billing-pricing'
 import { formatBytes } from '@/shared/storage/storage-limits'
 import { publicEnv } from '@/shared/env/public-env'
+import { PREVIEW_ORIGIN_PATTERN } from '@/shared/web/preview-origin'
 import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
 
 
-/** PR previews (pr-<n>.preview.getoverlay.io) offer a card-free paid plan for testing; the server enforces it too. */
-const IS_PR_PREVIEW = /^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(publicEnv.appUrl ?? '')
+/** PR previews (pr-<n>.preview.overlay.works) offer a card-free paid plan for testing; the server enforces it too. */
+const IS_PR_PREVIEW = PREVIEW_ORIGIN_PATTERN.test(publicEnv.appUrl ?? '')
 
 type BillingState =
   | { status: 'loading' }

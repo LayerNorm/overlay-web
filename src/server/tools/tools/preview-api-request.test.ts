@@ -12,10 +12,10 @@ test('protected Preview tool reads and writes retain app auth and use only their
   globalThis.fetch = async (url, init) => { requests.push({ url: String(url), init }); return Response.json({ ok: true }) }
   try {
     Object.assign(process.env, { VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview',
-      NEXT_PUBLIC_APP_URL: 'https://pr-247.preview.getoverlay.io', VERCEL_GIT_PULL_REQUEST_ID: '247', VERCEL_AUTOMATION_BYPASS_SECRET: 'existing-test-secret',
+      NEXT_PUBLIC_APP_URL: 'https://pr-247.preview.overlay.works', VERCEL_GIT_PULL_REQUEST_ID: '247', VERCEL_AUTOMATION_BYPASS_SECRET: 'existing-test-secret',
       INTERNAL_SERVICE_AUTH_SECRET: 'preview-service-auth-test-secret' })
-    await callInternalApiGet('/api/v1/files?limit=1', 'app-auth', 'https://pr-247.preview.getoverlay.io', undefined, 'root-marker-not-sent', 'user', 'workspace')
-    await callInternalApi('/api/v1/notes', { userId: 'user', workspaceId: 'workspace', serverSecret: 'root-marker-not-sent', content: 'owned QA note' }, 'app-auth', 'https://pr-247.preview.getoverlay.io')
+    await callInternalApiGet('/api/v1/files?limit=1', 'app-auth', 'https://pr-247.preview.overlay.works', undefined, 'root-marker-not-sent', 'user', 'workspace')
+    await callInternalApi('/api/v1/notes', { userId: 'user', workspaceId: 'workspace', serverSecret: 'root-marker-not-sent', content: 'owned QA note' }, 'app-auth', 'https://pr-247.preview.overlay.works')
     for (const request of requests) {
       const headers = new Headers(request.init?.headers)
       assert.equal(headers.get('x-vercel-protection-bypass'), 'existing-test-secret')
@@ -30,10 +30,10 @@ test('protected Preview tool reads and writes retain app auth and use only their
     }
     requests.length = 0
     await callInternalApiGet('/api/v1/files', 'app-auth', 'https://other.example')
-    await callInternalApiGet('/api/v1/files', 'app-auth', 'https://pr-248.preview.getoverlay.io')
-    await callInternalApiGet('/help', 'app-auth', 'https://pr-247.preview.getoverlay.io')
+    await callInternalApiGet('/api/v1/files', 'app-auth', 'https://pr-248.preview.overlay.works')
+    await callInternalApiGet('/help', 'app-auth', 'https://pr-247.preview.overlay.works')
     process.env.VERCEL_ENV = 'production'; process.env.OVERLAY_DEPLOYMENT_ENV = 'production'
-    await callInternalApiGet('/api/v1/files', 'app-auth', 'https://pr-247.preview.getoverlay.io')
+    await callInternalApiGet('/api/v1/files', 'app-auth', 'https://pr-247.preview.overlay.works')
     for (const request of requests) assert.equal(new Headers(request.init?.headers).has('x-vercel-protection-bypass'), false)
   } finally {
     globalThis.fetch = originalFetch

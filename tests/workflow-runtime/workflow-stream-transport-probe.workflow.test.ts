@@ -15,7 +15,7 @@ const savedEnvironment = {
 function setPreviewEnvironment() {
   process.env.VERCEL_ENV = 'preview'
   process.env.OVERLAY_DEPLOYMENT_ENV = 'preview'
-  process.env.NEXT_PUBLIC_APP_URL = 'https://pr-455.preview.getoverlay.io'
+  process.env.NEXT_PUBLIC_APP_URL = 'https://pr-455.preview.overlay.works'
 }
 
 function restoreEnvironment() {

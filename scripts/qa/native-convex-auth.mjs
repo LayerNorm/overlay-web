@@ -2,12 +2,13 @@ import { stat } from 'node:fs/promises'
 import { request } from 'playwright'
 import { preloadQuery, preloadedQueryResult } from 'convex/nextjs'
 import { makeFunctionReference } from 'convex/server'
+import { PREVIEW_ORIGIN_PATTERN } from '../release/preview-domain.mjs'
 
 let client
 try {
   const origin = new URL(process.env.CN02_PREVIEW_ORIGIN)
   const previewName = origin.hostname.split('.')[0]
-  if (!/^https:\/\/pr-[1-9][0-9]*\.preview\.getoverlay\.io\/$/.test(origin.href)) throw new Error('Invalid Preview origin')
+  if (origin.href !== `${origin.origin}/` || !PREVIEW_ORIGIN_PATTERN.test(origin.origin)) throw new Error('Invalid Preview origin')
   const revision = process.env.CN02_PREVIEW_SHA
   if (!/^[a-f0-9]{40}$/.test(revision ?? '')) throw new Error('Verified head SHA required')
   // These assertions must come from the trusted controller/team API, not from a page.

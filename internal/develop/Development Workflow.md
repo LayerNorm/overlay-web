@@ -25,7 +25,7 @@ production changes, or merges outside the existing release rules.
 | Build source | Main deploys automatically through Git. Root `git.deploymentEnabled` sets `"*": false, "main": true`. The trusted controller creates Preview deployments only for `needs-preview` PRs; Preview allows REST API only, also blocking automatic builds from older branches. |
 | Build machine | Keep the owner-selected **Enhanced** machine (8 vCPUs, 16 GB memory). Let running builds finish; inspect concrete failures before changing configuration. |
 | Build concurrency | Keep on-demand concurrency enabled with **Run up to one build per branch** (`WAIT_FOR_NAMESPACE_QUEUE`). Different PRs build in parallel; revisions sharing one branch/backend build sequentially. |
-| Preview URL and backend | Use `https://pr-<number>.preview.getoverlay.io` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
+| Preview URL and backend | Use `https://pr-<number>.preview.overlay.works` and that PR's isolated Convex backend. A READY build must match the current PR head before browser QA. |
 | Test settings | Shared Preview credentials inherit once per environment and have no scheduled expiry. Keep Preview and Production variable scopes separate. |
 
 For a diagnosed build stall, `OVERLAY_BUILD_DIAGNOSTICS=1` enables build-only Node
@@ -168,7 +168,7 @@ and evidence in the PR:
 - Request a preview for UI/interactions; auth, routing, cookies, uploads, payments, streaming or persistence; isolated backend QA; environment/build changes; uncertainty CI cannot resolve; or explicit browser QA.
 - Ordinarily use CI alone for well-tested Dependabot patch/minor upgrades, documentation, tests/fixtures, CI metadata, formatting/comments and type-only changes. Dependency risk can still justify a preview.
 
-The trusted controller runs protected main code, validates the internal PR, provisions its branch app URL, then requests an exact-SHA Vercel Preview using the existing token. The build deploys/seeds only `preview/pr-<number>`. The controller assigns `pr-<number>.preview.getoverlay.io` only after READY and backend verification. While labeled, new commits request the new head. Reconciliation reuses healthy current builds and renews the backend; a missing/expired backend requires a fresh build.
+The trusted controller runs protected main code, validates the internal PR, provisions its branch app URL, then requests an exact-SHA Vercel Preview using the existing token. The build deploys/seeds only `preview/pr-<number>`. The controller assigns `pr-<number>.preview.overlay.works` only after READY and backend verification. While labeled, new commits request the new head. Reconciliation reuses healthy current builds and renews the backend; a missing/expired backend requires a fresh build.
 
 Removing the label or closing the PR settles running builds, removes its alias/domain/app-URL override and deletes the owned Convex preview backend and its synthetic data. Cleanup verifies absence before reporting success; a failure remains visible for retry. Unlabeled PRs receive successful “Preview not requested” status and still require normal CI. Manual workflow dispatch reconciles this policy; it does not bypass the label. Forks receive no Preview credentials.
 
@@ -284,7 +284,7 @@ Devin secret store to perform authenticated QA on the canonical PR preview URL.
 Reuse credentials already available to the session instead of asking the owner
 to provide them again. Never copy credential values into source, documentation,
 logs, screenshots or PR comments. Use these credentials for QA only on
-`https://pr-<number>.preview.getoverlay.io`, not on production.
+`https://pr-<number>.preview.overlay.works`, not on production.
 
 Verify the signed-in identity and effective plan in the isolated preview before
 testing paid features. A Pro account in another environment does not automatically
@@ -367,7 +367,7 @@ before posting. Use the clean preview URL, never the private MCP access link.
 
 Result: PASS / BLOCKED
 Tested PR head: <full SHA>
-Preview: https://pr-<number>.preview.getoverlay.io
+Preview: https://pr-<number>.preview.overlay.works
 Deployment/backend: <deployment ID and isolated Convex backend>
 Access: Vercel MCP / existing browser session / automation bypass
 Checks: <commands and actual results; required CI status>

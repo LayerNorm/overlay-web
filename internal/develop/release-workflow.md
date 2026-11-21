@@ -57,7 +57,7 @@ ownership checks. No PR code is checked out, no VM deploy key is needed, and
 recovery neither deploys code nor raises the provider-spend cap. See Development
 Workflow for invocation and replay semantics.
 
-Ordinary `pr-<number>.preview.getoverlay.io` custom aliases require no paid native
+Ordinary `pr-<number>.preview.overlay.works` custom aliases require no paid native
 Preview Deployment Suffix.
 
 Main deploys through native Git. Root `vercel.json` disables automatic non-main
@@ -96,6 +96,16 @@ Keep project on-demand concurrency enabled in `WAIT_FOR_NAMESPACE_QUEUE` mode
 sharing one per-PR backend remain sequential. Concurrency does not supply PR identity. Preview and Production variable targets are separate.
 The `codex/preview-unassigned` wildcard branch has no deployment alias, so
 unknown or closed PR hosts return HTTPS 404.
+The preview parent domain lives in one constant per runtime:
+`PREVIEW_PARENT_DOMAIN` in `src/shared/web/preview-origin.ts` (app and Convex)
+and `scripts/release/preview-domain.mjs` (controller, build guard, QA scripts).
+`overlay.works` DNS is on Vercel, so the `*.preview.overlay.works` wildcard
+certificate issues automatically. Previews moved from `preview.getoverlay.io`
+on 2026-11-21; PRs built earlier keep their old domain until their next build.
+A preview build runs the PR's own `vercel-build.mjs`, so a PR branched before
+the move must merge main before its next preview build,
+and the old wildcard and leftover `pr-<n>.preview.getoverlay.io` domains are
+removed once no open PR uses them.
 
 The migration evidence below records the former staging lane historically; it
 is not an instruction to deploy staging or gate production on a candidate.

@@ -98,7 +98,7 @@ test('note links preserve workspace and saved scope without a deployment host', 
   )) as typeof fetch
   try {
     const expected = '/app/w/saved%20workspace/notes?id=note%20%2F%3F%26&scope=workspace'
-    for (const baseUrl of ['https://overlay.works', 'https://pr-378.preview.getoverlay.io']) {
+    for (const baseUrl of ['https://overlay.works', 'https://pr-378.preview.overlay.works']) {
       const scopedOptions = { ...options, baseUrl, workspaceId: 'saved workspace' }
       const created = await executeCreateNote(scopedOptions, { title: 'Saved', content: 'Body' })
       const loaded = await executeGetNote(scopedOptions, { noteId: note._id })

@@ -27,7 +27,7 @@ justify a preview. Record the decision and evidence in the PR.
 
 For requested previews, wait for `PR Preview`, verify its reported SHA
 against the current PR head, then test the changed flow on
-`https://pr-<number>.preview.getoverlay.io` using the sandbox QA identity or
+`https://pr-<number>.preview.overlay.works` using the sandbox QA identity or
 preview-only login recipe. Record rendered UI, persistence and relevant boundary
 checks. Keep credentials and cookies out of tracked files and PR text. New app
 revisions require fresh affected QA. Unlabeled PRs pass “Preview not requested”

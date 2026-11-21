@@ -1,3 +1,4 @@
+import { PREVIEW_ORIGIN_PATTERN } from '@/shared/web/preview-origin'
 import { isPreviewDeployment } from './preview'
 
 /** Only the PR's own app may receive its hosting bypass credential. */
@@ -5,7 +6,7 @@ export function appCallbackHeaders(url: string, headers?: HeadersInit): Headers 
   const result = new Headers(headers)
   if (!isPreviewDeployment()) return result
   const origin = process.env.NEXT_PUBLIC_APP_URL?.trim()
-  if (!origin || !/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin)) {
+  if (!origin || !PREVIEW_ORIGIN_PATTERN.test(origin)) {
     throw new Error('Preview callback requires its canonical PR app origin')
   }
   const target = new URL(url)

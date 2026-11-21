@@ -3,6 +3,7 @@
 import { readFileSync, appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { previewPaymentsFromVercel } from './preview-payments.mjs'
+import { PREVIEW_HOSTNAME_PATTERN, PREVIEW_PARENT_DOMAIN } from './preview-domain.mjs'
 
 export const CONFIG = Object.freeze({
   repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
@@ -11,7 +12,7 @@ export const CONFIG = Object.freeze({
   convexProjectId: 1649204,
   convexPreviewKeyScope: 'preview:divyansh-lalwani-37bb7:overlay',
   convexProductionName: 'colorful-chickadee-419',
-  previewWildcardDomain: '*.preview.getoverlay.io',
+  previewWildcardDomain: `*.${PREVIEW_PARENT_DOMAIN}`,
   previewWildcardBranch: 'codex/preview-unassigned',
 })
 const segment = encodeURIComponent
@@ -19,7 +20,8 @@ export function previewAddress(number) {
   if (!/^[1-9]\d*$/.test(String(number)) || !Number.isSafeInteger(Number(number))) {
     throw new Error('Invalid PR number')
   }
-  return { hostname: `pr-${number}.preview.getoverlay.io`, origin: `https://pr-${number}.preview.getoverlay.io`,
+  const hostname = `pr-${number}.${PREVIEW_PARENT_DOMAIN}`
+  return { hostname, origin: `https://${hostname}`,
     marker: `overlay-preview-control:pr-${number}` }
 }
 export function trustedPull(pr, { requireMain = true } = {}) {
@@ -447,7 +449,7 @@ export class PreviewController {
     }
     const domains = await pages(this.vercel, `${this.projectPath}/domains`, 'domains')
     for (const domain of domains) {
-      const match = /^pr-([1-9]\d*)\.preview\.getoverlay\.io$/.exec(domain.name)
+      const match = PREVIEW_HOSTNAME_PATTERN.exec(domain.name)
       if (match && domain.gitBranch) numbers.add(Number(match[1]))
     }
     // Also reconcile an env provisioned before a domain-creation failure.

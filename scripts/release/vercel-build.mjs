@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { PREVIEW_ORIGIN_PATTERN, previewOriginFor } from './preview-domain.mjs'
 
 export function previewQaFixtures(value = '') {
   const fixtures = [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))]
@@ -73,7 +74,7 @@ export function buildPlan(env) {
     }
     const pr = env.VERCEL_GIT_PULL_REQUEST_ID
     if (!/^[1-9]\d*$/.test(pr ?? '')) throw new Error('A preview requires an open PR number')
-    const origin = 'https://pr-' + pr + '.preview.getoverlay.io'
+    const origin = previewOriginFor(pr)
     // Native Git builds can start before the domain controller provisions the
     // branch override. Vercel's internal PR metadata supplies the same origin.
     if (!env.NEXT_PUBLIC_APP_URL || env.NEXT_PUBLIC_APP_URL === 'https://preview-unassigned.invalid') {
@@ -136,7 +137,7 @@ export function deploymentEnvFile(env) {
 /** Copy only backend-owned settings, never session cookies, passwords, or dev selectors. */
 export function previewRuntimeEnvFile(env) {
   const origin = env.NEXT_PUBLIC_APP_URL
-  if (!/^https:\/\/pr-[1-9]\d*\.preview\.getoverlay\.io$/.test(origin ?? '')) throw new Error('Invalid Preview callback origin')
+  if (!PREVIEW_ORIGIN_PATTERN.test(origin ?? '')) throw new Error('Invalid Preview callback origin')
   if (env.STRIPE_SECRET_KEY && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY)) throw new Error('Preview requires a Stripe test key')
   const names = ['INTERNAL_API_SECRET', 'INTERNAL_SERVICE_AUTH_SECRET', 'WORKOS_CLIENT_ID',
     'PREVIEW_LOGIN_USER_ID', 'PREVIEW_LOGIN_EMAIL', 'PROVIDER_KEYS_SECRET',
