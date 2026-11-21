@@ -62,7 +62,12 @@ export const privateRequestSchema = z.discriminatedUnion('method', [
     approvalMode: z.enum(['ask', 'auto']).default('ask'),
   }).strict(),
   z.object({ method: z.literal('stop'), owner, threadId: id }).strict(),
-  z.object({ method: z.literal('rename'), owner, threadId: id, title: z.string().trim().min(1).max(200) }).strict(),
+  z.object({
+    method: z.literal('update'), owner, threadId: id,
+    title: z.string().trim().min(1).max(200).optional(),
+    /** Only before the first message; null works in the person's work folder. */
+    folder: folder.nullable().optional(),
+  }).strict(),
   z.object({ method: z.literal('delete'), owner, threadId: id }).strict(),
   /** Checks a key and lists the chat models it can use. */
   z.object({ method: z.literal('models'), provider: z.enum(privateModelProviders), apiKey: z.string().min(1).max(4_096) }).strict(),
@@ -76,7 +81,7 @@ export type PrivateResults = {
   create: { thread: PrivateThread }
   send: { turnId: string }
   stop: { stopped: boolean }
-  rename: { thread: PrivateThread }
+  update: { thread: PrivateThread }
   delete: { deleted: boolean }
   models: { models: { id: string; name: string }[] }
 }

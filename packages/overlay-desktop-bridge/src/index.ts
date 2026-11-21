@@ -13,6 +13,7 @@ export const capabilities = [
   "notifications",
   "agentHost",
   "localComputer",
+  "localThreads",
   "updates",
   "diagnostics",
 ] as const;
@@ -26,6 +27,18 @@ const modelId = z.enum([
   "openai_whisper-small",
   "openai_whisper-large-v3_turbo",
 ]);
+const id = z.string().trim().min(1).max(200);
+/** Private threads belong to one person in one workspace on this computer. */
+const owner = z.object({ userId: id, workspaceId: id }).strict();
+const thread = { owner, threadId: id };
+export const localModelProviders = [
+  "anthropic",
+  "openai",
+  "google",
+  "openrouter",
+] as const;
+export type LocalModelProvider = (typeof localModelProviders)[number];
+const localFolder = z.string().trim().min(1).max(4096).startsWith("/");
 export const methodSchemas = {
   handshake: empty,
   "window.openDataFolder": empty,
@@ -118,6 +131,58 @@ export const methodSchemas = {
     .strict(),
   /** Opens the system's folder dialog. Choosing a folder is the person's consent to let agents work in it. */
   "localComputer.chooseFolder": empty,
+  "localThreads.list": z.object({ owner }).strict(),
+  "localThreads.get": z.object(thread).strict(),
+  /** Choosing "Not synced" before the first message creates the thread on this computer only. */
+  "localThreads.create": z
+    .object({ ...thread, agentId: id, folder: localFolder.nullable() })
+    .strict(),
+  "localThreads.send": z
+    .object({
+      ...thread,
+      turnId: id,
+      /** The whole transcript as the page holds it (AI SDK UI messages). */
+      messages: z
+        .array(z.record(z.string(), z.unknown()))
+        .min(1)
+        .max(2000),
+      model: z
+        .object({
+          provider: z.enum(localModelProviders),
+          modelId: z.string().trim().min(1).max(200),
+        })
+        .strict(),
+      agent: z
+        .object({
+          name: z.string().trim().min(1).max(200),
+          instructions: z.string().max(50_000).optional(),
+        })
+        .strict(),
+      approvalMode: z.enum(["ask", "auto"]),
+    })
+    .strict(),
+  "localThreads.stop": z.object(thread).strict(),
+  /** Renames a thread, or changes its folder before the first message. */
+  "localThreads.update": z
+    .object({
+      ...thread,
+      title: z.string().trim().min(1).max(200).optional(),
+      folder: localFolder.nullable().optional(),
+    })
+    .strict(),
+  "localThreads.delete": z.object(thread).strict(),
+  /** Which providers have a key on this computer. Keys never leave the desktop app. */
+  "localThreads.keys": empty,
+  /** Checks the key with the provider, then stores it in the system keychain; null removes it. */
+  "localThreads.setKey": z
+    .object({
+      provider: z.enum(localModelProviders),
+      apiKey: z.string().trim().min(8).max(4096).nullable(),
+    })
+    .strict(),
+  "localThreads.models": z
+    .object({ provider: z.enum(localModelProviders) })
+    .strict(),
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -153,6 +218,28 @@ export type LocalComputerStatus = {
   workFolder: string;
   permissions: { accessibility: boolean; screenRecording: boolean };
 };
+/** A thread that runs and is stored only on this computer. */
+export type LocalThread = {
+  id: string;
+  userId: string;
+  workspaceId: string;
+  agentId: string;
+  title: string;
+  folder: string | null;
+  /** `provider/model` of the last run. */
+  model: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+/** AI SDK UI message, as stored on this computer. */
+export type LocalThreadMessage = {
+  id: string;
+  role: "system" | "user" | "assistant";
+  parts: Array<{ type: string } & Record<string, unknown>>;
+  metadata?: unknown;
+};
+export type LocalThreadTurnState = "running" | "finished" | "stopped" | "error";
+export type LocalModelKeys = Record<LocalModelProvider, boolean>;
 export type UpdateStatus = {
   state: string;
   version?: string;
@@ -201,6 +288,20 @@ export type Results = {
   "localComputer.requestPermission": LocalComputerStatus;
   "localComputer.setKeepAvailable": LocalComputerStatus;
   "localComputer.chooseFolder": { path: string } | null;
+  "localThreads.list": { threads: LocalThread[]; running: string[] };
+  "localThreads.get": {
+    thread: LocalThread;
+    messages: LocalThreadMessage[];
+    running: boolean;
+  };
+  "localThreads.create": { thread: LocalThread };
+  "localThreads.send": { turnId: string };
+  "localThreads.stop": { stopped: boolean };
+  "localThreads.update": { thread: LocalThread };
+  "localThreads.delete": { deleted: boolean };
+  "localThreads.keys": LocalModelKeys;
+  "localThreads.setKey": LocalModelKeys;
+  "localThreads.models": { models: { id: string; name: string }[] };
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;
@@ -216,6 +317,20 @@ export type Events = {
   "transcription.stop": undefined;
   "transcription.cancel": undefined;
   "transcription.final": { text: string };
+  /** One AI SDK UI message stream chunk of a running private turn. */
+  "localThreads.chunk": {
+    threadId: string;
+    turnId: string;
+    chunk: { type: string } & Record<string, unknown>;
+  };
+  "localThreads.turn": {
+    threadId: string;
+    turnId: string;
+    state: LocalThreadTurnState;
+    error?: string;
+  };
+  /** The thread list of this person in this workspace changed. */
+  "localThreads.threads": { userId: string; workspaceId: string };
 };
 export interface DesktopBridge {
   handshake(): Promise<Handshake>;

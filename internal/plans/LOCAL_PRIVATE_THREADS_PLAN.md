@@ -1,9 +1,10 @@
 # Private local threads: Overlay's agent running on the user's computer
 
-Status: Decisions answered by the owner (2026-11-21); free-tier allowances and
-the paid-first conflict still open (see Decision 4). Phase 0 mockup drafted
-(`internal/plans/mockups/private-threads.html`), awaiting the owner's review.
-Nothing built.
+Status: Mockup approved (2026-11-21). Phases 1 and 2 are built on branch
+`codex/private-threads-mockup` (Agent Host 0.6.0, desktop `localThreads`
+bridge, web UI); not merged, not published, not released. Phases 3–5 not
+started. Free-tier allowances and the paid-first conflict still open
+(Decision 4). Living doc: `internal/develop/private-threads.md`.
 
 Repos: `LayerNorm/overlay-desktop`, `LayerNorm/overlay-web` (Agent Host package,
 web UI).
@@ -48,16 +49,12 @@ Non-goals: replacing the cloud harness, durable or scheduled local runs
   (desktop 0.3.1). The host already implements the computer tools (shell, files,
   terminal sessions, browser, screenshots, input), so private threads call them
   in-process.
-- **Overlay tools come from the existing agent MCP server.** Connected agents
-  already get the full workspace tool set from `/api/agent-mcp`
-  (`buildWorkspaceAgentTooling` → `adaptToolsForMcp`) with a per-turn `ovmcp_`
-  token (`src/server/agents/agent-mcp-token.ts`) that carries the agent's grant.
-  Private threads use the same server: the host asks for a token per turn and
-  calls the tools the agent's grant allows. The token request carries only ids,
-  never the conversation. Two changes are needed: the token today requires a
-  live remote session and run, so it needs a "private turn" variant with its own
-  expiry and metering subject; and `latestUserText` (used for memory recall)
-  must be sent only when the agent has memory on.
+- **Overlay tools come from Overlay's MCP server.** The connected-agent server
+  `/api/agent-mcp` this plan first named has since been removed. `/api/mcp`
+  (`internal/develop/mcp-access.md`) serves the same native tool pipeline
+  (`adaptToolsForMcp`) to outside apps under a tool grant. Private threads will
+  connect to it from the host with a token the desktop obtains for the agent's
+  grant, sending only what each tool needs, never the conversation.
 - **Storage is `node:sqlite`** (built into Node 24, no native module to sign) in
   the app's support folder: threads, messages, tool results, approvals.
 - **The UI is the existing web transcript.** The desktop bridge gains a
@@ -121,21 +118,24 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
 - Under the composer, desktop app only: **This computer**, folder, and a third
   control, **Cloud sync**, with two choices: *Synced* ("Saved to your
   workspace", the default) and *Not synced* ("Runs and stays on this
-  computer"). A note under them says the agent can still use its tools, like
-  memory and web search. The control appears only when the thread runs on This
-  computer; a Cloud thread is always synced.
+  computer"). A note under them says Not synced runs with your own model keys
+  and this computer's tools (Overlay tools arrive in Phase 3). The control
+  appears only when the thread runs on This computer; a Cloud thread is always
+  synced.
 - Once the thread has a message the choice is fixed: the footer reads "This
   computer · folder · Not synced", in the same muted labels as today.
 - In the agent's thread list, a thread that is not synced has a small Lucide
   `CloudOff` after its title. It never appears on other devices or in the
   browser, not even its title.
-- The thread's options menu has **Sync to cloud** (Lucide `CloudUpload`), which
-  asks first ("Its messages and tool results are saved to your workspace, and you
+- The thread's options menu has **Delete from this computer** (built) and, in
+  Phase 5, **Sync to cloud** (Lucide `CloudUpload`), which asks first ("Its messages and tool results are saved to your workspace, and you
   can read it from any device. This can't be undone.") and then turns it into a
   synced thread on this computer.
-- No model picker in the composer: agent threads use the agent's model, so the
-  model sources (own keys, local subscriptions, Overlay-billed) are chosen in the
-  agent's settings. That picker is designed in Phase 2.
+- No model picker in the composer: a private thread runs the agent's own model
+  with a key on this computer, the provider's key or OpenRouter's
+  (`src/shared/agents/private-model.ts`). Without one, a note above the message
+  box says which key to add, and Settings → Desktop → Model keys adds it. Local
+  subscriptions and Overlay-billed models come in Phase 4.
 - Tool rows, approvals and Stop look the same as in synced threads.
 - Quitting the app stops a running thread that is not synced; the transcript is
   kept up to the last step, and the person can say "continue".
@@ -145,9 +145,9 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
 
 | Phase | State |
 | --- | --- |
-| 0: Decisions and mockup | Decisions answered except Decision 4 allowances; mockup drafted, not yet reviewed |
-| 1: Private runtime in the Agent Host | Not started |
-| 2: Bridge and UI | Not started |
+| 0: Decisions and mockup | Mockup approved; Decision 4 allowances still open |
+| 1: Private runtime in the Agent Host | Built on the branch, host tests pass; not published (needs Agent Host 0.6.0 on npm) |
+| 2: Bridge and UI | Built on the branch; desktop change not released; not yet tested end to end in the app |
 | 3: Overlay tools and free tier | Not started |
 | 4: Local subscriptions and Overlay-billed models | Not started |
 | 5: Sync to cloud | Not started |
@@ -170,26 +170,34 @@ Phase 2.
 - Own-API-key model adapters, with keys read from the desktop through the
   bridge per run, never written to the host's config file.
 
+Built: `overlay-agent-host private` (IPC only), `ToolLoopAgent` with the
+computer tools (exec, read/write/list files, terminal) through
+`LocalToolExecutor`, approvals for exec and terminal start, Stop, per-step
+saves in `node:sqlite`, own keys for Anthropic, OpenAI, Google and OpenRouter.
+Not built: shared-package extraction (tool names and approval rules are copied
+and point at their source), compaction, screenshots/input/browser tools.
+
 Acceptance: a private thread completes a multi-step coding task in a real folder
 with approvals and Stop, survives an app restart with its transcript intact, and
 a network capture shows no request to Overlay during the run (no Overlay tools
-yet in this phase).
+yet in this phase). Mock-model tests cover tools, approvals, Stop and saving;
+the real-app run is still to do.
 
 ### Phase 2: Bridge and UI
 
 - `localThreads` bridge capability and events (desktop, host and
   `@overlay/desktop-bridge` contract, with the vendored copy and fingerprint
   checks updated).
-- Composer choice, thread list, transcript and Sync to cloud in the web app,
-  desktop only, plus the model sources in the agent's settings.
+- Composer choice, thread list, transcript and Model keys in the web app,
+  desktop only. Sync to cloud moves to Phase 5.
 - Signing out stops private runs, but keeps private threads on disk for that
   account. Deleting a private thread deletes it from disk.
 
 ### Phase 3: Overlay tools and free tier
 
-- Private-turn `ovmcp_` token: minted from the desktop session with the
-  agent's grant, no remote session required, short expiry, metered to the
-  workspace. The host connects to `/api/agent-mcp` with it.
+- A token for `/api/mcp` with the agent's tool grant, obtained by the desktop
+  for this person and workspace, short-lived and metered to the workspace; the
+  host adds those tools to the private turn.
 - Entitlements: a free plan that allows private threads on own keys and local
   subscriptions plus the Decision 4 tool allowances; sandboxes, cloud machines
   and Overlay-billed inference stay paid.

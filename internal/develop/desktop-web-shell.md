@@ -87,6 +87,10 @@ the host's access is this app's permission. The switch (`localComputer.setKeepAv
 local-tools host from its `config.json` at launch once the session is verified; sign-out turns it off and stops
 the host. Unpackaged builds may set `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` to a packed host tarball for QA; packaged
 builds always use the pin.
+Private threads (bridge capability `localThreads`, macOS only for now) run a thread's agent on this computer with
+the person's own model keys: the app starts the bundled host as `overlay-agent-host private` over Node.js IPC, keeps
+the keys in the keychain and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains a Model
+keys section. `internal/develop/private-threads.md` has the contract and rules.
 Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
 press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
 The Agent host row shows its state and keeps the harness, connection code and Start controls in the

@@ -9,6 +9,7 @@ import {
 import { folderName } from '@/components/desktop/this-computer'
 import { folderKey, folderLabel, type ThreadFolder } from '@/shared/agents/thread-work'
 import type { ThreadWorkControls } from './useThreadWork'
+import { CloudSyncChoice } from '../private-threads/CloudSyncChoice'
 
 /**
  * An agent thread's computer and folder (internal/develop/thread-folders.md). The desktop app shows both under the
@@ -114,7 +115,12 @@ function useFolderChoices(controls: ThreadWorkControls): Array<{ label: string; 
   ]
 }
 
-export function ThreadWorkFooter({ controls }: { controls: ThreadWorkControls }) {
+export function ThreadWorkFooter({ controls, onMakePrivate, switching = false }: {
+  controls: ThreadWorkControls
+  /** Cloud sync off: turns this new thread on this computer into a private one (internal/develop/private-threads.md). */
+  onMakePrivate?: () => void
+  switching?: boolean
+}) {
   const router = useRouter()
   const groups = useFolderChoices(controls)
   useGitHubConnectResult()
@@ -223,6 +229,7 @@ export function ThreadWorkFooter({ controls }: { controls: ThreadWorkControls })
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      {local && onMakePrivate ? <CloudSyncChoice synced disabled={connecting || switching} onChoose={(synced) => { if (!synced) onMakePrivate() }} /> : null}
       <span className="flex-1" />
       {folder?.source === 'mac' ? <CopyToFiles controls={controls} /> : null}
     </div>

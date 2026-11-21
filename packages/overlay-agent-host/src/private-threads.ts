@@ -86,8 +86,14 @@ export class PrivateThreadService {
         await run.done
         return { stopped: true }
       }
-      case 'rename': {
-        const thread = store.update(request.owner, request.threadId, { title: request.title })
+      case 'update': {
+        if (request.folder !== undefined && store.messages(request.threadId).length > 0) {
+          throw new Error('The folder is fixed once the thread has a message.')
+        }
+        const thread = store.update(request.owner, request.threadId, {
+          ...(request.title ? { title: request.title } : {}),
+          ...(request.folder !== undefined ? { folder: request.folder } : {}),
+        })
         if (!thread) throw new Error('This private thread is not on this computer.')
         this.options.emit({ kind: 'threads', owner: request.owner })
         return { thread }
