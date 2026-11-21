@@ -1,10 +1,9 @@
 # Private local threads: Overlay's agent running on the user's computer
 
-Status: Mockup approved (2026-11-21). Phases 1 and 2 are built on branch
-`codex/private-threads-mockup` (Agent Host 0.6.0, desktop `localThreads`
-bridge, web UI); not merged, not published, not released. Phases 3–5 not
-started. Free-tier allowances and the paid-first conflict still open
-(Decision 4). Living doc: `internal/develop/private-threads.md`.
+Status: Mockup approved (2026-11-21). Phases 1 and 2 merged (PR 586), Agent
+Host 0.6.0 published to npm, and shipped in Overlay Desktop 0.4.0 (2026-11-21).
+Phases 3–5 not started. Free-tier allowances and the paid-first conflict still
+open (Decision 4). Living doc: `internal/develop/private-threads.md`.
 
 Repos: `LayerNorm/overlay-desktop`, `LayerNorm/overlay-web` (Agent Host package,
 web UI).
@@ -146,8 +145,8 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
 | Phase | State |
 | --- | --- |
 | 0: Decisions and mockup | Mockup approved; Decision 4 allowances still open |
-| 1: Private runtime in the Agent Host | Built on the branch, host tests pass; not published (needs Agent Host 0.6.0 on npm) |
-| 2: Bridge and UI | Built on the branch and tested end to end in a desktop dev build against the PR preview (real model via OpenRouter); desktop change not released |
+| 1: Private runtime in the Agent Host | Merged; Agent Host 0.6.0 published; shipped in desktop 0.4.0 |
+| 2: Bridge and UI | Merged and live on web; desktop 0.4.0 released; tested end to end in a desktop dev build against the PR preview, not yet in the released app |
 | 3: Overlay tools and free tier | Not started |
 | 4: Local subscriptions and Overlay-billed models | Not started |
 | 5: Sync to cloud | Not started |
