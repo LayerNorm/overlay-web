@@ -164,7 +164,7 @@ function PrivateThreadView({ bridge, owner, agent, initial, headerActions }: {
       <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col">
         <AppScreenHeader
           title={thread.title}
-          leading={<AgentCreature agent={agent} size={22} isDefault={agent.isDefault} working={running} />}
+          breadcrumbs={[{ label: agent.name, leading: <AgentCreature agent={agent} size={22} isDefault={agent.isDefault} working={running} /> }]}
           actions={(
             <div className="flex items-center gap-1">
               {headerActions}

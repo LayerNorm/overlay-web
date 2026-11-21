@@ -147,7 +147,7 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
 | --- | --- |
 | 0: Decisions and mockup | Mockup approved; Decision 4 allowances still open |
 | 1: Private runtime in the Agent Host | Built on the branch, host tests pass; not published (needs Agent Host 0.6.0 on npm) |
-| 2: Bridge and UI | Built on the branch; desktop change not released; not yet tested end to end in the app |
+| 2: Bridge and UI | Built on the branch and tested end to end in a desktop dev build against the PR preview (real model via OpenRouter); desktop change not released |
 | 3: Overlay tools and free tier | Not started |
 | 4: Local subscriptions and Overlay-billed models | Not started |
 | 5: Sync to cloud | Not started |
@@ -181,7 +181,7 @@ Acceptance: a private thread completes a multi-step coding task in a real folder
 with approvals and Stop, survives an app restart with its transcript intact, and
 a network capture shows no request to Overlay during the run (no Overlay tools
 yet in this phase). Mock-model tests cover tools, approvals, Stop and saving;
-the real-app run is still to do.
+a desktop dev build against the PR preview ran a real turn (write file, approval, command, reply), reloaded it from disk, kept it out of the browser and deleted it. Restart survival and the network capture are not checked yet.
 
 ### Phase 2: Bridge and UI
 
