@@ -10,6 +10,7 @@ import {
   activeTab,
   openFile,
   openLauncher,
+  openLink,
   openPanel,
   panelsOf,
   tabsFromPanels,
@@ -75,6 +76,10 @@ export function useThreadPanel({ conversationId, threadOpen }: { conversationId:
     setOpen: (open: boolean) => setPanel((current) => ({ ...current, open })),
     updateTabs: (update: TabsUpdate) => setPanel((current) => ({ ...current, tabs: update(current.tabs) })),
     openFile: (fileId: string) => setPanel((current) => ({ ...current, open: true, tabs: openFile(current.tabs, fileId) })),
+    openLink: (url: string, title?: string) => setPanel((current) => ({ ...current, open: true, tabs: openLink(current.tabs, url, title) })),
+    /** Shows the computer tab widened, for taking control. */
+    showComputerExpanded: () => setPanel((current) => ({ ...current, open: true, expanded: true, tabs: openPanel(current.tabs, 'computer') })),
+    setExpanded: (expanded: boolean) => setPanel((current) => ({ ...current, expanded })),
     toggleExpanded: () => setPanel((current) => ({ ...current, expanded: !current.expanded })),
     resize: (width: number) => setPanel((current) => ({
       ...current, width: Math.max(THREAD_PANEL_MIN_WIDTH, Math.round(width)), expanded: false,

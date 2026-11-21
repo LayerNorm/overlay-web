@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowLeft, ExternalLink, MousePointer2 } from 'lucide-react'
+import { MousePointer2 } from 'lucide-react'
 import type { Computer, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
@@ -176,11 +176,17 @@ function ReadyComputerPreview({
     : controlledByAnotherUser
       ? `${agentName} is paused. Another member has control.`
       : `${agentName} is working`
+  // Taking control keeps the stream here, in the panel (widened for it), and makes it interactive.
   if (controlled && controlledByCurrentUser) {
     return (
-      <div className="space-y-2">
-        <div className="flex aspect-[16/10] items-center justify-center rounded-xl bg-(--surface-subtle) text-xs text-(--muted)">
-          You have control
+      <div className="space-y-2" data-computer-control>
+        <div className="aspect-[16/10] overflow-hidden rounded-xl bg-(--surface-subtle)">
+          <iframe
+            src={ticketUrl}
+            title={`${computerName} computer control`}
+            allow="clipboard-read; clipboard-write; fullscreen; autoplay"
+            className="h-full w-full border-0"
+          />
         </div>
         <ComputerControlStatus status={status} releaseBusy={controlBusy} onReleaseControl={onReleaseControl} />
       </div>
@@ -257,55 +263,5 @@ function ConnectingState() {
       </span>
       Connecting
     </div>
-  )
-}
-
-export function AgentComputerControlOverlay({
-  computerName,
-  ticketUrl,
-  onClose,
-  controlBusy = false,
-}: {
-  computerName: string
-  ticketUrl: string
-  onClose(): void
-  controlBusy?: boolean
-}) {
-  const openInNewTab = () => {
-    window.open(ticketUrl, '_blank', 'noopener,noreferrer')
-  }
-  return (
-    <section className="flex h-full min-h-0 flex-col bg-(--background)" aria-label="Computer control">
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-(--border) px-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Button variant="ghost" size="icon-sm" aria-label="Back to conversation" disabled={controlBusy} onClick={onClose}>
-            <ArrowLeft size={16} />
-          </Button>
-          <span className="text-sm font-medium text-(--foreground)">Computer</span>
-          <span className="hidden items-center gap-1.5 text-xs text-(--muted) sm:inline-flex">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            You have control
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" size="icon-sm" aria-label="Open in new tab" title="Open in new tab" onClick={openInNewTab}>
-            <ExternalLink size={15} />
-          </Button>
-          <Button variant="secondary" size="sm" disabled={controlBusy} onClick={onClose}>
-            {controlBusy ? 'Releasing control...' : 'Release control'}
-          </Button>
-        </div>
-      </header>
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-        <div className="aspect-[16/10] w-full max-w-[1100px] overflow-hidden rounded-xl bg-(--surface-subtle)">
-          <iframe
-            src={ticketUrl}
-            title={`${computerName} computer control`}
-            allow="clipboard-read; clipboard-write; fullscreen; autoplay"
-            className="h-full w-full border-0"
-          />
-        </div>
-      </div>
-    </section>
   )
 }

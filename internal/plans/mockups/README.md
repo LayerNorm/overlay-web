@@ -118,6 +118,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `agent-sidebar-panels.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convpricing000000000000000000`
   and open the panel at the top right, or `agent-sidebar-panels.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlastable000000000000000`.
   Delete it once the design is accepted in production.
+- `agent-panel-links-and-control.html` (feature `agent-panel-links-and-control`): the approved link and computer
+  control changes, built from the production components; the feature only adds fixtures. A link opened from an agent thread is a tab of the thread's panel (host, reload and open in a new
+  tab above the page) instead of a second panel. Taking control of the agent's computer streams it, now interactive,
+  in the panel's Computer tab and widens the panel; Release control sits under the stream and returns the panel to its
+  width. The working line's orb lines up with the agent's name, and the primary sidebar leads with Agents, Chats, then
+  Work. Open `agent-panel-links-and-control.html#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlasnews0000000000000000`.
+  Delete it once the design is accepted in production.
 - `automation-threads.html` (feature `automation-threads`): the proposed automations-as-threads design. The
   Automations route is the production chat: a new automation is the new-chat view whose composer adds a Schedule and an
   Agent picker beside the model picker, and sending opens the automation's chat. Each run posts the instructions again

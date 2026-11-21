@@ -5,6 +5,7 @@ import {
   closeTab,
   openFile,
   openLauncher,
+  openLink,
   openPanel,
   panelsOf,
   replaceLauncher,
@@ -50,4 +51,12 @@ test('only panels are remembered and file tabs close when the thread changes', (
   const switched = withoutFileTabs(selectTab(state, 'file:f1'))
   assert.deepEqual(switched.tabs.map((tab) => tab.id), ['progress', 'computer', 'new:5'])
   assert.equal(switched.active, 'computer')
+})
+
+test('a link opens as its own tab, is focused when opened again, and closes with the thread', () => {
+  const linked = openLink(start, 'https://example.com/a', 'Example')
+  assert.equal(activeTab(linked)?.kind, 'link')
+  assert.equal(openLink(linked, 'https://example.com/a').tabs.length, 3)
+  assert.deepEqual(panelsOf(linked).tabs, ['progress', 'computer'])
+  assert.deepEqual(withoutFileTabs(linked).tabs.map((tab) => tab.id), ['progress', 'computer'])
 })

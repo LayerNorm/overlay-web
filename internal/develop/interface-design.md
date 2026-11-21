@@ -707,6 +707,17 @@ avatar, name and description, then one plain list of panels (Settings, Computer 
 Assignments, Progress, Changes, Files), with no search and no shortcut hints. "+" opens the same home as
 a new tab, which turns into the panel picked from it.
 
+A link opened "in Overlay" from an agent thread becomes a tab of that panel (`openLink` in
+`thread-panel-tabs.ts`, id `link:<url>`, so opening it again focuses the tab): a quiet host row with
+reload and open-in-new-tab above the sandboxed page (`LinkPreviewTab`), never a second right panel.
+Link and file tabs close when the thread changes. Taking control of a computer happens in the panel's
+Computer tab: the stream turns interactive in place with Release control below it, and the panel
+expands for it (`showComputerExpanded`). Releasing returns the panel to its earlier width. Nothing
+covers the conversation.
+
+The working orb's line has no left padding and pulls the orb back by its 5.5px inset, so its first
+dots line up with the agent's name.
+
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain
 the usual hover/focus behavior.

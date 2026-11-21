@@ -45,9 +45,9 @@ test('Work is the default home and first primary navigation item, followed by Ag
   assert.equal(shell.brand.name, 'Overlay')
   assert.equal(shell.brand.shortName, 'Overlay')
   assert.equal(shell.brand.homeHref, '/app/work')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'work')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'agents')
-  assert.equal(DEFAULT_OVERLAY_NAVIGATION[2]?.id, 'chat')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[0]?.id, 'agents')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[1]?.id, 'chat')
+  assert.equal(DEFAULT_OVERLAY_NAVIGATION[2]?.id, 'work')
 })
 
 test('resolveOverlayAppShellConfig filters disabled feature registries', () => {
@@ -71,9 +71,10 @@ test('sidebar registries resolve feature modules and actions from routes', () =>
   assert.equal(DEFAULT_OVERLAY_SETTINGS_PANELS.some((item) => item.id === 'agent-environments'), false)
 })
 
-test('Work leads the navigation and appears only when the work capability is on', () => {
+test('Work follows Agents and Chats and appears only when the work capability is on', () => {
   const on = resolveOverlayAppShellConfig(undefined, { capabilities: { work: true } })
-  assert.equal(on.navigation[0]?.id, 'work')
+  const ids = on.navigation.map((item) => item.id)
+  assert.equal(ids.indexOf('work'), ids.indexOf('chat') + 1)
   const work = on.navigation.find((item) => item.id === 'work')
   assert.equal(work?.href, '/app/work')
   assert.deepEqual(work?.subviews, ['list', 'board', 'timeline'])
