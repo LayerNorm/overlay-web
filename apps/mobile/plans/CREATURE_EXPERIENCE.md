@@ -1,6 +1,6 @@
 # Creature-first mobile experience
 
-Status: phases 1–6 implemented on native-shell and checked in the iOS 26 simulator (light and dark). Not yet tested: notification permission grant on a real device, iPad layout, Android.
+Status: phases 1–6 implemented on native-shell and checked in the iOS 26 simulator (light and dark, including switching appearance while the app is open or in the background, and the in-app Dark setting). Not yet tested: notification permission grant on a real device, iPad layout, Android.
 
 Goal: make Overlay mobile feel playful and personal by putting the agent
 creatures (shape + color + eyes, already used for agent identity) at the
@@ -38,5 +38,4 @@ patterns of consumer agent apps; all art, names and copy are Overlay's own.
 ## Known gaps
 
 - Personal chat transcripts render through the shared web transcript, so their per-message action row and date dividers stay at web parity.
-- The iOS status bar text stays dark when the system switches to dark mode while the app is open (seen in the simulator; not yet diagnosed).
 - Markdown lists keep zero bottom margin because the native markdown view under-measures it and clips following text.
