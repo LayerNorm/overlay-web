@@ -9,11 +9,16 @@ const workspaceRoot = path.resolve(projectRoot, '..')
 
 const config = getDefaultConfig(projectRoot)
 
-// Only add watchFolders when directories exist (local dev, not EAS cloud)
-const watchFolders = []
-if (fs.existsSync(workspaceRoot)) {
-  watchFolders.push(workspaceRoot)
+const watchFolders = [workspaceRoot]
+// Standalone EAS builds mount these directories from a sibling web checkout.
+const workspaceLinks = new Map()
+for (const entry of ['src', 'convex', 'packages', 'config', 'services']) {
+  const location = path.join(workspaceRoot, entry)
+  if (fs.existsSync(location) && fs.lstatSync(location).isSymbolicLink()) {
+    workspaceLinks.set(entry, fs.realpathSync(location))
+  }
 }
+watchFolders.push(...workspaceLinks.values())
 const overlayAppCore = path.resolve(workspaceRoot, 'packages/overlay-app-core')
 if (fs.existsSync(overlayAppCore)) {
   watchFolders.push(overlayAppCore)
@@ -57,6 +62,18 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       throw new Error('Run npm run build:shared-markdown-css before bundling the shared Markdown DOM renderer.')
     }
     return context.resolveRequest(context, katexStylesheet, platform)
+  }
+  if (workspaceLinks.size > 0) {
+    const candidate = moduleName.startsWith('@/shared/')
+      ? path.join(workspaceRoot, 'src', moduleName.slice(2))
+      : moduleName.startsWith('.')
+        ? path.resolve(path.dirname(context.originModulePath), moduleName)
+        : moduleName
+    if (path.isAbsolute(candidate)) {
+      const [entry, ...rest] = path.relative(workspaceRoot, candidate).split(path.sep)
+      const realPath = workspaceLinks.get(entry)
+      if (realPath) return context.resolveRequest(context, path.join(realPath, ...rest), platform)
+    }
   }
   const resolveNormally = () => defaultResolveRequest
     ? defaultResolveRequest(context, moduleName, platform)

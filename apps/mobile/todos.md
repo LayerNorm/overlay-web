@@ -5,6 +5,13 @@ phase; each lists the current mobile behavior and what owner input would change.
 
 ## Remaining work
 
+### Work parity
+
+Mobile Work has List, Board and a week-by-week Timeline. Board and Timeline
+open the task detail for status and date changes. Direct board reordering,
+timeline drag/resize, dependency arrows, and the web Organization view remain
+open. Verify the views and cross-platform task changes on the simulator.
+
 ### Web-only at launch (decided 2026-11-10, build on mobile later)
 
 Launch scope: sign in to existing workspaces only, Convex-native data, no

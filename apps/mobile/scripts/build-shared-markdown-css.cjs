@@ -7,7 +7,6 @@ const { pathToFileURL } = require('node:url')
 const appRoot = path.resolve(__dirname, '..')
 const inputPath = path.join(appRoot, 'assets/shared-markdown.input.css')
 const outputPath = path.join(appRoot, 'assets/shared-markdown.generated.css')
-const katexSourcePath = path.join(appRoot, '../node_modules/katex/dist/katex.min.css')
 const katexOutputPath = path.join(appRoot, 'assets/shared-markdown-katex.generated.css')
 const prepareScript = fs.readFileSync(path.join(appRoot, 'scripts/prepare-eas-workspace.cjs'), 'utf8')
 const revisionMatch = prepareScript.match(/const WEB_REVISION\s*=\s*['"]([a-f0-9]{40})['"]/)
@@ -53,6 +52,7 @@ function inlineLocalFontUrls(css, stylesheetPath, allowedRoot) {
 }
 
 function inlineKatexFonts(postcss, webRoot) {
+  const katexSourcePath = path.join(webRoot, 'node_modules/katex/dist/katex.min.css')
   const root = postcss.parse(fs.readFileSync(katexSourcePath, 'utf8'), { from: katexSourcePath })
   let fontFaceCount = 0
   root.walkAtRules('import', (rule) => {

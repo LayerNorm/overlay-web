@@ -12,18 +12,17 @@ function prepareWorkspace(root = path.resolve(__dirname, '..')) {
   )
     return
   const token = process.env.OVERLAY_WEB_READ_TOKEN
-  if (!token)
-    throw new Error(
-      'The EAS archive needs overlay-web. Set read-only OVERLAY_WEB_READ_TOKEN in the selected EAS environment.',
-    )
   const web = path.join(parent, 'overlay-web-dependencies')
   fs.mkdirSync(web, { recursive: true })
   const env = {
     ...process.env,
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-    GIT_CONFIG_VALUE_0:
-      'AUTHORIZATION: basic ' + Buffer.from('x-access-token:' + token).toString('base64'),
+    ...(token ? {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+      GIT_CONFIG_VALUE_0:
+        'AUTHORIZATION: basic ' + Buffer.from('x-access-token:' + token).toString('base64'),
+    } : {}),
+    GIT_TERMINAL_PROMPT: '0',
   }
   function git(args) {
     execFileSync('git', args, { cwd: web, env, stdio: 'inherit' })

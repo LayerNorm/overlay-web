@@ -1,4 +1,8 @@
-const HOSTS = new Set(['getoverlay.io', 'www.getoverlay.io'])
+export const OVERLAY_LINK_HOSTS: ReadonlySet<string> = new Set([
+  'overlay.works',
+  'getoverlay.io',
+  'www.getoverlay.io',
+])
 const SECTIONS = new Set([
   'memories',
   'members',
@@ -23,8 +27,8 @@ export async function activateLinkWorkspace(
 
 export function incomingRoute(value: string): string {
   try {
-    const url = new URL(value, 'https://www.getoverlay.io')
-    if (url.protocol !== 'overlay:' && (url.protocol !== 'https:' || !HOSTS.has(url.hostname)))
+    const url = new URL(value, 'https://overlay.works')
+    if (url.protocol !== 'overlay:' && (url.protocol !== 'https:' || !OVERLAY_LINK_HOSTS.has(url.hostname)))
       return '/'
     const incomingPath =
       url.protocol === 'overlay:' && url.host ? `/${url.host}${url.pathname}` : url.pathname

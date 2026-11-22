@@ -150,7 +150,7 @@ test('a stale exchange cannot remove a newer pending sign-in; legacy HTML cannot
 })
 
 test('auth base honors explicit Preview, config fallback and canonical default and is visible to Expo env inlining', () => {
-  for (const [env, extra, expected] of [[BASE, {}, BASE], ['', { authBaseUrl: BASE }, BASE], [undefined, {}, 'https://www.getoverlay.io']]) {
+  for (const [env, extra, expected] of [[BASE, {}, BASE], ['', { authBaseUrl: BASE }, BASE], [undefined, {}, 'https://overlay.works'], ['https://getoverlay.io', {}, 'https://overlay.works'], ['https://www.getoverlay.io', {}, 'https://overlay.works']]) {
     const config = load('services/appConfig.ts', { 'expo-constants': { expoConfig: { extra } } }, { process: { env: { EXPO_PUBLIC_AUTH_BASE_URL: env } } })
     assert.equal(config.AUTH_BASE_URL, expected)
   }

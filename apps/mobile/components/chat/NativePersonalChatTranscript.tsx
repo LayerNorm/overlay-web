@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser'
 import { ActivityIndicator, AppState, Keyboard, StyleSheet, Text, View } from 'react-native'
 import type { ChatTranscriptView, DraftModalState } from '@overlay/chat-core'
 import { useTheme } from '../../hooks/useTheme'
+import { OVERLAY_LINK_HOSTS } from '../../lib/incomingLinks'
 import {
   createNativeTranscriptActionController,
   type NativeTranscriptActionKind,
@@ -60,7 +61,6 @@ type InternalTranscriptRoute = { kind: 'files' } | { kind: 'file' | 'output' | '
 type InternalLinkResult = { kind: 'route'; route: InternalTranscriptRoute } | { kind: 'external'; url: string } | { kind: 'reject' }
 
 const EMPTY_VIEW: ChatTranscriptView = { version: 1, exchanges: [] }
-const FIRST_PARTY_HOSTS = new Set(['getoverlay.io', 'www.getoverlay.io'])
 
 function opaqueId(): string {
   return Crypto.randomUUID().replace(/-/g, '_')
@@ -84,7 +84,7 @@ function classifyInternalTranscriptLink(value: string): InternalLinkResult {
     return { kind: 'reject' }
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' || parsed.username || parsed.password) return { kind: 'reject' }
-  const firstPartyHost = FIRST_PARTY_HOSTS.has(canonicalHostname(parsed.hostname))
+  const firstPartyHost = OVERLAY_LINK_HOSTS.has(canonicalHostname(parsed.hostname))
   if (!firstPartyHost) return { kind: 'external', url: parsed.toString() }
   if (parsed.port) return { kind: 'reject' }
   let decodedPath: string

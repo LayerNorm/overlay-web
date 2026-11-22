@@ -23,7 +23,7 @@
       "bundleIdentifier": "com.layernorm.overlay-mobile",
       "buildNumber": "1",
       "associatedDomains": [
-        "applinks:www.getoverlay.io"
+        "applinks:overlay.works"
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

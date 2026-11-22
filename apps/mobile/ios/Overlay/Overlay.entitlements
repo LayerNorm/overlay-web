@@ -6,7 +6,7 @@
     <string>development</string>
     <key>com.apple.developer.associated-domains</key>
     <array>
-      <string>applinks:www.getoverlay.io</string>
+      <string>applinks:overlay.works</string>
     </array>
   </dict>
 </plist>

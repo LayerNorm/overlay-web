@@ -32,22 +32,12 @@ test('incoming workspace activation handles current, missing, valid and denied d
     /Denied/,
   )
 })
-test('EAS workspace preparation uses the existing parent and fails closed without checkout access', () => {
+test('EAS workspace preparation uses the existing parent and the same pin as CI', () => {
   const { prepareWorkspace, WEB_REVISION } = require('./prepare-eas-workspace.cjs')
   assert.equal(prepareWorkspace(root), undefined)
   assert.ok(
     fs.readFileSync(path.join(root, '.github/workflows/mobile.yml'), 'utf8').includes(WEB_REVISION),
   )
-  const token = process.env.OVERLAY_WEB_READ_TOKEN
-  try {
-    delete process.env.OVERLAY_WEB_READ_TOKEN
-    assert.throws(
-      () => prepareWorkspace(path.join(root, 'scripts/missing-eas-project')),
-      /OVERLAY_WEB_READ_TOKEN/,
-    )
-  } finally {
-    if (token !== undefined) process.env.OVERLAY_WEB_READ_TOKEN = token
-  }
 })
 test('universal and custom links use existing native destinations', () => {
   for (const route of [
@@ -67,6 +57,7 @@ test('universal and custom links use existing native destinations', () => {
       route + '?workspaceId=ws',
     )
     assert.equal(incomingRoute('https://getoverlay.io' + route), route)
+    assert.equal(incomingRoute('https://overlay.works' + route), route)
   }
   assert.equal(incomingRoute('https://getoverlay.io/automations/id'), '/automations?id=id')
   assert.equal(incomingRoute('https://getoverlay.io/settings/account'), '/settings?section=account')
@@ -130,11 +121,12 @@ test('EAS environments are explicit; builds fail closed without a Convex URL', (
     }
   }
 })
-test('verified intent filters cover both domains and all route families', () => {
+test('iOS uses the canonical domain and Android keeps its configured intent filters', () => {
   const config = require('../app.json').expo
-  assert.deepEqual(config.ios.associatedDomains, ['applinks:www.getoverlay.io'])
+  assert.deepEqual(config.ios.associatedDomains, ['applinks:overlay.works'])
   const filter = config.android.intentFilters[0]
   assert.equal(filter.autoVerify, true)
+  assert.ok(fs.readFileSync(path.join(root, 'ios/Overlay/Overlay.entitlements'), 'utf8').includes('applinks:overlay.works'))
   for (const host of ['www.getoverlay.io'])
     for (const prefix of [
       '/work',

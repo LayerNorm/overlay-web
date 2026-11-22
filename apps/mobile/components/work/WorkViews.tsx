@@ -49,9 +49,11 @@ import {
   WORK_STATUS_LABELS,
   type WorkFilter,
 } from '../../lib/work'
+import { columnsByStatus } from '../../../src/shared/work/query'
 import { Button, IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { WorkMarkdown } from './WorkMarkdown'
+import { WorkTimeline } from './WorkTimeline'
 
 function useWorkClock() {
   const [now, setNow] = useState(Date.now)
@@ -199,6 +201,9 @@ function Tabs({
   )
 }
 
+const workLayouts = ['List', 'Board', 'Timeline'] as const
+type WorkLayout = (typeof workLayouts)[number]
+
 export function WorkListView({
   items,
   context,
@@ -221,16 +226,91 @@ export function WorkListView({
   filter?: WorkFilter
 }) {
   const [filter, setFilter] = useState<WorkFilter>(initialFilter)
+  const [layout, setLayout] = useState<WorkLayout>('List')
   const labels: Record<WorkFilter, string> = {
     'needs-you': 'Needs you',
     mine: 'Assigned to me',
     all: 'Everything',
   }
-  const groups = groupByStatus(
-    filterWork(items, { filter, query: '', viewer: { userId, principalId: context.principalId } }),
-  )
+  const visibleItems = filterWork(items, {
+    filter,
+    query: '',
+    viewer: { userId, principalId: context.principalId },
+  })
+  const groups = layout === 'Board' ? columnsByStatus(visibleItems) : groupByStatus(visibleItems)
   const people = new Map(context.people.map((person) => [person.principalId, person]))
   const today = toWorkDate(new Date(useWorkClock()))
+  const statusGroups = layout === 'Timeline' ? null : groups.map((group) => (
+    <View
+      key={group.status}
+      style={layout === 'Board' ? {
+        width: 256,
+        borderWidth: 1,
+        borderColor: theme.border,
+        borderRadius: 10,
+        backgroundColor: theme.surfaceMuted,
+        paddingBottom: 8,
+      } : undefined}
+    >
+      <T
+        style={{
+          paddingHorizontal: 18,
+          paddingTop: 20,
+          paddingBottom: 8,
+          fontSize: 12,
+          color: theme.muted,
+        }}
+      >
+        {group.status === 'review' ? 'Ready for review' : WORK_STATUS_LABELS[group.status]} ·{' '}
+        {group.items.length}
+      </T>
+      {group.items.map((item) => (
+        <Pressable
+          key={item.id}
+          accessibilityRole="button"
+          accessibilityLabel={item.title}
+          onPress={() => onOpen(item.id)}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            gap: 12,
+            paddingHorizontal: 18,
+            paddingVertical: 14,
+            alignItems: 'center',
+            backgroundColor: pressed || layout === 'Board' ? theme.surfaceSubtle : 'transparent',
+            ...(layout === 'Board' ? { borderRadius: 8, marginHorizontal: 8, marginBottom: 6 } : {}),
+          })}
+        >
+          <WorkStatusIcon status={item.status} theme={theme} />
+          <View style={{ flex: 1 }}>
+            <T
+              numberOfLines={1}
+              style={{
+                color: item.status === 'done' ? theme.muted : theme.foreground,
+                fontSize: 14,
+                textDecorationLine: item.status === 'done' ? 'line-through' : 'none',
+              }}
+            >
+              {item.title}
+            </T>
+            {item.dueDate || item.blocked ? (
+              <T style={{ color: theme.muted, fontSize: 11, marginTop: 5 }}>
+                {item.blocked
+                  ? 'Blocked'
+                  : item.dueDate === today
+                    ? 'Today'
+                    : formatWorkDate(item.dueDate!, today)}
+              </T>
+            ) : null}
+          </View>
+          <WorkAvatar
+            person={people.get(item.assigneePrincipalId ?? '')}
+            theme={theme}
+            dark={dark}
+          />
+        </Pressable>
+      ))}
+    </View>
+  ))
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
       <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
@@ -248,6 +328,12 @@ export function WorkListView({
           ) : null}
         </View>
         <Tabs
+          values={[...workLayouts]}
+          value={layout}
+          onChange={(label) => setLayout(workLayouts.find((entry) => entry === label) ?? 'List')}
+          theme={theme}
+        />
+        <Tabs
           values={Object.values(labels)}
           value={labels[filter]}
           onChange={(label) =>
@@ -256,67 +342,17 @@ export function WorkListView({
           theme={theme}
         />
       </View>
-      {groups.map((group) => (
-        <View key={group.status}>
-          <T
-            style={{
-              paddingHorizontal: 18,
-              paddingTop: 20,
-              paddingBottom: 8,
-              fontSize: 12,
-              color: theme.muted,
-            }}
-          >
-            {group.status === 'review' ? 'Ready for review' : WORK_STATUS_LABELS[group.status]} ·{' '}
-            {group.items.length}
-          </T>
-          {group.items.map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="button"
-              accessibilityLabel={item.title}
-              onPress={() => onOpen(item.id)}
-              style={({ pressed }) => ({
-                flexDirection: 'row',
-                gap: 12,
-                paddingHorizontal: 18,
-                paddingVertical: 14,
-                alignItems: 'center',
-                backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
-              })}
-            >
-              <WorkStatusIcon status={item.status} theme={theme} />
-              <View style={{ flex: 1 }}>
-                <T
-                  numberOfLines={1}
-                  style={{
-                    color: item.status === 'done' ? theme.muted : theme.foreground,
-                    fontSize: 14,
-                    textDecorationLine: item.status === 'done' ? 'line-through' : 'none',
-                  }}
-                >
-                  {item.title}
-                </T>
-                {item.dueDate || item.blocked ? (
-                  <T style={{ color: theme.muted, fontSize: 11, marginTop: 5 }}>
-                    {item.blocked
-                      ? 'Blocked'
-                      : item.dueDate === today
-                        ? 'Today'
-                        : formatWorkDate(item.dueDate!, today)}
-                  </T>
-                ) : null}
-              </View>
-              <WorkAvatar
-                person={people.get(item.assigneePrincipalId ?? '')}
-                theme={theme}
-                dark={dark}
-              />
-            </Pressable>
-          ))}
-        </View>
-      ))}
-      {!groups.length ? (
+      {layout === 'Board' ? (
+        <ScrollView
+          horizontal
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 10, alignItems: 'flex-start' }}
+        >
+          {statusGroups}
+        </ScrollView>
+      ) : layout === 'Timeline' ? (
+        <WorkTimeline items={visibleItems} today={today} theme={theme} onOpen={onOpen} />
+      ) : statusGroups}
+      {layout !== 'Timeline' && !visibleItems.length ? (
         <T style={{ textAlign: 'center', color: theme.muted, padding: 48 }}>No tasks here.</T>
       ) : null}
       {items.length >= 2000 ? (

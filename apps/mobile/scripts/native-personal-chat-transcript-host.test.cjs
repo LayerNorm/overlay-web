@@ -463,8 +463,11 @@ test('mounted host projects scoped capabilities and routes only current native r
 
   assert.equal((await lastTranscriptProps.onAction(action(snapshot, 'open-link', { url: 'https://getoverlay.io/files/file/file-1?workspace=hostile&auth=secret#fragment' }))).ok, true)
   assert.deepEqual(routeCalls.at(-1), { pathname: '/(tabs)/files/file/[id]', params: { id: 'file-1' } })
+  assert.equal((await lastTranscriptProps.onAction(action(snapshot, 'open-link', { url: 'https://overlay.works/files/file/file-1?workspace=untrusted' }))).ok, true)
+  assert.deepEqual(routeCalls.at(-1), { pathname: '/(tabs)/files/file/[id]', params: { id: 'file-1' } })
   const beforeRejectedLink = routeCalls.length
   const beforeAuthCallback = externalLinks.length
+  assert.equal((await lastTranscriptProps.onAction(action(snapshot, 'open-link', { url: 'https://overlay.works/auth/native/callback?code=secret' }))).ok, false)
   assert.equal((await lastTranscriptProps.onAction(action(snapshot, 'open-link', { url: 'https://getoverlay.io/auth/native/callback?code=secret' }))).ok, false)
   assert.equal((await lastTranscriptProps.onAction(action(snapshot, 'open-link', { url: 'https://getoverlay.io/%61uth/native/callback' }))).ok, false)
   assert.equal((await lastTranscriptProps.onAction(action(snapshot, 'open-link', { url: 'https://getoverlay.io/password/reset?code=secret' }))).ok, false)
