@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect } from 'react'
 import { cn } from '../../utils/cn'
 import { useDialogReturnFocus } from '../../hooks/useDialogReturnFocus'
 import {
@@ -38,18 +37,6 @@ export function ConfirmDialog({
   onCancel: () => void
 }) {
   const returnFocus = useDialogReturnFocus()
-  // Preserve the pre-Radix contract: Escape cancels, Enter confirms.
-  useEffect(() => {
-    if (!isOpen) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        if (!busy) onConfirm()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, busy, onConfirm])
 
   const confirmClass = destructive
     ? 'rounded-lg bg-red-500 px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40'
