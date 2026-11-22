@@ -1,3 +1,4 @@
+import { NativeSegmented } from '../navigation/NativeSegmented'
 import React, { useEffect, useMemo } from 'react'
 import {
   Animated,
@@ -211,53 +212,18 @@ export const SearchField = React.forwardRef<
   )
 })
 
+/** Segmented control; renders the native system control. */
 export function SegmentedControl<T extends string>({
-  theme,
   value,
   options,
   onChange,
 }: {
-  theme: Theme
+  theme?: Theme
   value: T
   options: ReadonlyArray<{ label: string; value: T }>
   onChange: (value: T) => void
 }): React.ReactElement {
-  return (
-    <View style={[styles.segmented, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}>
-      {options.map((option) => {
-        const isActive = option.value === value
-        return (
-          <TouchableOpacity
-            key={option.value}
-            onPress={() => {
-              if (!isActive) {
-                onChange(option.value)
-              }
-            }}
-            activeOpacity={0.82}
-            accessibilityRole="button"
-            accessibilityLabel={option.label}
-            accessibilityState={{ selected: isActive }}
-            style={[
-              styles.segment,
-              {
-                backgroundColor: isActive ? theme.foreground : 'transparent',
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: isActive ? theme.background : theme.textSecondary },
-              ]}
-            >
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        )
-      })}
-    </View>
-  )
+  return <NativeSegmented value={value} options={options} onChange={onChange} />
 }
 
 export function EmptyState({
@@ -527,23 +493,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: fontSize.sm,
     minHeight: 38,
-  },
-  segmented: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: borderRadius.full,
-    padding: 3,
-    gap: 4,
-  },
-  segment: {
-    borderRadius: borderRadius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  segmentText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   emptyState: {
     alignItems: 'center',

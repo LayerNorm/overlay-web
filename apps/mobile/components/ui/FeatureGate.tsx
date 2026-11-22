@@ -1,13 +1,11 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { ScrollView } from 'react-native'
 import { useTheme } from '../../hooks/useTheme'
-import { useDrawer } from '../../contexts/DrawerContext'
-import { EmptyState, MainScreenHeader, TopBarIconButton } from './AppChrome'
+import { CreatureEmpty } from '../creatures/CreatureEmpty'
 
 /**
- * Disabled-feature fallback for tab screens. Keeps the app chrome (header +
- * drawer access) so a server-side flag flip reads as "feature off", not a
+ * Turned-off or unavailable feature. Renders under the screen's native
+ * navigation bar, so a server-side flag flip reads as "feature off", not a
  * broken screen.
  */
 export function FeatureGate({
@@ -17,34 +15,13 @@ export function FeatureGate({
   title: string
   description?: string
 }): React.ReactElement {
-  const { theme, isDark } = useTheme()
-  const insets = useSafeAreaInsets()
-  const { openDrawer } = useDrawer()
-
+  const { theme } = useTheme()
   return (
-    <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <MainScreenHeader
-        theme={theme}
-        isDark={isDark}
-        topInset={insets.top}
-        leftSlot={<TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />}
-        centerSlot={null}
-      />
-      <View style={[styles.body, { paddingTop: insets.top + 72 }]}>
-        <EmptyState theme={theme} icon="slash" title={title} description={description} />
-      </View>
-    </View>
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      style={{ flex: 1, backgroundColor: theme.background }}
+    >
+      <CreatureEmpty title={title} detail={description} shape="squircle" color="#94a3b8" />
+    </ScrollView>
   )
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  body: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 80,
-  },
-})

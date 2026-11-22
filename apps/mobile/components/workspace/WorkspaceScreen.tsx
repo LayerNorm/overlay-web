@@ -23,7 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { Stack, useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
@@ -40,7 +40,6 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { WorkspaceSharedResource } from '../../services/workspaceManagementService'
 import { useTheme } from '../../hooks/useTheme'
-import { useDrawer } from '../../contexts/DrawerContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -65,13 +64,9 @@ import {
 import {
   BottomSheet,
   EmptyState,
-  MainScreenHeader,
   SearchField,
-  TopBarIconButton,
 } from '../ui/AppChrome'
 import { Badge, ListRow, Section } from '../ui/primitives'
-import { DrawerSidebar } from '../chat/DrawerSidebar'
-import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
 import { SlackImportPanel } from './SlackImportPanel'
 
@@ -153,10 +148,9 @@ function kindLabel(kind: string): string {
 }
 
 export function WorkspaceScreen(): React.ReactElement {
-  const { theme, isDark } = useTheme()
+  const { theme } = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
-  const { openDrawer } = useDrawer()
   const { isFeatureEnabled } = useAppSession()
   const {
     activeWorkspace,
@@ -824,50 +818,26 @@ export function WorkspaceScreen(): React.ReactElement {
   const headerPrimary = primaryAction()
 
   return (
-    <ScreenWithDrawer
-      drawer={
-        <DrawerSidebar
-          variant="slide"
-          theme={theme}
-          chats={[]}
-          activeChatId={null}
-          onSelectChat={(chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } })}
-          onCreateChat={() => router.push('/chat')}
-        />
-      }
-    >
       <View style={[styles.screen, { backgroundColor: theme.background }]}>
-        <MainScreenHeader
-          theme={theme}
-          isDark={isDark}
-          topInset={insets.top}
-          blurHeight={insets.top + 58}
-          leftSlot={<TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />}
-          centerSlot={
-            <View style={styles.headerCenter}>
-              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-                {activeWorkspace?.name ?? 'Workspace'}
-              </Text>
-              <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                {`${activeWorkspace?.kind === 'organization' ? 'Organization' : 'Personal'}${
-                  activeWorkspace?.memberCount ? ` · ${activeWorkspace.memberCount} members` : ''
-                }${activeWorkspace?.role ? ` · ${activeWorkspace.role}` : ''}`}
-              </Text>
-            </View>
-          }
-          rightSlot={
-            <View style={styles.headerActions}>
-              {isOrganization && activeWorkspace?.role === 'owner' ? (
-                <TopBarIconButton theme={theme} icon="archive" onPress={handleArchiveWorkspace} />
-              ) : null}
-              {headerPrimary ? (
-                <TopBarIconButton theme={theme} icon="plus" onPress={headerPrimary} />
-              ) : null}
-            </View>
-          }
+        <Stack.Screen
+          options={{
+            title: activeWorkspace?.name ?? 'Workspace',
+            headerLargeTitle: false,
+          }}
         />
+        {(isOrganization && activeWorkspace?.role === 'owner') || headerPrimary ? (
+          <Stack.Toolbar placement="right">
+            {isOrganization && activeWorkspace?.role === 'owner' ? (
+              <Stack.Toolbar.Button icon="archivebox" accessibilityLabel="Archive workspace" onPress={handleArchiveWorkspace} />
+            ) : null}
+            {headerPrimary ? (
+              <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add" onPress={headerPrimary} />
+            ) : null}
+          </Stack.Toolbar>
+        ) : null}
 
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
           style={styles.body}
           contentContainerStyle={[styles.bodyContent, { paddingBottom: insets.bottom + spacing.xl }]}
           refreshControl={
@@ -1127,7 +1097,6 @@ export function WorkspaceScreen(): React.ReactElement {
           )}
         </BottomSheet>
       </View>
-    </ScreenWithDrawer>
   )
 }
 

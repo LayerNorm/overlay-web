@@ -9,11 +9,10 @@ import {
   View,
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
-import { useLocalSearchParams, useRouter } from 'expo-router'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Stack, useLocalSearchParams } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../../../constants/theme'
-import { MainScreenHeader, TopBarIconButton } from '../../../../components/ui/AppChrome'
 import { ShareSheet } from '../../../../components/workspace/ShareSheet'
 import { listOutputs, shareOutput } from '../../../../services/knowledgeService'
 import type { OutputSummary } from '@overlay/app-core'
@@ -22,9 +21,7 @@ const { width } = Dimensions.get('window')
 
 export default function OutputDetailScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { theme, isDark } = useTheme()
-  const router = useRouter()
-  const insets = useSafeAreaInsets()
+  const { theme } = useTheme()
   const [output, setOutput] = useState<OutputSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [shareOpen, setShareOpen] = useState(false)
@@ -69,23 +66,13 @@ export default function OutputDetailScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
-      <MainScreenHeader
-        theme={theme}
-        isDark={isDark}
-        topInset={insets.top}
-        blurHeight={insets.top + 52}
-        leftSlot={<TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />}
-        centerSlot={
-          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-            Output
-          </Text>
-        }
-        rightSlot={
-          <TopBarIconButton theme={theme} icon="share-2" onPress={() => setShareOpen(true)} />
-        }
-      />
+      <Stack.Screen options={{ title: 'Output', headerLargeTitle: false }} />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button icon="square.and.arrow.up" accessibilityLabel="Share" onPress={() => setShareOpen(true)} />
+      </Stack.Toolbar>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 54 }]}>
+      <ScrollView contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.scrollContent}>
         {output.type === 'image' && output.url ? (
           <Image
             source={{ uri: output.url }}

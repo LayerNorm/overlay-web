@@ -26,9 +26,32 @@ export function useNativeHeaderOptions(): NativeStackNavigationOptions {
   }
 }
 
-/** Options for the first screen of a tab: large title. */
-export function tabRootOptions(title: string): NativeStackNavigationOptions {
-  return { title, headerLargeTitle: true }
+/**
+ * Options for the first screen of a tab: the title sits in the navigation bar
+ * itself, leading, on the same row as the trailing buttons (no separate
+ * large-title row, so content starts right under the bar).
+ */
+export function useTabRootOptions(title: string): NativeStackNavigationOptions {
+  const { theme } = useTheme()
+  return {
+    title: '',
+    headerLargeTitle: false,
+    unstable_headerLeftItems: () => [
+      {
+        type: 'custom',
+        hidesSharedBackground: true,
+        element: (
+          <Text
+            accessibilityRole="header"
+            numberOfLines={1}
+            style={{ fontFamily: 'GeistSemibold', fontSize: 28, letterSpacing: -0.6, color: theme.foreground }}
+          >
+            {title}
+          </Text>
+        ),
+      },
+    ],
+  }
 }
 
 /**

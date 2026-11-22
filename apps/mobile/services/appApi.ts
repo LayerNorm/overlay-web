@@ -192,6 +192,24 @@ export async function appRequest(
   path: string,
   options: AppRequestOptions = {},
 ): Promise<Response> {
+  const response = await sendAppRequest(path, options)
+  // A remembered workspace the person can no longer open (removed, deleted,
+  // or another backend) must not lock the app: drop it and retry unscoped so
+  // the server's own active workspace applies.
+  if (response.status === 404 && options.workspaceId === undefined && requestWorkspaceId) {
+    const code = await response.clone().json().then((body: { code?: unknown }) => body?.code, () => undefined)
+    if (code === 'workspace_not_found') {
+      setRequestWorkspaceId(null)
+      return sendAppRequest(path, options)
+    }
+  }
+  return response
+}
+
+async function sendAppRequest(
+  path: string,
+  options: AppRequestOptions,
+): Promise<Response> {
   const workspaceId = resolveWorkspaceId(options)
   const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   throwIfAborted(options.signal)
@@ -269,6 +287,25 @@ export async function appJson<T>(
     throw await toOverlayApiError(response)
   }
   return response.json() as Promise<T>
+}
+
+/**
+ * Every item of a paginated `/api/v1` list (`{ data, hasMore, nextCursor }`),
+ * fetched 100 at a time.
+ */
+export async function appList<T>(path: string, options: AppRequestOptions = {}): Promise<T[]> {
+  const items: T[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < 20; page += 1) {
+    const result = await appJson<{ data: T[]; hasMore?: boolean; nextCursor?: string }>(path, {
+      ...options,
+      query: { ...(options.query ?? {}), limit: 100, ...(cursor ? { cursor } : {}) },
+    })
+    items.push(...result.data)
+    if (!result.hasMore || !result.nextCursor) break
+    cursor = result.nextCursor
+  }
+  return items
 }
 
 async function toOverlayApiError(response: Response): Promise<OverlayApiError> {

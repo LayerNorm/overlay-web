@@ -6,22 +6,18 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native'
-import { useLocalSearchParams, useRouter } from 'expo-router'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Stack, useLocalSearchParams } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTheme } from '../../../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../../../constants/theme'
-import { MainScreenHeader, TopBarIconButton } from '../../../../components/ui/AppChrome'
 import { listMemories, updateMemory } from '../../../../services/knowledgeService'
 import type { MemoryRow } from '@overlay/app-core'
 
 export default function MemoryDetailScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { theme, isDark } = useTheme()
-  const router = useRouter()
-  const insets = useSafeAreaInsets()
+  const { theme } = useTheme()
   const [memory, setMemory] = useState<MemoryRow | null>(null)
   const [content, setContent] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -83,33 +79,17 @@ export default function MemoryDetailScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
-      <MainScreenHeader
-        theme={theme}
-        isDark={isDark}
-        topInset={insets.top}
-        blurHeight={insets.top + 52}
-        leftSlot={<TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />}
-        centerSlot={
-          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-            Memory
-          </Text>
-        }
-        rightSlot={
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
-            style={[styles.saveButtonInline, { opacity: isSaving ? 0.4 : 1 }]}
-          >
-            <Text style={[styles.saveButtonText, { color: theme.foreground }]}>
-              {isSaving ? 'Saving…' : 'Save'}
-            </Text>
-          </TouchableOpacity>
-        }
-      />
+      <Stack.Screen options={{ title: 'Memory', headerLargeTitle: false }} />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button accessibilityLabel="Save" disabled={isSaving} onPress={handleSave}>
+          {isSaving ? 'Saving…' : 'Save'}
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 54 }]}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.scrollContent}
       >
         <TextInput
           value={content}

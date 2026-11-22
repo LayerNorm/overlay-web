@@ -138,41 +138,6 @@ export function UsageStat({
   )
 }
 
-export function SegmentedControl<T extends string>({
-  theme,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  theme: Theme
-  value: T
-  options: { label: string; value: T }[]
-  disabled?: boolean
-  onChange: (value: T) => void
-}): React.ReactElement {
-  return (
-    <View style={[settingsStyles.segmented, { borderColor: theme.border, backgroundColor: theme.surfaceSubtle, opacity: disabled ? 0.6 : 1 }]}>
-      {options.map((option) => {
-        const active = value === option.value
-        return (
-          <TouchableOpacity
-            key={option.value}
-            activeOpacity={0.82}
-            disabled={disabled}
-            onPress={() => onChange(option.value)}
-            style={[settingsStyles.segment, active && { backgroundColor: theme.foreground }]}
-          >
-            <Text style={[settingsStyles.segmentText, { color: active ? theme.background : theme.textSecondary }]} numberOfLines={1}>
-              {option.label}
-            </Text>
-          </TouchableOpacity>
-        )
-      })}
-    </View>
-  )
-}
-
 export const settingsStyles = StyleSheet.create({
   card: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -245,25 +210,6 @@ export const settingsStyles = StyleSheet.create({
     textAlign: 'right',
     fontSize: fontSize.sm,
     fontWeight: '600',
-  },
-  segmented: {
-    flexDirection: 'row',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.full,
-    padding: 4,
-    gap: 4,
-  },
-  segment: {
-    flex: 1,
-    minHeight: 34,
-    borderRadius: borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  segmentText: {
-    fontSize: fontSize.xs,
-    fontWeight: '700',
   },
   usageGrid: {
     flexDirection: 'row',

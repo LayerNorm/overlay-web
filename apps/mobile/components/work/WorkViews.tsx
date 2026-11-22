@@ -142,35 +142,13 @@ function Tabs({
   values,
   value,
   onChange,
-  theme,
 }: {
   values: string[]
   value: string
   onChange: (value: string) => void
-  theme: Theme
+  theme?: Theme
 }) {
-  return (
-    <View style={{ flexDirection: 'row', gap: 5 }}>
-      {values.map((label) => (
-        <Pressable
-          key={label}
-          accessibilityRole="button"
-          accessibilityState={{ selected: value === label }}
-          onPress={() => onChange(label)}
-          style={{
-            paddingHorizontal: 11,
-            paddingVertical: 9,
-            borderRadius: 7,
-            backgroundColor: value === label ? theme.surfaceSubtle : 'transparent',
-          }}
-        >
-          <T style={{ color: value === label ? theme.foreground : theme.muted, fontSize: 12 }}>
-            {label}
-          </T>
-        </Pressable>
-      ))}
-    </View>
-  )
+  return <NativeSegmented value={value} onChange={onChange} options={values.map((label) => ({ label, value: label }))} />
 }
 
 export const workLayouts = ['List', 'Board', 'Timeline'] as const
@@ -326,7 +304,7 @@ export function WorkListView({
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: 24 }}>
       {nativeLayout ? (
-        <View style={{ paddingTop: 4, paddingBottom: 4 }}>
+        <View style={{ paddingTop: 4, paddingBottom: 4, paddingHorizontal: 16 }}>
           <NativeSegmented
             value={filter}
             onChange={setFilter}

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import { ActivityIndicator, Modal, View } from 'react-native'
+import { ActivityIndicator, Modal, ScrollView, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type {
@@ -22,7 +22,8 @@ import {
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { canWorkOnItem } from '../../lib/work'
 import { parseWorkErrorReason, workErrorMessage } from '../../../src/shared/work/errors'
-import { Button, T } from '../shell/primitives'
+import { Button } from '../shell/primitives'
+import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { WorkComposer, WorkDetailView, WorkListView, workLayouts, type WorkLayout } from './WorkViews'
 import { TabToolbar } from '../navigation/nativeHeader'
 import { WorkPlacementSheet, WorkScheduleSheet } from './WorkTaskActions'
@@ -128,7 +129,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       {id ? (
-        <Stack.Screen options={{ title: data.item?.title ?? '', headerLargeTitle: false }} />
+        <Stack.Screen options={{ title: '', headerLargeTitle: false }} />
       ) : (
         <TabToolbar>
           <Stack.Toolbar.Menu icon="line.3.horizontal.decrease" accessibilityLabel="View options">
@@ -190,22 +191,21 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           </Button>
         </View>
       ) : data.error || unavailable ? (
-        <View style={{ padding: 24, gap: 16 }}>
-          <T accessibilityRole="alert" style={{ color: theme.muted }}>
-            {data.error ??
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ flex: 1 }}>
+          <CreatureEmpty
+            title={id ? 'Task unavailable' : 'Work is unavailable'}
+            detail={
+              data.error ??
               (id
-                ? 'This task is unavailable or you no longer have access.'
-                : 'Work is not available in this workspace.')}
-          </T>
-          <Button theme={theme} onPress={data.retry}>
-            Try again
-          </Button>
-          {id ? (
-            <Button theme={theme} onPress={back}>
-              Back to Work
-            </Button>
-          ) : null}
-        </View>
+                ? 'This task was removed or you no longer have access.'
+                : 'Work is not turned on for you in this workspace.')
+            }
+            shape="squircle"
+            color="#f59e0b"
+            action={id ? 'Back to Work' : 'Try again'}
+            onAction={id ? back : data.retry}
+          />
+        </ScrollView>
       ) : !data.items || !data.context || (id && data.item === undefined) ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={theme.muted} />

@@ -18,3 +18,16 @@ export function filterNotifications(
     })
     .slice(0, options.limit ?? 100)
 }
+
+/** One-paragraph plain-text preview of a markdown message body. */
+export function activityPreview(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/(\*\*|__|~~|`)/g, '')
+    .replace(/(^|\s)[*_](\S[^*_]*\S|\S)[*_](?=\s|$|[.,!?;:])/g, '$1$2')
+    .replace(/\s+/g, ' ')
+    .trim()
+}

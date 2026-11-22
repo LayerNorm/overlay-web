@@ -25,14 +25,14 @@ function load(file, mocks = {}, globals = {}) {
 const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), memo: component => component, forwardRef: component => component, useMemo: fn => fn(), useState: value => [value, () => {}], useRef: value => ({ current: value }) }
 react.default = react
 const native = new Proxy({ StyleSheet: { create: styles => styles, flatten: style => style, hairlineWidth: 1 } }, { get: (target, key) => target[key] ?? key })
-const ui = { react, 'react-native': native, 'lucide-react-native': native, 'react-native-enriched-markdown': { EnrichedMarkdownText: 'Markdown' }, '@expo/vector-icons': { Feather: 'Feather' }, 'expo-image': { Image: 'Image' }, 'react-native-reanimated': { default: { View: 'AnimatedView' }, FadeIn: { duration: () => null } }, '../../constants/theme': { spacing: {}, fontSize: {}, borderRadius: {} }, './GeneratedUiCard': { GeneratedUiCard: 'GeneratedUiCard' }, './ResponseMark': { ResponseMark: 'ResponseMark' } }
+const ui = { react, 'react-native': native, 'lucide-react-native': native, 'react-native-enriched-markdown': { EnrichedMarkdownText: 'Markdown' }, '@expo/vector-icons': { Feather: 'Feather' }, 'expo-image': { Image: 'Image' }, 'react-native-reanimated': { default: { View: 'AnimatedView' }, FadeIn: { duration: () => null } }, '../../constants/theme': { spacing: {}, fontSize: {}, borderRadius: {} }, './GeneratedUiCard': { GeneratedUiCard: 'GeneratedUiCard' }, './ResponseMark': { ResponseMark: 'ResponseMark' }, '../navigation/NativeSegmented': { NativeSegmented: 'NativeSegmented' } }
 function nodes(tree) { return !tree || typeof tree !== 'object' ? [] : [tree, ...tree.props.children.flat(Infinity).flatMap(nodes)] }
 function texts(tree) { return !tree || typeof tree !== 'object' ? String(tree ?? '') : tree.props.children.flat(Infinity).map(texts).join(' ') }
 
 test('chat sheets are opaque and tall without changing legacy glass sheets; empty content is safe', () => {
   const animated = { Value: class {}, add: () => 0, View: 'AnimatedView' }
   const rn = new Proxy({ ...native, Animated: animated, PanResponder: { create: () => ({ panHandlers: {} }) } }, { get: (target, key) => target[key] ?? key })
-  const { BottomSheet } = load('components/ui/AppChrome.tsx', { ...ui, react: { ...react, useEffect() {} }, 'react-native': rn, '../../contexts/DrawerContext': { useDrawer: () => ({}) }, './GlassSurface': { GlassSurface: 'GlassSurface' } })
+  const { BottomSheet } = load('components/ui/AppChrome.tsx', { ...ui, react: { ...react, useEffect() {} }, 'react-native': rn, '../../contexts/DrawerContext': { useDrawer: () => ({}) }, './GlassSurface': { GlassSurface: 'GlassSurface' }, '../navigation/NativeSegmented': { NativeSegmented: 'NativeSegmented' } })
   const props = { theme: { surface: '#fff', glassBg: 'rgba(255,255,255,0.5)' }, title: 'Model', visible: true, onClose() {}, children: null }
   const solid = nodes(BottomSheet({ ...props, solid: true, tall: true }))
   assert.equal(solid.filter(node => node.type === 'GlassSurface').length, 0)
@@ -61,7 +61,7 @@ test('picker pins Auto, exposes mode tabs, supported chips only and independent 
   const { ModelPicker } = load('components/chat/ModelPicker.tsx', ui)
   const calls = [], props = { theme: {}, models: [{ id: 'm', name: 'Plain', provider: 'openai' }], favoriteIds: [], onFavorite: id => calls.push(id), onSelect: (...args) => calls.push(args), onAuto: () => calls.push('auto') }
   const tree = ModelPicker(props), all = nodes(tree)
-  assert.equal(all.filter(node => node.props.accessibilityRole === 'tab').length, 3)
+  assert.equal(JSON.stringify(all.find(node => node.type === 'NativeSegmented').props.options.map(option => option.value)), '["text","image","video"]')
   assert.equal(all.filter(node => ['Vision', 'Reasoning'].includes(node.props.accessibilityLabel)).length, 0)
   all.find(node => node.props.accessibilityLabel === 'Auto').props.onPress()
   all.find(node => node.props.accessibilityLabel === 'Favorite Plain').props.onPress()

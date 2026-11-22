@@ -8,26 +8,20 @@ import {
   View,
 } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
-import { useDrawer } from '../../contexts/DrawerContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { spacing } from '../../constants/theme'
 import type { ChatMeta } from '../../services/chatTypes'
 import { loadArchivedChats } from '../../services/chatStorage'
 import { unarchiveConversation } from '../../services/conversationActionsService'
-import { MainScreenHeader, TopBarIconButton, EmptyState, SearchField } from '../ui/AppChrome'
+import { EmptyState, SearchField } from '../ui/AppChrome'
 import { Section, ListRow, Badge } from '../ui/primitives'
-import { DrawerSidebar } from './DrawerSidebar'
-import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
 
 /** Archived conversations — `GET /conversations?archived=true` (web ChatArchivedView). */
 export function ArchivedScreen(): React.ReactElement {
-  const { theme, isDark } = useTheme()
-  const insets = useSafeAreaInsets()
+  const { theme } = useTheme()
   const router = useRouter()
-  const { openDrawer } = useDrawer()
   const { capabilities } = useAppSession()
 
   const [chats, setChats] = useState<ChatMeta[]>([])
@@ -89,31 +83,10 @@ export function ArchivedScreen(): React.ReactElement {
   }
 
   return (
-    <ScreenWithDrawer
-      drawer={
-        <DrawerSidebar
-          variant="slide"
-          theme={theme}
-          chats={[]}
-          activeChatId={null}
-          onSelectChat={(chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } })}
-          onCreateChat={() => router.push('/chat')}
-        />
-      }
-    >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <MainScreenHeader
-          theme={theme}
-          isDark={isDark}
-          topInset={insets.top}
-          blurHeight={insets.top + 60}
-          leftSlot={<TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />}
-          centerSlot={<Text style={[styles.title, { color: theme.text }]}>Archived</Text>}
-          rightSlot={<View style={{ width: 44 }} />}
-        />
-
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingTop: insets.top + 70 }]}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load('refresh')} tintColor={theme.textSecondary} />
           }
@@ -170,7 +143,6 @@ export function ArchivedScreen(): React.ReactElement {
           </Text>
         </ScrollView>
       </View>
-    </ScreenWithDrawer>
   )
 }
 

@@ -1,6 +1,6 @@
 # Creature-first mobile experience
 
-Status: phases 1–6 implemented on native-shell and checked in the iOS 26 simulator (light and dark, including switching appearance while the app is open or in the background, and the in-app Dark setting). Not yet tested: notification permission grant on a real device, iPad layout, Android.
+Status: phases 1–7 implemented on native-shell and checked in the iOS 26 simulator (light and dark, including switching appearance while the app is open or in the background, and the in-app Dark setting). Not yet tested: notification permission grant on a real device, iPad layout, Android.
 
 Goal: make Overlay mobile feel playful and personal by putting the agent
 creatures (shape + color + eyes, already used for agent identity) at the
@@ -28,6 +28,7 @@ patterns of consumer agent apps; all art, names and copy are Overlay's own.
 | 4 | Create-agent sheet from Agents "+" | Implemented |
 | 5 | Agent profile sheet + capsule header | Implemented |
 | 6 | Chat polish (composer, replies, new-chat suggestions), Chats inbox sections, Agents grid, creature empty states | Implemented |
+| 7 | Titles in the navigation bar on every screen, one native segmented control, old in-page headers removed (Extensions, Archived, Workspace, output, memory), creature states for Activity and unavailable Work | Implemented; checked on a fresh preview backend in light and dark |
 
 ## Not adopted (and why)
 

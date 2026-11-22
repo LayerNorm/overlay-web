@@ -1,3 +1,4 @@
+import { NativeSegmented } from '../navigation/NativeSegmented'
 import { useHeaderHeight } from '@react-navigation/elements'
 import * as Clipboard from 'expo-clipboard'
 import { Image } from 'expo-image'
@@ -1044,38 +1045,11 @@ export function AgentDetailsView({
           onPress={onClose}
         />
       </View>
-      <View
-        style={{
-          flexDirection: 'row',
-          gap: 6,
-          borderBottomWidth: 1,
-          borderColor: theme.border,
-        }}
-      >
-        {['Details', 'Library', 'Computer'].map((value) => (
-          <Pressable
-            key={value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === value }}
-            onPress={() => setTab(value)}
-            style={{
-              paddingVertical: 11,
-              paddingHorizontal: 12,
-              borderBottomWidth: 1,
-              borderColor: tab === value ? theme.foreground : 'transparent',
-            }}
-          >
-            <T
-              style={{
-                color: tab === value ? theme.foreground : theme.muted,
-                fontSize: 13,
-              }}
-            >
-              {value}
-            </T>
-          </Pressable>
-        ))}
-      </View>
+      <NativeSegmented
+        value={tab}
+        onChange={setTab}
+        options={['Details', 'Library', 'Computer'].map((value) => ({ label: value, value }))}
+      />
       {tab === 'Details' ? (
         <>
           <T style={{ color: theme.muted, lineHeight: 22, marginVertical: 20 }}>

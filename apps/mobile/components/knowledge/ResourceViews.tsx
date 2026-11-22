@@ -1,3 +1,4 @@
+import { NativeSegmented } from '../navigation/NativeSegmented'
 import React, { useState } from 'react'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { Stack } from 'expo-router'
@@ -32,7 +33,7 @@ import { T, Button, IconButton } from '../shell/primitives'
 import type { WorkspaceSearchResult } from '../../services/searchService'
 import { BottomSheet } from '../ui/AppChrome'
 import { AgentAvatar } from '../shell/AgentAvatar'
-import { filterNotifications } from '../../lib/activity'
+import { activityPreview, filterNotifications } from '../../lib/activity'
 import { formatSchedule } from '../../lib/automationSchedule'
 import { normalizeHtmlForMobileMarkdown } from '../../services/noteContentFormat'
 
@@ -113,8 +114,8 @@ export function ResourcePage({
   )
 }
 /**
- * Page title. A full heading becomes the native large navigation title (no
- * duplicate in-page heading); a compact heading stays inline for document
+ * Page title. A full heading becomes the inline navigation-bar title, on the
+ * same row as the back button (no large-title row or in-page heading); a compact heading stays inline for document
  * titles that are part of the content.
  */
 export function ResourceHeading({
@@ -131,7 +132,7 @@ export function ResourceHeading({
   if (!compact) {
     return (
       <>
-        <Stack.Screen options={{ title, headerLargeTitle: true }} />
+        <Stack.Screen options={{ title, headerLargeTitle: false }} />
         {action ? <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>{action}</View> : null}
       </>
     )
@@ -239,44 +240,21 @@ export function ResourceInput({
   )
 }
 export function ResourceTabs<Tab extends string>({
-  theme,
   options,
   value,
   onChange,
 }: {
-  theme: Theme
+  theme?: Theme
   options: readonly Tab[]
   value: Tab
   onChange: (value: Tab) => void
 }) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 4 }}
-      style={{ flexGrow: 0 }}
-    >
-      <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4 }}>
-        {options.map((option) => (
-          <Pressable
-            key={option}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: option === value }}
-            onPress={() => onChange(option)}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 8,
-              backgroundColor: option === value ? theme.surfaceSubtle : 'transparent',
-            }}
-          >
-            <T style={{ color: option === value ? theme.foreground : theme.muted, fontSize: 12 }}>
-              {option[0].toUpperCase() + option.slice(1)}
-            </T>
-          </Pressable>
-        ))}
-      </View>
-    </ScrollView>
+    <NativeSegmented
+      value={value}
+      onChange={onChange}
+      options={options.map((option) => ({ label: option[0].toUpperCase() + option.slice(1), value: option }))}
+    />
   )
 }
 export function ResourceRow({
@@ -312,9 +290,13 @@ export function ResourceRow({
     >
       {leading ?? <Icon size={18} color={theme.muted} />}
       <View style={{ flex: 1, gap: 4 }}>
-        <T style={{ color: theme.foreground, fontSize: 13, fontFamily: 'GeistMedium' }}>{title}</T>
+        <T numberOfLines={1} style={{ color: theme.foreground, fontSize: 13, fontFamily: 'GeistMedium' }}>
+          {title}
+        </T>
         {subtitle ? (
-          <T style={{ color: theme.muted, fontSize: 11, lineHeight: 17 }}>{subtitle}</T>
+          <T numberOfLines={2} style={{ color: theme.muted, fontSize: 11, lineHeight: 17 }}>
+            {subtitle}
+          </T>
         ) : null}
       </View>
       {trailing ?? (onPress ? <ChevronRight size={12} color={theme.muted} /> : null)}
@@ -406,7 +388,14 @@ export function ActivityFeed({
           </Pressable>
         ) : null}
       </View>
-      {!visible.length ? <ResourceState theme={theme} empty="No activity yet" /> : null}
+      {!visible.length ? (
+        <CreatureEmpty
+          title="All caught up"
+          detail="Mentions, replies and agent updates show up here."
+          shape="blob"
+          color="#8b5cf6"
+        />
+      ) : null}
       {visible.map((item, index) => (
         <View
           key={item.id}
@@ -433,7 +422,7 @@ export function ActivityFeed({
               ) : undefined
             }
             title={item.title}
-            subtitle={item.body || resourceDate(item.createdAt)}
+            subtitle={activityPreview(item.body ?? '') || resourceDate(item.createdAt)}
             onPress={() => onOpen(item)}
             trailing={
               !item.readAt ? (
@@ -549,7 +538,9 @@ export function FilesBrowser({
           </View>
         </>
       ) : null}
-      <ResourceLabel theme={theme}>{query.trim() ? 'Results' : 'Recent'}</ResourceLabel>
+      {recent.length ? (
+        <ResourceLabel theme={theme}>{query.trim() ? 'Results' : 'Recent'}</ResourceLabel>
+      ) : null}
       {!visible.length ? (
         query.trim() ? (
           <ResourceState theme={theme} empty="No matching files" />

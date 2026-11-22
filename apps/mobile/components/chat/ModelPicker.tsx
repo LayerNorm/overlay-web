@@ -1,3 +1,4 @@
+import { NativeSegmented } from '../navigation/NativeSegmented'
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React, { useMemo, useRef, useState } from 'react'
 import { Image, Pressable, ScrollView, TextInput, View } from 'react-native'
@@ -24,7 +25,7 @@ export function ModelPicker({ theme, models, imageModels = [], videoModels = [],
   const catalog: readonly ModelItem[] = mode === 'text' ? models : mode === 'image' ? imageModels : videoModels
   const sections = useMemo(() => modelSections(catalog, favoriteIds, query), [catalog, favoriteIds, query])
   return <View style={{ gap: 14 }}>
-    <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 6 }}>{(['text', 'image', 'video'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: mode === value }} onPress={() => { setMode(value); scroll.current?.scrollTo({ y: 0 }); }} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: mode === value ? theme.surfaceSubtle : 'transparent' }}><T style={{ color: mode === value ? theme.foreground : theme.muted, fontSize: 13 }}>{value[0].toUpperCase() + value.slice(1)}</T></Pressable>)}</View>
+    <NativeSegmented value={mode} onChange={(value) => { setMode(value); scroll.current?.scrollTo({ y: 0 }) }} options={(['text', 'image', 'video'] as const).map((value) => ({ label: value[0].toUpperCase() + value.slice(1), value }))} />
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.surfaceSubtle, paddingHorizontal: 12, borderRadius: 8 }}><Search size={15} color={theme.muted} /><TextInput accessibilityLabel="Search models" placeholder="Search models" placeholderTextColor={theme.muted} value={query} onChangeText={setQuery} style={{ flex: 1, paddingVertical: 11, color: theme.foreground, fontFamily: 'Geist', fontSize: 13 }} /></View>
     {mode === 'text' ? <Pressable accessibilityRole="button" accessibilityLabel="Auto" disabled={!models.length} accessibilityState={{ selected: autoSelected, disabled: !models.length }} onPress={onAuto} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 38, paddingHorizontal: 10 }}><Sparkles size={15} color={theme.muted} /><T style={{ flex: 1, color: theme.foreground, fontSize: 13 }}>Auto</T>{autoSelected ? <Check size={14} color={theme.foreground} /> : null}</Pressable> : null}
     <View style={{ flexDirection: 'row', height: 500 }}>

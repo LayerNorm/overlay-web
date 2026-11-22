@@ -12,18 +12,14 @@ import {
 } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
 import { EnrichedMarkdownText } from 'react-native-enriched-markdown'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons'
-import { useFocusEffect } from 'expo-router'
+import { Stack, useFocusEffect } from 'expo-router'
 import type { IntegrationSummary, McpAuthType, McpServerSummary, SkillSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
-import { useDrawer } from '../../contexts/DrawerContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { borderRadius, fontSize, spacing, type Theme } from '../../constants/theme'
-import { BottomSheet, EmptyState, MainScreenHeader, SearchField, SegmentedControl, StatusPill, TopBarIconButton } from '../ui/AppChrome'
-import { DrawerSidebar } from '../chat/DrawerSidebar'
-import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
+import { BottomSheet, EmptyState, SearchField, SegmentedControl, StatusPill } from '../ui/AppChrome'
 import { FeatureGate } from '../ui/FeatureGate'
 import { McpDetailSheet } from './McpDetailSheet'
 import {
@@ -72,9 +68,7 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
   scope: IntegrationScope
   onScopeChange?: (scope: IntegrationScope) => void
 }): React.ReactElement {
-  const { theme, isDark } = useTheme()
-  const insets = useSafeAreaInsets()
-  const { openDrawer } = useDrawer()
+  const { theme } = useTheme()
   const [tab, setTab] = useState<ToolTab>('integrations')
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([])
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -357,18 +351,15 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
   })()
 
   return (
-    <ScreenWithDrawer drawer={<DrawerSidebar variant="slide" theme={theme} chats={[]} activeChatId={null} onSelectChat={() => {}} onCreateChat={() => {}} />}>
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
-        <MainScreenHeader
-          theme={theme}
-          isDark={isDark}
-          topInset={insets.top}
-          blurHeight={insets.top + 56}
-          leftSlot={<TopBarIconButton theme={theme} icon="menu" onPress={openDrawer} />}
-          centerSlot={<Text style={[styles.headerTitle, { color: theme.text }]}>Extensions</Text>}
-          rightSlot={<TopBarIconButton theme={theme} icon="plus" onPress={() => tab === 'skills' ? openSkillEditor(null) : tab === 'mcps' ? openMcpEditor(null) : void runIntegrationSearch()} />}
-        />
-        <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 72 }]}>
+    <>
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="plus"
+            accessibilityLabel={tab === 'skills' ? 'New skill' : tab === 'mcps' ? 'New MCP server' : 'Find apps'}
+            onPress={() => tab === 'skills' ? openSkillEditor(null) : tab === 'mcps' ? openMcpEditor(null) : void runIntegrationSearch()}
+          />
+        </Stack.Toolbar>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: theme.background }} contentContainerStyle={styles.content}>
           <SegmentedControl theme={theme} value={tab} onChange={setTab} options={[{ label: 'Apps', value: 'integrations' }, { label: 'Skills', value: 'skills' }, { label: 'MCPs', value: 'mcps' }]} />
           {tab === 'integrations' && onScopeChange ? (
             <SegmentedControl
@@ -502,8 +493,7 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
             </View>
           ) : null}
         </BottomSheet>
-      </SafeAreaView>
-    </ScreenWithDrawer>
+    </>
   )
 }
 

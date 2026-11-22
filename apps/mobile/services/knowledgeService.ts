@@ -1,4 +1,4 @@
-import { appJson, appRequest, getRequestWorkspaceId } from './appApi'
+import { appJson, appList, appRequest, getRequestWorkspaceId } from './appApi'
 import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 import { getFile, listFiles, moveFile, renameFile } from './filesService'
 import { readMemories } from './settingsNativeService'
@@ -213,7 +213,7 @@ export async function createFileWithStorage(
 export async function listOutputs(
   options: { type?: string; conversationId?: string } = {},
 ): Promise<OutputSummary[]> {
-  return appJson<OutputSummary[]>('/api/v1/outputs', {
+  return appList<OutputSummary>('/api/v1/outputs', {
     query: {
       type: options.type,
       conversationId: options.conversationId,

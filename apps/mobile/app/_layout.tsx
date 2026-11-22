@@ -156,9 +156,16 @@ function RootLayoutNav(): React.ReactElement {
             animation: 'slide_from_right',
           }}
         />
-        {['settings', 'automations', 'activity'].map((name) => (
-          <Stack.Screen key={name} name={name} options={{ ...nativeHeader, headerLargeTitle: true }} />
+        {[
+          ['settings', 'Settings'],
+          ['automations', 'Automations'],
+          ['activity', 'Activity'],
+        ].map(([name, title]) => (
+          <Stack.Screen key={name} name={name} options={{ ...nativeHeader, title, headerLargeTitle: false }} />
         ))}
+        <Stack.Screen name="tools" options={{ ...nativeHeader, title: 'Extensions', headerLargeTitle: false }} />
+        <Stack.Screen name="archived" options={{ ...nativeHeader, title: 'Archived', headerLargeTitle: false }} />
+        <Stack.Screen name="workspace" options={{ ...nativeHeader, title: 'Workspace', headerLargeTitle: false }} />
         <Stack.Screen name="chat/index" options={{ ...conversationHeader, title: '' }} />
         <Stack.Screen
           name="agent-create"
