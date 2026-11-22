@@ -68,8 +68,8 @@ export interface SettingsActionRowProps {
 
 export function SettingsActionRow({ icon, title, description, action }: SettingsActionRowProps) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-(--surface-muted)">
-      <div className="flex min-w-0 items-start gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-(--surface-muted)">
+      <div className="flex min-w-0 flex-1 basis-64 items-start gap-3">
         <span className="mt-0.5 shrink-0 text-(--muted)">{icon}</span>
         <div className="min-w-0">
           <h2 className="text-sm font-medium text-(--foreground)">{title}</h2>

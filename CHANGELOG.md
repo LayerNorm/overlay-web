@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Let settings action rows wrap their controls below the description when space is limited, keeping mobile labels and help text readable.
 - Keep the default-model picker inside its settings field, including its reasoning label and dropdown arrow. Let mobile landing-page example backdrops grow with their cards so longer content stays inside the frame and clear of the following step text.
 - Finish moving to `overlay.works`. The operator console now lives at `admin.overlay.works` (`admin.getoverlay.io` redirects there), the account-deletion error and the help FAQ point people to `support@overlay.works`, and agents' git commits use `agent@overlay.works`. Preview automation now removes a PR's old `pr-<n>.preview.getoverlay.io` address once its new `preview.overlay.works` preview is ready or the PR closes, so the old preview wildcard can be retired once open PRs have moved; the preview HTTPS probe no longer checks for the retired staging host. Tests cover the old-address removal.
 - Point the desktop submodule at Overlay Desktop 0.4.0, the release that ships private threads (Agent Host 0.6.0, now on npm) and connects to `overlay.works`. The private-threads plan now records Phases 1 and 2 as merged, published and released; they have not yet been checked in the released app.
