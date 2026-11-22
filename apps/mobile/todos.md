@@ -28,7 +28,7 @@ mobile launch and stay reachable on getoverlay.io.
 - [ ] **Admin and governance**: workspace governance metrics, policies editor,
   audit export, roles.
 - [ ] **Slack import** and Slack surface bindings setup.
-- [ ] **Webhooks** management.
+- [ ] **Webhooks** are available in mobile Settings when the deployment enables them. Verify subscription changes and a disposable delivery in isolated QA.
 - [ ] **MCP server setup and OAuth** (adding, testing and authorizing MCP
   servers). Mobile uses already connected servers only.
 - [ ] **Agent machine enrollment beyond copy-a-command**: environment roots,

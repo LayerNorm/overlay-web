@@ -49,6 +49,7 @@ import {
 import { ResourcePage, ResourceSheet, ResourceState } from '../knowledge/ResourceViews'
 import { T, Button } from '../shell/primitives'
 import { ModelPicker } from '../chat/ModelPicker'
+import { WebhooksSection } from './WebhooksSection'
 import { ProvidersSection } from './ProvidersSection'
 import { SubscriptionSheet } from './SubscriptionSheet'
 import { SETTINGS_PAGES, SettingsView, type SettingsPage } from './SettingsViews'
@@ -80,7 +81,7 @@ function SettingsScope() {
   const { theme, appearanceMode, setAppearanceMode, isDark } = useTheme()
   const { user, session, signOut } = useAuth()
   const { activeWorkspaceId: workspaceId, activeWorkspace } = useWorkspace()
-  const { chatModels, imageModels, videoModels, uiSettings } = useAppSession()
+  const { capabilities, chatModels, imageModels, videoModels, uiSettings } = useAppSession()
   const { openDrawer } = useDrawer()
   const { top } = useSafeAreaInsets()
   const router = useRouter()
@@ -324,6 +325,7 @@ function SettingsScope() {
         theme={theme}
         page={page === 'push-permission' ? 'notifications' : page}
         data={data}
+        webhooks={capabilities.webhooks && workspaceId ? <WebhooksSection theme={theme} workspaceId={workspaceId} /> : undefined}
         loading={resource?.loading}
         blocked={Boolean(resource?.error || unavailable)}
         busy={busy || deletion.busy}

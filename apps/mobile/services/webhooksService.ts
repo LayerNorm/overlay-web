@@ -1,4 +1,4 @@
-import { appJson } from './appApi'
+import { ACTIVE_WORKSPACE_HEADER, appJson } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
 
 /**
@@ -51,24 +51,37 @@ export type WebhookDelivery = {
   updatedAt: number
 }
 
-export async function listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
-  return mobileOverlayAppClient.webhooks.list() as Promise<WebhookSubscription[]>
+export async function listWebhookSubscriptions(
+  workspaceId: string,
+): Promise<WebhookSubscription[]> {
+  return mobileOverlayAppClient.webhooks.list({
+    headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
+  }) as Promise<WebhookSubscription[]>
 }
 
-export async function listWebhookDeliveries(input: {
-  subscriptionId?: string
-  limit?: number
-} = {}): Promise<WebhookDelivery[]> {
-  return mobileOverlayAppClient.webhooks.listDeliveries(input) as Promise<WebhookDelivery[]>
+export async function listWebhookDeliveries(
+  workspaceId: string,
+  input: {
+    subscriptionId?: string
+    limit?: number
+  } = {},
+): Promise<WebhookDelivery[]> {
+  return mobileOverlayAppClient.webhooks.listDeliveries(input, {
+    headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
+  }) as Promise<WebhookDelivery[]>
 }
 
-export async function createWebhookSubscription(input: {
-  url: string
-  events: string[]
-  description?: string
-  enabled?: boolean
-}): Promise<{ id: string; secret: string }> {
+export async function createWebhookSubscription(
+  workspaceId: string,
+  input: {
+    url: string
+    events: string[]
+    description?: string
+    enabled?: boolean
+  },
+): Promise<{ id: string; secret: string }> {
   return appJson<{ id: string; secret: string }>('/api/v1/webhooks', {
+    workspaceId,
     method: 'POST',
     json: {
       url: input.url,
@@ -79,14 +92,18 @@ export async function createWebhookSubscription(input: {
   })
 }
 
-export async function updateWebhookSubscription(input: {
-  subscriptionId: string
-  url?: string
-  events?: string[]
-  description?: string
-  enabled?: boolean
-}): Promise<void> {
+export async function updateWebhookSubscription(
+  workspaceId: string,
+  input: {
+    subscriptionId: string
+    url?: string
+    events?: string[]
+    description?: string
+    enabled?: boolean
+  },
+): Promise<void> {
   await appJson<{ success: boolean }>('/api/v1/webhooks', {
+    workspaceId,
     method: 'PATCH',
     json: {
       subscriptionId: input.subscriptionId,
@@ -98,24 +115,36 @@ export async function updateWebhookSubscription(input: {
   })
 }
 
-export async function rotateWebhookSecret(subscriptionId: string): Promise<string> {
+export async function rotateWebhookSecret(
+  workspaceId: string,
+  subscriptionId: string,
+): Promise<string> {
   const response = await appJson<{ secret: string; success: boolean }>('/api/v1/webhooks', {
+    workspaceId,
     method: 'PATCH',
     json: { action: 'rotate-secret', subscriptionId },
   })
   return response.secret
 }
 
-export async function redriveWebhookDelivery(deliveryId: string): Promise<string> {
+export async function redriveWebhookDelivery(
+  workspaceId: string,
+  deliveryId: string,
+): Promise<string> {
   const response = await appJson<{ deliveryId: string; success: boolean }>('/api/v1/webhooks', {
+    workspaceId,
     method: 'PATCH',
     json: { action: 'redrive', deliveryId },
   })
   return response.deliveryId
 }
 
-export async function deleteWebhookSubscription(subscriptionId: string): Promise<void> {
+export async function deleteWebhookSubscription(
+  workspaceId: string,
+  subscriptionId: string,
+): Promise<void> {
   await appJson<{ success: boolean }>('/api/v1/webhooks', {
+    workspaceId,
     method: 'DELETE',
     query: { subscriptionId },
   })

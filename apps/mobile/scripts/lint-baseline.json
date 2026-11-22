@@ -15,13 +15,6 @@
     }
   },
   {
-    "path": "components/settings/WebhooksSection.tsx",
-    "sha256": "b62cd45fe81edec1e209c3888e9ea7c79ed221ac7db104d1facb722e0fd99520",
-    "rules": {
-      "react/no-children-prop": 1
-    }
-  },
-  {
     "path": "contexts/ConvexAuthProvider.tsx",
     "sha256": "90e55d4b6ab6a27942ad2f1afcdd702de34d31c24b25043e29205c4509ef7b42",
     "rules": {

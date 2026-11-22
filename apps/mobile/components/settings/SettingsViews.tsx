@@ -17,6 +17,7 @@ import {
   Trash2,
   User,
   Users,
+  Webhook,
   Zap,
 } from 'lucide-react-native'
 import type { Theme } from '../../constants/theme'
@@ -42,6 +43,7 @@ export const SETTINGS_PAGES = [
   ['models', 'Models and connections', Bot],
   ['billing', 'Billing', CreditCard],
   ['notifications', 'Notifications', Bell],
+  ['webhooks', 'Webhooks', Webhook],
   ['voice', 'Voice and transcription', Mic],
   ['account', 'Account', User],
   ['help', 'Help and feedback', CircleHelp],
@@ -183,6 +185,7 @@ export function SettingsView({
   busy = false,
   blocked = false,
   onRetry,
+  webhooks,
 }: {
   theme: Theme
   page: SettingsPage
@@ -193,6 +196,7 @@ export function SettingsView({
   busy?: boolean
   blocked?: boolean
   onRetry?: () => void
+  webhooks?: React.ReactNode
 }) {
   const [name, setName] = useState<string | null>(null)
   const [nameError, setNameError] = useState<string | null>(null)
@@ -226,7 +230,7 @@ export function SettingsView({
         <>
           {page === 'settings' ? (
             <>
-              {SETTINGS_PAGES.map(([id, label, Icon]) => (
+              {SETTINGS_PAGES.filter(([id]) => id !== 'webhooks' || webhooks).map(([id, label, Icon]) => (
                 <View key={id} style={{ minHeight: 52, justifyContent: 'center' }}>
                   {row(label, Icon, () => actions.navigate(id))}
                 </View>
@@ -594,6 +598,7 @@ export function SettingsView({
               )}
             </>
           ) : null}
+          {page === 'webhooks' ? webhooks ?? copy('Webhooks are unavailable in this workspace.') : null}
           {page === 'help' ? (
             <>
               {row('Help centre', CircleHelp, () => actions.help('docs'), 'Guides and answers')}

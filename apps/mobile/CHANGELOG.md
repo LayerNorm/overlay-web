@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Manage outbound webhooks from mobile Settings in workspaces where webhooks are enabled.
 - Show live agent computer status on mobile and let editors start or stop it.
 - Browse and manage personal or workspace app connections separately in mobile Extensions.
 - Open a running agent computer in a read-only mobile desktop viewer.

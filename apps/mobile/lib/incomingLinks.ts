@@ -9,6 +9,7 @@ const SECTIONS = new Set([
   'models',
   'billing',
   'notifications',
+  'webhooks',
   'voice',
   'account',
   'help',
