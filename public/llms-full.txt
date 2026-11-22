@@ -26,10 +26,11 @@ Not to be confused with generic "overlay" UI software or other products that use
 - Self-hosting the AGPL-3.0 code is free; commercial licences are available.
 
 ## Comparisons
-- Overlay vs Devin: Devin is a proprietary AI software engineer (Free, Pro $20/month, Max $200/month, Teams). Overlay is open source, self-hostable, multiplayer, covers non-coding work, and runs Claude Code and Codex on the same roster. https://overlay.works/compare/devin
+- Overlay vs Devin: Devin is a proprietary AI software engineer (Free, Pro $20/month, Max $200/month, Team $80/month). Overlay is open source, self-hostable, multiplayer, covers non-coding work, and runs Claude Code and Codex on the same roster. https://overlay.works/compare/devin
 - Overlay vs OpenHands: OpenHands is an MIT-licensed coding agent platform. Overlay is a control plane for AI employees across the company. They can be used together. https://overlay.works/compare/openhands
 - Overlay vs Lindy: Lindy is hosted, proprietary and billed per user. Overlay is open source with per-workspace pricing. https://overlay.works/compare/lindy
 - Best open-source Devin alternatives: https://overlay.works/compare/devin-alternatives
+- How to run AI employees: https://overlay.works/compare/ai-employee-platforms
 
 ## Links
 - Home: https://overlay.works/home

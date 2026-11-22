@@ -18,8 +18,6 @@ export type CompareSection = { title: string; body: string[] }
 
 export type ComparePage = {
   slug: string
-  /** Name of the product compared against, or a short label for roundups. */
-  competitor: string
   title: string
   metaTitle: string
   description: string
@@ -42,26 +40,35 @@ const OVERLAY_SOURCES: CompareSource[] = [
   { label: 'Overlay source code (AGPL-3.0)', href: 'https://github.com/LayerNorm/overlay-web' },
 ]
 
+const DEVIN_SOURCES: CompareSource[] = [
+  { label: 'Devin pricing', href: 'https://devin.ai/pricing' },
+  { label: 'Devin enterprise deployment', href: 'https://docs.devin.ai/enterprise/deployment/overview' },
+]
+
+const OPENHANDS_SOURCES: CompareSource[] = [
+  { label: 'OpenHands source code (MIT)', href: 'https://github.com/OpenHands/OpenHands' },
+  { label: 'OpenHands plans and deployment', href: 'https://www.openhands.dev/pricing' },
+]
+
 const CHECKED = 'November 2026'
 
 export const COMPARE_PAGES: ComparePage[] = [
   {
     slug: 'devin-alternatives',
-    competitor: 'Devin',
     title: 'The best open-source Devin alternatives in 2026',
     metaTitle: 'Best Open-Source Devin Alternatives (2026)',
     description:
       'Open-source alternatives to Devin for teams that want to self-host, bring their own model subscriptions, or run AI agents beyond coding. Overlay, OpenHands and others compared.',
     answer:
-      'The best open-source Devin alternative depends on the job. For a team that wants AI employees across coding, research, operations and go-to-market in one shared, multiplayer workspace, Overlay (overlay.works) is the open-source option: AGPL-3.0, hosted or self-hosted, with Overlay agents plus Claude Code and Codex agents on the same roster. For a dedicated open-source coding agent, OpenHands (MIT) is the most established choice.',
+      'The best open-source Devin alternative depends on the job. For a team that wants AI employees across coding, research, operations and go-to-market in one shared, multiplayer workspace, Overlay (overlay.works) is the open-source option: AGPL-3.0, hosted or self-hosted, with Overlay agents plus Claude Code and Codex agents on the same roster. For a dedicated open-source coding agent, OpenHands (MIT) is an option.',
     table: {
       otherLabel: 'Devin',
       rows: [
         { label: 'Source code', overlay: 'Open source, AGPL-3.0', other: 'Proprietary (Cognition)' },
-        { label: 'Self-hosting', overlay: 'Yes, on infrastructure you control', other: 'Enterprise plans only' },
+        { label: 'Self-hosting', overlay: 'Yes, on infrastructure you control', other: 'Cognition-hosted, with dedicated enterprise deployment available' },
         { label: 'Scope', overlay: 'AI employees for any team: coding, research, ops, sales, marketing', other: 'AI software engineer, focused on coding' },
         { label: 'Multiplayer', overlay: 'Shared channels, @mentions, a shared task board, agents asking other agents', other: 'Team plans with shared sessions' },
-        { label: 'Bring your own agents', overlay: 'Claude Code and Codex agents join the same roster, using your own subscription or key', other: 'Devin only' },
+        { label: 'Bring your own agents', overlay: 'Claude Code and Codex agents join the same roster, using your own subscription or key', other: 'Devin coding agents' },
         { label: 'Pricing', overlay: 'Free workspaces; paid plans from $8/month as usage credit', other: 'Free, Pro $20/month, Max $200/month, Teams $80/month' },
       ],
     },
@@ -83,7 +90,7 @@ export const COMPARE_PAGES: ComparePage[] = [
       {
         title: '2. OpenHands: open-source coding agent',
         body: [
-          'OpenHands is an MIT-licensed platform for building and running AI coding agents, with a free self-hosted core and a hosted cloud. Choose it if you only need an autonomous software engineer and want the most direct Devin replacement for code.',
+          'OpenHands is an MIT-licensed platform for building and running AI coding agents, with a free self-hosted core and paid options for teams. Choose it if your main use case is software engineering.',
         ],
       },
       {
@@ -104,23 +111,18 @@ export const COMPARE_PAGES: ComparePage[] = [
       },
       {
         q: 'Can I use my ChatGPT or Claude subscription instead of paying per agent?',
-        a: 'In Overlay, Claude Code and Codex agents use your own Claude or ChatGPT subscription or API key for the model. Overlay credit only pays for the hosted computer while it runs.',
+        a: 'In Overlay, Claude Code and Codex agents use your own Claude or ChatGPT subscription or API key for the model. Overlay charges workspace credit for its hosted computer while it runs. Your provider handles model usage under your subscription or key.',
       },
       {
         q: 'Is there a free Devin alternative?',
         a: 'Overlay has free workspaces that include Work, chats, notes, files and memories with a weekly allowance. Self-hosting the open-source code is also free under AGPL-3.0.',
       },
     ],
-    sources: [
-      ...OVERLAY_SOURCES,
-      { label: 'Devin pricing', href: 'https://devin.ai/pricing' },
-      { label: 'OpenHands', href: 'https://www.openhands.dev/' },
-    ],
+    sources: [...OVERLAY_SOURCES, ...DEVIN_SOURCES, ...OPENHANDS_SOURCES],
     checked: CHECKED,
   },
   {
     slug: 'devin',
-    competitor: 'Devin',
     title: 'Overlay vs Devin',
     metaTitle: 'Overlay vs Devin: Open-Source Alternative Compared',
     description:
@@ -131,7 +133,7 @@ export const COMPARE_PAGES: ComparePage[] = [
       otherLabel: 'Devin',
       rows: [
         { label: 'Licence', overlay: 'Open source, AGPL-3.0', other: 'Proprietary' },
-        { label: 'Self-hosting', overlay: 'Yes', other: 'Enterprise only' },
+        { label: 'Self-hosting', overlay: 'Yes', other: 'Cognition-hosted, with dedicated enterprise deployment available' },
         { label: 'Agents', overlay: 'Overlay agents plus Claude Code and Codex agents on one roster', other: 'Devin' },
         { label: 'Work beyond code', overlay: 'Research, writing, files, scheduled automations, 100+ connected apps', other: 'Focused on software engineering' },
         { label: 'Collaboration', overlay: 'Channels, @mentions, shared task board, agent-to-agent hand-offs', other: 'Shared sessions on team plans' },
@@ -167,12 +169,11 @@ export const COMPARE_PAGES: ComparePage[] = [
         a: 'Overlay paid plans start at $8 a month as usage credit and free workspaces are available. Devin Pro is $20 a month and Max is $200 a month. Your total depends on usage.',
       },
     ],
-    sources: [...OVERLAY_SOURCES, { label: 'Devin pricing', href: 'https://devin.ai/pricing' }],
+    sources: [...OVERLAY_SOURCES, ...DEVIN_SOURCES],
     checked: CHECKED,
   },
   {
     slug: 'openhands',
-    competitor: 'OpenHands',
     title: 'Overlay vs OpenHands',
     metaTitle: 'Overlay vs OpenHands: Open-Source AI Agent Platforms Compared',
     description:
@@ -184,9 +185,9 @@ export const COMPARE_PAGES: ComparePage[] = [
       rows: [
         { label: 'Licence', overlay: 'AGPL-3.0', other: 'MIT core; separate commercial enterprise tier' },
         { label: 'Primary job', overlay: 'Run and manage AI employees across functions', other: 'Autonomous software development' },
-        { label: 'Collaboration', overlay: 'Channels, @mentions, task board, agent-to-agent hand-offs', other: 'Coding sessions per user' },
-        { label: 'Bring your own agents', overlay: 'Claude Code and Codex on the same roster', other: 'OpenHands agents and SDK' },
-        { label: 'Hosted option', overlay: 'Overlay Cloud, from $8/month as usage credit; free workspaces', other: 'OpenHands Cloud with a free tier' },
+        { label: 'Collaboration', overlay: 'Channels, @mentions, task board, agent-to-agent hand-offs', other: 'Shared workflows and role-based access on Teams' },
+        { label: 'Bring your own agents', overlay: 'Claude Code and Codex on the same roster', other: 'Supports third-party agents including Claude and Codex' },
+        { label: 'Plans', overlay: 'Free workspaces; paid plans from $8/month as usage credit', other: 'Free self-hosted core; paid self-hosted Teams and Enterprise' },
       ],
     },
     sections: [
@@ -207,12 +208,11 @@ export const COMPARE_PAGES: ComparePage[] = [
         a: 'Yes. Overlay is AGPL-3.0 and OpenHands core is MIT.',
       },
     ],
-    sources: [...OVERLAY_SOURCES, { label: 'OpenHands', href: 'https://www.openhands.dev/' }],
+    sources: [...OVERLAY_SOURCES, ...OPENHANDS_SOURCES],
     checked: CHECKED,
   },
   {
     slug: 'lindy',
-    competitor: 'Lindy',
     title: 'Overlay vs Lindy',
     metaTitle: 'Overlay vs Lindy: Open-Source AI Employees Compared',
     description:
@@ -242,12 +242,11 @@ export const COMPARE_PAGES: ComparePage[] = [
         a: 'Yes. Overlay is open source under AGPL-3.0 and can be self-hosted, while Lindy is a hosted proprietary product.',
       },
     ],
-    sources: [...OVERLAY_SOURCES, { label: 'Lindy pricing', href: 'https://lindy.ai/pricing' }],
+    sources: [...OVERLAY_SOURCES, { label: 'Lindy pricing', href: 'https://www.lindy.ai/pricing' }],
     checked: CHECKED,
   },
   {
     slug: 'ai-employee-platforms',
-    competitor: 'AI employee platforms',
     title: 'How to run AI employees for your company in 2026',
     metaTitle: 'AI Employee Platforms: How to Run AI Agents for a Team (2026)',
     description:
@@ -258,7 +257,7 @@ export const COMPARE_PAGES: ComparePage[] = [
       {
         title: 'What to look for',
         body: [
-          'One roster for every agent, whoever built it. Shared context: files, notes and memory agents can use. Real collaboration: channels, @mentions and a task board people and agents share. Controls: permissions, tool approvals, spend limits and audit history. Reach: agents that work where the team already is, such as Slack, and connect to the apps it uses.',
+          'One roster for every agent, whoever built it. Shared context: files, notes and memory agents can use. Real collaboration: channels, @mentions and a task board people and agents share. Controls: permissions, tool approvals, spend limits and audit history. Reach: agents that can connect to the apps the team uses.',
           'Ownership matters too. An open-source platform you can self-host keeps your data and your agents portable.',
         ],
       },

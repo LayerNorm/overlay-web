@@ -3,16 +3,19 @@ import { notFound } from 'next/navigation'
 import { ComparePageView } from '@/features/marketing/compare/ComparePageView'
 import { COMPARE_PAGES, getComparePage } from '@/features/marketing/compare/comparePages'
 
-export const dynamicParams = false
-
 export function generateStaticParams() {
   return COMPARE_PAGES.map((page) => ({ slug: page.slug }))
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+async function resolveComparison(params: Promise<{ slug: string }>) {
   const { slug } = await params
   const page = getComparePage(slug)
-  if (!page) return {}
+  if (!page) notFound()
+  return page
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const page = await resolveComparison(params)
   return {
     title: page.metaTitle,
     description: page.description,
@@ -23,11 +26,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function ComparePage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params
-  const page = getComparePage(slug)
-  if (!page) notFound()
+  const page = await resolveComparison(params)
 
-  // FAQPage + Article JSON-LD so answer engines can quote and attribute the page.
+  // Keep the structured FAQ in sync with the questions visible on the page.
   const structuredData = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -53,7 +54,7 @@ export default async function ComparePage({ params }: { params: Promise<{ slug: 
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
       <ComparePageView page={page} />
     </>
   )

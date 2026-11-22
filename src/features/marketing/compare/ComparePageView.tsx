@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { MarketingPageHead, StaticMarketingShell } from "@/features/marketing/components/StaticMarketingShell";
 import type { ComparePage } from "./comparePages";
@@ -49,7 +47,7 @@ export function ComparePageView({ page }: { page: ComparePage }) {
                       <table className="compare-table">
                         <thead>
                           <tr>
-                            <th scope="col"></th>
+                            <th scope="col">Feature</th>
                             <th scope="col">Overlay</th>
                             <th scope="col">{page.table.otherLabel}</th>
                           </tr>

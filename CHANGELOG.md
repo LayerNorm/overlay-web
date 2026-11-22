@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add an Overlay comparison hub with Devin, OpenHands and Lindy comparisons, a Devin alternatives roundup, and a guide to running AI employees. Link the pages from the marketing footer, publish canonical comparison and documentation URLs in the sitemap, and expand the structured data and LLM text guides so search and answer engines can discover them.
+
 - Keep Work inside the composer's width. The List, Board, Timeline and Organization views now sit in the same centered column as the task composer, like a chat transcript, instead of running edge to edge, and List and Timeline rows lose their divider lines (nowhere else in the app uses them). The approved mockup is `internal/plans/mockups/work-list-width.html`.
 - Keep the app opening when a workspace's billing wallet is not set up yet. `GET /api/v1/bootstrap` failed with a server error in that case, which left the mobile app stuck on "Unable to open your workspace"; it now loads with no entitlements, as the subscription and model-catalog routes already did.
 - Let people who only use the mobile or desktop app reach their workspace. The apps read chats, Work, files and other workspace data straight from Convex, which checks the user's saved roles, but only the web app's page shell ever saved the default member role. A person who signed up on their phone and never opened the web app was therefore denied everything (Work showed "not available in this workspace"). Native sign-in and session refresh now save that role too, the same way the web shell does, and never fail sign-in if saving it does. Tests cover the helper.

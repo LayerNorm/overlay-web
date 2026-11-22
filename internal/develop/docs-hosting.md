@@ -63,3 +63,6 @@ After deployment:
 - `https://overlay.works/docs/sitemap.xml` and `https://overlay.works/docs/llms.txt` resolve.
 - `https://docs.overlay.works` loads the docs home if that subdomain is attached to Vercel.
 - The browser URL remains on the Overlay domain instead of redirecting to Mintlify.
+- The docs canonical link and sitemap use `https://overlay.works/docs/…`. The canonical
+  domain is set in `docs/docs.json`. The app's root sitemap uses Mintlify's
+  directory URL for navigation entries ending in `/index`.

@@ -21,6 +21,7 @@ card.
 
 ## Compare
 
+- [All comparisons](https://overlay.works/compare): Overlay alternatives and product comparisons
 - [Best open-source Devin alternatives](https://overlay.works/compare/devin-alternatives): Overlay, OpenHands and Devin compared
 - [Overlay vs Devin](https://overlay.works/compare/devin): licence, self-hosting, multiplayer, pricing
 - [Overlay vs OpenHands](https://overlay.works/compare/openhands): control plane for AI employees vs coding agent platform
@@ -35,7 +36,7 @@ card.
 - [Connect ChatGPT, Claude and other apps](https://overlay.works/docs/help/connect-other-apps): use an Overlay workspace from any MCP app
 - [Plans and credit](https://overlay.works/docs/help/billing): free workspaces, $8-$500/month usage credit
 - [Self-hosting overview](https://overlay.works/docs/self-hosting/overview): run Overlay yourself
-- [Full context for LLMs](https://overlay.works/llms-full.txt): everything above in one file
+- [Full context for LLMs](https://overlay.works/llms-full.txt): a single-file summary of Overlay, pricing and comparisons
 
 ## Source
 

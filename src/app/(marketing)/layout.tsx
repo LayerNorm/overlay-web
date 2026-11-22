@@ -28,12 +28,7 @@ const structuredData = {
       },
       description:
         'LayerNorm Inc builds Overlay (overlay.works), the open-source control plane for AI employees. Overlay was previously at getoverlay.io.',
-      sameAs: [
-        'https://github.com/LayerNorm/overlay-web',
-        'https://x.com/overlayworks',
-        'https://discord.gg/cag4HPkU6Z',
-        'https://getoverlay.io',
-      ],
+      sameAs: ['https://x.com/overlayworks', 'https://discord.gg/cag4HPkU6Z'],
       founder: {
         '@type': 'Person',
         name: 'Divyansh Lalwani',
@@ -66,12 +61,10 @@ const structuredData = {
         'AI employees, control plane for AI agents, open-source Devin alternative, multi-agent workspace, Claude Code, Codex, self-hosted AI agents',
       description:
         "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Bring your own agents (Codex, Claude Code, Hermes) or run Overlay's, and put them to work in one shared workspace on the web and desktop. Open source under AGPL-3.0, with hosted and self-hosted options.",
-      offers: {
-        '@type': 'Offer',
-        price: '8',
-        priceCurrency: 'USD',
-        description: '$8/month usage credit. No trial. Set up your workspace before payment; bring your own model credentials if preferred.',
-      },
+      offers: [
+        { '@type': 'Offer', name: 'Free workspace', price: '0', priceCurrency: 'USD', url: 'https://overlay.works/pricing' },
+        { '@type': 'Offer', name: 'Paid workspace starting price', price: '8', priceCurrency: 'USD', url: 'https://overlay.works/pricing' },
+      ],
       creator: { '@id': 'https://overlay.works/#organization' },
     },
   ],
