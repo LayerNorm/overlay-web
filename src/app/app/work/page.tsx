@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { WorkPage } from '@/features/work/components/WorkPage'
-import { WorkRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { WorkRouteSkeleton } from '@/features/work/components/WorkSkeletons'
 
 export default function WorkRoutePage() {
   // WorkPage reads the scope and view from the URL (`useSearchParams`), which needs a Suspense boundary.

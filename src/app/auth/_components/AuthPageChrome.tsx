@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AuthBoundary } from '@/contexts/AuthContext'
 import { LandingThemeProvider } from '@/contexts/LandingThemeContext'
 import { BrandLockup } from '@/components/brand/BrandLockup'
-import { AuthPageSkeleton } from '@/app/_components/RouteLoadingFallbacks'
+import { marketingPrimaryField, marketingSsoButton, marketingSubmitButton } from '@/features/landing/lib/landingPageStyles'
 
 function AuthBrandMark({ className = '' }: { className?: string }) {
   return (
@@ -58,8 +58,54 @@ export function LandingAuthPageChrome({ children }: { children: ReactNode }) {
   )
 }
 
+function Bar({ className }: { className: string }) {
+  return <span className={`ui-skeleton-line block rounded-md ${className}`} aria-hidden />
+}
+
+/** A zero-width character in the line's font, so a placeholder line is exactly as tall as the real text. */
+const STRUT = '\u200b'
+
+/**
+ * The sign-in form before it loads, built from the form's own classes: heading, the three sign-in buttons, the
+ * divider, the email and password fields and the button. Static labels render for real.
+ */
+function AuthFormSkeleton() {
+  return (
+    <div role="status" aria-label="Loading">
+      <div className="mb-2 flex items-center font-serif text-2xl">{STRUT}<Bar className="h-5 w-40" /></div>
+      <div className="mb-8 flex items-center text-sm">{STRUT}<Bar className="h-3 w-56" /></div>
+      <div className="mb-6 space-y-3" aria-hidden>
+        {[0, 1, 2].map((index) => (
+          <div key={index} className={marketingSsoButton()}>{STRUT}<Bar className="h-3 w-40" /></div>
+        ))}
+      </div>
+      <div className="relative my-6" aria-hidden>
+        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-(--border)" /></div>
+        <div className="relative flex justify-center text-xs"><span className="bg-(--background) px-4 text-(--muted)">or continue with email</span></div>
+      </div>
+      <div className="space-y-4" aria-hidden>
+        <div>
+          <p className="mb-2 block text-sm font-medium text-(--foreground)">Email</p>
+          <div className={marketingPrimaryField()}>{STRUT}</div>
+        </div>
+        <div>
+          <p className="mb-2 block text-sm font-medium text-(--foreground)">Password</p>
+          <div className={marketingPrimaryField()}>{STRUT}</div>
+        </div>
+        <div className={`${marketingSubmitButton()} opacity-50`}>{STRUT}</div>
+      </div>
+      <div className="mt-8 flex justify-center text-sm" aria-hidden>{STRUT}<Bar className="h-3 w-52" /></div>
+    </div>
+  )
+}
+
+/** Every auth loading stage: the real split chrome around the form skeleton. */
 export function AuthLoadingScreen() {
-  return <AuthPageSkeleton />
+  return (
+    <LandingAuthPageChrome>
+      <AuthFormSkeleton />
+    </LandingAuthPageChrome>
+  )
 }
 
 export function LandingAuthBoundary({ children }: { children: ReactNode }) {

@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
 import { getInitialKnowledgeFiles } from '@/server/app/route-data'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
-import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/AppRouteSkeletons'
+import { FilesRouteSkeleton, type FilesRouteSkeletonLayout } from '../_components/PageRouteSkeletons'
 import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.

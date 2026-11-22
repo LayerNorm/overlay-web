@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useConvexAuth, useQuery } from 'convex/react'
-import { Archive, Loader2 } from 'lucide-react'
+import { Archive } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, EmptyState } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -16,10 +16,12 @@ import { ARCHIVED_SETTINGS_PATH } from '@/shared/workspaces/panel-scope'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
+import { ArchivedRouteSkeleton, ConversationRouteSkeleton } from './ChatSkeletons'
 
-const ChatExperience = dynamic(() => import('./ChatExperience'))
+const ChatExperience = dynamic(() => import('./ChatExperience'), { loading: () => <ArchivedRouteSkeleton /> })
 const DirectMessageExperience = dynamic(
   () => import('./DirectMessageExperience').then((module) => ({ default: module.DirectMessageExperience })),
+  { loading: () => <ConversationRouteSkeleton /> },
 )
 
 type ArchivedConversation = {
@@ -79,17 +81,6 @@ function ArchivedNotice({ children }: { children: ReactNode }) {
   )
 }
 
-function ArchivedSpinner({ label }: { label: string }) {
-  return (
-    <ArchivedNotice>
-      <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        {label}
-      </div>
-    </ArchivedNotice>
-  )
-}
-
 /** Replaces the composer of an archived personal chat: it is read-only until restored. */
 function ArchivedChatFooter({ conversationId }: { conversationId: string }) {
   const nativePersonal = usePersonalChatDirectory()
@@ -143,7 +134,7 @@ export function ChatArchivedView({
   const { conversations, loading, selectedUnavailable, unavailable } =
     useArchivedConversations(userId, selectedId)
 
-  if (loading) return <ArchivedSpinner label="Loading archived chat…" />
+  if (loading) return <ArchivedRouteSkeleton />
   const selected = conversations.find((conversation) => conversation._id === selectedId)
   if (selectedUnavailable && !selected) {
     return (

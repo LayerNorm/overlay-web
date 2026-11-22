@@ -22,25 +22,13 @@ import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
 import { WorkTaskComposer, type WorkTaskComposerHandle } from './WorkTaskComposer'
 import { WorkTimeline } from './WorkTimeline'
+import { WorkBodySkeleton } from './WorkSkeletons'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { WorkAssignmentGroup, WorkAssignmentPeek } from './WorkAssignments'
 import { useLiveAssignments } from '../lib/use-live-work'
 import { matchesAssignmentQuery } from '@/shared/work/assignment-state'
 import type { AssignmentExecution } from '@/shared/work/assignment-execution'
 import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
-
-function ListSkeleton() {
-  return (
-    <div className="px-6 pt-5" role="status" aria-label="Loading tasks">
-      {Array.from({ length: 7 }).map((_, index) => (
-        <div key={index} className="flex h-10 items-center gap-3" aria-hidden>
-          <div className="ui-skeleton-line h-4 w-4 shrink-0 rounded-full" />
-          <div className={`ui-skeleton-line h-3 rounded-md ${index % 3 === 0 ? 'w-2/5' : index % 3 === 1 ? 'w-1/2' : 'w-1/3'}`} />
-        </div>
-      ))}
-    </div>
-  )
-}
 
 function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
   return (
@@ -88,7 +76,7 @@ export function WorkBody({
   assignments: AssignmentsSlot
 }) {
   const { state, items, byId } = data
-  if (state === 'loading') return <ListSkeleton />
+  if (state === 'loading') return <WorkBodySkeleton view={view} />
   if (state === 'signed_out') return <EmptyState title="Sign in to see your tasks" description="Tasks you and your agents create appear here." />
   if (state === 'error') {
     return (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { forwardRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { CalendarDays, Check, GitFork, User } from 'lucide-react'
 import { Button, Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, Input, Popover, PopoverContent, PopoverTrigger, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@overlay/ui/primitives'
 import type { WorkItem, WorkPerson } from '@overlay/app-core'
@@ -10,14 +10,23 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import type { ComposerDraft } from '../lib/composer-draft'
 import { Avatar } from './work-ui'
 
+/** A composer picker's button. The loading composer renders it disabled, so the footer never shifts when data arrives. */
+export const ComposerPickerButton = forwardRef<HTMLButtonElement, ComponentProps<typeof Button> & { label: string; icon: ReactNode; count?: number }>(
+  function ComposerPickerButton({ label, icon, count = 0, ...props }, ref) {
+    return (
+      <Button ref={ref} type="button" variant="ghost" size="sm" aria-label={label} {...props} className="relative h-8 min-w-0 gap-1.5 rounded-lg px-2 text-xs font-normal text-(--muted) @max-[520px]/work-composer:w-8 @max-[520px]/work-composer:justify-center @max-[520px]/work-composer:gap-0 @max-[520px]/work-composer:px-0">
+        {icon}<span className="max-w-28 truncate @max-[520px]/work-composer:sr-only">{label}</span>
+        {count > 0 ? <span aria-hidden="true" className="absolute right-0.5 top-0.5 hidden h-[13px] min-w-[13px] items-center justify-center rounded-full bg-(--foreground) px-[3px] text-[9px] font-semibold leading-none text-(--background) @max-[520px]/work-composer:flex">{count}</span> : null}
+      </Button>
+    )
+  },
+)
+
 function ComposerPicker({ label, icon, count = 0, disabled, children }: { label: string; icon: ReactNode; count?: number; disabled?: boolean; children(close: () => void): ReactNode }) {
   const [open, setOpen] = useState(false)
   return <TooltipProvider><Popover open={open} onOpenChange={setOpen}>
     <Tooltip><TooltipTrigger asChild><PopoverTrigger asChild>
-      <Button type="button" variant="ghost" size="sm" aria-label={label} disabled={disabled} className="relative h-8 min-w-0 gap-1.5 rounded-lg px-2 text-xs font-normal text-(--muted) @max-[520px]/work-composer:w-8 @max-[520px]/work-composer:justify-center @max-[520px]/work-composer:gap-0 @max-[520px]/work-composer:px-0">
-        {icon}<span className="max-w-28 truncate @max-[520px]/work-composer:sr-only">{label}</span>
-        {count > 0 ? <span aria-hidden="true" className="absolute right-0.5 top-0.5 hidden h-[13px] min-w-[13px] items-center justify-center rounded-full bg-(--foreground) px-[3px] text-[9px] font-semibold leading-none text-(--background) @max-[520px]/work-composer:flex">{count}</span> : null}
-      </Button>
+      <ComposerPickerButton label={label} icon={icon} count={count} disabled={disabled} />
     </PopoverTrigger></TooltipTrigger><TooltipContent side="top">{label}</TooltipContent></Tooltip>
     <PopoverContent align="start" side="top" className="w-72 max-w-[calc(100vw-2rem)] p-1">{children(() => setOpen(false))}</PopoverContent>
   </Popover></TooltipProvider>

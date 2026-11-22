@@ -155,11 +155,15 @@ export function WorkspaceManagementContent({
 
   if (state.status === 'loading') {
     return (
-      <div className="space-y-3 p-5" aria-label={`Loading ${config.label.toLowerCase()}`}>
+      <div className="divide-y divide-(--border)" role="status" aria-label={`Loading ${config.label.toLowerCase()}`}>
         {[0, 1, 2].map((item) => (
-          <div key={item} className="flex items-center gap-3 rounded-xl border border-(--border) p-3">
-            <span className="h-9 w-9 animate-pulse rounded-lg bg-(--surface-subtle)" />
-            <span className="h-3 w-2/5 animate-pulse rounded-sm bg-(--surface-subtle)" />
+          <div key={item} className="flex min-h-16 items-center gap-3 px-5 py-3" aria-hidden>
+            <span className={`ui-skeleton-line size-9 shrink-0 ${tab === 'teams' ? 'rounded-lg' : 'rounded-full'}`} />
+            <span className="min-w-0 flex-1">
+              <span className="flex h-5 items-center"><span className={`ui-skeleton-line block h-3 rounded-sm ${item === 1 ? 'w-28' : 'w-36'}`} /></span>
+              <span className="mt-0.5 flex h-4 items-center"><span className={`ui-skeleton-line block h-2.5 rounded-sm ${item === 1 ? 'w-44' : 'w-52'}`} /></span>
+            </span>
+            <span className="ui-skeleton-line h-2.5 w-14 shrink-0 rounded-sm" />
           </div>
         ))}
       </div>
@@ -420,8 +424,31 @@ export function WorkspaceSharingPolicySection({
 }) {
   if (state.status === 'loading') {
     return (
-      <div className="space-y-3 p-5" aria-label="Loading sharing & links">
-        <div className="h-16 animate-pulse rounded-xl bg-(--surface-subtle)" />
+      <div className="space-y-3 p-5" role="status" aria-label="Loading sharing & links">
+        {POLICY_TOGGLES.map((toggle) => (
+          <div key={toggle.key} className="flex items-start gap-3 rounded-xl border border-(--border) p-4" aria-hidden>
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
+              <Link2 size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-(--foreground)">{toggle.label}</p>
+              <p className="mt-1 text-xs leading-5 text-(--muted)">{toggle.description}</p>
+              <p className="mt-2 flex h-[16.5px] items-center"><span className="ui-skeleton-line block h-2 w-24 rounded-sm" /></p>
+            </div>
+            <span className="ui-skeleton-line h-8 w-[74px] shrink-0 rounded-md" />
+          </div>
+        ))}
+        <div className="rounded-xl border border-(--border) p-4" aria-hidden>
+          <p className="text-sm font-medium text-(--foreground)">Rollout and retention</p>
+          <dl className="mt-2 grid gap-2 text-xs text-(--muted) sm:grid-cols-2">
+            {['Rollout stage', 'Guest expiry', 'Channel retention', 'Audit export'].map((label) => (
+              <div key={label}>
+                <dt className="text-(--muted-light)">{label}</dt>
+                <dd className="flex h-4 items-center"><span className="ui-skeleton-line block h-2.5 w-28 rounded-sm" /></dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
     )
   }
@@ -844,6 +871,8 @@ export function WorkspaceSettingsPanel({
         status={workspaceStatus}
         error={workspaceError}
         onRetry={refreshWorkspaces}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
       />
     )
   }
@@ -909,17 +938,32 @@ function WorkspaceSettingsGate({
   status,
   error,
   onRetry,
+  activeTab,
+  onTabChange,
 }: {
   status: WorkspaceLifecycleStatus
   error: string | null
   onRetry(): Promise<void>
+  activeTab: WorkspaceSettingsTab
+  onTabChange(tab: WorkspaceSettingsTab): void
 }) {
   if (status === 'loading' || status === 'idle') {
+    // The loaded panel's frame: workspace header, real tabs, and the open tab's own loading rows.
     return (
-      <div className="flex min-h-72 items-center justify-center text-sm text-(--muted)">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Loading workspace…
-      </div>
+      <section className="overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated)" aria-label="Loading workspace">
+        <header className="flex items-center gap-3 px-5 py-4" aria-hidden>
+          <span className="ui-skeleton-line size-10 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-5 items-center"><span className="ui-skeleton-line block h-3 w-32 rounded-sm" /></div>
+            <div className="mt-0.5 flex h-4 items-center"><span className="ui-skeleton-line block h-2.5 w-24 rounded-sm" /></div>
+          </div>
+          <span className="ui-skeleton-line h-[25px] w-16 shrink-0 rounded-full" />
+        </header>
+        <WorkspaceSettingsTabs activeTab={activeTab} onTabChange={onTabChange} />
+        {activeTab === 'sharing'
+          ? <WorkspaceSharingPolicySection state={{ status: 'loading' }} />
+          : <WorkspaceManagementContent tab={activeTab} state={{ status: 'loading' }} />}
+      </section>
     )
   }
 

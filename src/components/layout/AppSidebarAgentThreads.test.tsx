@@ -11,6 +11,7 @@ import type { ThreadActivity, ThreadActivityStatus } from '@/shared/agents/threa
 
 const agent = { id: 'agent_1', name: 'Overlay' } as WorkspaceAgentDirectoryItem
 const noop = () => undefined
+const status = (conversationId: string, value: ThreadActivityStatus): ThreadActivity => ({ conversationId, status: value })
 
 function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null; activity?: ThreadActivity[]; activityOnly?: boolean } = {}) {
   return renderToStaticMarkup(
@@ -81,10 +82,14 @@ test('an automation without a conversation remains openable', () => {
   assert.doesNotMatch(html, /disabled=""[^>]*>[\s\S]*?PR sweep/)
 })
 
-test('threads that are loading show placeholders; a failed load says so', () => {
-  const loading = render('loading')
-  assert.equal(loading.match(/data-slot="sidebar-menu-skeleton"/g)?.length, 3)
+test('threads that are loading show one placeholder per known thread; a failed load says so', () => {
+  const loading = render('loading', { activity: [status('a', 'idle'), status('b', 'working')] })
+  assert.equal(loading.match(/data-thread-skeleton/g)?.length, 2)
   assert.match(loading, /aria-label="Loading Overlay threads"/)
+  assert.equal(render('loading', { activity: [status('a', 'idle'), status('b', 'working')], activityOnly: true }).match(/data-thread-skeleton/g)?.length, 1)
+  // An agent with no threads (or no activity yet) loads as the empty list it settles into.
+  assert.doesNotMatch(render('loading'), /data-thread-skeleton/)
+  assert.equal(render('loading', { activity: Array.from({ length: 9 }, (_, i) => status(`t${i}`, 'idle')) }).match(/data-thread-skeleton/g)?.length, 6)
   assert.match(render('error'), /Could not load threads/)
 })
 test('single-line titles have accessible live status icons without status subtitles', () => {

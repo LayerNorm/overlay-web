@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
 import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
 import { AppRouteSessionRecovery } from './AppRouteSessionRecovery'
-import { ChatRouteSkeleton } from './AppRouteSkeletons'
+import { ActivityRouteSkeleton, ChatRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
+import { ExtensionsRouteSkeleton, NoteRouteSkeleton } from './PageRouteSkeletons'
 
 /**
  * Signed-in routes render from the session the app shell already resolved
@@ -21,17 +22,13 @@ function useRouteUser(fallback: ReactNode): { user: AuthUser | null; gate: React
 
 const ChatActivityView = dynamic(
   () => import('@/features/chat/components/ChatActivityView').then((module) => module.ChatActivityView),
-  { loading: () => <ChatRouteSkeleton /> },
+  { loading: () => <ActivityRouteSkeleton /> },
 )
 const NotebookEditor = dynamic(() => import('@/features/notebook/components/NotebookEditor'), {
-  loading: () => (
-    <div className="h-full min-h-[40vh] w-full" aria-busy="true">
-      <span className="sr-only">Loading notes</span>
-    </div>
-  ),
+  loading: () => <NoteRouteSkeleton />,
 })
 const ToolsView = dynamic(() => import('@/features/tools/components/ToolsView'), {
-  loading: () => <ChatRouteSkeleton />,
+  loading: () => <ExtensionsRouteSkeleton />,
 })
 
 export function ChatRouteClient({ mode = 'chat' }: { mode?: 'chat' | 'automate' }) {
@@ -42,16 +39,16 @@ export function ChatRouteClient({ mode = 'chat' }: { mode?: 'chat' | 'automate' 
 }
 
 export function ActivityRouteClient() {
-  const { gate } = useRouteUser(<ChatRouteSkeleton />)
+  const { gate } = useRouteUser(<ActivityRouteSkeleton />)
   return gate ?? <ChatActivityView />
 }
 
 export function NotesRouteClient() {
-  const { user, gate } = useRouteUser(<ChatRouteSkeleton />)
+  const { user, gate } = useRouteUser(<NoteRouteSkeleton />)
   return gate ?? <NotebookEditor userId={user!.id} />
 }
 
 export function ToolsRouteClient() {
-  const { user, gate } = useRouteUser(<ChatRouteSkeleton />)
+  const { user, gate } = useRouteUser(<ExtensionsRouteSkeleton />)
   return gate ?? <ToolsView userId={user!.id} />
 }
