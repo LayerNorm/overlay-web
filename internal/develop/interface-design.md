@@ -364,6 +364,10 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
 - **One page, three views.** List, Board and Timeline show the same tasks. Scope (`?scope=`), view (`?view=`), filter
   (`?filter=`) and the open task (`?task=`) live in the URL, so a link opens where it was copied and Back closes a task.
   A task link opens in the scope the task lives in.
+- **Work sits in the composer's column.** List, Board, Timeline and Organization use the task composer's width
+  (`max-w-4xl`, `px-3 sm:px-4`), like chat's transcript above its composer, so content never runs past the composer.
+  Board's columns share that width; Timeline scrolls sideways inside it. Rows and sections have no divider lines; the
+  timeline keeps only its week ticks and today line.
 - **Edit in place, save at once.** There are no save bars. Every change appears immediately, is confirmed by the
   server's answer, and rolls back with a plain message in an inline alert if the server refuses.
 - **The task panel is a docked right panel** (`AppScreenSidePanel`), not a modal. Escape closes it unless a picker or a

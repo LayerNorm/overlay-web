@@ -40,7 +40,7 @@ export function WorkAssignmentRow({ item, selected, onOpen }: { item: Assignment
       data-assignment-id={item.assignmentId}
       aria-selected={selected}
       onClick={() => onOpen(item.assignmentId)}
-      className={`flex h-10 cursor-pointer items-center gap-3 border-b border-(--border)/60 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
+      className={`flex h-10 cursor-pointer items-center gap-3 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
     >
       <AssignmentGlyphIcon glyph={state.glyph} />
       <Button variant="ghost" type="button" className={unstyledButton(`min-w-0 flex-1 truncate text-left text-sm leading-5 ${item.status === 'completed' ? 'text-(--muted)' : 'text-(--foreground)'}`)} title={item.title}>{item.title}</Button>

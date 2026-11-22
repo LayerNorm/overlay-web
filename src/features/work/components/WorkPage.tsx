@@ -33,7 +33,7 @@ function ListSkeleton() {
   return (
     <div className="px-6 pt-5" role="status" aria-label="Loading tasks">
       {Array.from({ length: 7 }).map((_, index) => (
-        <div key={index} className="flex h-10 items-center gap-3 border-b border-(--border)/60" aria-hidden>
+        <div key={index} className="flex h-10 items-center gap-3" aria-hidden>
           <div className="ui-skeleton-line h-4 w-4 shrink-0 rounded-full" />
           <div className={`ui-skeleton-line h-3 rounded-md ${index % 3 === 0 ? 'w-2/5' : index % 3 === 1 ? 'w-1/2' : 'w-1/3'}`} />
         </div>
@@ -112,23 +112,23 @@ export function WorkBody({
   if (visible.length === 0 && assignments.items.length === 0) return filtering ? <EmptyState title="Nothing matches" description="Try another search." /> : null
   if (view === 'board') {
     return (
-      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
+      <div className="mx-auto min-h-0 w-full max-w-4xl flex-1 overflow-x-auto overflow-y-hidden">
         <WorkBoard items={visible} today={today} selectedId={selectedId} onOpen={onOpen} />
       </div>
     )
   }
   if (view === 'timeline') {
     return (
-      <div className="min-h-0 flex-1">
+      <div className="mx-auto min-h-0 w-full max-w-4xl flex-1 px-3 sm:px-4">
         <WorkTimeline items={visible} today={today} selectedId={selectedId} onOpen={onOpen} />
       </div>
     )
   }
   return (
-    <>
+    <div className="mx-auto w-full max-w-4xl px-3 sm:px-4">
       <WorkList items={visible} byId={byId} today={today} selectedId={selectedId} onOpen={onOpen} />
       {assignmentGroup}
-    </>
+    </div>
   )
 }
 

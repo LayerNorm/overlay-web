@@ -68,7 +68,7 @@ function RowLabel({ row, label, selected, collapsed, onToggle, onOpen }: Pick<Ro
   const assignee = item.assigneePrincipalId ? personByPrincipal.get(item.assigneePrincipalId) ?? null : null
   const indent = row.kind === 'task' && row.indented ? 'pl-9' : 'pl-4'
   return (
-    <div className={`sticky left-0 z-10 flex shrink-0 items-center gap-2.5 border-r border-(--border) bg-(--background) pr-4 text-[13px] group-hover/row:bg-(--surface-muted) ${indent} ${selected ? 'bg-(--surface-subtle)' : ''}`} style={{ width: label }}>
+    <div className={`sticky left-0 z-10 flex shrink-0 items-center gap-2.5 bg-(--background) pr-4 text-[13px] group-hover/row:bg-(--surface-muted) ${indent} ${selected ? 'bg-(--surface-subtle)' : ''}`} style={{ width: label }}>
       {row.kind === 'objective' ? (
         <Button variant="ghost" type="button" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${item.title}`} aria-expanded={!collapsed} onClick={onToggle} className={unstyledButton(`grid h-4 w-4 place-items-center text-(--muted-light)`)}>
           <ChevronDown size={13} className={`transition-transform ${collapsed ? '-rotate-90' : ''}`} aria-hidden />
@@ -133,7 +133,7 @@ function TimelineRowView(props: RowViewProps) {
   const layout = span ? barLayout(span, range, day) : null
   const width = range.days * day
   return (
-    <div data-testid="work-timeline-row" data-task-id={item.id} className="group/row flex border-b border-(--border)/55" style={{ height: ROW }}>
+    <div data-testid="work-timeline-row" data-task-id={item.id} className="group/row flex" style={{ height: ROW }}>
       <RowLabel {...props} />
       <div
         className="relative shrink-0"
@@ -330,8 +330,8 @@ export function WorkTimeline({
     <div ref={scroller} className="relative h-full overflow-auto" data-testid="work-timeline">
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
       <div className="relative" style={{ width: LABEL + width }}>
-        <div className="sticky top-0 z-20 flex border-b border-(--border) bg-(--background)" style={{ height: HEADER }}>
-          <div className="sticky left-0 z-10 shrink-0 border-r border-(--border) bg-(--background)" style={{ width: LABEL }} />
+        <div className="sticky top-0 z-20 flex bg-(--background)" style={{ height: HEADER }}>
+          <div className="sticky left-0 z-10 shrink-0 bg-(--background)" style={{ width: LABEL }} />
           <div className="relative shrink-0" style={{ width }}>
             {weeks.map((week) => (
               <div key={week.start} className="absolute top-0 h-full border-l border-(--border)" style={{ left: week.left, width: week.width }}>

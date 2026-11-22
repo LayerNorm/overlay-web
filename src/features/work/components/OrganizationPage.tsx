@@ -60,7 +60,7 @@ export function OrganizationPage() {
       rightPanel={selected ? <OrganizationAgentDetails key={`${key}:${selected.id}`} agent={selected} owner={owner(selected)} onClose={() => setSelection(null)} /> : null}
       rightPanelOpen={Boolean(selected)} onRightPanelClose={() => setSelection(null)} rightPanelWidth={320} rightPanelOverlayLabel="Close agent details">
       <AppScreenBody padding="none" maxWidth="none" className="min-w-0 overflow-auto">
-        <div className="mx-auto flex min-h-full max-w-4xl flex-col items-center px-5 py-10 md:px-8">
+        <div className="mx-auto flex min-h-full max-w-4xl flex-col items-center px-3 py-10 sm:px-4">
           <h1 className="text-lg font-medium">{scope === 'workspace' ? activeWorkspace?.name || 'Workspace' : 'Your organization'}</h1>
           <p className="mt-2 text-center text-sm text-(--muted)">{scope === 'workspace' ? 'Workspace agents and member chiefs of staff.' : 'Your chief of staff and personal agents.'}</p>
           {!isLoading && !capabilities.work ? <p className="mt-12 text-sm text-(--muted)">Work is unavailable for this deployment.</p>

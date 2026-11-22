@@ -67,7 +67,7 @@ export function WorkRow({
       data-task-id={item.id}
       aria-selected={selected}
       onClick={() => onOpen(item.id)}
-      className={`flex h-10 cursor-pointer items-center gap-3 border-b border-(--border)/60 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
+      className={`flex h-10 cursor-pointer items-center gap-3 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
     >
       <StatusPicker status={item.status} disabled={!editable} onChange={(status) => void updateTask(item.id, { status })} />
       {renaming ? (

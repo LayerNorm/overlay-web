@@ -130,7 +130,7 @@ export function WorkBoard({
   }
 
   return (
-    <div ref={board} className="flex h-full min-w-min snap-x snap-mandatory gap-3.5 px-4 pb-6 pt-4 sm:snap-none sm:px-6" data-testid="work-board">
+    <div ref={board} className="flex h-full min-w-min snap-x snap-mandatory gap-3.5 px-3 pb-6 pt-4 sm:snap-none sm:px-4" data-testid="work-board">
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
       {columns.map((column) => {
         const over = target?.status === column.status
