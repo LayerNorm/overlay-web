@@ -1,3 +1,5 @@
+import { useHeaderHeight } from '@react-navigation/elements'
+import { MessageCapsule } from '../chat/MessageCapsule'
 import React, { memo, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,
@@ -9,14 +11,11 @@ import {
   View,
 } from 'react-native'
 import {
-  ArrowUp,
   ChevronDown,
   ChevronRight,
   ExternalLink,
   MoreHorizontal,
   PanelLeft,
-  Plus,
-  Square,
   X,
 } from 'lucide-react-native'
 import type { Theme } from '../../constants/theme'
@@ -773,6 +772,7 @@ export function AgentThreadView({
   reducedMotion?: boolean
   onOlder?: () => void
 }) {
+  const headerHeight = useHeaderHeight()
   const [draft, setDraft] = useState('')
   const [failure, setFailure] = useState('')
   const [busy, setBusy] = useState(false)
@@ -824,6 +824,7 @@ export function AgentThreadView({
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={headerHeight}
     >
       <ScrollView
         ref={scroll}
@@ -865,9 +866,11 @@ export function AgentThreadView({
                 style={{
                   alignSelf: 'flex-end',
                   maxWidth: '92%',
-                  padding: 13,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
                   backgroundColor: theme.surfaceSubtle,
-                  borderRadius: 13,
+                  borderRadius: 19,
+                  borderCurve: 'continuous',
                 }}
               >
                 <T style={{ color: theme.foreground, lineHeight: 22 }}>
@@ -901,72 +904,20 @@ export function AgentThreadView({
           {failure || error}
         </T>
       ) : null}
-      <View
-        style={{
-          margin: 14,
-          marginTop: 4,
-          borderRadius: 13,
-          borderWidth: 1,
-          borderColor: theme.border,
-          padding: 12,
-          backgroundColor: theme.surfaceSubtle,
-        }}
-      >
-        <TextInput
-          accessibilityLabel={`Message ${agent.name}`}
-          placeholder={`Message ${agent.name}`}
-          placeholderTextColor={theme.muted}
+      {canSend ? (
+        <MessageCapsule
           value={draft}
           onChangeText={(text) => {
             setDraft(text)
             nonce.current = null
           }}
-          editable={canSend && !busy}
-          multiline
-          style={{
-            color: theme.foreground,
-            fontFamily: 'Geist',
-            fontSize: 14,
-            minHeight: 42,
-            maxHeight: 140,
-          }}
+          placeholder={`Message ${agent.name}`}
+          onSend={() => void send()}
+          onStop={() => void stop()}
+          generating={Boolean(generating)}
+          sending={busy || stopping}
         />
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 7,
-          }}
-        >
-          <T style={{ fontSize: 11, color: theme.muted }}>
-            Agent · {agent.name}
-          </T>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={generating ? 'Stop response' : 'Send message'}
-            disabled={
-              !canSend || busy || stopping || (!generating && !draft.trim())
-            }
-            onPress={() => void (generating ? stop() : send())}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 7,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: theme.buttonSecondaryBg,
-              opacity: !canSend || busy || stopping ? 0.4 : 1,
-            }}
-          >
-            {generating ? (
-              <Square size={13} color={theme.foreground} />
-            ) : (
-              <ArrowUp size={17} color={theme.foreground} />
-            )}
-          </Pressable>
-        </View>
-      </View>
+      ) : null}
     </KeyboardAvoidingView>
   )
 }

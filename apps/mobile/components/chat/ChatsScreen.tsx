@@ -6,6 +6,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useShellChats } from '../../hooks/useShellData'
 import { TabToolbar } from '../navigation/nativeHeader'
+import { newChatRoute } from '../../lib/newChatRoute'
 import { NativeSegmented } from '../navigation/NativeSegmented'
 import type { SidebarChat } from '../shell/SidebarView'
 import { T } from '../shell/primitives'
@@ -13,7 +14,6 @@ import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 import { NewChannelSheet } from './NewChannelSheet'
 
 type Filter = 'all' | 'personal' | 'dm' | 'channel'
-type Scope = 'personal' | 'workspace'
 
 const FILTERS: ReadonlyArray<{ label: string; value: Filter }> = [
   { label: 'All', value: 'all' },
@@ -28,16 +28,26 @@ const KIND_SYMBOL = {
   channel: 'number',
 } as const
 
-let newChatSequence = 0
-
 export function ChatsScreen(): React.ReactElement {
   const { theme } = useTheme()
   const router = useRouter()
   const { activeWorkspaceId } = useWorkspace()
-  const [scope, setScope] = useState<Scope>('workspace')
   const [filter, setFilter] = useState<Filter>('all')
   const [sheet, setSheet] = useState<'dm' | 'channel' | null>(null)
-  const { chats, loading, error } = useShellChats(activeWorkspaceId, scope)
+  // Personal-scope chats and workspace chats + rooms, merged like web's "All".
+  const personal = useShellChats(activeWorkspaceId, 'personal')
+  const workspace = useShellChats(activeWorkspaceId, 'workspace')
+  const loading = personal.loading && workspace.loading
+  const error = personal.error && workspace.error ? workspace.error : null
+  const chats = useMemo(() => {
+    const seen = new Set<string>()
+    return [...workspace.chats, ...personal.chats].filter((chat) => {
+      const key = `${chat.kind}:${chat.id}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [personal.chats, workspace.chats])
 
   const rows = useMemo(
     () => (filter === 'all' ? chats : chats.filter((chat) => chat.kind === filter)),
@@ -46,31 +56,20 @@ export function ChatsScreen(): React.ReactElement {
 
   const open = (chat: SidebarChat) =>
     router.push((chat.kind === 'personal' ? `/chat/${chat.id}` : `/${chat.kind}/${chat.id}`) as never)
-  const newChat = () =>
-    router.push({ pathname: '/chat', params: { newChatIntent: `${Date.now()}-${++newChatSequence}` } } as never)
+  const newChat = () => router.push(newChatRoute() as never)
 
   return (
     <>
       <TabToolbar>
-        <Stack.Toolbar.Menu icon="line.3.horizontal.decrease" accessibilityLabel="Scope">
-          <Stack.Toolbar.MenuAction isOn={scope === 'workspace'} onPress={() => setScope('workspace')}>
-            Workspace
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction isOn={scope === 'personal'} onPress={() => setScope('personal')}>
-            Personal
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="archivebox" onPress={() => router.push('/archived')}>
-            Archived
-          </Stack.Toolbar.MenuAction>
-        </Stack.Toolbar.Menu>
+        <Stack.Toolbar.Button icon="archivebox" accessibilityLabel="Archived" onPress={() => router.push('/archived')} />
         <Stack.Toolbar.Menu icon="square.and.pencil" accessibilityLabel="New">
           <Stack.Toolbar.MenuAction icon="sparkles" onPress={newChat}>
             New chat
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="person" disabled={scope !== 'workspace'} onPress={() => setSheet('dm')}>
+          <Stack.Toolbar.MenuAction icon="person" onPress={() => setSheet('dm')}>
             New message
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="number" disabled={scope !== 'workspace'} onPress={() => setSheet('channel')}>
+          <Stack.Toolbar.MenuAction icon="number" onPress={() => setSheet('channel')}>
             New channel
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>

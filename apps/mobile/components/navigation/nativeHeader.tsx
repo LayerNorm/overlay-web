@@ -1,4 +1,5 @@
 import React from 'react'
+import { Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack'
 import { useTheme } from '../../hooks/useTheme'
@@ -44,5 +45,73 @@ export function TabToolbar({ children }: { children?: React.ReactNode }) {
         onPress={() => router.push('/account')}
       />
     </Stack.Toolbar>
+  )
+}
+
+/**
+ * Navigation bar for a conversation (agent thread, DM, channel, personal
+ * chat): an opaque bar so the transcript and keyboard handling keep their
+ * layout, with an avatar + title/subtitle in the center and actions in the
+ * trailing toolbar (pass `Stack.Toolbar.*` items as children).
+ */
+export function ConversationHeader({
+  title,
+  subtitle,
+  avatar,
+  onPressTitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  avatar?: React.ReactNode
+  onPressTitle?: () => void
+  children?: React.ReactNode
+}) {
+  const { theme } = useTheme()
+  const { width } = useWindowDimensions()
+  // Leave room for the back button and up to two trailing toolbar buttons.
+  const titleWidth = Math.max(120, width - 230)
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTransparent: false,
+          headerLargeTitle: false,
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: theme.background },
+          headerTintColor: theme.foreground,
+          headerBackButtonDisplayMode: 'minimal',
+          title,
+          headerTitleStyle: { fontFamily: 'GeistSemibold', color: theme.foreground },
+          // A plain title uses the system label (native centering and truncation).
+          headerTitle: !avatar && !subtitle ? undefined : () => (
+            <Pressable
+              accessibilityRole={onPressTitle ? 'button' : 'header'}
+              accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+              disabled={!onPressTitle}
+              onPress={onPressTitle}
+              style={{ maxWidth: titleWidth, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+            >
+              {avatar}
+              <View style={{ flexShrink: 1, alignItems: avatar ? 'flex-start' : 'center' }}>
+                <Text
+                  numberOfLines={1}
+                  style={{ fontFamily: 'GeistSemibold', fontSize: 15, color: theme.foreground }}
+                >
+                  {title}
+                </Text>
+                {subtitle ? (
+                  <Text numberOfLines={1} style={{ fontFamily: 'Geist', fontSize: 11, color: theme.muted }}>
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
+            </Pressable>
+          ),
+        }}
+      />
+      {children ? <Stack.Toolbar placement="right">{children}</Stack.Toolbar> : null}
+    </>
   )
 }

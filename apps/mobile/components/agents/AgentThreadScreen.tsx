@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { useDrawer } from '../../contexts/DrawerContext'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { api, subscribeConvex } from '../../services/convexClient'
@@ -37,13 +36,13 @@ import {
 import {
   AgentDetailsView,
   AgentDirectoryView,
-  AgentHeader,
   AgentThreadView,
   type AgentActions,
 } from './AgentThreadViews'
 import { RoomScreen } from '../chat/RoomScreen'
 import { T, Button } from '../shell/primitives'
-import { TabToolbar } from '../navigation/nativeHeader'
+import { ConversationHeader, TabToolbar } from '../navigation/nativeHeader'
+import { AgentAvatar } from '../shell/AgentAvatar'
 
 function AgentState({ text, retry }: { text: string; retry?: () => void }) {
   const { theme } = useTheme()
@@ -165,7 +164,6 @@ function ConnectedAgentThread({
 }) {
   const { theme, isDark } = useTheme()
   const { user } = useAuth()
-  const { openDrawer } = useDrawer()
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const [attempt, retry] = useState(0)
@@ -183,7 +181,6 @@ function ConnectedAgentThread({
   const [details, setDetails] = useState(false)
   const [computers, setComputers] = useState<AgentComputer[] | null>()
   const [files, setFiles] = useState<AgentFiles>()
-  const [options, setOptions] = useState(false)
   const [busy, setBusy] = useState(false)
   const allowed = Boolean(
     bundle?.threads.some((thread) => thread.conversationId === conversationId),
@@ -374,7 +371,6 @@ function ConnectedAgentThread({
     setBusy(true)
     try {
       await run()
-      setOptions(false)
       if (leave && getRequestWorkspaceId() === workspaceId)
         router.replace('/(tabs)/agents')
     } catch (reason) {
@@ -386,23 +382,62 @@ function ConnectedAgentThread({
     }
   }
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: theme.surface,
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom,
-      }}
-    >
-      <AgentHeader
-        agent={agent}
-        dark={isDark}
-        theme={theme}
-        title={thread?.title || 'Thread'}
-        onDrawer={openDrawer}
-        onDetails={() => setDetails(true)}
-        onOptions={() => setOptions(true)}
-      />
+    <View style={{ flex: 1, backgroundColor: theme.background, paddingBottom: insets.bottom }}>
+      <ConversationHeader
+        title={agent.name}
+        subtitle={thread?.title && thread.title !== agent.name ? thread.title : undefined}
+        avatar={<AgentAvatar agent={agent} dark={isDark} foreground={theme.foreground} size={26} />}
+        onPressTitle={() => setDetails(true)}
+      >
+        <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="Thread options">
+          <Stack.Toolbar.MenuAction
+            icon="square.and.pencil"
+            disabled={busy}
+            onPress={() =>
+              void command(async () => {
+                const result = await openAgentThread(workspaceId, agentId, true)
+                if (result && getRequestWorkspaceId() === workspaceId)
+                  router.replace(`/dm/${result.conversationId}` as never)
+              })
+            }
+          >
+            New thread
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction icon="info.circle" onPress={() => setDetails(true)}>
+            Agent details
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction
+            icon={thread?.archivedAt ? 'tray.and.arrow.up' : 'archivebox'}
+            disabled={busy}
+            onPress={() =>
+              void command(
+                () => archiveAgentThread(workspaceId, agentId, conversationId, !thread?.archivedAt),
+                !thread?.archivedAt,
+              )
+            }
+          >
+            {thread?.archivedAt ? 'Unarchive thread' : 'Archive thread'}
+          </Stack.Toolbar.MenuAction>
+          <Stack.Toolbar.MenuAction
+            icon="trash"
+            destructive
+            disabled={busy}
+            onPress={() =>
+              Alert.alert('Delete thread?', 'This cannot be undone.', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: () =>
+                    void command(() => removeAgentThread(workspaceId, agentId, conversationId), true),
+                },
+              ])
+            }
+          >
+            Delete thread
+          </Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
+      </ConversationHeader>
       <AgentThreadView
         agent={agent}
         messages={rows}
@@ -475,95 +510,6 @@ function ConnectedAgentThread({
               ).catch(() => setError('Unable to open web.'))
             }}
           />
-        </View>
-      </Modal>
-      <Modal
-        transparent
-        visible={options}
-        animationType="fade"
-        onRequestClose={() => setOptions(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'flex-end',
-            backgroundColor: theme.scrim,
-          }}
-        >
-          <View
-            style={{
-              padding: 20,
-              paddingBottom: 40,
-              backgroundColor: theme.surface,
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              gap: 10,
-            }}
-          >
-            <Button
-              theme={theme}
-              disabled={busy}
-              onPress={() =>
-                void command(async () => {
-                  const result = await openAgentThread(
-                    workspaceId,
-                    agentId,
-                    true,
-                  )
-                  if (result && getRequestWorkspaceId() === workspaceId)
-                    router.replace(`/dm/${result.conversationId}` as never)
-                })
-              }
-            >
-              New thread
-            </Button>
-            <Button
-              theme={theme}
-              disabled={busy}
-              onPress={() =>
-                void command(
-                  () =>
-                    archiveAgentThread(
-                      workspaceId,
-                      agentId,
-                      conversationId,
-                      !thread?.archivedAt,
-                    ),
-                  !thread?.archivedAt,
-                )
-              }
-            >
-              {thread?.archivedAt ? 'Unarchive thread' : 'Archive thread'}
-            </Button>
-            <Button
-              theme={theme}
-              disabled={busy}
-              onPress={() =>
-                Alert.alert('Delete thread?', 'This cannot be undone.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () =>
-                      void command(
-                        () =>
-                          removeAgentThread(
-                            workspaceId,
-                            agentId,
-                            conversationId,
-                          ),
-                        true,
-                      ),
-                  },
-                ])
-              }
-            >
-              Delete thread
-            </Button>
-            <Button theme={theme} onPress={() => setOptions(false)}>
-              Cancel
-            </Button>
-          </View>
         </View>
       </Modal>
     </View>

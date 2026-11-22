@@ -184,7 +184,7 @@ Module._load = function (request, parent, isMain) {
       },
       '../../services/appApi': { getRequestWorkspaceId: () => state.workspaceId }, '../../hooks/useFavoriteModels': { useFavoriteModels: () => ({ favoriteIds: [], toggleFavorite() {} }) },
       '../../hooks/useAndroidKeyboardVisible': { useAndroidKeyboardVisible: () => false }, '../../lib/chatModels': { resolveAutoModel: x => x[0], sortChatModels: x => x }, '../../lib/keyboardLayout': { getComposerBottomInset: () => 0 },
-      './ModelPicker': { ModelPicker: MockModelPicker }, './ChatViews': { ChatHeader: MockChatHeader, ChatSheet: p => p.children || null, EmptyPersonalChat: () => null },
+      '@react-navigation/elements': { useHeaderHeight: () => 0 }, './ModelPicker': { ModelPicker: MockModelPicker }, './ChatViews': { ChatHeader: MockChatHeader, ChatSheet: p => p.children || null, EmptyPersonalChat: () => null },
       '../../lib/personalStream': { appendPersonalBlock: (blocks, chunk) => {
         const next = [...(blocks ?? [])]
         const last = next.at(-1)
@@ -215,7 +215,11 @@ Module._load = function (request, parent, isMain) {
 }
 const { ChatScreen, buildStopPartialPayload } = require('../components/chat/ChatScreen.tsx')
 const ChatTabScreen = require('../app/chat/index.tsx').default
-const { AppShell } = require('../components/shell/AppShell.tsx')
+const { newChatRoute } = require('../lib/newChatRoute.ts')
+// The Chats tab's compose menu: pushes the same new-chat route intent.
+function ChatsNewChatLauncher() {
+  return React.createElement('ChatsNewChatAction', { accessibilityLabel: 'New chat', onPress: () => router.push(newChatRoute()) })
+}
 Module._load = originalLoad
 function reset() {
   Object.assign(state, {
@@ -248,7 +252,7 @@ function globalShellTree({ initialRoute = 'settings', preserveTabDuringSettings 
         React.createElement('View', { style: route === 'settings' ? { display: 'none' } : undefined }, React.createElement(ChatTabScreen)),
         route === 'settings' ? React.createElement('SettingsAppearanceProbe') : null)
       : route === 'settings' ? React.createElement('SettingsAppearanceProbe') : React.createElement(ChatTabScreen)
-    return React.createElement(AppShell, { children })
+    return React.createElement(React.Fragment, null, children, React.createElement(ChatsNewChatLauncher))
   }
   return React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue },
     React.createElement(RouteParamsProvider, null, React.createElement(TestStack)))
@@ -383,7 +387,7 @@ test('new-chat first send promotes only its own draft and stays current through 
   await act(async () => renderer.unmount())
 })
 
-test('global drawer New Chat from Settings opens a fresh conversation instead of restoring last-opened', async () => {
+test('Chats compose New Chat from Settings opens a fresh conversation instead of restoring last-opened', async () => {
   reset()
   state.pathname = '/settings'
   state.shellPanel = 'chat'
@@ -412,7 +416,7 @@ test('global drawer New Chat from Settings opens a fresh conversation instead of
   await act(async () => renderer.unmount())
 })
 
-test('global new-chat route hides prior transcript and controls while route initialization is pending', async () => {
+test('Chats compose new-chat route hides prior transcript and controls while route initialization is pending', async () => {
   reset()
   state.lastOpenedChatId = CHAT_A
   state.models = [model('model-a', 'Model A')]
@@ -435,7 +439,7 @@ test('global new-chat route hides prior transcript and controls while route init
   await act(async () => renderer.unmount())
 })
 
-test('global New Chat from a loaded tab invalidates captured actions and subscriptions before draft initialization', async () => {
+test('Chats compose New Chat from a loaded tab invalidates captured actions and subscriptions before draft initialization', async () => {
   reset()
   state.pathname = '/chat'
   state.lastOpenedChatId = CHAT_A

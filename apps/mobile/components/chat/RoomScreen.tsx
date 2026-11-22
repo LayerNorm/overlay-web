@@ -7,6 +7,7 @@
  * Thread mode (`threadRootMessageId` set) renders the root message + its
  * replies with a follow toggle, mirroring the web thread panel.
  */
+import { useHeaderHeight } from '@react-navigation/elements'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -155,6 +156,7 @@ export function RoomScreen({
 }): React.ReactElement {
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderHeight()
   const keyboardVisible = useAndroidKeyboardVisible()
   const router = useRouter()
   const { openDrawer } = useDrawer()
@@ -899,7 +901,7 @@ export function RoomScreen({
         style={styles.body}
         behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
         enabled={Platform.OS !== 'android' || keyboardVisible}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={headerHeight}
       >
         <View style={styles.transcriptRegion}>
           {state.loading && state.messages.length === 0 ? (
@@ -937,7 +939,6 @@ export function RoomScreen({
               }}
               ListHeaderComponent={
                 <View>
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 18, paddingVertical: 16 }}><Feather name={isThread ? 'message-square' : conversationType === 'channel' ? 'hash' : 'users'} size={15} color={theme.textSecondary} /><Text style={{ color: theme.text, fontSize: 13, fontFamily: 'GeistSemibold' }}>{isThread ? 'Thread' : state.title.replace(/^#/, '') || 'Conversation'}</Text></View>
                   {isThread && rootMessage ? (
                     <View style={[styles.rootMessageWrap, { borderBottomColor: theme.border }]}>
                       <RoomMessageItem

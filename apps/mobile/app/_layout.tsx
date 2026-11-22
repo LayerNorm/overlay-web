@@ -49,7 +49,7 @@ function SessionScreenLayout({ children }: { children: React.ReactNode }) {
 }
 
 function RootLayoutNav(): React.ReactElement {
-  const { isDark } = useTheme()
+  const { isDark, theme } = useTheme()
   const { isAuthenticated } = useAuth()
   const { isInitialized } = useAppSession()
   const ready = useNativeDataReady()
@@ -67,6 +67,12 @@ function RootLayoutNav(): React.ReactElement {
   useNotificationWatcher(isAuthenticated && isInitialized)
   usePushNotifications(isInitialized)
   const nativeHeader = useNativeHeaderOptions()
+  const conversationHeader = {
+    ...nativeHeader,
+    headerTransparent: false,
+    headerLargeTitle: false,
+    headerStyle: { backgroundColor: theme.background },
+  }
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -103,7 +109,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="chat/[id]"
           options={{
-            headerShown: false,
+            ...conversationHeader,
             title: '',
             presentation: 'card',
             animation: 'slide_from_right',
@@ -129,7 +135,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="dm/[id]"
           options={{
-            headerShown: false,
+            ...conversationHeader,
             presentation: 'card',
             animation: 'slide_from_right',
           }}
@@ -137,7 +143,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="channel/[id]"
           options={{
-            headerShown: false,
+            ...conversationHeader,
             presentation: 'card',
             animation: 'slide_from_right',
           }}
@@ -145,7 +151,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="thread/[id]"
           options={{
-            headerShown: false,
+            ...conversationHeader,
             presentation: 'card',
             animation: 'slide_from_right',
           }}
@@ -153,6 +159,7 @@ function RootLayoutNav(): React.ReactElement {
         {['settings', 'automations', 'activity'].map((name) => (
           <Stack.Screen key={name} name={name} options={{ ...nativeHeader, headerLargeTitle: true }} />
         ))}
+        <Stack.Screen name="chat/index" options={{ ...conversationHeader, title: '' }} />
         <Stack.Screen
           name="account"
           options={{

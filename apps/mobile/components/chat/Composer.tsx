@@ -399,7 +399,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
         interactive
         style={[
           styles.composerBox,
-          { backgroundColor: theme.surface, borderColor: composerFocused ? theme.border : theme.border },
+          { backgroundColor: theme.surfaceSubtle, borderColor: theme.border },
         ]}
       >
         <TextInput
@@ -811,17 +811,18 @@ const styles = StyleSheet.create({
   },
 
   composerBox: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 24,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.md,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   composerInput: {
     fontFamily: 'Geist',
-    fontSize: 14,
-    lineHeight: 22,
-    minHeight: 48,
+    fontSize: 16,
+    lineHeight: 21,
+    minHeight: 36,
     maxHeight: 140,
     paddingTop: 6,
     paddingBottom: 6,

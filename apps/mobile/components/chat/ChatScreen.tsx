@@ -1,3 +1,4 @@
+import { useHeaderHeight } from '@react-navigation/elements'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -337,6 +338,7 @@ function ChatScreenOwner({
   const nativeReady = useNativeDataReady()
   const { activeWorkspaceId } = useWorkspace()
   const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderHeight()
   const keyboardVisible = useAndroidKeyboardVisible()
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -2205,6 +2207,7 @@ function ChatScreenOwner({
           style={styles.screenPadding}
           behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}
           enabled={Platform.OS !== 'android' || keyboardVisible}
+          keyboardVerticalOffset={headerHeight}
         >
           <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 
