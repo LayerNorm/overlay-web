@@ -26,7 +26,20 @@ const structuredData = {
         width: 384,
         height: 384,
       },
-      sameAs: ['https://github.com/LayerNorm/overlay-web'],
+      description:
+        'LayerNorm Inc builds Overlay (overlay.works), the open-source control plane for AI employees. Overlay was previously at getoverlay.io.',
+      sameAs: [
+        'https://github.com/LayerNorm/overlay-web',
+        'https://x.com/overlayworks',
+        'https://discord.gg/cag4HPkU6Z',
+        'https://getoverlay.io',
+      ],
+      founder: {
+        '@type': 'Person',
+        name: 'Divyansh Lalwani',
+        url: 'https://divyan.sh',
+        sameAs: ['https://www.linkedin.com/in/divyansh-lalwani'],
+      },
     },
     {
       '@type': 'WebSite',
@@ -44,7 +57,13 @@ const structuredData = {
       name: 'Overlay',
       url: 'https://overlay.works',
       applicationCategory: 'BusinessApplication',
-      operatingSystem: 'Web',
+      operatingSystem: 'Web, macOS',
+      applicationSubCategory: 'AI agent platform',
+      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      isAccessibleForFree: true,
+      sameAs: ['https://github.com/LayerNorm/overlay-web'],
+      keywords:
+        'AI employees, control plane for AI agents, open-source Devin alternative, multi-agent workspace, Claude Code, Codex, self-hosted AI agents',
       description:
         "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Bring your own agents (Codex, Claude Code, Hermes) or run Overlay's, and put them to work in one shared workspace on the web and desktop. Open source under AGPL-3.0, with hosted and self-hosted options.",
       offers: {

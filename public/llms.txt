@@ -19,9 +19,23 @@ card.
 - [Manifesto](https://overlay.works/manifesto): why AI should amplify human potential
 - [Self-hosting](https://overlay.works/self-hosting): run Overlay on infrastructure you control
 
+## Compare
+
+- [Best open-source Devin alternatives](https://overlay.works/compare/devin-alternatives): Overlay, OpenHands and Devin compared
+- [Overlay vs Devin](https://overlay.works/compare/devin): licence, self-hosting, multiplayer, pricing
+- [Overlay vs OpenHands](https://overlay.works/compare/openhands): control plane for AI employees vs coding agent platform
+- [Overlay vs Lindy](https://overlay.works/compare/lindy): open-source AI employees vs hosted per-seat AI employees
+- [How to run AI employees](https://overlay.works/compare/ai-employee-platforms): what a control plane for AI agents does
+
 ## Docs
 
 - [Documentation](https://overlay.works/docs): product and developer documentation
+- [Agents](https://overlay.works/docs/help/agents): Overlay agents and Claude Code / Codex agents
+- [Claude Code and Codex agents](https://overlay.works/docs/help/other-agents): run coding agents with your own subscription
+- [Connect ChatGPT, Claude and other apps](https://overlay.works/docs/help/connect-other-apps): use an Overlay workspace from any MCP app
+- [Plans and credit](https://overlay.works/docs/help/billing): free workspaces, $8-$500/month usage credit
+- [Self-hosting overview](https://overlay.works/docs/self-hosting/overview): run Overlay yourself
+- [Full context for LLMs](https://overlay.works/llms-full.txt): everything above in one file
 
 ## Source
 
