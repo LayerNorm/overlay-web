@@ -157,12 +157,13 @@ export function WorkRouteSkeleton() {
 
 /** One `AgentNode` on the Organization chart: a 30px creature and two lines. */
 function AgentNodeSkeleton({ wide = false }: { wide?: boolean }) {
+  // The chart's cards are filled, so the bars take the page colour to stay visible on them.
   return (
     <div className="flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5" aria-hidden>
-      <Bar className="size-[30px] shrink-0 rounded-full" />
+      <Bar className="size-[30px] shrink-0 rounded-full bg-(--background)" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center"><TextBox className="text-[13px]" /><Bar className={`h-3 ${wide ? 'w-28' : 'w-20'}`} /></div>
-        <div className="mt-0.5 flex items-center"><TextBox className="text-xs" /><Bar className="h-2.5 w-16" /></div>
+        <div className="flex items-center"><TextBox className="text-[13px]" /><Bar className={`h-3 bg-(--background) ${wide ? 'w-28' : 'w-20'}`} /></div>
+        <div className="mt-0.5 flex items-center"><TextBox className="text-xs" /><Bar className="h-2.5 w-16 bg-(--background)" /></div>
       </div>
     </div>
   )

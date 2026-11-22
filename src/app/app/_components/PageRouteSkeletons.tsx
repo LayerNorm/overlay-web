@@ -1,10 +1,11 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
 import { FileListSkeleton, SettingsSectionSkeleton } from '@overlay/ui/feedback'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionCatalogPageSkeleton } from '@overlay/modules-react/extensions'
 import { KnowledgeFileCardsSkeleton } from '@overlay/modules-react/knowledge'
-import { NotePageSkeleton } from '@overlay/modules-react/notes'
+import { NotebookEmptyState, NotePageSkeleton } from '@overlay/modules-react/notes'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { RouteSkeletonHeader, SkeletonBlock } from './AppRouteSkeletons'
 
@@ -72,11 +73,16 @@ export function ExtensionsRouteSkeleton(props: Parameters<typeof ExtensionCatalo
 }
 
 /** Notes: the editor's header row (`px-6`) over the `.overlay-note-page` document column. */
+const noUpdates = () => () => undefined
+const urlNamesNote = () => new URLSearchParams(window.location.search).has('id')
+
 export function NoteRouteSkeleton() {
+  // Notes without a note open loads to the empty "notes" screen, not a document. The server assumes a note.
+  const namesNote = useSyncExternalStore(noUpdates, urlNamesNote, () => true)
   return (
     <AppScreenShell header={<RouteSkeletonHeader className="px-6" />}>
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="h-full">
-        <NotePageSkeleton />
+        {namesNote ? <NotePageSkeleton /> : <div className="flex h-full"><NotebookEmptyState disabled onCreateNote={() => undefined} /></div>}
       </AppScreenBody>
     </AppScreenShell>
   )
