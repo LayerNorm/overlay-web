@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replace the old silver orb app icon and launch screen with the approved Overlay mark (Libre Baskerville O with eyes): a light icon matching the web app icon plus iOS dark and tinted variants, an Android adaptive foreground, and a launch screen that shows the mark on the app background in light and dark mode.
 - Give conversations a native iOS navigation bar: agent threads, DMs, channels, threads and personal chats show the name (with avatar or member count) and a system back button, agent thread actions move into a native menu, agent threads get a compact message field, the Chats list now includes personal chats alongside workspace chats and rooms, and the chat integration tests drive the Chats compose action instead of the removed sidebar.
 - Rebuild the mobile shell on native iOS navigation: a Liquid Glass tab bar (Work, Agents, Chats, Files, Search) replaces the custom drawer and breadcrumbs, every tab gets a native navigation bar with large titles, system menus and search, a new Chats list with a native segmented filter replaces the drawer recents, and Automations, Extensions, Activity, Voice and Settings move into a native account sheet.
 - Manage outbound webhooks from mobile Settings in workspaces where webhooks are enabled.

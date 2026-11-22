@@ -16,7 +16,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0a0a0a"
+      "backgroundColor": "#fafafa"
     },
     "ios": {
       "supportsTablet": true,
@@ -63,6 +63,20 @@
       },
       "entitlements": {
         "aps-environment": "development"
+      },
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png",
+        "tinted": "./assets/icon-tinted.png"
+      },
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#fafafa",
+        "dark": {
+          "image": "./assets/splash-icon-dark.png",
+          "backgroundColor": "#09090b"
+        }
       }
     },
     "android": {
@@ -71,7 +85,7 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#fafafa"
       },
       "intentFilters": [
         {
