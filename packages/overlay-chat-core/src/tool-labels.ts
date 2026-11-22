@@ -232,6 +232,7 @@ export function getDescriptiveToolLabel(
     computer_read_file: 'Reading a file on the computer',
     computer_write_file: 'Writing a file on the computer',
     computer_edit_file: 'Editing a file on the computer',
+    computer_apply_patch: 'Applying a patch on the computer',
     computer_list_files: 'Listing files on the computer',
     computer_grep: 'Searching files on the computer',
     computer_glob: 'Finding files on the computer',

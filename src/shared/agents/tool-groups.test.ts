@@ -91,6 +91,7 @@ test('every group grants either tool ids or a capability', () => {
 test('the computer group maps to all computer tool ids', () => {
   const computer = AGENT_TOOL_GROUPS.find((g) => g.id === 'computer')!
   assert.deepEqual([...computer.toolIds].sort(), [
+    'computer_apply_patch',
     'computer_browser',
     'computer_edit_file',
     'computer_exec',

@@ -243,6 +243,19 @@ const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription
   },
   computer_write_file: describeComputerWrite,
   computer_edit_file: describeComputerWrite,
+  computer_apply_patch: (call) => {
+    const patch = inputString(call, 'patch')
+    const paths = patch ? [...patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map(match => match[1]!.trim()) : []
+    if (!paths.length) return null
+    const { output, succeeded } = call
+    const stats = succeeded && typeof output?.linesAdded === 'number' && typeof output?.linesRemoved === 'number'
+      ? { added: output.linesAdded as number, removed: output.linesRemoved as number } : {}
+    return call.make(VERBS.edited, {
+      target: paths.length === 1 ? target(basename(paths[0]!)) : `${paths.length} files`,
+      title: paths.join('\n'),
+      ...stats,
+    })
+  },
   computer_grep: (call) => {
     const pattern = inputString(call, 'pattern')
     const path = inputString(call, 'path')
