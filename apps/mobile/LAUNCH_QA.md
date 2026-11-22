@@ -74,7 +74,8 @@ views open the correct task. Test a release-configured build and cold-launch
 the native auth callback. Check the read-only computer preview with a running agent computer in the
 isolated backend. Verify that touch cannot control the remote desktop and that
 closing, backgrounding, or stream expiry removes the preview. Do not record
-desktop ticket URLs in screenshots or logs.
+desktop ticket URLs in screenshots or logs. Check that a permitted editor can
+start and stop the isolated computer and that observers only see status and preview.
 After acceptance, verify the signed IPA bundle ID,
 embedded version and build number, signature and JavaScript bundle before
 submitting the exact IPA to Apple. Confirm processing and internal TestFlight

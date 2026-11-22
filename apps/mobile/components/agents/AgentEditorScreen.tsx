@@ -40,7 +40,7 @@ import { ListRow, Section } from '../ui/primitives'
 import { AppIcon } from '../ui/AppIcon'
 import { AgentCreature } from './AgentCreature'
 import { AgentEditorView } from './AgentEditorView'
-import { AgentComputerPreviewButton } from './AgentComputerPreview'
+import { AgentComputerPanel } from './AgentComputerPreview'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { ConnectMachineSheet } from './ConnectMachineSheet'
 import {
@@ -400,8 +400,8 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
 
   const selectedModel = sortedModels.find((model) => model.id === modelId)
   const computerPreview = computersAvailable && workspaceId === agentComputer?.workspaceId &&
-    agentComputer.ownerType === 'agent' && agentComputer.ownerId === agent?.id && agentComputer.status === 'ready'
-    ? <AgentComputerPreviewButton key={agentComputer.id} computer={agentComputer} theme={theme} />
+    agentComputer.ownerType === 'agent' && agentComputer.ownerId === agent?.id
+    ? <AgentComputerPanel key={agentComputer.id} computer={agentComputer} theme={theme} canManage={editable} onChange={setAgentComputer} />
     : null
 
   if (!isNew && !editable) return (
