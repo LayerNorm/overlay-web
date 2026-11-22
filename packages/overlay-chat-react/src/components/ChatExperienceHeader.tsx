@@ -681,6 +681,7 @@ export function ChatModelPicker({
         <DelayedTooltip
           label={placementConfig.tooltipLabel}
           side={placementConfig.tooltipSide}
+          className={placement === 'field' ? 'w-full min-w-0' : undefined}
         >
           <PopoverTrigger asChild>
             <Button variant={placementConfig.triggerVariant}

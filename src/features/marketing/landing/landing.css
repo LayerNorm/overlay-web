@@ -309,7 +309,7 @@
   .sl .step { grid-template-columns: 1fr; gap: 24px; }
   .sl .onmac { grid-template-columns: 1fr; gap: 28px; }
   .sl .step:nth-child(even) .step-art { order: 0; }
-  .sl .step-art { height: 300px; }
+  .sl .step-art { height: auto; min-height: 300px; }
   .sl .shot { grid-template-columns: 1fr; height: 500px; }
   .sl .shot .sb { display: none; }
   .sl .ctrl { grid-template-columns: 1fr; }
