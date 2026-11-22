@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { OrganizationPage } from '@/features/work/components/OrganizationPage'
-import { WorkRouteSkeleton } from '../../_components/AppRouteSkeletons'
+import { OrganizationSkeleton } from '@/features/work/components/WorkSkeletons'
 
 export default function OrganizationRoutePage() {
-  return <Suspense fallback={<WorkRouteSkeleton />}><OrganizationPage /></Suspense>
+  return <Suspense fallback={<OrganizationSkeleton />}><OrganizationPage /></Suspense>
 }

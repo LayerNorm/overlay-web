@@ -388,6 +388,24 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
   Toggle rule does not apply to it. Boolean settings on a task (Blocked) are Toggles.
 - Status is shown as a glyph first (dashed, empty, half, lens, filled with a check), colour second.
 
+## Loading skeletons match what loads
+
+A loading state looks like the thing that replaces it, so nothing moves when data arrives.
+
+- **Real chrome, placeholder data.** Headers (`RouteSkeletonHeader` renders the real `AppScreenHeader`, which picks up the
+  shell's breadcrumbs), view tabs, search, section headers and composers render for real, disabled if needed (Work's
+  `WorkComposerPlaceholder`). Only the data area is a placeholder.
+- **Same geometry.** A skeleton uses the loaded view's own column, max-width, gutters and row/card classes. Where a line
+  of text becomes a bar, a zero-width character in the text's font keeps the line box exactly as tall. Sidebar rows use
+  `SidebarRowItemsSkeleton` / `SidebarListSkeleton` (`@overlay/ui/feedback`).
+- **One skeleton per surface.** The route `loading.tsx`, Suspense fallbacks, `dynamic()` loaders and the data-loading
+  branch show the same skeleton; never `null`, an empty div, or another page's skeleton. A route without its own shows
+  `NeutralRouteSkeleton` (header, empty body).
+- **One style.** `ui-skeleton-line` / `ui-skeleton-mesh` shimmer only; no `animate-pulse` blocks.
+- Skeletons live beside what they mirror: `src/features/work/components/WorkSkeletons.tsx`,
+  `src/features/chat/components/ChatSkeletons.tsx`, `src/app/app/_components/PageRouteSkeletons.tsx`,
+  `src/features/marketing/components/MarketingSkeletons.tsx`, `AuthLoadingScreen`. Change a skeleton with its view.
+
 ## Toggles are the only on/off control
 
 Nowhere in the web app do we render checkboxes (`<input type="checkbox">`).
@@ -561,8 +579,9 @@ New + search, then the list. New is never above the scope rows.
 
 The secondary panel is built on the shadcn Sidebar parts in `@overlay/ui/primitives` (`packages/overlay-ui/src/components/ui/sidebar.tsx`):
 `Sidebar` (the in-flow container; the shell owns its width, collapse animation and phone drawer), `SidebarHeader`,
-`SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`, `SidebarMenuAction`, `SidebarMenuBadge`, `SidebarMenuSkeleton`
-and `SidebarMenuSub`. New lists in the panel use these rather than ad-hoc row classes. Only `Sidebar`, `SidebarRail` and
+`SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`, `SidebarMenuAction`, `SidebarMenuBadge`
+and `SidebarMenuSub`. New lists in the panel use these rather than ad-hoc row classes; their loading rows come from
+`SidebarRowItemsSkeleton` / `SidebarListSkeleton` in `@overlay/ui/feedback`, which share the rows' geometry. Only `Sidebar`, `SidebarRail` and
 `SidebarTrigger` read `SidebarProvider`; the menu parts work anywhere, so the same markup renders in the phone drawer.
 The panel's collapsed state is the shell's one `sidebarCollapsed` flag (it hides this panel and shrinks the primary rail
 to icons); the thin handle on the panel's edge (`SidebarRail`) sets it.

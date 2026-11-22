@@ -11,7 +11,7 @@ import {
   Pin,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button, toast } from '@overlay/ui/primitives'
+import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, Button, toast } from '@overlay/ui/primitives'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -452,6 +452,37 @@ function AgentListRow({
   )
 }
 
+const AGENT_NAME_WIDTHS = ['58%', '44%', '66%']
+
+/**
+ * The Agents panel while the directory loads: the pinned chief tile (the `AgentListRow` tile: 40px avatar over its
+ * name) above `h-10` agent rows (24px avatar, name). Activity mode lists chiefs as rows, so it has no tile.
+ */
+export function AgentsPanelSkeleton({ activityOnly = false }: { activityOnly?: boolean }) {
+  return (
+    <SidebarMenu role="status" aria-label="Loading agents">
+      {activityOnly ? null : (
+        <SidebarMenuItem aria-hidden className="pb-2 pt-1">
+          <div className="mx-auto flex w-1/2 flex-col items-center gap-2 px-3 pb-2.5 pt-3.5 text-[13px]">
+            <div className="ui-skeleton-line size-10 shrink-0 rounded-full" />
+            <div className="flex h-[1lh] w-full items-center justify-center">
+              <div className="ui-skeleton-line h-2.5 w-3/5 rounded-sm" />
+            </div>
+          </div>
+        </SidebarMenuItem>
+      )}
+      {AGENT_NAME_WIDTHS.map((width) => (
+        <SidebarMenuItem key={width} aria-hidden>
+          <div className="flex h-10 items-center gap-2.5 px-2">
+            <div className="ui-skeleton-line size-6 shrink-0 rounded-full" />
+            <div className="ui-skeleton-line h-2.5 flex-1 rounded-sm" style={{ maxWidth: width }} />
+          </div>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  )
+}
+
 function ActivityAgentRow({ agentId, activityOnly, children }: { agentId: string; activityOnly: boolean; children: React.ReactNode }) {
   const activity = useAgentThreadActivity(agentId)
   if (activityOnly && !activity?.some((item) => hasThreadActivity(item.status))) return null
@@ -634,15 +665,12 @@ export function AgentsInlinePanel({
     )
   }
 
+  if (loading) return <AgentsPanelSkeleton activityOnly={activityOnly} />
+
   return (
     <AgentThreadActivityProvider workspaceId={workspaceId} agentIds={activityAgentIds}>
     <SidebarMenu ref={listRef}>
-      {loading ? (
-        // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
-        [0, 1, 2].map((index) => (
-          <SidebarMenuItem key={index}><SidebarMenuSkeleton index={index} /></SidebarMenuItem>
-        ))
-      ) : sortedAgents.length ? (
+      {sortedAgents.length ? (
         [
           pinnedAgents.length ? (
             <SidebarMenuItem key="pinned-chiefs" data-pinned-chiefs className="grid gap-x-1.5 pb-2 pt-1"

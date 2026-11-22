@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
 import { NotesRouteClient } from '../_components/ClientSessionRoutes'
-import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { NoteRouteSkeleton } from '../_components/PageRouteSkeletons'
 
 export default function NotesPage() {
   return (
-    <Suspense fallback={<ChatRouteSkeleton />}>
+    <Suspense fallback={<NoteRouteSkeleton />}>
       <NotesRouteClient />
     </Suspense>
   )

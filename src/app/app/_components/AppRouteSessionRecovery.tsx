@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { requestSessionState } from '@/shared/auth/browser-session'
-import { ChatRouteSkeleton } from './AppRouteSkeletons'
+import { NeutralRouteSkeleton } from './AppRouteSkeletons'
 
 export async function recoverAppRouteSession(actions: {
   isCurrent: () => boolean
@@ -40,5 +40,5 @@ export function AppRouteSessionRecovery() {
   if (failed || (refreshed && !pending)) {
     throw new Error('Unable to refresh your session. Please try again.')
   }
-  return <ChatRouteSkeleton />
+  return <NeutralRouteSkeleton />
 }

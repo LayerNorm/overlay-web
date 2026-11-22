@@ -10,6 +10,7 @@ import { AgentDirectoryScreen } from './AgentConversationWorkspace.parts'
 function renderDirectory(scope: 'personal' | 'workspace', directory: WorkspaceAgentDirectoryItem[] | null) {
   return renderToStaticMarkup(
     <AgentDirectoryScreen
+      loadingView={<div role="status" aria-label="Opening your agent" />}
       settingsButton={null}
       sideEditor={null}
       onRightPanelClose={() => {}}

@@ -19,7 +19,7 @@ import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizationEnforcementMode } from '@/server/authorization'
 import { AppConfigurationErrorState } from '@/app/app/_components/AppConfigurationErrorState'
-import { AppShellLoadingFallback, ChatRouteSkeleton } from '@/app/app/_components/AppRouteSkeletons'
+import { AppShellLoadingFallback, NeutralRouteSkeleton } from '@/app/app/_components/AppRouteSkeletons'
 import { getSelectedIntegrationProviderId } from '@/server/integrations'
 import { WorkspaceAppBoundary } from '@/features/workspaces/components/WorkspaceAppBoundary'
 import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components/WorkspaceScopedContentBoundary'
@@ -28,7 +28,7 @@ import { CollaborationRealtimeProvider } from '@/features/chat/components/collab
 import { PersonalChatProvider } from '@/components/providers/PersonalChatProvider'
 
 function AppMainFallback() {
-  return <ChatRouteSkeleton />
+  return <NeutralRouteSkeleton />
 }
 
 function WorkspaceSwitchFallback() {

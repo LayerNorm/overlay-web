@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { ChatRouteClient } from '../_components/ClientSessionRoutes'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
-import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { ChatRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
 
 function DisabledAutomationsRoute() {

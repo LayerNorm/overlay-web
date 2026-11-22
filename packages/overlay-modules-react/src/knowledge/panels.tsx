@@ -1,7 +1,7 @@
 'use client'
 
 import type { KnowledgeFileNode,MemoryRow } from '@overlay/app-core'
-import { FileTreeSkeleton,KnowledgeListSkeleton } from '@overlay/ui'
+import { FileListSkeleton,KnowledgeListSkeleton } from '@overlay/ui'
 import { type ChangeEvent,type MouseEvent,type RefObject } from 'react'
 
 import { KnowledgeEmptyState } from './dialogs'
@@ -45,7 +45,7 @@ export function KnowledgeFilesPanel({
 }) {
   void onCreateFirstMemory
   if (loading) {
-    return layout === 'cards' ? <KnowledgeFileCardsSkeleton /> : <FileTreeSkeleton rows={10} />
+    return layout === 'cards' ? <KnowledgeFileCardsSkeleton /> : <FileListSkeleton rows={10} />
   }
   if (filesCount === 0) return <KnowledgeEmptyState kind="file" message="No files yet" />
   if (nodes.length === 0) return <KnowledgeEmptyState kind="search" message="No files match your search" />

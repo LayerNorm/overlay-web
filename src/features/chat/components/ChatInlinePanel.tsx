@@ -7,7 +7,7 @@ import { api } from '../../../../convex/_generated/api'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
-import { SidebarListSkeleton } from '@overlay/ui/feedback'
+import { SidebarRowItemsSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
   CHAT_ARCHIVED_EVENT,
@@ -260,14 +260,16 @@ function useChatListData({
   const kind = chatView === 'dms' || chatView === 'channels' || chatView === 'all' ? ROOM_KIND[chatView] : null
   const enabled = Boolean(!nativePersonalView && kind && workspaceId && user && !authLoading && isAuthenticated && !isLoading)
   const { visible, loadingMore, loadMoreChats } = useRoomListPage({ enabled, workspaceId, kind })
+  // Until Convex auth and the workspace are ready the list is still loading, so "No channels yet" never flashes first.
+  const waiting = !nativePersonalView && (authLoading || (Boolean(kind) && (isLoading || !workspaceId)))
   const [chats, setChats] = useState<Conversation[]>(() => [])
   const [loading, setLoading] = useState(true)
-  const [syncedFrom, setSyncedFrom] = useState<{ rooms: Conversation[] | null; enabled: boolean } | null>(null)
+  const [syncedFrom, setSyncedFrom] = useState<{ rooms: Conversation[] | null; enabled: boolean; waiting: boolean } | null>(null)
   const visibleRooms = visible?.rooms ?? null
-  if (!syncedFrom || syncedFrom.rooms !== visibleRooms || syncedFrom.enabled !== enabled) {
-    setSyncedFrom({ rooms: visibleRooms, enabled })
+  if (!syncedFrom || syncedFrom.rooms !== visibleRooms || syncedFrom.enabled !== enabled || syncedFrom.waiting !== waiting) {
+    setSyncedFrom({ rooms: visibleRooms, enabled, waiting })
     setChats(visibleRooms ?? [])
-    setLoading(enabled ? visible === null : !nativePersonalView && authLoading)
+    setLoading(enabled ? visible === null : waiting)
   }
   return { chats, setChats, loading, setLoading, hasMore: Boolean(visible?.hasMore), loadingMore, loadMoreChats }
 }
@@ -776,7 +778,7 @@ function ChatListBody({
   if (loading) {
     return (
       <SidebarMenuSub className={listClassName}>
-        <SidebarListSkeleton rows={6} />
+        <SidebarRowItemsSkeleton rows={6} iconSize={12} />
       </SidebarMenuSub>
     )
   }

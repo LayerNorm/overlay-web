@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { FilesRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { FilesRouteSkeleton } from '../_components/PageRouteSkeletons'
 import { FilesRouteLoadingSkeleton } from './FilesRouteLoadingSkeleton'
 
 export default function Loading() {

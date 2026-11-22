@@ -2,16 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
-import { AppShellLoadingFallback, InitialAppLoading, ProjectsRouteSkeleton } from './AppRouteSkeletons'
-
-test('ProjectsRouteSkeleton renders only page content, not a nested sidebar', () => {
-  ;(globalThis as typeof globalThis & { React: typeof React }).React = React
-  const markup = renderToStaticMarkup(<ProjectsRouteSkeleton />)
-
-  assert.equal(markup.includes('border-r'), false)
-  assert.equal(markup.includes('w-56'), false)
-  assert.equal(markup.match(/bg-\(--surface-elevated\)/g)?.length, 6)
-})
+import { AppShellLoadingFallback, InitialAppLoading, NeutralRouteSkeleton } from './AppRouteSkeletons'
 
 test('AppShellLoadingFallback renders only the animated app brand', () => {
   ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -39,4 +30,11 @@ test('nested shell and route fallbacks are settled before hydration', () => {
     assert.equal(markup.includes('Your AI Chief of Staff.'), false)
     assert.equal(markup.includes('approved-brand--look'), true)
   }
+})
+
+test('a route without its own skeleton shows a header and an empty body, not another page', () => {
+  ;(globalThis as typeof globalThis & { React: typeof React }).React = React
+  const markup = renderToStaticMarkup(<NeutralRouteSkeleton />)
+  assert.equal(markup.includes('data-slot="app-screen-header"'), true)
+  assert.equal(markup.includes('ui-skeleton-line'), false)
 })

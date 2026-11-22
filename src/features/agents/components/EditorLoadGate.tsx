@@ -1,21 +1,59 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowLeft } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
+import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 
 const GATE_TIMEOUT_MS = 10_000
 
 type Gate = { hold(): () => void }
 const GateContext = createContext<Gate | null>(null)
 
-/** What the agent settings show while anything in them is still loading. */
+function FieldSkeleton({ label, className = 'h-9 rounded-md' }: { label: string; className?: string }) {
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-medium text-(--foreground)">{label}</p>
+      <div className={`border border-(--border) bg-(--surface-elevated) px-3 py-2.5 ${className}`}>
+        <div className="ui-skeleton-line h-2.5 w-1/3" />
+      </div>
+    </div>
+  )
+}
+
+/** What the agent settings show while anything in them is still loading: the form's own layout with empty fields. */
 export function AgentEditorSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4" aria-label="Loading agent" aria-busy="true">
-      <div className="h-9 w-48 animate-pulse rounded-lg bg-(--surface-subtle)" />
-      <div className="h-28 animate-pulse rounded-xl bg-(--surface-subtle)" />
-      <div className="h-36 animate-pulse rounded-xl bg-(--surface-subtle)" />
-      <div className="h-20 animate-pulse rounded-xl bg-(--surface-subtle)" />
+    <div className="mx-auto w-full max-w-2xl" role="status" aria-label="Loading agent">
+      <div className="mt-5 space-y-5" aria-hidden>
+        <div className="space-y-3.5">
+          {/* `.ui-skeleton-line` sets its radius outside Tailwind's layers, so the avatar's needs `!`. */}
+          <div className="ui-skeleton-line mx-auto size-[72px] rounded-full" />
+          <FieldSkeleton label="Name" />
+          <FieldSkeleton label="Description" className="h-16 rounded-lg" />
+        </div>
+        <FieldSkeleton label="Agent instructions" className="h-36 rounded-lg" />
+        <FieldSkeleton label="Model" className="h-9 rounded-lg" />
+      </div>
     </div>
+  )
+}
+
+/** The agent editor route before its code and data load: the page header, then the form skeleton. */
+export function AgentEditorRouteSkeleton({ mode }: { mode: 'new' | 'edit' }) {
+  return (
+    <AppScreenShell
+      header={(
+        <AppScreenHeader
+          title={mode === 'new' ? 'New agent' : 'Agent'}
+          leading={<Button variant="ghost" size="sm" disabled aria-label="Back to agents"><ArrowLeft size={14} /> Agents</Button>}
+        />
+      )}
+    >
+      <AppScreenBody padding="lg" maxWidth="xl" className="min-h-full">
+        <AgentEditorSkeleton />
+      </AppScreenBody>
+    </AppScreenShell>
   )
 }
 

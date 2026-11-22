@@ -26,6 +26,7 @@ import type { ConversationParticipant } from '@overlay/workspace-contracts'
 import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 import type { CapabilityCheck } from '@overlay/app-core'
 import { ChatComposer } from './ChatComposer'
+import { RoomMessageRowsSkeleton } from './ChatSkeletons'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { ConvexRoomMessageSubscription, type RoomPaging, type RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -539,11 +540,7 @@ export function RoomTranscript({
             </Button>
           ) : null}
           {loading ? (
-            <div className="space-y-3 py-4" aria-label="Loading messages">
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="h-12 animate-pulse rounded-lg bg-(--surface-subtle)" />
-              ))}
-            </div>
+            <RoomMessageRowsSkeleton />
           ) : mainMessages.length === 0 ? (
             <RoomEmptyState conversationType={conversationType} title={title} channelTopic={channelTopic} />
           ) : (

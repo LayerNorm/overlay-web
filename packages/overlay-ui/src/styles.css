@@ -120,7 +120,6 @@
   flex-shrink: 0;
   box-sizing: border-box;
   background: var(--surface-muted);
-  min-height: 4rem;
 }
 
 .ui-skeleton-mesh::after {
