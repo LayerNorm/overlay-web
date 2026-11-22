@@ -284,6 +284,8 @@ export const COMPARE_PAGES: ComparePage[] = [
   },
 ]
 
-export function getComparePage(slug: string): ComparePage | undefined {
-  return COMPARE_PAGES.find((page) => page.slug === slug)
+export function getComparePage(slug: string): ComparePage {
+  const page = COMPARE_PAGES.find((comparison) => comparison.slug === slug)
+  if (!page) throw new Error(`Missing comparison content for ${slug}`)
+  return page
 }
