@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Open a running agent computer in a read-only mobile desktop viewer.
 - Show dependencies between visible tasks in mobile Timeline and shift a scheduled task by a day from its date editor.
 - View the workspace and personal agent organization from mobile Work, with access to each visible agent’s details.
 - Move and reorder Work cards from the mobile Board, and set or clear dates directly from Timeline.

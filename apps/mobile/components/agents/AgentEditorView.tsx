@@ -32,6 +32,7 @@ export function AgentEditorView({
   onAdvanced,
   onSave,
   onBack,
+  computerPreview,
   busy = false,
   valid = true,
   error,
@@ -53,6 +54,7 @@ export function AgentEditorView({
   onAdvanced: () => void
   onSave: () => void
   onBack: () => void
+  computerPreview?: React.ReactNode
   busy?: boolean
   valid?: boolean
   error?: string | null
@@ -192,6 +194,7 @@ export function AgentEditorView({
             </View>
           ))}
         </View>
+        {computerPreview}
         {error ? (
           <T accessibilityRole="alert" style={{ color: theme.foreground }}>
             {error}

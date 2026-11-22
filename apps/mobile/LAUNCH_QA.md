@@ -71,7 +71,11 @@ For simulator acceptance, use a current isolated backend and confirm sign-in,
 workspace switching and Work in both themes. Verify that Board columns respect
 the selected filter, that Timeline spans clip at week boundaries, and that both
 views open the correct task. Test a release-configured build and cold-launch
-the native auth callback. After acceptance, verify the signed IPA bundle ID,
+the native auth callback. Check the read-only computer preview with a running agent computer in the
+isolated backend. Verify that touch cannot control the remote desktop and that
+closing, backgrounding, or stream expiry removes the preview. Do not record
+desktop ticket URLs in screenshots or logs.
+After acceptance, verify the signed IPA bundle ID,
 embedded version and build number, signature and JavaScript bundle before
 submitting the exact IPA to Apple. Confirm processing and internal TestFlight
 availability in App Store Connect.

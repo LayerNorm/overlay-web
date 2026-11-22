@@ -40,6 +40,7 @@ import { ListRow, Section } from '../ui/primitives'
 import { AppIcon } from '../ui/AppIcon'
 import { AgentCreature } from './AgentCreature'
 import { AgentEditorView } from './AgentEditorView'
+import { AgentComputerPreviewButton } from './AgentComputerPreview'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { ConnectMachineSheet } from './ConnectMachineSheet'
 import {
@@ -398,6 +399,10 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   }
 
   const selectedModel = sortedModels.find((model) => model.id === modelId)
+  const computerPreview = computersAvailable && workspaceId === agentComputer?.workspaceId &&
+    agentComputer.ownerType === 'agent' && agentComputer.ownerId === agent?.id && agentComputer.status === 'ready'
+    ? <AgentComputerPreviewButton key={agentComputer.id} computer={agentComputer} theme={theme} />
+    : null
 
   if (!isNew && !editable) return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }} edges={['top', 'bottom']}>
@@ -405,12 +410,13 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
         <TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />
       </View>
       <EmptyState theme={theme} icon="lock" title="This agent is read-only" description="Only people with edit access can change this agent." />
+      {computerPreview}
     </SafeAreaView>
   )
 
   if (!advanced && agentType === 'overlay') return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }} edges={['top', 'bottom']}>
-      <AgentEditorView theme={theme} dark={isDark} agent={{ id: agent?.id ?? 'new', name, isDefault: agent?.isDefault, avatarColor, avatarShape }} name={name} description={description} modelId={modelId} models={sortedModels} groups={toolGroups.filter(group => ['web_search', 'knowledge', 'computer'].includes(group.id))} enabled={enabledToolGroups} onName={setName} onDescription={setDescription} onModel={setModelId} onToggle={toggleToolGroup} onAdvanced={() => setAdvanced(true)} onSave={save} onBack={() => router.back()} busy={busy || !editable} valid={isValid && editable} error={error} isNew={isNew} />
+      <AgentEditorView theme={theme} dark={isDark} agent={{ id: agent?.id ?? 'new', name, isDefault: agent?.isDefault, avatarColor, avatarShape }} name={name} description={description} modelId={modelId} models={sortedModels} groups={toolGroups.filter(group => ['web_search', 'knowledge', 'computer'].includes(group.id))} enabled={enabledToolGroups} onName={setName} onDescription={setDescription} onModel={setModelId} onToggle={toggleToolGroup} onAdvanced={() => setAdvanced(true)} onSave={save} onBack={() => router.back()} busy={busy || !editable} valid={isValid && editable} error={error} isNew={isNew} computerPreview={computerPreview} />
     </SafeAreaView>
   )
 
@@ -601,6 +607,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
                   A persistent cloud desktop is provisioned for this agent on save.
                 </Text>
               ) : null}
+              {computerPreview}
             </View>
           </>
         ) : (

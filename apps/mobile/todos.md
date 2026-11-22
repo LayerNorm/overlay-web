@@ -23,8 +23,7 @@ mobile launch and stay reachable on getoverlay.io.
 - [ ] **In-app purchases** (Apple IAP / Google Play Billing) funding the same
   workspace credits, plus mobile sign-up and paid-first onboarding. Add only
   if mobile becomes an acquisition channel.
-- [ ] **Computers desktop viewer**: live desktop, takeover and control. Mobile
-  shows status only and links to web.
+- [ ] **Computer takeover and lifecycle controls**: mobile now opens a running computer in a view-only stream. Taking and releasing control and managing power still need mobile coverage.
 - [ ] **Extensions host** and extension cards (feature-flagged on web).
 - [ ] **Admin and governance**: workspace governance metrics, policies editor,
   audit export, roles.
