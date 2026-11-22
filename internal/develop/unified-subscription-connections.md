@@ -83,6 +83,15 @@ or `opencode-zen` (`https://opencode.ai/zen/v1`) preset with every discovered
 chat model enabled. It is never workspace-shared, like other API-key rows, and
 is not offered when reconnecting a bridge subscription.
 
+OpenCode Go is displayed as a subscription (`isApiKeySubscriptionConnection` in
+`subscription-providers.ts`): its picker models carry `sourceLabel:
+'Subscription'` and a `subscription` marker, so they get their own section at the
+top, the plug badge and no "API key" tag, and their recovery link opens
+Settings → Providers rather than a bridge reconnect. Zen stays an API key in the
+picker. Both use the `opencode` logo (`byokPresetLogo`). This is display only:
+server dispatch still keys off `isSubscriptionConnection`, so OpenCode never
+reaches the bridge.
+
 The key check differs per plan (`src/server/ai/gateway/opencode-probe.ts`). The
 model lists are public, so discovery alone proves nothing. Go runs one short
 chat probe on a free model. Zen requests a nonexistent model: a valid key gets a

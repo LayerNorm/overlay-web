@@ -27,3 +27,26 @@ export function isSubscriptionConnection(
     connection.providerId === `subscription:${connection.subscriptionProvider}`,
   )
 }
+
+/**
+ * API-key connections that users buy as a subscription. Overlay shows them like
+ * subscriptions (picker section, logo with plug badge, no "API key" tag), but
+ * inference still uses the ordinary API-key path, never the subscription bridge.
+ */
+const API_KEY_SUBSCRIPTION_PRESETS = new Set(['opencode-go'])
+
+/** Provider logos for API-key presets whose display name is not a logo key. */
+const BYOK_PRESET_LOGOS: Record<string, string> = {
+  'opencode-go': 'opencode',
+  'opencode-zen': 'opencode',
+}
+
+export function isApiKeySubscriptionConnection(
+  connection: { providerId?: unknown } | null | undefined,
+): boolean {
+  return typeof connection?.providerId === 'string' && API_KEY_SUBSCRIPTION_PRESETS.has(connection.providerId)
+}
+
+export function byokPresetLogo(providerId: string): string | undefined {
+  return BYOK_PRESET_LOGOS[providerId]
+}

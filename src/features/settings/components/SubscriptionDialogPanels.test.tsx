@@ -132,3 +132,24 @@ test('OpenCode is offered with an API key even when the subscription bridge is u
   assert.match(keyPanel, /type="password"/)
   assert.match(keyPanel, /href="https:\/\/opencode.ai\/zen"/)
 })
+
+test('OpenCode Go rows show the OpenCode logo and a personal subscription label', () => {
+  const html = renderToStaticMarkup(
+    <ProviderConnectionRow
+      connection={{ _id: 'oc', providerId: 'opencode-go', endpoint: 'https://opencode.ai/zen/go/v1', displayName: 'OpenCode Go', enabledModelIds: ['kimi-k3'], discoveredModelsJson: JSON.stringify({ data: [{ id: 'kimi-k3' }] }), status: 'active', isDefault: false, isDeletable: true }}
+      gatewayModels={[]}
+      gatewayLoading={false}
+      settingsEnabledModelIds={[]}
+      settingsModelOrder={[]}
+      settingsDisabled={false}
+      onSettingsChange={async () => {}}
+      onRefreshConnections={async () => {}}
+      onUpdateConnection={() => {}}
+      onRefreshGateway={async () => {}}
+      onEdit={() => {}}
+      onDelete={() => {}}
+    />,
+  )
+  assert.match(html, /<svg[^>]*data-provider="opencode"/)
+  assert.match(html, /Subscription · Personal/)
+})
