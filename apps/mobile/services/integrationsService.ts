@@ -5,48 +5,51 @@ export async function listConnectedIntegrations(): Promise<{ connected: string[]
   return appJson<{ connected: string[] }>('/api/v1/integrations')
 }
 
-export async function listIntegrationItems(): Promise<{
+export type IntegrationScope = 'personal' | 'workspace'
+export type IntegrationRequestScope = { workspaceId: string; scope: IntegrationScope }
+
+export async function listIntegrationItems(options: IntegrationRequestScope): Promise<{
   connected: string[]
   items?: IntegrationSummary[]
+  workspaceConnectors?: Array<{ providerKey: string; canDisconnect: boolean }>
 }> {
-  return appJson<{ connected: string[]; items?: IntegrationSummary[] }>('/api/v1/integrations')
+  return appJson('/api/v1/integrations', {
+    workspaceId: options.workspaceId,
+    query: { view: options.scope },
+  })
 }
 
-export async function searchIntegrations(query = ''): Promise<{
-  items: IntegrationSummary[]
-  nextCursor?: string | null
-}> {
-  return appJson<{ items: IntegrationSummary[]; nextCursor?: string | null }>(
-    '/api/v1/integrations',
-    {
-      query: {
-        action: 'search',
-        q: query || undefined,
-        limit: 50,
-      },
-    },
-  )
+export async function searchIntegrations(
+  query: string,
+  options: IntegrationRequestScope,
+): Promise<{ items: IntegrationSummary[]; nextCursor?: string | null }> {
+  return appJson('/api/v1/integrations', {
+    workspaceId: options.workspaceId,
+    query: { action: 'search', q: query || undefined, limit: 50, view: options.scope },
+  })
 }
 
 export async function listSkills(): Promise<SkillSummary[]> {
   return appJson<SkillSummary[]>('/api/v1/skills')
 }
 
-export async function connectIntegration(toolkit: string): Promise<{
+export async function connectIntegration(toolkit: string, options: IntegrationRequestScope): Promise<{
   redirectUrl?: string | null
   connectionId?: string | null
   status?: string | null
 }> {
   return appJson('/api/v1/integrations', {
     method: 'POST',
-    json: { action: 'connect', toolkit },
+    workspaceId: options.workspaceId,
+    json: { action: 'connect', toolkit, scope: options.scope },
   })
 }
 
-export async function disconnectIntegration(toolkit: string): Promise<void> {
+export async function disconnectIntegration(toolkit: string, options: IntegrationRequestScope): Promise<void> {
   await appJson('/api/v1/integrations', {
     method: 'POST',
-    json: { action: 'disconnect', toolkit },
+    workspaceId: options.workspaceId,
+    json: { action: 'disconnect', toolkit, scope: options.scope },
   })
 }
 

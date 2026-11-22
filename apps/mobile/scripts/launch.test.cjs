@@ -68,6 +68,40 @@ test('universal and custom links use existing native destinations', () => {
   assert.equal(incomingRoute('overlay://auth/transfer?token=test'), '/auth/transfer?token=test')
   assert.equal(incomingRoute('/app/invitations/id'), '/invitations/id')
 })
+test('extension links keep the selected workspace when opening Tools', () => {
+  assert.equal(incomingRoute('overlay://extensions'), '/tools')
+  assert.equal(incomingRoute('https://overlay.works/app/integrations?workspaceId=ws'), '/tools?workspaceId=ws')
+  assert.equal(incomingRoute('https://untrusted.example/extensions'), '/')
+})
+test('integration requests keep workspace and connection scope for reads and writes', async () => {
+  const calls = []
+  const exports = {}
+  vm.runInNewContext(
+    ts.transpileModule(fs.readFileSync(path.join(root, 'services/integrationsService.ts'), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText,
+    {
+      exports,
+      require: (name) => {
+        assert.equal(name, './appApi')
+        return { appJson: async (endpoint, options) => { calls.push({ endpoint, ...options }) } }
+      },
+    },
+  )
+  const options = { workspaceId: 'ws', scope: 'workspace' }
+  await exports.listIntegrationItems(options)
+  await exports.searchIntegrations('calendar', options)
+  await exports.connectIntegration('calendar', options)
+  await exports.disconnectIntegration('calendar', options)
+  assert.deepEqual(calls.map(({ endpoint, workspaceId, query, json }) => [
+    endpoint, workspaceId, query?.view ?? json?.scope, query?.action ?? json?.action,
+  ]), [
+    ['/api/v1/integrations', 'ws', 'workspace', undefined],
+    ['/api/v1/integrations', 'ws', 'workspace', 'search'],
+    ['/api/v1/integrations', 'ws', 'workspace', 'connect'],
+    ['/api/v1/integrations', 'ws', 'workspace', 'disconnect'],
+  ])
+})
 test('removed shared Markdown fixture screen has no incoming route', () => {
   for (const value of [
     'overlay://dev/other',

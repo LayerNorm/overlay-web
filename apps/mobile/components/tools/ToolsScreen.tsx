@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ import { useFocusEffect } from 'expo-router'
 import type { IntegrationSummary, McpAuthType, McpServerSummary, SkillSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { borderRadius, fontSize, spacing, type Theme } from '../../constants/theme'
 import { BottomSheet, EmptyState, MainScreenHeader, SearchField, SegmentedControl, StatusPill, TopBarIconButton } from '../ui/AppChrome'
@@ -39,6 +40,7 @@ import {
   testMcpServer,
   updateMcpServer,
   updateSkill,
+  type IntegrationScope,
 } from '../../services/integrationsService'
 
 type ToolTab = 'integrations' | 'skills' | 'mcps'
@@ -48,10 +50,31 @@ type ToolTab = 'integrations' | 'skills' | 'mcps'
 const INTEGRATION_RETURN_URL = 'overlay://extensions'
 
 export function ToolsScreen(): React.ReactElement {
+  const { activeWorkspaceId, activeWorkspace } = useWorkspace()
+  const { isFeatureEnabled } = useAppSession()
+  const [selection, setSelection] = useState<{ workspaceId: string; scope: IntegrationScope }>()
+  if (!isFeatureEnabled('extensions')) return <FeatureGate title="Extensions are turned off" />
+  if (!activeWorkspaceId) return <FeatureGate title="Choose a workspace to view extensions" />
+  const canShare = Boolean(activeWorkspace && activeWorkspace.kind !== 'personal')
+  const scope = canShare && selection?.workspaceId === activeWorkspaceId ? selection.scope : 'personal'
+  return (
+    <ScopedToolsScreen
+      key={activeWorkspaceId + ':' + scope}
+      workspaceId={activeWorkspaceId}
+      scope={scope}
+      onScopeChange={canShare ? (next) => setSelection({ workspaceId: activeWorkspaceId, scope: next }) : undefined}
+    />
+  )
+}
+
+function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
+  workspaceId: string
+  scope: IntegrationScope
+  onScopeChange?: (scope: IntegrationScope) => void
+}): React.ReactElement {
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
-  const { isFeatureEnabled } = useAppSession()
   const [tab, setTab] = useState<ToolTab>('integrations')
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([])
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -76,16 +99,26 @@ export function ToolsScreen(): React.ReactElement {
   const [mcpBearerToken, setMcpBearerToken] = useState('')
   const [mcpHeaderName, setMcpHeaderName] = useState('')
   const [mcpHeaderValue, setMcpHeaderValue] = useState('')
-  const connectPoll = useRef(0)
+  const mounted = useRef(true)
+  const connectionBusy = useRef(false)
+  const [disconnectable, setDisconnectable] = useState<ReadonlySet<string>>(new Set())
+  const requestScope = useMemo(() => ({ workspaceId, scope }), [workspaceId, scope])
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   const load = useCallback(async () => {
+    if (!mounted.current) return
     setLoading(true)
     try {
       const [integrationResult, skillRows, mcpRows] = await Promise.all([
-        listIntegrationItems(),
+        listIntegrationItems(requestScope),
         listSkills(),
         listMcpServers(),
       ])
+      if (!mounted.current) return
+      setDisconnectable(new Set(integrationResult.workspaceConnectors?.filter((item) => item.canDisconnect).map((item) => item.providerKey)))
       setIntegrations(
         integrationResult.items ??
           integrationResult.connected.map(
@@ -114,11 +147,11 @@ export function ToolsScreen(): React.ReactElement {
       setSkills(skillRows)
       setMcps(mcpRows)
     } catch (error) {
-      Alert.alert('Extensions unavailable', error instanceof Error ? error.message : 'Could not load extensions')
+      if (mounted.current) Alert.alert('Extensions unavailable', error instanceof Error ? error.message : 'Could not load extensions')
     } finally {
-      setLoading(false)
+      if (mounted.current) setLoading(false)
     }
-  }, [])
+  }, [requestScope])
 
   useFocusEffect(useCallback(() => { void load() }, [load]))
 
@@ -128,25 +161,24 @@ export function ToolsScreen(): React.ReactElement {
 
   async function runIntegrationSearch(): Promise<void> {
     try {
-      const result = await searchIntegrations(query)
-      setIntegrations(result.items)
+      const result = await searchIntegrations(query, requestScope)
+      if (mounted.current) setIntegrations(result.items)
     } catch (error) {
       Alert.alert('Search failed', error instanceof Error ? error.message : 'Try again.')
     }
   }
 
-  async function pollForConnection(expectedSlug: string): Promise<void> {
+  async function pollForConnection(providerKey: string): Promise<void> {
     // Composio's hosted flow ends on a web page — the auth session returns when
     // the user dismisses it. Poll a few times so the connected row appears even
     // if the provider's link settles a beat after the browser closes.
-    const attempt = ++connectPoll.current
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 4 && mounted.current; i++) {
       try {
-        const result = await listIntegrationItems()
-        if (attempt !== connectPoll.current) return
+        const result = await listIntegrationItems(requestScope)
+        if (!mounted.current) return
         if (result.items) setIntegrations(result.items)
-        const connected = result.connected.includes(expectedSlug) ||
-          result.items?.some((item) => item.slug === expectedSlug && item.isConnected)
+        const connected = result.connected.includes(providerKey) ||
+          result.items?.some((item) => item.providerKey === providerKey && item.isConnected)
         if (connected) return
       } catch {
         return
@@ -155,30 +187,38 @@ export function ToolsScreen(): React.ReactElement {
     }
   }
 
+  function canChangeIntegration(item: IntegrationSummary): boolean {
+    return !item.isConnected || scope === 'personal' || disconnectable.has(item.providerKey)
+  }
+
   async function toggleIntegration(item: IntegrationSummary): Promise<void> {
+    if (connectionBusy.current || !canChangeIntegration(item)) return
+    connectionBusy.current = true
+    setConnectingSlug(item.slug)
     try {
       if (item.isConnected) {
-        await disconnectIntegration(item.slug)
+        await disconnectIntegration(item.providerKey, requestScope)
         await load()
         return
       }
-      const result = await connectIntegration(item.slug)
+      const result = await connectIntegration(item.providerKey, requestScope)
       if (!result.redirectUrl) {
         await load()
         return
       }
-      setConnectingSlug(item.slug)
+      if (!mounted.current) return
       try {
         await WebBrowser.openAuthSessionAsync(result.redirectUrl, INTEGRATION_RETURN_URL)
       } catch {
         // The system browser failed to open — fall back to a plain reload.
       }
-      await pollForConnection(item.slug)
+      await pollForConnection(item.providerKey)
       await load()
     } catch (error) {
-      Alert.alert('Integration update failed', error instanceof Error ? error.message : 'Try again.')
+      if (mounted.current) Alert.alert('Integration update failed', error instanceof Error ? error.message : 'Try again.')
     } finally {
-      setConnectingSlug(null)
+      connectionBusy.current = false
+      if (mounted.current) setConnectingSlug(null)
     }
   }
 
@@ -287,10 +327,10 @@ export function ToolsScreen(): React.ReactElement {
           detail={item.isConnected ? 'Connected' : item.description || item.slug}
           onPress={() => setIntegrationDetail(item)}
           action={
-            connectingSlug === item.slug ? (
+            !canChangeIntegration(item) ? null : connectingSlug === item.slug ? (
               <ActivityIndicator size="small" color={theme.textSecondary} />
             ) : (
-              <TouchableOpacity onPress={() => { void toggleIntegration(item) }}>
+              <TouchableOpacity disabled={connectingSlug !== null} onPress={() => { void toggleIntegration(item) }}>
                 <Text style={[styles.actionText, { color: theme.text }]}>{item.isConnected ? 'Disconnect' : 'Connect'}</Text>
               </TouchableOpacity>
             )
@@ -316,10 +356,6 @@ export function ToolsScreen(): React.ReactElement {
     )) : <EmptyState theme={theme} icon="server" title="No MCP servers" description="Add MCP tools for the assistant to use." />
   })()
 
-  if (!isFeatureEnabled('extensions')) {
-    return <FeatureGate title="Extensions are turned off" />
-  }
-
   return (
     <ScreenWithDrawer drawer={<DrawerSidebar variant="slide" theme={theme} chats={[]} activeChatId={null} onSelectChat={() => {}} onCreateChat={() => {}} />}>
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['bottom']}>
@@ -334,6 +370,14 @@ export function ToolsScreen(): React.ReactElement {
         />
         <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 72 }]}>
           <SegmentedControl theme={theme} value={tab} onChange={setTab} options={[{ label: 'Apps', value: 'integrations' }, { label: 'Skills', value: 'skills' }, { label: 'MCPs', value: 'mcps' }]} />
+          {tab === 'integrations' && onScopeChange ? (
+            <SegmentedControl
+              theme={theme}
+              value={scope}
+              onChange={(next) => { if (!connectionBusy.current) onScopeChange(next) }}
+              options={[{ label: 'Personal', value: 'personal' }, { label: 'Workspace', value: 'workspace' }]}
+            />
+          ) : null}
           <SearchField theme={theme} value={query} onChangeText={setQuery} placeholder={tab === 'integrations' ? 'Search apps' : 'Search extensions'} />
           <View style={styles.rows}>{content}</View>
         </ScrollView>
@@ -436,13 +480,14 @@ export function ToolsScreen(): React.ReactElement {
                   This connection looks {integrationDetail.authenticationState} — reconnect to refresh it.
                 </Text>
               ) : null}
+              {canChangeIntegration(integrationDetail) ? (
               <TouchableOpacity
                 onPress={() => {
                   const item = integrationDetail
                   setIntegrationDetail(null)
                   void toggleIntegration(item)
                 }}
-                disabled={connectingSlug === integrationDetail.slug}
+                disabled={connectingSlug !== null}
                 style={[styles.primaryButton, { backgroundColor: theme.foreground, alignSelf: 'stretch' }]}
               >
                 {connectingSlug === integrationDetail.slug ? (
@@ -453,6 +498,7 @@ export function ToolsScreen(): React.ReactElement {
                   </Text>
                 )}
               </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
         </BottomSheet>

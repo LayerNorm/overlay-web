@@ -24,7 +24,7 @@ mobile launch and stay reachable on getoverlay.io.
   workspace credits, plus mobile sign-up and paid-first onboarding. Add only
   if mobile becomes an acquisition channel.
 - [ ] **Computer takeover and lifecycle controls**: mobile now opens a running computer in a view-only stream. Taking and releasing control and managing power still need mobile coverage.
-- [ ] **Extensions host** and extension cards (feature-flagged on web).
+- [ ] **Extensions host and cards**: the mobile Tools screen supports personal and workspace app connections, Skills, and MCP management. Live OAuth and any remaining web-only extension host surfaces still need acceptance.
 - [ ] **Admin and governance**: workspace governance metrics, policies editor,
   audit export, roles.
 - [ ] **Slack import** and Slack surface bindings setup.
