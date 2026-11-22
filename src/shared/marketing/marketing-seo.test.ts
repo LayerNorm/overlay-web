@@ -30,6 +30,8 @@ test('the sitemap publishes canonical marketing, comparison, docs and legal URLs
     '/docs/help/billing',
     '/docs/self-hosting/configure/authentication',
     '/docs/developer/api/guides/bootstrap',
+    '/docs/developer/api/reference/bootstrap/read-web-capabilities',
+    '/docs/developer/api/reference/computers/provision-a-workspace-computer-idempotent-per-owner',
     '/terms',
     '/privacy',
     '/acceptable-use',

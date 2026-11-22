@@ -65,4 +65,5 @@ After deployment:
 - The browser URL remains on the Overlay domain instead of redirecting to Mintlify.
 - The docs canonical link and sitemap use `https://overlay.works/docs/…`. The canonical
   domain is set in `docs/docs.json`. The app's root sitemap uses Mintlify's
-  directory URL for navigation entries ending in `/index`.
+  directory URL for navigation entries ending in `/index`, and includes the
+  reference paths Mintlify generates from OpenAPI operation tags and summaries.

@@ -58,9 +58,9 @@ const structuredData = {
       isAccessibleForFree: true,
       sameAs: ['https://github.com/LayerNorm/overlay-web'],
       keywords:
-        'AI employees, control plane for AI agents, open-source Devin alternative, multi-agent workspace, Claude Code, Codex, self-hosted AI agents',
+        'AI employees, control plane for AI agents, open-source Devin alternative, multi-agent workspace, connected computers, self-hosted AI agents',
       description:
-        "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Bring your own agents (Codex, Claude Code, Hermes) or run Overlay's, and put them to work in one shared workspace on the web and desktop. Open source under AGPL-3.0, with hosted and self-hosted options.",
+        "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Give Overlay agents instructions, tools, model connections and computers, and put them to work in one shared workspace on the web and desktop. Open source under AGPL-3.0, with hosted and self-hosted options.",
       offers: [
         { '@type': 'Offer', name: 'Free workspace', price: '0', priceCurrency: 'USD', url: 'https://overlay.works/pricing' },
         { '@type': 'Offer', name: 'Paid workspace starting price', price: '8', priceCurrency: 'USD', url: 'https://overlay.works/pricing' },

@@ -1,9 +1,9 @@
 # Overlay
 
 > Overlay is the control plane for AI employees: one workspace to create,
-> deploy, and manage every AI agent in one place. Bring your own agents
-> (Codex, Claude Code, Hermes) or run Overlay's own, and put them to work in
-> one shared workspace on the web and desktop. Built by LayerNorm Inc.
+> deploy, and manage AI agents in one place. Give Overlay agents instructions,
+> tools, models and computers in a shared workspace on the web and desktop.
+> Built by LayerNorm Inc.
 > Open source under AGPL-3.0, with hosted and self-hosted options.
 
 Overlay unifies AI agents: a single roster, shared context and memory,
@@ -31,8 +31,7 @@ card.
 ## Docs
 
 - [Documentation](https://overlay.works/docs): product and developer documentation
-- [Agents](https://overlay.works/docs/help/agents): Overlay agents and Claude Code / Codex agents
-- [Claude Code and Codex agents](https://overlay.works/docs/help/other-agents): run coding agents with your own subscription
+- [Agent tools](https://overlay.works/docs/help/tools): what Overlay agents can do and how tool permissions work
 - [Connect ChatGPT, Claude and other apps](https://overlay.works/docs/help/connect-other-apps): use an Overlay workspace from any MCP app
 - [Plans and credit](https://overlay.works/docs/help/billing): free workspaces, $8-$500/month usage credit
 - [Self-hosting overview](https://overlay.works/docs/self-hosting/overview): run Overlay yourself
