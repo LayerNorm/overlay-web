@@ -1707,3 +1707,54 @@ test('an empty progress-only reply settles once and resumes work without abortin
   expect(provider.doStreamCalls).toHaveLength(4)
   expect(f.receipts.size).toBe(4)
 })
+
+test('read-only calls from one model step overlap and their results come back in call order', async () => {
+  const f = fixture(false, ['web_search', 'web_fetch'], { executionPolicyVersion: 2 })
+  const events: string[] = []
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const search = vi.fn(async ({ q }: { q: string }) => {
+    events.push(`start:${q}`)
+    if (events.filter(event => event.startsWith('start:')).length === 3) release()
+    await gate
+    events.push(`end:${q}`)
+    return { q }
+  })
+  const fetchPage = vi.fn(async () => { events.push('start:fetch'); if (events.filter(e => e.startsWith('start:')).length === 3) release(); await gate; events.push('end:fetch'); return { page: 'ok' } })
+  const provider = model(index => index === 0
+    ? [call('web_search', 's1', { q: 'a' }), call('web_search', 's2', { q: 'b' }), call('web_fetch', 'f1', {})]
+    : 'Found both.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: {
+      web_search: tool({ inputSchema: z.object({ q: z.string() }), execute: search }),
+      web_fetch: tool({ inputSchema: z.object({}), execute: fetchPage }),
+    },
+  }, f.ports)
+
+  // All three started before any finished: a serial chain would deadlock on the gate.
+  expect(events.slice(0, 3).every(event => event.startsWith('start:'))).toBe(true)
+  expect(result.snapshot.status).toBe('completed')
+  const results = result.steps[0]?.content.filter(part => part.type === 'tool-result').map(part => part.toolCallId)
+  expect(results).toEqual(['s1', 's2', 'f1'])
+  expect(provider.doStreamCalls).toHaveLength(2)
+})
+
+test('calls that change the same resource still run one at a time in call order', async () => {
+  const f = fixture(false, ['computer_write_file'], { executionPolicyVersion: 2 })
+  const events: string[] = []
+  const write = vi.fn(async ({ path, contents }: { path: string; contents: string }) => {
+    events.push(`start:${contents}`)
+    await new Promise(resolve => setTimeout(resolve, contents === 'one' ? 20 : 0))
+    events.push(`end:${contents}`)
+    return { path }
+  })
+  model(index => index === 0
+    ? [call('computer_write_file', 'w1', { path: '/a', contents: 'one' }), call('computer_write_file', 'w2', { path: '/a', contents: 'two' })]
+    : 'Wrote it twice.')
+  await runOverlayHarness({
+    ...input,
+    tools: { computer_write_file: tool({ inputSchema: z.object({ path: z.string(), contents: z.string() }), execute: write }) },
+  }, f.ports)
+  expect(events).toEqual(['start:one', 'end:one', 'start:two', 'end:two'])
+})

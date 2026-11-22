@@ -5,6 +5,8 @@ import type { HarnessExecutionPorts } from './ports'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
 import { harnessToolInputDigest } from './tool-input-digest'
 import { redactSecrets } from '@/shared/security/sentry-sanitize'
+import { createHarnessToolScheduler, harnessToolRunMode } from './tool-run-modes'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 
 const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
   'create_note', 'create_task', 'create_automation', 'create_folder', 'create_agent',
@@ -46,13 +48,19 @@ export function createHarnessAuthorizedTools(
 ): { tools: ToolSet; approvals: HarnessToolApprovals } {
   const approvals = createHarnessToolApprovals(initialApprovals)
   const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
-  let toolTail: Promise<unknown> = Promise.resolve()
+  // Calls from one model step arrive together. Read-only calls overlap, calls on one resource keep their order,
+  // and control or approval-gated calls run alone.
+  const scheduler = createHarnessToolScheduler()
   const tools = Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
     const execute = definition.execute
     return [name, !execute ? definition : {
       ...definition,
       execute: (value: unknown, options: Parameters<NonNullable<typeof execute>>[1]) => {
-        const pending = toolTail.then(async () => {
+        // Approval itself happens before execute; this only keeps gated actions from overlapping other work.
+        const gated = definition.needsApproval === true
+          || (typeof definition.needsApproval === 'function' && toolRequiresApproval(name, value))
+        const mode = harnessToolRunMode(name, value, { control: controls.has(name), needsApproval: gated })
+        return scheduler.run(mode, async () => {
           if (guard?.publicProgress()) throw new Error("Tools are disabled during a public progress update.")
           let state = await ports.read()
           if (state.policy.executionPolicyVersion === 2) {
@@ -82,8 +90,6 @@ export function createHarnessAuthorizedTools(
             throw harnessToolFailure(name, error)
           }
         })
-        toolTail = pending.then(() => undefined, () => undefined)
-        return pending
       },
     }]
   }))
