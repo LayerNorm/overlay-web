@@ -10,6 +10,11 @@ failures; notification permissions remain in macOS System Settings.
 
 ## Brand, Theme, And Navigation
 
+Field model pickers constrain their tooltip wrapper to the field width so the
+model name truncates without clipping the reasoning label or dropdown arrow.
+Settings action rows wrap their control below the text when the available row
+width cannot accommodate a readable description and the control side by side.
+
 The saved `useSecondarySidebar` setting selects the same sidebar component at every
 viewport width. Below 768px, the selected single sidebar or icon-rail/context-panel
 layout opens inside the navigation drawer rather than switching to the legacy
