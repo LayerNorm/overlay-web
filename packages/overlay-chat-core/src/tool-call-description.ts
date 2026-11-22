@@ -242,6 +242,7 @@ const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription
     return path ? call.make(VERBS.read, { target: target(basename(path)), title: path }) : null
   },
   computer_write_file: describeComputerWrite,
+  computer_edit_file: describeComputerWrite,
   computer_grep: (call) => {
     const pattern = inputString(call, 'pattern')
     const path = inputString(call, 'path')

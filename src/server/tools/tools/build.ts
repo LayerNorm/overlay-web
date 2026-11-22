@@ -35,6 +35,7 @@ import {
   executeComputerListFiles,
   executeComputerOpenUrl,
   executeComputerReadFile,
+  executeComputerEditFile,
   executeComputerGrep,
   executeComputerGlob,
   executeComputerScreenshot,
@@ -1136,6 +1137,30 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('computer_glob')
         return executeComputerGlob(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_edit_file')) {
+      tools.computer_edit_file = tool({
+      description:
+        'Edit a text file on the bound computer by exact string replacement. Prefer this over computer_write_file for changes to existing files. '
+        + 'Each edit replaces old_string with new_string; old_string must match exactly once (include surrounding lines to make it unique) unless replace_all is set. '
+        + 'Copy old_string from computer_read_file output without the line-number prefix. Edits apply in order; if any edit fails, nothing is written. '
+        + 'Pass the sha from your last read as expected_sha so you never overwrite someone else\'s change. Returns a unified diff and the new sha.',
+      inputSchema: z.object({
+        path: z.string().describe('Absolute path of the file to edit'),
+        edits: z.array(z.object({
+          old_string: z.string().min(1).describe('Exact text to replace'),
+          new_string: z.string().describe('Replacement text (may be empty to delete)'),
+          replace_all: z.boolean().optional().describe('Replace every occurrence instead of requiring exactly one'),
+        })).min(1).max(50),
+        expected_sha: z.string().regex(/^[0-9a-f]{16}$/).optional().describe('sha from computer_read_file; the edit is refused if the file changed since'),
+        target: computerTargetSchema,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_edit_file')
+        return executeComputerEditFile(options, input)
       },
     })
     }
