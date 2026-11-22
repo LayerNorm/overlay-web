@@ -11,7 +11,7 @@ import { toWorkspaceSummaryWithRoutingHandle } from '@/server/app-api/v1/workspa
 
 export async function POST(request: Request, context: AccountAppApiRouteContext) {
   try {
-    if (context.auth.authType !== 'session') {
+    if (context.auth.authType !== 'session' && context.auth.authType !== 'access-token') {
       throw new WorkspaceServiceError(
         'Workspace invitations must be accepted from a signed-in browser session',
         403,
