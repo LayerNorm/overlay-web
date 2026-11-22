@@ -36,6 +36,7 @@ import {
   type ComputerGrepInput,
 } from './computer-file-tools'
 import { applyComputerEdits, unifiedComputerDiff, type ComputerEdit } from './computer-edit'
+import { ComputerPatchError, computerPatchPaths, parseComputerPatch, planComputerPatch } from './computer-patch'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1411,6 +1412,91 @@ export async function executeComputerEditFile(
     }
   } catch (err) {
     return computerErrorResult(err, 'Computer file edit failed')
+  }
+}
+
+const COMPUTER_PATCH_MAX_FILES = 50
+
+export async function executeComputerApplyPatch(
+  options: OverlayToolsOptions,
+  input: { patch: string; target?: ComputerTarget },
+) {
+  let operations
+  try {
+    operations = parseComputerPatch(input.patch)
+  } catch (err) {
+    if (err instanceof ComputerPatchError) return { success: false, code: 'invalid_patch', error: `${err.message} Nothing was written.` }
+    throw err
+  }
+  const paths = computerPatchPaths(operations)
+  if (paths.some(path => !path.startsWith('/'))) {
+    return { success: false, code: 'invalid_patch', error: 'Patch paths must be absolute. Nothing was written.' }
+  }
+  if (paths.length > COMPUTER_PATCH_MAX_FILES) {
+    return { success: false, code: 'invalid_patch', error: `A patch can touch at most ${COMPUTER_PATCH_MAX_FILES} files. Nothing was written.` }
+  }
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_apply_patch' })
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  try {
+    const outcome = await resolved.operate(async (instance) => {
+      const decoder = new TextDecoder()
+      const load = async () => new Map(await Promise.all(paths.map(async (path) => {
+        const bytes = await instance.readFile(path)
+        return [path, bytes === null ? null : decoder.decode(bytes)] as const
+      })))
+      const files = await load()
+      let changes
+      try {
+        changes = planComputerPatch(operations, files)
+      } catch (err) {
+        if (err instanceof ComputerPatchError) return { success: false as const, code: 'patch_failed', error: `${err.message} Nothing was written.` }
+        throw err
+      }
+      // Nothing changed on disk between planning and writing, or the patch is refused.
+      const latest = await load()
+      for (const path of paths) {
+        if (latest.get(path) !== files.get(path)) {
+          return { success: false as const, code: 'stale', error: `${path} changed while the patch was being applied. Nothing was written. Re-read and retry.` }
+        }
+      }
+      const encoder = new TextEncoder()
+      const writes = changes.flatMap(change => change.kind === 'add' ? [{ path: change.path, contents: encoder.encode(change.after) }]
+        : change.kind === 'update' ? [{ path: change.moveTo ?? change.path, contents: encoder.encode(change.after) }] : [])
+      if (writes.length) await instance.writeFiles(writes)
+      const removals = changes.flatMap(change => change.kind === 'delete' ? [change.path] : change.kind === 'update' && change.moveTo ? [change.path] : [])
+      if (removals.length) {
+        const result = await (await instance.runCommand({ command: 'rm', args: ['-f', '--', ...removals], timeoutMs: 15_000 })).wait()
+        if (result.exitCode !== 0) {
+          return { success: false as const, code: 'partial', error: `Files were written, but removing ${removals.join(', ')} failed: ${result.stderr.trim().slice(0, 300)}` }
+        }
+      }
+      return { success: true as const, changes }
+    })
+    if (!outcome.success) return outcome
+    const files = outcome.changes.map((change) => {
+      const before = change.kind === 'add' ? '' : change.before
+      const after = change.kind === 'delete' ? '' : change.after
+      const { diff, linesAdded, linesRemoved, truncated } = unifiedComputerDiff(change.kind === 'update' && change.moveTo ? change.moveTo : change.path, before, after)
+      return {
+        action: change.kind,
+        path: change.path,
+        ...(change.kind === 'update' && change.moveTo ? { movedTo: change.moveTo } : {}),
+        linesAdded,
+        linesRemoved,
+        diff,
+        ...(truncated ? { diffTruncated: true } : {}),
+        ...(change.kind === 'delete' ? {} : { sha: computerContentSha(after) }),
+      }
+    })
+    return {
+      success: true,
+      files,
+      linesAdded: files.reduce((sum, file) => sum + file.linesAdded, 0),
+      linesRemoved: files.reduce((sum, file) => sum + file.linesRemoved, 0),
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer patch failed')
   }
 }
 

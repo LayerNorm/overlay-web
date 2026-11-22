@@ -36,6 +36,7 @@ import {
   executeComputerOpenUrl,
   executeComputerReadFile,
   executeComputerEditFile,
+  executeComputerApplyPatch,
   executeComputerGrep,
   executeComputerGlob,
   executeComputerScreenshot,
@@ -1161,6 +1162,23 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('computer_edit_file')
         return executeComputerEditFile(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_apply_patch')) {
+      tools.computer_apply_patch = tool({
+      description:
+        'Apply a multi-file patch on the bound computer: add, update, delete or move files in one atomic call. Use it for changes across several files or many hunks; use computer_edit_file for a single small change. '
+        + 'Format (paths must be absolute):\n*** Begin Patch\n*** Add File: /abs/new.ts\n+line\n*** Update File: /abs/a.ts\n*** Move to: /abs/b.ts (optional)\n@@ optional line near the change, e.g. a function signature\n context line\n-removed line\n+added line\n*** Delete File: /abs/old.ts\n*** End Patch\n'
+        + 'Include about 3 unchanged context lines around each change. If any hunk does not match, nothing is written. Returns a diff and new sha per file.',
+      inputSchema: z.object({
+        patch: z.string().min(1).max(500_000).describe('The full patch text, from *** Begin Patch to *** End Patch'),
+        target: computerTargetSchema,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_apply_patch')
+        return executeComputerApplyPatch(options, input)
       },
     })
     }
