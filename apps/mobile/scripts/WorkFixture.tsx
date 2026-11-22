@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { View } from 'react-native'
+import { Modal, View } from 'react-native'
 import { BatteryFull, Signal, Wifi } from 'lucide-react-native'
 import type { WorkContext, WorkEvent, WorkItem } from '@overlay/app-core'
+import { rankBetween } from '../../src/shared/work/rank'
+import { WorkPlacementSheet, WorkScheduleSheet } from '../components/work/WorkTaskActions'
 import { getTheme } from '../constants/theme'
 import { toWorkDate } from '../lib/work'
 import { T } from '../components/shell/primitives'
@@ -131,6 +133,7 @@ export function WorkFixture({
 }) {
   const theme = getTheme(dark)
   const [screen, setScreen] = useState(initialScreen)
+  const [editor, setEditor] = useState<{ type: 'move' | 'schedule'; item: WorkItem } | null>(null)
   const [items, setItems] = useState(fixtures)
   const [id, setId] = useState('pricing')
   const [activity, setActivity] = useState(events)
@@ -228,6 +231,9 @@ export function WorkFixture({
               setScreen('task-detail')
             }}
             onCreate={() => setScreen('new-task')}
+            canEdit={() => true}
+            onMove={(item) => setEditor({ type: 'move', item })}
+            onSchedule={(item) => setEditor({ type: 'schedule', item })}
           />
         )}
       </View>
@@ -238,6 +244,49 @@ export function WorkFixture({
           style={{ width: 134, height: 5, borderRadius: 4, backgroundColor: theme.foreground }}
         />
       </View>
+      {editor ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setEditor(null)}>
+          {editor.type === 'move' ? (
+            <WorkPlacementSheet
+              item={editor.item}
+              items={items}
+              theme={theme}
+              busy={false}
+              error={failure}
+              onClose={() => setEditor(null)}
+              onMove={({ status, beforeId, afterId }) => {
+                if (refused()) return
+                const before = items.find((task) => task.id === beforeId)
+                const after = items.find((task) => task.id === afterId)
+                const rank = rankBetween(after?.rank ?? null, before?.rank ?? null)
+                setItems((values) =>
+                  values.map((task) =>
+                    task.id === editor.item.id
+                      ? { ...task, status: status ?? task.status, rank }
+                      : task,
+                  ),
+                )
+                setEditor(null)
+              }}
+            />
+          ) : (
+            <WorkScheduleSheet
+              item={editor.item}
+              theme={theme}
+              busy={false}
+              error={failure}
+              onClose={() => setEditor(null)}
+              onSave={(dates) => {
+                if (refused()) return
+                setItems((values) =>
+                  values.map((task) => (task.id === editor.item.id ? { ...task, ...dates } : task)),
+                )
+                setEditor(null)
+              }}
+            />
+          )}
+        </Modal>
+      ) : null}
       {screen === 'new-task' ? (
         <View style={{ position: 'absolute', inset: 0 }}>
           <WorkComposer

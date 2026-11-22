@@ -1,15 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-  type TextInputProps,
-} from 'react-native'
+import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
 import {
   ArrowUp,
@@ -17,6 +7,7 @@ import {
   Check,
   GitFork,
   MessageSquare,
+  Move,
   Plus,
   User,
   X,
@@ -54,6 +45,7 @@ import { Button, IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { WorkMarkdown } from './WorkMarkdown'
 import { WorkTimeline } from './WorkTimeline'
+import { WorkField, WorkOptions, WorkSheet } from './WorkControls'
 
 function useWorkClock() {
   const [now, setNow] = useState(Date.now)
@@ -144,28 +136,6 @@ export function WorkAvatar({
   )
 }
 
-export function WorkField({ theme, style, ...props }: TextInputProps & { theme: Theme }) {
-  return (
-    <TextInput
-      {...props}
-      placeholderTextColor={theme.muted}
-      style={[
-        {
-          fontFamily: 'Geist',
-          fontSize: 14,
-          color: theme.foreground,
-          backgroundColor: theme.surfaceMuted,
-          borderRadius: 8,
-          padding: 12,
-          minHeight: 42,
-          includeFontPadding: false,
-        },
-        style,
-      ]}
-    />
-  )
-}
-
 function Tabs({
   values,
   value,
@@ -182,7 +152,7 @@ function Tabs({
       {values.map((label) => (
         <Pressable
           key={label}
-          accessibilityRole="tab"
+          accessibilityRole="button"
           accessibilityState={{ selected: value === label }}
           onPress={() => onChange(label)}
           style={{
@@ -212,6 +182,9 @@ export function WorkListView({
   dark,
   onOpen,
   onCreate,
+  canEdit,
+  onMove,
+  onSchedule,
   canCreate = true,
   filter: initialFilter = 'needs-you',
 }: {
@@ -222,6 +195,9 @@ export function WorkListView({
   dark: boolean
   onOpen: (id: string) => void
   onCreate: () => void
+  canEdit: (item: WorkItem) => boolean
+  onMove: (item: WorkItem) => void
+  onSchedule: (item: WorkItem) => void
   canCreate?: boolean
   filter?: WorkFilter
 }) {
@@ -240,77 +216,107 @@ export function WorkListView({
   const groups = layout === 'Board' ? columnsByStatus(visibleItems) : groupByStatus(visibleItems)
   const people = new Map(context.people.map((person) => [person.principalId, person]))
   const today = toWorkDate(new Date(useWorkClock()))
-  const statusGroups = layout === 'Timeline' ? null : groups.map((group) => (
-    <View
-      key={group.status}
-      style={layout === 'Board' ? {
-        width: 256,
-        borderWidth: 1,
-        borderColor: theme.border,
-        borderRadius: 10,
-        backgroundColor: theme.surfaceMuted,
-        paddingBottom: 8,
-      } : undefined}
-    >
-      <T
-        style={{
-          paddingHorizontal: 18,
-          paddingTop: 20,
-          paddingBottom: 8,
-          fontSize: 12,
-          color: theme.muted,
-        }}
-      >
-        {group.status === 'review' ? 'Ready for review' : WORK_STATUS_LABELS[group.status]} ·{' '}
-        {group.items.length}
-      </T>
-      {group.items.map((item) => (
-        <Pressable
-          key={item.id}
-          accessibilityRole="button"
-          accessibilityLabel={item.title}
-          onPress={() => onOpen(item.id)}
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            gap: 12,
-            paddingHorizontal: 18,
-            paddingVertical: 14,
-            alignItems: 'center',
-            backgroundColor: pressed || layout === 'Board' ? theme.surfaceSubtle : 'transparent',
-            ...(layout === 'Board' ? { borderRadius: 8, marginHorizontal: 8, marginBottom: 6 } : {}),
-          })}
-        >
-          <WorkStatusIcon status={item.status} theme={theme} />
-          <View style={{ flex: 1 }}>
+  const statusGroups =
+    layout === 'Timeline'
+      ? null
+      : groups.map((group) => (
+          <View
+            key={group.status}
+            style={
+              layout === 'Board'
+                ? {
+                    width: 256,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    borderRadius: 10,
+                    backgroundColor: theme.surfaceMuted,
+                    paddingBottom: 8,
+                  }
+                : undefined
+            }
+          >
             <T
-              numberOfLines={1}
               style={{
-                color: item.status === 'done' ? theme.muted : theme.foreground,
-                fontSize: 14,
-                textDecorationLine: item.status === 'done' ? 'line-through' : 'none',
+                paddingHorizontal: 18,
+                paddingTop: 20,
+                paddingBottom: 8,
+                fontSize: 12,
+                color: theme.muted,
               }}
             >
-              {item.title}
+              {group.status === 'review' ? 'Ready for review' : WORK_STATUS_LABELS[group.status]} ·{' '}
+              {group.items.length}
             </T>
-            {item.dueDate || item.blocked ? (
-              <T style={{ color: theme.muted, fontSize: 11, marginTop: 5 }}>
-                {item.blocked
-                  ? 'Blocked'
-                  : item.dueDate === today
-                    ? 'Today'
-                    : formatWorkDate(item.dueDate!, today)}
-              </T>
-            ) : null}
+            {group.items.map((item) => (
+              <View
+                key={item.id}
+                style={
+                  layout === 'Board'
+                    ? {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: theme.surfaceSubtle,
+                        borderRadius: 8,
+                        marginHorizontal: 8,
+                        marginBottom: 6,
+                      }
+                    : undefined
+                }
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={item.title}
+                  onPress={() => onOpen(item.id)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    gap: 12,
+                    paddingHorizontal: 18,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                    backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
+                    ...(layout === 'Board' ? { flex: 1, paddingHorizontal: 10 } : {}),
+                  })}
+                >
+                  <WorkStatusIcon status={item.status} theme={theme} />
+                  <View style={{ flex: 1 }}>
+                    <T
+                      numberOfLines={1}
+                      style={{
+                        color: item.status === 'done' ? theme.muted : theme.foreground,
+                        fontSize: 14,
+                        textDecorationLine: item.status === 'done' ? 'line-through' : 'none',
+                      }}
+                    >
+                      {item.title}
+                    </T>
+                    {item.dueDate || item.blocked ? (
+                      <T style={{ color: theme.muted, fontSize: 11, marginTop: 5 }}>
+                        {item.blocked
+                          ? 'Blocked'
+                          : item.dueDate === today
+                            ? 'Today'
+                            : formatWorkDate(item.dueDate!, today)}
+                      </T>
+                    ) : null}
+                  </View>
+                  <WorkAvatar
+                    person={people.get(item.assigneePrincipalId ?? '')}
+                    theme={theme}
+                    dark={dark}
+                  />
+                </Pressable>
+                {layout === 'Board' && canEdit(item) ? (
+                  <IconButton
+                    icon={Move}
+                    label={`Move ${item.title}`}
+                    theme={theme}
+                    onPress={() => onMove(item)}
+                  />
+                ) : null}
+              </View>
+            ))}
           </View>
-          <WorkAvatar
-            person={people.get(item.assigneePrincipalId ?? '')}
-            theme={theme}
-            dark={dark}
-          />
-        </Pressable>
-      ))}
-    </View>
-  ))
+        ))
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
       <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
@@ -350,8 +356,17 @@ export function WorkListView({
           {statusGroups}
         </ScrollView>
       ) : layout === 'Timeline' ? (
-        <WorkTimeline items={visibleItems} today={today} theme={theme} onOpen={onOpen} />
-      ) : statusGroups}
+        <WorkTimeline
+          items={visibleItems}
+          today={today}
+          theme={theme}
+          onOpen={onOpen}
+          canEdit={canEdit}
+          onSchedule={onSchedule}
+        />
+      ) : (
+        statusGroups
+      )}
       {layout !== 'Timeline' && !visibleItems.length ? (
         <T style={{ textAlign: 'center', color: theme.muted, padding: 48 }}>No tasks here.</T>
       ) : null}
@@ -361,129 +376,6 @@ export function WorkListView({
         </T>
       ) : null}
     </ScrollView>
-  )
-}
-
-export function WorkSheet({
-  title,
-  theme,
-  onClose,
-  children,
-  bottomInset = 0,
-  minHeight,
-}: {
-  title: string
-  theme: Theme
-  onClose: () => void
-  children: React.ReactNode
-  bottomInset?: number
-  minHeight?: number
-}) {
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: theme.overlayScrim }}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss sheet"
-        onPress={onClose}
-        style={{ flex: 1 }}
-      />
-      <View
-        accessibilityViewIsModal
-        style={{
-          maxHeight: '92%',
-          minHeight,
-          borderTopLeftRadius: 22,
-          borderTopRightRadius: 22,
-          paddingHorizontal: 22,
-          paddingTop: 10,
-          paddingBottom: 28 + bottomInset,
-          backgroundColor: theme.surfaceElevated,
-        }}
-      >
-        <View
-          style={{
-            width: 34,
-            height: 4,
-            borderRadius: 5,
-            backgroundColor: theme.border,
-            alignSelf: 'center',
-            marginBottom: 15,
-          }}
-        />
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 12,
-          }}
-        >
-          <T style={{ fontSize: 20, fontWeight: '500', color: theme.foreground }}>{title}</T>
-          <IconButton icon={X} label="Close sheet" onPress={onClose} theme={theme} />
-        </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
-          {children}
-        </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
-  )
-}
-
-export function WorkOptions({
-  title,
-  theme,
-  choices,
-  selected,
-  onSelect,
-  onClose,
-  error,
-  busy = false,
-}: {
-  title: string
-  theme: Theme
-  choices: Array<{ id: string; label: string }>
-  selected: string[]
-  onSelect: (id: string) => void
-  onClose: () => void
-  error?: string | null
-  busy?: boolean
-}) {
-  const [query, search] = useState('')
-  const filtered = choices.filter((choice) =>
-    choice.label.toLowerCase().includes(query.toLowerCase()),
-  )
-  return (
-    <WorkSheet title={title} theme={theme} onClose={onClose}>
-      <WorkField
-        theme={theme}
-        accessibilityLabel="Search options"
-        placeholder="Search..."
-        value={query}
-        onChangeText={search}
-      />
-      {error ? (
-        <T accessibilityRole="alert" style={{ color: theme.foreground }}>
-          {error}
-        </T>
-      ) : null}
-      {filtered.map((choice) => (
-        <Pressable
-          key={choice.id}
-          accessibilityRole="button"
-          accessibilityState={{ selected: selected.includes(choice.id), disabled: busy }}
-          disabled={busy}
-          onPress={() => onSelect(choice.id)}
-          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-        >
-          <T style={{ flex: 1, fontSize: 14, color: theme.foreground }}>{choice.label}</T>
-          {selected.includes(choice.id) ? <Check color={theme.foreground} size={16} /> : null}
-        </Pressable>
-      ))}
-      {!filtered.length ? <T style={{ color: theme.muted }}>No matches.</T> : null}
-    </WorkSheet>
   )
 }
 

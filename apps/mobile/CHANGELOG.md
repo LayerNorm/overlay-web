@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- View the workspace and personal agent organization from mobile Work, with access to each visible agent’s details.
+- Move and reorder Work cards from the mobile Board, and set or clear dates directly from Timeline.
 - Add a release-configured iOS simulator build profile for startup checks on Macs with limited storage.
 - Point iOS sign-in and app links at overlay.works so authentication can return directly to the app.
 - Fetch the pinned public web dependencies during standalone builds without requiring a GitHub token.

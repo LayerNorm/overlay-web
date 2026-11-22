@@ -62,6 +62,11 @@ the production bundle configuration. Verify its exact commit in EAS before
 installing it. It inherits the production URLs for signed-out startup smoke.
 Use a current isolated backend for authenticated acceptance.
 
+The existing development client can run the Work fixture on iOS using
+`scripts/serve-native-shell-preview.cjs` with `platform=ios&screen=work-list`.
+Use it to check board ordering and date editing with disposable tasks.
+It does not exercise Convex writes or workspace permissions.
+
 For simulator acceptance, use a current isolated backend and confirm sign-in,
 workspace switching and Work in both themes. Verify that Board columns respect
 the selected filter, that Timeline spans clip at week boundaries, and that both

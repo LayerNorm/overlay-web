@@ -7,10 +7,12 @@ phase; each lists the current mobile behavior and what owner input would change.
 
 ### Work parity
 
-Mobile Work has List, Board and a week-by-week Timeline. Board and Timeline
-open the task detail for status and date changes. Direct board reordering,
-timeline drag/resize, dependency arrows, and the web Organization view remain
-open. Verify the views and cross-platform task changes on the simulator.
+Mobile Work has List, Board and a weekly Timeline. Board cards can be placed
+before another card or at the end of a status column. Dates can be edited
+directly from Timeline, including for unscheduled tasks. Work Organization
+lists the workspace or personal chief and the visible agents in that scope.
+Timeline drag/resize and dependency arrows remain open. Verify changes
+against the same tasks on web during simulator acceptance.
 
 ### Web-only at launch (decided 2026-11-10, build on mobile later)
 

@@ -2,7 +2,12 @@ import React, { useRef, useState } from 'react'
 import { ActivityIndicator, Modal, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import type { CreateWorkItemRequest, UpdateWorkItemRequest, WorkStatus } from '@overlay/app-core'
+import type {
+  CreateWorkItemRequest,
+  UpdateWorkItemRequest,
+  WorkItem,
+  WorkStatus,
+} from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useWork } from '../../hooks/useWork'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -19,7 +24,9 @@ import { getRequestWorkspaceId } from '../../services/appApi'
 import { canWorkOnItem } from '../../lib/work'
 import { parseWorkErrorReason, workErrorMessage } from '../../../src/shared/work/errors'
 import { Button, T } from '../shell/primitives'
-import { WorkComposer, WorkDetailView, WorkListView, WorkOptions } from './WorkViews'
+import { WorkComposer, WorkDetailView, WorkListView } from './WorkViews'
+import { WorkOptions } from './WorkControls'
+import { WorkPlacementSheet, WorkScheduleSheet } from './WorkTaskActions'
 import { WorkHeader } from './WorkHeader'
 
 export function WorkScreen({ id }: { id?: string }) {
@@ -42,6 +49,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
   const [view, setView] = useState<WorkView>('workspace')
   const [scopePicker, setScopePicker] = useState(false)
   const [composer, setComposer] = useState(false)
+  const [editor, setEditor] = useState<{ type: 'move' | 'schedule'; item: WorkItem } | null>(null)
   const [busy, setBusy] = useState(false)
   const lock = useRef(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,30 +103,30 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
       await commentWork(workspaceId, id, body)
     })
   const policy = data.policy?.policy
-  const editable = Boolean(
-    user &&
-    data.context &&
-    data.item &&
-    !data.item.archivedAt &&
-    canWorkOnItem(
-      {
-        userId: data.item.createdBy,
-        scope: data.item.scope,
-        assigneePrincipalId: data.item.assigneePrincipalId,
-      },
-      { userId: user.id, role: data.context.role },
-      data.context.principalId,
-      policy
-        ? {
-            workspaceContentEditors:
-              policy.workspaceContentEditors === 'admins' ? 'admins' : 'members',
-            workspaceExtensionsEditors:
-              policy.workspaceExtensionsEditors === 'admins' ? 'admins' : 'members',
-            memberCanMoveScope: policy.memberCanMoveScope !== false,
-          }
-        : undefined,
-    ),
-  )
+  const canEdit = (item: WorkItem) =>
+    Boolean(
+      user &&
+      data.context &&
+      item.archivedAt === null &&
+      canWorkOnItem(
+        {
+          userId: item.createdBy,
+          scope: item.scope,
+          assigneePrincipalId: item.assigneePrincipalId,
+        },
+        { userId: user.id, role: data.context.role },
+        data.context.principalId,
+        policy
+          ? {
+              workspaceContentEditors:
+                policy.workspaceContentEditors === 'admins' ? 'admins' : 'members',
+              workspaceExtensionsEditors:
+                policy.workspaceExtensionsEditors === 'admins' ? 'admins' : 'members',
+              memberCanMoveScope: policy.memberCanMoveScope !== false,
+            }
+          : undefined,
+      ),
+    )
   const unavailable = data.items === null || data.context === null || (id && data.item === null)
   return (
     <View
@@ -138,6 +146,11 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           if (!busy) setScopePicker(true)
         }}
         onBack={id ? back : undefined}
+        onOrganization={
+          id || !user
+            ? undefined
+            : () => router.push({ pathname: '/work/organization', params: { scope: view } })
+        }
         onSearch={() => router.push('/search')}
       />
       {!user ? (
@@ -182,7 +195,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           onComment={onComment}
           busy={busy}
           error={error}
-          editable={editable}
+          editable={canEdit(data.item)}
         />
       ) : (
         <WorkListView
@@ -197,8 +210,65 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
             setComposer(true)
           }}
           canCreate={view === 'personal' || data.context.canCreateInWorkspace}
+          canEdit={canEdit}
+          onMove={(item) => {
+            setError(null)
+            setEditor({ type: 'move', item })
+          }}
+          onSchedule={(item) => {
+            setError(null)
+            setEditor({ type: 'schedule', item })
+          }}
         />
       )}
+      {editor && workspaceId ? (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            if (!busy) setEditor(null)
+          }}
+        >
+          {editor.type === 'move' ? (
+            <WorkPlacementSheet
+              item={editor.item}
+              items={data.items ?? []}
+              theme={theme}
+              busy={busy}
+              error={error}
+              onClose={() => {
+                if (!busy) setEditor(null)
+              }}
+              onMove={(move) =>
+                void perform(async () => {
+                  await moveWork(workspaceId, { ...move, id: editor.item.id })
+                  setEditor(null)
+                })
+              }
+            />
+          ) : (
+            <WorkScheduleSheet
+              item={editor.item}
+              theme={theme}
+              busy={busy}
+              error={error}
+              onClose={() => {
+                if (!busy) setEditor(null)
+              }}
+              onSave={(dates) =>
+                void perform(async () => {
+                  await updateWork(workspaceId, editor.item.id, {
+                    ...dates,
+                    expectedUpdatedAt: editor.item.updatedAt,
+                  })
+                  setEditor(null)
+                })
+              }
+            />
+          )}
+        </Modal>
+      ) : null}
       <Modal
         visible={composer && Boolean(data.context)}
         transparent

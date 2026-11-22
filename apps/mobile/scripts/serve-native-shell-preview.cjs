@@ -6,14 +6,15 @@ http
   .createServer(async (request, response) => {
     try {
       const params = new URL(request.url, 'http://localhost').searchParams
-      const result = await fetch('http://127.0.0.1:8081/', {
-        headers: { 'expo-platform': 'android', accept: 'application/expo+json' },
+      const platform = params.get('platform') === 'ios' ? 'ios' : 'android'
+      const result = await fetch('http://localhost:8081/', {
+        headers: { 'expo-platform': platform, accept: 'application/expo+json' },
       })
       if (!result.ok) throw new Error('Start the local Expo dev client server on port 8081 first.')
       const manifest = await result.json()
       manifest.id = randomUUID()
       const bundle = new URL(manifest.launchAsset.url)
-      bundle.host = '10.0.2.2:8081'
+      bundle.host = platform === 'ios' ? 'localhost:8081' : '10.0.2.2:8081'
       bundle.pathname = '/scripts/native-shell-preview.bundle'
       manifest.launchAsset.url = bundle.toString()
       manifest.launchAsset.key = manifest.id

@@ -4,7 +4,7 @@ import Constants from 'expo-constants'
 import { useFonts } from 'expo-font'
 import { StatusBar } from 'expo-status-bar'
 import * as NavigationBar from 'expo-navigation-bar'
-import { View } from 'react-native'
+import { Platform, View } from 'react-native'
 import { ShellFixture } from './ShellFixture'
 import { WorkFixture } from './WorkFixture'
 import { AgentFixture } from './AgentFixture'
@@ -12,7 +12,7 @@ import { ChatFixture } from './ChatFixture'
 import { ResourceFixture } from './ResourceFixture'
 import { SettingsFixture, SETTINGS_FIXTURE_SCREENS } from './SettingsFixture'
 
-void NavigationBar.setVisibilityAsync('hidden')
+if (Platform.OS === 'android') void NavigationBar.setVisibilityAsync('hidden')
 
 function NativeShellPreview() {
   const [loaded] = useFonts({

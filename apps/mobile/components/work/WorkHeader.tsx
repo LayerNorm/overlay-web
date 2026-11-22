@@ -1,6 +1,6 @@
 import React from 'react'
 import { Pressable, View } from 'react-native'
-import { ChevronRight, PanelLeft, Search } from 'lucide-react-native'
+import { ChevronRight, Network, PanelLeft, Search } from 'lucide-react-native'
 import type { Theme } from '../../constants/theme'
 import { IconButton, T } from '../shell/primitives'
 
@@ -12,6 +12,7 @@ export function WorkHeader({
   onScope,
   onSearch,
   onBack,
+  onOrganization,
 }: {
   theme: Theme
   scope: 'personal' | 'workspace'
@@ -20,6 +21,7 @@ export function WorkHeader({
   onScope: () => void
   onSearch: () => void
   onBack?: () => void
+  onOrganization?: () => void
 }) {
   return (
     <View
@@ -59,6 +61,9 @@ export function WorkHeader({
       ) : (
         <View style={{ flex: 1 }} />
       )}
+      {onOrganization ? (
+        <IconButton label="Organization" icon={Network} theme={theme} onPress={onOrganization} />
+      ) : null}
       <IconButton label="Search" icon={Search} theme={theme} onPress={onSearch} />
     </View>
   )
