@@ -1,5 +1,8 @@
 import React, { useState } from 'react'
+import { View } from 'react-native'
 import type { MoveWorkItemRequest, WorkItem, WorkStatus } from '@overlay/app-core'
+import { taskSpan } from '../../../src/shared/work/dates'
+import { applyDrag } from '../../../src/shared/work/timeline'
 import { validateWorkDates } from '../../../src/shared/work/status'
 import { sortByRank } from '../../../src/shared/work/query'
 import { WORK_STATUSES, WORK_STATUS_LABELS } from '../../lib/work'
@@ -82,6 +85,16 @@ export function WorkScheduleSheet({
   const [start, setStart] = useState(item.startDate ?? '')
   const [due, setDue] = useState(item.dueDate ?? '')
   const [validation, setValidation] = useState<string | null>(null)
+  const span = validateWorkDates(start || null, due || null)
+    ? null
+    : taskSpan(start || null, due || null)
+  function shift(days: number) {
+    if (!span) return
+    const next = applyDrag(span, 'move', days)
+    setStart(next.start)
+    setDue(next.end)
+    setValidation(null)
+  }
   return (
     <WorkSheet title="Schedule task" theme={theme} onClose={onClose}>
       <T style={{ color: theme.muted }}>{item.title}</T>
@@ -103,6 +116,16 @@ export function WorkScheduleSheet({
         onChangeText={setDue}
         editable={!busy}
       />
+      {span ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <Button theme={theme} disabled={busy} onPress={() => shift(-1)}>
+            Move a day earlier
+          </Button>
+          <Button theme={theme} disabled={busy} onPress={() => shift(1)}>
+            Move a day later
+          </Button>
+        </View>
+      ) : null}
       {validation || error ? (
         <T accessibilityRole="alert" style={{ color: theme.foreground }}>
           {validation ?? error}

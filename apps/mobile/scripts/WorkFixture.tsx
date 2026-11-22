@@ -87,6 +87,7 @@ const fixtures: WorkItem[] = [
     assigneePrincipalId: 'builder',
     status: 'progress',
     blocked: true,
+    blockedBy: ['pricing'],
     rank: 'C',
   },
   {
