@@ -24,6 +24,7 @@ import { publishComputerFile } from '@/server/files/computer-publication'
 import { LocalComputerError } from '@/server/computers/local/LocalComputerService'
 import { LocalHostSandboxInstance, isLocalHostSandboxInstance } from '@/server/computers/local/LocalHostSandboxInstance'
 import type { ComputerTarget } from './types'
+import { TERMINAL_SCREEN_REPLAY_BYTES, renderTerminalScreen, terminalInputBytes, type TerminalKey } from './terminal-screen'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1420,8 +1421,9 @@ export type ComputerBrowserAction =
   | { action: 'new_tab'; url: string }
 
 export type ComputerTerminalAction =
-  | { action: 'start'; command: string; cwd?: string }
-  | { action: 'read'; id: string; offset?: number; maxBytes?: number }
+  | { action: 'start'; command: string; cwd?: string; pty?: boolean; cols?: number; rows?: number }
+  | { action: 'read'; id: string; offset?: number; maxBytes?: number; mode?: 'output' | 'screen' }
+  | { action: 'write'; id: string; data?: string; keys?: TerminalKey[] }
   | { action: 'cancel'; id: string; signal?: 'INT' | 'TERM' | 'KILL' }
   | { action: 'list' }
 
@@ -1563,8 +1565,18 @@ export async function executeComputerTerminal(
 ) {
   const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_terminal' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const { action, target: _target, ...args } = input
+  const { action, target: _target, ...rest } = input
   void _target
+  const interactive = action === 'write' || (action === 'start' && input.pty === true)
+  let args: Record<string, unknown> = rest
+  if (action === 'write') {
+    const data = terminalInputBytes(input)
+    if (!data) return { success: false as const, error: 'write needs data or keys.' }
+    args = { id: input.id, data }
+  } else if (action === 'read') {
+    const { mode, ...readArgs } = rest as Extract<ComputerTerminalAction, { action: 'read' }>
+    args = mode === 'screen' ? { ...readArgs, screenBytes: TERMINAL_SCREEN_REPLAY_BYTES } : readArgs
+  }
   const environment = action === 'start'
     ? agentGatewayExecEnv({
         workspaceId: options.workspaceId!,
@@ -1575,14 +1587,29 @@ export async function executeComputerTerminal(
     : undefined
   try {
     const result = await resolved.operate(
-      (instance) => runComputerDriverCommand(
-        instance,
-        `terminal_${action}`,
-        args,
-        { requireDesktop: false, environment },
-      ),
+      async (instance) => {
+        if (interactive && isLocalHostSandboxInstance(instance)) return null
+        return await runComputerDriverCommand(
+          instance,
+          `terminal_${action}`,
+          args,
+          { requireDesktop: false, environment },
+        )
+      },
       45_000,
     )
+    if (result === null) {
+      return { success: false as const, error: 'Interactive (pty) terminals are not available on a local Mac yet. Use a non-pty session or the cloud Computer.' }
+    }
+    if (action === 'read' && typeof result.tail === 'string') {
+      // A pty screen: replace the raw redraw stream with what is visible now.
+      const { tail, tailStart: _tailStart, output: _output, ...summary } = result
+      void _tailStart; void _output
+      const cols = typeof result.cols === 'number' ? result.cols : 120
+      const rows = typeof result.rows === 'number' ? result.rows : 32
+      const screen = await renderTerminalScreen(tail, cols, rows)
+      return { success: true as const, action, ...summary, mode: 'screen' as const, ...screen, computerId: resolved.computer.id }
+    }
     return { success: true as const, action, ...result, computerId: resolved.computer.id }
   } catch (err) {
     return computerErrorResult(err, 'Terminal session action failed')

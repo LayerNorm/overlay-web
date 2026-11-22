@@ -168,6 +168,66 @@ if (!pythonPath || shellCheck.status !== 0) {
     assert.notEqual(cancelled.payload.exitCode, 0)
   })
 
+  test('pty terminal sessions accept input and reads return only new output', async (t) => {
+    if (spawnSync('sh', ['-c', 'command -v setsid'], { encoding: 'utf8' }).status !== 0) {
+      t.skip('Terminal process-group tests require the Linux setsid utility.')
+      return
+    }
+    const harness = createHarness(t)
+    const started = harness.run('terminal_start', {
+      terminalCommand: 'printf "ready\\n"; read line; printf "got:%s cols:%s\\n" "$line" "$(tput cols 2>/dev/null || stty size | cut -d" " -f2)"; read next; exit 3',
+      pty: true, cols: 90, rows: 20,
+    })
+    assert.equal(started.status, 0, started.stdout)
+    const id = started.payload.id!
+    assert.equal((started.payload as { pty?: boolean }).pty, true)
+    try {
+    const waitFor = async (pattern: RegExp) => {
+      let seen = ''
+      for (let attempt = 0; attempt < 120 && !pattern.test(seen); attempt++) {
+        const read = harness.run('terminal_read', { id })
+        seen += String((read.payload as { output?: string }).output ?? '')
+        if (!pattern.test(seen)) await new Promise((resolve) => setTimeout(resolve, 25))
+      }
+      return seen
+    }
+    assert.match(await waitFor(/ready/), /ready/)
+
+    const written = harness.run('terminal_write', { id, data: 'hello\r' })
+    assert.equal(written.status, 0, written.stdout)
+    const reply = await waitFor(/got:hello cols:90/)
+    assert.match(reply, /got:hello cols:90/)
+    assert.doesNotMatch(reply, /ready/, 'a read without offset returns only output not yet read')
+
+    const replay = harness.run('terminal_read', { id, offset: 0, peek: true })
+    assert.match(String((replay.payload as { output?: string }).output), /ready[\s\S]*got:hello/)
+
+    harness.run('terminal_write', { id, data: '\r' })
+    let exitCode: unknown = null
+    for (let attempt = 0; attempt < 120 && exitCode === null; attempt++) {
+      exitCode = (harness.run('terminal_read', { id }).payload as { exitCode?: unknown }).exitCode ?? null
+      if (exitCode === null) await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    assert.equal(exitCode, 3)
+    const late = harness.run('terminal_write', { id, data: 'x' })
+    assert.equal(late.payload.error?.code, 'terminal_not_running')
+    } finally { harness.run('terminal_cancel', { id, signal: 'KILL' }) }
+  })
+
+  test('input is refused for sessions started without pty', (t) => {
+    if (spawnSync('sh', ['-c', 'command -v setsid'], { encoding: 'utf8' }).status !== 0) {
+      t.skip('Terminal process-group tests require the Linux setsid utility.')
+      return
+    }
+    const harness = createHarness(t)
+    const started = harness.run('terminal_start', { terminalCommand: 'sleep 5' })
+    const id = started.payload.id!
+    try {
+      const written = harness.run('terminal_write', { id, data: 'x' })
+      assert.equal(written.payload.error?.code, 'terminal_no_input')
+    } finally { harness.run('terminal_cancel', { id, signal: 'KILL' }) }
+  })
+
   test('terminal sessions reject invalid ids before resolving paths', (t) => {
     const harness = createHarness(t)
     const result = harness.run('terminal_read', { id: '../x' })

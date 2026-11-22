@@ -2,6 +2,7 @@ import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod/v3'
+import { TERMINAL_KEY_NAMES } from './terminal-screen'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
@@ -215,12 +216,22 @@ const computerTerminalVariants = z.discriminatedUnion('action', [
     action: z.literal('start'),
     command: z.string().min(1).max(100000),
     cwd: z.string().max(4096).optional(),
+    pty: z.boolean().optional(),
+    cols: z.number().int().min(20).max(400).optional(),
+    rows: z.number().int().min(5).max(200).optional(),
   }).strict(),
   z.object({
     action: z.literal('read'),
     id: computerTerminalIdSchema,
     offset: z.number().int().min(0).optional(),
     maxBytes: z.number().int().min(1).max(65536).optional(),
+    mode: z.enum(['output', 'screen']).optional(),
+  }).strict(),
+  z.object({
+    action: z.literal('write'),
+    id: computerTerminalIdSchema,
+    data: z.string().min(1).max(16384).optional(),
+    keys: z.array(z.enum(TERMINAL_KEY_NAMES)).min(1).max(50).optional(),
   }).strict(),
   z.object({
     action: z.literal('cancel'),
@@ -230,18 +241,27 @@ const computerTerminalVariants = z.discriminatedUnion('action', [
   z.object({ action: z.literal('list') }).strict(),
 ])
 const computerTerminalSchema = z.object({
-  action: z.enum(['start', 'read', 'cancel', 'list']),
+  action: z.enum(['start', 'read', 'write', 'cancel', 'list']),
   command: z.string().min(1).max(100000).optional(),
   cwd: z.string().max(4096).optional(),
+  pty: z.boolean().optional().describe('start: run in a real terminal so interactive programs (REPLs, vim, git rebase -i, prompts) work and accept write'),
+  cols: z.number().int().min(20).max(400).optional().describe('start with pty: terminal width (default 120)'),
+  rows: z.number().int().min(5).max(200).optional().describe('start with pty: terminal height (default 32)'),
   id: computerTerminalIdSchema.optional(),
-  offset: z.number().int().min(0).optional(),
+  offset: z.number().int().min(0).optional().describe('read: byte offset to re-read from; omit to get only output you have not read yet'),
   maxBytes: z.number().int().min(1).max(65536).optional(),
+  mode: z.enum(['output', 'screen']).optional().describe('read on a pty session: screen returns what is visible on the terminal now instead of raw output'),
+  data: z.string().min(1).max(16384).optional().describe('write: text to type; use \\r for Enter'),
+  keys: z.array(z.enum(TERMINAL_KEY_NAMES)).min(1).max(50).optional().describe('write: named keys sent after data, e.g. ["Enter"], ["Ctrl-C"], ["Escape", ":", "w", "q", "Enter"] is better as data ":wq" plus keys ["Enter"]'),
   signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
   target: computerTargetSchema,
 }).strict().superRefine((input, ctx) => {
   const parsed = computerTerminalVariants.safeParse(withoutTarget(input))
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue(issue)
+  }
+  if (input.action === 'write' && input.data === undefined && input.keys === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'write needs data or keys', path: ['data'] })
   }
 })
 
@@ -1251,8 +1271,10 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_terminal')) {
       tools.computer_terminal = tool({
         description:
-          'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
-          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+          'Run long-running or interactive commands on the bound Overlay Computer, such as builds, servers, watchers, REPLs or editors. ' +
+          'Start a session, poll it with read (each read returns only output you have not seen yet), and cancel it when done. ' +
+          'For programs that prompt or take keyboard input, start with pty: true, then use write with data and/or keys (Enter, Ctrl-C, arrows) and read with mode "screen" to see the current screen. ' +
+          'Starting a command and sending input may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
         inputSchema: computerTerminalSchema,
         ...(options.computerApprovalContext !== undefined
           ? { needsApproval: (input) => toolRequiresApproval('computer_terminal', input, { approvalMode: options.approvalMode }) }

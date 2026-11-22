@@ -247,6 +247,7 @@
     "@workos-inc/authkit-nextjs": "^2.14.0",
     "@workos-inc/node": "^8.7.0",
     "@xmldom/xmldom": "^0.9.12",
+    "@xterm/headless": "^6.0.0",
     "@xyflow/react": "^12.11.2",
     "ai": "7.0.93",
     "better-auth": "1.7.16",

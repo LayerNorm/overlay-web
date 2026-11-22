@@ -112,7 +112,7 @@ export function toolRequiresApproval(
   if (toolName === 'computer_exec') return true
   if (toolName === 'computer_terminal') {
     return Boolean(input && typeof input === 'object' && !Array.isArray(input)
-      && (input as { action?: unknown }).action === 'start')
+      && ['start', 'write'].includes(String((input as { action?: unknown }).action)))
   }
   if (toolName === 'EXECUTOR_EXECUTE_TOOL') return options.executorRequiresApproval !== false
   return false
