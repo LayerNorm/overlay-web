@@ -1,5 +1,6 @@
+import { SheetModal } from '../ui/SheetModal'
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
 import {
   ArrowUp,
@@ -551,10 +552,8 @@ export function WorkComposer({
           {validation ?? error}
         </T>
       ) : null}
-      <Modal
+      <SheetModal
         visible={picker !== null}
-        transparent
-        animationType="slide"
         onRequestClose={() => setPicker(null)}
       >
         {picker === 'Schedule' ? (
@@ -612,7 +611,7 @@ export function WorkComposer({
             }}
           />
         )}
-      </Modal>
+      </SheetModal>
     </WorkSheet>
   )
 }
@@ -843,10 +842,8 @@ export function WorkDetailView({
           {error}
         </T>
       ) : null}
-      <Modal
+      <SheetModal
         visible={editor !== null}
-        transparent
-        animationType="slide"
         onRequestClose={() => setEditor(null)}
       >
         {['Status', 'Assignee', 'Blocked by'].includes(editor ?? '') ? (
@@ -938,7 +935,7 @@ export function WorkDetailView({
             ) : null}
           </WorkSheet>
         )}
-      </Modal>
+      </SheetModal>
     </ScrollView>
   )
 }

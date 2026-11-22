@@ -1,6 +1,6 @@
+import { SheetModal } from '../ui/SheetModal'
 import React, { useState } from 'react'
 import {
-  Modal,
   Pressable,
   ScrollView,
   Switch,
@@ -212,17 +212,14 @@ export function AgentEditorView({
           Instructions and more settings
         </Button>
       </ScrollView>
-      <Modal
-        transparent
+      <SheetModal
         visible={picker}
-        animationType="slide"
         onRequestClose={() => setPicker(false)}
       >
         <View
           style={{
             flex: 1,
             justifyContent: 'flex-end',
-            backgroundColor: theme.scrim,
           }}
         >
           <View
@@ -300,7 +297,7 @@ export function AgentEditorView({
             </ScrollView>
           </View>
         </View>
-      </Modal>
+      </SheetModal>
     </View>
   )
 }

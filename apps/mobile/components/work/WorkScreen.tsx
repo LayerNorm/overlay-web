@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import { ActivityIndicator, Modal, ScrollView, View } from 'react-native'
+import { ActivityIndicator, ScrollView, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type {
@@ -24,6 +24,7 @@ import { canWorkOnItem } from '../../lib/work'
 import { parseWorkErrorReason, workErrorMessage } from '../../../src/shared/work/errors'
 import { Button } from '../shell/primitives'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
+import { SheetModal } from '../ui/SheetModal'
 import { WorkComposer, WorkDetailView, WorkListView, workLayouts, type WorkLayout } from './WorkViews'
 import { TabToolbar } from '../navigation/nativeHeader'
 import { WorkPlacementSheet, WorkScheduleSheet } from './WorkTaskActions'
@@ -252,16 +253,13 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           }}
         />
       )}
-      {editor && workspaceId ? (
-        <Modal
-          visible
-          transparent
-          animationType="slide"
-          onRequestClose={() => {
-            if (!busy) setEditor(null)
-          }}
-        >
-          {editor.type === 'move' ? (
+      <SheetModal
+        visible={Boolean(editor && workspaceId)}
+        onRequestClose={() => {
+          if (!busy) setEditor(null)
+        }}
+      >
+        {!editor || !workspaceId ? null : editor.type === 'move' ? (
             <WorkPlacementSheet
               item={editor.item}
               items={data.items ?? []}
@@ -298,12 +296,9 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
               }
             />
           )}
-        </Modal>
-      ) : null}
-      <Modal
+      </SheetModal>
+      <SheetModal
         visible={composer && Boolean(data.context)}
-        transparent
-        animationType="slide"
         onRequestClose={() => {
           if (!busy) setComposer(false)
         }}
@@ -323,7 +318,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
             bottomInset={insets.bottom}
           />
         ) : null}
-      </Modal>
+      </SheetModal>
     </View>
   )
 }

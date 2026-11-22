@@ -52,7 +52,7 @@ export function WorkSheet({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: theme.overlayScrim }}
+      style={{ flex: 1, justifyContent: 'flex-end' }}
     >
       <Pressable
         accessibilityRole="button"
@@ -94,7 +94,7 @@ export function WorkSheet({
           <T style={{ fontSize: 20, fontWeight: '500', color: theme.foreground }}>{title}</T>
           <IconButton icon={X} label="Close sheet" onPress={onClose} theme={theme} />
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+        <ScrollView contentInsetAdjustmentBehavior="never" keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
           {children}
         </ScrollView>
       </View>

@@ -1,5 +1,6 @@
+import { SheetModal } from '../ui/SheetModal'
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ArrowLeft, Pin } from 'lucide-react-native'
@@ -180,8 +181,8 @@ export function WorkOrganization({
           </>
         )}
       </ScrollView>
-      {selected ? (
-        <Modal visible transparent animationType="slide" onRequestClose={() => select(null)}>
+      <SheetModal visible={Boolean(selected)} onRequestClose={() => select(null)}>
+        {selected ? (
           <WorkSheet
             title={selected.name}
             theme={theme}
@@ -205,8 +206,8 @@ export function WorkOrganization({
               Open agent
             </Button>
           </WorkSheet>
-        </Modal>
-      ) : null}
+        ) : null}
+      </SheetModal>
     </View>
   )
 }

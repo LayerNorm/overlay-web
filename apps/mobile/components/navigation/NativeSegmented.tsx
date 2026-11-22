@@ -23,7 +23,10 @@ export function NativeSegmented<T extends string>({
   return (
     <Host
       matchContents={{ vertical: true }}
+      ignoreSafeArea="all"
       colorScheme={isDark ? 'dark' : 'light'}
+      // The system control is 32pt tall; reserve it so a parent never clips it.
+      style={{ minHeight: 32 }}
     >
       <Picker
         selection={value}
