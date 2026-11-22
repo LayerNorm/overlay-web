@@ -35,6 +35,7 @@ import {
   type ComputerGlobInput,
   type ComputerGrepInput,
 } from './computer-file-tools'
+import { applyComputerEdits, unifiedComputerDiff, type ComputerEdit } from './computer-edit'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1352,6 +1353,64 @@ export async function executeComputerWriteFile(
     }
   } catch (err) {
     return computerErrorResult(err, 'Computer file write failed')
+  }
+}
+
+/** Files larger than this are refused by computer_edit_file; rewrite them with computer_exec instead. */
+const COMPUTER_EDIT_MAX_BYTES = 2 * 1024 * 1024
+
+export async function executeComputerEditFile(
+  options: OverlayToolsOptions,
+  input: { path: string; edits: ComputerEdit[]; expected_sha?: string; target?: ComputerTarget },
+) {
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_edit_file' })
+  if (!resolved.ok) return { success: false, error: resolved.error }
+  try {
+    const outcome = await resolved.operate(async (instance) => {
+      const bytes = await instance.readFile(input.path)
+      if (bytes === null) {
+        return { success: false as const, code: 'not_found', error: `No file at ${input.path}. Use computer_write_file to create it.` }
+      }
+      if (bytes.length > COMPUTER_EDIT_MAX_BYTES) {
+        return { success: false as const, code: 'too_large', error: `${input.path} is ${bytes.length} bytes; computer_edit_file handles files up to ${COMPUTER_EDIT_MAX_BYTES} bytes.` }
+      }
+      const sha = computerContentSha(bytes)
+      if (input.expected_sha && input.expected_sha !== sha) {
+        return {
+          success: false as const, code: 'stale', currentSha: sha,
+          error: `${input.path} changed since you read it (expected sha ${input.expected_sha}, now ${sha}). Nothing was written. Re-read the file and redo the edit.`,
+        }
+      }
+      const before = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+      const applied = applyComputerEdits(before, input.edits)
+      if (!applied.ok) {
+        return { success: false as const, code: applied.code, editIndex: applied.editIndex, error: `${applied.message} Nothing was written.`, sha }
+      }
+      // Re-check right before writing so a change made while we computed the edit is never overwritten.
+      const latest = await instance.readFile(input.path)
+      if (latest === null || computerContentSha(latest) !== sha) {
+        return { success: false as const, code: 'stale', error: `${input.path} changed while the edit was being applied. Nothing was written. Re-read and retry.` }
+      }
+      const written = new TextEncoder().encode(applied.text)
+      await instance.writeFiles([{ path: input.path, contents: written }])
+      return { success: true as const, before, after: applied.text, replacements: applied.replacements, sha: computerContentSha(written) }
+    })
+    if (!outcome.success) return outcome
+    const { diff, linesAdded, linesRemoved, truncated } = unifiedComputerDiff(input.path, outcome.before, outcome.after)
+    return {
+      success: true,
+      path: input.path,
+      created: false,
+      replacements: outcome.replacements,
+      linesAdded,
+      linesRemoved,
+      diff,
+      ...(truncated ? { diffTruncated: true } : {}),
+      sha: outcome.sha,
+      computerId: resolved.computer.id,
+    }
+  } catch (err) {
+    return computerErrorResult(err, 'Computer file edit failed')
   }
 }
 
