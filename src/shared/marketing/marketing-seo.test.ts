@@ -9,43 +9,43 @@ test('marketing navigation uses the canonical documentation URL', () => {
 })
 
 test('the sitemap publishes canonical marketing, comparison, docs and legal URLs', () => {
-  const urls = sitemap().map((entry) => entry.url)
-  const expected = [
-    'https://overlay.works/home',
-    'https://overlay.works/pricing',
-    'https://overlay.works/self-hosting',
-    'https://overlay.works/blog',
-    'https://overlay.works/changelog',
-    'https://overlay.works/manifesto',
-    'https://overlay.works/download',
-    'https://overlay.works/compare',
-    'https://overlay.works/compare/devin-alternatives',
-    'https://overlay.works/compare/devin',
-    'https://overlay.works/compare/openhands',
-    'https://overlay.works/compare/lindy',
-    'https://overlay.works/compare/ai-employee-platforms',
-    'https://overlay.works/docs/introduction',
-    'https://overlay.works/docs/help',
-    'https://overlay.works/docs/help/billing',
-    'https://overlay.works/docs/self-hosting/configure/authentication',
-    'https://overlay.works/docs/developer/api/guides/bootstrap',
-    'https://overlay.works/terms',
-    'https://overlay.works/privacy',
-    'https://overlay.works/acceptable-use',
-    'https://overlay.works/cookies',
-    'https://overlay.works/commercial-license',
-    'https://overlay.works/dpa',
-    'https://overlay.works/subprocessors',
-    'https://overlay.works/refunds',
-    'https://overlay.works/dmca',
+  const urls = sitemap().map(({ url }) => new URL(url))
+  const paths = new Set(urls.map(({ pathname }) => pathname))
+  const expectedPaths = [
+    '/home',
+    '/pricing',
+    '/self-hosting',
+    '/blog',
+    '/changelog',
+    '/manifesto',
+    '/download',
+    '/compare',
+    '/compare/devin-alternatives',
+    '/compare/devin',
+    '/compare/openhands',
+    '/compare/lindy',
+    '/compare/ai-employee-platforms',
+    '/docs/introduction',
+    '/docs/help',
+    '/docs/help/billing',
+    '/docs/self-hosting/configure/authentication',
+    '/docs/developer/api/guides/bootstrap',
+    '/terms',
+    '/privacy',
+    '/acceptable-use',
+    '/cookies',
+    '/commercial-license',
+    '/dpa',
+    '/subprocessors',
+    '/refunds',
+    '/dmca',
   ]
-  for (const url of expected) assert.ok(urls.includes(url), `Missing sitemap URL: ${url}`)
-  assert.equal(new Set(urls).size, urls.length)
-  assert.ok(urls.every((url) => new URL(url).origin === 'https://overlay.works'))
-  assert.ok(urls.every((url) => !new URL(url).search && !new URL(url).hash))
-  assert.ok(urls.every((url) => !new URL(url).pathname.startsWith('/app')))
-  assert.equal(urls.includes('https://overlay.works/docs'), false)
-  assert.ok(urls.every((url) => !url.endsWith('/index')))
+  for (const path of expectedPaths) assert.ok(paths.has(path), `Missing sitemap path: ${path}`)
+  assert.equal(paths.size, urls.length)
+  assert.ok(urls.every(({ origin, search, hash }) => origin === 'https://overlay.works' && !search && !hash))
+  assert.ok(urls.every(({ pathname }) => pathname !== '/app' && !pathname.startsWith('/app/')))
+  assert.equal(paths.has('/docs'), false)
+  assert.ok(urls.every(({ pathname }) => !pathname.endsWith('/index')))
 })
 
 test('robots keeps app surfaces out of the index and advertises the sitemap', () => {
