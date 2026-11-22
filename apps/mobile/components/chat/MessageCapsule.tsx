@@ -2,11 +2,13 @@ import React from 'react'
 import { ActivityIndicator, Pressable, TextInput, View } from 'react-native'
 import { Image } from 'expo-image'
 import { useTheme } from '../../hooks/useTheme'
+import { hapticImpact } from '../../lib/haptics'
 
 /**
- * Compact iMessage-style input: a rounded field that grows with its text and
- * a circular send (or stop) button inside it. An optional leading "+" opens
- * attachments or other composer options.
+ * Chat composer in the style of consumer AI apps: one rounded field that
+ * grows with its text, an optional "+" inside on the left and a round send
+ * (or stop) button inside on the right. The send button is always present so
+ * the field keeps its shape; it fills in once there is something to send.
  */
 export function MessageCapsule({
   value,
@@ -31,48 +33,46 @@ export function MessageCapsule({
   onPlus?: () => void
   accessibilityLabel?: string
 }): React.ReactElement {
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   const canSend = !disabled && !sending && value.trim().length > 0
   const showStop = generating && Boolean(onStop)
   const active = showStop || canSend
-  const filled = active || sending
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 }}>
-      {onPlus ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add"
-          onPress={onPlus}
-          disabled={disabled}
-          hitSlop={6}
-          style={({ pressed }) => ({
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: pressed ? theme.surfaceMuted : theme.surfaceSubtle,
-          })}
-        >
-          <Image source="sf:plus" style={{ width: 16, height: 16 }} tintColor={theme.foreground as string} />
-        </Pressable>
-      ) : null}
+    <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 10 }}>
       <View
         style={{
-          flex: 1,
-          minHeight: 36,
+          minHeight: 52,
           flexDirection: 'row',
           alignItems: 'flex-end',
-          borderRadius: 18,
+          gap: 4,
+          borderRadius: 26,
           borderCurve: 'continuous',
           borderWidth: 0.5,
           borderColor: theme.border,
-          backgroundColor: theme.surfaceSubtle,
-          paddingLeft: 14,
-          paddingRight: 3,
-          paddingVertical: 3,
+          backgroundColor: isDark ? theme.surfaceSubtle : theme.background,
+          padding: 7,
+          paddingLeft: onPlus ? 7 : 18,
+          boxShadow: isDark ? undefined : '0 2px 14px rgba(0,0,0,0.07)',
         }}
       >
+        {onPlus ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add"
+            onPress={onPlus}
+            disabled={disabled}
+            style={({ pressed }) => ({
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: pressed ? theme.surfaceMuted : 'transparent',
+            })}
+          >
+            <Image source="sf:plus" style={{ width: 18, height: 18 }} contentFit="contain" tintColor={theme.foreground as string} />
+          </Pressable>
+        ) : null}
         <TextInput
           accessibilityLabel={accessibilityLabel ?? placeholder}
           placeholder={placeholder}
@@ -83,39 +83,46 @@ export function MessageCapsule({
           multiline
           style={{
             flex: 1,
+            alignSelf: 'center',
             color: theme.foreground,
             fontFamily: 'Geist',
-            fontSize: 16,
-            lineHeight: 21,
-            paddingTop: 5,
-            paddingBottom: 5,
-            maxHeight: 140,
+            fontSize: 17,
+            lineHeight: 22,
+            paddingTop: 8,
+            paddingBottom: 8,
+            maxHeight: 160,
           }}
         />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={showStop ? 'Stop response' : 'Send message'}
+          accessibilityState={{ disabled: !active }}
           disabled={!active}
-          onPress={showStop ? onStop : onSend}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 15,
+          onPress={() => {
+            hapticImpact()
+            if (showStop) onStop?.()
+            else onSend()
+          }}
+          style={({ pressed }) => ({
+            width: 38,
+            height: 38,
+            borderRadius: 19,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: filled ? theme.foreground : 'transparent',
-            opacity: sending && !showStop ? 0.6 : 1,
-          }}
+            backgroundColor: active || sending ? theme.foreground : theme.surfaceMuted,
+            opacity: pressed ? 0.8 : 1,
+          })}
         >
           {sending && !showStop ? (
             <ActivityIndicator size="small" color={theme.background as string} />
-          ) : active ? (
+          ) : (
             <Image
               source={showStop ? 'sf:stop.fill' : 'sf:arrow.up'}
-              style={{ width: showStop ? 11 : 15, height: showStop ? 11 : 15 }}
-              tintColor={theme.background as string}
+              style={{ width: showStop ? 12 : 16, height: showStop ? 12 : 16 }}
+              contentFit="contain"
+              tintColor={(active ? theme.background : theme.mutedLight) as string}
             />
-          ) : null}
+          )}
         </Pressable>
       </View>
     </View>

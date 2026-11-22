@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { Stack } from 'expo-router'
 import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View } from 'react-native'
 import {
@@ -550,7 +551,16 @@ export function FilesBrowser({
       ) : null}
       <ResourceLabel theme={theme}>{query.trim() ? 'Results' : 'Recent'}</ResourceLabel>
       {!visible.length ? (
-        <ResourceState theme={theme} empty={query.trim() ? 'No matching files' : 'No files yet'} />
+        query.trim() ? (
+          <ResourceState theme={theme} empty="No matching files" />
+        ) : (
+          <CreatureEmpty
+            title="No files yet"
+            detail="Files you upload and files your agents make show up here."
+            shape="cloud"
+            color="#2563eb"
+          />
+        )
       ) : null}
       {recent.map((file) => (
         <ResourceRow

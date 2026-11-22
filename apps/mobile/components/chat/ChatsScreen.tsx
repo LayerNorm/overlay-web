@@ -1,44 +1,48 @@
 import React, { useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
+import Animated, { FadeIn } from 'react-native-reanimated'
 import { Image } from 'expo-image'
 import { Stack, useRouter } from 'expo-router'
 import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useShellChats } from '../../hooks/useShellData'
+import { useAgentDirectory, type DirectoryAgent } from '../../hooks/useAgentDirectory'
 import { TabToolbar } from '../navigation/nativeHeader'
 import { newChatRoute } from '../../lib/newChatRoute'
-import { NativeSegmented } from '../navigation/NativeSegmented'
+import { hapticSelect } from '../../lib/haptics'
+import { getRequestWorkspaceId } from '../../services/appApi'
+import { openAgentThread } from '../../services/shellService'
 import type { SidebarChat } from '../shell/SidebarView'
+import { AgentAvatar } from '../shell/AgentAvatar'
 import { T } from '../shell/primitives'
 import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 import { NewChannelSheet } from './NewChannelSheet'
 
-type Filter = 'all' | 'personal' | 'dm' | 'channel'
+type SectionId = 'agents' | 'channels' | 'dms' | 'chats'
 
-const FILTERS: ReadonlyArray<{ label: string; value: Filter }> = [
-  { label: 'All', value: 'all' },
-  { label: 'Chats', value: 'personal' },
-  { label: 'DMs', value: 'dm' },
-  { label: 'Channels', value: 'channel' },
-]
-
-const KIND_SYMBOL = {
-  personal: 'sparkles',
-  dm: 'person',
-  channel: 'number',
-} as const
-
+/**
+ * Chats home, laid out like a team inbox: shortcut cards on top, then
+ * collapsible sections for agents, channels, direct messages and personal AI
+ * chats. Unread conversations are bold with a count.
+ */
 export function ChatsScreen(): React.ReactElement {
-  const { theme } = useTheme()
+  const { theme, isDark } = useTheme()
   const router = useRouter()
   const { activeWorkspaceId } = useWorkspace()
-  const [filter, setFilter] = useState<Filter>('all')
   const [sheet, setSheet] = useState<'dm' | 'channel' | null>(null)
-  // Personal-scope chats and workspace chats + rooms, merged like web's "All".
+  const [collapsed, setCollapsed] = useState<Record<SectionId, boolean>>({
+    agents: false,
+    channels: false,
+    dms: false,
+    chats: false,
+  })
+  const [openError, setOpenError] = useState('')
   const personal = useShellChats(activeWorkspaceId, 'personal')
   const workspace = useShellChats(activeWorkspaceId, 'workspace')
+  const directory = useAgentDirectory(activeWorkspaceId)
   const loading = personal.loading && workspace.loading
   const error = personal.error && workspace.error ? workspace.error : null
+
   const chats = useMemo(() => {
     const seen = new Set<string>()
     return [...workspace.chats, ...personal.chats].filter((chat) => {
@@ -48,20 +52,33 @@ export function ChatsScreen(): React.ReactElement {
       return true
     })
   }, [personal.chats, workspace.chats])
-
-  const rows = useMemo(
-    () => (filter === 'all' ? chats : chats.filter((chat) => chat.kind === filter)),
-    [chats, filter],
-  )
+  const channels = chats.filter((chat) => chat.kind === 'channel')
+  const dms = chats.filter((chat) => chat.kind === 'dm')
+  const personalChats = chats.filter((chat) => chat.kind === 'personal')
+  const agents = directory.agents ?? []
+  const unreadTotal = chats.reduce((sum, chat) => sum + (chat.unreadCount ?? (chat.unread ? 1 : 0)), 0)
 
   const open = (chat: SidebarChat) =>
     router.push((chat.kind === 'personal' ? `/chat/${chat.id}` : `/${chat.kind}/${chat.id}`) as never)
   const newChat = () => router.push(newChatRoute() as never)
+  const openAgent = (agent: DirectoryAgent) => {
+    if (!activeWorkspaceId) return
+    setOpenError('')
+    void openAgentThread(activeWorkspaceId, agent.id)
+      .then((result) => {
+        if (result && getRequestWorkspaceId() === activeWorkspaceId)
+          router.push(`/dm/${result.conversationId}` as never)
+      })
+      .catch((reason) => setOpenError(reason instanceof Error ? reason.message : String(reason)))
+  }
+  const toggle = (id: SectionId) => {
+    hapticSelect()
+    setCollapsed((previous) => ({ ...previous, [id]: !previous[id] }))
+  }
 
   return (
     <>
       <TabToolbar>
-        <Stack.Toolbar.Button icon="archivebox" accessibilityLabel="Archived" onPress={() => router.push('/archived')} />
         <Stack.Toolbar.Menu icon="square.and.pencil" accessibilityLabel="New">
           <Stack.Toolbar.MenuAction icon="sparkles" onPress={newChat}>
             New chat
@@ -74,43 +91,87 @@ export function ChatsScreen(): React.ReactElement {
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
       </TabToolbar>
-      <FlatList
-        data={rows}
-        keyExtractor={(chat) => `${chat.kind}:${chat.id}`}
+      <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         style={{ backgroundColor: theme.background }}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        ListHeaderComponent={
-          <View style={{ paddingTop: 4, paddingBottom: 8 }}>
-            <NativeSegmented value={filter} options={FILTERS} onChange={setFilter} />
-          </View>
-        }
-        ListEmptyComponent={
-          <View style={{ paddingTop: 64, alignItems: 'center', gap: 10, paddingHorizontal: 32 }}>
-            {loading ? (
-              <ActivityIndicator color={theme.muted} />
-            ) : (
-              <>
-                <Image
-                  source="sf:bubble.left.and.bubble.right"
-                  style={{ width: 34, height: 34 }}
-                  tintColor={theme.muted as string}
-                />
-                <T style={{ color: theme.foreground, fontSize: 17, fontWeight: '600' }}>
-                  {error ? 'Couldn’t load chats' : 'No conversations'}
-                </T>
-                <T selectable style={{ color: theme.muted, textAlign: 'center' }}>
-                  {error ?? 'Start a chat with Overlay, or message someone in your workspace.'}
-                </T>
-              </>
-            )}
-          </View>
-        }
-        ItemSeparatorComponent={() => (
-          <View style={{ height: 0.5, marginLeft: 64, backgroundColor: theme.border }} />
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12, gap: 10 }}
+        >
+          <ShortcutCard symbol="sparkles" title="New chat" detail="Ask Overlay" onPress={newChat} />
+          <ShortcutCard
+            symbol="bell"
+            title="Activity"
+            detail={unreadTotal ? `${unreadTotal} new` : 'All caught up'}
+            onPress={() => router.push('/activity')}
+          />
+          <ShortcutCard symbol="clock.arrow.circlepath" title="Automations" detail="Scheduled" onPress={() => router.push('/automations')} />
+          <ShortcutCard symbol="archivebox" title="Archived" detail="Past chats" onPress={() => router.push('/archived')} />
+        </ScrollView>
+        <View style={{ height: 0.5, backgroundColor: theme.border, marginBottom: 6 }} />
+
+        {loading && !chats.length ? (
+          <ActivityIndicator color={theme.muted} style={{ paddingTop: 48 }} />
+        ) : error ? (
+          <T selectable style={{ color: theme.muted, textAlign: 'center', padding: 40 }}>
+            {error}
+          </T>
+        ) : (
+          <>
+            {openError ? (
+              <T selectable accessibilityRole="alert" style={{ color: theme.foreground, paddingHorizontal: 20, paddingVertical: 8 }}>
+                {openError}
+              </T>
+            ) : null}
+            {directory.agents ? (
+              <Section title="Agents" collapsed={collapsed.agents} onToggle={() => toggle('agents')}>
+                {agents.map((agent) => (
+                  <Row
+                    key={agent.id}
+                    title={agent.name}
+                    leading={<AgentAvatar agent={agent} dark={isDark} foreground={theme.foreground} size={26} />}
+                    onPress={() => openAgent(agent)}
+                  />
+                ))}
+                {directory.canCreate ? (
+                  <AddRow label="Add agent" onPress={() => router.push('/agent-create')} />
+                ) : null}
+              </Section>
+            ) : null}
+            <Section
+              title="Channels"
+              collapsed={collapsed.channels}
+              onToggle={() => toggle('channels')}
+              onAdd={() => setSheet('channel')}
+            >
+              {channels.map((chat) => (
+                <ChatRow key={chat.id} chat={chat} onPress={() => open(chat)} />
+              ))}
+              <AddRow label="Add channel" onPress={() => setSheet('channel')} />
+            </Section>
+            <Section
+              title="Direct messages"
+              collapsed={collapsed.dms}
+              onToggle={() => toggle('dms')}
+              onAdd={() => setSheet('dm')}
+            >
+              {dms.map((chat) => (
+                <ChatRow key={chat.id} chat={chat} onPress={() => open(chat)} />
+              ))}
+              <AddRow label="New message" onPress={() => setSheet('dm')} />
+            </Section>
+            <Section title="Chats" collapsed={collapsed.chats} onToggle={() => toggle('chats')} onAdd={newChat}>
+              {personalChats.map((chat) => (
+                <ChatRow key={chat.id} chat={chat} onPress={() => open(chat)} />
+              ))}
+              <AddRow label="New chat" onPress={newChat} />
+            </Section>
+          </>
         )}
-        renderItem={({ item }) => <ChatRow chat={item} onPress={() => open(item)} />}
-      />
+      </ScrollView>
       {activeWorkspaceId ? (
         <>
           <NewDirectMessageSheet
@@ -139,57 +200,150 @@ export function ChatsScreen(): React.ReactElement {
   )
 }
 
-function ChatRow({ chat, onPress }: { chat: SidebarChat; onPress: () => void }) {
+function ShortcutCard({
+  symbol,
+  title,
+  detail,
+  onPress,
+}: {
+  symbol: string
+  title: string
+  detail: string
+  onPress: () => void
+}) {
   const { theme } = useTheme()
-  const unread = chat.unreadCount ?? (chat.unread ? 1 : 0)
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${chat.title}${unread ? `, ${unread} unread` : ''}`}
+      accessibilityLabel={`${title}, ${detail}`}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 60,
-        paddingHorizontal: 16,
+        width: 128,
+        padding: 14,
+        gap: 14,
+        borderRadius: 18,
+        borderCurve: 'continuous',
+        borderWidth: 0.5,
+        borderColor: theme.border,
+        backgroundColor: pressed ? theme.surfaceMuted : theme.surfaceSubtle,
+      })}
+    >
+      <Image source={`sf:${symbol}`} style={{ width: 22, height: 22 }} contentFit="contain" tintColor={theme.foreground as string} />
+      <View style={{ gap: 2 }}>
+        <T numberOfLines={1} style={{ color: theme.foreground, fontSize: 15, fontWeight: '600' }}>
+          {title}
+        </T>
+        <T numberOfLines={1} style={{ color: theme.muted, fontSize: 13 }}>
+          {detail}
+        </T>
+      </View>
+    </Pressable>
+  )
+}
+
+function Section({
+  title,
+  collapsed,
+  onToggle,
+  onAdd,
+  children,
+}: {
+  title: string
+  collapsed: boolean
+  onToggle: () => void
+  onAdd?: () => void
+  children: React.ReactNode
+}) {
+  const { theme } = useTheme()
+  return (
+    <View style={{ paddingBottom: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 20, paddingRight: 10, height: 46 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          accessibilityState={{ expanded: !collapsed }}
+          onPress={onToggle}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, height: 46 }}
+        >
+          <T style={{ color: theme.foreground, fontSize: 17, fontWeight: '600', letterSpacing: -0.2 }}>{title}</T>
+          <Image
+            source={collapsed ? 'sf:chevron.right' : 'sf:chevron.down'}
+            style={{ width: 11, height: 11 }}
+            contentFit="contain"
+            tintColor={theme.muted as string}
+          />
+        </Pressable>
+        {onAdd ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Add to ${title}`}
+            onPress={onAdd}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
+            })}
+          >
+            <Image source="sf:plus" style={{ width: 16, height: 16 }} contentFit="contain" tintColor={theme.muted as string} />
+          </Pressable>
+        ) : null}
+      </View>
+      {collapsed ? null : <Animated.View entering={FadeIn.duration(180)}>{children}</Animated.View>}
+    </View>
+  )
+}
+
+function Row({
+  title,
+  leading,
+  unread = 0,
+  muted = false,
+  onPress,
+}: {
+  title: string
+  leading: React.ReactNode
+  unread?: number
+  muted?: boolean
+  onPress: () => void
+}) {
+  const { theme } = useTheme()
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}${unread ? `, ${unread} unread` : ''}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        height: 46,
+        paddingHorizontal: 20,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 14,
         backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
       })}
     >
-      <View
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: theme.surfaceSubtle,
-        }}
-      >
-        <Image
-          source={`sf:${KIND_SYMBOL[chat.kind]}`}
-          style={{ width: 16, height: 16 }}
-          tintColor={theme.foreground as string}
-        />
-      </View>
+      <View style={{ width: 26, alignItems: 'center' }}>{leading}</View>
       <T
         numberOfLines={1}
         style={{
           flex: 1,
-          fontSize: 16,
-          color: theme.foreground,
+          fontSize: 17,
+          color: muted ? theme.muted : theme.foreground,
           fontWeight: unread ? '600' : '400',
         }}
       >
-        {chat.title || (chat.kind === 'channel' ? 'Untitled channel' : 'New chat')}
+        {title}
       </T>
       {unread ? (
         <View
           style={{
-            minWidth: 20,
-            height: 20,
-            paddingHorizontal: 6,
-            borderRadius: 10,
+            minWidth: 22,
+            height: 22,
+            paddingHorizontal: 7,
+            borderRadius: 11,
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: theme.foreground,
@@ -199,9 +353,49 @@ function ChatRow({ chat, onPress }: { chat: SidebarChat; onPress: () => void }) 
             {unread > 99 ? '99+' : unread}
           </T>
         </View>
-      ) : (
-        <Image source="sf:chevron.right" style={{ width: 8, height: 13 }} tintColor={theme.mutedLight as string} />
-      )}
+      ) : null}
     </Pressable>
+  )
+}
+
+function ChatRow({ chat, onPress }: { chat: SidebarChat; onPress: () => void }) {
+  const { theme } = useTheme()
+  const unread = chat.unreadCount ?? (chat.unread ? 1 : 0)
+  const title = chat.title || (chat.kind === 'channel' ? 'Untitled channel' : 'New chat')
+  const leading =
+    chat.kind === 'dm' ? (
+      <View
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 8,
+          borderCurve: 'continuous',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: theme.surfaceMuted,
+        }}
+      >
+        <T style={{ fontSize: 13, fontWeight: '600', color: theme.foreground }}>{title.trim()[0]?.toUpperCase() ?? '?'}</T>
+      </View>
+    ) : (
+      <Image
+        source={chat.kind === 'channel' ? 'sf:number' : 'sf:bubble.left'}
+        style={{ width: 19, height: 19 }}
+        contentFit="contain"
+        tintColor={(unread ? theme.foreground : theme.muted) as string}
+      />
+    )
+  return <Row title={title} leading={leading} unread={unread} onPress={onPress} />
+}
+
+function AddRow({ label, onPress }: { label: string; onPress: () => void }) {
+  const { theme } = useTheme()
+  return (
+    <Row
+      title={label}
+      muted
+      leading={<Image source="sf:plus" style={{ width: 17, height: 17 }} contentFit="contain" tintColor={theme.muted as string} />}
+      onPress={onPress}
+    />
   )
 }

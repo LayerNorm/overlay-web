@@ -1,6 +1,6 @@
 # Creature-first mobile experience
 
-Status: phases 1–5 implemented on native-shell and checked in the iOS 26 simulator (light and dark). Not yet tested: notification permission grant on a real device, iPad layout, Android.
+Status: phases 1–6 implemented on native-shell and checked in the iOS 26 simulator (light and dark). Not yet tested: notification permission grant on a real device, iPad layout, Android.
 
 Goal: make Overlay mobile feel playful and personal by putting the agent
 creatures (shape + color + eyes, already used for agent identity) at the
@@ -27,9 +27,16 @@ patterns of consumer agent apps; all art, names and copy are Overlay's own.
 | 3 | Onboarding flow, wired to first sign-in (`needsOnboarding`) | Implemented |
 | 4 | Create-agent sheet from Agents "+" | Implemented |
 | 5 | Agent profile sheet + capsule header | Implemented |
+| 6 | Chat polish (composer, replies, new-chat suggestions), Chats inbox sections, Agents grid, creature empty states | Implemented |
 
 ## Not adopted (and why)
 
 - "How did you hear about us" survey: no backend field yet (see growth analytics plan); add when the web records it.
 - Gray bubbles for agent replies: agent output keeps the web transcript format (tool rows, markdown) for parity.
 - Per-agent notification toggle: no per-agent notification preference exists server-side.
+
+## Known gaps
+
+- Personal chat transcripts render through the shared web transcript, so their per-message action row and date dividers stay at web parity.
+- The iOS status bar text stays dark when the system switches to dark mode while the app is open (seen in the simulator; not yet diagnosed).
+- Markdown lists keep zero bottom margin because the native markdown view under-measures it and clips following text.

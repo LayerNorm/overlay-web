@@ -1,4 +1,7 @@
 import { useHeaderHeight } from '@react-navigation/elements'
+import * as Clipboard from 'expo-clipboard'
+import { Image } from 'expo-image'
+import { hapticSelect } from '../../lib/haptics'
 import { MessageCapsule } from '../chat/MessageCapsule'
 import React, { memo, useRef, useState } from 'react'
 import {
@@ -6,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   Switch,
   TextInput,
   View,
@@ -145,22 +149,24 @@ export function AgentFold({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 6,
-          paddingVertical: 9,
+          paddingVertical: 6,
+          alignSelf: 'flex-start',
         }}
       >
+        <T style={{ color: theme.muted, fontSize: 14 }}>{title}</T>
         {open ? (
-          <ChevronDown size={13} color={theme.muted} />
+          <ChevronDown size={14} color={theme.muted} />
         ) : (
-          <ChevronRight size={13} color={theme.muted} />
+          <ChevronRight size={14} color={theme.muted} />
         )}
-        <T style={{ color: theme.muted, fontSize: 12 }}>{title}</T>
       </Pressable>
       {open ? (
         <View
           style={{
-            padding: 10,
+            padding: 12,
             backgroundColor: theme.surfaceSubtle,
-            borderRadius: 6,
+            borderRadius: 14,
+            borderCurve: 'continuous',
           }}
         >
           {children}
@@ -620,47 +626,24 @@ const AgentReply = memo(function AgentReply({
   readOnly?: boolean
 }) {
   const projection = agentMessageProjection(message)
+  const working =
+    message.status === 'generating' &&
+    !projection.approval &&
+    !projection.question &&
+    !projection.remoteRequest
+  const toolCount = projection.blocks.filter((block) => block.kind === 'tool').length
+  const replyText = projection.blocks
+    .filter((block) => block.kind === 'text')
+    .map((block) => block.text)
+    .join('\n\n')
+    .trim()
   return (
-    <View style={{ gap: 6 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 7,
-          marginBottom: 8,
-        }}
-      >
-        <AgentAvatar
-          agent={agent}
-          dark={dark}
-          foreground={theme.foreground}
-          size={24}
-          working={
-            message.status === 'generating' &&
-            !projection.approval &&
-            !projection.question &&
-            !projection.remoteRequest
-          }
-          reducedMotion={reducedMotion}
-        />
-        <T style={{ color: theme.foreground, fontWeight: '600', fontSize: 13 }}>
-          {agent.name}
-        </T>
-        <T style={{ color: theme.muted, fontSize: 11 }}>
-          {new Date(message.createdAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </T>
-      </View>
+    <View style={{ gap: 4 }}>
       {projection.blocks.map((block, index) =>
         block.kind === 'text' ? (
           block.text ? (
-            <View key={index} style={{ paddingBottom: 5 }}>
-              <WorkMarkdown
-                text={block.text}
-                theme={{ ...theme, muted: theme.foreground }}
-              />
+            <View key={index}>
+              <WorkMarkdown text={block.text} theme={theme} variant="chat" />
             </View>
           ) : null
         ) : block.kind === 'tool' ? (
@@ -679,18 +662,28 @@ const AgentReply = memo(function AgentReply({
           </AgentFold>
         ) : null,
       )}
-      {message.status !== 'generating' &&
-      message.updatedAt &&
-      message.updatedAt > message.createdAt ? (
-        <AgentFold
-          title={`Worked for ${Math.max(1, Math.round((message.updatedAt - message.createdAt) / 1000))}s`}
+      {working ? (
+        <View style={{ paddingTop: 6 }}>
+          <AgentAvatar
+            agent={agent}
+            dark={dark}
+            foreground={theme.foreground}
+            size={24}
+            working
+            reducedMotion={reducedMotion}
+          />
+        </View>
+      ) : null}
+      {message.status !== 'generating' && replyText ? (
+        <ReplyActions
           theme={theme}
-        >
-          <T style={{ color: theme.muted, fontSize: 12 }}>
-            {projection.blocks.filter((block) => block.kind === 'tool').length}{' '}
-            actions
-          </T>
-        </AgentFold>
+          text={replyText}
+          workedFor={
+            message.updatedAt && message.updatedAt > message.createdAt
+              ? `Worked for ${formatDuration(message.updatedAt - message.createdAt)}${toolCount ? ` · ${toolCount} ${toolCount === 1 ? 'step' : 'steps'}` : ''}`
+              : undefined
+          }
+        />
       ) : null}
       {projection.approval ? (
         <AgentDecision
@@ -745,6 +738,50 @@ const AgentReply = memo(function AgentReply({
   )
 })
 
+function formatDuration(ms: number) {
+  const seconds = Math.max(1, Math.round(ms / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  return seconds % 60 ? `${minutes}m ${seconds % 60}s` : `${minutes}m`
+}
+
+/** Copy / share under a settled reply, with how long the agent worked. */
+function ReplyActions({ theme, text, workedFor }: { theme: Theme; text: string; workedFor?: string }) {
+  const [copied, setCopied] = useState(false)
+  const button = (symbol: string, label: string, onPress: () => void) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
+      })}
+    >
+      <Image source={`sf:${symbol}`} style={{ width: 16, height: 16 }} contentFit="contain" tintColor={theme.muted as string} />
+    </Pressable>
+  )
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -7 }}>
+      {button(copied ? 'checkmark' : 'square.on.square', copied ? 'Copied' : 'Copy reply', () => {
+        void Clipboard.setStringAsync(text)
+        hapticSelect()
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1400)
+      })}
+      {button('square.and.arrow.up', 'Share reply', () => void Share.share({ message: text }))}
+      {workedFor ? (
+        <T style={{ marginLeft: 6, color: theme.mutedLight, fontSize: 13 }}>{workedFor}</T>
+      ) : null}
+    </View>
+  )
+}
+
 export function AgentThreadView({
   agent,
   messages,
@@ -790,12 +827,15 @@ export function AgentThreadView({
     setBusy(true)
     setFailure('')
     nonce.current ??= `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    // Clear the field right away; the text comes back if sending fails.
+    const text = draft
+    setDraft('')
+    follow.current = true
     try {
-      await onSend(draft, nonce.current)
-      setDraft('')
+      await onSend(text, nonce.current)
       nonce.current = null
-      follow.current = true
     } catch (reason) {
+      setDraft((current) => current || text)
       setFailure(
         reason instanceof Error ? reason.message : 'Could not send message.',
       )
@@ -828,7 +868,7 @@ export function AgentThreadView({
     >
       <ScrollView
         ref={scroll}
-        contentContainerStyle={{ padding: 20, gap: 24, flexGrow: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24, gap: 26, flexGrow: 1 }}
         onContentSizeChange={() => {
           if (follow.current) scroll.current?.scrollToEnd({ animated: false })
         }}
@@ -871,15 +911,15 @@ export function AgentThreadView({
                 key={message.id}
                 style={{
                   alignSelf: 'flex-end',
-                  maxWidth: '92%',
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
+                  maxWidth: '82%',
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
                   backgroundColor: theme.surfaceSubtle,
-                  borderRadius: 19,
+                  borderRadius: 22,
                   borderCurve: 'continuous',
                 }}
               >
-                <T style={{ color: theme.foreground, lineHeight: 22 }}>
+                <T selectable style={{ color: theme.foreground, fontSize: 16, lineHeight: 22 }}>
                   {message.content}
                 </T>
               </View>
@@ -1133,58 +1173,81 @@ export function AgentDirectoryView({
   theme,
   dark,
   onOpen,
+  onCreate,
 }: {
   agents: AgentRecord[]
   theme: Theme
   dark: boolean
   onOpen: (agent: AgentRecord) => void
+  onCreate?: () => void
 }) {
+  // Default agent first, then the rest as the directory orders them.
+  const ordered = [...agents.filter((agent) => agent.isDefault), ...agents.filter((agent) => !agent.isDefault)]
+  const card = {
+    flexBasis: '47%' as const,
+    flexGrow: 1,
+    maxWidth: '50%' as const,
+    minHeight: 172,
+    padding: 16,
+    gap: 12,
+    borderRadius: 24,
+    borderCurve: 'continuous' as const,
+  }
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       style={{ backgroundColor: theme.background }}
-      contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 32, flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}
     >
-      {!agents.length ? (
-        <T style={{ color: theme.muted, textAlign: 'center', padding: 48 }}>
+      {ordered.map((agent) => (
+        <Pressable
+          key={agent.id}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${agent.name}`}
+          onPress={() => onOpen(agent)}
+          style={({ pressed }) => ({
+            ...card,
+            backgroundColor: pressed ? theme.surfaceMuted : theme.surfaceSubtle,
+            transform: [{ scale: pressed ? 0.98 : 1 }],
+          })}
+        >
+          <AgentAvatar agent={agent} dark={dark} foreground={theme.foreground} size={56} />
+          <View style={{ flex: 1, justifyContent: 'flex-end', gap: 3 }}>
+            <T numberOfLines={1} style={{ color: theme.foreground, fontSize: 16, fontFamily: 'GeistSemibold' }}>
+              {agent.name}
+            </T>
+            <T numberOfLines={2} style={{ color: theme.muted, fontSize: 13, lineHeight: 18 }}>
+              {agent.isDefault ? 'Your AI Chief of Staff' : agent.description || 'Ready when you are'}
+            </T>
+          </View>
+        </Pressable>
+      ))}
+      {onCreate ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="New agent"
+          onPress={onCreate}
+          style={({ pressed }) => ({
+            ...card,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderStyle: 'dashed',
+            borderColor: theme.border,
+            backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
+          })}
+        >
+          <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceSubtle }}>
+            <Image source="sf:plus" style={{ width: 20, height: 20 }} contentFit="contain" tintColor={theme.foreground as string} />
+          </View>
+          <T style={{ color: theme.foreground, fontSize: 15, fontFamily: 'GeistMedium' }}>New agent</T>
+        </Pressable>
+      ) : null}
+      {!agents.length && !onCreate ? (
+        <T style={{ color: theme.muted, textAlign: 'center', padding: 48, flex: 1 }}>
           No agents in this workspace.
         </T>
-      ) : (
-        agents.map((agent, index) => (
-          <View key={agent.id}>
-            {index ? (
-              <View style={{ height: 0.5, marginLeft: 70, backgroundColor: theme.border }} />
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${agent.name}`}
-              onPress={() => onOpen(agent)}
-              style={({ pressed }) => ({
-                minHeight: 68,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                flexDirection: 'row',
-                gap: 14,
-                alignItems: 'center',
-                backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
-              })}
-            >
-              <AgentAvatar agent={agent} dark={dark} foreground={theme.foreground} size={40} />
-              <View style={{ flex: 1, gap: 3 }}>
-                <T numberOfLines={1} style={{ color: theme.foreground, fontSize: 16, fontWeight: '500' }}>
-                  {agent.name}
-                </T>
-                {agent.description ? (
-                  <T numberOfLines={2} style={{ color: theme.muted, fontSize: 13, lineHeight: 18 }}>
-                    {agent.description}
-                  </T>
-                ) : null}
-              </View>
-              <ChevronRight size={16} strokeWidth={2} color={theme.mutedLight} />
-            </Pressable>
-          </View>
-        ))
-      )}
+      ) : null}
     </ScrollView>
   )
 }

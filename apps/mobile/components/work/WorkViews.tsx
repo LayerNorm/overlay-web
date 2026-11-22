@@ -44,6 +44,7 @@ import { columnsByStatus } from '../../../src/shared/work/query'
 import { Button, IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { WorkMarkdown } from './WorkMarkdown'
+import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { NativeSegmented } from '../navigation/NativeSegmented'
 import { WorkTimeline } from './WorkTimeline'
 import { WorkField, WorkOptions, WorkSheet } from './WorkControls'
@@ -387,7 +388,16 @@ export function WorkListView({
         statusGroups
       )}
       {layout !== 'Timeline' && !visibleItems.length ? (
-        <T style={{ textAlign: 'center', color: theme.muted, padding: 48 }}>No tasks here.</T>
+        <CreatureEmpty
+          title={filter === 'needs-you' ? 'Nothing needs you' : 'No tasks yet'}
+          detail={
+            filter === 'needs-you'
+              ? 'When an agent needs a decision or review, it shows up here.'
+              : 'Hand a task to an agent and track it here.'
+          }
+          action={canCreate ? 'New task' : undefined}
+          onAction={onCreate}
+        />
       ) : null}
       {items.length >= 2000 ? (
         <T style={{ padding: 18, color: theme.muted, fontSize: 12 }}>
@@ -954,3 +964,4 @@ export function WorkDetailView({
     </ScrollView>
   )
 }
+

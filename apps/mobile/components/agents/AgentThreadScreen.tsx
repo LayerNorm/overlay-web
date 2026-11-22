@@ -591,6 +591,7 @@ function ConnectedAgentDirectory({
         agents={directory}
         theme={theme}
         dark={isDark}
+        onCreate={canCreate ? () => router.push('/agent-create') : undefined}
         onOpen={(agent) => {
           if (workspaceId)
             void openAgentThread(workspaceId, agent.id)

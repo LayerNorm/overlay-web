@@ -1,3 +1,4 @@
+import { Image } from 'expo-image'
 import React from 'react'
 import { Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
@@ -69,8 +70,8 @@ export function ConversationHeader({
 }) {
   const { theme } = useTheme()
   const { width } = useWindowDimensions()
-  // Leave room for the back button and up to two trailing toolbar buttons.
-  const titleWidth = Math.max(120, width - 230)
+  // Leave room for the back button and the trailing toolbar buttons.
+  const titleWidth = Math.max(140, width - (avatar ? 150 : 200))
   return (
     <>
       <Stack.Screen
@@ -99,10 +100,11 @@ export function ConversationHeader({
                 // With an avatar the identity sits in a tappable capsule.
                 ...(avatar
                   ? {
-                      paddingLeft: 6,
-                      paddingRight: 14,
+                      paddingLeft: 5,
+                      paddingRight: 12,
                       height: 40,
                       borderRadius: 20,
+                      gap: 7,
                       backgroundColor: pressed ? theme.surfaceMuted : theme.surfaceSubtle,
                     }
                   : {}),
@@ -112,7 +114,7 @@ export function ConversationHeader({
               <View style={{ flexShrink: 1, alignItems: avatar ? 'flex-start' : 'center' }}>
                 <Text
                   numberOfLines={1}
-                  style={{ fontFamily: 'GeistSemibold', fontSize: avatar ? 16 : 15, color: theme.foreground }}
+                  style={{ fontFamily: 'GeistSemibold', fontSize: 15, letterSpacing: -0.2, color: theme.foreground }}
                 >
                   {title}
                 </Text>
@@ -122,6 +124,9 @@ export function ConversationHeader({
                   </Text>
                 ) : null}
               </View>
+              {avatar && onPressTitle ? (
+                <Image source="sf:chevron.right" style={{ width: 6, height: 10 }} contentFit="contain" tintColor={theme.mutedLight as string} />
+              ) : null}
             </Pressable>
           ),
         }}

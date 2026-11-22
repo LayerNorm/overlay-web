@@ -9,6 +9,8 @@ import {
   View,
 } from 'react-native'
 import { Feather } from '@expo/vector-icons'
+import { Image } from 'expo-image'
+import { useTheme } from '../../hooks/useTheme'
 import type { CapabilityCheck, ImageModel, VideoModel } from '@overlay/app-core'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -107,6 +109,20 @@ interface ComposerProps {
   showToolsButton?: boolean
 }
 
+function ComposerIcon({ theme, symbol, label, onPress }: { theme: Theme; symbol: string; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={[styles.chip, { width: 34, paddingHorizontal: 0, borderColor: theme.border }]}
+    >
+      <Image source={`sf:${symbol}`} style={{ width: 16, height: 16 }} contentFit="contain" tintColor={theme.text as string} />
+    </TouchableOpacity>
+  )
+}
+
 /** Trailing `@token` the user is actively typing — drives the mention dropdown. */
 function trailingMentionQuery(text: string): string | null {
   const match = /(?:^|\s)@([\p{L}\p{N}_-]{0,40})$/u.exec(text)
@@ -114,6 +130,7 @@ function trailingMentionQuery(text: string): string | null {
 }
 
 export function Composer(props: ComposerProps): React.ReactElement {
+  const { isDark } = useTheme()
   const {
     theme,
     inputValue,
@@ -229,7 +246,8 @@ export function Composer(props: ComposerProps): React.ReactElement {
     : selectedVideoModelId
   const activeGenerationModel = generationModels.find((m) => m.id === activeGenerationModelId)
 
-  const canSend = !sendDisabled && !isSending
+  const hasContent = inputValue.trim().length > 0 || Boolean(imageBase64) || pendingDocuments.length > 0
+  const canSend = !sendDisabled && !isSending && hasContent
 
   return (
     <View>
@@ -395,11 +413,14 @@ export function Composer(props: ComposerProps): React.ReactElement {
       ) : null}
 
       {/* Input box */}
-      <GlassSurface
-        interactive
+      <View
         style={[
           styles.composerBox,
-          { backgroundColor: theme.surfaceSubtle, borderColor: theme.border },
+          {
+            backgroundColor: isDark ? theme.surfaceSubtle : theme.background,
+            borderColor: theme.border,
+            boxShadow: isDark ? undefined : '0 2px 14px rgba(0,0,0,0.07)',
+          },
         ]}
       >
         <TextInput
@@ -410,9 +431,9 @@ export function Composer(props: ComposerProps): React.ReactElement {
           onBlur={() => setComposerFocused(false)}
           placeholder={
             placeholder ??
-            (isTemporary ? 'Temporary chat — nothing is saved' : 'Ask anything…')
+            (isTemporary ? 'Temporary chat — nothing is saved' : 'Ask anything')
           }
-          placeholderTextColor={theme.textDisabled}
+          placeholderTextColor={theme.muted}
           multiline
           maxLength={10000}
           style={[styles.composerInput, { color: theme.text }]}
@@ -420,22 +441,29 @@ export function Composer(props: ComposerProps): React.ReactElement {
 
         <View style={styles.composerFooter}>
           <View style={styles.composerLeftActions}>
-            <GlassSurface interactive style={[styles.composerIconButton, { backgroundColor: theme.surfaceSubtle }]}>
+            <ComposerIcon
+              theme={theme}
+              symbol="plus"
+              label="Add attachment"
+              onPress={() => setAttachPickerVisible(true)}
+            />
+            {onModel ? (
               <TouchableOpacity
-                activeOpacity={0.82}
-                onPress={() => setAttachPickerVisible(true)}
-                style={styles.composerIconButton}
+                activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="Add attachment"
+                accessibilityLabel={`Model, ${modelLabel ?? 'Auto'}`}
+                onPress={onModel}
+                style={[styles.chip, { borderColor: theme.border }]}
               >
-                <Feather name="plus" size={22} color={theme.textSecondary} />
+                <Text numberOfLines={1} style={[styles.chipText, { color: theme.text, maxWidth: 120 }]}>
+                  {modelLabel ?? 'Auto'}
+                </Text>
+                <Image source="sf:chevron.down" style={{ width: 10, height: 10 }} contentFit="contain" tintColor={theme.muted as string} />
               </TouchableOpacity>
-            </GlassSurface>
-            {onModel ? <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose model" onPress={onModel} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 5, minHeight: 36 }}><Text numberOfLines={1} style={{ color: theme.textSecondary, fontSize: 12, fontFamily: 'Geist', maxWidth: 130 }}>{modelLabel ?? 'Auto'}</Text><Feather name="chevron-down" size={13} color={theme.textSecondary} /></TouchableOpacity> : null}
-
+            ) : null}
             {showToolsButton ? (
               <TouchableOpacity
-                activeOpacity={0.82}
+                activeOpacity={0.7}
                 onPress={() => setToolsSheetVisible(true)}
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -444,61 +472,50 @@ export function Composer(props: ComposerProps): React.ReactElement {
                     : 'Tools and modes'
                 }
                 style={[
-                  styles.toolsButton,
+                  styles.chip,
                   {
-                    backgroundColor: theme.surfaceSubtle,
-                    borderColor: selectedToolIds.length > 0 || generationKind ? theme.border : 'transparent',
+                    borderColor: activeToolCount > 0 ? theme.text : theme.border,
+                    paddingHorizontal: activeToolCount > 0 ? 11 : 0,
+                    width: activeToolCount > 0 ? undefined : 34,
                   },
                 ]}
               >
-                <Feather name="sliders" size={15} color={theme.textSecondary} />
+                <Image source="sf:slider.horizontal.3" style={{ width: 15, height: 15 }} contentFit="contain" tintColor={theme.text as string} />
                 {activeToolCount > 0 ? (
-                  <Text style={[styles.toolsButtonCount, { color: theme.textSecondary }]}>
-                    {activeToolCount}
-                  </Text>
+                  <Text style={[styles.chipText, { color: theme.text }]}>{activeToolCount}</Text>
                 ) : null}
               </TouchableOpacity>
             ) : null}
-
-            <TouchableOpacity
-              activeOpacity={0.82}
-              onPress={() => onChangeInput(`${inputValue}@`)}
-              style={[styles.toolsButton, { backgroundColor: theme.surfaceSubtle, borderColor: theme.border }]}
-              accessibilityRole="button"
-              accessibilityLabel="Insert mention"
-            >
-              <Feather name="at-sign" size={15} color={theme.textSecondary} />
-            </TouchableOpacity>
           </View>
 
-          <View style={styles.composerRightActions}>
-            <GlassSurface interactive style={[styles.sendButton, { backgroundColor: isSending || canSend ? theme.buttonBg : theme.surfaceSubtle }]}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (isSending) {
-                    onStop()
-                  } else {
-                    Keyboard.dismiss()
-                    onSend()
-                  }
-                }}
-                disabled={!isSending && !canSend}
-                activeOpacity={0.82}
-                style={[styles.sendButton, (!canSend && !isSending) && { opacity: 0.5 }]}
-                accessibilityRole="button"
-                accessibilityLabel={isSending ? 'Stop generating' : 'Send message'}
-                accessibilityState={{ disabled: !isSending && !canSend }}
-              >
-                {isSending ? (
-                  <Feather name="square" size={14} color={theme.buttonPrimaryText} />
-                ) : (
-                  <Feather name="arrow-up" size={18} color={canSend ? theme.buttonPrimaryText : theme.muted} />
-                )}
-              </TouchableOpacity>
-            </GlassSurface>
-          </View>
+          <TouchableOpacity
+            onPress={() => {
+              if (isSending) {
+                onStop()
+              } else {
+                Keyboard.dismiss()
+                onSend()
+              }
+            }}
+            disabled={!isSending && !canSend}
+            activeOpacity={0.8}
+            style={[
+              styles.sendButton,
+              { backgroundColor: isSending || canSend ? theme.text : theme.surfaceMuted },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={isSending ? 'Stop generating' : 'Send message'}
+            accessibilityState={{ disabled: !isSending && !canSend }}
+          >
+            <Image
+              source={isSending ? 'sf:stop.fill' : 'sf:arrow.up'}
+              style={{ width: isSending ? 12 : 16, height: isSending ? 12 : 16 }}
+              contentFit="contain"
+              tintColor={(isSending || canSend ? theme.background : theme.mutedLight) as string}
+            />
+          </TouchableOpacity>
         </View>
-      </GlassSurface>
+      </View>
 
       {/* Attach picker */}
       <BottomSheet
@@ -812,20 +829,35 @@ const styles = StyleSheet.create({
 
   composerBox: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 24,
+    borderRadius: 26,
     borderCurve: 'continuous',
-    paddingHorizontal: spacing.md,
-    paddingTop: 8,
+    paddingHorizontal: 8,
+    paddingTop: 6,
     paddingBottom: 8,
   },
   composerInput: {
     fontFamily: 'Geist',
-    fontSize: 16,
-    lineHeight: 21,
-    minHeight: 36,
-    maxHeight: 140,
-    paddingTop: 6,
+    fontSize: 17,
+    lineHeight: 22,
+    minHeight: 40,
+    maxHeight: 160,
+    paddingTop: 9,
     paddingBottom: 6,
+    paddingHorizontal: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  chipText: {
+    fontFamily: 'GeistMedium',
+    fontSize: 14,
   },
   composerFooter: {
     flexDirection: 'row',
@@ -836,7 +868,7 @@ const styles = StyleSheet.create({
   composerLeftActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
   },
   composerRightActions: {
     flexDirection: 'row',
@@ -865,9 +897,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sendButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
