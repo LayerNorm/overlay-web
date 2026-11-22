@@ -211,8 +211,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
 
     if (!response.ok) {
+      const rejectedKey = (response.status === 401 || response.status === 403) && isOpenCodeProviderId(preset.id)
       return NextResponse.json(
-        { ok: false, models: [], error: `Provider returned HTTP ${response.status}` },
+        {
+          ok: false,
+          models: [],
+          error: rejectedKey ? `${preset.label} rejected the API key or account access.` : `Provider returned HTTP ${response.status}`,
+        },
         { status: 502 },
       )
     }
