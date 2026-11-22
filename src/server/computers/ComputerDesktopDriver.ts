@@ -25,7 +25,7 @@ const PREPARE_COMMAND = [
   '(set -C; : > "$marker") 2>/dev/null || exit 0',
   'command -v apt-get >/dev/null 2>&1',
   'command -v sudo >/dev/null 2>&1',
-  'timeout 55s sudo -n apt-get install -y xdotool imagemagick chromium',
+  'timeout 55s sudo -n apt-get install -y xdotool imagemagick chromium ripgrep',
 ].join('\n')
 
 type DriverCapabilities = {

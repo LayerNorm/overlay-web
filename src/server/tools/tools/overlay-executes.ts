@@ -24,6 +24,17 @@ import { publishComputerFile } from '@/server/files/computer-publication'
 import { LocalComputerError } from '@/server/computers/local/LocalComputerService'
 import { LocalHostSandboxInstance, isLocalHostSandboxInstance } from '@/server/computers/local/LocalHostSandboxInstance'
 import type { ComputerTarget } from './types'
+import {
+  computerContentSha,
+  computerGlobArgs,
+  computerGrepArgs,
+  parseComputerGlobOutput,
+  parseComputerGrepOutput,
+  ripgrepFailed,
+  sliceComputerLines,
+  type ComputerGlobInput,
+  type ComputerGrepInput,
+} from './computer-file-tools'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1203,7 +1214,7 @@ export async function executeComputerExec(
 
 export async function executeComputerReadFile(
   options: OverlayToolsOptions,
-  input: { path: string; target?: ComputerTarget },
+  input: { path: string; offset?: number; limit?: number; target?: ComputerTarget },
 ) {
   const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_read_file' })
   if (!resolved.ok) return { success: false, error: resolved.error }
@@ -1212,20 +1223,73 @@ export async function executeComputerReadFile(
     if (bytes === null) {
       return { success: false, error: `No file at ${input.path}` }
     }
-    const sliced = bytes.length > COMPUTER_READ_MAX_BYTES
-      ? bytes.subarray(0, COMPUTER_READ_MAX_BYTES)
-      : bytes
+    const sha = computerContentSha(bytes)
+    // Bytes past the read cap are dropped before line slicing; the note says so instead of failing.
+    const capped = bytes.length > COMPUTER_READ_MAX_BYTES
+    const text = new TextDecoder().decode(capped ? bytes.subarray(0, COMPUTER_READ_MAX_BYTES) : bytes)
+    const slice = sliceComputerLines(text, { offset: input.offset, limit: input.limit })
+    const notes = [
+      slice.note,
+      capped ? `File is ${bytes.length} bytes; only the first ${COMPUTER_READ_MAX_BYTES} bytes were read, so line counts are partial.` : undefined,
+    ].filter(Boolean)
     return {
       success: true,
       path: input.path,
-      contents: new TextDecoder().decode(sliced),
+      contents: slice.content,
+      startLine: slice.startLine,
+      endLine: slice.endLine,
+      totalLines: slice.totalLines,
+      sha,
       bytes: bytes.length,
-      truncated: bytes.length > COMPUTER_READ_MAX_BYTES,
+      truncated: slice.truncated || capped,
+      ...(notes.length ? { note: notes.join(' ') } : {}),
       computerId: resolved.computer.id,
     }
   } catch (err) {
     return computerErrorResult(err, 'Computer file read failed')
   }
+}
+
+const COMPUTER_SEARCH_TIMEOUT_MS = 30_000
+
+async function runRipgrep(
+  options: OverlayToolsOptions,
+  toolName: 'computer_grep' | 'computer_glob',
+  target: ComputerTarget | undefined,
+  buildArgs: (root: string) => string[],
+) {
+  const resolved = await computerInstanceFor(options, { target, toolName })
+  if (!resolved.ok) return { ok: false as const, result: { success: false, error: resolved.error } }
+  try {
+    const result = await resolved.operate(async (instance) => {
+      const root = await instance.workingDirectory()
+      const handle = await instance.runCommand({ command: 'rg', args: buildArgs(root), timeoutMs: COMPUTER_SEARCH_TIMEOUT_MS })
+      return await handle.wait()
+    }, COMPUTER_SEARCH_TIMEOUT_MS)
+    if (result.exitCode === 127 || /rg: (command )?not found/.test(result.stderr)) {
+      return { ok: false as const, result: { success: false, error: 'ripgrep (rg) is not installed on this computer. Install it, or use computer_exec with grep/find.' } }
+    }
+    if (ripgrepFailed(result.exitCode)) {
+      return { ok: false as const, result: { success: false, error: truncateOutput(result.stderr.trim() || `rg exited with ${result.exitCode}`).text } }
+    }
+    return { ok: true as const, stdout: result.stdout, computerId: resolved.computer.id }
+  } catch (err) {
+    return { ok: false as const, result: computerErrorResult(err, 'Computer search failed') }
+  }
+}
+
+export async function executeComputerGrep(options: OverlayToolsOptions, input: ComputerGrepInput & { target?: ComputerTarget }) {
+  const { target, ...search } = input
+  const run = await runRipgrep(options, 'computer_grep', target, root => computerGrepArgs(search, root))
+  if (!run.ok) return run.result
+  return { success: true, pattern: search.pattern, ...parseComputerGrepOutput(run.stdout, search), computerId: run.computerId }
+}
+
+export async function executeComputerGlob(options: OverlayToolsOptions, input: ComputerGlobInput & { target?: ComputerTarget }) {
+  const { target, ...search } = input
+  const run = await runRipgrep(options, 'computer_glob', target, root => computerGlobArgs(search, root))
+  if (!run.ok) return run.result
+  return { success: true, pattern: search.pattern, ...parseComputerGlobOutput(run.stdout, search), computerId: run.computerId }
 }
 
 /** Old files larger than this are rewritten without line counts. */
