@@ -54,7 +54,7 @@ export function SettingRow({ icon, title, description, checked, disabled, onChan
           <p className="mt-1 text-sm leading-relaxed text-(--muted)">{description}</p>
         </div>
       </div>
-      <SettingsToggle checked={checked} disabled={disabled} onChange={onChange} />
+      <SettingsToggle aria-label={title} checked={checked} disabled={disabled} onChange={onChange} />
     </div>
   )
 }

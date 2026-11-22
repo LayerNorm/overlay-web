@@ -10,6 +10,11 @@ failures; notification permissions remain in macOS System Settings.
 
 ## Brand, Theme, And Navigation
 
+`SettingRow` passes its visible title as the switch's accessible name, keeping
+screen-reader identification aligned with the setting label.
+Run `node scripts/qa/settings-switch-accessibility.mjs` to verify computed names,
+keyboard toggling and disabled behavior; `PLAYWRIGHT_CHANNEL=chrome` selects installed Chrome.
+
 The saved `useSecondarySidebar` setting selects the same sidebar component at every
 viewport width. Below 768px, the selected single sidebar or icon-rail/context-panel
 layout opens inside the navigation drawer rather than switching to the legacy
