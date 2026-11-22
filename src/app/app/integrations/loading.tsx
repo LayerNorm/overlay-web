@@ -1,1 +1,1 @@
-export { ExtensionsRouteSkeleton as default } from '../_components/PageRouteSkeletons'
+export { default } from '../tools/loading'
