@@ -56,6 +56,12 @@ www host with cold/warm app, signed-out and signed-in states, and confirm resour
 access-denied states. Verify Apple association and Android app-link verification
 after deployment. Local exports do not prove OS-level signed app associations.
 
+When this Mac lacks storage for Pods and DerivedData, the
+`simulator-smoke` EAS profile builds an installable iOS Simulator app with
+the production bundle configuration. Verify its exact commit in EAS before
+installing it. It inherits the production URLs for signed-out startup smoke.
+Use a current isolated backend for authenticated acceptance.
+
 For simulator acceptance, use a current isolated backend and confirm sign-in,
 workspace switching and Work in both themes. Verify that Board columns respect
 the selected filter, that Timeline spans clip at week boundaries, and that both

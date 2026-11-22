@@ -26,6 +26,14 @@
         "enterpriseProvisioning": "adhoc"
       }
     },
+    "simulator-smoke": {
+      "extends": "production",
+      "distribution": "internal",
+      "autoIncrement": false,
+      "ios": {
+        "simulator": true
+      }
+    },
     "production": {
       "environment": "production",
       "autoIncrement": true,

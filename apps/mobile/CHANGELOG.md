@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add a release-configured iOS simulator build profile for startup checks on Macs with limited storage.
 - Point iOS sign-in and app links at overlay.works so authentication can return directly to the app.
 - Fetch the pinned public web dependencies during standalone builds without requiring a GitHub token.
 - Add Board and Timeline views to mobile Work so you can browse tasks by status or see their scheduled dates by week, then open any task to edit it.
