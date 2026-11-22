@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { WorkOS } from '@workos-inc/node'
 import type { WorkspaceInvitationAcceptResponse } from '@overlay/workspace-contracts'
 import type { AccountAppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlaySession } from '@/server/auth/session'
@@ -19,14 +20,19 @@ export async function POST(request: Request, context: AccountAppApiRouteContext)
       )
     }
     const session = await getOverlaySession(request)
-    if (!session?.user.email) throw validation('The signed-in account does not have an email address')
+    let user: { email?: string; firstName?: string; lastName?: string } | undefined = session?.user
+    if (!user?.email && context.auth.authType === 'access-token') {
+      const found = await new WorkOS(process.env.WORKOS_API_KEY).userManagement.getUser(context.auth.userId)
+      if (found.emailVerified) user = { email: found.email, firstName: found.firstName ?? undefined, lastName: found.lastName ?? undefined }
+    }
+    if (!user?.email) throw validation('The signed-in account does not have an email address')
     const service = getOverlayServerContext().workspaceService
     const access = await service.acceptInvitation({
       invitationId: requiredWorkspaceParam(await context.params, 'invitationId'),
       userId: context.auth.userId,
-      email: session.user.email,
-      displayName: [session.user.firstName, session.user.lastName].filter(Boolean).join(' ')
-        || session.user.email,
+      email: user.email,
+      displayName: [user.firstName, user.lastName].filter(Boolean).join(' ')
+        || user.email,
     })
     await service.setActiveWorkspace(context.auth.userId, access.workspace.id)
     const response: WorkspaceInvitationAcceptResponse = {
