@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rebuild the mobile shell on native iOS navigation: a Liquid Glass tab bar (Work, Agents, Chats, Files, Search) replaces the custom drawer and breadcrumbs, every tab gets a native navigation bar with large titles, system menus and search, a new Chats list with a native segmented filter replaces the drawer recents, and Automations, Extensions, Activity, Voice and Settings move into a native account sheet.
 - Manage outbound webhooks from mobile Settings in workspaces where webhooks are enabled.
 - Show live agent computer status on mobile and let editors start or stop it.
 - Browse and manage personal or workspace app connections separately in mobile Extensions.

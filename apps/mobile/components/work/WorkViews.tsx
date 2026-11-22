@@ -44,6 +44,7 @@ import { columnsByStatus } from '../../../src/shared/work/query'
 import { Button, IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { WorkMarkdown } from './WorkMarkdown'
+import { NativeSegmented } from '../navigation/NativeSegmented'
 import { WorkTimeline } from './WorkTimeline'
 import { WorkField, WorkOptions, WorkSheet } from './WorkControls'
 
@@ -171,8 +172,8 @@ function Tabs({
   )
 }
 
-const workLayouts = ['List', 'Board', 'Timeline'] as const
-type WorkLayout = (typeof workLayouts)[number]
+export const workLayouts = ['List', 'Board', 'Timeline'] as const
+export type WorkLayout = (typeof workLayouts)[number]
 
 export function WorkListView({
   items,
@@ -187,6 +188,7 @@ export function WorkListView({
   onSchedule,
   canCreate = true,
   filter: initialFilter = 'needs-you',
+  layout: nativeLayout,
 }: {
   items: WorkItem[]
   context: WorkContext
@@ -200,9 +202,12 @@ export function WorkListView({
   onSchedule: (item: WorkItem) => void
   canCreate?: boolean
   filter?: WorkFilter
+  /** Set when the screen owns the native navigation bar (title, create, layout menu). */
+  layout?: WorkLayout
 }) {
   const [filter, setFilter] = useState<WorkFilter>(initialFilter)
-  const [layout, setLayout] = useState<WorkLayout>('List')
+  const [inlineLayout, setLayout] = useState<WorkLayout>('List')
+  const layout = nativeLayout ?? inlineLayout
   const labels: Record<WorkFilter, string> = {
     'needs-you': 'Needs you',
     mine: 'Assigned to me',
@@ -318,7 +323,20 @@ export function WorkListView({
           </View>
         ))
   return (
-    <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: 24 }}>
+      {nativeLayout ? (
+        <View style={{ paddingTop: 4, paddingBottom: 4 }}>
+          <NativeSegmented
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { label: 'Needs you', value: 'needs-you' },
+              { label: 'Mine', value: 'mine' },
+              { label: 'Everything', value: 'all' },
+            ]}
+          />
+        </View>
+      ) : (
       <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
         <View
           style={{
@@ -348,6 +366,7 @@ export function WorkListView({
           theme={theme}
         />
       </View>
+      )}
       {layout === 'Board' ? (
         <ScrollView
           horizontal
@@ -660,6 +679,7 @@ export function WorkDetailView({
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
+      contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ padding: 18, paddingTop: 22, paddingBottom: 30, gap: 18 }}
     >
       <Pressable

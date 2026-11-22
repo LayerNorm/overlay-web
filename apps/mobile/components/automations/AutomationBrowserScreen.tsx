@@ -90,9 +90,7 @@ export function AutomationBrowserScreen() {
     <>
       <ResourcePage
         theme={theme}
-        section="Automations"
-        topInset={top}
-        onDrawer={openDrawer}
+        title="Automations"
         onBack={
           id
             ? () => {
@@ -101,7 +99,6 @@ export function AutomationBrowserScreen() {
               }
             : undefined
         }
-        onSearch={() => router.push('/search')}
       >
         {id ? (
           detail.data ? (

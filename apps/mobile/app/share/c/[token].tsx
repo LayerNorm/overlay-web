@@ -20,7 +20,7 @@ export default function SharedChatDeepLink(): React.ReactElement {
 
   useEffect(() => {
     if (!token || typeof token !== 'string') {
-      router.replace('/(tabs)/chat')
+      router.replace('/chat')
       return
     }
     const url = `${AUTH_BASE_URL}/share/c/${token}`
@@ -28,7 +28,7 @@ export default function SharedChatDeepLink(): React.ReactElement {
       if (router.canGoBack()) {
         router.back()
       } else {
-        router.replace('/(tabs)/chat')
+        router.replace('/chat')
       }
     })
   }, [token, router])

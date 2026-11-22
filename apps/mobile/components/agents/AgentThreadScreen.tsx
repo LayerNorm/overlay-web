@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Alert, Linking, Modal, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -43,6 +43,7 @@ import {
 } from './AgentThreadViews'
 import { RoomScreen } from '../chat/RoomScreen'
 import { T, Button } from '../shell/primitives'
+import { TabToolbar } from '../navigation/nativeHeader'
 
 function AgentState({ text, retry }: { text: string; retry?: () => void }) {
   const { theme } = useTheme()
@@ -585,8 +586,6 @@ function ConnectedAgentDirectory({
   workspaceId: string | null
 }) {
   const { theme, isDark } = useTheme()
-  const insets = useSafeAreaInsets()
-  const { openDrawer } = useDrawer()
   const router = useRouter()
   const [directory, set] = useState<NonNullable<
     Parameters<typeof AgentDirectoryView>[0]['agents']
@@ -638,21 +637,16 @@ function ConnectedAgentDirectory({
   if (!directory)
     return <AgentState text="Agents are unavailable in this workspace." />
   return (
-    <View
-      style={{
-        flex: 1,
-        paddingTop: insets.top,
-        backgroundColor: theme.surface,
-      }}
-    >
-      <Button theme={theme} onPress={openDrawer}>
-        Workspace › Agents
-      </Button>
+    <>
+      <TabToolbar>
+        {canCreate ? (
+          <Stack.Toolbar.Button icon="plus" accessibilityLabel="New agent" onPress={() => router.push('/agent/new')} />
+        ) : null}
+      </TabToolbar>
       <AgentDirectoryView
         agents={directory}
         theme={theme}
         dark={isDark}
-        onCreate={canCreate ? () => router.push('/agent/new') : undefined}
         onOpen={(agent) => {
           if (workspaceId)
             void openAgentThread(workspaceId, agent.id)
@@ -663,6 +657,6 @@ function ConnectedAgentDirectory({
               .catch((reason) => setError(String(reason)))
         }}
       />
-    </View>
+    </>
   )
 }

@@ -97,7 +97,7 @@ export function ArchivedScreen(): React.ReactElement {
           chats={[]}
           activeChatId={null}
           onSelectChat={(chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } })}
-          onCreateChat={() => router.push('/(tabs)/chat')}
+          onCreateChat={() => router.push('/chat')}
         />
       }
     >

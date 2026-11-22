@@ -309,7 +309,7 @@ export function ResourceFixture({
       </View>
       <ResourcePage
         theme={theme}
-        section={
+        title={
           screen === 'activity-feed'
             ? 'Activity'
             : screen.includes('automation')
@@ -318,8 +318,6 @@ export function ResourceFixture({
                 ? 'Search'
                 : 'Files'
         }
-        onDrawer={() => act('drawer')}
-        onSearch={() => setScreen('search-mentions')}
       >
         {content}
       </ResourcePage>

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Alert, AppState, Linking, NativeModules, Platform, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as DocumentPicker from 'expo-document-picker'
 import * as Notifications from 'expo-notifications'
 import type { MemoryRow } from '@overlay/app-core'
@@ -10,7 +9,6 @@ import { useTheme } from '../../hooks/useTheme'
 import { useAuth } from '../../contexts/AuthContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
-import { useDrawer } from '../../contexts/DrawerContext'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useLiveResource } from '../../hooks/useLiveResource'
 import { useMobilePreferences } from '../../hooks/useMobilePreferences'
@@ -82,8 +80,6 @@ function SettingsScope() {
   const { user, session, signOut } = useAuth()
   const { activeWorkspaceId: workspaceId, activeWorkspace } = useWorkspace()
   const { capabilities, chatModels, imageModels, videoModels, uiSettings } = useAppSession()
-  const { openDrawer } = useDrawer()
-  const { top } = useSafeAreaInsets()
   const router = useRouter()
   const ready = useNativeDataReady()
   const favorites = useFavoriteModels(user?.id)
@@ -304,9 +300,7 @@ function SettingsScope() {
   return (
     <ResourcePage
       theme={theme}
-      section="Settings"
-      topInset={top}
-      onDrawer={workspaceId ? openDrawer : () => router.replace('/')}
+      title="Settings"
       onBack={
         page === 'settings'
           ? undefined

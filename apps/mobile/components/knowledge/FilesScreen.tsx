@@ -135,7 +135,7 @@ function LegacyFilesScreen({ memoriesOnly = false }: { memoriesOnly?: boolean } 
         <BottomSheet theme={theme} visible={menuOpen} onClose={() => setMenuOpen(false)} title={TITLES[activeTab]}>
           <View style={styles.menuList}>
             {!memoriesOnly ? (
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); router.push('/(tabs)/notes') }}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); router.push('/notes') }}>
                 <Text style={{ color: theme.text }}>Notes</Text>
               </TouchableOpacity>
             ) : null}

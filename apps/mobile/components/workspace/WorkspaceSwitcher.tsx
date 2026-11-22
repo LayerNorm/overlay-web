@@ -102,7 +102,7 @@ export function WorkspaceSwitcher({ theme }: { theme: Theme }): React.ReactEleme
             subtitle="People, teams, sharing, and billing"
             onPress={() => {
               setSheetVisible(false)
-              router.push('/(tabs)/workspace')
+              router.push('/workspace')
             }}
           />
           <ListRow

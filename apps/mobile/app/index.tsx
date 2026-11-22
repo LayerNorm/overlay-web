@@ -6,12 +6,11 @@ import { useWorkspace } from '../contexts/WorkspaceContext'
 
 function destinationPath(
   destination: StartDestination,
-): '/(tabs)/chat' | '/(tabs)/agents' | '/(tabs)/voice' | '/(tabs)/files' | '/(tabs)/work' {
+): '/(tabs)/chats' | '/(tabs)/agents' | '/(tabs)/files' | '/(tabs)/work' {
   if (destination === 'agents') return '/(tabs)/agents'
   if (destination === 'work') return '/(tabs)/work'
   if (destination === 'files') return '/(tabs)/files'
-  if (destination === 'voice') return '/(tabs)/voice'
-  return '/(tabs)/chat'
+  return '/(tabs)/chats'
 }
 
 export default function AppEntryScreen(): React.ReactElement | null {
@@ -34,6 +33,8 @@ export default function AppEntryScreen(): React.ReactElement | null {
     void loadMobilePreferences().then((preferences) => {
       if (!cancelled) {
         router.replace(destinationPath(preferences.startDestination))
+        // Voice is a full-screen tool, not a tab: open it above Chats.
+        if (preferences.startDestination === 'voice') router.push('/voice')
       }
     })
     return () => {

@@ -57,10 +57,7 @@ function ActivityBody() {
   return (
     <ResourcePage
       theme={theme}
-      section="Activity"
-      topInset={top}
-      onDrawer={openDrawer}
-      onSearch={() => router.push('/search')}
+      title="Activity"
     >
       {feed.data ? (
         <ActivityFeed

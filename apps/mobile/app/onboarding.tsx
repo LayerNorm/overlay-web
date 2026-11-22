@@ -9,8 +9,8 @@ function destinationPath(destination: StartDestination): string {
   if (destination === 'agents') return '/(tabs)/agents'
   if (destination === 'work') return '/(tabs)/work'
   if (destination === 'files') return '/(tabs)/files'
-  if (destination === 'voice') return '/(tabs)/voice'
-  return '/(tabs)/chat'
+  if (destination === 'voice') return '/voice'
+  return '/chat'
 }
 
 export default function OnboardingScreen(): React.ReactElement {

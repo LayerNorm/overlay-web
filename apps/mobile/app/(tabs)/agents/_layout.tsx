@@ -1,0 +1,13 @@
+import React from 'react'
+import { Stack } from 'expo-router'
+import { tabRootOptions, useNativeHeaderOptions } from '../../../components/navigation/nativeHeader'
+
+export const unstable_settings = { initialRouteName: 'index' }
+
+export default function AgentsLayout(): React.ReactElement {
+  return (
+    <Stack screenOptions={useNativeHeaderOptions()}>
+      <Stack.Screen name="index" options={tabRootOptions('Agents')} />
+    </Stack>
+  )
+}

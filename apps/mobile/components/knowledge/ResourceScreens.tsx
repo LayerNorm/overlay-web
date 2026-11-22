@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Alert, TextInput, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as DocumentPicker from 'expo-document-picker'
 import * as WebBrowser from 'expo-web-browser'
@@ -29,6 +29,7 @@ import { AUTH_BASE_URL } from '../../services/appConfig'
 import { appRequest, getRequestWorkspaceId } from '../../services/appApi'
 import { normalizeHtmlForMobileMarkdown, toStoredHtml } from '../../services/noteContentFormat'
 import { Button, T } from '../shell/primitives'
+import { TabToolbar } from '../navigation/nativeHeader'
 import { FeatureGate } from '../ui/FeatureGate'
 import { ShareSheet } from '../workspace/ShareSheet'
 import {
@@ -52,13 +53,14 @@ export function useResourceScope() {
 }
 
 export function FilesBrowserScreen({ initialParentId }: { initialParentId?: string } = {}) {
-  const { workspaceId, theme, openDrawer, top, router } = useResourceScope()
+  const { workspaceId, theme, router } = useResourceScope()
   const { capabilities } = useAppSession()
+  const [query, setQuery] = useState('')
   const files = useLiveResource(
     api.files.browse.list,
     workspaceId && capabilities.files ? { workspaceId } : null,
   )
-  const [folder, setFolder] = useState<{ workspaceId: string; id: string | null } | null>(
+  const [folder] = useState<{ workspaceId: string; id: string | null } | null>(
     initialParentId && workspaceId ? { workspaceId, id: initialParentId } : null,
   )
   const [addScope, setAddScope] = useState<string | null>(null)
@@ -137,13 +139,44 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
   if (!capabilities.files) return <FeatureGate title="Files are turned off" />
   return (
     <>
-      <ResourcePage
-        theme={theme}
-        section="Files"
-        topInset={top}
-        onDrawer={openDrawer}
-        onSearch={() => router.push('/search')}
-      >
+      <Stack.Screen
+        options={{
+          ...(parentId ? { title: files.data?.find((file) => file._id === parentId)?.name ?? 'Folder' } : {}),
+          headerSearchBarOptions: {
+            placeholder: 'Search files',
+            hideWhenScrolling: true,
+            onChangeText: (event) => setQuery(event.nativeEvent.text),
+            onCancelButtonPress: () => setQuery(''),
+          },
+        }}
+      />
+      {(() => {
+        const addMenu = (
+          <Stack.Toolbar.Menu icon="plus" accessibilityLabel="Add">
+            <Stack.Toolbar.MenuAction icon="doc.text" onPress={() => void add('note')}>
+              New note
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction
+              icon="folder.badge.plus"
+              onPress={() => {
+                setAddScope(workspaceId)
+                setError(null)
+              }}
+            >
+              New folder
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="square.and.arrow.up" onPress={() => void add('upload')}>
+              Upload file
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        )
+        return parentId ? (
+          <Stack.Toolbar placement="right">{addMenu}</Stack.Toolbar>
+        ) : (
+          <TabToolbar>{addMenu}</TabToolbar>
+        )
+      })()}
+      <ResourcePage theme={theme}>
         {displayed &&
         !(
           parentId &&
@@ -158,10 +191,10 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
               theme={theme}
               files={displayed}
               parentId={parentId}
-              onFolder={(id) => workspaceId && setFolder({ workspaceId, id })}
-              onAdd={() => {
-                setAddScope(workspaceId)
-                setError(null)
+              query={query}
+              onFolder={(id) => {
+                if (id) router.push({ pathname: '/(tabs)/files/file/[id]', params: { id } })
+                else router.back()
               }}
               onOpen={(file) =>
                 router.push(
@@ -205,7 +238,7 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
       </ResourcePage>
       <ResourceSheet
         theme={theme}
-        title="Add file"
+        title="New folder"
         visible={Boolean(workspaceId && addScope === workspaceId)}
         onClose={() => {
           if (!busy) setAddScope(null)
@@ -213,7 +246,8 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
       >
         <TextInput
           accessibilityLabel="File or folder name"
-          placeholder="Name"
+          placeholder="Folder name"
+          autoFocus
           placeholderTextColor={theme.muted}
           value={name}
           onChangeText={setName}
@@ -225,23 +259,9 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
           <>
             <ResourceRow
               theme={theme}
-              title="New note"
-              onPress={() => {
-                void add('note')
-              }}
-            />
-            <ResourceRow
-              theme={theme}
-              title="New folder"
+              title="Create folder"
               onPress={() => {
                 void add('folder')
-              }}
-            />
-            <ResourceRow
-              theme={theme}
-              title="Upload file"
-              onPress={() => {
-                void add('upload')
               }}
             />
           </>
@@ -261,7 +281,7 @@ function ResourceDocumentBody({ id }: { id: string }) {
   const { session } = useAuth()
   const { workspacesEnabled } = useWorkspace()
   const { isFeatureEnabled } = useAppSession()
-  const { workspaceId, theme, openDrawer, top, router } = useResourceScope()
+  const { workspaceId, theme, router } = useResourceScope()
   const file = useLiveResource(
     api.files.browse.get,
     workspaceId && id ? { workspaceId, fileId: id as Id<'files'> } : null,
@@ -374,14 +394,7 @@ function ResourceDocumentBody({ id }: { id: string }) {
   }
   if (doc?.type === 'folder') return <FilesBrowserScreen initialParentId={id} />
   return (
-    <ResourcePage
-      theme={theme}
-      section="Files"
-      topInset={top}
-      onDrawer={openDrawer}
-      onBack={() => router.back()}
-      onSearch={() => router.push('/search')}
-    >
+    <ResourcePage theme={theme} title={doc?.name ?? ''}>
       {doc ? (
         doc.kind === 'note' ? (
           <NoteDocument

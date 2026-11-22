@@ -25,10 +25,10 @@ export interface ResolvedNavItem {
 const MOBILE_DESTINATIONS: readonly ResolvedNavItem[] = [
   { id: 'work', label: 'Work', route: '/(tabs)/work', sfSymbol: 'checklist', featherIcon: 'check-square' },
   { id: 'agents', label: 'Agents', route: '/(tabs)/agents', sfSymbol: 'sparkles', featherIcon: 'cpu' },
-  { id: 'chat', label: 'Chats', route: '/(tabs)/chat', sfSymbol: 'bubble.left.and.bubble.right', featherIcon: 'message-circle' },
+  { id: 'chat', label: 'Chats', route: '/(tabs)/chats', sfSymbol: 'bubble.left.and.bubble.right', featherIcon: 'message-circle' },
   { id: 'files', label: 'Files', route: '/(tabs)/files', sfSymbol: 'folder', featherIcon: 'folder' },
-  { id: 'automations', label: 'Automations', route: '/(tabs)/automations', sfSymbol: 'bolt.badge.clock', featherIcon: 'zap' },
-  { id: 'extensions', label: 'Extensions', route: '/(tabs)/tools', sfSymbol: 'puzzlepiece.extension', featherIcon: 'tool' },
+  { id: 'automations', label: 'Automations', route: '/automations', sfSymbol: 'bolt.badge.clock', featherIcon: 'zap' },
+  { id: 'extensions', label: 'Extensions', route: '/tools', sfSymbol: 'puzzlepiece.extension', featherIcon: 'tool' },
 ]
 
 export function isDestinationEnabled(id: string, session: DestinationSession): boolean {

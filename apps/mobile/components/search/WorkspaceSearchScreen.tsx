@@ -16,7 +16,7 @@ import {
 } from '../knowledge/ResourceViews'
 
 export function WorkspaceSearchScreen() {
-  const { workspaceId, theme, isDark, router, top, openDrawer } = useResourceScope()
+  const { workspaceId, theme, isDark, router } = useResourceScope()
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -85,10 +85,7 @@ export function WorkspaceSearchScreen() {
   return (
     <ResourcePage
       theme={theme}
-      section="Search"
-      topInset={top}
-      onDrawer={openDrawer}
-      onBack={() => router.back()}
+      title="Search"
     >
       <SearchResults
         theme={theme}
@@ -108,7 +105,7 @@ export function WorkspaceSearchScreen() {
           else if (result.kind === 'work')
             router.push({ pathname: '/work/[id]', params: { id: result.id } })
           else if (result.kind === 'automation')
-            router.push({ pathname: '/(tabs)/automations', params: { id: result.id } })
+            router.push({ pathname: '/automations', params: { id: result.id } })
           else router.push({ pathname: '/(tabs)/files/file/[id]', params: { id: result.id } })
         }}
       />

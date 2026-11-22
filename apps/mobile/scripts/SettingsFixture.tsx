@@ -172,8 +172,7 @@ export function SettingsFixture({
       </View>
       <ResourcePage
         theme={theme}
-        section="Settings"
-        onDrawer={() => act('drawer')}
+        title="Settings"
         onBack={page === 'settings' ? undefined : () => setPage('settings')}
       >
         <SettingsView

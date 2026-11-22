@@ -43,7 +43,7 @@ export default function InvitationScreen(): React.ReactElement {
       if (response.activeWorkspaceId) {
         await switchWorkspace(response.activeWorkspaceId).catch(() => undefined)
       }
-      router.replace('/(tabs)/chat')
+      router.replace('/chat')
     } catch (acceptError) {
       if (acceptError instanceof OverlayApiError && acceptError.status === 401) {
         setRequiresSignIn(true)

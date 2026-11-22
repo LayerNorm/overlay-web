@@ -1,7 +1,7 @@
 import React from 'react'
 import { useLocalSearchParams } from 'expo-router'
-import { WorkOrganization } from '../../components/work/WorkOrganization'
-import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { WorkOrganization } from '../../../components/work/WorkOrganization'
+import { useWorkspace } from '../../../contexts/WorkspaceContext'
 
 export default function WorkOrganizationRoute() {
   const { scope } = useLocalSearchParams<{ scope?: string }>()

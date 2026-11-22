@@ -16,7 +16,7 @@ const state = {
  skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0, snapshots: [], domRenders: 0,
   composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, domProps: null, search: null, appState: new Set(), actionsProps: null, headerProps: null, drawerProps: null, draftIds: [],
   stopCalls: [], stopGate: null, routeParams: null, routeParamCalls: [], routeParamSetter: null, localRouteParams: {}, lastOpenedChatId: null, globalRouteParams: null, foregroundRouteParams: null, historyLoads: 0, replaceCalls: [],
-  routerPushCalls: [], pathname: '/(tabs)/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
+  routerPushCalls: [], pathname: '/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
   focusSubscriptions: new Set(), focused: true, listRows: new Map(), personalChatListeners: [],
 }
 let uuid = 0
@@ -103,7 +103,7 @@ const router = {
   push(target) {
     state.routerPushCalls.push(target)
     const pathname = typeof target === 'string' ? target : target?.pathname
-    if (state.stackRouteSetter && pathname === '/(tabs)/chat') {
+    if (state.stackRouteSetter && pathname === '/chat') {
       state.pathname = pathname
       state.stackRouteSetter('chat')
       const params = typeof target === 'string' ? {} : target?.params ?? {}
@@ -214,7 +214,7 @@ Module._load = function (request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain)
 }
 const { ChatScreen, buildStopPartialPayload } = require('../components/chat/ChatScreen.tsx')
-const ChatTabScreen = require('../app/(tabs)/chat.tsx').default
+const ChatTabScreen = require('../app/chat/index.tsx').default
 const { AppShell } = require('../components/shell/AppShell.tsx')
 Module._load = originalLoad
 function reset() {
@@ -228,7 +228,7 @@ function reset() {
     historyLoads: 0, replaceCalls: [],
     domProps: null, stopCalls: [], stopGate: null, personalChatListeners: [],
     focused: true, listRows: new Map(),
-    routerPushCalls: [], pathname: '/(tabs)/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
+    routerPushCalls: [], pathname: '/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
   })
   state.appState.clear()
   state.focusSubscriptions.clear()
@@ -385,7 +385,7 @@ test('new-chat first send promotes only its own draft and stays current through 
 
 test('global drawer New Chat from Settings opens a fresh conversation instead of restoring last-opened', async () => {
   reset()
-  state.pathname = '/(tabs)/settings'
+  state.pathname = '/settings'
   state.shellPanel = 'chat'
   state.lastOpenedChatId = CHAT_A
   const renderer = await mountGlobalShell()
@@ -395,7 +395,7 @@ test('global drawer New Chat from Settings opens a fresh conversation instead of
   assert.notEqual(state.snapshots.at(-1)?.conversationId, CHAT_A)
   const firstIntent = state.routerPushCalls[0]
   assert.equal(typeof firstIntent, 'object')
-  assert.equal(firstIntent.pathname, '/(tabs)/chat')
+  assert.equal(firstIntent.pathname, '/chat')
   const intents = [firstIntent.params.newChatIntent]
   const drafts = [state.draftIds.at(-1)]
   for (let i = 0; i < 2; i++) {
@@ -437,7 +437,7 @@ test('global new-chat route hides prior transcript and controls while route init
 
 test('global New Chat from a loaded tab invalidates captured actions and subscriptions before draft initialization', async () => {
   reset()
-  state.pathname = '/(tabs)/chat'
+  state.pathname = '/chat'
   state.lastOpenedChatId = CHAT_A
   const renderer = await mountGlobalShell({ initialRoute: 'chat', preserveTabDuringSettings: true })
   assert.equal(state.snapshots.at(-1).conversationId, CHAT_A)
@@ -457,7 +457,7 @@ test('global New Chat from a loaded tab invalidates captured actions and subscri
   const preferredModelLoad = deferred()
   state.lastModelIdGate = preferredModelLoad
   await act(async () => {
-    state.pathname = '/(tabs)/settings'
+    state.pathname = '/settings'
     state.stackRouteSetter('settings')
     await tick()
   })

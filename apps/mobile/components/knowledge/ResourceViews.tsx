@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
+import { Stack } from 'expo-router'
 import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View } from 'react-native'
 import {
   AtSign,
   Bell,
   Bug,
   Check,
-  ChevronLeft,
   ChevronRight,
   Download,
   File,
@@ -14,7 +14,6 @@ import {
   Hash,
   ListChecks,
   MoreHorizontal,
-  PanelLeft,
   Plus,
   Search,
   Workflow,
@@ -68,58 +67,55 @@ export function fileSubtitle(file: KnowledgeFile) {
     : `${file.extension?.toUpperCase() || file.kind || 'File'}${file.sizeBytes ? ' · ' + (file.sizeBytes >= 1048576 ? (file.sizeBytes / 1048576).toFixed(1) + ' MB' : Math.ceil(file.sizeBytes / 1024) + ' KB') : ''}`
 }
 
+/**
+ * A resource screen inside a native stack: the navigation bar supplies the
+ * title and back button; content scrolls under it.
+ */
 export function ResourcePage({
   theme,
-  section,
-  topInset = 0,
-  onDrawer,
+  title,
   onBack,
-  onSearch,
   children,
 }: {
   theme: Theme
-  section: string
-  topInset?: number
-  onDrawer: () => void
+  /** Navigation-bar title. Omit to keep the title the stack already set. */
+  title?: string
+  /** In-screen sub-page: replaces the system back button until the page closes. */
   onBack?: () => void
-  onSearch?: () => void
   children: React.ReactNode
 }) {
   return (
-    <View style={{ flex: 1, backgroundColor: theme.surface }}>
-      <View style={{ paddingTop: topInset, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-        <View
-          style={{
-            height: 52,
-            paddingHorizontal: 14,
-            gap: 10,
-            alignItems: 'center',
-            flexDirection: 'row',
+    <>
+      {title !== undefined || onBack ? (
+        <Stack.Screen
+          options={{
+            ...(title !== undefined ? { title } : {}),
+            headerBackVisible: !onBack,
+            gestureEnabled: !onBack,
           }}
-        >
-          <IconButton
-            icon={onBack ? ChevronLeft : PanelLeft}
-            theme={theme}
-            onPress={onBack ?? onDrawer}
-            label={onBack ? 'Back' : 'Open navigation'}
-          />
-          <T style={{ color: theme.muted, fontSize: 13 }}>Workspace</T>
-          <ChevronRight size={12} color={theme.muted} />
-          <T style={{ flex: 1, color: theme.foreground, fontSize: 13 }}>{section}</T>
-          {onSearch ? (
-            <IconButton icon={Search} label="Search workspace" theme={theme} onPress={onSearch} />
-          ) : null}
-        </View>
-      </View>
+        />
+      ) : null}
+      {onBack ? (
+        <Stack.Toolbar placement="left">
+          <Stack.Toolbar.Button icon="chevron.backward" accessibilityLabel="Back" onPress={onBack} />
+        </Stack.Toolbar>
+      ) : null}
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 22, paddingBottom: 40 }}
+        contentInsetAdjustmentBehavior="automatic"
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
       >
         {children}
       </ScrollView>
-    </View>
+    </>
   )
 }
+/**
+ * Page title. A full heading becomes the native large navigation title (no
+ * duplicate in-page heading); a compact heading stays inline for document
+ * titles that are part of the content.
+ */
 export function ResourceHeading({
   theme,
   title,
@@ -131,14 +127,22 @@ export function ResourceHeading({
   action?: React.ReactNode
   compact?: boolean
 }) {
+  if (!compact) {
+    return (
+      <>
+        <Stack.Screen options={{ title, headerLargeTitle: true }} />
+        {action ? <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>{action}</View> : null}
+      </>
+    )
+  }
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 22 }}>
       <T
         style={{
           color: theme.foreground,
           fontFamily: 'GeistMedium',
-          fontSize: compact ? 20 : 25,
-          letterSpacing: compact ? -0.5 : -0.8,
+          fontSize: 20,
+          letterSpacing: -0.5,
           flex: 1,
         }}
       >
@@ -468,15 +472,19 @@ export function FilesBrowser({
   onFolder,
   onOpen,
   onAdd,
+  query: nativeQuery,
 }: {
   theme: Theme
   files: KnowledgeFile[]
   parentId: string | null
   onFolder: (id: string | null) => void
   onOpen: (file: KnowledgeFile) => void
-  onAdd: () => void
+  onAdd?: () => void
+  /** Search text from the native navigation-bar search field. */
+  query?: string
 }) {
-  const [query, setQuery] = useState('')
+  const [inlineQuery, setQuery] = useState('')
+  const query = nativeQuery ?? inlineQuery
   const visible = files.filter((file) =>
     query.trim() ? fileMatches(file, query) : file.parentId === parentId,
   )
@@ -486,13 +494,17 @@ export function FilesBrowser({
     .sort((a, b) => b.updatedAt - a.updatedAt)
   return (
     <>
-      <ResourceHeading
-        theme={theme}
-        title={parentId ? files.find((file) => file._id === parentId)?.name || 'Folder' : 'Files'}
-        action={<IconButton theme={theme} icon={Plus} label="Add file" onPress={onAdd} />}
-      />
-      <ResourceInput theme={theme} value={query} onChange={setQuery} placeholder="Search files" />
-      {parentId ? (
+      {onAdd ? (
+        <>
+          <ResourceHeading
+            theme={theme}
+            title={parentId ? files.find((file) => file._id === parentId)?.name || 'Folder' : 'Files'}
+            action={<IconButton theme={theme} icon={Plus} label="Add file" onPress={onAdd} />}
+          />
+          <ResourceInput theme={theme} value={query} onChange={setQuery} placeholder="Search files" />
+        </>
+      ) : null}
+      {parentId && onAdd ? (
         <Button
           theme={theme}
           onPress={() => onFolder(files.find((file) => file._id === parentId)?.parentId ?? null)}
@@ -825,11 +837,10 @@ export function AutomationList({
 }) {
   return (
     <>
-      <ResourceHeading
-        theme={theme}
-        title="Automations"
-        action={<IconButton theme={theme} icon={Plus} label="New automation" onPress={onNew} />}
-      />
+      <ResourceHeading theme={theme} title="Automations" />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button icon="plus" accessibilityLabel="New automation" onPress={onNew} />
+      </Stack.Toolbar>
       {!items.length ? <ResourceState theme={theme} empty="No automations yet" /> : null}
       {[true, false].map((enabled) => (
         <View key={String(enabled)}>

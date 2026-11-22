@@ -213,7 +213,7 @@ export function SettingsView({
   const row = (label: string, icon: typeof Settings, onPress: () => void, subtitle?: string) => (
     <ResourceRow
       key={label}
-      theme={page === 'settings' ? { ...theme, foreground: theme.muted } : theme}
+      theme={theme}
       icon={icon}
       title={label}
       subtitle={subtitle}

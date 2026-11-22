@@ -16,7 +16,7 @@ export default function NativeAuthCallbackScreen(): React.ReactElement {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated && !authError) {
-      router.replace(getAccountDeletionState().busy || isAccountDeletionCallback(`overlay://auth/callback?state=${encodeURIComponent(state ?? '')}`) ? '/settings?section=account' : '/(tabs)/chat')
+      router.replace(getAccountDeletionState().busy || isAccountDeletionCallback(`overlay://auth/callback?state=${encodeURIComponent(state ?? '')}`) ? '/settings?section=account' : '/chat')
     }
   }, [authError, isAuthenticated, isLoading, router, state])
 

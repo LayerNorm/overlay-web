@@ -449,7 +449,7 @@ export function WorkspaceScreen(): React.ReactElement {
           router.push('/(tabs)/files')
           break
         case 'automation':
-          router.push('/(tabs)/automations')
+          router.push('/automations')
           break
         case 'agent':
           router.push({ pathname: '/agent/[id]', params: { id: item.id } })
@@ -832,7 +832,7 @@ export function WorkspaceScreen(): React.ReactElement {
           chats={[]}
           activeChatId={null}
           onSelectChat={(chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } })}
-          onCreateChat={() => router.push('/(tabs)/chat')}
+          onCreateChat={() => router.push('/chat')}
         />
       }
     >

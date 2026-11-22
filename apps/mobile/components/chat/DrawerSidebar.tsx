@@ -65,10 +65,10 @@ function isMobileRouteActive(
   const [pathPart, queryPart] = route.split('?')
   const segment = pathPart.replace('/(tabs)/', '')
   if (segment === 'chat') {
-    return pathname === '/chat' || pathname === '/(tabs)/chat' || (pathname === '/' && flags.isChatActive)
+    return pathname === '/chat' || pathname === '/chat' || (pathname === '/' && flags.isChatActive)
   }
   if (segment === 'notes') {
-    return pathname === '/notes' || pathname === '/(tabs)/notes' || pathname.startsWith('/note/') || flags.isNotesActive
+    return pathname === '/notes' || pathname === '/notes' || pathname.startsWith('/note/') || flags.isNotesActive
   }
   if (!pathname.includes(segment)) {
     return false
@@ -115,8 +115,8 @@ export function DrawerSidebar({
   const translateX = useMemo(() => new Animated.Value(-DRAWER_WIDTH), [])
   const scrimOpacity = useMemo(() => new Animated.Value(0), [])
 
-  const isChatActive = pathname === '/chat' || pathname.startsWith('/(tabs)/chat')
-  const isNotesActive = pathname === '/notes' || pathname.startsWith('/(tabs)/notes') || pathname.startsWith('/note/')
+  const isChatActive = pathname === '/chat' || pathname.startsWith('/chat')
+  const isNotesActive = pathname === '/notes' || pathname.startsWith('/notes') || pathname.startsWith('/note/')
 
   useEffect(() => {
     if (drawerVisible) {
@@ -372,10 +372,10 @@ function DrawerContent({
     }
     // Fallback to notes list
     if (externalNavigate) {
-      externalNavigate('/(tabs)/notes')
+      externalNavigate('/notes')
     } else {
       closeDrawer()
-      router.push('/(tabs)/notes')
+      router.push('/notes')
     }
   }, [notes, onSelectNote, externalNavigate, closeDrawer, router])
 
@@ -520,7 +520,7 @@ function DrawerContent({
               <View style={styles.recentsHeaderActions}>
                 <TouchableOpacity
                   activeOpacity={0.65}
-                  onPress={() => navigate('/(tabs)/archived')}
+                  onPress={() => navigate('/archived')}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={[styles.archivedLink, { color: theme.muted }]}>Archived</Text>
@@ -683,7 +683,7 @@ function DrawerContent({
           <GlassSurface interactive style={[styles.accountButton, { backgroundColor: theme.glassBg }]}>
             <TouchableOpacity
               style={styles.accountButtonInner}
-              onPress={() => navigate('/(tabs)/settings')}
+              onPress={() => navigate('/settings')}
               activeOpacity={0.7}
             >
               {user?.profilePictureUrl ? (

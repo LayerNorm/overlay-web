@@ -50,7 +50,7 @@ test('bundle inspection allows ordinary production proof terminology', () => {
   const bundleMap = {
     version: 3,
     file: 'index.js',
-    sources: ['../app/(tabs)/chat.tsx', '../components/chat/ChatScreen.tsx'],
+    sources: ['../app/chat/index.tsx', '../components/chat/ChatScreen.tsx'],
     sourcesContent: [
       "export const stateDescription = 'reply proof state'",
       'export function ChatScreen() { return null }',

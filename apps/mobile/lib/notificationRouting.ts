@@ -36,7 +36,7 @@ export async function openNotificationDestination(
 ): Promise<void> {
   if (!notification.conversationId || !isCurrent()) return
   if (notification.conversationState === 'archived') {
-    router.push('/(tabs)/archived')
+    router.push('/archived')
     return
   }
   if (notification.conversationState === 'deleted') return

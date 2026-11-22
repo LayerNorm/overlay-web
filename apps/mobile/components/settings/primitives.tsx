@@ -13,7 +13,7 @@ import { borderRadius, fontSize, spacing, type Theme } from '../../constants/the
 /**
  * The Settings screen's row/card primitives, shared by the section components
  * under `components/settings/`. These were lifted out of
- * `app/(tabs)/settings.tsx` unchanged — keep them visually identical.
+ * `app/settings.tsx` unchanged — keep them visually identical.
  */
 
 export function SettingsSection({

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { View, ActivityIndicator, Alert } from 'react-native'
 import { Stack, useGlobalSearchParams } from 'expo-router'
+import { useNativeHeaderOptions } from '../components/navigation/nativeHeader'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
@@ -65,6 +66,7 @@ function RootLayoutNav(): React.ReactElement {
   useVoiceAuthSync()
   useNotificationWatcher(isAuthenticated && isInitialized)
   usePushNotifications(isInitialized)
+  const nativeHeader = useNativeHeaderOptions()
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -148,11 +150,21 @@ function RootLayoutNav(): React.ReactElement {
             animation: 'slide_from_right',
           }}
         />
+        {['settings', 'automations', 'activity'].map((name) => (
+          <Stack.Screen key={name} name={name} options={{ ...nativeHeader, headerLargeTitle: true }} />
+        ))}
         <Stack.Screen
-          name="search"
+          name="account"
           options={{
-            presentation: 'card',
-            animation: 'slide_from_right',
+            ...nativeHeader,
+            title: 'Account',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [0.7, 1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
           }}
         />
         <Stack.Screen

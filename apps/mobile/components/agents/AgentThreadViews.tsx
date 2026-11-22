@@ -1176,68 +1176,56 @@ export function AgentDirectoryView({
   theme,
   dark,
   onOpen,
-  onCreate,
 }: {
   agents: AgentRecord[]
   theme: Theme
   dark: boolean
   onOpen: (agent: AgentRecord) => void
-  onCreate?: () => void
 }) {
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, gap: 8 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 16,
-        }}
-      >
-        <T style={{ fontSize: 24, fontWeight: '600', color: theme.foreground }}>
-          Agents
-        </T>
-        {onCreate ? (
-          <IconButton
-            icon={Plus}
-            label="New agent"
-            onPress={onCreate}
-            theme={theme}
-          />
-        ) : null}
-      </View>
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      style={{ backgroundColor: theme.background }}
+      contentContainerStyle={{ paddingTop: 8, paddingBottom: 24 }}
+    >
       {!agents.length ? (
-        <T style={{ color: theme.muted }}>No agents in this workspace.</T>
+        <T style={{ color: theme.muted, textAlign: 'center', padding: 48 }}>
+          No agents in this workspace.
+        </T>
       ) : (
-        agents.map((agent) => (
-          <Pressable
-            key={agent.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${agent.name}`}
-            onPress={() => onOpen(agent)}
-            style={{
-              paddingVertical: 14,
-              flexDirection: 'row',
-              gap: 12,
-              alignItems: 'center',
-            }}
-          >
-            <AgentAvatar
-              agent={agent}
-              dark={dark}
-              foreground={theme.foreground}
-              size={30}
-            />
-            <View style={{ flex: 1, gap: 4 }}>
-              <T style={{ color: theme.foreground, fontWeight: '500' }}>
-                {agent.name}
-              </T>
-              <T style={{ color: theme.muted, fontSize: 12 }}>
-                {agent.description}
-              </T>
-            </View>
-            <ChevronRight size={14} color={theme.muted} />
-          </Pressable>
+        agents.map((agent, index) => (
+          <View key={agent.id}>
+            {index ? (
+              <View style={{ height: 0.5, marginLeft: 70, backgroundColor: theme.border }} />
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${agent.name}`}
+              onPress={() => onOpen(agent)}
+              style={({ pressed }) => ({
+                minHeight: 68,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                gap: 14,
+                alignItems: 'center',
+                backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
+              })}
+            >
+              <AgentAvatar agent={agent} dark={dark} foreground={theme.foreground} size={40} />
+              <View style={{ flex: 1, gap: 3 }}>
+                <T numberOfLines={1} style={{ color: theme.foreground, fontSize: 16, fontWeight: '500' }}>
+                  {agent.name}
+                </T>
+                {agent.description ? (
+                  <T numberOfLines={2} style={{ color: theme.muted, fontSize: 13, lineHeight: 18 }}>
+                    {agent.description}
+                  </T>
+                ) : null}
+              </View>
+              <ChevronRight size={16} strokeWidth={2} color={theme.mutedLight} />
+            </Pressable>
+          </View>
         ))
       )}
     </ScrollView>
