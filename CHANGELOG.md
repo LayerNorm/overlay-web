@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a proposed plan for bringing Overlay back to Slack on Vercel's Chat SDK (`internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`). Only the Workspace Overlay is installed. The plan sets who may use it (linked members by default, owner-selectable modes for everyone else), an access rule that limits each answer to what the requester and the channel may see, and how it chooses between itself, workspace agents and the requester's personal agent. It restores the Chat SDK pieces removed in #582 instead of rebuilding them. Planning only; no behavior changes.
 - Add an Overlay comparison hub with Devin, OpenHands and Lindy comparisons, a Devin alternatives roundup, and a guide to running AI employees. Link the pages from the marketing footer, publish canonical comparison, documentation and REST API reference URLs in the sitemap, and expand the structured data and LLM text guides so search and answer engines can discover them.
 
 - Keep Work inside the composer's width. The List, Board, Timeline and Organization views now sit in the same centered column as the task composer, like a chat transcript, instead of running edge to edge, and List and Timeline rows lose their divider lines (nowhere else in the app uses them). The approved mockup is `internal/plans/mockups/work-list-width.html`.
