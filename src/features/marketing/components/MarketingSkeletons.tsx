@@ -9,8 +9,9 @@ import { StaticMarketingShell } from './StaticMarketingShell'
 
 const STRUT = '\u200b'
 
-function Line({ bar }: { bar: string }) {
-  return <span className="flex items-center">{STRUT}<span className={`ui-skeleton-line inline-block rounded-md ${bar}`} aria-hidden /></span>
+/** One full-width line of text; the bar's percentage width is of the line, so the line must span its block. */
+function Line({ bar, center = false }: { bar: string; center?: boolean }) {
+  return <span className={`flex w-full items-center ${center ? 'justify-center' : ''}`}>{STRUT}<span className={`ui-skeleton-line block rounded-md ${bar}`} aria-hidden /></span>
 }
 
 /** The home page's centred hero. */
@@ -19,9 +20,9 @@ export function MarketingHomeSkeleton() {
     <StaticMarketingShell>
       <section className="hero" role="status" aria-label="Loading">
         <div className="flex flex-col items-center" aria-hidden>
-          <p className="backed"><Line bar="h-4 w-36" /></p>
-          <div className="h1 flex w-full flex-col items-center"><Line bar="h-11 w-[min(100%,640px)]" /><Line bar="h-11 w-[min(80%,520px)]" /></div>
-          <div className="lead flex w-full flex-col items-center"><Line bar="h-3.5 w-full" /><Line bar="h-3.5 w-3/4" /></div>
+          <p className="backed"><Line bar="h-4 w-36" center /></p>
+          <div className="h1 w-full"><Line bar="h-11 w-[min(100%,640px)]" center /><Line bar="h-11 w-[min(80%,520px)]" center /></div>
+          <div className="lead w-full"><Line bar="h-3.5 w-full" center /><Line bar="h-3.5 w-3/4" center /></div>
           <div className="actions"><span className="ui-skeleton-line block h-10 w-32 rounded-full" /><span className="ui-skeleton-line block h-10 w-36 rounded-full" /></div>
         </div>
       </section>

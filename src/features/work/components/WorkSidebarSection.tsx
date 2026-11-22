@@ -65,11 +65,13 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
     )))
   }, [data, resolved, userId])
   const live = useLiveAssignments(listView)
+  const signedOut = useWorkSignedOut()
   const assignments = useMemo(() => sidebarAssignments(live.results, resolved), [live.results, resolved])
   const listClassName = 'ml-0 border-l-0 pl-0'
 
-  // Wait for assignments too, or a section flashes its empty label before its assignment rows arrive.
-  if (!data || live.status === 'LoadingFirstPage') {
+  // Wait for assignments too, or a section flashes its empty label before its assignment rows arrive. Signed out, the
+  // assignment query never runs (it still reports LoadingFirstPage), so there is nothing to wait for.
+  if (!data || (live.status === 'LoadingFirstPage' && !signedOut)) {
     return (
       <SidebarMenuSub className={listClassName}>
         <SidebarRowItemsSkeleton rows={3} icon="round" iconSize={14} />

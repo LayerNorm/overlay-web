@@ -261,7 +261,8 @@ function useChatListData({
   const enabled = Boolean(!nativePersonalView && kind && workspaceId && user && !authLoading && isAuthenticated && !isLoading)
   const { visible, loadingMore, loadMoreChats } = useRoomListPage({ enabled, workspaceId, kind })
   // Until Convex auth and the workspace are ready the list is still loading, so "No channels yet" never flashes first.
-  const waiting = !nativePersonalView && (authLoading || (Boolean(kind) && (isLoading || !workspaceId)))
+  // A signed-out visitor has no workspace to wait for and sees the empty label.
+  const waiting = !nativePersonalView && (authLoading || (Boolean(kind) && Boolean(user) && (isLoading || !workspaceId)))
   const [chats, setChats] = useState<Conversation[]>(() => [])
   const [loading, setLoading] = useState(true)
   const [syncedFrom, setSyncedFrom] = useState<{ rooms: Conversation[] | null; enabled: boolean; waiting: boolean } | null>(null)
