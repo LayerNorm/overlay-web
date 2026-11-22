@@ -4,13 +4,14 @@ import {
   ActivityIndicator,
   Animated,
   Linking,
-  ScrollView,
   View,
 } from 'react-native'
 import { ExternalLink, WifiOff } from 'lucide-react-native'
 import type { Theme } from '../../constants/theme'
 import { BrandWordmark, OverlayMark } from './Brand'
 import { Button, T } from './primitives'
+import { CreatureField } from '../creatures/CreatureField'
+import { PillButton } from '../creatures/PillButton'
 
 export function BootScreen({ theme, animate = true }: { theme: Theme; animate?: boolean }) {
   const [brand] = useState(() => new Animated.Value(animate ? 0 : 1))
@@ -91,30 +92,29 @@ export function SignInScreen({
   onSignIn: () => void
 }) {
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.sidebarSurface }}
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 28, gap: 24 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      <BrandWordmark size={32} color={theme.foreground} />
-      <View style={{ gap: 8 }}>
-        <T style={{ color: theme.foreground, fontSize: 24, letterSpacing: -0.7 }}>Welcome back</T>
-        <T style={{ color: theme.muted }}>Sign in to your workspace.</T>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <CreatureField />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 18, paddingHorizontal: 32 }}>
+        <BrandWordmark size={44} color={theme.foreground} />
+        <T style={{ color: theme.muted, fontSize: 18, textAlign: 'center' }}>Your AI Chief of Staff.</T>
       </View>
-      <View style={{ gap: 16 }}>
-        <Button theme={theme} secondary disabled={busy} onPress={onSignIn}>
-          {busy ? 'Opening sign in…' : 'Continue to sign in'}
-        </Button>
-        <T style={{ color: theme.muted, fontSize: 12, textAlign: 'center', lineHeight: 20 }}>
-          Continue securely in your browser with email, Google, Apple or SSO.
+      <View style={{ paddingHorizontal: 24, paddingBottom: 12, gap: 14 }}>
+        <PillButton
+          label={busy ? 'Opening sign in…' : 'Continue'}
+          busy={busy}
+          onPress={onSignIn}
+          accessibilityLabel="Continue to sign in"
+        />
+        <T style={{ color: theme.muted, fontSize: 12, textAlign: 'center', lineHeight: 18 }}>
+          Sign in securely with email, Google, Apple or SSO.
         </T>
+        {error ? (
+          <T accessibilityRole="alert" style={{ color: theme.foreground, fontSize: 13, textAlign: 'center' }}>
+            {error}
+          </T>
+        ) : null}
       </View>
-      {error ? (
-        <T accessibilityRole="alert" style={{ color: theme.foreground, fontSize: 13 }}>
-          {error}
-        </T>
-      ) : null}
-    </ScrollView>
+    </View>
   )
 }
 

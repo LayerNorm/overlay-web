@@ -91,13 +91,28 @@ export function ConversationHeader({
               accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
               disabled={!onPressTitle}
               onPress={onPressTitle}
-              style={{ maxWidth: titleWidth, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              style={({ pressed }) => ({
+                maxWidth: titleWidth,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                // With an avatar the identity sits in a tappable capsule.
+                ...(avatar
+                  ? {
+                      paddingLeft: 6,
+                      paddingRight: 14,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: pressed ? theme.surfaceMuted : theme.surfaceSubtle,
+                    }
+                  : {}),
+              })}
             >
               {avatar}
               <View style={{ flexShrink: 1, alignItems: avatar ? 'flex-start' : 'center' }}>
                 <Text
                   numberOfLines={1}
-                  style={{ fontFamily: 'GeistSemibold', fontSize: 15, color: theme.foreground }}
+                  style={{ fontFamily: 'GeistSemibold', fontSize: avatar ? 16 : 15, color: theme.foreground }}
                 >
                   {title}
                 </Text>

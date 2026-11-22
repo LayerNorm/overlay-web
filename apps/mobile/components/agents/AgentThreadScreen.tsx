@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Alert, Linking, Modal, View } from 'react-native'
+import { Alert, Linking, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
@@ -34,7 +34,6 @@ import {
   type RoomMessageRecord,
 } from '../../lib/roomMessages'
 import {
-  AgentDetailsView,
   AgentDirectoryView,
   AgentThreadView,
   type AgentActions,
@@ -43,6 +42,7 @@ import { RoomScreen } from '../chat/RoomScreen'
 import { T, Button } from '../shell/primitives'
 import { ConversationHeader, TabToolbar } from '../navigation/nativeHeader'
 import { AgentAvatar } from '../shell/AgentAvatar'
+import { AgentProfileSheet } from './AgentProfileSheet'
 
 function AgentState({ text, retry }: { text: string; retry?: () => void }) {
   const { theme } = useTheme()
@@ -463,55 +463,53 @@ function ConnectedAgentThread({
             : undefined
         }
       />
-      <Modal
-        transparent
+      <AgentProfileSheet
         visible={details}
-        animationType="slide"
-        onRequestClose={() => setDetails(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'flex-end',
-            backgroundColor: theme.scrim,
-          }}
-        >
-          <AgentDetailsView
-            agent={agent}
-            computerError={computers === null}
-            files={files}
-            onFile={(file) => {
-              setDetails(false)
-              router.push(
-                (file.kind === 'note'
-                  ? `/note/${file._id}`
-                  : file.kind === 'output'
-                    ? `/(tabs)/files/output/${file._id}`
-                    : `/(tabs)/files/file/${file._id}`) as never,
-              )
-            }}
-            computer={
-              computers?.find(
-                (computer) =>
-                  computer.ownerType === 'agent' &&
-                  computer.ownerId === agent.id,
-              ) ?? (computers === undefined ? undefined : null)
-            }
-            theme={theme}
-            dark={isDark}
-            onClose={() => setDetails(false)}
-            onEdit={() => {
-              setDetails(false)
-              router.push(`/agent/${agentId}` as never)
-            }}
-            onWeb={() => {
-              void Linking.openURL(
-                `${AUTH_BASE_URL}/app/agents?agent=${encodeURIComponent(agentId)}&id=${encodeURIComponent(conversationId)}`,
-              ).catch(() => setError('Unable to open web.'))
-            }}
-          />
-        </View>
-      </Modal>
+        agent={agent}
+        computerError={computers === null}
+        computer={
+          computers?.find(
+            (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
+          ) ?? (computers === undefined ? undefined : null)
+        }
+        files={files}
+        archived={Boolean(thread?.archivedAt)}
+        onClose={() => setDetails(false)}
+        onFile={(file) => {
+          setDetails(false)
+          router.push(
+            (file.kind === 'note'
+              ? `/note/${file._id}`
+              : file.kind === 'output'
+                ? `/(tabs)/files/output/${file._id}`
+                : `/(tabs)/files/file/${file._id}`) as never,
+          )
+        }}
+        onEdit={() => {
+          setDetails(false)
+          router.push(`/agent/${agentId}` as never)
+        }}
+        onWeb={() => {
+          void Linking.openURL(
+            `${AUTH_BASE_URL}/app/agents?agent=${encodeURIComponent(agentId)}&id=${encodeURIComponent(conversationId)}`,
+          ).catch(() => setError('Unable to open web.'))
+        }}
+        onNewThread={() => {
+          setDetails(false)
+          void command(async () => {
+            const result = await openAgentThread(workspaceId, agentId, true)
+            if (result && getRequestWorkspaceId() === workspaceId)
+              router.replace(`/dm/${result.conversationId}` as never)
+          })
+        }}
+        onArchive={() => {
+          setDetails(false)
+          void command(
+            () => archiveAgentThread(workspaceId, agentId, conversationId, !thread?.archivedAt),
+            !thread?.archivedAt,
+          )
+        }}
+      />
     </View>
   )
 }
@@ -586,7 +584,7 @@ function ConnectedAgentDirectory({
     <>
       <TabToolbar>
         {canCreate ? (
-          <Stack.Toolbar.Button icon="plus" accessibilityLabel="New agent" onPress={() => router.push('/agent/new')} />
+          <Stack.Toolbar.Button icon="plus" accessibilityLabel="New agent" onPress={() => router.push('/agent-create')} />
         ) : null}
       </TabToolbar>
       <AgentDirectoryView

@@ -35,7 +35,7 @@ export default function AccountSheet(): React.ReactElement {
         onPress: () => {
           void signOut()
             .then(() => {
-              router.dismissAll()
+              if (router.canDismiss()) router.dismiss()
               router.replace('/auth-flow')
             })
             .catch(() => Alert.alert('Unable to sign out', 'Please try again.'))
@@ -89,6 +89,7 @@ export default function AccountSheet(): React.ReactElement {
           </Section>
           <Section>
             <Button onPress={() => go('/settings')} systemImage="gearshape" label="Settings" />
+            <Button onPress={() => go('/onboarding')} systemImage="sparkles" label="See the intro" />
           </Section>
           <Section>
             <Button role="destructive" onPress={confirmSignOut} label="Sign Out" />

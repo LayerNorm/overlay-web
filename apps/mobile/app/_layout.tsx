@@ -161,6 +161,20 @@ function RootLayoutNav(): React.ReactElement {
         ))}
         <Stack.Screen name="chat/index" options={{ ...conversationHeader, title: '' }} />
         <Stack.Screen
+          name="agent-create"
+          options={{
+            ...nativeHeader,
+            title: 'New Agent',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
           name="account"
           options={{
             ...nativeHeader,

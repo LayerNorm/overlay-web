@@ -853,9 +853,15 @@ export function AgentThreadView({
           </Button>
         ) : null}
         {!messages.length ? (
-          <T style={{ color: theme.muted, paddingVertical: 30 }}>
-            Start a conversation with {agent.name}.
-          </T>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingVertical: 40 }}>
+            <AgentAvatar agent={agent} dark={dark} foreground={theme.foreground} size={96} working reducedMotion={reducedMotion} />
+            <T style={{ color: theme.foreground, fontSize: 22, fontFamily: 'GeistMedium', letterSpacing: -0.4 }}>
+              {agent.name}
+            </T>
+            <T style={{ color: theme.muted, fontSize: 15, textAlign: 'center' }}>
+              Hand me a task to get started.
+            </T>
+          </View>
         ) : null}
         {messages
           .filter((message) => !message.deletedAt)

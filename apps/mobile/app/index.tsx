@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router'
 import { useAuth } from '../contexts/AuthContext'
 import { loadMobilePreferences, type StartDestination } from '../services/mobilePreferencesService'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { needsOnboarding } from '../services/onboardingService'
 
 function destinationPath(
   destination: StartDestination,
@@ -30,12 +31,15 @@ export default function AppEntryScreen(): React.ReactElement | null {
 
     if (workspaceLoading || error || !workspaces.length) return
     let cancelled = false
-    void loadMobilePreferences().then((preferences) => {
-      if (!cancelled) {
-        router.replace(destinationPath(preferences.startDestination))
-        // Voice is a full-screen tool, not a tab: open it above Chats.
-        if (preferences.startDestination === 'voice') router.push('/voice')
+    void Promise.all([loadMobilePreferences(), needsOnboarding(user.id)]).then(([preferences, onboard]) => {
+      if (cancelled) return
+      if (onboard) {
+        router.replace('/onboarding')
+        return
       }
+      router.replace(destinationPath(preferences.startDestination))
+      // Voice is a full-screen tool, not a tab: open it above Chats.
+      if (preferences.startDestination === 'voice') router.push('/voice')
     })
     return () => {
       cancelled = true
