@@ -1,4 +1,5 @@
 import { logger } from '@/server/observability/logger'
+import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import {
@@ -56,11 +57,18 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const serverSecret = getInternalApiSecret()
     const browserSession = await getOverlaySession(request)
     const serverContext = getOverlayServerContext()
+    // A workspace whose billing wallet is not set up yet still opens; it just
+    // has no entitlements, as the subscription and model-catalog routes do.
     const billingPayer = await serverContext.billingPayerResolver.resolve({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
+    }).catch((error: unknown) => {
+      if (error instanceof BillingPayerResolutionError && error.code === 'workspace_wallet_not_configured') return null
+      throw error
     })
-    const entitlementsPromise: Promise<Entitlements | null> = billingPayer.scope === 'workspace'
+    const entitlementsPromise: Promise<Entitlements | null> = billingPayer === null
+      ? Promise.resolve(null)
+      : billingPayer.scope === 'workspace'
       ? Promise.all([
           serverContext.appData.repositories.billing.getBillingAccountEntitlementsByServer({
             billingAccountId: billingPayer.billingAccountId,

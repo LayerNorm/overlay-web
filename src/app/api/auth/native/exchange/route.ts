@@ -8,6 +8,7 @@ import {
   isValidPkceVerifier,
 } from '@/server/auth/native-auth-validation'
 import { requireOverlayCapability } from '@/server/capabilities'
+import { ensureNativeMemberRole } from '@/server/authorization/ensure-native-member-role'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     const session = await authenticateNativeWithCode(code, codeVerifier)
 
     await getOverlayServerContext().userService.upsertFromSession(session)
+    await ensureNativeMemberRole(session.user?.id)
 
     return NextResponse.json({ success: true, session }, { headers: NO_STORE_HEADERS })
   } catch (error) {

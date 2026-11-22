@@ -4,6 +4,7 @@ import { refreshSessionFromRefreshTokenResult } from '@/server/auth/actions'
 import { enforceRateLimits, getClientIp } from '@/server/security/rate-limit'
 import { getNativeRefreshTokenBucketKey } from '@/server/auth/native-refresh-rate-limit'
 import { requireOverlayCapability } from '@/server/capabilities'
+import { ensureNativeMemberRole } from '@/server/authorization/ensure-native-member-role'
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
@@ -73,6 +74,8 @@ export async function POST(request: NextRequest) {
         { status: 501, headers: NO_STORE_HEADERS }
       )
     }
+
+    await ensureNativeMemberRole(refreshResult.session.user?.id)
 
     return NextResponse.json({
       success: true,
