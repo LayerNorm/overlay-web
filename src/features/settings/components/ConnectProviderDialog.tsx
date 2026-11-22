@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { KeyRound, Loader2 } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
@@ -16,7 +16,7 @@ import {
   SubscriptionScopeSelector,
 } from './SubscriptionDialogPanels'
 import { useSubscriptionConnection } from './use-subscription-connection'
-import { OPENCODE_SUBSCRIPTION_ID, OPENCODE_SUBSCRIPTION_OPTION, OpenCodeKeyPanel, useOpenCodeConnection } from './OpenCodeSubscriptionPanel'
+import { OPENCODE_SUBSCRIPTION_ID, OPENCODE_SUBSCRIPTION_OPTION, OpenCodeFooter, OpenCodeKeyPanel, useOpenCodeConnection } from './OpenCodeSubscriptionPanel'
 
 const EXTRA_SUBSCRIPTION_PROVIDERS = [OPENCODE_SUBSCRIPTION_OPTION]
 
@@ -49,19 +49,13 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
     if (!authorization?.userCode) return
     void navigator.clipboard.writeText(authorization.userCode).then(() => setCopied(true), () => setCopied(false))
   }
-  const connectedName = isOpenCode ? openCode.connected?.displayName : flow.connected?.displayName
-  const connectedModelCount = (isOpenCode ? openCode.connected : flow.connected)?.enabledModelIds.length ?? 0
-  const error = isOpenCode ? openCode.error : flow.error
-  const title = connectedName ? `${connectedName} connected` : authorization ? `Connect ${selected?.label ?? connection?.displayName ?? 'provider'}` : connection ? `Reconnect ${connection.displayName}` : 'Add provider'
+  const { connectedName, connectedModelCount, error, title, showTabs } = subscriptionDialogView({ flow, openCode, isOpenCode, selectedLabel: selected?.label, connection })
   return <DialogFrame
     open
     title={title}
     className="w-[min(480px,92vw)] max-h-[calc(100dvh-2rem)] overflow-y-auto"
     onOpenChange={(open) => { if (!open) flow.close() }}
-    footer={isOpenCode ? <div className="flex justify-end gap-2">
-      <Button variant="ghost" disabled={openCode.busy} onClick={flow.close}>{openCode.connected ? 'Done' : 'Cancel'}</Button>
-      {!openCode.connected ? <Button variant="primary" disabled={!openCode.canConnect} onClick={() => { void openCode.connect() }}>{openCode.busy ? <Loader2 size={14} className="animate-spin" /> : null}Connect</Button> : null}
-    </div> : <SubscriptionFooter
+    footer={isOpenCode ? <OpenCodeFooter openCode={openCode} onClose={flow.close} /> : <SubscriptionFooter
       flow={flow}
       selected={selected}
       onClose={flow.close}
@@ -70,7 +64,7 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
     />}
   >
     <div className="mt-4 space-y-4">
-      {!authorization && !flow.busy && !flow.selectionLocked && !openCode.busy && !openCode.connected ? tabs : null}
+      {showTabs ? tabs : null}
       {connectedName ? <ConnectedStatePanel modelCount={connectedModelCount} /> : authorization
         ? <AuthorizationPanel
           flow={flow}
@@ -98,4 +92,28 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
       <SubscriptionPrivacyNote />
     </div>
   </DialogFrame>
+}
+
+function subscriptionDialogView({ flow, openCode, isOpenCode, selectedLabel, connection }: {
+  flow: ReturnType<typeof useSubscriptionConnection>
+  openCode: ReturnType<typeof useOpenCodeConnection>
+  isOpenCode: boolean
+  selectedLabel?: string
+  connection?: ByokConnectionRow
+}) {
+  const connected = isOpenCode ? openCode.connected : flow.connected
+  const authorization = flow.login?.authorization
+  const title = connected
+    ? `${connected.displayName} connected`
+    : authorization
+      ? `Connect ${selectedLabel ?? connection?.displayName ?? 'provider'}`
+      : connection ? `Reconnect ${connection.displayName}` : 'Add provider'
+  const idle = !authorization && !flow.busy && !flow.selectionLocked && !openCode.busy && !openCode.connected
+  return {
+    connectedName: connected?.displayName,
+    connectedModelCount: connected?.enabledModelIds.length ?? 0,
+    error: isOpenCode ? openCode.error : flow.error,
+    title,
+    showTabs: idle,
+  }
 }

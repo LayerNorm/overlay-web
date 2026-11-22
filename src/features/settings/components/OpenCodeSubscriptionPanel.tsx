@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, Loader2 } from 'lucide-react'
 import { Button, Input } from '@overlay/ui/primitives'
 import { getByokPreset } from '@overlay/llm-gateway'
 
@@ -122,5 +122,12 @@ export function OpenCodeKeyPanel({ openCode }: { openCode: ReturnType<typeof use
         onKeyDown={(event) => { if (event.key === 'Enter') void openCode.connect() }}
       />
     </div>
+  </div>
+}
+
+export function OpenCodeFooter({ openCode, onClose }: { openCode: ReturnType<typeof useOpenCodeConnection>; onClose(): void }) {
+  return <div className="flex justify-end gap-2">
+    <Button variant="ghost" disabled={openCode.busy} onClick={onClose}>{openCode.connected ? 'Done' : 'Cancel'}</Button>
+    {!openCode.connected ? <Button variant="primary" disabled={!openCode.canConnect} onClick={() => { void openCode.connect() }}>{openCode.busy ? <Loader2 size={14} className="animate-spin" /> : null}Connect</Button> : null}
   </div>
 }
