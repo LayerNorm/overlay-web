@@ -79,7 +79,7 @@ export function isBffSessionSatisfied(
   authType: AuthenticatedAppUser['authType'],
   requireSession: boolean | undefined,
 ): boolean {
-  return !requireSession || authType === 'session'
+  return !requireSession || authType === 'session' || authType === 'access-token'
 }
 
 export type AccountBffDomainService = (
