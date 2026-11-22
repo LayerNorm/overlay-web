@@ -39,6 +39,7 @@ test('Ask requires approval for command starts and Executor actions that are ris
     ['computer_exec', { command: 'ls' }, {}, true],
     ['computer_publish_file', { sourcePath: '/tmp/video.mp4' }, {}, false],
     ['computer_terminal', { action: 'start', command: 'ls' }, {}, true],
+    ['computer_terminal', { action: 'write', id: 't-000000000000', data: 'y' }, {}, true],
     ['computer_terminal', { action: 'read', id: 't-000000000000' }, {}, false],
     ['computer_terminal', { action: 'list' }, {}, false],
     ['computer_terminal', { action: 'cancel', id: 't-000000000000' }, {}, false],

@@ -1,7 +1,7 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 
-export const DRIVER_VERSION = '11'
+export const DRIVER_VERSION = '12'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -404,6 +404,10 @@ def dispatch(request):
         return terminal_start(request)
     if command == "terminal_read":
         return terminal_read(request)
+    if command == "terminal_write":
+        return terminal_write(request)
+    if command == "terminal_pty_host":
+        return terminal_pty_host(request)
     if command == "terminal_cancel":
         return terminal_cancel(request)
     if command == "terminal_list":
