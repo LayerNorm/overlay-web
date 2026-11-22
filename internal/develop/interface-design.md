@@ -401,6 +401,13 @@ larger tap target, and its on/off state reads at a glance in both themes.
 
 ## One control per row
 
+Confirmation dialogs use native button activation: Enter and Space activate the
+focused Cancel or confirmation button. Do not install a global Enter-to-confirm
+shortcut. Escape cancels through Radix unless the dialog is busy; busy buttons
+remain disabled.
+Run `node scripts/qa/confirm-dialog-keyboard.mjs` for browser checks of Enter,
+Space, Escape and busy states (set `PLAYWRIGHT_CHANNEL=chrome` to use installed Chrome).
+
 Selection surfaces stack full-width rows — never side-by-side card grids.
 Agent type, harness, environment, and access pickers are stacked radio rows
 (`OptionRow` in the agent editor); tool grants are stacked toggle rows.
