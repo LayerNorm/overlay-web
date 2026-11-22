@@ -27,7 +27,6 @@ export function AgentEditorSkeleton() {
     <div className="mx-auto w-full max-w-2xl" role="status" aria-label="Loading agent">
       <div className="mt-5 space-y-5" aria-hidden>
         <div className="space-y-3.5">
-          {/* `.ui-skeleton-line` sets its radius outside Tailwind's layers, so the avatar's needs `!`. */}
           <div className="ui-skeleton-line mx-auto size-[72px] rounded-full" />
           <FieldSkeleton label="Name" />
           <FieldSkeleton label="Description" className="h-16 rounded-lg" />

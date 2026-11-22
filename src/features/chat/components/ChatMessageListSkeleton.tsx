@@ -2,8 +2,7 @@
 export function ChatMessageListSkeleton() {
   return (
     <div className="min-h-full space-y-2" aria-hidden>
-      {/* `.ui-skeleton-line` sets its radius outside Tailwind's layers, so the bubble radius needs `!`. */}
-      <div className="ui-skeleton-line ml-auto h-10 w-[min(60%,18rem)] rounded-[18px]!" />
+      <div className="ui-skeleton-line ml-auto h-10 w-[min(60%,18rem)] rounded-[18px]" />
       <div className="space-y-2.5 pt-2">
         <div className="ui-skeleton-line h-3 w-[min(72%,34rem)]" />
         <div className="ui-skeleton-line h-3 w-[min(88%,42rem)]" />

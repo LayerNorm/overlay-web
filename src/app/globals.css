@@ -381,7 +381,6 @@ html {
     overflow: hidden;
     border-radius: 0.375rem;
     background-color: var(--surface-muted);
-    min-height: 0.625rem;
   }
 
   .ui-skeleton-line::after {

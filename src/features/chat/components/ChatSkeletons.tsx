@@ -7,8 +7,6 @@ import { SegmentedControl } from '@overlay/ui/primitives'
 import { RouteSkeletonHeader, SkeletonBlock } from '@/app/app/_components/AppRouteSkeletons'
 import { ChatMessageListPlaceholder } from './ChatMessageListSkeleton'
 
-// `.ui-skeleton-line` sets its own radius outside Tailwind's layers, so other radii need `!`.
-
 /** ChatExperienceHeader's padding, so the title starts where the loaded one does. */
 const CHAT_HEADER_CLASS = 'md:px-4'
 
@@ -73,7 +71,7 @@ export function RoomMessageRowsSkeleton() {
     <>
       <ReceivedRowSkeleton lines={['w-[72%]', 'w-[44%]']} />
       <div className="flex justify-end py-1">
-        <div className="ui-skeleton-line h-10 w-[min(60%,18rem)] rounded-[18px]!" />
+        <div className="ui-skeleton-line h-10 w-[min(60%,18rem)] rounded-[18px]" />
       </div>
       <ReceivedRowSkeleton lines={['w-[84%]', 'w-[66%]', 'w-[32%]']} />
     </>
