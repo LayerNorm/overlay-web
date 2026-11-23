@@ -82,7 +82,6 @@ import { ChatHeader } from './ChatViews'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { EmptyState } from '../ui/AppChrome'
 import { FeatureGate } from '../ui/FeatureGate'
-import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 
 const PRESENCE_HEARTBEAT_MS = 25_000
 const TYPING_THROTTLE_MS = 2_500
@@ -195,7 +194,6 @@ export function RoomScreen({
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [pinsOpen, setPinsOpen] = useState(false)
   const [savedOpen, setSavedOpen] = useState(false)
-  const [addPeopleOpen, setAddPeopleOpen] = useState(false)
   const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
   const [muted, setMuted] = useState(false)
 
@@ -1099,28 +1097,13 @@ export function RoomScreen({
             removable: !isSelf && canManageParticipants,
           }
         })}
-        onAdd={canManageParticipants ? () => { setParticipantsOpen(false); setAddPeopleOpen(true) } : undefined}
+        onAdd={canManageParticipants ? () => {
+          setParticipantsOpen(false)
+          router.push({ pathname: '/new-message', params: { add: conversationId, type: conversationType, exclude: activeParticipants.map((participant) => participant.principalId).join(',') } })
+        } : undefined}
         onRemove={handleRemoveParticipant}
       />
 
-      {/* Add people — principal search, add-participants mode */}
-      <NewDirectMessageSheet
-        visible={addPeopleOpen}
-        workspaceId={activeWorkspaceId ?? ''}
-        theme={theme}
-        addToConversationId={conversationId}
-        addToConversationType={conversationType}
-        excludedPrincipalIds={activeParticipants.map((participant) => participant.principalId)}
-        onClose={() => setAddPeopleOpen(false)}
-        onCreated={(dm) => {
-          setAddPeopleOpen(false)
-          router.push({ pathname: '/dm/[id]', params: { id: dm.id } })
-        }}
-        onParticipantsAdded={() => {
-          setAddPeopleOpen(false)
-          void loadAll('poll')
-        }}
-      />
 
       <RoomMessagesSheet
         kind="pinned"

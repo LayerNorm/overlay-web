@@ -190,6 +190,34 @@ function RootLayoutNav(): React.ReactElement {
           }}
         />
         <Stack.Screen
+          name="new-message"
+          options={{
+            ...nativeHeader,
+            title: 'New message',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [0.7, 1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
+          name="new-channel"
+          options={{
+            ...nativeHeader,
+            title: 'New channel',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [0.7, 1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
           name="account"
           options={{
             ...nativeHeader,

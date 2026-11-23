@@ -29,7 +29,8 @@ Severity:
 - No in-chat history switcher (`ChatHistorySheet` is dead code).
 - Opening a chat shows a full-screen "Loading conversation…" spinner even when a cached copy exists. Sending a first message replaces the screen with that spinner instead of showing the message straight away.
 - Room message actions are a native context menu with 8 reactions (2026-11-23), but there is no free emoji picker and no reaction row above the message.
-- Creating a channel leaves you on the Chats list instead of opening the new channel.
+- Fixed 2026-11-23: creating a channel or DM opens it.
+- Archived listed only personal chats; archived channels and DMs had no way back on mobile (fixed 2026-11-23).
 - Work activity reads "You assigned this to themselves." for self-assignment (shared `describeEvent` wording).
 - Work has no drag to reorder; moving within a column is limited to top or bottom.
 - Archive "for everyone" and per-room notification preferences throw "not available on mobile".

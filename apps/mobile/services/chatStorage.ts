@@ -109,8 +109,22 @@ export function subscribeChats(view: ChatListView, onValue: (chats: ChatMeta[]) 
   return () => stops.forEach(stop => stop())
 }
 
+/** Archived personal chats plus archived channels and DMs (archiving is per person), newest first. */
 export async function loadArchivedChats(): Promise<ChatMeta[]> {
-  return (await queryAllPages(api.chat.personal.list, { workspaceId: convexWorkspaceId(), archived: true })).map(mapNativeSummary)
+  const workspaceId = convexWorkspaceId()
+  const [personal, rooms] = await Promise.all([
+    queryAllPages(api.chat.personal.list, { workspaceId, archived: true }),
+    queryConvex(api.collaboration.archive.rooms, { workspaceId }),
+  ])
+  const roomRows: ChatMeta[] = (rooms ?? []).map((room) => ({
+    id: room._id,
+    title: room.title,
+    createdAt: room.archivedAt ?? 0,
+    updatedAt: room.archivedAt ?? 0,
+    conversationType: room.conversationType,
+    archivedAt: room.archivedAt,
+  }))
+  return [...personal.map(mapNativeSummary), ...roomRows].sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
 }
 export async function setPersonalChatRead(id: string, unread = false, throughMessageId?: string, workspaceId?: string, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return

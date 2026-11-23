@@ -29,7 +29,7 @@ Status key:
 | --- | --- | --- | --- | --- |
 | [ ] | Work | `app/(tabs)/work/index.tsx`, `components/work/WorkScreen.tsx`, `WorkViews.tsx` | Partial | <ul><li>Native header, toolbar menu and segmented control are fine.</li><li>Touch and hold a task row or board card for a native context menu: Move to (column), Move to top or bottom, Schedule (2026-11-23).</li><li>Open: no drag to reorder; unassigned tasks show an empty grey avatar circle; the board's empty state sits below the columns.</li></ul> |
 | [ ] | Agents | `app/(tabs)/agents/index.tsx`, `components/agents/AgentDirectory.tsx` | Native | Add a long-press context menu (Open, Edit, Archive). |
-| [ ] | Chats | `app/(tabs)/chats/index.tsx`, `components/chat/ChatsScreen.tsx`, `components/shell/SidebarView.tsx` | Partial | <ul><li>Scrolled rows slide under the title with no blur.</li><li>The shortcut cards keep a half-scrolled position.</li><li>Section collapse uses custom toggles.</li><li>No swipe, long-press or search.</li><li>The list is not virtualised.</li></ul> |
+| [ ] | Chats | `app/(tabs)/chats/index.tsx`, `components/chat/ChatsScreen.tsx`, `ChatRowMenu.tsx` | Partial | <ul><li>Touch and hold a row for a native context menu (2026-11-23): personal chats Rename (native prompt), Archive, Delete (confirmation); channels and DMs Archive; agents Open chat and Agent settings. Archive and delete hide the row at once.</li><li>New message and New channel are `formSheet` routes.</li><li>Open: rows slide under the title with no blur; shortcut cards keep a half-scrolled position; section collapse is custom; no swipe actions or search; the list is not virtualised; the dev-client gear covers the Channels +.</li></ul> |
 | [ ] | Files | `app/(tabs)/files/index.tsx`, `components/knowledge/ResourceScreens.tsx` (`FilesBrowserScreen`) | Partial | <ul><li>Header search and `+` menu are native.</li><li>File options open a JS `ResourceSheet`; use a context menu instead.</li><li>No swipe or multi-select.</li></ul> |
 | [ ] | Search | `app/(tabs)/search/index.tsx`, `components/search/WorkspaceSearchScreen.tsx` | Partial | Result actions open a JS `ResourceSheet`; use a native menu. |
 
@@ -60,7 +60,7 @@ Status key:
 | [ ] | Extensions | `app/tools.tsx` → `components/tools/ToolsScreen.tsx` | Partial | <ul><li>Native header and segmented control.</li><li>Skill and app editors use JS `BottomSheet`s.</li><li>10 `Alert.alert` calls.</li><li>Delete has no confirmation.</li><li>`EmptyState` instead of `CreatureEmpty`.</li></ul> |
 | [ ] | MCP server detail | `components/tools/McpDetailSheet.tsx` | Custom | JS `BottomSheet` and 7 `Alert.alert` calls. |
 | [ ] | Activity | `app/activity.tsx` → `components/chat/ActivityScreen.tsx` | Partial | Native header and segmented control; no swipe to mark read. |
-| [ ] | Archived | `app/archived.tsx` → `components/chat/ArchivedScreen.tsx` | Partial | Long-press uses `Alert.alert` with the hint "Long-press a chat to unarchive"; use a native context menu. |
+| [x] | Archived | `app/archived.tsx` → `components/chat/ArchivedScreen.tsx` | Native | SwiftUI list with the system search bar and empty state; touch and hold for Unarchive (and Delete for personal chats). Now includes archived channels and DMs (`collaboration.archive.rooms`), which opened as personal chats before or were missing. Checked 2026-11-23: archive a channel, find it, unarchive it. |
 | [ ] | Workspace | `app/workspace.tsx` → `components/workspace/WorkspaceScreen.tsx` | Partial | <ul><li>Native header.</li><li>Four JS `BottomSheet`s (member actions, invite, team, billing).</li><li>Ten spinners.</li><li>Unreachable from the UI (see P0 #1 in the parity audit).</li></ul> |
 | [ ] | Slack import | `components/workspace/SlackImportPanel.tsx` | Custom | Hand-built steps. |
 | [ ] | Voice | `app/voice.tsx` → `components/voice/VoiceScreen.tsx` | Custom | <ul><li>No stack header (the root default hides it).</li><li>`MainScreenHeader` plus `DrawerSidebar`.</li><li>Custom toggles.</li></ul>Give it a native header and a `Form`. |
@@ -86,8 +86,8 @@ Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacin
 | [ ] | Composer attach / tools / mode | `components/chat/Composer.tsx` (2 sheets) | Composer `+` and tools chip | Native menu |
 | [ ] | Model picker | `components/chat/ModelPicker.tsx` | Composer model chip | `pageSheet` route (already looks right; check the X resets the model) |
 | [ ] | Draft review | `components/chat/DraftReviewSheet.tsx` | Draft card | `pageSheet` |
-| [ ] | New DM | `components/chat/NewDirectMessageSheet.tsx` | Chats `+` menu | `formSheet` route |
-| [ ] | New channel | `components/chat/NewChannelSheet.tsx` | Chats `+` menu | `formSheet` route with a `Form` |
+| [x] | New DM / add people | `app/new-message.tsx` → `components/chat/NewConversationForms.tsx` | Chats compose menu, room Members + | `formSheet` route with a searchable people list (2026-11-23); also adds people to a room |
+| [x] | New channel | `app/new-channel.tsx` → `components/chat/NewConversationForms.tsx` | Chats compose menu | `formSheet` route with a `Form` (2026-11-23). The old `NewChannelSheet`/`NewDirectMessageSheet` survive only in the dead `DrawerSidebar` |
 | [x] | Room message actions | `components/chat/RoomMessageMenu.tsx` | Long-press a message | Context menu (2026-11-23) |
 | [x] | Room members / pinned / saved | `components/chat/RoomSheets.tsx` | Room header menu | SwiftUI sheet with detents (2026-11-23) |
 | [ ] | Share | `components/workspace/ShareSheet.tsx` | File and chat options | `pageSheet` with a `Form` |

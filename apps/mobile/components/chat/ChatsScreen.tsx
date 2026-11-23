@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import { Image } from 'expo-image'
 import { Stack, useRouter } from 'expo-router'
@@ -15,8 +15,9 @@ import { openAgentThread } from '../../services/shellService'
 import type { SidebarChat } from '../shell/SidebarView'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { T } from '../shell/primitives'
-import { NewDirectMessageSheet } from './NewDirectMessageSheet'
-import { NewChannelSheet } from './NewChannelSheet'
+import { RowMenu } from './ChatRowMenu'
+import { RoomConfirmDialog, type RoomConfirmation } from './RoomSheets'
+import { archiveConversation, deleteConversation, renameConversation } from '../../services/conversationActionsService'
 
 type SectionId = 'agents' | 'channels' | 'dms' | 'chats'
 
@@ -29,7 +30,9 @@ export function ChatsScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const router = useRouter()
   const { activeWorkspaceId } = useWorkspace()
-  const [sheet, setSheet] = useState<'dm' | 'channel' | null>(null)
+  const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
+  // Rows hidden right away after archive/delete, before the list subscription catches up.
+  const [hidden, setHidden] = useState<string[]>([])
   const [collapsed, setCollapsed] = useState<Record<SectionId, boolean>>({
     agents: false,
     channels: false,
@@ -47,11 +50,12 @@ export function ChatsScreen(): React.ReactElement {
     const seen = new Set<string>()
     return [...workspace.chats, ...personal.chats].filter((chat) => {
       const key = `${chat.kind}:${chat.id}`
+      if (hidden.includes(chat.id)) return false
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
-  }, [personal.chats, workspace.chats])
+  }, [personal.chats, workspace.chats, hidden])
   const channels = chats.filter((chat) => chat.kind === 'channel')
   const dms = chats.filter((chat) => chat.kind === 'dm')
   const personalChats = chats.filter((chat) => chat.kind === 'personal')
@@ -71,6 +75,47 @@ export function ChatsScreen(): React.ReactElement {
       })
       .catch((reason) => setOpenError(reason instanceof Error ? reason.message : String(reason)))
   }
+  const newMessage = () => router.push('/new-message')
+  const newChannel = () => router.push('/new-channel')
+  const fail = (title: string, id?: string) => (reason: unknown) => {
+    if (id) setHidden((ids) => ids.filter((value) => value !== id))
+    Alert.alert(title, reason instanceof Error ? reason.message : 'Try again in a moment.')
+  }
+  const archive = (chat: SidebarChat) => {
+    setHidden((ids) => [...ids, chat.id])
+    void archiveConversation(chat.id).catch(fail('Could not archive the chat', chat.id))
+  }
+  const rename = (chat: SidebarChat) =>
+    Alert.prompt('Rename chat', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Save',
+        onPress: (value?: string) => {
+          const title = value?.trim()
+          if (title && title !== chat.title)
+            void renameConversation(chat.id, title).catch(fail('Could not rename the chat'))
+        },
+      },
+    ], 'plain-text', chat.title)
+  const remove = (chat: SidebarChat) =>
+    setConfirmation({
+      title: `Delete “${chat.title || 'this chat'}”?`,
+      message: 'This can’t be undone.',
+      label: 'Delete chat',
+      destructive: true,
+      run: () => {
+        setHidden((ids) => [...ids, chat.id])
+        void deleteConversation(chat.id).catch(fail('Could not delete the chat', chat.id))
+      },
+    })
+  const chatActions = (chat: SidebarChat) =>
+    chat.kind === 'personal'
+      ? [
+          { label: 'Rename', icon: 'pencil', onPress: () => rename(chat) },
+          { label: 'Archive', icon: 'archivebox', onPress: () => archive(chat) },
+          { label: 'Delete', icon: 'trash', destructive: true, onPress: () => remove(chat) },
+        ]
+      : [{ label: 'Archive', icon: 'archivebox', onPress: () => archive(chat) }]
   const toggle = (id: SectionId) => {
     hapticSelect()
     setCollapsed((previous) => ({ ...previous, [id]: !previous[id] }))
@@ -83,10 +128,10 @@ export function ChatsScreen(): React.ReactElement {
           <Stack.Toolbar.MenuAction icon="sparkles" onPress={newChat}>
             New chat
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="person" onPress={() => setSheet('dm')}>
+          <Stack.Toolbar.MenuAction icon="person" onPress={newMessage}>
             New message
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="number" onPress={() => setSheet('channel')}>
+          <Stack.Toolbar.MenuAction icon="number" onPress={newChannel}>
             New channel
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
@@ -129,12 +174,19 @@ export function ChatsScreen(): React.ReactElement {
             {directory.agents ? (
               <Section title="Agents" collapsed={collapsed.agents} onToggle={() => toggle('agents')}>
                 {agents.map((agent) => (
-                  <Row
+                  <RowMenu
                     key={agent.id}
-                    title={agent.name}
-                    leading={<AgentAvatar agent={agent} dark={isDark} foreground={theme.foreground} size={26} />}
-                    onPress={() => openAgent(agent)}
-                  />
+                    actions={[
+                      { label: 'Open chat', icon: 'bubble.left', onPress: () => openAgent(agent) },
+                      { label: 'Agent settings', icon: 'slider.horizontal.3', onPress: () => router.push({ pathname: '/agent/[id]', params: { id: agent.id } }) },
+                    ]}
+                  >
+                    <Row
+                      title={agent.name}
+                      leading={<AgentAvatar agent={agent} dark={isDark} foreground={theme.foreground} size={26} />}
+                      onPress={() => openAgent(agent)}
+                    />
+                  </RowMenu>
                 ))}
                 {directory.canCreate ? (
                   <AddRow label="Add agent" onPress={() => router.push('/agent-create')} />
@@ -145,57 +197,40 @@ export function ChatsScreen(): React.ReactElement {
               title="Channels"
               collapsed={collapsed.channels}
               onToggle={() => toggle('channels')}
-              onAdd={() => setSheet('channel')}
+              onAdd={newChannel}
             >
               {channels.map((chat) => (
-                <ChatRow key={chat.id} chat={chat} onPress={() => open(chat)} />
+                <RowMenu key={chat.id} actions={chatActions(chat)}>
+                  <ChatRow chat={chat} onPress={() => open(chat)} />
+                </RowMenu>
               ))}
-              <AddRow label="Add channel" onPress={() => setSheet('channel')} />
+              <AddRow label="Add channel" onPress={newChannel} />
             </Section>
             <Section
               title="Direct messages"
               collapsed={collapsed.dms}
               onToggle={() => toggle('dms')}
-              onAdd={() => setSheet('dm')}
+              onAdd={newMessage}
             >
               {dms.map((chat) => (
-                <ChatRow key={chat.id} chat={chat} onPress={() => open(chat)} />
+                <RowMenu key={chat.id} actions={chatActions(chat)}>
+                  <ChatRow chat={chat} onPress={() => open(chat)} />
+                </RowMenu>
               ))}
-              <AddRow label="New message" onPress={() => setSheet('dm')} />
+              <AddRow label="New message" onPress={newMessage} />
             </Section>
             <Section title="Chats" collapsed={collapsed.chats} onToggle={() => toggle('chats')} onAdd={newChat}>
               {personalChats.map((chat) => (
-                <ChatRow key={chat.id} chat={chat} onPress={() => open(chat)} />
+                <RowMenu key={chat.id} actions={chatActions(chat)}>
+                  <ChatRow chat={chat} onPress={() => open(chat)} />
+                </RowMenu>
               ))}
               <AddRow label="New chat" onPress={newChat} />
             </Section>
           </>
         )}
       </ScrollView>
-      {activeWorkspaceId ? (
-        <>
-          <NewDirectMessageSheet
-            visible={sheet === 'dm'}
-            workspaceId={activeWorkspaceId}
-            theme={theme}
-            onClose={() => setSheet(null)}
-            onCreated={(dm) => {
-              setSheet(null)
-              router.push(`/dm/${dm.id}` as never)
-            }}
-          />
-          <NewChannelSheet
-            visible={sheet === 'channel'}
-            workspaceId={activeWorkspaceId}
-            theme={theme}
-            onClose={() => setSheet(null)}
-            onCreated={(channel) => {
-              setSheet(null)
-              router.push(`/channel/${channel.id}` as never)
-            }}
-          />
-        </>
-      ) : null}
+      <RoomConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
     </>
   )
 }
