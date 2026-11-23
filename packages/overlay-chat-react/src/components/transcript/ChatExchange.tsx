@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- shared renderer must stay platform-neutral */
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button } from '@overlay/ui/primitives'
-import { AlertCircle, FileText, Play, Reply } from 'lucide-react'
+import { FileText, Play, Reply } from 'lucide-react'
 import { useMessageEntrance } from './message-entrance'
 import type { AssistantVisualBlock, ChatExchangeStatus, ChatTranscriptSourceView, DraftModalState } from '@overlay/chat-core'
 import {
@@ -26,6 +26,7 @@ import type { RunPlanPhase, RunPlanStep } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
+import { ExchangeErrorDisclosure } from './ExchangeErrorDisclosure'
 import { ExchangeLoadingState, responseLoadingPresentation } from './ExchangeLoadingState'
 import { AssistantVisualBlocks } from './AssistantVisualBlocks'
 import { UserMessageActions } from './UserMessageActions'
@@ -335,17 +336,7 @@ function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
       {isUsageExhaustedError(errorMessage) ? (
         <UsageExhaustedNotice />
       ) : (
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
-          style={{
-            background: 'var(--chat-alert-error-bg)',
-            borderColor: 'var(--chat-alert-error-border)',
-            color: 'var(--chat-alert-error-text)',
-          }}
-        >
-          <AlertCircle size={12} />
-          {errorMessage}
-        </div>
+        <ExchangeErrorDisclosure errorMessage={errorMessage} />
       )}
     </div>
   )
