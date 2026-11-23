@@ -56,7 +56,7 @@ export default function AccountSheet(): React.ReactElement {
             if (!trimmed) return
             void workspace
               .createWorkspace(trimmed)
-              .then(() => router.dismiss())
+              .then(() => { if (router.canDismiss()) router.dismiss() })
               .catch((error) =>
                 Alert.alert('Could not create the workspace', error instanceof Error ? error.message : 'Try again in a moment.'),
               )
@@ -86,7 +86,7 @@ export default function AccountSheet(): React.ReactElement {
                   setPendingId(id)
                   void workspace
                     .switchWorkspace(id)
-                    .then(() => router.dismiss())
+                    .then(() => { if (router.canDismiss()) router.dismiss() })
                     .catch(() => Alert.alert('Could not switch workspace', 'Check your connection and try again.'))
                     .finally(() => setPendingId(null))
                 }}

@@ -67,7 +67,7 @@ Severity:
 - Skill and MCP delete have no confirmation or error handling.
 - The automation editor has no agent or model choice and no close button. You type the interval in minutes and the time as text. There's no flow canvas or run-replay timeline.
 - The Automations empty state is bare text instead of the creature empty state.
-- Activity has no swipe-to-mark-read and no pull-to-refresh.
+- ~~Activity has no swipe-to-mark-read~~ (fixed 2026-11-23: swipe right, context menu and Mark All as Read; items stay unread until acted on). No pull-to-refresh; the list is live.
 
 ### Settings, workspace, invitations
 - Missing sections compared with web:

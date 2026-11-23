@@ -5,6 +5,9 @@ import { Image } from 'expo-image'
 import { Stack, useRouter } from 'expo-router'
 import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
+import { useLiveResource } from '../../hooks/useLiveResource'
+import { api } from '../../services/convexClient'
 import { useShellChats } from '../../hooks/useShellData'
 import { useAgentDirectory, type DirectoryAgent } from '../../hooks/useAgentDirectory'
 import { TabToolbar } from '../navigation/nativeHeader'
@@ -30,6 +33,7 @@ export function ChatsScreen(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const router = useRouter()
   const { activeWorkspaceId } = useWorkspace()
+  const ready = useNativeDataReady()
   const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
   // Rows hidden right away after archive/delete, before the list subscription catches up.
   const [hidden, setHidden] = useState<string[]>([])
@@ -60,7 +64,11 @@ export function ChatsScreen(): React.ReactElement {
   const dms = chats.filter((chat) => chat.kind === 'dm')
   const personalChats = chats.filter((chat) => chat.kind === 'personal')
   const agents = directory.agents ?? []
-  const unreadTotal = chats.reduce((sum, chat) => sum + (chat.unreadCount ?? (chat.unread ? 1 : 0)), 0)
+  const activity = useLiveResource(
+    api.collaboration.activity.notifications,
+    ready && activeWorkspaceId ? { workspaceId: activeWorkspaceId } : null,
+  )
+  const unreadActivity = activity.data?.filter((item) => !item.readAt).length ?? 0
 
   const open = (chat: SidebarChat) =>
     router.push((chat.kind === 'personal' ? `/chat/${chat.id}` : `/${chat.kind}/${chat.id}`) as never)
@@ -150,7 +158,7 @@ export function ChatsScreen(): React.ReactElement {
           <ShortcutCard
             symbol="bell"
             title="Activity"
-            detail={unreadTotal ? `${unreadTotal} new` : 'All caught up'}
+            detail={unreadActivity ? `${unreadActivity} unread` : 'All caught up'}
             onPress={() => router.push('/activity')}
           />
           <ShortcutCard symbol="clock.arrow.circlepath" title="Automations" detail="Scheduled" onPress={() => router.push('/automations')} />
