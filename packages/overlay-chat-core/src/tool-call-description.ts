@@ -265,6 +265,14 @@ const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription
     const pattern = inputString(call, 'pattern')
     return pattern ? call.make(VERBS.searched, { target: target(pattern), ...(inputString(call, 'path') ? { title: inputString(call, 'path')! } : {}) }) : null
   },
+  computer_code_nav: (call) => {
+    const path = inputString(call, 'path')
+    const action = inputString(call, 'action')
+    if (!path || !action) return null
+    const line = typeof call.input?.line === 'number' ? `:${call.input.line}` : ''
+    const verb = action === 'diagnostics' ? VERBS.read : VERBS.searched
+    return call.make(verb, { target: target(`${basename(path)}${line}`), title: path, detail: action })
+  },
   computer_list_files: (call) => {
     const path = inputString(call, 'path')
     return call.make(VERBS.listed, path ? { target: target(basenameOrPath(path)), title: path } : { target: '.' })

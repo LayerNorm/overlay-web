@@ -93,6 +93,7 @@ test('the computer group maps to all computer tool ids', () => {
   assert.deepEqual([...computer.toolIds].sort(), [
     'computer_apply_patch',
     'computer_browser',
+    'computer_code_nav',
     'computer_edit_file',
     'computer_exec',
     'computer_glob',

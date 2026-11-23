@@ -23,6 +23,7 @@ export const COMPUTER_TOOL_IDS = [
   'computer_write_file',
   'computer_edit_file',
   'computer_apply_patch',
+  'computer_code_nav',
   'computer_list_files',
   'computer_open_url',
   'computer_screenshot',
