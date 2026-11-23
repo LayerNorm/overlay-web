@@ -1,3 +1,4 @@
+import { useSwitchTint } from '../../lib/nativeControls'
 import React, { useState } from 'react'
 import { ActivityIndicator, Image as RNImage, Text as RNText, ScrollView, View } from 'react-native'
 import { Stack } from 'expo-router'
@@ -114,10 +115,10 @@ export type SettingsActions = {
   back?: () => void
 }
 
-const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })
+export const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })
 
 /** A tappable form row that opens something: icon, title, current value, chevron. */
-function NavRow({
+export function NavRow({
   title,
   icon,
   value,
@@ -144,7 +145,7 @@ function NavRow({
 }
 
 /** A form action with a leading icon, drawn in the text colour (system buttons tint icons blue). */
-function ActionRow({ title, icon, onPress }: { title: string; icon: SFSymbol; onPress: () => void }) {
+export function ActionRow({ title, icon, onPress }: { title: string; icon: SFSymbol; onPress: () => void }) {
   return (
     <Button onPress={onPress}>
       <HStack spacing={12}>
@@ -163,7 +164,7 @@ function formatDate(seconds: number) {
   })
 }
 
-function sentence(value: string) {
+export function sentence(value: string) {
   return value ? value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' ') : value
 }
 
@@ -205,6 +206,7 @@ export function SettingsView({
 }) {
   // A name edit only counts against the saved name it started from, so a
   // refreshed profile (or the field reporting its initial value) never shows Save.
+  const switchTint = useSwitchTint()
   const [edit, setEdit] = useState<{ base: string; value: string } | null>(null)
   const savedName = data.profile?.displayName ?? ''
   const name = edit && edit.base === savedName && edit.value.trim() !== savedName ? edit.value : null
@@ -241,8 +243,8 @@ export function SettingsView({
       </>
     )
   if (blocked) return plain(<ResourceState theme={theme} error={error ?? undefined} onRetry={onRetry} />)
-  if (page === 'webhooks')
-    return plain(webhooks ?? <ResourceState theme={theme} empty="Webhooks are unavailable in this workspace." />)
+  if (page === 'webhooks' && !webhooks)
+    return plain(<ResourceState theme={theme} empty="Webhooks are unavailable in this workspace." />)
   if (page === 'push-permission')
     return plain(
       <PushPrePrompt
@@ -437,6 +439,7 @@ export function SettingsView({
               >
                 {BANNER_LABELS.map(([category, label]) => (
                   <Toggle
+                    modifiers={switchTint}
                     key={category}
                     label={label}
                     isOn={data.bannerPreferences?.[category] ?? true}
@@ -463,6 +466,7 @@ export function SettingsView({
                 footer={<Text>{data.voiceSupported ? 'Dictate into any text field with Overlay Voice.' : 'Background voice needs the Overlay voice extension on iOS.'}</Text>}
               >
                 <Toggle
+                  modifiers={switchTint}
                   label="Voice input"
                   isOn={data.voiceEnabled ?? false}
                   onIsOnChange={(value) => {
@@ -560,6 +564,8 @@ export function SettingsView({
               </Section>
             </>
           ) : null}
+
+          {page === 'webhooks' ? webhooks : null}
 
           {page === 'help' ? (
             <>

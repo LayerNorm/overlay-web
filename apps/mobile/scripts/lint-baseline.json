@@ -7,14 +7,6 @@
     }
   },
   {
-    "path": "components/settings/ProvidersSection.tsx",
-    "sha256": "69febe55b6c76fddd299829bda5eb6c3be3f80e98084d47c8f881150982239ce",
-    "rules": {
-      "react/no-children-prop": 1,
-      "react/no-unescaped-entities": 1
-    }
-  },
-  {
     "path": "contexts/ConvexAuthProvider.tsx",
     "sha256": "90e55d4b6ab6a27942ad2f1afcdd702de34d31c24b25043e29205c4509ef7b42",
     "rules": {

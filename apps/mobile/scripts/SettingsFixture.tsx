@@ -9,6 +9,7 @@ import {
 } from '../components/settings/SettingsViews'
 import { ResourcePage, ResourceSheet } from '../components/knowledge/ResourceViews'
 import { AccountDeletionConfirmation, PushPrePrompt } from '../components/settings/SettingsPrompts'
+import { Form, Host } from '@expo/ui/swift-ui'
 import { T } from '../components/shell/primitives'
 import { DEFAULT_BANNER_PREFERENCES } from '../services/bannerPreferencesService'
 
@@ -252,13 +253,16 @@ export function SettingsFixture({
           title="Delete account"
           onClose={() => setDeleteOpen(false)}
         >
+          <Host style={{ height: 420 }} colorScheme={dark ? 'dark' : 'light'}>
+            <Form>
           <AccountDeletionConfirmation
-            theme={theme}
             confirmation={deleteDraft}
             onChange={setDeleteDraft}
             error={deleteError}
             onConfirm={() => setDeleteError('Sign in again to delete your account.')}
           />
+            </Form>
+          </Host>
         </ResourceSheet>
       ) : null}
     </View>

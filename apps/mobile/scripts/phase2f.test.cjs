@@ -448,6 +448,7 @@ function views(h) {
     '../knowledge/ResourceViews': { ResourceState: 'State' },
     '../shell/AgentAvatar': { AgentAvatar: 'AgentAvatar' },
     './SettingsPrompts': { PushPrePrompt: 'PushPrePrompt' },
+    '../../lib/nativeControls': { useSwitchTint: () => [] },
   })
 }
 const text = (tree) => JSON.stringify(tree)
@@ -491,6 +492,8 @@ test('Settings views cover all ten pages, empty/error states and billing has no 
   )
   assert.doesNotMatch(JSON.stringify(billing), /checkout|portal|purchase|Manage on/)
 })
+const swiftUi = new Proxy({}, { get: (_, key) => key })
+const swiftModifiers = new Proxy({}, { get: (_, key) => (...args) => ({ modifier: key, args }) })
 test('conversation notifications read live native state, save the web mutation and block stale workspace writes', async () => {
   const h = hooks(),
     calls = []
@@ -505,7 +508,8 @@ test('conversation notifications read live native state, save the web mutation a
   }
   const { RoomNotifications } = load('components/settings/RoomNotifications.tsx', {
     react: h.react,
-    'react-native': { View: 'View' },
+    '@expo/ui/swift-ui': swiftUi,
+    '@expo/ui/swift-ui/modifiers': swiftModifiers,
     '../../services/convexClient': {
       api: { collaboration: { rooms: { state: 'room-state', updateMyState: 'room-save' } } },
       mutateConvex: async (...args) => {
@@ -514,41 +518,34 @@ test('conversation notifications read live native state, save the web mutation a
     },
     '../../services/appApi': { getRequestWorkspaceId: () => workspace },
     '../../hooks/useLiveResource': { useLiveResource: () => resource },
-    '../knowledge/ResourceViews': { ResourceSheet: 'Sheet', ResourceState: 'State' },
-    '../shell/primitives': { Button: 'Button' },
   })
-  const render = () =>
-    h.render(RoomNotifications, {
-      theme: {},
-      workspaceId: 'ws',
-      conversationId: 'room',
-      onClose() {},
-    })
-  nodes(render())
-    .find((node) => node.type === 'Button' && node.props.children.includes('Mentions only'))
-    .props.onPress()
+  const render = () => h.render(RoomNotifications, { workspaceId: 'ws', conversationId: 'room' })
+  const picker = () => nodes(render()).find((node) => node.type === 'Picker')
+  assert.equal(picker().props.selection, 'all')
+  picker().props.onSelectionChange('mentions')
   await new Promise(setImmediate)
   assert.deepEqual(clean(calls), [
     ['room-save', { workspaceId: 'ws', conversationId: 'room', notificationLevel: 'mentions' }],
   ])
   workspace = 'other'
-  nodes(render())
-    .find((node) => node.type === 'Button')
-    .props.onPress()
+  picker().props.onSelectionChange('muted')
   assert.equal(calls.length, 1)
+  assert.match(JSON.stringify(render()), /Workspace changed/)
   resource.data = null
   resource.error = 'Native policy disabled'
   const denied = render()
-  assert.equal(nodes(denied).filter((node) => node.type === 'Button').length, 0)
-  assert.ok(nodes(denied).some((node) => node.props.error === resource.error))
+  assert.equal(nodes(denied).filter((node) => node.type === 'Picker').length, 0)
+  assert.match(JSON.stringify(denied), /Native policy disabled/)
 })
-test('deletion confirmation requires the exact word, blocks busy/disabled submits and retains failed drafts', () => {
+test('deletion confirmation requires the exact word, blocks busy/disabled submits and keeps the typed word', () => {
   const h = hooks()
   const { AccountDeletionConfirmation, PushPrePrompt } = load(
     'components/settings/SettingsPrompts.tsx',
     {
       react: h.react,
-      'react-native': { TextInput: 'TextInput', View: 'View' },
+      'react-native': { View: 'View' },
+      '@expo/ui/swift-ui': swiftUi,
+      '@expo/ui/swift-ui/modifiers': swiftModifiers,
       'lucide-react-native': { Bell: 'Bell' },
       '../knowledge/ResourceViews': { ResourceState: 'State' },
       '../shell/primitives': { Button: 'Button', T: 'T' },
@@ -557,17 +554,16 @@ test('deletion confirmation requires the exact word, blocks busy/disabled submit
   let confirmed = 0,
     permitted = 0,
     dismissed = 0
-  const props = { theme: {}, confirmation: '', onChange() {}, onConfirm: () => confirmed++ }
+  const props = { confirmation: '', onChange() {}, onConfirm: () => confirmed++ }
+  const deleteButton = (tree) => nodes(tree).find((node) => node.props?.role === 'destructive')
   for (const state of [
     {},
     { confirmation: 'delete' },
     { confirmation: 'DELETE', busy: true },
     { confirmation: 'DELETE', disabled: true },
   ]) {
-    const button = nodes(h.render(AccountDeletionConfirmation, { ...props, ...state })).find(
-      (node) => node.type === 'Button',
-    )
-    assert.equal(button.props.disabled, true)
+    const button = deleteButton(h.render(AccountDeletionConfirmation, { ...props, ...state }))
+    assert.deepEqual(clean(button.props.modifiers), [{ modifier: 'disabled', args: [true] }])
     button.props.onPress()
     assert.equal(confirmed, 0)
   }
@@ -576,12 +572,12 @@ test('deletion confirmation requires the exact word, blocks busy/disabled submit
     confirmation: 'DELETE',
     error: 'Sign in again.',
   })
-  const button = nodes(valid).find((node) => node.type === 'Button')
-  assert.equal(button.props.disabled, false)
+  const button = deleteButton(valid)
+  assert.deepEqual(clean(button.props.modifiers), [{ modifier: 'disabled', args: [false] }])
   button.props.onPress()
   assert.equal(confirmed, 1)
-  assert.equal(nodes(valid).find((node) => node.type === 'TextInput').props.value, 'DELETE')
-  assert.ok(nodes(valid).some((node) => node.props.error === 'Sign in again.'))
+  assert.equal(nodes(valid).find((node) => node.type === 'TextField').props.defaultValue, 'DELETE')
+  assert.match(JSON.stringify(valid), /Sign in again\./)
   const push = h.render(PushPrePrompt, {
     theme: {},
     permission: 'Denied',
@@ -589,10 +585,10 @@ test('deletion confirmation requires the exact word, blocks busy/disabled submit
     onLater: () => dismissed++,
   })
   nodes(push)
-    .find((node) => node.props.children.includes('Open device settings'))
+    .find((node) => node.props.children?.includes?.('Open device settings'))
     .props.onPress()
   nodes(push)
-    .find((node) => node.props.children.includes('Not now'))
+    .find((node) => node.props.children?.includes?.('Not now'))
     .props.onPress()
   assert.equal(permitted, 1)
   assert.equal(dismissed, 1)

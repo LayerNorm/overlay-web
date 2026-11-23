@@ -30,6 +30,7 @@ import type {
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { useTheme } from '../../hooks/useTheme'
+import { useSwitchTint } from '../../lib/nativeControls'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import type { Theme } from '../../constants/theme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -85,6 +86,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   const workspaceId = activeWorkspaceId ?? ''
   const isNew = agentId === 'new'
 
+  const switchTint = useSwitchTint()
   const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(null)
   const [editable, setEditable] = useState(isNew)
   const [loading, setLoading] = useState(!isNew)
@@ -549,6 +551,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
               >
                 {toolGroups.map((group) => (
                   <Toggle
+                    modifiers={switchTint}
                     key={group.id}
                     label={group.label}
                     isOn={enabledToolGroups.has(group.id)}

@@ -1,12 +1,18 @@
 import React from 'react'
-import { TextInput, View } from 'react-native'
+import { View } from 'react-native'
+import { Button as SwiftButton, Section, Text as SwiftText, TextField } from '@expo/ui/swift-ui'
+import { autocorrectionDisabled, disabled as swiftDisabled, textInputAutocapitalization } from '@expo/ui/swift-ui/modifiers'
 import { Bell } from 'lucide-react-native'
 import type { Theme } from '../../constants/theme'
 import { ResourceState } from '../knowledge/ResourceViews'
 import { Button, T } from '../shell/primitives'
 
+/**
+ * Form sections for deleting the account: the word DELETE must be typed
+ * exactly, and the destructive button does nothing while busy or disabled.
+ * A failed attempt keeps the typed confirmation.
+ */
 export function AccountDeletionConfirmation({
-  theme,
   confirmation,
   onChange,
   onConfirm,
@@ -14,7 +20,6 @@ export function AccountDeletionConfirmation({
   disabled = false,
   error,
 }: {
-  theme: Theme
   confirmation: string
   onChange: (value: string) => void
   onConfirm: () => void
@@ -22,42 +27,36 @@ export function AccountDeletionConfirmation({
   disabled?: boolean
   error?: string | null
 }) {
+  const ready = confirmation === 'DELETE' && !busy && !disabled
   return (
-    <View style={{ gap: 16 }}>
-      {error ? <ResourceState theme={theme} error={error} /> : null}
-      <T style={{ color: theme.muted, fontSize: 13, lineHeight: 21 }}>
-        This permanently deletes your account and its data. Type DELETE, then sign in again with
-        this account to confirm.
-      </T>
-      <T style={{ color: theme.muted, fontSize: 12 }}>Confirmation</T>
-      <TextInput
-        accessibilityLabel="Confirmation"
-        autoCapitalize="characters"
-        autoCorrect={false}
-        editable={!busy}
-        value={confirmation}
-        onChangeText={onChange}
-        style={{
-          color: theme.foreground,
-          borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 8,
-          padding: 12,
-          fontFamily: 'Geist',
-          fontSize: 14,
-        }}
-      />
-      <Button
-        theme={theme}
-        secondary
-        disabled={confirmation !== 'DELETE' || busy || disabled}
-        onPress={() => {
-          if (confirmation === 'DELETE' && !busy && !disabled) onConfirm()
-        }}
+    <>
+      <Section
+        title="Type DELETE to confirm"
+        footer={<SwiftText>This permanently deletes your account and its data. You&apos;ll sign in once more with this account to confirm.</SwiftText>}
       >
-        {busy ? 'Completing deletion…' : 'Sign in again & delete account'}
-      </Button>
-    </View>
+        <TextField
+          defaultValue={confirmation}
+          placeholder="DELETE"
+          onValueChange={onChange}
+          modifiers={[textInputAutocapitalization('characters'), autocorrectionDisabled(true)]}
+        />
+      </Section>
+      {error ? (
+        <Section>
+          <SwiftText>{error}</SwiftText>
+        </Section>
+      ) : null}
+      <Section>
+        <SwiftButton
+          role="destructive"
+          label={busy ? 'Deleting…' : 'Sign in again and delete'}
+          modifiers={[swiftDisabled(!ready)]}
+          onPress={() => {
+            if (ready) onConfirm()
+          }}
+        />
+      </Section>
+    </>
   )
 }
 
