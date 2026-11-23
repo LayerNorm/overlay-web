@@ -22,9 +22,8 @@ import {
   isMemoryToggleAvailable,
 } from '../../lib/chatTools'
 import { groupMentions, mentionIcon, mentionToRequestBody } from '../../lib/chatMentions'
-import { BottomSheet, SegmentedControl } from '../ui/AppChrome'
 import { GlassSurface } from '../ui/GlassSurface'
-import { ListRow, Section } from '../ui/primitives'
+import { AttachMenu, ToolsMenu } from './ComposerMenus'
 
 export interface PendingDocument {
   clientId: string
@@ -109,20 +108,6 @@ interface ComposerProps {
   showToolsButton?: boolean
 }
 
-function ComposerIcon({ theme, symbol, label, onPress }: { theme: Theme; symbol: string; label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={[styles.chip, { width: 34, paddingHorizontal: 0, borderColor: theme.border }]}
-    >
-      <Image source={`sf:${symbol}`} style={{ width: 16, height: 16 }} contentFit="contain" tintColor={theme.text as string} />
-    </TouchableOpacity>
-  )
-}
-
 /** Trailing `@token` the user is actively typing — drives the mention dropdown. */
 function trailingMentionQuery(text: string): string | null {
   const match = /(?:^|\s)@([\p{L}\p{N}_-]{0,40})$/u.exec(text)
@@ -175,8 +160,6 @@ export function Composer(props: ComposerProps): React.ReactElement {
     showToolsButton = true,
   } = props
 
-  const [attachPickerVisible, setAttachPickerVisible] = useState(false)
-  const [toolsSheetVisible, setToolsSheetVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
 
   // ── Mention search (inline dropdown above composer) ─────────────────────────
@@ -239,7 +222,6 @@ export function Composer(props: ComposerProps): React.ReactElement {
     [capabilities],
   )
   const memoryAvailable = isMemoryToggleAvailable(capabilities)
-  const activeToolCount = selectedToolIds.length + (memoryEnabled ? 0 : 0)
   const generationModels = generationKind === 'image' ? imageModels : videoModels
   const activeGenerationModelId = generationKind === 'image'
     ? selectedImageModelId
@@ -441,12 +423,7 @@ export function Composer(props: ComposerProps): React.ReactElement {
 
         <View style={styles.composerFooter}>
           <View style={styles.composerLeftActions}>
-            <ComposerIcon
-              theme={theme}
-              symbol="plus"
-              label="Add attachment"
-              onPress={() => setAttachPickerVisible(true)}
-            />
+            <AttachMenu chipStyle={styles.chip} onPickImage={onPickImage} onPickCamera={onPickCamera} onPickFile={onPickFile} />
             {onModel ? (
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -462,29 +439,22 @@ export function Composer(props: ComposerProps): React.ReactElement {
               </TouchableOpacity>
             ) : null}
             {showToolsButton ? (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setToolsSheetVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  activeToolCount > 0
-                    ? `Tools and modes, ${activeToolCount} active`
-                    : 'Tools and modes'
-                }
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: activeToolCount > 0 ? theme.text : theme.border,
-                    paddingHorizontal: activeToolCount > 0 ? 11 : 0,
-                    width: activeToolCount > 0 ? undefined : 34,
-                  },
-                ]}
-              >
-                <Image source="sf:slider.horizontal.3" style={{ width: 15, height: 15 }} contentFit="contain" tintColor={theme.text as string} />
-                {activeToolCount > 0 ? (
-                  <Text style={[styles.chipText, { color: theme.text }]}>{activeToolCount}</Text>
-                ) : null}
-              </TouchableOpacity>
+              <ToolsMenu
+                chipStyle={styles.chip}
+                tools={availableTools}
+                selectedToolIds={selectedToolIds}
+                onToggleTool={(id) => onToggleTool(id as ChatToolRequestId)}
+                memoryAvailable={memoryAvailable}
+                memoryEnabled={memoryEnabled}
+                onToggleMemory={onToggleMemory}
+                requestMode={requestMode}
+                onChangeRequestMode={onChangeRequestMode}
+                imageModels={imageModels}
+                videoModels={videoModels}
+                generationKind={generationKind}
+                activeGenerationModelId={activeGenerationModelId}
+                onSelectGeneration={onSelectGeneration}
+              />
             ) : null}
           </View>
 
@@ -517,154 +487,6 @@ export function Composer(props: ComposerProps): React.ReactElement {
         </View>
       </View>
 
-      {/* Attach picker */}
-      <BottomSheet
-        theme={theme}
-        visible={attachPickerVisible}
-        onClose={() => setAttachPickerVisible(false)}
-        title="Attach"
-      >
-        <Section theme={theme}>
-          <ListRow
-            theme={theme}
-            icon="image"
-            title="Photo library"
-            subtitle="Attach an image to the message"
-            onPress={() => {
-              setAttachPickerVisible(false)
-              onPickImage()
-            }}
-          />
-          <ListRow
-            theme={theme}
-            icon="camera"
-            title="Camera"
-            subtitle="Take a photo"
-            onPress={() => {
-              setAttachPickerVisible(false)
-              onPickCamera()
-            }}
-          />
-          <ListRow
-            theme={theme}
-            icon="file"
-            title="Document"
-            subtitle="Index a file for this chat"
-            onPress={() => {
-              setAttachPickerVisible(false)
-              onPickFile()
-            }}
-          />
-        </Section>
-      </BottomSheet>
-
-      {/* Tools sheet — per-request tools, memory, mode, media generation */}
-      <BottomSheet
-        theme={theme}
-        visible={toolsSheetVisible}
-        onClose={() => setToolsSheetVisible(false)}
-        title="Chat options"
-      >
-        {availableTools.length > 0 ? (
-          <Section theme={theme} label="Tools for this turn">
-            {availableTools.map((tool) => {
-              const active = selectedToolIds.includes(tool.id)
-              return (
-                <ListRow
-                  key={tool.id}
-                  theme={theme}
-                  icon={tool.featherIcon}
-                  title={tool.label}
-                  subtitle={tool.description}
-                  selected={active}
-                  onPress={() => onToggleTool(tool.id)}
-                />
-              )
-            })}
-          </Section>
-        ) : null}
-
-        {memoryAvailable ? (
-          <Section theme={theme} label="Memory">
-            <ListRow
-              theme={theme}
-              icon="cpu"
-              title="Memory"
-              subtitle={memoryEnabled ? 'Memories are used in this chat' : 'Memory is off for this chat'}
-              selected={memoryEnabled}
-              onPress={onToggleMemory}
-            />
-          </Section>
-        ) : null}
-
-        <Section theme={theme} label="Mode">
-          <View style={styles.modeRow}>
-            <SegmentedControl
-              theme={theme}
-              options={[
-                { value: 'chat' as const, label: 'Chat' },
-                { value: 'automate' as const, label: 'Automate' },
-              ]}
-              value={requestMode}
-              onChange={onChangeRequestMode}
-            />
-          </View>
-          {requestMode === 'automate' ? (
-            <Text style={[styles.modeHint, { color: theme.textSecondary }]}>
-              Automate turns can run tools and schedules.
-            </Text>
-          ) : null}
-        </Section>
-
-        {imageModels.length > 0 || videoModels.length > 0 ? (
-          <Section theme={theme} label="Generate">
-            {imageModels.length > 0 ? (
-              <ListRow
-                theme={theme}
-                icon="image"
-                title="Image"
-                subtitle={
-                  generationKind === 'image' && activeGenerationModel
-                    ? activeGenerationModel.name
-                    : 'Generate an image this turn'
-                }
-                selected={generationKind === 'image'}
-                onPress={() =>
-                  onSelectGeneration('image', generationKind === 'image' ? null : (selectedImageModelId ?? imageModels[0]?.id ?? null))
-                }
-              />
-            ) : null}
-            {videoModels.length > 0 ? (
-              <ListRow
-                theme={theme}
-                icon="film"
-                title="Video"
-                subtitle={
-                  generationKind === 'video' && activeGenerationModel
-                    ? activeGenerationModel.name
-                    : 'Generate a video this turn'
-                }
-                selected={generationKind === 'video'}
-                onPress={() =>
-                  onSelectGeneration('video', generationKind === 'video' ? null : (selectedVideoModelId ?? videoModels[0]?.id ?? null))
-                }
-              />
-            ) : null}
-            {generationKind ? (
-              generationModels.map((model) => (
-                <ListRow
-                  key={model.id}
-                  theme={theme}
-                  title={model.name}
-                  subtitle={model.provider}
-                  selected={model.id === activeGenerationModelId}
-                  onPress={() => onSelectGeneration(generationKind, model.id)}
-                />
-              ))
-            ) : null}
-          </Section>
-        ) : null}
-      </BottomSheet>
     </View>
   )
 }

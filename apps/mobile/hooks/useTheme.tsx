@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useColorScheme } from 'react-native'
+import { Appearance, useColorScheme } from 'react-native'
 import type { ThemePresetId } from '@overlay/app-core'
 import { getTheme, type Theme } from '../constants/theme'
 import {
@@ -94,6 +94,10 @@ export function ThemeProvider({
   const resolvedMode =
     appearanceMode === 'auto' ? (systemColorScheme === 'dark' ? 'dark' : 'light') : appearanceMode
   const isDark = resolvedMode === 'dark'
+  // Keep UIKit (system menus, alerts, share sheets) on the same appearance as the app.
+  useEffect(() => {
+    Appearance.setColorScheme(appearanceMode === 'auto' ? 'unspecified' : appearanceMode)
+  }, [appearanceMode])
   const activeThemePreset = isDark ? themePresets.darkThemePreset : themePresets.lightThemePreset
   const theme = useMemo(() => getTheme(isDark, activeThemePreset), [activeThemePreset, isDark])
 

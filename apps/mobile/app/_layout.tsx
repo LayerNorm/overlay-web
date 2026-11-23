@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { View, ActivityIndicator, Alert } from 'react-native'
 import { Stack, useGlobalSearchParams } from 'expo-router'
+import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native'
 import { useNativeHeaderOptions } from '../components/navigation/nativeHeader'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -74,7 +75,9 @@ function RootLayoutNav(): React.ReactElement {
     headerStyle: { backgroundColor: theme.background },
   }
   return (
-    <>
+    // Native UIKit chrome (toolbar menus, alerts, sheets) follows the app's
+    // appearance, including an in-app Light/Dark choice that differs from the system.
+    <NavigationThemeProvider value={isDark ? { ...DarkTheme, colors: { ...DarkTheme.colors, background: theme.background as string } } : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: theme.background as string } }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack
         screenLayout={SessionScreenLayout}
@@ -239,7 +242,7 @@ function RootLayoutNav(): React.ReactElement {
           }}
         />
       </Stack>
-    </>
+    </NavigationThemeProvider>
   )
 }
 

@@ -14,7 +14,7 @@ const state = {
   picker: null, documentPicker: null, uploadGate: null, uploadCalls: [], mediaGate: null, mediaCalls: [],
  preferenceGate: null, modelPreferences: [], saveCalls: [], createCalls: [], lastOpenedWrites: [], lastOpenedGate: null, lastOpenedError: null, skillCalls: [],
  skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0, snapshots: [], domRenders: 0,
-  composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, domProps: null, search: null, appState: new Set(), actionsProps: null, headerProps: null, drawerProps: null, draftIds: [],
+  composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, domProps: null, search: null, appState: new Set(), headerProps: null, draftIds: [], prompts: [], shares: [], lifecycle: [], confirmation: null,
   stopCalls: [], stopGate: null, routeParams: null, routeParamCalls: [], routeParamSetter: null, localRouteParams: {}, lastOpenedChatId: null, globalRouteParams: null, foregroundRouteParams: null, historyLoads: 0, replaceCalls: [],
   routerPushCalls: [], pathname: '/settings', shellPanel: 'chat', stackRouteSetter: null, lastModelIdGate: null,
   focusSubscriptions: new Set(), focused: true, listRows: new Map(), personalChatListeners: [],
@@ -33,7 +33,7 @@ const fixture = id => ({ id, title: id, createdAt: 1, updatedAt: 2, modelId: 'mo
   { id: id + '-a', turnId: id + '-turn', role: 'assistant', content: 'Answer', timestamp: 2, selectedModelId: 'model-a', responses: [{ id: id + '-r', modelId: 'model-a', modelName: 'Model A', provider: 'test', content: 'Answer', isLoading: false }] },
 ] })
 const appState = { currentState: 'active', addEventListener: (_e, fn) => { state.appState.add(fn); return { remove: () => state.appState.delete(fn) } } }
-const rn = { ActivityIndicator: 'ActivityIndicator', Alert: { alert() {} }, AppState: appState, BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Modal: 'Modal', Platform: { OS: 'ios' }, Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { absoluteFillObject: {}, hairlineWidth: 1, create: x => x }, Text: 'Text', TextInput: 'TextInput', TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView' }
+const rn = { ActivityIndicator: 'ActivityIndicator', Alert: { alert() {}, prompt: (...args) => { state.prompts.push(args) } }, Share: { share: async value => { state.shares.push(value) } }, AppState: appState, BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Modal: 'Modal', Platform: { OS: 'ios' }, Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { absoluteFillObject: {}, hairlineWidth: 1, create: x => x }, Text: 'Text', TextInput: 'TextInput', TouchableOpacity: 'TouchableOpacity', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView' }
 const focus = callback => React.useEffect(() => {
   const subscription = { callback, cleanup: null }
   state.focusSubscriptions.add(subscription)
@@ -58,16 +58,12 @@ function RouteParamsProvider({ children }) {
 }
 function MockChatHeader(props) {
   state.headerProps = props
-  return React.createElement('HeaderNewChatEntry', { testID: 'header-new-chat', onPress: props.onNew })
+  return React.createElement('HeaderNewChatEntry', { testID: 'header-new-chat', onPress: props.onNew }, props.menu)
 }
-function MockDrawerSidebar(props) {
-  state.drawerProps = props
-  return React.createElement('DrawerNewChatEntry', { testID: 'drawer-new-chat', onPress: props.onCreateChat })
-}
+const MockStack = { Toolbar: { Menu: p => p.children ?? null, MenuAction: p => { state.listRows.set(String(p.children), p); return null } } }
 function MockShellIconButton({ label, onPress }) {
   return React.createElement('ShellIconButton', { accessibilityLabel: label, onPress })
 }
-function MockActionsSheet(props) { state.actionsProps = props; return null }
 function MockModelPicker(props) { state.modelPicker = props; return null }
 function MockSearch(props) { state.search = props; return null }
 const storage = {
@@ -131,7 +127,7 @@ Module._load = function (request, parent, isMain) {
   if (request === 'react') return React
   if (request === 'react/jsx-runtime') return require('../../node_modules/react/jsx-runtime')
   if (request === 'react-native') return rn
-  if (request === 'expo-router') return { useFocusEffect: focus, useRouter: () => router, useNavigation: () => navigation, useLocalSearchParams: () => React.useContext(RouteParamsContext), usePathname: () => state.pathname, useGlobalSearchParams: () => state.globalRouteParams ?? {} }
+  if (request === 'expo-router') return { Stack: MockStack, useFocusEffect: focus, useRouter: () => router, useNavigation: () => navigation, useLocalSearchParams: () => React.useContext(RouteParamsContext), usePathname: () => state.pathname, useGlobalSearchParams: () => state.globalRouteParams ?? {} }
   if (filename.endsWith('/components/shell/AppShell.tsx')) {
     const mocks = {
       '@react-native-community/netinfo': { useNetInfo: () => ({ isConnected: true, isInternetReachable: true }) },
@@ -176,6 +172,10 @@ Module._load = function (request, parent, isMain) {
       '../../services/chatStorage': storage, '../../services/aiService': ai, '../../services/conversationActionsService': {
         generateImage: async input => { state.mediaCalls.push(input); return state.mediaGate ? state.mediaGate.promise : {} },
         generateVideo: async input => { state.mediaCalls.push(input); return state.mediaGate ? state.mediaGate.promise : {} },
+        archiveConversation: async id => { state.lifecycle.push(['archive', id]); if (state.lifecycleGate) await state.lifecycleGate.promise },
+        deleteConversation: async id => { state.lifecycle.push(['delete', id]) },
+        renameConversation: async (id, title) => { state.lifecycle.push(['rename', id, title]) },
+        setConversationShareVisibility: async (id, visibility) => { state.lifecycle.push(['share', id, visibility]); return { visibility, url: 'https://example.test/s/' + id } },
         submitRunApproval: async (input, options) => { state.approvalCalls.push({ input, options }); return state.approvalGate ? state.approvalGate.promise : undefined },
       },
       '../../lib/chatMentions': { mentionToRequestBody: x => x }, '../../services/personalChatService': {
@@ -196,11 +196,11 @@ Module._load = function (request, parent, isMain) {
         }
         return next
       } }, '../../hooks/useTheme': { useTheme }, '../../constants/theme': { borderRadius: { lg: 8, full: 99 }, fontSize: { sm: 12, md: 16 }, spacing: { sm: 8, md: 12, lg: 16, xl: 24 } },
-      './Composer': { Composer: MockComposer }, './ChatActionsSheet': { ChatActionsSheet: MockActionsSheet }, '../../services/integrationsService': {
+      './Composer': { Composer: MockComposer }, './RoomSheets': { RoomConfirmDialog: p => { state.confirmation = p.request; return null } }, '../../services/integrationsService': {
         createSkill: async (...args) => { state.skillCalls.push(args); if (state.skillGate) await state.skillGate.promise },
-      }, './DrawerSidebar': { DrawerSidebar: MockDrawerSidebar },
+      },
       '../ui/ScreenWithDrawer': { ScreenWithDrawer: p => React.createElement(React.Fragment, null, p.drawer, p.children) }, '../ui/FeatureGate': { FeatureGate: () => null }, '../../contexts/DrawerContext': { useDrawer: () => ({ openDrawer() {}, drawerVisible: false }) },
-      '../ui/FloatingSearchBar': { FloatingSearchBar: MockSearch }, '../ui/primitives': { ListRow: p => { state.listRows.set(p.title, p); return null }, Section: p => p.children },
+      '../ui/FloatingSearchBar': { FloatingSearchBar: MockSearch },
       '../../contexts/AppSessionContext': { useAppSession: () => ({ chatModels: state.models, imageModels: imageModelCatalog, videoModels: videoModelCatalog, uiSettings: {}, entitlements: { tier: 'free' }, capabilities: { chat: true }, memoryEnabled: false, setMemoryEnabled() {} }) },
       '../auth/UpgradePrompt': { UpgradePrompt: () => null }, '../../contexts/AuthContext': { useAuth: () => ({ user: state.user, isAuthenticated: true, isLoading: false }) },
       '../../contexts/ConvexAuthProvider': { useNativeDataReady: () => state.nativeReady }, '../../contexts/WorkspaceContext': { useWorkspace: () => ({ activeWorkspaceId: state.workspaceId }) },
@@ -228,7 +228,7 @@ function reset() {
     loads: [], pendingLoad: null, stream: null, streamArgs: null, picker: null, documentPicker: null, uploadGate: null,
     uploadCalls: [], mediaGate: null, mediaCalls: [], preferenceGate: null, modelPreferences: [], saveCalls: [], createCalls: [],
     lastOpenedWrites: [], lastOpenedGate: null, lastOpenedError: null, skillCalls: [], skillGate: null, approvalGate: null, approvalCalls: [], runListeners: [], runStops: 0,
-   snapshots: [], domRenders: 0, composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, search: null, routeParams: null, routeParamCalls: [], routeParamSetter: null, localRouteParams: {}, lastOpenedChatId: null, globalRouteParams: null, foregroundRouteParams: null, actionsProps: null, headerProps: null, drawerProps: null, draftIds: [],
+   snapshots: [], domRenders: 0, composer: null, modelPicker: null, nativeProps: null, draftReviewProps: null, search: null, routeParams: null, routeParamCalls: [], routeParamSetter: null, localRouteParams: {}, lastOpenedChatId: null, globalRouteParams: null, foregroundRouteParams: null, headerProps: null, draftIds: [], prompts: [], shares: [], lifecycle: [], confirmation: null,
     historyLoads: 0, replaceCalls: [],
     domProps: null, stopCalls: [], stopGate: null, personalChatListeners: [],
     focused: true, listRows: new Map(),
@@ -504,7 +504,7 @@ test('mounted tab resumes last-opened after settings; drawer and header New Chat
   const loadsAfterResume = state.loads.length
 
   const drafts = []
-  for (const entry of ['header-new-chat', 'drawer-new-chat', 'header-new-chat']) {
+  for (const entry of ['header-new-chat', 'header-new-chat', 'header-new-chat']) {
     await pressNewChat(renderer, entry)
     assert.equal(state.headerProps.title, 'New Chat')
     assert.equal(renderer.root.findAllByType('TranscriptProbe').length, 0)
@@ -583,43 +583,39 @@ test('same mounted provider rehydrates A/B/A and model catalog changes do not re
   await act(async () => renderer.unmount())
 })
 
-test('stale ChatActionsSheet callbacks cannot close or mutate a later route sheet', async () => {
+test('chat menu actions target the open chat and ignore results after the route changes', async () => {
   reset()
   state.history = [{ id: CHAT_A, title: 'Chat A' }, { id: CHAT_B, title: 'Chat B' }]
   const renderer = await mount(CHAT_A)
-  await act(async () => { state.headerProps.onOptions(); await tick() })
-  await act(async () => { state.listRows.get('Conversation actions').onPress(); await tick() })
-  assert.equal(state.actionsProps.chat.id, CHAT_A)
-  const callbacksA = {
-    close: state.actionsProps.onClose,
-    changed: state.actionsProps.onChanged,
-    deleted: state.actionsProps.onDeleted,
-    archived: state.actionsProps.onArchived,
-  }
+  assert.ok(state.listRows.get('Rename') && state.listRows.get('Share link') && state.listRows.get('Archive') && state.listRows.get('Delete'))
 
+  await act(async () => { state.listRows.get('Share link').onPress(); await tick() })
+  assert.deepEqual(state.lifecycle.at(-1), ['share', CHAT_A, 'public'])
+  assert.equal(state.shares.at(-1).url, 'https://example.test/s/' + CHAT_A)
+
+  await act(async () => { state.listRows.get('Rename').onPress(); await tick() })
+  const [title, , buttons, , initial] = state.prompts.at(-1)
+  assert.equal(title, 'Rename chat')
+  assert.equal(initial, 'Chat A')
+  await act(async () => { buttons.find(button => button.text === 'Save').onPress('  Renamed  '); await tick() })
+  assert.deepEqual(state.lifecycle.at(-1), ['rename', CHAT_A, 'Renamed'])
+
+  await act(async () => { state.listRows.get('Delete').onPress(); await tick() })
+  assert.equal(state.confirmation.label, 'Delete chat')
+  assert.equal(state.confirmation.destructive, true)
+
+  // Archive A, then move to B before the server answers: B must not be reset.
+  state.lifecycleGate = deferred()
+  await act(async () => { state.listRows.get('Archive').onPress(); await tick() })
   await act(async () => {
     renderer.update(React.createElement(ThemeContext.Provider, { value: ThemeContext._currentValue }, React.createElement(ChatScreen, { conversationId: CHAT_B, routeKind: 'detail' })))
     await tick()
   })
-  await act(async () => { state.headerProps.onOptions(); await tick() })
-  await act(async () => { state.listRows.get('Conversation actions').onPress(); await tick() })
-  assert.equal(state.actionsProps.chat.id, CHAT_B)
-  const closeB = state.actionsProps.onClose
-  const historyLoads = state.historyLoads
   const replaceCount = state.replaceCalls.length
-  await act(async () => {
-    callbacksA.changed()
-    callbacksA.deleted()
-    callbacksA.archived()
-    callbacksA.close()
-    await tick()
-  })
-  assert.equal(state.historyLoads, historyLoads)
+  await act(async () => { state.lifecycleGate.resolve(); await tick() })
+  state.lifecycleGate = null
+  assert.deepEqual(state.lifecycle.find(entry => entry[0] === 'archive'), ['archive', CHAT_A])
   assert.equal(state.replaceCalls.length, replaceCount)
-  assert.equal(state.actionsProps.visible, true)
-  assert.equal(state.actionsProps.chat.id, CHAT_B)
-  await act(async () => { closeB(); await tick() })
-  assert.equal(state.actionsProps.visible, false)
   await act(async () => renderer.unmount())
 })
 

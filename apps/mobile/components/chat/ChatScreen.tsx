@@ -6,6 +6,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -13,7 +14,7 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router'
+import { Stack, useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import { hapticImpact } from '../../lib/haptics'
 import * as ImagePicker from 'expo-image-picker'
@@ -40,8 +41,12 @@ import {
 } from '../../services/chatStorage'
 import { chatStream, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
 import {
+  archiveConversation,
+  deleteConversation,
   generateImage,
   generateVideo,
+  renameConversation,
+  setConversationShareVisibility,
   submitRunApproval,
 } from '../../services/conversationActionsService'
 import { mentionToRequestBody } from '../../lib/chatMentions'
@@ -59,15 +64,13 @@ import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { NativePersonalChatTranscript, type NativeTranscriptScope, type NativeTranscriptScrollIntent, type TrustedReplyTarget } from './NativePersonalChatTranscript'
 import { toNativeChatTranscriptView, type NativeChatTranscriptRuntime } from '../../lib/toNativeChatTranscriptView'
 import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
-import { ChatActionsSheet } from './ChatActionsSheet'
+import { RoomConfirmDialog, type RoomConfirmation } from './RoomSheets'
 import { createSkill } from '../../services/integrationsService'
 import type { AssistantVisualBlock, DraftModalState } from '@overlay/chat-core'
-import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { FloatingSearchBar } from '../ui/FloatingSearchBar'
-import { ListRow, Section } from '../ui/primitives'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
 import { useAuth } from '../../contexts/AuthContext'
@@ -371,8 +374,7 @@ function ChatScreenOwner({
   const currentRun = execution?.workspaceId === activeWorkspaceId && execution.run?.conversationId === activeChatId &&
     (routeKind !== 'detail' || conversationId === activeChatId) ? execution.run : null
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
-  const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
-  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
   const [showingCachedCopy, setShowingCachedCopy] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
@@ -467,7 +469,6 @@ function ChatScreenOwner({
       },
     }
   }, [user?.id])
-  const chatActionsOperationRef = useRef<ReturnType<typeof beginOperation> | null>(null)
   const persistLastOpenedChat = useCallback((chatId: string, workspaceId: string) => {
     const ownerEpoch = ownerEpochRef.current
     const dataEpoch = dataEpochRef.current
@@ -539,8 +540,7 @@ function ChatScreenOwner({
         clearConversationScope()
       }
       setModelPickerVisible(false)
-      setActionsChat(null)
-      setOptionsOpen(false)
+      setConfirmation(null)
       setIsLoading(true)
     }
   }, [activeWorkspaceId, clearConversationScope, conversationId, invalidateOperations, nativeReady, routeKind, user?.id])
@@ -568,8 +568,7 @@ function ChatScreenOwner({
       focusEpochRef.current += 1
       invalidateOperations(true)
       setModelPickerVisible(false)
-      setActionsChat(null)
-      setOptionsOpen(false)
+      setConfirmation(null)
       setApprovalSubmitting(false)
       approvalFlightRef.current = null
       setPendingDocuments(current => current.filter(document => document.status !== 'uploading'))
@@ -1196,38 +1195,6 @@ function ChatScreenOwner({
     hasAutoScrolledRef.current = true
     requestTranscriptEnd('initial-end')
   }, [activeChatId, isLoading, messages.length, requestTranscriptEnd, transcriptAuthorityActive])
-
-  const openConversation = useCallback(
-    async (chatId: string) => {
-      if (chatId === activeChatId) return
-      if (routeKind === 'detail') {
-        const operation = beginOperation(`navigate-chat:${chatId}`, activeChatId)
-        if (!operation.isCurrent()) { operation.finish(); return }
-        router.replace({
-          pathname: '/chat/[id]',
-          params: {
-            id: chatId,
-          },
-        })
-        operation.finish()
-        return
-      }
-
-      dataEpochRef.current += 1
-      invalidateOperations()
-      clearConversationScope()
-      setIsLoading(true)
-      setIsSwitchingChat(true)
-      const operation = beginOperation(`open-chat:${chatId}`, null)
-      try {
-        await hydrateConversation(chatId, availableModels, { switching: true, operation })
-      } finally {
-        if (operation.isCurrent()) setIsLoading(false)
-        operation.finish()
-      }
-    },
-    [activeChatId, availableModels, beginOperation, clearConversationScope, hydrateConversation, invalidateOperations, routeKind, router],
-  )
 
   const startFreshConversation = useCallback(async () => {
     if (routeKind === 'detail' && conversationId !== 'new') {
@@ -2164,8 +2131,79 @@ function ChatScreenOwner({
   // premium model. Auto-opening it on every free-tier session is removed for
   // App Store compliance and to avoid a confusing initial popup.
 
-  const renderedActionChatId = actionsChat?.id
-  const renderedActionOperation = actionsChat ? chatActionsOperationRef.current : null
+  // The "…" menu in the navigation bar. Saved chats get rename/share/archive/delete.
+  const savedChat = history.find((chat) => chat.id === activeChatId) ?? null
+  const streaming = isSending || messages.some((message) => message.responses?.some((response) => response.isLoading))
+  const chatAction = (title: string, action: (chatId: string) => Promise<unknown>, after?: () => void) => {
+    const chatId = savedChat?.id
+    const workspaceId = getRequestWorkspaceId()
+    if (!chatId) return
+    void action(chatId)
+      .then(() => { if (getRequestWorkspaceId() === workspaceId && chatRef.current?.id === chatId) after?.() })
+      .catch((error) => {
+        Alert.alert(title, error instanceof Error ? error.message : 'Try again in a moment.')
+      })
+  }
+  const renameChat = () =>
+    Alert.prompt('Rename chat', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Save',
+        onPress: (value?: string) => {
+          const title = value?.trim()
+          if (!title || title === savedChat?.title) return
+          chatAction('Could not rename the chat', (id) => renameConversation(id, title), () => {
+            setChatTitle(title)
+            if (chatRef.current) chatRef.current = { ...chatRef.current, title }
+            void refreshHistory()
+          })
+        },
+      },
+    ], 'plain-text', savedChat?.title ?? chatTitle)
+  const shareChat = () =>
+    chatAction('Could not share the chat', async (id) => {
+      const { url } = await setConversationShareVisibility(id, 'public')
+      // iOS shares `url` as a link; adding it as the message too would share it twice.
+      if (url) await Share.share(Platform.OS === 'ios' ? { url } : { message: url })
+    })
+  const chatMenu = [
+    <Stack.Toolbar.MenuAction
+      key="temporary"
+      icon={isTemporary ? 'shield.fill' : 'shield'}
+      isOn={isTemporary}
+      disabled={streaming}
+      subtitle={isTemporary ? 'Nothing from this chat is saved' : undefined}
+      onPress={() => setIsTemporary((value) => !value)}
+    >
+      Temporary chat
+    </Stack.Toolbar.MenuAction>,
+    savedChat ? (
+      <Stack.Toolbar.Menu key="actions" inline title="">
+        <Stack.Toolbar.MenuAction icon="pencil" onPress={renameChat}>Rename</Stack.Toolbar.MenuAction>
+        <Stack.Toolbar.MenuAction icon="square.and.arrow.up" subtitle="Anyone with the link can view it" onPress={shareChat}>Share link</Stack.Toolbar.MenuAction>
+        <Stack.Toolbar.MenuAction icon="archivebox" onPress={() => chatAction('Could not archive the chat', (id) => archiveConversation(id), () => void startFreshConversation())}>Archive</Stack.Toolbar.MenuAction>
+      </Stack.Toolbar.Menu>
+    ) : null,
+    savedChat ? (
+      <Stack.Toolbar.Menu key="danger" inline title="">
+        <Stack.Toolbar.MenuAction
+          icon="trash"
+          destructive
+          onPress={() =>
+            setConfirmation({
+              title: `Delete “${savedChat.title || 'this chat'}”?`,
+              message: 'This can’t be undone.',
+              label: 'Delete chat',
+              destructive: true,
+              run: () => chatAction('Could not delete the chat', (id) => deleteConversation(id), () => void startFreshConversation()),
+            })
+          }
+        >
+          Delete
+        </Stack.Toolbar.MenuAction>
+      </Stack.Toolbar.Menu>
+    ) : null,
+  ]
 
   if (isLoading || startsNewChat) {
     return (
@@ -2180,28 +2218,7 @@ function ChatScreenOwner({
   }
 
   return (
-    <ScreenWithDrawer
-      drawer={
-        <DrawerSidebar
-          variant="slide"
-          theme={theme}
-          chats={history}
-          activeChatId={chatRef.current?.id || null}
-          onSelectChat={(chatId) => {
-            void openConversation(chatId)
-          }}
-          onCreateChat={() => {
-            void startFreshConversation()
-          }}
-          onChatsChanged={(removedChatId) => {
-            void refreshHistory()
-            if (removedChatId && removedChatId === chatRef.current?.id) {
-              void startFreshConversation()
-            }
-          }}
-        />
-      }
-    >
+    <ScreenWithDrawer drawer={null}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <KeyboardAvoidingView
           style={styles.screenPadding}
@@ -2209,7 +2226,7 @@ function ChatScreenOwner({
           enabled={Platform.OS !== 'android' || keyboardVisible}
           keyboardVerticalOffset={headerHeight}
         >
-          <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
+          <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} menu={chatMenu} />
 
           <View style={styles.threadSurface}>
             {showingCachedCopy ? (
@@ -2359,18 +2376,6 @@ function ChatScreenOwner({
         }} />
       </ChatSheet>
 
-      <ChatSheet theme={theme} visible={optionsOpen} onClose={() => setOptionsOpen(false)} title="Chat options">
-        <Section theme={theme}>
-          <ListRow theme={theme} icon="shield" title="Temporary chat" subtitle={isTemporary ? 'On. Nothing from this chat is saved.' : 'Off'} onPress={isSending || messages.some(message => message.responses?.some(response => response.isLoading)) ? undefined : () => { setIsTemporary(value => !value); setOptionsOpen(false) }} />
-          {history.some(chat => chat.id === activeChatId) ? <ListRow theme={theme} icon="more-horizontal" title="Conversation actions" onPress={() => {
-            const target = history.find(chat => chat.id === activeChatId) ?? null
-            chatActionsOperationRef.current?.finish()
-            chatActionsOperationRef.current = target ? beginOperation(`chat-actions:${target.id}`, activeChatId) : null
-            setOptionsOpen(false)
-            setActionsChat(target)
-          }} /> : null}
-        </Section>
-      </ChatSheet>
 
       <UpgradePrompt
         visible={upgradeVisible}
@@ -2378,45 +2383,7 @@ function ChatScreenOwner({
         onClose={() => setUpgradeVisible(false)}
       />
 
-      <ChatActionsSheet
-        theme={theme}
-        visible={actionsChat !== null}
-        chat={actionsChat}
-        onClose={() => {
-          const operation = renderedActionOperation
-          if (!operation || chatActionsOperationRef.current !== operation) return
-          operation.finish()
-          chatActionsOperationRef.current = null
-          setActionsChat(null)
-        }}
-        onChanged={() => {
-          const chatId = renderedActionChatId
-          const operation = renderedActionOperation
-          if (!operation || chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
-          void refreshHistory().then((next) => {
-            if (chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
-            const updated = chatId ? next.find((c) => c.id === chatId) : null
-            if (updated?.title && chatRef.current?.id === chatId) {
-              setChatTitle(updated.title)
-              if (chatRef.current) chatRef.current = { ...chatRef.current, title: updated.title }
-            }
-          }).catch(() => {}).finally(() => operation.finish())
-        }}
-        onDeleted={() => {
-          const operation = renderedActionOperation
-          if (!operation || chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
-          operation.finish()
-          chatActionsOperationRef.current = null
-          void startFreshConversation()
-        }}
-        onArchived={() => {
-          const operation = renderedActionOperation
-          if (!operation || chatActionsOperationRef.current !== operation || !operation.isCurrent()) return
-          operation.finish()
-          chatActionsOperationRef.current = null
-          void startFreshConversation()
-        }}
-      />
+      <RoomConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
       <FloatingSearchBar
         theme={theme}
         isDark={isDark}
