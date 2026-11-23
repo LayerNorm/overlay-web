@@ -1693,6 +1693,7 @@ async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, convers
   const conversation = id ? await ctx.db.get(id) : null
   if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
   if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
+  if (conversation.origin?.kind === 'channel') return true
   const participants = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
     .collect()

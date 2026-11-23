@@ -118,6 +118,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/github/repositories', methods: { GET: authenticated() } },
   { path: '/api/v1/github/connect', methods: { GET: authenticated() } },
   { path: '/api/v1/github/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/install', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/oauth', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/link', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/link/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/events', methods: { POST: publicPolicy() } },
   {
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },

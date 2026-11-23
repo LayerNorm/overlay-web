@@ -1040,6 +1040,12 @@ export const webApiExcludedRouteDefinitions = [
   // GitHub sign-in: a third-party browser flow.
   { routePath: '/api/v1/github/connect', reason: 'Starts the GitHub sign-in (or app install) redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/github/callback', reason: 'GitHub sign-in redirect target, protected by signed state and GitHub user authorization rather than the public API authentication scheme.' },
+  // Slack app: browser install and Sign in with Slack flows, plus signed Slack Events API delivery.
+  { routePath: '/api/v1/integrations/slack/install', reason: 'Starts the Slack app install redirect; a browser flow, not a public API call.' },
+  { routePath: '/api/v1/integrations/slack/oauth', reason: 'Slack install redirect target, protected by signed state and a live session rather than the public API authentication scheme.' },
+  { routePath: '/api/v1/integrations/slack/link', reason: 'Starts the Sign in with Slack redirect that links a member Slack account; a browser flow.' },
+  { routePath: '/api/v1/integrations/slack/link/callback', reason: 'Sign in with Slack redirect target, protected by signed state and a live session.' },
+  { routePath: '/api/v1/integrations/slack/events', reason: 'Slack Events API delivery, authenticated by the Slack request signature rather than the public API authentication scheme.' },
   // Automation action routes pending full boundary definitions.
   { routePath: '/api/v1/automations/[id]/approve', reason: 'Automation approval action; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/events', reason: 'Automation event stream; boundary definition pending. Protected by workspace authorization.' },

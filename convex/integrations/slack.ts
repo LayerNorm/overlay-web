@@ -185,6 +185,28 @@ export const installByServer = mutation({
   },
 })
 
+/** Forgets a bot token the adapter stored for an install that was then refused, unless the team is bound already. */
+export const discardUnboundTokenByServer = mutation({
+  args: { serverSecret: v.string(), teamId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (await activeInstallationForTeam(ctx, args.teamId)) return null
+    const token = await ctx.db.query('slackChatState').withIndex('by_key', q => q.eq('key', slackInstallationStateKey(args.teamId))).unique()
+    if (token) await ctx.db.delete(token._id)
+    return null
+  },
+})
+
+/** The Slack workspace installed for an Overlay workspace, for starting Sign in with Slack. */
+export const installationByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const installation = await activeInstallationForWorkspace(ctx, args.workspaceId)
+    return installation ? { teamId: installation.teamId } : null
+  },
+})
+
 /** Slack told us the app was uninstalled or its tokens revoked. */
 export const uninstallByServer = mutation({
   args: { serverSecret: v.string(), teamId: v.string() },
