@@ -88,7 +88,7 @@ Severity:
 ## P2: interaction maturity across the app
 - **Native controls**: 112 `Alert.alert` calls stand in for action sheets, confirmations and error toasts, and most sheets are JS modals. Prefer native menus (toolbar menus, context menus, `@expo/ui`), form sheets, and an inline toast for errors.
 - **Long-press / context menus**: none on chats, agents, tasks or files. Add native context menus with previews.
-- **Swipe actions**: none anywhere (archive chat, mark read, complete task).
+- **Swipe actions**: Chats (archive, delete) and Activity (mark read) done 2026-11-23 via the shared `SwipeRow`; completing a task by swipe is still missing.
 - **Pull-to-refresh**: only on Archived and Workspace.
 - **Optimistic updates**: only room sends. Add them for chat sends, task status, renames, and archive with Undo.
 - **Undo**: web shows Undo after archive; mobile has none.

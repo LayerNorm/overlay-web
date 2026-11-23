@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated'
 import { Image } from 'expo-image'
@@ -19,6 +19,7 @@ import type { SidebarChat } from '../shell/SidebarView'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { T } from '../shell/primitives'
 import { RowMenu } from './ChatRowMenu'
+import { SwipeRow, type SwipeAction } from '../ui/SwipeRow'
 import { RoomConfirmDialog, type RoomConfirmation } from './RoomSheets'
 import { archiveConversation, deleteConversation, renameConversation } from '../../services/conversationActionsService'
 
@@ -50,6 +51,14 @@ export function ChatsScreen(): React.ReactElement {
   const loading = personal.loading && workspace.loading
   const error = personal.error && workspace.error ? workspace.error : null
 
+  // Forget a hidden id once the server list drops it, so a chat that is later
+  // unarchived shows up again without leaving the screen.
+  const listedIds = [...workspace.chats, ...personal.chats].map((chat) => chat.id).join(',')
+  useEffect(() => {
+    const listed = new Set(listedIds.split(','))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Prune optimistic hides as the live list catches up.
+    setHidden((ids) => (ids.some((id) => !listed.has(id)) ? ids.filter((id) => listed.has(id)) : ids))
+  }, [listedIds])
   const chats = useMemo(() => {
     const seen = new Set<string>()
     return [...workspace.chats, ...personal.chats].filter((chat) => {
@@ -89,8 +98,9 @@ export function ChatsScreen(): React.ReactElement {
     if (id) setHidden((ids) => ids.filter((value) => value !== id))
     Alert.alert(title, reason instanceof Error ? reason.message : 'Try again in a moment.')
   }
+  const hide = (id: string) => setHidden((ids) => [...ids, id])
   const archive = (chat: SidebarChat) => {
-    setHidden((ids) => [...ids, chat.id])
+    hide(chat.id)
     void archiveConversation(chat.id).catch(fail('Could not archive the chat', chat.id))
   }
   const rename = (chat: SidebarChat) =>
@@ -112,7 +122,7 @@ export function ChatsScreen(): React.ReactElement {
       label: 'Delete chat',
       destructive: true,
       run: () => {
-        setHidden((ids) => [...ids, chat.id])
+        hide(chat.id)
         void deleteConversation(chat.id).catch(fail('Could not delete the chat', chat.id))
       },
     })
@@ -124,6 +134,11 @@ export function ChatsScreen(): React.ReactElement {
           { label: 'Delete', icon: 'trash', destructive: true, onPress: () => remove(chat) },
         ]
       : [{ label: 'Archive', icon: 'archivebox', onPress: () => archive(chat) }]
+  // Swipe left: Archive at the edge (a full swipe archives), then Delete for personal chats.
+  const swipeActions = (chat: SidebarChat): SwipeAction[] => [
+    { label: 'Archive', icon: 'archivebox.fill', onPress: () => archive(chat) },
+    ...(chat.kind === 'personal' ? [{ label: 'Delete', icon: 'trash.fill', destructive: true, onPress: () => remove(chat) }] : []),
+  ]
   const toggle = (id: SectionId) => {
     hapticSelect()
     setCollapsed((previous) => ({ ...previous, [id]: !previous[id] }))
@@ -209,7 +224,9 @@ export function ChatsScreen(): React.ReactElement {
             >
               {channels.map((chat) => (
                 <RowMenu key={chat.id} actions={chatActions(chat)}>
-                  <ChatRow chat={chat} onPress={() => open(chat)} />
+                  <SwipeRow trailing={swipeActions(chat)}>
+                    <ChatRow chat={chat} onPress={() => open(chat)} />
+                  </SwipeRow>
                 </RowMenu>
               ))}
               <AddRow label="Add channel" onPress={newChannel} />
@@ -222,7 +239,9 @@ export function ChatsScreen(): React.ReactElement {
             >
               {dms.map((chat) => (
                 <RowMenu key={chat.id} actions={chatActions(chat)}>
-                  <ChatRow chat={chat} onPress={() => open(chat)} />
+                  <SwipeRow trailing={swipeActions(chat)}>
+                    <ChatRow chat={chat} onPress={() => open(chat)} />
+                  </SwipeRow>
                 </RowMenu>
               ))}
               <AddRow label="New message" onPress={newMessage} />
@@ -230,7 +249,9 @@ export function ChatsScreen(): React.ReactElement {
             <Section title="Chats" collapsed={collapsed.chats} onToggle={() => toggle('chats')} onAdd={newChat}>
               {personalChats.map((chat) => (
                 <RowMenu key={chat.id} actions={chatActions(chat)}>
-                  <ChatRow chat={chat} onPress={() => open(chat)} />
+                  <SwipeRow trailing={swipeActions(chat)}>
+                    <ChatRow chat={chat} onPress={() => open(chat)} />
+                  </SwipeRow>
                 </RowMenu>
               ))}
               <AddRow label="New chat" onPress={newChat} />

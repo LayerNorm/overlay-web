@@ -1,11 +1,9 @@
-import React, { useRef, useState } from 'react'
+import React, { useState } from 'react'
 import { Alert, Pressable, ScrollView, View } from 'react-native'
 import { Image } from 'expo-image'
 import { Stack } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
 import * as WebBrowser from 'expo-web-browser'
-import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable'
 import type { WorkspaceNotification, WorkspaceNotificationFilter } from '@overlay/workspace-contracts'
 import { api } from '../../services/convexClient'
 import { useLiveResource } from '../../hooks/useLiveResource'
@@ -14,7 +12,6 @@ import { filterNotifications, markNotificationsRead } from '../../services/colla
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { openNotificationDestination } from '../../lib/notificationRouting'
 import { activityPreview } from '../../lib/activity'
-import { hapticImpact } from '../../lib/haptics'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { useResourceScope } from '../knowledge/ResourceScreens'
@@ -24,6 +21,7 @@ import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { T } from '../shell/primitives'
 import { RowMenu } from './ChatRowMenu'
+import { SwipeRow } from '../ui/SwipeRow'
 
 type Actor = { name: string; principalType?: string; isDefault?: boolean; avatarShape?: string; avatarColor?: string }
 
@@ -201,14 +199,8 @@ function ActivityRow({
   onRead: () => void
 }) {
   const { theme, isDark } = useTheme()
-  const swipe = useRef<SwipeableMethods>(null)
   const unread = !item.readAt
   const preview = activityPreview(item.body ?? '')
-  const read = () => {
-    hapticImpact()
-    swipe.current?.close()
-    onRead()
-  }
   const leading = actor ? (
     actor.principalType === 'agent' ? (
       <AgentAvatar agent={actor} dark={isDark} foreground={theme.foreground as string} size={36} />
@@ -225,27 +217,7 @@ function ActivityRow({
     </View>
   )
   return (
-    <GestureHandlerRootView>
-      <ReanimatedSwipeable
-        ref={swipe}
-        enabled={unread}
-        friction={1.5}
-        leftThreshold={72}
-        overshootLeft={false}
-        // Only the leading action exists, so a completed swipe always means Mark as Read.
-        onSwipeableWillOpen={read}
-        renderLeftActions={() => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Mark as read"
-            onPress={read}
-            style={{ width: 88, alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: theme.foreground }}
-          >
-            <Image source="sf:envelope.open.fill" style={{ width: 20, height: 20 }} contentFit="contain" tintColor={theme.background as string} />
-            <T style={{ color: theme.background, fontSize: 12, fontWeight: '600' }}>Read</T>
-          </Pressable>
-        )}
-      >
+    <SwipeRow leading={unread ? [{ label: 'Read', icon: 'envelope.open.fill', runOnOpen: true, onPress: onRead }] : []}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={(unread ? 'Unread. ' : '') + item.title}
@@ -285,7 +257,6 @@ function ActivityRow({
             ) : null}
           </View>
         </Pressable>
-      </ReanimatedSwipeable>
-    </GestureHandlerRootView>
+    </SwipeRow>
   )
 }
