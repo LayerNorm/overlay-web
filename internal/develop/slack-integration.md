@@ -16,6 +16,10 @@ Overlay in Slack is a first-class integration, like the GitHub App. One Overlay 
 | Phase 2: a web reply in a Slack-started thread is posted to Slack as "<name> replied in Overlay" by the Overlay bot, and the answer follows it | Built, unit tested; asker only |
 | Phase 2: approvals as a Slack card (Approve, Deny, Open in Overlay); only the asker can answer, through the same path as the web | Built, unit tested |
 | Phase 2: in a channel, a "Continue privately" button (once per thread, only for people with a personal Overlay) moves the question to a DM thread with their personal Overlay | Built, unit tested |
+| Phase 3: Who can ask (All linked members, Everyone except blocked, Only allowed people) with a per-member list for owners and admins (`slackPeopleAccess`) | Built, unit tested |
+| Phase 3: a question from someone who still has to link is kept for an hour and runs once they link (`overlay:pending:<team>:<user>` in Slack state) | Built, unit tested |
+| Phase 3: Guests toggle (workspace guests), Slack Connect toggle; people from another organization get a one-line reason instead of silence | Built, unit tested |
+| Phase 3: Channel access only for people without an Overlay account | Not built: needs a decision on who pays for those answers (todos.md) |
 | Web visibility for other linked channel members, Slack participants without accounts | Not built: each asker has their own thread, visible to them |
 
 Hosted QA needs a test Slack app on a PR Preview (see QA below).

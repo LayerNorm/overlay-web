@@ -15,6 +15,7 @@ export const conversationOriginValidator = v.object({
 export const slackWhoCanAskValidator = v.union(v.literal('linked'), v.literal('everyone'), v.literal('specific'))
 export const slackUnlinkedPeopleValidator = v.union(v.literal('link'), v.literal('channel'))
 export const slackActionsValidator = v.union(v.literal('ask'), v.literal('allow'), v.literal('never'))
+export const slackPersonAccessValidator = v.union(v.literal('allowed'), v.literal('blocked'))
 
 export const slackTables = {
   /** A Slack workspace installed into an Overlay workspace. Bot tokens live encrypted in slackChatState. */
@@ -55,6 +56,15 @@ export const slackTables = {
     updatedByUserId: v.string(),
     updatedAt: v.number(),
   }).index('by_workspaceId', ['workspaceId']),
+
+  /** A member on the Slack allow list (Only allowed people) or block list (Everyone except blocked). */
+  slackPeopleAccess: defineTable({
+    workspaceId: v.string(),
+    userId: v.string(),
+    access: slackPersonAccessValidator,
+    updatedByUserId: v.string(),
+    updatedAt: v.number(),
+  }).index('by_workspaceId_userId', ['workspaceId', 'userId']),
 
   /** The Overlay thread that answers one person in one Slack thread. */
   slackThreads: defineTable({

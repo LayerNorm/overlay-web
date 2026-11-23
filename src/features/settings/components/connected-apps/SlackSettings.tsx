@@ -44,6 +44,7 @@ export function SlackSettings() {
   const updateSettings = useMutation(api.integrations.slack.updateSettings)
   const disconnect = useMutation(api.integrations.slack.disconnect)
   const unlink = useMutation(api.integrations.slack.unlink)
+  const setPersonAccess = useMutation(api.integrations.slack.setPersonAccess)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -72,7 +73,11 @@ export function SlackSettings() {
     }
   }
 
-  const { installation, link, settings, canManage } = status
+  const { installation, link, settings, people, canManage } = status
+  const save = (change: Partial<typeof settings>) => void run(
+    () => updateSettings({ workspaceId: activeWorkspaceId, ...settings, ...change }), 'Couldn’t save the setting.',
+  )
+  const listMode = settings.whoCanAsk === 'linked' ? null : settings.whoCanAsk
   if (!installation) {
     return (
       <SettingsGroup>
@@ -109,20 +114,20 @@ export function SlackSettings() {
       </SettingsGroup>
       <SettingsGroup>
         <SettingsAppRow icon={<UsersRound size={15} />} title="Who can ask Overlay" description="People who can mention or message Overlay in Slack.">
-          <ListboxSelect aria-label="Who can ask Overlay" className="w-44" value={settings.whoCanAsk} disabled onChange={() => undefined} options={[
-            { value: 'linked', label: 'Linked members' },
-            { value: 'everyone', label: 'Everyone' },
-            { value: 'specific', label: 'Specific people' },
+          <ListboxSelect aria-label="Who can ask Overlay" className="w-52" value={settings.whoCanAsk} disabled={!canManage || busy} onChange={(value) => save({ whoCanAsk: value as typeof settings.whoCanAsk })} options={[
+            { value: 'linked', label: 'All linked members' },
+            { value: 'everyone', label: 'Everyone except blocked' },
+            { value: 'specific', label: 'Only allowed people' },
           ]} />
         </SettingsAppRow>
-        <SettingsAppRow icon={<UserRoundPlus size={15} />} title="Guests" description="Let Slack guests ask Overlay.">
-          <SettingsToggle checked={settings.guests} disabled onChange={() => undefined} aria-label="Guests" />
+        <SettingsAppRow icon={<UserRoundPlus size={15} />} title="Guests" description="Let workspace guests ask Overlay from Slack.">
+          <SettingsToggle checked={settings.guests} disabled={!canManage || busy} onChange={() => save({ guests: !settings.guests })} aria-label="Guests" />
         </SettingsAppRow>
         <SettingsAppRow icon={<Building2 size={15} />} title="Slack Connect" description="Answer linked members in channels shared with other companies.">
           <SettingsToggle
             checked={settings.slackConnect}
             disabled={!canManage || busy}
-            onChange={() => void run(() => updateSettings({ workspaceId: activeWorkspaceId, ...settings, slackConnect: !settings.slackConnect }), 'Couldn’t save the setting.')}
+            onChange={() => save({ slackConnect: !settings.slackConnect })}
             aria-label="Slack Connect"
           />
         </SettingsAppRow>
@@ -134,6 +139,33 @@ export function SlackSettings() {
           ]} />
         </SettingsAppRow>
       </SettingsGroup>
+      {canManage && listMode ? (
+        <SettingsGroup>
+          {people.length === 0
+            ? <SettingsAppRow icon={<UsersRound size={15} />} title="No linked members yet" description="People appear here once they link their Slack account." />
+            : people.map((person) => {
+              const canAsk = listMode === 'specific' ? person.access === 'allowed' : person.access !== 'blocked'
+              const next = canAsk
+                ? (listMode === 'specific' ? null : 'blocked' as const)
+                : (listMode === 'specific' ? 'allowed' as const : null)
+              return (
+                <SettingsAppRow
+                  key={person.userId}
+                  icon={<UserRound size={15} />}
+                  title={person.name}
+                  description={person.slackUserName ? 'Slack: ' + person.slackUserName : 'Linked'}
+                >
+                  <SettingsToggle
+                    checked={canAsk}
+                    disabled={busy}
+                    onChange={() => void run(() => setPersonAccess({ workspaceId: activeWorkspaceId, userId: person.userId, access: next }), 'Couldn’t save the change.')}
+                    aria-label={'Let ' + person.name + ' ask Overlay'}
+                  />
+                </SettingsAppRow>
+              )
+            })}
+        </SettingsGroup>
+      ) : null}
       <ConfirmDialog
         isOpen={confirming}
         title="Disconnect Slack?"

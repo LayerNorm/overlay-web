@@ -1,4 +1,4 @@
-import type { NextRequest } from 'next/server'
+import { after, type NextRequest } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getOverlaySession } from '@/server/auth/session'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -7,6 +7,7 @@ import { getClientIp } from '@/server/security/rate-limit'
 import { logger } from '@/server/observability/logger'
 import { openSlackConnectState, slackAppConfig, slackIdentityFromCode } from '@/server/integrations/slack/slack-app'
 import { slackBack, slackLinkRedirectUri, slackRateLimited } from '@/server/integrations/slack/slack-routes'
+import { resumeSlackRequestAfterLink } from '@/server/integrations/slack/slack-inbound'
 
 /**
  * Sign in with Slack returns here (internal/develop/slack-integration.md). Slack vouches for the Slack account; the
@@ -43,6 +44,9 @@ export async function GET(request: NextRequest) {
     }).catch((error) => {
       logger.warn('[slack] link audit write failed', { reason: error instanceof Error ? error.message : 'unknown' })
     })
+    after(() => resumeSlackRequestAfterLink({ teamId: identity.teamId, slackUserId: identity.slackUserId }).catch((error: unknown) => {
+      logger.warn('[slack] could not answer the question asked before linking', { reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+    }))
     return slackBack(state.returnTo, { slack: 'linked' })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

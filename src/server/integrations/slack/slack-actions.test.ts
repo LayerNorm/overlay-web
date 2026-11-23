@@ -3,7 +3,7 @@ import test from 'node:test'
 import { answerSlackApproval, continueSlackRequestPrivately } from './slack-actions'
 
 const owner = { origin: { teamId: 'T1', kind: 'channel' as const }, workspaceId: 'w1', agentId: 'a1', userId: 'user_1' }
-const requester = { workspaceId: 'w1', settings: { whoCanAsk: 'linked', unlinkedPeople: 'link', guests: false, slackConnect: false, actionsInChannels: 'ask' }, userId: 'user_1', principalId: 'p1', guest: false }
+const requester = { workspaceId: 'w1', settings: { whoCanAsk: 'linked', unlinkedPeople: 'link', guests: false, slackConnect: false, actionsInChannels: 'ask' }, userId: 'user_1', principalId: 'p1', guest: false, allowed: true }
 const run = { id: 'run_1', approval: { token: 'tok', requestedAt: 1, requests: [] } }
 const value = JSON.stringify({ c: 'conv_1', r: 'run_1' })
 

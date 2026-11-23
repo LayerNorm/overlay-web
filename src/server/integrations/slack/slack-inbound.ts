@@ -24,6 +24,8 @@ export type SlackRequester = {
   userId: string | null
   principalId: string | null
   guest: boolean
+  /** Who can ask lets this linked member ask (not blocked, or on the allow list). */
+  allowed: boolean
 }
 
 export type SlackInbound = {
@@ -33,6 +35,8 @@ export type SlackInbound = {
   kind: 'channel' | 'dm'
   channelName?: string
   external: boolean
+  /** The asker belongs to another organization's Slack workspace (a Slack Connect channel). */
+  outsider: boolean
   slackUserId: string
   text: string
 }
@@ -47,7 +51,7 @@ export type SlackAdmission =
   | { status: 'started'; conversationId: string; turnId: string }
   | { status: 'not_installed' }
   | { status: 'link_required'; workspaceId: string }
-  | { status: 'not_allowed'; reason: 'slack_connect' | 'guest' }
+  | { status: 'not_allowed'; reason: 'slack_connect' | 'outsider' | 'guest' | 'not_listed' }
   | { status: 'empty' }
 
 export type SlackAdmissionDependencies = {
@@ -81,8 +85,10 @@ export async function admitSlackMessage(input: SlackInbound, dependencies: Slack
   ).then((value) => value ?? null)))({ teamId: input.teamId, slackUserId: input.slackUserId })
   if (!requester) return { status: 'not_installed' }
   if (input.external && !requester.settings.slackConnect) return { status: 'not_allowed', reason: 'slack_connect' }
+  if (input.outsider) return { status: 'not_allowed', reason: 'outsider' }
   if (!requester.userId) return { status: 'link_required', workspaceId: requester.workspaceId }
   if (requester.guest && !requester.settings.guests) return { status: 'not_allowed', reason: 'guest' }
+  if (!requester.allowed) return { status: 'not_allowed', reason: 'not_listed' }
   const started = await startSlackRequest({
     workspaceId: requester.workspaceId, userId: requester.userId, slackUserId: input.slackUserId, prompt,
     agentRole: 'workspace_chief',
@@ -166,35 +172,80 @@ export async function startSlackTurn(args: {
 }
 
 const NOT_ALLOWED_TEXT = {
-  slack_connect: 'Overlay doesn’t answer in channels shared with other organizations yet.',
+  slack_connect: 'Overlay doesn’t answer in channels shared with other organizations here.',
+  outsider: 'Overlay only answers members of the workspace that added it.',
   guest: 'Overlay doesn’t answer guests in this workspace.',
+  not_listed: 'You can’t ask Overlay in Slack. Ask a workspace owner or admin for access.',
 } as const
+
+/** A question from someone who still has to link waits this long for them to finish linking. */
+const PENDING_REQUEST_TTL_MS = 60 * 60 * 1000
+const pendingRequestKey = (teamId: string, slackUserId: string) => 'overlay:pending:' + teamId + ':' + slackUserId
+
+async function savePendingRequest(input: SlackInbound): Promise<void> {
+  await convex.mutation('integrations/slack:stateSet', {
+    serverSecret: getInternalApiSecret(), key: pendingRequestKey(input.teamId, input.slackUserId), value: input, ttlMs: PENDING_REQUEST_TTL_MS,
+  }, call)
+}
+
+/**
+ * Runs the question someone asked before linking, once Sign in with Slack proves they are that Slack user. It goes
+ * through the same admission as a new message, so the current settings still decide.
+ */
+export async function resumeSlackRequestAfterLink(
+  args: { teamId: string; slackUserId: string },
+  dependencies: SlackAdmissionDependencies & { takePending?: (key: string) => Promise<SlackInbound | null> } = {},
+): Promise<SlackAdmission | null> {
+  const take = dependencies.takePending ?? ((key) => convex.mutation<SlackInbound | null>('integrations/slack:stateTake', {
+    serverSecret: getInternalApiSecret(), key,
+  }, call).then((value) => value ?? null))
+  const pending = await take(pendingRequestKey(args.teamId, args.slackUserId))
+  if (!pending || pending.teamId !== args.teamId || pending.slackUserId !== args.slackUserId) return null
+  return await admitSlackMessage(pending, dependencies)
+}
+
+/** The Slack workspace the app is installed in for this request; falls back to the event's team. */
+function installedTeamId(adapter: ReturnType<SlackBot['getAdapter']>, raw: { team?: string; team_id?: string } | undefined) {
+  try {
+    const scope = JSON.parse(adapter.getConcurrencyScope() ?? 'null') as unknown
+    if (Array.isArray(scope) && scope[0] === 'installation' && typeof scope[1] === 'string') return scope[1]
+  } catch (_error) {
+    // Single-workspace mode has no scope.
+  }
+  return raw?.team_id ?? raw?.team
+}
 
 async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message: SlackBotMessage): Promise<void> {
   if (message.author.isBot === true || message.author.isMe) return
   const adapter = bot.getAdapter('slack')
   const decoded = adapter.decodeThreadId(thread.id)
-  const raw = message.raw as { team?: string; user_team?: string } | undefined
-  const teamId = raw?.team ?? raw?.user_team
+  const raw = message.raw as { team?: string; team_id?: string; user_team?: string } | undefined
+  const teamId = installedTeamId(adapter, raw)
+  const authorTeamId = raw?.user_team ?? raw?.team ?? teamId
   if (!teamId) {
     logger.warn('[slack] message without a team id')
     return
   }
-  const admission = await admitSlackMessage({
+  const inbound: SlackInbound = {
     teamId,
     channelId: decoded.channel,
     threadTs: decoded.threadTs || message.id,
     kind: thread.isDM ? 'dm' : 'channel',
     ...(thread.isDM ? {} : { channelName: await thread.channel.fetchMetadata().then((info) => info.name, () => undefined) }),
     external: adapter.getChannelVisibility(thread.id) === 'external',
+    outsider: authorTeamId !== teamId,
     slackUserId: message.author.userId,
     text: message.text,
-  })
+  }
+  const admission = await admitSlackMessage(inbound)
   if (admission.status === 'link_required') {
+    await savePendingRequest(inbound).catch((error: unknown) => {
+      logger.warn('[slack] could not save a request until linking', { reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+    })
     const url = new URL('/api/v1/integrations/slack/link', getBaseUrl())
     url.searchParams.set('workspaceId', admission.workspaceId)
     await thread.postEphemeral(message.author, {
-      markdown: 'Connect your Slack account to Overlay so I can answer with your access. [Connect to Overlay](' + url.toString() + ')',
+      markdown: 'Connect your Slack account to Overlay so I can answer with your access. I’ll answer this once you’re linked. [Connect to Overlay](' + url.toString() + ')',
     }, { fallbackToDM: false })
     return
   }

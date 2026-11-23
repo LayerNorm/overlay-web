@@ -15,6 +15,8 @@ Plan: `internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`. Setup and status: `inter
 - [ ] **Confirm web-reply attribution** (added 2026-11-23). Phase 2 posts a member's web reply into Slack as the Overlay bot, with their name on the message. Posting as the person would need Slack user tokens, or `chat:write.customize`, which the plan rules out. Change this if you want it to look different.
 - [ ] **Confirm what Slack users without an Overlay account get** (added 2026-11-23). Phase 1 only offers *Ask them to link*. *Channel access only* (answers without workspace data) is Phase 3.
 
+- [ ] **Decide who pays for Slack answers to people without an Overlay account** (added 2026-11-23). *Channel access only* would let anyone in the Slack workspace ask Overlay, without workspace data or actions. They have no Overlay user, so the model cost has to land on the workspace, on whoever installed the app, or the option stays off. Phase 3 ships without it.
+
 ## Chief of Staff harness
 
 - [ ] **Additional Slack audiences** — support DMs to Overlay, private channels and Slack Connect (shared) channels with explicit identity and audience policies. These are intentionally disabled in Phase 4.

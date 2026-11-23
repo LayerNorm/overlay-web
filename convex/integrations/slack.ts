@@ -5,7 +5,8 @@ import { requireServerSecret } from '../lib/auth'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { createAgentThread } from '../agents/agentThreads'
 import {
-  conversationOriginValidator, slackActionsValidator, slackUnlinkedPeopleValidator, slackWhoCanAskValidator,
+  conversationOriginValidator, slackActionsValidator, slackPersonAccessValidator, slackUnlinkedPeopleValidator,
+  slackWhoCanAskValidator,
 } from '../lib/slackSchema'
 
 /**
@@ -71,6 +72,38 @@ async function activeLinkForSlackUser(ctx: Ctx, teamId: string, slackUserId: str
 
 const isManager = (role: string) => role === 'owner' || role === 'admin'
 
+async function personAccess(ctx: Ctx, workspaceId: string, userId: string) {
+  const row = await ctx.db.query('slackPeopleAccess')
+    .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', workspaceId).eq('userId', userId)).unique()
+  return row?.access ?? null
+}
+
+/** Whether Who can ask lets this linked member ask: everyone not blocked, or only the allowed people. */
+function mayAsk(whoCanAsk: 'linked' | 'everyone' | 'specific', access: 'allowed' | 'blocked' | null) {
+  if (whoCanAsk === 'specific') return access === 'allowed'
+  if (whoCanAsk === 'everyone') return access !== 'blocked'
+  return true
+}
+
+/** Linked members of the installed Slack workspace with their allow or block entry, for owners and admins. */
+async function linkedPeople(ctx: Ctx, workspaceId: string, teamId: string) {
+  const links = await ctx.db.query('slackIdentityLinks')
+    .withIndex('by_teamId_slackUserId', q => q.eq('teamId', teamId)).collect()
+  const people = await Promise.all(links
+    .filter(link => link.removedAt === undefined && link.workspaceId === workspaceId)
+    .map(async link => {
+      const member = await activeMember(ctx, workspaceId, link.userId)
+      if (!member) return null
+      return {
+        userId: link.userId,
+        name: member.principal.displayName ?? link.slackUserName ?? link.slackUserId,
+        slackUserName: link.slackUserName ?? null,
+        access: await personAccess(ctx, workspaceId, link.userId),
+      }
+    }))
+  return people.filter(person => person !== null).sort((a, b) => a.name.localeCompare(b.name))
+}
+
 // ─── Settings page ──────────────────────────────────────────────────────────
 
 export const status = query({
@@ -103,7 +136,30 @@ export const status = query({
         ? { slackUserId: link.slackUserId, slackUserName: link.slackUserName ?? null }
         : null,
       settings,
+      people: installation && isManager(viewer.membership.role)
+        ? await linkedPeople(ctx, args.workspaceId, installation.teamId)
+        : [],
     }
+  },
+})
+
+/** Owners and admins put a member on the allow or block list, or take them off (null). */
+export const setPersonAccess = mutation({
+  args: { workspaceId: v.string(), userId: v.string(), access: v.union(slackPersonAccessValidator, v.null()) },
+  handler: async (ctx, args) => {
+    const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+    if (!isManager(viewer.membership.role)) throw new ConvexError('SLACK_SETTINGS_FORBIDDEN')
+    const existing = await ctx.db.query('slackPeopleAccess')
+      .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', args.workspaceId).eq('userId', args.userId)).unique()
+    if (args.access === null) {
+      if (existing) await ctx.db.delete(existing._id)
+      return null
+    }
+    if (!await activeMember(ctx, args.workspaceId, args.userId)) throw new ConvexError('WORKSPACE_ACCESS_DENIED')
+    const row = { access: args.access, updatedByUserId: viewer.userId, updatedAt: Date.now() }
+    if (existing) await ctx.db.patch(existing._id, row)
+    else await ctx.db.insert('slackPeopleAccess', { workspaceId: args.workspaceId, userId: args.userId, ...row })
+    return null
   },
 })
 
@@ -286,6 +342,7 @@ export const resolveRequesterByServer = query({
       userId: member && link ? link.userId : null,
       principalId: member ? member.principal.principalId : null,
       guest: member ? member.membership.role === 'guest' : false,
+      allowed: member && link ? mayAsk(settings.whoCanAsk, await personAccess(ctx, installation.workspaceId, link.userId)) : false,
     }
   },
 })
@@ -461,6 +518,18 @@ export const stateDelete = mutation({
     const found = await stateRow(ctx, args.key)
     if (found) await ctx.db.delete(found.row._id)
     return null
+  },
+})
+
+/** Reads and deletes a key in one step, so a saved request runs once. */
+export const stateTake = mutation({
+  args: { serverSecret: v.string(), key: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const found = await stateRow(ctx, args.key)
+    if (!found) return null
+    await ctx.db.delete(found.row._id)
+    return found.live ? found.row.value : null
   },
 })
 
