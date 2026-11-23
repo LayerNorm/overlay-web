@@ -170,6 +170,12 @@ function roomHeaderPresentation({
   }
 }
 
+function roomSubtitle(guided: boolean, participants: number, online: number) {
+  if (guided) return 'Your chief of staff'
+  if (participants > 2) return `${participants} people`
+  return online > 0 ? 'Online' : undefined
+}
+
 function roomPanelIsOpen(roomPanel: string | null, hasThreadRoot: boolean) {
   return isRoomView(roomPanel as Parameters<typeof isRoomView>[0])
     || (roomPanel === 'thread' && hasThreadRoot)
@@ -386,7 +392,7 @@ export function DirectMessageExperience({
           <AppScreenHeader
             title={header.title}
             breadcrumbs={header.breadcrumbs}
-            subtitle={slackOrigin ? <SlackThreadOriginLabel origin={slackOrigin} /> : guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
+            subtitle={slackOrigin ? <SlackThreadOriginLabel origin={slackOrigin} /> : roomSubtitle(Boolean(guided), roster.participants.length, vm.online)}
             leading={header.leading}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
