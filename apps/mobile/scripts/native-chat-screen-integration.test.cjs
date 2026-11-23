@@ -184,7 +184,7 @@ Module._load = function (request, parent, isMain) {
       },
       '../../services/appApi': { getRequestWorkspaceId: () => state.workspaceId }, '../../hooks/useFavoriteModels': { useFavoriteModels: () => ({ favoriteIds: [], toggleFavorite() {} }) },
       '../../hooks/useAndroidKeyboardVisible': { useAndroidKeyboardVisible: () => false }, '../../lib/chatModels': { resolveAutoModel: x => x[0], sortChatModels: x => x }, '../../lib/keyboardLayout': { getComposerBottomInset: () => 0 },
-      '@react-navigation/elements': { useHeaderHeight: () => 0 }, './ModelPicker': { ModelPicker: MockModelPicker }, './ChatViews': { ChatHeader: MockChatHeader, EmptyPersonalChat: () => null }, './ModelPickerSheet': { ModelPickerSheet: p => p.children || null },
+      '@react-navigation/elements': { useHeaderHeight: () => 0 }, './ModelPicker': { ModelPicker: MockModelPicker }, './ChatViews': { ChatHeader: MockChatHeader, EmptyPersonalChat: () => null }, '../ui/NativePageSheet': { NativePageSheet: p => p.children || null },
       '../../lib/personalStream': { appendPersonalBlock: (blocks, chunk) => {
         const next = [...(blocks ?? [])]
         const last = next.at(-1)

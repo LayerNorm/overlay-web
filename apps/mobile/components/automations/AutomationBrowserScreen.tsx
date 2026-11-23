@@ -1,8 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { createIdempotencyKey } from '@overlay/api-client'
-import { Alert } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
-import type { AutomationRunSummary, AutomationSummary } from '@overlay/app-core'
+import { Stack, useLocalSearchParams } from 'expo-router'
+import type { AutomationRunSummary } from '@overlay/app-core'
 import { api, type Id } from '../../services/convexClient'
 import { useLiveResource } from '../../hooks/useLiveResource'
 import { useAppSession } from '../../contexts/AppSessionContext'
@@ -18,13 +17,11 @@ import {
   AutomationDetail,
   AutomationList,
   ResourcePage,
-  ResourceRow,
-  ResourceSheet,
   ResourceState,
   RUN_TERMINAL,
 } from '../knowledge/ResourceViews'
 import { FeatureGate } from '../ui/FeatureGate'
-import { AutomationEditorSheet } from './AutomationEditorSheet'
+import { RoomConfirmDialog, type RoomConfirmation } from '../chat/RoomSheets'
 import { AutomationRunSheet } from './AutomationRunSheet'
 import { formatSchedule } from '../../lib/automationSchedule'
 
@@ -63,8 +60,7 @@ export function AutomationBrowserScreen() {
       : null,
     scope,
   )
-  const [edit, setEdit] = useState<{ scope: string; item: AutomationSummary | null } | null>(null)
-  const [options, setOptions] = useState(false)
+  const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
   const [selectedRun, setSelectedRun] = useState<string | null>(null)
   const [tokens, setTokens] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -133,7 +129,7 @@ export function AutomationBrowserScreen() {
                 onToggle={() => {
                   void action(() => setAutomationEnabled(id, detail.data?.enabled === false))
                 }}
-                onEdit={() => setOptions(true)}
+                onEdit={() => router.push({ pathname: '/automation-edit', params: { id } })}
                 onOpenRun={(run) => setSelectedRun(run._id)}
               />
               {runs.error || steps.error ? (
@@ -166,9 +162,7 @@ export function AutomationBrowserScreen() {
               setSelection({ scope: workspaceId, id: item._id })
               setError(null)
             }}
-            onNew={() => {
-              if (workspaceId) setEdit({ scope: workspaceId, item: null })
-            }}
+            onNew={() => router.push('/automation-edit')}
           />
         ) : (
           <ResourceState
@@ -183,51 +177,37 @@ export function AutomationBrowserScreen() {
         )}
         {error ? <ResourceState theme={theme} error={error} /> : null}
       </ResourcePage>
-      <ResourceSheet
-        theme={theme}
-        title="Automation options"
-        visible={options && Boolean(detail.data)}
-        onClose={() => setOptions(false)}
-      >
-        <ResourceRow
-          theme={theme}
-          title="Edit automation"
-          onPress={() => {
-            setOptions(false)
-            if (workspaceId && detail.data) setEdit({ scope: workspaceId, item: detail.data })
-          }}
-        />
-        <ResourceRow
-          theme={theme}
-          title="Delete automation"
-          onPress={() =>
-            Alert.alert('Delete automation?', 'This cannot be undone.', [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: () => {
-                  if (id)
-                    void action(async () => {
-                      await deleteAutomation(id)
-                      if (getRequestWorkspaceId() === workspaceId) {
-                        setOptions(false)
-                        setSelection({ scope: workspaceId, id: null })
-                      }
-                    })
-                },
-              },
-            ])
-          }
-        />
-      </ResourceSheet>
-      <AutomationEditorSheet
-        key={workspaceId}
-        visible={edit?.scope === workspaceId}
-        automation={edit?.scope === workspaceId ? edit.item : null}
-        onClose={() => setEdit(null)}
-        onSaved={() => setEdit(null)}
-      />
+      {id && detail.data ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="Automation options">
+            <Stack.Toolbar.MenuAction icon="pencil" onPress={() => router.push({ pathname: '/automation-edit', params: { id } })}>
+              Edit
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.Menu inline title="">
+              <Stack.Toolbar.MenuAction
+                icon="trash"
+                destructive
+                onPress={() =>
+                  setConfirmation({
+                    title: `Delete “${detail.data?.name || detail.data?.title || 'this automation'}”?`,
+                    message: 'Its schedule and run history will be removed. This can’t be undone.',
+                    label: 'Delete automation',
+                    destructive: true,
+                    run: () =>
+                      void action(async () => {
+                        await deleteAutomation(id)
+                        if (getRequestWorkspaceId() === workspaceId) setSelection({ scope: workspaceId, id: null })
+                      }),
+                  })
+                }
+              >
+                Delete
+              </Stack.Toolbar.MenuAction>
+            </Stack.Toolbar.Menu>
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
+      ) : null}
+      <RoomConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
       <AutomationRunSheet
         key={`${workspaceId}:${id}:${selectedRun}`}
         visible={Boolean(selected)}

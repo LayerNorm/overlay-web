@@ -6,12 +6,12 @@ import { useTheme } from '../../hooks/useTheme'
 import { T } from '../shell/primitives'
 
 /**
- * The model picker as a native iOS page sheet: system presentation, swipe
- * down to dismiss, grabber, and a centred title with a close button like
- * the system's own sheets. The picker body (shared ModelSelector layout)
- * fills the sheet.
+ * A native iOS page sheet for content that stays in React Native (the model
+ * selector, automation run details): system presentation, swipe down to
+ * dismiss, grabber, and a centred title with a close button like the
+ * system's own sheets. Children fill the sheet.
  */
-export function ModelPickerSheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
+export function NativePageSheet({ visible, onClose, children, title }: { visible: boolean; onClose: () => void; children: React.ReactNode; title: string }) {
   const { theme, isDark } = useTheme()
   const { bottom } = useSafeAreaInsets()
   return (
@@ -21,7 +21,7 @@ export function ModelPickerSheet({ visible, onClose, children }: { visible: bool
           <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: isDark ? '#5A5A5E' : '#C7C7CC' }} />
         </View>
         <View style={{ height: 52, justifyContent: 'center', alignItems: 'center' }}>
-          <T style={{ fontSize: 17, fontFamily: 'GeistSemibold', color: theme.foreground }}>Choose a model</T>
+          <T style={{ fontSize: 17, fontFamily: 'GeistSemibold', color: theme.foreground }}>{title}</T>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"

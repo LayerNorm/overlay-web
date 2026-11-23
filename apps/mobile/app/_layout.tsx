@@ -193,6 +193,48 @@ function RootLayoutNav(): React.ReactElement {
           }}
         />
         <Stack.Screen
+          name="skill-edit"
+          options={{
+            ...nativeHeader,
+            title: 'Skill',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
+          name="mcp-edit"
+          options={{
+            ...nativeHeader,
+            title: 'MCP server',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
+          name="automation-edit"
+          options={{
+            ...nativeHeader,
+            title: 'Automation',
+            headerLargeTitle: false,
+            headerTransparent: true,
+            contentStyle: undefined,
+            presentation: 'formSheet',
+            sheetAllowedDetents: [1],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
           name="new-message"
           options={{
             ...nativeHeader,

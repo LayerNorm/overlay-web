@@ -1,39 +1,40 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
-import { EnrichedMarkdownText } from 'react-native-enriched-markdown'
-import { Feather } from '@expo/vector-icons'
-import { Stack, useFocusEffect } from 'expo-router'
-import type { IntegrationSummary, McpAuthType, McpServerSummary, SkillSummary } from '@overlay/app-core'
+import { Alert } from 'react-native'
+import { Stack, useFocusEffect, useRouter } from 'expo-router'
+import {
+  Button,
+  Form,
+  HStack,
+  Host,
+  Image as SwiftSymbol,
+  Picker,
+  ProgressView,
+  Section,
+  Spacer,
+  Text as SwiftText,
+  Toggle,
+  VStack,
+} from '@expo/ui/swift-ui'
+import { buttonStyle, contentShape, font, foregroundStyle, frame, labelsHidden, lineLimit, pickerStyle, shapes, tag, tint } from '@expo/ui/swift-ui/modifiers'
+import type { IntegrationSummary, McpServerSummary, SkillSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
-import { borderRadius, fontSize, spacing, type Theme } from '../../constants/theme'
-import { BottomSheet, EmptyState, SearchField, SegmentedControl, StatusPill } from '../ui/AppChrome'
+import { useSwitchTint } from '../../lib/nativeControls'
+import { extensionsChanged } from '../../lib/changeSignal'
+import { primeRecord } from './ExtensionForms'
+import { NativePageSheet } from '../ui/NativePageSheet'
+import { RoomConfirmDialog, type RoomConfirmation } from '../chat/RoomSheets'
 import { FeatureGate } from '../ui/FeatureGate'
 import { McpDetailSheet } from './McpDetailSheet'
 import {
   connectIntegration,
-  createMcpServer,
-  createSkill,
-  deleteMcpServer,
-  deleteSkill,
   disconnectIntegration,
   listIntegrationItems,
   listMcpServers,
   listSkills,
   searchIntegrations,
-  testMcpServer,
   updateMcpServer,
   updateSkill,
   type IntegrationScope,
@@ -68,7 +69,6 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
   scope: IntegrationScope
   onScopeChange?: (scope: IntegrationScope) => void
 }): React.ReactElement {
-  const { theme } = useTheme()
   const [tab, setTab] = useState<ToolTab>('integrations')
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([])
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -76,23 +76,12 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [connectingSlug, setConnectingSlug] = useState<string | null>(null)
-  const [skillEditorOpen, setSkillEditorOpen] = useState(false)
-  const [mcpEditorOpen, setMcpEditorOpen] = useState(false)
   const [mcpDetailOpen, setMcpDetailOpen] = useState(false)
-  const [integrationDetail, setIntegrationDetail] = useState<IntegrationSummary | null>(null)
-  const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null)
   const [selectedMcp, setSelectedMcp] = useState<McpServerSummary | null>(null)
-  const [skillName, setSkillName] = useState('')
-  const [skillDescription, setSkillDescription] = useState('')
-  const [skillInstructions, setSkillInstructions] = useState('')
-  const [skillPreview, setSkillPreview] = useState(false)
-  const [mcpName, setMcpName] = useState('')
-  const [mcpUrl, setMcpUrl] = useState('')
-  const [mcpTransport, setMcpTransport] = useState<'sse' | 'streamable-http'>('streamable-http')
-  const [mcpAuthType, setMcpAuthType] = useState<McpAuthType>('none')
-  const [mcpBearerToken, setMcpBearerToken] = useState('')
-  const [mcpHeaderName, setMcpHeaderName] = useState('')
-  const [mcpHeaderValue, setMcpHeaderValue] = useState('')
+  const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
+  const { theme, isDark } = useTheme()
+  const router = useRouter()
+  const switchTint = useSwitchTint()
   const mounted = useRef(true)
   const connectionBusy = useRef(false)
   const [disconnectable, setDisconnectable] = useState<ReadonlySet<string>>(new Set())
@@ -148,6 +137,7 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
   }, [requestScope])
 
   useFocusEffect(useCallback(() => { void load() }, [load]))
+  useEffect(() => extensionsChanged.subscribe(() => { void load() }), [load])
 
   const filteredIntegrations = useMemo(() => integrations.filter((item) => `${item.name} ${item.slug}`.toLowerCase().includes(query.toLowerCase())), [integrations, query])
   const filteredSkills = useMemo(() => skills.filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(query.toLowerCase())), [skills, query])
@@ -216,337 +206,170 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
     }
   }
 
-  function openSkillEditor(skill: SkillSummary | null): void {
-    setSelectedSkill(skill)
-    setSkillName(skill?.name || '')
-    setSkillDescription(skill?.description || '')
-    setSkillInstructions(skill?.instructions || '')
-    setSkillPreview(false)
-    setSkillEditorOpen(true)
-  }
-
-  async function saveSkill(): Promise<void> {
-    if (!skillName.trim() || !skillDescription.trim() || !skillInstructions.trim()) {
-      Alert.alert('Missing fields', 'Name, description, and instructions are required.')
-      return
-    }
-    try {
-      if (selectedSkill) {
-        await updateSkill(selectedSkill._id, { name: skillName, description: skillDescription, instructions: skillInstructions })
-      } else {
-        await createSkill({ name: skillName, description: skillDescription, instructions: skillInstructions })
-      }
-      setSkillEditorOpen(false)
-      await load()
-    } catch (error) {
-      Alert.alert('Could not save skill', error instanceof Error ? error.message : 'Try again.')
-    }
-  }
-
-  function openMcpEditor(mcp: McpServerSummary | null): void {
-    setSelectedMcp(mcp)
-    setMcpName(mcp?.name || '')
-    setMcpUrl(mcp?.url || '')
-    setMcpTransport(mcp?.transport || 'streamable-http')
-    setMcpAuthType(mcp?.authType || 'none')
-    setMcpBearerToken('')
-    setMcpHeaderName('')
-    setMcpHeaderValue('')
-    setMcpEditorOpen(true)
-  }
-
   function openMcpDetail(mcp: McpServerSummary): void {
     setSelectedMcp(mcp)
     setMcpDetailOpen(true)
   }
 
-  function mcpAuthConfig(): Record<string, unknown> | undefined {
-    if (mcpAuthType === 'bearer' && mcpBearerToken.trim()) return { bearerToken: mcpBearerToken.trim() }
-    if (mcpAuthType === 'header' && mcpHeaderName.trim() && mcpHeaderValue.trim()) {
-      return { headerName: mcpHeaderName.trim(), headerValue: mcpHeaderValue.trim() }
-    }
-    return undefined
+  // Connect/disconnect asks first, naming the app and what happens.
+  function confirmIntegration(item: IntegrationSummary): void {
+    if (!canChangeIntegration(item) || connectingSlug) return
+    const stale = item.authenticationState && item.authenticationState !== 'connected' && item.authenticationState !== 'not-connected'
+    setConfirmation({
+      title: item.name,
+      message: [
+        item.description,
+        stale ? `This connection looks ${item.authenticationState}. Reconnect to refresh it.` : null,
+        item.isConnected ? 'Overlay will lose access to this app.' : 'You’ll sign in to this app in your browser.',
+      ].filter(Boolean).join('\n\n'),
+      label: item.isConnected ? 'Disconnect' : 'Connect',
+      destructive: item.isConnected,
+      run: () => void toggleIntegration(item),
+    })
   }
 
-  async function saveMcp(): Promise<void> {
-    if (!mcpName.trim() || !mcpUrl.trim()) {
-      Alert.alert('Missing fields', 'Name and URL are required.')
-      return
-    }
-    try {
-      if (selectedMcp) {
-        const patch: Parameters<typeof updateMcpServer>[1] = { name: mcpName, url: mcpUrl, transport: mcpTransport, authType: mcpAuthType }
-        const authConfig = mcpAuthConfig()
-        if (authConfig) patch.authConfig = authConfig
-        await updateMcpServer(selectedMcp._id, patch)
-      } else {
-        await createMcpServer({
-          name: mcpName,
-          url: mcpUrl,
-          transport: mcpTransport,
-          enabled: true,
-          authType: mcpAuthType,
-          authConfig: mcpAuthConfig(),
-        })
-      }
-      setMcpEditorOpen(false)
-      await load()
-    } catch (error) {
-      Alert.alert('Could not save MCP server', error instanceof Error ? error.message : 'Try again.')
-    }
-  }
+  const row = (title: string, detail: string | undefined, symbol: string, trailing: React.ReactNode, onPress?: () => void) => (
+    <HStack spacing={12}>
+      {/* Borderless so the row's button and switch each take their own taps. */}
+      <Button onPress={onPress} modifiers={[buttonStyle('borderless')]}>
+        <HStack spacing={12} modifiers={[contentShape(shapes.rectangle())]}>
+          <SwiftSymbol systemName={symbol as never} size={17} modifiers={[frame({ width: 26 }), secondary]} />
+          <VStack alignment="leading" spacing={2}>
+            <SwiftText modifiers={[lineLimit(1), foregroundStyle(theme.foreground as string)]}>{title}</SwiftText>
+            {detail ? <SwiftText modifiers={[secondary, font({ size: 13 }), lineLimit(2)]}>{detail}</SwiftText> : null}
+          </VStack>
+          <Spacer />
+        </HStack>
+      </Button>
+      {trailing}
+    </HStack>
+  )
 
-  async function testMcpForm(): Promise<void> {
-    try {
-      const result = await testMcpServer({ url: mcpUrl, transport: mcpTransport, authType: mcpAuthType === 'oauth' ? 'none' : mcpAuthType, authConfig: mcpAuthConfig() })
-      if (result.requiresAuth) {
-        Alert.alert('Server wants OAuth', 'The server answered 401 while unauthenticated. Set auth to OAuth, save, then connect.')
-      } else {
-        Alert.alert(result.ok ? 'Connection works' : 'Connection failed', result.ok ? `${result.toolCount ?? 0} tools found.` : result.error || 'Could not connect.')
-      }
-    } catch (error) {
-      Alert.alert('Connection failed', error instanceof Error ? error.message : 'Try again.')
-    }
-  }
-
-  const content = (() => {
-    if (loading) return <ActivityIndicator color={theme.textSecondary} />
+  const list = (() => {
+    if (loading) return <Section footer={<SwiftText>Loading…</SwiftText>}>{null}</Section>
     if (tab === 'integrations') {
-      return filteredIntegrations.length ? filteredIntegrations.map((item) => (
-        <Row
-          key={item.slug}
-          theme={theme}
-          icon="link"
-          title={item.name}
-          detail={item.isConnected ? 'Connected' : item.description || item.slug}
-          onPress={() => setIntegrationDetail(item)}
-          action={
-            !canChangeIntegration(item) ? null : connectingSlug === item.slug ? (
-              <ActivityIndicator size="small" color={theme.textSecondary} />
-            ) : (
-              <TouchableOpacity disabled={connectingSlug !== null} onPress={() => { void toggleIntegration(item) }}>
-                <Text style={[styles.actionText, { color: theme.text }]}>{item.isConnected ? 'Disconnect' : 'Connect'}</Text>
-              </TouchableOpacity>
-            )
-          }
-        />
-      )) : <EmptyState theme={theme} icon="link" title="No integrations" description="Search for apps to connect." />
+      return filteredIntegrations.length ? (
+        <Section footer={<SwiftText>{query.trim() ? 'Tap + to search all apps for this text.' : 'Tap an app to connect or disconnect it.'}</SwiftText>}>
+          {filteredIntegrations.map((item) => (
+            <React.Fragment key={item.slug}>
+              {row(
+                item.name,
+                item.isConnected ? 'Connected' : item.description || item.slug,
+                item.isConnected ? 'checkmark.circle.fill' : 'link',
+                connectingSlug === item.slug ? <ProgressView /> : null,
+                canChangeIntegration(item) ? () => confirmIntegration(item) : undefined,
+              )}
+            </React.Fragment>
+          ))}
+        </Section>
+      ) : (
+        <Section footer={<SwiftText>{query.trim() ? 'No apps match. Tap + to search all apps.' : 'Search for apps to connect.'}</SwiftText>}>{null}</Section>
+      )
     }
     if (tab === 'skills') {
-      return filteredSkills.length ? filteredSkills.map((skill) => (
-        <Row key={skill._id} theme={theme} icon="terminal" title={skill.name} detail={skill.description} onPress={() => openSkillEditor(skill)} action={<Switch value={skill.enabled !== false} onValueChange={(enabled) => { void updateSkill(skill._id, { enabled }).then(load) }} />} />
-      )) : <EmptyState theme={theme} icon="terminal" title="No skills" description="Create reusable instructions for Overlay." />
+      return filteredSkills.length ? (
+        <Section footer={<SwiftText>Tap a skill to edit it. The switch turns it on or off.</SwiftText>}>
+          {filteredSkills.map((skill) => (
+            <React.Fragment key={skill._id}>
+              {row(
+                skill.name,
+                skill.description,
+                'terminal',
+                <Toggle
+                  isOn={skill.enabled !== false}
+                  onIsOnChange={(enabled) => { void updateSkill(skill._id, { enabled }).then(load) }}
+                  modifiers={[...switchTint, labelsHidden()]}
+                />,
+                () => { primeRecord(skill); router.push({ pathname: '/skill-edit', params: { id: skill._id } }) },
+              )}
+            </React.Fragment>
+          ))}
+        </Section>
+      ) : (
+        <Section footer={<SwiftText>Create reusable instructions for Overlay with +.</SwiftText>}>{null}</Section>
+      )
     }
-    return filteredMcps.length ? filteredMcps.map((mcp) => (
-      <Row
-        key={mcp._id}
-        theme={theme}
-        icon="server"
-        title={mcp.name}
-        detail={mcp.authType === 'oauth' ? `${mcp.url} · OAuth ${mcp.oauthStatus ?? 'pending'}` : mcp.url}
-        onPress={() => openMcpDetail(mcp)}
-        action={<Switch value={mcp.enabled !== false} onValueChange={(enabled) => { void updateMcpServer(mcp._id, { enabled }).then(load) }} />}
-      />
-    )) : <EmptyState theme={theme} icon="server" title="No MCP servers" description="Add MCP tools for the assistant to use." />
+    return filteredMcps.length ? (
+      <Section footer={<SwiftText>Tap a server for its connection and sign-in. The switch turns it on or off.</SwiftText>}>
+        {filteredMcps.map((mcp) => (
+          <React.Fragment key={mcp._id}>
+            {row(
+              mcp.name,
+              mcp.authType === 'oauth' ? `${mcp.url} · OAuth ${mcp.oauthStatus ?? 'pending'}` : mcp.url,
+              'server.rack',
+              <Toggle
+                isOn={mcp.enabled !== false}
+                onIsOnChange={(enabled) => { void updateMcpServer(mcp._id, { enabled }).then(load) }}
+                modifiers={[...switchTint, labelsHidden()]}
+              />,
+              () => openMcpDetail(mcp),
+            )}
+          </React.Fragment>
+        ))}
+      </Section>
+    ) : (
+      <Section footer={<SwiftText>Add MCP tools for the assistant to use with +.</SwiftText>}>{null}</Section>
+    )
   })()
 
   return (
     <>
-        <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button
-            icon="plus"
-            accessibilityLabel={tab === 'skills' ? 'New skill' : tab === 'mcps' ? 'New MCP server' : 'Find apps'}
-            onPress={() => tab === 'skills' ? openSkillEditor(null) : tab === 'mcps' ? openMcpEditor(null) : void runIntegrationSearch()}
-          />
-        </Stack.Toolbar>
-        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ flex: 1, backgroundColor: theme.background }} contentContainerStyle={styles.content}>
-          <SegmentedControl theme={theme} value={tab} onChange={setTab} options={[{ label: 'Apps', value: 'integrations' }, { label: 'Skills', value: 'skills' }, { label: 'MCPs', value: 'mcps' }]} />
-          {tab === 'integrations' && onScopeChange ? (
-            <SegmentedControl
-              theme={theme}
-              value={scope}
-              onChange={(next) => { if (!connectionBusy.current) onScopeChange(next) }}
-              options={[{ label: 'Personal', value: 'personal' }, { label: 'Workspace', value: 'workspace' }]}
-            />
-          ) : null}
-          <SearchField theme={theme} value={query} onChangeText={setQuery} placeholder={tab === 'integrations' ? 'Search apps' : 'Search extensions'} />
-          <View style={styles.rows}>{content}</View>
-        </ScrollView>
-
-        <BottomSheet theme={theme} visible={skillEditorOpen} onClose={() => setSkillEditorOpen(false)} title={selectedSkill ? 'Edit Skill' : 'New Skill'}>
-          <View style={styles.form}>
-            <TextInput value={skillName} onChangeText={setSkillName} placeholder="Name" placeholderTextColor={theme.textDisabled} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-            <TextInput value={skillDescription} onChangeText={setSkillDescription} placeholder="Description" placeholderTextColor={theme.textDisabled} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-            <SegmentedControl
-              theme={theme}
-              value={skillPreview ? 'preview' : 'edit'}
-              onChange={(next) => setSkillPreview(next === 'preview')}
-              options={[{ label: 'Write', value: 'edit' }, { label: 'Preview', value: 'preview' }]}
-            />
-            {skillPreview ? (
-              <View style={[styles.previewBox, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
-                {skillInstructions.trim() ? (
-                  <EnrichedMarkdownText
-                    markdown={skillInstructions}
-                    markdownStyle={skillMarkdownStyles(theme)}
-                    flavor="github"
-                    selectable
-                  />
-                ) : (
-                  <Text style={[styles.previewEmpty, { color: theme.textSecondary }]}>Nothing to preview.</Text>
-                )}
-              </View>
-            ) : (
-              <TextInput value={skillInstructions} onChangeText={setSkillInstructions} placeholder="Instructions (markdown)" placeholderTextColor={theme.textDisabled} multiline style={[styles.textArea, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-            )}
-            <View style={styles.formActions}>
-              {selectedSkill ? <TouchableOpacity onPress={() => { void deleteSkill(selectedSkill._id).then(() => { setSkillEditorOpen(false); return load() }) }}><Text style={styles.deleteText}>Delete</Text></TouchableOpacity> : null}
-              <TouchableOpacity onPress={() => { void saveSkill() }} style={[styles.primaryButton, { backgroundColor: theme.foreground }]}><Text style={[styles.primaryButtonText, { color: theme.background }]}>Save</Text></TouchableOpacity>
-            </View>
-          </View>
-        </BottomSheet>
-
-        <BottomSheet theme={theme} visible={mcpEditorOpen} onClose={() => setMcpEditorOpen(false)} title={selectedMcp ? 'Edit MCP' : 'New MCP'}>
-          <View style={styles.form}>
-            <TextInput value={mcpName} onChangeText={setMcpName} placeholder="Name" placeholderTextColor={theme.textDisabled} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-            <TextInput value={mcpUrl} onChangeText={setMcpUrl} placeholder="https://..." placeholderTextColor={theme.textDisabled} autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-            <SegmentedControl theme={theme} value={mcpTransport} onChange={setMcpTransport} options={[{ label: 'HTTP', value: 'streamable-http' }, { label: 'SSE', value: 'sse' }]} />
-            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Authentication</Text>
-            <SegmentedControl
-              theme={theme}
-              value={mcpAuthType}
-              onChange={setMcpAuthType}
-              options={[
-                { label: 'None', value: 'none' },
-                { label: 'Bearer', value: 'bearer' },
-                { label: 'Header', value: 'header' },
-                { label: 'OAuth', value: 'oauth' },
-              ]}
-            />
-            {mcpAuthType === 'bearer' ? (
-              <TextInput value={mcpBearerToken} onChangeText={setMcpBearerToken} placeholder={selectedMcp?.hasAuth ? 'Token (saved — enter to replace)' : 'Bearer token'} placeholderTextColor={theme.textDisabled} autoCapitalize="none" secureTextEntry style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
+      <Stack.Screen
+        options={{
+          headerSearchBarOptions: {
+            placeholder: tab === 'integrations' ? 'Search apps' : 'Search extensions',
+            hideWhenScrolling: false,
+            onChangeText: (event) => setQuery(event.nativeEvent.text),
+            onCancelButtonPress: () => setQuery(''),
+          },
+        }}
+      />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon={tab === 'integrations' ? 'magnifyingglass' : 'plus'}
+          accessibilityLabel={tab === 'skills' ? 'New skill' : tab === 'mcps' ? 'New MCP server' : 'Search all apps'}
+          onPress={() => (tab === 'skills' ? router.push('/skill-edit') : tab === 'mcps' ? router.push('/mcp-edit') : void runIntegrationSearch())}
+        />
+      </Stack.Toolbar>
+      <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
+        <Form modifiers={[tint(theme.foreground as string)]}>
+          <Section>
+            <Picker selection={tab} onSelectionChange={(value: ToolTab) => setTab(value)} modifiers={[pickerStyle('segmented')]}>
+              <SwiftText modifiers={[tag('integrations')]}>Apps</SwiftText>
+              <SwiftText modifiers={[tag('skills')]}>Skills</SwiftText>
+              <SwiftText modifiers={[tag('mcps')]}>MCPs</SwiftText>
+            </Picker>
+            {tab === 'integrations' && onScopeChange ? (
+              <Picker
+                label="Connections for"
+                selection={scope}
+                onSelectionChange={(next: IntegrationScope) => { if (!connectionBusy.current) onScopeChange(next) }}
+                modifiers={[pickerStyle('menu')]}
+              >
+                <SwiftText modifiers={[tag('personal')]}>Just me</SwiftText>
+                <SwiftText modifiers={[tag('workspace')]}>Workspace</SwiftText>
+              </Picker>
             ) : null}
-            {mcpAuthType === 'header' ? (
-              <>
-                <TextInput value={mcpHeaderName} onChangeText={setMcpHeaderName} placeholder="Header name" placeholderTextColor={theme.textDisabled} autoCapitalize="none" style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-                <TextInput value={mcpHeaderValue} onChangeText={setMcpHeaderValue} placeholder={selectedMcp?.hasAuth ? 'Header value (saved — enter to replace)' : 'Header value'} placeholderTextColor={theme.textDisabled} autoCapitalize="none" secureTextEntry style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceElevated }]} />
-              </>
-            ) : null}
-            {mcpAuthType === 'oauth' ? (
-              <Text style={[styles.oauthHint, { color: theme.textSecondary }]}>
-                Save first, then connect from the server detail — OAuth needs a persisted server to attach tokens to.
-              </Text>
-            ) : null}
-            <TouchableOpacity onPress={() => { void testMcpForm() }}><Text style={[styles.actionText, { color: theme.text }]}>Test connection</Text></TouchableOpacity>
-            <View style={styles.formActions}>
-              {selectedMcp ? <TouchableOpacity onPress={() => { void deleteMcpServer(selectedMcp._id).then(() => { setMcpEditorOpen(false); return load() }) }}><Text style={styles.deleteText}>Delete</Text></TouchableOpacity> : null}
-              <TouchableOpacity onPress={() => { void saveMcp() }} style={[styles.primaryButton, { backgroundColor: theme.foreground }]}><Text style={[styles.primaryButtonText, { color: theme.background }]}>Save</Text></TouchableOpacity>
-            </View>
-          </View>
-        </BottomSheet>
+          </Section>
+          {list}
+        </Form>
+      </Host>
 
+      <NativePageSheet title={selectedMcp?.name || 'MCP server'} visible={mcpDetailOpen} onClose={() => setMcpDetailOpen(false)}>
         <McpDetailSheet
           visible={mcpDetailOpen}
           server={selectedMcp}
           onClose={() => setMcpDetailOpen(false)}
           onEdit={() => {
             setMcpDetailOpen(false)
-            openMcpEditor(selectedMcp)
+            if (selectedMcp) { primeRecord(selectedMcp); router.push({ pathname: '/mcp-edit', params: { id: selectedMcp._id } }) }
           }}
           onChanged={() => { void load() }}
         />
-
-        <BottomSheet theme={theme} visible={integrationDetail !== null} onClose={() => setIntegrationDetail(null)} title={integrationDetail?.name || 'App'}>
-          {integrationDetail ? (
-            <View style={styles.form}>
-              <View style={styles.integrationStatusRow}>
-                <StatusPill theme={theme} label={integrationDetail.isConnected ? 'Connected' : 'Not connected'} tone={integrationDetail.isConnected ? 'active' : 'default'} />
-                <Text style={[styles.integrationProvider, { color: theme.textSecondary }]}>{integrationDetail.provider}</Text>
-              </View>
-              {integrationDetail.description ? (
-                <Text style={[styles.integrationDescription, { color: theme.textSecondary }]}>{integrationDetail.description}</Text>
-              ) : null}
-              {integrationDetail.authenticationState && integrationDetail.authenticationState !== 'connected' && integrationDetail.authenticationState !== 'not-connected' ? (
-                <Text style={styles.integrationAuthWarning}>
-                  This connection looks {integrationDetail.authenticationState} — reconnect to refresh it.
-                </Text>
-              ) : null}
-              {canChangeIntegration(integrationDetail) ? (
-              <TouchableOpacity
-                onPress={() => {
-                  const item = integrationDetail
-                  setIntegrationDetail(null)
-                  void toggleIntegration(item)
-                }}
-                disabled={connectingSlug !== null}
-                style={[styles.primaryButton, { backgroundColor: theme.foreground, alignSelf: 'stretch' }]}
-              >
-                {connectingSlug === integrationDetail.slug ? (
-                  <ActivityIndicator size="small" color={theme.background} />
-                ) : (
-                  <Text style={[styles.primaryButtonText, { color: theme.background }]}>
-                    {integrationDetail.isConnected ? 'Disconnect' : 'Connect'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
-        </BottomSheet>
+      </NativePageSheet>
+      <RoomConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
     </>
   )
 }
 
-function skillMarkdownStyles(theme: Theme) {
-  return {
-    paragraph: { color: theme.text, fontSize: 14, lineHeight: 21, marginBottom: 8 },
-    h1: { color: theme.text, fontSize: 20, fontWeight: '700' as const, marginTop: 10, marginBottom: 6 },
-    h2: { color: theme.text, fontSize: 17, fontWeight: '600' as const, marginTop: 8, marginBottom: 4 },
-    h3: { color: theme.text, fontSize: 15, fontWeight: '600' as const, marginTop: 6, marginBottom: 4 },
-    code: { backgroundColor: theme.surfaceMuted, color: theme.text, fontSize: 12, fontFamily: 'monospace' },
-    codeBlock: { backgroundColor: theme.surfaceMuted, color: theme.text, fontSize: 12, fontFamily: 'monospace' },
-    link: { color: theme.text, textDecorationLine: 'underline' as const },
-    blockquote: { color: theme.textSecondary, borderLeftColor: theme.border },
-    listItem: { color: theme.text, fontSize: 14, lineHeight: 21 },
-  }
-}
-
-function Row({ theme, icon, title, detail, action, onPress }: { theme: Theme; icon: keyof typeof Feather.glyphMap; title: string; detail?: string; action?: React.ReactNode; onPress?: () => void }) {
-  return (
-    <TouchableOpacity activeOpacity={0.82} onPress={onPress} disabled={!onPress} style={[styles.row, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-      <Feather name={icon} size={16} color={theme.textSecondary} />
-      <View style={styles.rowCopy}>
-        <Text style={[styles.rowTitle, { color: theme.text }]} numberOfLines={1}>{title}</Text>
-        {detail ? <Text style={[styles.rowDetail, { color: theme.textSecondary }]} numberOfLines={2}>{detail}</Text> : null}
-      </View>
-      {action}
-    </TouchableOpacity>
-  )
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  headerTitle: { fontSize: fontSize.md, fontWeight: '700', textAlign: 'center' },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
-  rows: { gap: spacing.sm },
-  row: { minHeight: 64, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.xl, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  rowCopy: { flex: 1, gap: 3 },
-  rowTitle: { fontSize: fontSize.md, fontWeight: '700' },
-  rowDetail: { fontSize: fontSize.sm, lineHeight: 18 },
-  actionText: { fontSize: fontSize.sm, fontWeight: '700' },
-  sectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 },
-  oauthHint: { fontSize: fontSize.sm, lineHeight: 19 },
-  form: { gap: spacing.md },
-  input: { minHeight: 46, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, fontSize: fontSize.md },
-  textArea: { minHeight: 140, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.lg, padding: spacing.md, fontSize: fontSize.md, textAlignVertical: 'top' },
-  previewBox: { minHeight: 140, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.lg, padding: spacing.md },
-  previewEmpty: { fontSize: fontSize.sm },
-  formActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  primaryButton: { minHeight: 44, minWidth: 120, borderRadius: borderRadius.full, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
-  primaryButtonText: { fontSize: fontSize.md, fontWeight: '700' },
-  deleteText: { color: '#EF4444', fontSize: fontSize.md, fontWeight: '700' },
-  integrationStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  integrationProvider: { fontSize: fontSize.sm, textTransform: 'capitalize' },
-  integrationDescription: { fontSize: fontSize.sm, lineHeight: 20 },
-  integrationAuthWarning: { color: '#EF4444', fontSize: fontSize.sm, lineHeight: 19 },
-})
+const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })

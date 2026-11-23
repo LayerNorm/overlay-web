@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,7 +13,7 @@ import { Feather } from '@expo/vector-icons'
 import type { McpServerSummary } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
-import { BottomSheet, StatusPill } from '../ui/AppChrome'
+import { StatusPill } from '../ui/AppChrome'
 import {
   disconnectMcpOAuth,
   startMcpOAuth,
@@ -128,7 +129,8 @@ export function McpDetailSheet({
   const isOAuth = server?.authType === 'oauth'
 
   return (
-    <BottomSheet theme={theme} visible={visible} onClose={onClose} title={server?.name || 'MCP Server'}>
+    // Rendered inside a NativePageSheet, which owns presentation and the title.
+    <ScrollView contentContainerStyle={{ paddingTop: 4, paddingBottom: 24 }}>
       {!server ? (
         <ActivityIndicator color={theme.textSecondary} />
       ) : (
@@ -210,7 +212,7 @@ export function McpDetailSheet({
           </View>
         </View>
       )}
-    </BottomSheet>
+    </ScrollView>
   )
 }
 

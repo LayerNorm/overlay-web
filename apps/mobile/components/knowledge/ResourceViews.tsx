@@ -15,7 +15,6 @@ import {
   Folder,
   Hash,
   ListChecks,
-  MoreHorizontal,
   Plus,
   Search,
   Workflow,
@@ -850,7 +849,16 @@ export function AutomationList({
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon="plus" accessibilityLabel="New automation" onPress={onNew} />
       </Stack.Toolbar>
-      {!items.length ? <ResourceState theme={theme} empty="No automations yet" /> : null}
+      {!items.length ? (
+        <CreatureEmpty
+          title="No automations yet"
+          detail="Schedule work for Overlay to do on its own, like a daily digest. Tap + to create one."
+          shape="clover"
+          color="#0d9488"
+          action="New automation"
+          onAction={onNew}
+        />
+      ) : null}
       {[true, false].map((enabled) => (
         <View key={String(enabled)}>
           {items.some((item) => (item.enabled !== false) === enabled) ? (
@@ -895,7 +903,6 @@ export function AutomationDetail({
   schedule,
   onRun,
   onToggle,
-  onEdit,
   onOpenRun,
   busy = false,
 }: {
@@ -906,7 +913,8 @@ export function AutomationDetail({
   schedule: string
   onRun: () => void
   onToggle: () => void
-  onEdit: () => void
+  /** Unused: Edit lives in the screen's toolbar menu. */
+  onEdit?: () => void
   onOpenRun: (run: AutomationRunSummary) => void
   busy?: boolean
 }) {
@@ -914,18 +922,8 @@ export function AutomationDetail({
   const history = runs.filter((run) => RUN_TERMINAL.has(run.status))
   return (
     <>
-      <ResourceHeading
-        theme={theme}
-        title={item.name || item.title || 'Automation'}
-        action={
-          <IconButton
-            theme={theme}
-            icon={MoreHorizontal}
-            label="Automation options"
-            onPress={onEdit}
-          />
-        }
-      />
+      {/* Edit and Delete live in the screen's "…" toolbar menu. */}
+      <ResourceHeading theme={theme} title={item.name || item.title || 'Automation'} />
       <T
         style={{
           color: theme.muted,

@@ -15,7 +15,8 @@ import { useTheme } from '../../hooks/useTheme'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
-import { BottomSheet, StatusPill } from '../ui/AppChrome'
+import { StatusPill } from '../ui/AppChrome'
+import { NativePageSheet } from '../ui/NativePageSheet'
 import {
   approveAutomationRun,
   cancelAutomationRun,
@@ -130,7 +131,8 @@ export function AutomationRunSheet({
   const errorText = formatAutomationRunError(statusError ?? run?.errorMessage ?? run?.error)
 
   return (
-    <BottomSheet theme={theme} visible={visible} onClose={onClose} title="Run detail">
+    <NativePageSheet title="Run details" visible={visible} onClose={onClose}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
       {!run ? (
         <ActivityIndicator color={theme.textSecondary} />
       ) : (
@@ -251,7 +253,8 @@ export function AutomationRunSheet({
           ) : null}
         </View>
       )}
-    </BottomSheet>
+      </ScrollView>
+    </NativePageSheet>
   )
 }
 

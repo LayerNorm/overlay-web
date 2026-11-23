@@ -58,7 +58,7 @@ import { resolveAutoModel, sortChatModels } from '../../lib/chatModels'
 import { getComposerBottomInset } from '../../lib/keyboardLayout'
 import { ModelPicker } from './ModelPicker'
 import { ChatHeader, EmptyPersonalChat } from './ChatViews'
-import { ModelPickerSheet } from './ModelPickerSheet'
+import { NativePageSheet } from '../ui/NativePageSheet'
 import { appendPersonalBlock } from '../../lib/personalStream'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
@@ -2363,7 +2363,7 @@ function ChatScreenOwner({
           </View>
         </KeyboardAvoidingView>
 
-      <ModelPickerSheet visible={modelPickerVisible} onClose={() => setModelPickerVisible(false)}>
+      <NativePageSheet title="Choose a model" visible={modelPickerVisible} onClose={() => setModelPickerVisible(false)}>
         <ModelPicker fill theme={theme} models={sortedModels} imageModels={imageModels} videoModels={videoModels} selectedId={generationKind === 'image' ? selectedImageModelId ?? undefined : generationKind === 'video' ? selectedVideoModelId ?? undefined : selectedModel?.id} favoriteIds={favoriteIds} onFavorite={toggleFavorite} autoSelected={autoSelected} mode={generationKind ?? 'text'} isLocked={model => entitlements?.tier === 'free' && (model.cost ?? 0) > 0} onAuto={() => {
           const model = resolveAutoModel(availableModels.filter(model => entitlements?.tier !== 'free' || model.cost === 0), uiSettings.defaultActModelId)
           if (!model) { setModelPickerVisible(false); setAttachmentError('No text model is available on this account.'); return }
@@ -2375,7 +2375,7 @@ function ChatScreenOwner({
           if (entitlements?.tier === 'free' && model.cost > 0) { setModelPickerVisible(false); setUpgradeVisible(true); return }
           setAutoSelected(false); setGenerationKind(null); void handleModelSelect(model).catch(error => setAttachmentError(userSafeTransportError(error, 'Could not select this model.')))
         }} />
-      </ModelPickerSheet>
+      </NativePageSheet>
 
 
       <UpgradePrompt
