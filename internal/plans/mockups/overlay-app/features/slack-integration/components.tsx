@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Plug } from 'lucide-react'
-import { Button, ListboxSelect, SegmentedControl } from '@overlay/ui/primitives'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Building2, ChevronRight, MessageSquareMore, Plug, ShieldCheck, UserRound, UserRoundPlus, UserRoundX, UsersRound } from 'lucide-react'
+import { unstyledButton } from '@overlay/ui/control-reset'
+import { Button, ListboxSelect } from '@overlay/ui/primitives'
 import { SettingsGroup, SettingsToggle } from '@overlay/modules-react/settings'
 import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
 import { slackOrigin } from './origin'
@@ -47,152 +49,145 @@ export function SlackThreadNote({ conversationId }: { conversationId: string }) 
   )
 }
 
-type AppId = 'github' | 'slack' | 'mcp'
+const CONNECTED_APPS = [
+  { id: 'github', label: 'GitHub', description: 'Repositories your agents can work on', status: '2 accounts', icon: <GitHubMark size={14} /> },
+  { id: 'slack', label: 'Slack', description: 'Ask Overlay in your Slack workspace', status: 'Connected', icon: <SlackMark size={14} /> },
+  { id: 'mcp', label: 'MCP', description: 'Use Overlay from ChatGPT, Claude and Cursor', status: '2 apps', icon: <Plug size={15} /> },
+] as const
 
-const APP_OPTIONS = [
-  { value: 'github' as const, label: 'GitHub', icon: GitHubMark },
-  { value: 'slack' as const, label: 'Slack', icon: SlackMark },
-  { value: 'mcp' as const, label: 'MCP', icon: Plug },
-]
+const LIST_HREF = '/app/settings?section=connected-apps'
 
-/** Settings → Connected apps: one tab per first-class integration. */
+/** Header trail for Settings → Connected apps → <app>; null on the list itself. */
+export function connectedAppHeader(section: string, app: string | null | undefined) {
+  if (section !== 'connected-apps') return null
+  const match = CONNECTED_APPS.find((entry) => entry.id === app)
+  return match ? { label: match.label, parents: [{ label: 'Connected apps', href: LIST_HREF }] } : null
+}
+
+/** Settings → Connected apps: the list, or one app's page when ?app= is set. */
 export function ConnectedAppsHub() {
-  const [app, setApp] = useState<AppId>('slack')
+  const app = useSearchParams()?.get('app')
+  if (app === 'github') return <GitHubSettings />
+  if (app === 'slack') return <SlackSettings />
+  if (app === 'mcp') return <ConnectedAppsSettings />
+  return <ConnectedAppsList />
+}
+
+function ConnectedAppsList() {
+  const router = useRouter()
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SegmentedControl ariaLabel="Connected app" value={app} options={APP_OPTIONS} onChange={setApp} />
-        <span className="text-xs text-(--muted)">Microsoft Teams, Discord and Linear are coming soon</span>
+    <SettingsGroup>
+      {CONNECTED_APPS.map((app) => (
+        <Button
+          key={app.id}
+          variant="ghost"
+          type="button"
+          onClick={() => router.push(`${LIST_HREF}&app=${app.id}`)}
+          className={unstyledButton('flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-(--surface-muted)')}
+        >
+          <span className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex w-4 shrink-0 justify-center text-(--muted)">{app.icon}</span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-(--foreground)">{app.label}</span>
+              <span className="mt-1 block text-sm text-(--muted)">{app.description}</span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2 text-sm text-(--muted)">
+            {app.status}
+            <ChevronRight size={14} />
+          </span>
+        </Button>
+      ))}
+      <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+        <span className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 flex w-4 shrink-0 justify-center text-(--muted)"><MessageSquareMore size={15} /></span>
+          <span className="text-sm text-(--muted)">Microsoft Teams, Discord and more</span>
+        </span>
+        <span className="shrink-0 text-sm text-(--muted)">Coming soon</span>
       </div>
-      {app === 'github' ? <GitHubSection /> : app === 'slack' ? <SlackSection /> : <ConnectedAppsSettings />}
-    </div>
+    </SettingsGroup>
   )
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+function Row({ icon, title, description, children }: { icon: ReactNode; title: string; description: string; children?: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="px-1">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">{title}</h3>
-        {description ? <p className="mt-1 text-sm text-(--muted)">{description}</p> : null}
-      </div>
-      <SettingsGroup>{children}</SettingsGroup>
-    </section>
-  )
-}
-
-function Row({ icon, title, description, control }: { icon?: ReactNode; title: string; description?: ReactNode; control?: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
-      <div className="flex min-w-0 items-center gap-3">
-        {icon ? <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-(--surface-subtle) text-(--foreground)">{icon}</span> : null}
+    <div className="flex items-start justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-(--surface-muted)">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 flex w-4 shrink-0 justify-center text-(--muted)">{icon}</span>
         <div className="min-w-0">
-          <h4 className="text-sm font-medium text-(--foreground)">{title}</h4>
-          {description ? <p className="mt-0.5 text-sm leading-relaxed text-(--muted)">{description}</p> : null}
+          <h2 className="text-sm font-medium text-(--foreground)">{title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-(--muted)">{description}</p>
         </div>
       </div>
-      {control ? <div className="flex shrink-0 items-center gap-2">{control}</div> : null}
+      {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
     </div>
   )
 }
 
-function ToggleRow({ title, description, initial }: { title: string; description: string; initial: boolean }) {
-  const [on, setOn] = useState(initial)
-  return <Row title={title} description={description} control={<SettingsToggle checked={on} onChange={() => setOn(!on)} aria-label={title} />} />
+function ToggleRow({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+  const [on, setOn] = useState(false)
+  return <Row icon={icon} title={title} description={description}><SettingsToggle checked={on} onChange={() => setOn(!on)} aria-label={title} /></Row>
 }
 
-function SlackSection() {
-  const [who, setWho] = useState<'linked' | 'everyone' | 'allowlist'>('linked')
+function SlackSettings() {
+  const [who, setWho] = useState<'linked' | 'everyone' | 'specific'>('linked')
   const [unlinked, setUnlinked] = useState<'link' | 'channel'>('link')
-  const [actions, setActions] = useState<'approve' | 'auto' | 'never'>('approve')
+  const [actions, setActions] = useState<'ask' | 'allow' | 'never'>('ask')
   return (
     <>
-      <Section title="Workspace">
-        <Row
-          icon={<SlackMark size={16} />}
-          title="Northwind"
-          description="northwind.slack.com · Installed by Mercedes Alvarez"
-          control={<Button variant="secondary" size="sm">Disconnect</Button>}
-        />
-        <Row
-          title="Your Slack account"
-          description="Linked as @mercedes. Overlay knows it's you when you ask in Slack."
-          control={<Button variant="ghost" size="sm">Unlink</Button>}
-        />
-      </Section>
-
-      <Section title="Who can ask Overlay" description="Only Overlay answers in Slack. It brings in your other agents when a task needs them.">
-        <Row
-          title="People"
-          description={who === 'linked' ? 'Only people who have linked their Slack account to this workspace.' : who === 'everyone' ? 'Anyone in Northwind\u2019s Slack, except people you block.' : 'Only the people you add.'}
-          control={<ListboxSelect aria-label="Who can ask Overlay" className="w-48" value={who} onChange={setWho} options={[
-            { value: 'linked', label: 'Linked members only' },
-            { value: 'everyone', label: 'Everyone except blocked' },
-            { value: 'allowlist', label: 'Only allowed people' },
-          ]} />}
-        />
+      <SettingsGroup>
+        <Row icon={<SlackMark size={14} />} title="Northwind" description="Connected by Mercedes Alvarez">
+          <Button variant="secondary" size="sm">Disconnect</Button>
+        </Row>
+        <Row icon={<UserRound size={15} />} title="Your account" description="Linked as @mercedes">
+          <Button variant="ghost" size="sm">Unlink</Button>
+        </Row>
+      </SettingsGroup>
+      <SettingsGroup>
+        <Row icon={<UsersRound size={15} />} title="Who can ask Overlay" description="People who can mention or message Overlay in Slack.">
+          <ListboxSelect aria-label="Who can ask Overlay" className="w-44" value={who} onChange={setWho} options={[
+            { value: 'linked', label: 'Linked members' },
+            { value: 'everyone', label: 'Everyone' },
+            { value: 'specific', label: 'Specific people' },
+          ]} />
+        </Row>
         {who === 'linked' ? null : (
-          <Row
-            title="People without an Overlay account"
-            description={unlinked === 'link' ? 'Overlay asks them to link first, then finishes their request.' : 'They can use what the channel can see. No workspace files, memories or actions.'}
-            control={<ListboxSelect aria-label="People without an Overlay account" className="w-48" value={unlinked} onChange={setUnlinked} options={[
+          <Row icon={<UserRoundX size={15} />} title="People without an account" description="What Overlay does when they ask.">
+            <ListboxSelect aria-label="People without an account" className="w-44" value={unlinked} onChange={setUnlinked} options={[
               { value: 'link', label: 'Ask them to link' },
-              { value: 'channel', label: 'Channel access only' },
-            ]} />}
-          />
+              { value: 'channel', label: 'Channel only' },
+            ]} />
+          </Row>
         )}
-        <ToggleRow title="Slack guests" description="Let single- and multi-channel guests ask Overlay." initial={false} />
-        <ToggleRow title="Slack Connect channels" description="Answer people from other companies in shared channels." initial={false} />
-      </Section>
-
-      <Section title="Answers and actions">
-        <Row
-          title="Private results stay private"
-          description="If an answer uses something not everyone in the channel can see, only the person who asked gets it."
-          control={<span className="text-xs text-(--muted)">Always on</span>}
-        />
-        <Row
-          title="Actions in channels"
-          description="Sending email, editing files, changing Work and other tools that make changes."
-          control={<ListboxSelect aria-label="Actions in channels" className="w-48" value={actions} onChange={setActions} options={[
-            { value: 'approve', label: 'Ask before acting' },
-            { value: 'auto', label: 'Act without asking' },
-            { value: 'never', label: 'Never act' },
-          ]} />}
-        />
-      </Section>
-
-      <Section title="Channels" description="Each Slack thread Overlay works in appears in Overlay's thread list for the people who can see it in Slack.">
-        <Row title="#growth" description="Public · 14 threads · Members of #growth" />
-        <Row title="#launch" description="Public · 6 threads · Members of #launch" />
-        <Row title="#exec" description="Private · 2 threads · Members of #exec" />
-        <Row title="Direct messages" description="Each person sees only their own" />
-      </Section>
+        <ToggleRow icon={<UserRoundPlus size={15} />} title="Guests" description="Let Slack guests ask Overlay." />
+        <ToggleRow icon={<Building2 size={15} />} title="Slack Connect" description="Answer people from other companies in shared channels." />
+        <Row icon={<ShieldCheck size={15} />} title="Actions in channels" description="Sending, editing or deleting for someone.">
+          <ListboxSelect aria-label="Actions in channels" className="w-44" value={actions} onChange={setActions} options={[
+            { value: 'ask', label: 'Ask first' },
+            { value: 'allow', label: 'Allow' },
+            { value: 'never', label: 'Never' },
+          ]} />
+        </Row>
+      </SettingsGroup>
     </>
   )
 }
 
-function GitHubSection() {
+function GitHubSettings() {
   return (
     <>
-      <Section title="Installations" description="Agents clone these repositories on their cloud computer and open pull requests as the Overlay app.">
-        <Row
-          icon={<GitHubMark size={16} />}
-          title="northwind"
-          description="Organization · 12 repositories · Installed by Mercedes Alvarez"
-          control={<Button variant="secondary" size="sm">Configure</Button>}
-        />
-        <Row
-          icon={<GitHubMark size={16} />}
-          title="mercedes-alvarez"
-          description="Personal account · 3 repositories"
-          control={<Button variant="secondary" size="sm">Configure</Button>}
-        />
-      </Section>
-      <div className="flex gap-2 px-1">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-(--muted)">Repositories your agents can clone and open pull requests on.</p>
         <Button variant="secondary" size="sm">Install on GitHub</Button>
-        <Button variant="ghost" size="sm">Connect an existing installation</Button>
       </div>
+      <SettingsGroup>
+        <Row icon={<GitHubMark size={14} />} title="northwind" description="Organization · 12 repositories">
+          <Button variant="secondary" size="sm">Configure</Button>
+        </Row>
+        <Row icon={<GitHubMark size={14} />} title="mercedes-alvarez" description="Personal · 3 repositories">
+          <Button variant="secondary" size="sm">Configure</Button>
+        </Row>
+      </SettingsGroup>
     </>
   )
 }

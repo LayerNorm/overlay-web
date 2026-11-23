@@ -96,8 +96,8 @@ them. Besides the canonical app mockup, this folder holds only:
   thread, a channel and a chat, and between the app today (`?mode=today`) and the proposal; "What changes" lists the
   changes and the error messages before and after. Delete it when the design ships.
 - `slack-integration.html` (feature `slack-integration`): the proposed Slack integration from
-  `internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`. Settings → Connected apps becomes GitHub, Slack and MCP tabs
-  (`slack-integration.html#/app/settings?section=connected-apps`), and threads started in Slack show under Overlay with
+  `internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`. Settings → Connected apps lists GitHub, Slack and MCP, each opening its own page
+  (`slack-integration.html#/app/settings?section=connected-apps`, then `&app=slack`), and threads started in Slack show under Overlay with
   a Slack mark, the channel and Open in Slack in the header, Slack participants by name, and where replies go
   (`slack-integration.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convslackgrowth00000000000000`).
   Delete it when the design ships.

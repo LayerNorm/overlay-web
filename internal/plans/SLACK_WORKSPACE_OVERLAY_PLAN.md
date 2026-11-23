@@ -7,7 +7,7 @@
 - Only the **Workspace Overlay** (`workspace_chief`) is in Slack. It delegates to other agents through the Harness.
 - **Build from first principles on the Chat SDK** (`chat` + `@chat-adapter/slack`). Do not restore #582; its retired tables stay read-only.
 - **Slack is a first-class integration, like the GitHub App:** its own app, `convex/integrations/slack*`, `src/server/integrations/slack/` and settings.
-- **Connected apps** becomes tabs: **GitHub**, **Slack**, **MCP** (today's page), plus "coming soon".
+- **Connected apps** lists **GitHub**, **Slack** and **MCP** (today's page), plus "coming soon". Each opens its own page: Settings › Connected apps › Slack.
 
 ## Formatting
 
@@ -45,7 +45,7 @@ Write one renderer from the Harness's markdown to Slack blocks covering headings
 | Data | `slackInstallations`, `slackIdentityLinks`, `slackSettings`, conversation `origin` |
 | Turns | Admit with requester, tier and audience; run the Harness; deliver to Slack and Convex |
 | Policy | `resolveSurfaceAccess()` for tools, delivery and web reads |
-| UI | Connected apps tabs, thread origin, Slack participants |
+| UI | Connected apps list and app pages, thread origin, Slack participants |
 
 ## Phases
 

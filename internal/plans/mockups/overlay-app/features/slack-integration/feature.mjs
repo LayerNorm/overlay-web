@@ -1,6 +1,6 @@
 // Overlay in Slack (internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md). Three proposals on the production shell:
-// - Settings → Connected apps becomes GitHub, Slack and MCP tabs. MCP is today's page; Slack holds install, who can
-//   ask Overlay, private results, actions and the channels whose threads show in Overlay.
+// - Settings → Connected apps lists GitHub, Slack and MCP; each opens its own page (Settings › Connected apps › Slack).
+//   MCP is today's page; Slack holds the install, who can ask Overlay, guests, Slack Connect and actions.
 // - A Slack thread is an ordinary Workspace Overlay thread: listed under Overlay with a Slack mark, its header names the
 //   channel with Open in Slack, and Slack participants without an Overlay account show by name.
 // - A Slack DM thread is visible only to the person who sent it.
@@ -20,12 +20,23 @@ export default {
     },
     {
       file: 'src/app/app/settings/page.tsx',
-      imports: `import { ConnectedAppsHub } from ${file('components.tsx')}\n`,
-      replace: [["if (section === 'connected-apps') return <ConnectedAppsSettings />", "if (section === 'connected-apps') return <ConnectedAppsHub />"]],
+      imports: `import { ConnectedAppsHub, connectedAppHeader } from ${file('components.tsx')}\n`,
+      replace: [
+        ["if (section === 'connected-apps') return <ConnectedAppsSettings />", "if (section === 'connected-apps') return <ConnectedAppsHub />"],
+        ['activeLabel={sectionLabel}', "activeLabel={connectedAppHeader(section, searchParams?.get('app'))?.label ?? sectionLabel}\n      parents={connectedAppHeader(section, searchParams?.get('app'))?.parents}"],
+      ],
+    },
+    {
+      file: 'packages/overlay-modules-react/src/settings/page-shell.tsx',
+      replace: [
+        ['  actions?: ReactNode\n', '  actions?: ReactNode\n  parents?: { label: string; href: string }[]\n'],
+        ['  actions,\n  fullBleed', '  actions,\n  parents = [],\n  fullBleed'],
+        ['breadcrumbs={[{ label: title }]}', 'breadcrumbs={[{ label: title }, ...parents]}'],
+      ],
     },
     {
       file: 'src/features/settings/components/ConnectedAppsSettings.tsx',
-      replace: [['text-(--foreground)">Connected apps</h2>', 'text-(--foreground)">MCP</h2>']],
+      replace: [['text-(--foreground)">Connected apps</h2>', 'text-(--foreground)">Use Overlay in other AI apps</h2>']],
     },
     {
       file: 'src/components/layout/AppSidebarAgentThreads.tsx',
