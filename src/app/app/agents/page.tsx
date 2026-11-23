@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
 import { AgentConversationWorkspace } from '@/features/agents/components/AgentConversationWorkspace'
-import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { ConversationRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
 
 export default function AgentsPage() {
   return (
-    <Suspense fallback={<ChatRouteSkeleton />}>
+    <Suspense fallback={<ConversationRouteSkeleton />}>
       <AgentConversationWorkspace />
     </Suspense>
   )

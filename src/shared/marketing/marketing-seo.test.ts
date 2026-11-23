@@ -8,27 +8,46 @@ test('marketing navigation uses the canonical documentation URL', () => {
   assert.equal(MARKETING_DOCS_URL, 'https://overlay.works/docs')
 })
 
-test('the sitemap publishes clean marketing and legal URLs instead of app showcase URLs', () => {
-  const urls = sitemap().map((entry) => entry.url)
-  assert.deepEqual(urls, [
-    'https://overlay.works/home',
-    'https://overlay.works/pricing',
-    'https://overlay.works/self-hosting',
-    'https://overlay.works/blog',
-    'https://overlay.works/changelog',
-    'https://overlay.works/manifesto',
-    'https://overlay.works/docs',
-    'https://overlay.works/terms',
-    'https://overlay.works/privacy',
-    'https://overlay.works/acceptable-use',
-    'https://overlay.works/cookies',
-    'https://overlay.works/commercial-license',
-    'https://overlay.works/dpa',
-    'https://overlay.works/subprocessors',
-    'https://overlay.works/refunds',
-    'https://overlay.works/dmca',
-  ])
-  assert.equal(urls.some((url) => url.includes('/app/') || url.includes('showcase=1')), false)
+test('the sitemap publishes canonical marketing, comparison, docs and legal URLs', () => {
+  const urls = sitemap().map(({ url }) => new URL(url))
+  const paths = new Set(urls.map(({ pathname }) => pathname))
+  const expectedPaths = [
+    '/home',
+    '/pricing',
+    '/self-hosting',
+    '/blog',
+    '/changelog',
+    '/manifesto',
+    '/download',
+    '/compare',
+    '/compare/devin-alternatives',
+    '/compare/devin',
+    '/compare/openhands',
+    '/compare/lindy',
+    '/compare/ai-employee-platforms',
+    '/docs/introduction',
+    '/docs/help',
+    '/docs/help/billing',
+    '/docs/self-hosting/configure/authentication',
+    '/docs/developer/api/guides/bootstrap',
+    '/docs/developer/api/reference/bootstrap/read-web-capabilities',
+    '/docs/developer/api/reference/computers/provision-a-workspace-computer-idempotent-per-owner',
+    '/terms',
+    '/privacy',
+    '/acceptable-use',
+    '/cookies',
+    '/commercial-license',
+    '/dpa',
+    '/subprocessors',
+    '/refunds',
+    '/dmca',
+  ]
+  for (const path of expectedPaths) assert.ok(paths.has(path), `Missing sitemap path: ${path}`)
+  assert.equal(paths.size, urls.length)
+  assert.ok(urls.every(({ origin, search, hash }) => origin === 'https://overlay.works' && !search && !hash))
+  assert.ok(urls.every(({ pathname }) => pathname !== '/app' && !pathname.startsWith('/app/')))
+  assert.equal(paths.has('/docs'), false)
+  assert.ok(urls.every(({ pathname }) => !pathname.endsWith('/index')))
 })
 
 test('robots keeps app surfaces out of the index and advertises the sitemap', () => {

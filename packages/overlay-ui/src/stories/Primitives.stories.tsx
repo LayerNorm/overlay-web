@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Archive, Bell, FileText, Folder, MessageSquare, MoreHorizontal, Plus, Search, Trash2, Zap } from 'lucide-react'
 import {
-  AutomationListSkeleton,
   Badge,
   Button,
   CommandPalette,
@@ -9,18 +8,16 @@ import {
   DelayedTooltip,
   DialogFrame,
   EmptyState,
-  FileTreeSkeleton,
+  FileListSkeleton,
   GenerationModeToggle,
   IconButton,
   Input,
-  IntegrationListSkeleton,
   ListboxSelect,
   MenuItem,
   MenuSurface,
-  OutputCardSkeleton,
-  ProjectsPageSkeleton,
   Select,
   SettingsSectionSkeleton,
+  SidebarListSkeleton,
   SidebarNav,
   SidebarResourceList,
   SidebarResourceSection,
@@ -150,15 +147,15 @@ export function Layout() {
             Chat
           </Button>
           <Button className="w-full justify-start" variant="ghost">
-            Projects
+            Work
           </Button>
         </SidebarNav>
         <SidebarSection>
-          <FileTreeSkeleton rows={5} />
+          <SidebarListSkeleton rows={5} />
         </SidebarSection>
       </SidebarShell>
       <main className="min-w-0 flex-1 p-6">
-        <ProjectsPageSkeleton />
+        <FileListSkeleton rows={8} />
       </main>
     </div>
   )
@@ -168,12 +165,11 @@ export function Feedback() {
   return (
     <div className="grid min-h-screen gap-6 bg-(--background) p-6 text-(--foreground) lg:grid-cols-2">
       <section className="space-y-4">
-        <OutputCardSkeleton />
-        <IntegrationListSkeleton rows={4} />
+        <SidebarListSkeleton rows={4} />
+        <FileListSkeleton rows={4} />
       </section>
       <section className="space-y-4">
         <SettingsSectionSkeleton rows={2} />
-        <AutomationListSkeleton rows={3} />
       </section>
     </div>
   )

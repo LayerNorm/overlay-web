@@ -15,7 +15,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => null,
 }))
 vi.mock('@overlay/ui/primitives', () => ({
-  SidebarMenu: 'ul', SidebarMenuItem: 'li', SidebarMenuSkeleton: 'span',
+  SidebarMenu: 'ul', SidebarMenuItem: 'li',
   SidebarMenuButton: 'button', SidebarMenuAction: 'button', SidebarMenuSubButton: 'button',
   SidebarMenuSubItem: 'li', Button: 'button', toast: { error: vi.fn() },
 }))

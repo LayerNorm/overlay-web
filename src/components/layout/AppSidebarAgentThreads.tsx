@@ -10,7 +10,6 @@ import { hasThreadActivity, THREAD_ACTIVITY_LABELS, type ThreadActivity } from '
 import { useTranscriptPrefetchIntent } from '@/components/providers/transcript-cache-client'
 import {
   SidebarMenuAction,
-  SidebarMenuSkeleton,
   SidebarMenu,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -18,6 +17,9 @@ import {
 
 /** An agent shows this many threads at first; "Load more" shows this many more each time. */
 export const AGENT_THREAD_PAGE = 5
+
+// A fixed spread of widths (by position), so server and client render the same bars.
+const TITLE_WIDTHS = ['70%', '52%', '62%', '45%', '58%', '66%']
 
 function ThreadButton({ children, className, ...props }: ComponentProps<typeof SidebarMenuSubButton>) {
   return <SidebarMenuSubButton className={`font-normal data-[active=true]:font-normal [&>svg]:mx-1 ${className ?? ''}`} {...props}>{children}</SidebarMenuSubButton>
@@ -45,11 +47,19 @@ export function AgentThreadRows({
   const prefetch = useTranscriptPrefetchIntent()
   const [limit, setLimit] = useState(AGENT_THREAD_PAGE)
   if (bundle === 'loading') {
+    // As many rows as the agent's live activity says it has threads (none when it has none, like the loaded list),
+    // each a 30px thread row: an empty icon slot, then a bar where the title starts.
+    const known = activityOnly ? activity?.filter((item) => hasThreadActivity(item.status)) : activity
+    const count = known?.length ?? 0
+    const rows = count > AGENT_THREAD_PAGE ? AGENT_THREAD_PAGE + 1 : count
     return (
-      <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`Loading ${agent.name} threads`}>
-        {[0, 1, 2].map((index) => (
-          <SidebarMenuSubItem key={index}>
-            <SidebarMenuSkeleton index={index} className="h-7 px-2" />
+      <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`Loading ${agent.name} threads`} aria-busy>
+        {Array.from({ length: rows }).map((_, index) => (
+          <SidebarMenuSubItem key={index} aria-hidden>
+            <div data-thread-skeleton className="flex h-[30px] items-center gap-[7px] pr-8">
+              <span className="agent-thread-icon" />
+              <span className="ui-skeleton-line h-2.5 flex-1 rounded-sm" style={{ maxWidth: TITLE_WIDTHS[index % TITLE_WIDTHS.length] }} />
+            </div>
           </SidebarMenuSubItem>
         ))}
       </SidebarMenu>

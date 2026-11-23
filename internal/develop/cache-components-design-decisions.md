@@ -46,6 +46,9 @@ resolving any blocking I/O (moving `cookies()`/`headers()` reads inside
 5. `/pricing` — `src/app/(marketing)/pricing/page.tsx` — `getOverlayCapabilitiesSync()`
    reads `process.env` only. Removed opt-out.
    Always the workspace pricing page (the account-plan page is deleted).
+- `/compare` and its comparison pages use explicit static routes. The source
+  data and metadata are available at build time, and unknown paths return an
+  HTTP 404 without first streaming a fallback shell.
 
 ### Batch 2 — Root layout + home page (2 routes)
 

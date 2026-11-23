@@ -376,25 +376,40 @@ export function FolderCard({
   )
 }
 
+/** The Files cards grid while it loads: file cards (`h-28` icon well) with a note card (`h-36` preview) every third. */
 export function KnowledgeFileCardsSkeleton({ cards = 10 }: { cards?: number }) {
   return (
     <div
       className='overlay-knowledge-card-grid mx-auto w-full max-w-[1440px] columns-1 gap-4 gap-x-4 sm:columns-2 lg:columns-3 xl:columns-4'
-      aria-hidden
+      role="status"
+      aria-label="Loading"
     >
       {Array.from({ length: cards }).map((_, index) => (
         <div
           key={index}
+          aria-hidden
           className="mb-4 block w-full break-inside-avoid overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)"
           style={{ breakInside: 'avoid' }}
         >
-          <div className="flex h-28 items-center justify-center bg-(--surface-muted)">
-            <div className="ui-skeleton-line h-9 w-9 rounded-md" />
-          </div>
-          <div className="space-y-2 px-3 py-2.5">
-            <div className={`ui-skeleton-line h-3 rounded-sm ${index % 3 === 0 ? 'w-4/5' : index % 3 === 1 ? 'w-3/5' : 'w-2/3'}`} />
-            <div className="ui-skeleton-line h-2.5 w-2/5 rounded-sm opacity-75" />
-            <div className="ui-skeleton-line h-2 w-1/4 rounded-sm opacity-60" />
+          {index % 3 === 1 ? (
+            <div className="h-36 overflow-hidden bg-(--surface-muted) p-3">
+              <div className="h-full space-y-2 rounded-lg border border-(--border) bg-(--surface-elevated) px-3 py-3 shadow-xs">
+                <div className="ui-skeleton-line h-1.5 w-full rounded-sm" />
+                <div className="ui-skeleton-line h-1.5 w-11/12 rounded-sm" />
+                <div className="ui-skeleton-line h-1.5 w-3/5 rounded-sm" />
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-28 items-center justify-center bg-(--surface-muted)">
+              <div className="ui-skeleton-line size-9 rounded-md" />
+            </div>
+          )}
+          <div className="px-3 py-2">
+            <div className="flex h-4 items-center">
+              <div className={`ui-skeleton-line h-2.5 rounded-sm ${index % 3 === 0 ? 'w-4/5' : index % 3 === 1 ? 'w-3/5' : 'w-2/3'}`} />
+            </div>
+            <div className="mt-1 flex h-[15px] items-center"><div className="ui-skeleton-line h-2 w-2/5 rounded-sm" /></div>
+            <div className="mt-1 flex h-[15px] items-center"><div className="ui-skeleton-line h-2 w-1/4 rounded-sm" /></div>
           </div>
         </div>
       ))}

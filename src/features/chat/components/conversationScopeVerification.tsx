@@ -65,18 +65,21 @@ export function isKnownNativePersonalChat(
 export function ConversationDetailScopeGate({
   routeKey,
   status,
+  pending,
   fallback,
   children,
 }: {
   routeKey: string | null
   status: ConversationDetailScopeStatus | null
+  /** Shown while the conversation's scope is being checked: the skeleton of the surface it opens in. */
+  pending: ReactNode
   fallback: ReactNode
   children: ReactNode
 }) {
   if (!routeKey) return children
   if (status?.routeKey === routeKey && status.status === 'unavailable') return fallback
   if (isConversationScopeVerified(routeKey)) return children
-  if (status?.routeKey !== routeKey) return null
+  if (status?.routeKey !== routeKey) return pending
   return children
 }
 

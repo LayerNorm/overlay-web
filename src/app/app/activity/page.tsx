@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
 import { ActivityRouteClient } from '../_components/ClientSessionRoutes'
-import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { ActivityRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
 
 export default function ActivityPage() {
   return (
-    <Suspense fallback={<ChatRouteSkeleton />}>
+    <Suspense fallback={<ActivityRouteSkeleton />}>
       <ActivityRouteClient />
     </Suspense>
   )

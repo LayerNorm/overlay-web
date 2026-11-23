@@ -4,12 +4,12 @@ import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
 import { getOverlaySession } from '@/server/auth/session'
 import { ARCHIVED_SETTINGS_PATH } from '@/shared/workspaces/panel-scope'
-import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { ArchivedRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
 
 const ChatArchivedView = dynamic(
   () => import('@/features/chat/components/ChatArchivedView')
     .then((module) => module.ChatArchivedView),
-  { loading: () => <ChatRouteSkeleton /> },
+  { loading: () => <ArchivedRouteSkeleton /> },
 )
 
 /**
@@ -31,7 +31,7 @@ async function ArchivedRouteContent({ searchParams }: { searchParams?: Promise<{
 
 export default function ArchivedPage({ searchParams }: { searchParams?: Promise<{ id?: string | string[] }> }) {
   return (
-    <Suspense fallback={<ChatRouteSkeleton />}>
+    <Suspense fallback={<ArchivedRouteSkeleton />}>
       <ArchivedRouteContent searchParams={searchParams} />
     </Suspense>
   )

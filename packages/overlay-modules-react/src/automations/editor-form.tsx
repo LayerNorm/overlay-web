@@ -11,6 +11,7 @@ import type {
 import { MIN_AUTOMATION_INTERVAL_MINUTES, WEEKDAY_LABELS } from '@overlay/app-core/automations'
 import { SettingsCard, SettingsToggle } from '@overlay/modules-react/settings'
 import { Select, Button, Input } from '@overlay/ui/primitives'
+import { AutomationCanvasSkeleton } from './canvas-skeleton'
 
 const AutomationGraphCanvas = lazy(() =>
   import('./reactflow-canvas').then((mod) => ({ default: mod.AutomationGraphCanvas })),
@@ -391,11 +392,7 @@ function AutomationFlowCard({
   return (
     <SettingsCard title="Flow">
       {renderFlow ? renderFlow() : (
-        <Suspense
-          fallback={
-            <div className="h-80 animate-pulse rounded-lg border border-(--border) bg-(--surface-subtle)" />
-          }
-        >
+        <Suspense fallback={<AutomationCanvasSkeleton hint />}>
           <AutomationGraphCanvas graph={graph!} onGraphChange={onGraphChange} />
         </Suspense>
       )}
