@@ -67,6 +67,13 @@ crons.interval(
 )
 
 crons.interval(
+  'expired Slack state cleanup',
+  { hours: 1 },
+  internal.integrations.slack.cleanupExpiredState,
+  {},
+)
+
+crons.interval(
   'api idempotency cleanup',
   { hours: 1 },
   internal.platform.idempotency.cleanupExpiredInternal,

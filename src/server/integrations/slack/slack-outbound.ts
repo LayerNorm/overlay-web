@@ -35,8 +35,12 @@ export async function mirrorWebMessageToSlack(args: {
   userId: string
   authorName: string
   content: string
-  agentTurnIds: string[]
+  /** The agents this message started; `harness: 'mcp'` marks an outside agent, which gets no Overlay run. */
+  agentTurns: ReadonlyArray<{ turnId: string; harness?: string }>
 }, dependencies: SlackMirrorDependencies = {}): Promise<boolean> {
+  // Delivery waits for the turn's run, so only turns Overlay runs itself are followed into Slack.
+  const turnIds = args.agentTurns.filter((turn) => turn.harness !== 'mcp').map((turn) => turn.turnId)
+  if (turnIds.length === 0) return false
   const serverQuery = <T,>(name: string, input: Record<string, unknown>) =>
     convex.query<T>('integrations/slack:' + name, { serverSecret: getInternalApiSecret(), ...input }, call)
   const found = await (dependencies.origin ?? ((conversationId) => serverQuery<Origin | null>('originByServer', { conversationId })))(args.conversationId)
@@ -49,9 +53,9 @@ export async function mirrorWebMessageToSlack(args: {
   const { teamId, channelId, threadTs, kind } = found.origin
   await (dependencies.post ?? postToSlackThread)({
     teamId, channelId, threadTs,
-    messages: renderSlackReply('*' + args.authorName.replace(/[*_~]/g, '') + ' replied in Overlay*\n\n' + args.content, { threadUrl }),
+    messages: renderSlackReply('**' + args.authorName.replace(/[*_~]/g, '') + ' replied in Overlay**\n\n' + args.content, { threadUrl }),
   })
-  for (const turnId of args.agentTurnIds) {
+  for (const turnId of turnIds) {
     await (dependencies.startDelivery ?? startSlackDelivery)({
       teamId, channelId, threadTs, kind, slackUserId: link.slackUserId, workspaceId: args.workspaceId, userId: args.userId,
       conversationId: args.conversationId, turnId, threadUrl,

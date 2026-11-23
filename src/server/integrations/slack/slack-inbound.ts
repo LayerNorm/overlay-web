@@ -10,7 +10,7 @@ import { getBaseUrl } from '@/server/web/app-url'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { slackReplyWorkflow, type SlackReplyInput } from '@/server/workflows/slack-reply'
-import type { SlackBot, SlackBotMessage, SlackBotThread } from './slack-bot'
+import { postSlackEphemeral, type SlackBot, type SlackBotMessage, type SlackBotThread } from './slack-bot'
 
 /**
  * Slack messages become ordinary Workspace Overlay turns (internal/develop/slack-integration.md). A mention in a
@@ -38,6 +38,7 @@ export type SlackInbound = {
   /** The asker belongs to another organization's Slack workspace (a Slack Connect channel). */
   outsider: boolean
   slackUserId: string
+  /** The question as markdown, already converted from Slack's markup by slackPromptText. */
   text: string
 }
 
@@ -53,6 +54,8 @@ export type SlackAdmission =
   | { status: 'link_required'; workspaceId: string }
   | { status: 'not_allowed'; reason: 'slack_connect' | 'outsider' | 'guest' | 'not_listed' }
   | { status: 'empty' }
+  /** Admitted, but the turn could not start (governance, budget, no Overlay to answer); openUrl shows why. */
+  | { status: 'start_failed'; openUrl: string }
 
 export type SlackAdmissionDependencies = {
   resolveRequester?: (args: { teamId: string; slackUserId: string }) => Promise<SlackRequester | null>
@@ -67,9 +70,44 @@ export type SlackAdmissionDependencies = {
 
 const call = { throwOnError: true } as const
 
-/** Removes the bot mention the question was addressed with. */
-export function slackPromptText(text: string): string {
-  return text.replace(/<@[A-Z0-9]+(\|[^>]*)?>/g, ' ').replace(/^\s*@Overlay\b[:,]?/i, ' ').replace(/[ \t]+/g, ' ').trim()
+/**
+ * Turns a Slack message's raw text (mrkdwn) into the markdown question the agent reads: links keep their URLs
+ * (`<url|label>` becomes `[label](url)`), people and channels read as names where known, and the bot's own mention,
+ * which only addressed the question, is removed.
+ */
+export function slackPromptText(text: string, options: { botUserId?: string; names?: ReadonlyMap<string, string> } = {}): string {
+  const withoutBot = options.botUserId && /^[A-Z0-9]+$/.test(options.botUserId)
+    ? text.replace(new RegExp('<@' + options.botUserId + '(?:\\|[^>]*)?>[:,]?', 'g'), ' ')
+    : text
+  const converted = withoutBot.replace(/<([^<>\n]+)>/g, (token, inner: string) => {
+    const pipe = inner.indexOf('|')
+    const target = pipe < 0 ? inner : inner.slice(0, pipe)
+    const label = pipe < 0 ? '' : inner.slice(pipe + 1)
+    if (target.startsWith('@')) {
+      const name = label || options.names?.get(target.slice(1))
+      return name ? '@' + name : token
+    }
+    if (target.startsWith('#')) return label ? '#' + label : token
+    // <!here>, <!channel>, <!subteam^S1|@team>, <!date^…|fallback>
+    if (target.startsWith('!')) return label || '@' + target.slice(1).split('^')[0]
+    if (!label || label === target || 'mailto:' + label === target) return label || target
+    return '[' + label + '](' + target + ')'
+  })
+  return converted
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').trim()
+}
+
+/** Raised when a Slack request was admitted but its turn could not start; openUrl is where Overlay shows why. */
+export class SlackRequestStartError extends Error {
+  constructor(readonly openUrl: string, cause: unknown) {
+    super(cause instanceof Error ? cause.message : 'The Slack request could not start.', { cause })
+    this.name = 'SlackRequestStartError'
+  }
+}
+
+export function slackWorkspaceUrl(workspaceId: string): string {
+  return getBaseUrl() + buildWorkspaceHref(workspaceId, '/app/agents')
 }
 
 export function slackThreadUrl(workspaceId: string, conversationId: string, agentId: string): string {
@@ -78,7 +116,7 @@ export function slackThreadUrl(workspaceId: string, conversationId: string, agen
 }
 
 export async function admitSlackMessage(input: SlackInbound, dependencies: SlackAdmissionDependencies = {}): Promise<SlackAdmission> {
-  const prompt = slackPromptText(input.text)
+  const prompt = input.text.trim()
   if (!prompt) return { status: 'empty' }
   const requester = await (dependencies.resolveRequester ?? ((args) => convex.query<SlackRequester | null>(
     'integrations/slack:resolveRequesterByServer', { serverSecret: getInternalApiSecret(), ...args }, call,
@@ -89,15 +127,30 @@ export async function admitSlackMessage(input: SlackInbound, dependencies: Slack
   if (!requester.userId) return { status: 'link_required', workspaceId: requester.workspaceId }
   if (requester.guest && !requester.settings.guests) return { status: 'not_allowed', reason: 'guest' }
   if (!requester.allowed) return { status: 'not_allowed', reason: 'not_listed' }
-  const started = await startSlackRequest({
-    workspaceId: requester.workspaceId, userId: requester.userId, slackUserId: input.slackUserId, prompt,
-    agentRole: 'workspace_chief',
-    origin: {
-      platform: 'slack', teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind,
-      ...(input.channelName ? { channelName: input.channelName } : {}),
-    },
-  }, dependencies)
-  return { status: 'started', ...started }
+  try {
+    const started = await startSlackRequest({
+      workspaceId: requester.workspaceId, userId: requester.userId, slackUserId: input.slackUserId, prompt,
+      agentRole: 'workspace_chief',
+      origin: {
+        platform: 'slack', teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind,
+        ...(input.channelName ? { channelName: input.channelName } : {}),
+      },
+    }, dependencies)
+    return { status: 'started', ...started }
+  } catch (error) {
+    logger.warn('[slack] could not start a request', { reason: error instanceof Error ? error.message.slice(0, 300) : 'unknown' })
+    return {
+      status: 'start_failed',
+      openUrl: error instanceof SlackRequestStartError ? error.openUrl : slackWorkspaceUrl(requester.workspaceId),
+    }
+  }
+}
+
+/** What the asker is told, only to them, when Overlay won't or couldn't take the question; null when nothing. */
+export function slackAdmissionNotice(admission: SlackAdmission): string | null {
+  if (admission.status === 'not_allowed') return NOT_ALLOWED_TEXT[admission.reason]
+  if (admission.status === 'start_failed') return 'Overlay couldn’t start on this. [Open Overlay](' + admission.openUrl + ') to see why.'
+  return null
 }
 
 /**
@@ -117,17 +170,22 @@ export async function startSlackRequest(args: {
   ).then((value) => value!)))({
     workspaceId: args.workspaceId, userId: args.userId, title: args.prompt.slice(0, 80), agentRole: args.agentRole, origin: args.origin,
   })
-  const turnId = await (dependencies.startTurn ?? startSlackTurn)({
-    workspaceId: args.workspaceId, userId: args.userId, conversationId: thread.conversationId, prompt: args.prompt, turnId: randomUUID(),
-  })
-  await (dependencies.startDelivery ?? startSlackDelivery)({
-    teamId: args.origin.teamId, channelId: args.origin.channelId, threadTs: args.origin.threadTs, kind: args.origin.kind,
-    slackUserId: args.slackUserId, workspaceId: args.workspaceId, userId: args.userId,
-    conversationId: thread.conversationId, turnId,
-    threadUrl: slackThreadUrl(args.workspaceId, thread.conversationId, thread.agentId),
-    offerPrivate: args.agentRole === 'workspace_chief' && args.origin.kind === 'channel',
-  })
-  return { conversationId: thread.conversationId, turnId }
+  const threadUrl = slackThreadUrl(args.workspaceId, thread.conversationId, thread.agentId)
+  try {
+    const turnId = await (dependencies.startTurn ?? startSlackTurn)({
+      workspaceId: args.workspaceId, userId: args.userId, conversationId: thread.conversationId, prompt: args.prompt, turnId: randomUUID(),
+    })
+    await (dependencies.startDelivery ?? startSlackDelivery)({
+      teamId: args.origin.teamId, channelId: args.origin.channelId, threadTs: args.origin.threadTs, kind: args.origin.kind,
+      slackUserId: args.slackUserId, workspaceId: args.workspaceId, userId: args.userId,
+      conversationId: thread.conversationId, turnId, threadUrl,
+      offerPrivate: args.agentRole === 'workspace_chief' && args.origin.kind === 'channel',
+    })
+    return { conversationId: thread.conversationId, turnId }
+  } catch (error) {
+    // The thread exists, so the asker can open it and see the failure Overlay recorded there.
+    throw new SlackRequestStartError(threadUrl, error)
+  }
 }
 
 export async function startSlackDelivery(input: SlackReplyInput): Promise<void> {
@@ -194,14 +252,25 @@ async function savePendingRequest(input: SlackInbound): Promise<void> {
  */
 export async function resumeSlackRequestAfterLink(
   args: { teamId: string; slackUserId: string },
-  dependencies: SlackAdmissionDependencies & { takePending?: (key: string) => Promise<SlackInbound | null> } = {},
+  dependencies: SlackAdmissionDependencies & {
+    takePending?: (key: string) => Promise<SlackInbound | null>
+    notify?: typeof postSlackEphemeral
+  } = {},
 ): Promise<SlackAdmission | null> {
   const take = dependencies.takePending ?? ((key) => convex.mutation<SlackInbound | null>('integrations/slack:stateTake', {
     serverSecret: getInternalApiSecret(), key,
   }, call).then((value) => value ?? null))
   const pending = await take(pendingRequestKey(args.teamId, args.slackUserId))
   if (!pending || pending.teamId !== args.teamId || pending.slackUserId !== args.slackUserId) return null
-  return await admitSlackMessage(pending, dependencies)
+  const admission = await admitSlackMessage(pending, dependencies)
+  // They asked in Slack, so a refusal or failure is told there, only to them, where the question was asked.
+  const notice = slackAdmissionNotice(admission)
+  if (notice) {
+    await (dependencies.notify ?? postSlackEphemeral)({
+      teamId: pending.teamId, channelId: pending.channelId, threadTs: pending.threadTs, slackUserId: pending.slackUserId, markdown: notice,
+    })
+  }
+  return admission
 }
 
 /** The Slack workspace the app is installed in for this request; falls back to the event's team. */
@@ -219,7 +288,7 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
   if (message.author.isBot === true || message.author.isMe) return
   const adapter = bot.getAdapter('slack')
   const decoded = adapter.decodeThreadId(thread.id)
-  const raw = message.raw as { team?: string; team_id?: string; user_team?: string } | undefined
+  const raw = message.raw as { team?: string; team_id?: string; user_team?: string; text?: string } | undefined
   const teamId = installedTeamId(adapter, raw)
   const authorTeamId = raw?.user_team ?? raw?.team ?? teamId
   if (!teamId) {
@@ -235,7 +304,7 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
     external: adapter.getChannelVisibility(thread.id) === 'external',
     outsider: authorTeamId !== teamId,
     slackUserId: message.author.userId,
-    text: message.text,
+    text: await promptFromSlack(adapter, typeof raw?.text === 'string' ? raw.text : message.text),
   }
   const admission = await admitSlackMessage(inbound)
   if (admission.status === 'link_required') {
@@ -249,9 +318,51 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
     }, { fallbackToDM: false })
     return
   }
-  if (admission.status === 'not_allowed') {
-    await thread.postEphemeral(message.author, { markdown: NOT_ALLOWED_TEXT[admission.reason] }, { fallbackToDM: false })
+  const notice = slackAdmissionNotice(admission)
+  if (notice) await thread.postEphemeral(message.author, { markdown: notice }, { fallbackToDM: false })
+}
+
+/** The question from a message's raw Slack text, with mentioned people's names looked up (cached by the adapter). */
+async function promptFromSlack(adapter: ReturnType<SlackBot['getAdapter']>, rawText: string): Promise<string> {
+  const botUserId = adapter.botUserId
+  const ids = [...new Set([...rawText.matchAll(/<@([A-Z0-9]+)>/g)].map((match) => match[1]!))].filter((id) => id !== botUserId)
+  const names = new Map<string, string>()
+  await Promise.all(ids.slice(0, 20).map(async (id) => {
+    const user = await adapter.getUser(id).catch((_error: unknown) => null)
+    const name = user?.fullName || user?.userName
+    if (name) names.set(id, name)
+  }))
+  return slackPromptText(rawText, { ...(botUserId ? { botUserId } : {}), names })
+}
+
+type SlackTokensRevokedPayload = {
+  type?: string
+  team_id?: string
+  event?: { type?: string; tokens?: { bot?: unknown[] } }
+}
+
+/**
+ * Slack sends tokens_revoked when the bot token is revoked while the app stays installed; the Chat SDK does not pass
+ * it to handlers. A revoked bot token can't post anything, so the installation is removed like an uninstall. Revoked
+ * user tokens alone (Sign in with Slack) leave the installation alone. Call only with a body whose signature passed.
+ */
+export async function handleSlackTokensRevoked(
+  body: string,
+  uninstall: (teamId: string) => Promise<void> = (teamId) => convex.mutation('integrations/slack:uninstallByServer', {
+    serverSecret: getInternalApiSecret(), teamId,
+  }, call).then(() => undefined),
+): Promise<boolean> {
+  let payload: SlackTokensRevokedPayload
+  try {
+    payload = JSON.parse(body) as SlackTokensRevokedPayload
+  } catch (_error) {
+    return false
   }
+  if (payload.type !== 'event_callback' || payload.event?.type !== 'tokens_revoked') return false
+  const bot = payload.event.tokens?.bot
+  if (!Array.isArray(bot) || bot.length === 0 || !payload.team_id) return false
+  await uninstall(payload.team_id)
+  return true
 }
 
 /** Registers the bot's event handlers once per instance. */

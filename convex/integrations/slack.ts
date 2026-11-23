@@ -1,5 +1,6 @@
 import { ConvexError, v } from 'convex/values'
-import { mutation, query } from '../_generated/server'
+import { internal } from '../_generated/api'
+import { internalMutation, mutation, query } from '../_generated/server'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
@@ -558,5 +559,25 @@ export const stateShift = mutation({
     if (rest.length === 0) await ctx.db.delete(found.row._id)
     else await ctx.db.patch(found.row._id, { value: rest })
     return first
+  },
+})
+
+const STATE_CLEANUP_BATCH = 500
+
+/**
+ * Deletes expired Slack state (dedupe keys, locks, pending questions, once-per-thread markers) in batches, oldest
+ * first; a full batch schedules the next one at once. Rows without an expiry, such as installations, are never read:
+ * the range starts above them in the by_expiresAt index.
+ */
+export const cleanupExpiredState = internalMutation({
+  args: {},
+  returns: v.object({ deleted: v.number() }),
+  handler: async (ctx) => {
+    const expired = await ctx.db.query('slackChatState')
+      .withIndex('by_expiresAt', q => q.gte('expiresAt', 0).lt('expiresAt', Date.now()))
+      .take(STATE_CLEANUP_BATCH)
+    await Promise.all(expired.map(row => ctx.db.delete(row._id)))
+    if (expired.length === STATE_CLEANUP_BATCH) await ctx.scheduler.runAfter(0, internal.integrations.slack.cleanupExpiredState, {})
+    return { deleted: expired.length }
   },
 })

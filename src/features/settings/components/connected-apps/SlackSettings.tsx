@@ -25,6 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: 'Only workspace owners and admins can add Overlay to Slack.',
   other_workspace: 'That Slack workspace is already connected to another Overlay workspace.',
   other_team: 'This Overlay workspace is connected to a different Slack workspace.',
+  enterprise_install: 'Overlay can’t be installed org-wide on Enterprise Grid yet; install it in a single workspace.',
   cancelled: 'Slack was cancelled.',
   expired: 'That link expired. Try again.',
   signed_in_as_someone_else: 'You were signed in to Overlay as someone else. Try again.',

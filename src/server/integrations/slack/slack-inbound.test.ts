@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { admitSlackMessage, resumeSlackRequestAfterLink, slackPromptText, type SlackRequester } from './slack-inbound'
+import {
+  admitSlackMessage, handleSlackTokensRevoked, resumeSlackRequestAfterLink, slackPromptText, type SlackRequester,
+} from './slack-inbound'
+
+process.env.NEXT_PUBLIC_APP_URL ??= 'https://overlay.test'
 
 const defaults = { whoCanAsk: 'linked', unlinkedPeople: 'link', guests: false, slackConnect: false, actionsInChannels: 'ask' }
-const inbound = { teamId: 'T1', channelId: 'C1', threadTs: '1.2', kind: 'channel' as const, external: false, outsider: false, slackUserId: 'U1', text: '<@UBOT> what changed?' }
+const inbound = { teamId: 'T1', channelId: 'C1', threadTs: '1.2', kind: 'channel' as const, external: false, outsider: false, slackUserId: 'U1', text: 'what changed?' }
 const member: SlackRequester = { workspaceId: 'w1', settings: defaults, userId: 'user_1', principalId: 'p1', guest: false, allowed: true }
 
 function deps(requester: SlackRequester | null) {
@@ -25,10 +29,21 @@ function deps(requester: SlackRequester | null) {
   }
 }
 
-test('mention text drops the bot mention', () => {
-  assert.equal(slackPromptText('<@U123ABC> summarize this'), 'summarize this')
-  assert.equal(slackPromptText('@Overlay: hi'), 'hi')
-  assert.equal(slackPromptText('<@U123>'), '')
+test('the prompt drops only the bot mention and keeps links, people and channels readable', () => {
+  assert.equal(slackPromptText('<@UBOT> summarize this', { botUserId: 'UBOT' }), 'summarize this')
+  assert.equal(slackPromptText('<@UBOT>: hi', { botUserId: 'UBOT' }), 'hi')
+  assert.equal(slackPromptText('<@UBOT>', { botUserId: 'UBOT' }), '')
+  assert.equal(
+    slackPromptText('<@UBOT> read <https://example.com/a?b=1&amp;c=2|the spec> and <https://example.com/raw>', { botUserId: 'UBOT' }),
+    'read [the spec](https://example.com/a?b=1&c=2) and https://example.com/raw',
+  )
+  assert.equal(
+    slackPromptText('ask <@U2> and <@U3|bob> in <#C1|general>, mail <mailto:a@b.co|a@b.co>', { botUserId: 'UBOT', names: new Map([['U2', 'Ada']]) }),
+    'ask @Ada and @bob in #general, mail a@b.co',
+  )
+  assert.equal(slackPromptText('who is <@U9>?', { botUserId: 'UBOT' }), 'who is <@U9>?')
+  assert.equal(slackPromptText('tell <!here> 1 &lt; 2', { botUserId: 'UBOT' }), 'tell @here 1 < 2')
+  assert.equal(slackPromptText('line one\n  <@UBOT> line two', { botUserId: 'UBOT' }), 'line one\nline two')
 })
 
 test('a linked member starts a turn and its delivery', async () => {
@@ -46,7 +61,7 @@ test('unlinked people, guests, Slack Connect and unknown teams start nothing', a
     [member, { ...inbound, external: true }, 'not_allowed'],
     [{ ...member, settings: { ...defaults, slackConnect: true } }, { ...inbound, external: true, outsider: true }, 'not_allowed'],
     [{ ...member, allowed: false }, inbound, 'not_allowed'],
-    [member, { ...inbound, text: '<@UBOT>' }, 'empty'],
+    [member, { ...inbound, text: '  ' }, 'empty'],
   ] as const) {
     const { calls, dependencies } = deps(requester)
     const result = await admitSlackMessage(input, dependencies as never)
@@ -81,4 +96,40 @@ test('nothing waiting, or a saved request from someone else, starts nothing', as
     ...dependencies, takePending: async () => ({ ...inbound, slackUserId: 'U9' }),
   } as never), null)
   assert.deepEqual(calls, [])
+})
+
+test('a request that cannot start tells the asker where to see why', async () => {
+  const { dependencies } = deps(member)
+  const turnFails = await admitSlackMessage(inbound, { ...dependencies, startTurn: async () => { throw new Error('BUDGET_EXCEEDED') } } as never)
+  assert.equal(turnFails.status, 'start_failed')
+  assert.match((turnFails as { openUrl: string }).openUrl, /^https?:\/\/[^/]+\/app\/w\/w1\/.*id=conv_1/)
+  const noThread = await admitSlackMessage(inbound, { ...dependencies, resolveThread: async () => { throw new Error('SLACK_WORKSPACE_OVERLAY_MISSING') } } as never)
+  assert.equal(noThread.status, 'start_failed')
+  assert.match((noThread as { openUrl: string }).openUrl, /^https?:\/\/[^/]+\/app\/w\/w1\/agents$/)
+})
+
+test('a question asked before linking that is now refused is answered with the reason, only to the asker', async () => {
+  const { calls, dependencies } = deps({ ...member, allowed: false })
+  const notices: Array<{ channelId: string; threadTs: string; slackUserId: string; markdown: string }> = []
+  const result = await resumeSlackRequestAfterLink({ teamId: 'T1', slackUserId: 'U1' }, {
+    ...dependencies,
+    takePending: async () => inbound,
+    notify: async (notice: (typeof notices)[number]) => { notices.push(notice) },
+  } as never)
+  assert.equal(result?.status, 'not_allowed')
+  assert.deepEqual(calls, [])
+  assert.equal(notices.length, 1)
+  assert.deepEqual([notices[0]!.channelId, notices[0]!.threadTs, notices[0]!.slackUserId], ['C1', '1.2', 'U1'])
+  assert.match(notices[0]!.markdown, /can’t ask Overlay in Slack/)
+})
+
+test('a revoked bot token removes the installation; revoked user tokens and other events do not', async () => {
+  const removed: string[] = []
+  const uninstall = async (teamId: string) => { removed.push(teamId) }
+  const event = (tokens: unknown) => JSON.stringify({ type: 'event_callback', team_id: 'T1', event: { type: 'tokens_revoked', tokens } })
+  assert.equal(await handleSlackTokensRevoked(event({ bot: ['UBOT'] }), uninstall), true)
+  assert.equal(await handleSlackTokensRevoked(event({ oauth: ['U1'] }), uninstall), false)
+  assert.equal(await handleSlackTokensRevoked(JSON.stringify({ type: 'event_callback', team_id: 'T1', event: { type: 'app_mention' } }), uninstall), false)
+  assert.equal(await handleSlackTokensRevoked('not json', uninstall), false)
+  assert.deepEqual(removed, ['T1'])
 })

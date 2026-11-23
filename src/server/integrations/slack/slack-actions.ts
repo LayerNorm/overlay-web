@@ -8,6 +8,7 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { submitAgentRunApproval } from '@/server/agents/submit-agent-run-approval'
 import { SLACK_ACTIONS, startSlackDmThread, type SlackBot } from './slack-bot'
 import { startSlackRequest, type SlackRequester } from './slack-inbound'
+import { SLACK_MARKER_TTL_MS } from '@/server/workflows/slack-reply'
 
 /**
  * Buttons Overlay posts in Slack (internal/develop/slack-integration.md): approving or denying a step, and moving a
@@ -21,7 +22,7 @@ type SlackActionEvent = Parameters<Parameters<SlackBot['onAction']>[1]>[0]
 type ThreadOwner = { origin: { teamId: string; kind: 'channel' | 'dm' }; workspaceId: string; agentId: string; userId: string }
 
 export type SlackActionOutcome =
-  | 'approved' | 'denied' | 'inactive' | 'not_owner' | 'link_required' | 'private_started' | 'no_personal_overlay'
+  | 'approved' | 'denied' | 'inactive' | 'not_owner' | 'not_allowed' | 'link_required' | 'private_started' | 'no_personal_overlay'
 
 export type SlackActionDependencies = {
   resolveRequester?: (args: { teamId: string; slackUserId: string }) => Promise<SlackRequester | null>
@@ -32,6 +33,9 @@ export type SlackActionDependencies = {
   latestQuestion?: (args: { conversationId: string; userId: string }) => Promise<string>
   openDm?: typeof startSlackDmThread
   startRequest?: typeof startSlackRequest
+  /** Sets a Slack state key only if it is not set yet; true when this call set it. */
+  claim?: (key: string) => Promise<boolean>
+  release?: (key: string) => Promise<void>
 }
 
 const serverQuery = <T>(name: string, args: Record<string, unknown>) =>
@@ -49,11 +53,13 @@ function parseValue(value: string | undefined): { c?: string; r?: string } {
 async function ownerFor(
   args: { teamId: string; slackUserId: string; conversationId: string },
   dependencies: SlackActionDependencies,
-): Promise<{ owner: ThreadOwner } | { outcome: 'link_required' | 'not_owner' }> {
+): Promise<{ owner: ThreadOwner } | { outcome: 'link_required' | 'not_owner' | 'not_allowed' }> {
   const requester = await (dependencies.resolveRequester ?? ((input) => serverQuery<SlackRequester | null>('resolveRequesterByServer', input)))({
     teamId: args.teamId, slackUserId: args.slackUserId,
   })
   if (!requester?.userId) return { outcome: 'link_required' }
+  // Buttons follow the same rules as asking: a blocked member, or a guest while guests are off, can't use them.
+  if (!requester.allowed || (requester.guest && !requester.settings.guests)) return { outcome: 'not_allowed' }
   const owner = await (dependencies.threadOwner ?? ((conversationId) => serverQuery<ThreadOwner | null>('originByServer', { conversationId })))(args.conversationId)
   if (!owner || owner.userId !== requester.userId || owner.workspaceId !== requester.workspaceId || owner.origin.teamId !== args.teamId) {
     return { outcome: 'not_owner' }
@@ -104,15 +110,29 @@ export async function continueSlackRequestPrivately(
   if (!hasPersonal) return 'no_personal_overlay'
   const question = await (dependencies.latestQuestion ?? latestQuestion)({ conversationId, userId: owner.userId })
   if (!question) return 'inactive'
-  const dm = await (dependencies.openDm ?? startSlackDmThread)({
-    teamId: args.teamId, slackUserId: args.slackUserId,
-    markdown: 'Continuing privately with your personal Overlay:\n\n> ' + question.replace(/\n/g, '\n> '),
-  })
-  await (dependencies.startRequest ?? startSlackRequest)({
-    workspaceId: owner.workspaceId, userId: owner.userId, slackUserId: args.slackUserId, prompt: question,
-    agentRole: 'personal_chief',
-    origin: { platform: 'slack', teamId: args.teamId, channelId: dm.channelId, threadTs: dm.threadTs, kind: 'dm' },
-  })
+  // A second click (or Slack retrying the click) must not open another DM thread or start another run.
+  const key = 'private-started:' + conversationId
+  const claim = dependencies.claim ?? ((name) => convex.mutation<boolean>('integrations/slack:stateSetIfNotExists', {
+    serverSecret: getInternalApiSecret(), key: name, value: 'true', ttlMs: SLACK_MARKER_TTL_MS,
+  }, call).then((value) => value === true))
+  if (!await claim(key)) return 'private_started'
+  try {
+    const dm = await (dependencies.openDm ?? startSlackDmThread)({
+      teamId: args.teamId, slackUserId: args.slackUserId,
+      markdown: 'Continuing privately with your personal Overlay:\n\n> ' + question.replace(/\n/g, '\n> '),
+    })
+    await (dependencies.startRequest ?? startSlackRequest)({
+      workspaceId: owner.workspaceId, userId: owner.userId, slackUserId: args.slackUserId, prompt: question,
+      agentRole: 'personal_chief',
+      origin: { platform: 'slack', teamId: args.teamId, channelId: dm.channelId, threadTs: dm.threadTs, kind: 'dm' },
+    })
+  } catch (error) {
+    // Nothing started, so the button works again.
+    await (dependencies.release ?? ((name) => convex.mutation('integrations/slack:stateDelete', {
+      serverSecret: getInternalApiSecret(), key: name,
+    }, call).then(() => undefined)))(key).catch((_error: unknown) => undefined)
+    throw error
+  }
   return 'private_started'
 }
 
@@ -128,6 +148,7 @@ const OUTCOME_TEXT: Record<SlackActionOutcome, string> = {
   denied: 'Denied. Overlay won’t take that step.',
   inactive: 'This request is no longer waiting.',
   not_owner: 'Only the person who asked can answer this.',
+  not_allowed: 'You can’t ask Overlay in this workspace right now.',
   link_required: 'Link your Slack account to Overlay first.',
   private_started: 'Continuing in your DM with Overlay.',
   no_personal_overlay: 'You don’t have a personal Overlay in this workspace yet.',
@@ -147,7 +168,19 @@ export function registerSlackActions(bot: SlackBot): void {
       logger.error('[slack] button failed', { actionId: event.actionId, reason: error instanceof Error ? error.message.slice(0, 300) : 'unknown' })
       return 'inactive' as const
     })
-    await event.thread.postEphemeral(event.user, { markdown: OUTCOME_TEXT[outcome] }, { fallbackToDM: false })
+    const reply = { markdown: OUTCOME_TEXT[outcome] }
+    const thread = event.thread
+    // A button on a message only the clicker sees (Ask privately) is replaced by the outcome through Slack's
+    // response_url, so it can't be clicked again; the approval card is shared, so its outcome is told privately.
+    if (event.messageId.startsWith('ephemeral:')) {
+      await event.adapter.editMessage(event.threadId, event.messageId, reply)
+        .catch((error: unknown) => {
+          logger.warn('[slack] could not replace a private message', { reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+          return thread.postEphemeral(event.user, reply, { fallbackToDM: false })
+        })
+      return
+    }
+    await thread.postEphemeral(event.user, reply, { fallbackToDM: false })
   }
   bot.onAction([SLACK_ACTIONS.approve, SLACK_ACTIONS.deny], handle((teamId, event) => answerSlackApproval({
     teamId, slackUserId: event.user.userId, value: event.value, approved: event.actionId === SLACK_ACTIONS.approve,

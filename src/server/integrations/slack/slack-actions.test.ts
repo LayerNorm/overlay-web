@@ -33,6 +33,16 @@ test('someone else in the channel cannot answer, and unlinked people are asked t
   assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value: 'not json', approved: true }, { submitApproval }), 'inactive')
 })
 
+test('a blocked member, or a guest while guests are off, cannot use the buttons', async () => {
+  const submitApproval = (async () => assert.fail('must not submit')) as never
+  assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value, approved: true }, {
+    resolveRequester: async () => ({ ...requester, allowed: false }), threadOwner: async () => owner, submitApproval,
+  }), 'not_allowed')
+  assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value, approved: true }, {
+    resolveRequester: async () => ({ ...requester, guest: true }), threadOwner: async () => owner, submitApproval,
+  }), 'not_allowed')
+})
+
 test('a finished approval is reported as no longer waiting', async () => {
   assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value, approved: true }, {
     resolveRequester: async () => requester, threadOwner: async () => owner,
@@ -50,6 +60,7 @@ test('continuing privately starts the asker personal Overlay in a DM thread', as
     latestQuestion: async () => 'what is on my calendar?',
     openDm: async () => ({ channelId: 'D1', threadTs: '9.9' }),
     startRequest: (async (args: (typeof started)[number]) => { started.push(args); return { conversationId: 'conv_2', turnId: 't' } }) as never,
+    claim: async () => true,
   })
   assert.equal(outcome, 'private_started')
   assert.equal(started[0]?.agentRole, 'personal_chief')
@@ -66,4 +77,25 @@ test('no personal Overlay, or a DM thread, starts nothing', async () => {
   assert.equal(await continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {
     ...base, threadOwner: async () => ({ ...owner, origin: { teamId: 'T1', kind: 'dm' as const } }), hasPersonalOverlay: async () => true,
   }), 'inactive')
+})
+
+test('a second click on Ask privately starts nothing more, and a failed start frees the button', async () => {
+  const claimed = new Set<string>()
+  const claim = async (key: string) => { if (claimed.has(key)) return false; claimed.add(key); return true }
+  const release = async (key: string) => { claimed.delete(key) }
+  let starts = 0
+  const base = {
+    resolveRequester: async () => requester, threadOwner: async () => owner, hasPersonalOverlay: async () => true,
+    latestQuestion: async () => 'q', openDm: async () => ({ channelId: 'D1', threadTs: '9.9' }), claim, release,
+  }
+  const click = (startRequest: unknown) => continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {
+    ...base, startRequest: startRequest as never,
+  })
+  await assert.rejects(click(async () => { throw new Error('BUDGET_EXCEEDED') }))
+  assert.deepEqual([...claimed], [])
+  const ok = async () => { starts += 1; return { conversationId: 'conv_2', turnId: 't' } }
+  assert.equal(await click(ok), 'private_started')
+  assert.equal(await click(ok), 'private_started')
+  assert.equal(starts, 1)
+  assert.deepEqual([...claimed], ['private-started:conv_1'])
 })

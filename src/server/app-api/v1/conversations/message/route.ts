@@ -195,7 +195,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           userId: auth.userId,
           authorName: context.workspace.principal.displayName ?? 'A member',
           content: normalizedContent,
-          agentTurnIds: invocations.map((invocation) => invocation.turnId),
+          agentTurns: invocations.map((invocation) => ({ turnId: invocation.turnId, ...(invocation.harness ? { harness: invocation.harness } : {}) })),
         }).catch((error) => {
           logger.warn('[conversations/message POST] Could not post the reply to Slack', { reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
         }))

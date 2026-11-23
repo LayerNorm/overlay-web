@@ -37,6 +37,12 @@ async function createSlackBot() {
       }),
     },
     state: new ConvexSlackState() as unknown as BotState,
+    // Every message must reach its handler. The default ('drop') throws for a second message in a thread while the
+    // first is still being admitted, and the deduped event is then lost; 'queue' keeps only the latest queued message.
+    // Handlers are safe to run side by side: each one only reads Convex and calls resolveThreadByServer, a Convex
+    // mutation whose transaction retries on conflict, so two messages in one Slack thread find or create the same
+    // Overlay thread, and each becomes its own turn there, as two quick messages on the web do.
+    concurrency: 'concurrent',
   })
   return Object.assign(instance, { sdk })
 }
@@ -87,6 +93,19 @@ export async function postToSlackThread(args: {
   await withSlackInstallation(args.teamId, async (instance) => {
     const thread = instance.thread(threadKey(args.channelId, args.threadTs))
     for (const message of args.messages) await thread.post({ markdown: message.markdown })
+  })
+}
+
+/** Shows a message only to one person, in a Slack thread, as the bot of the workspace that owns it. */
+export async function postSlackEphemeral(args: {
+  teamId: string
+  channelId: string
+  threadTs: string
+  slackUserId: string
+  markdown: string
+}): Promise<void> {
+  await withSlackInstallation(args.teamId, async (instance) => {
+    await instance.thread(threadKey(args.channelId, args.threadTs)).postEphemeral(args.slackUserId, { markdown: args.markdown }, { fallbackToDM: false })
   })
 }
 

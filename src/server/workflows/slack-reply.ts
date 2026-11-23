@@ -37,14 +37,19 @@ type ReplyState =
 const INPUT_STATUSES = new Set(['waiting_for_input', 'waiting_for_authorization'])
 const MAX_WAIT_MS = 24 * 60 * 60_000
 
+/** How long once-per-thread markers in Slack state live (the private offer, a started private handoff). */
+export const SLACK_MARKER_TTL_MS = 30 * 24 * 60 * 60_000
+
 async function readSlackReplyStep(input: SlackReplyInput): Promise<ReplyState> {
   'use step'
-  const requester = await convex.query<{ workspaceId: string; userId: string | null } | null>(
+  const requester = await convex.query<{ workspaceId: string; userId: string | null; allowed: boolean; guest: boolean; settings: { guests: boolean } } | null>(
     'integrations/slack:resolveRequesterByServer',
     { serverSecret: getInternalApiSecret(), teamId: input.teamId, slackUserId: input.slackUserId },
     { throwOnError: true },
   )
   if (!requester || requester.workspaceId !== input.workspaceId || requester.userId !== input.userId) return { status: 'revoked' }
+  // Blocking a member, or turning guests off, stops replies already under way, like unlinking does.
+  if (!requester.allowed || (requester.guest && !requester.settings.guests)) return { status: 'revoked' }
   const conversations = getOverlayServerContext().appData.repositories.conversations
   const run = await conversations.getLatestAgentRun({
     conversationId: input.conversationId as never, userId: input.userId, turnId: input.turnId,
@@ -61,16 +66,36 @@ async function readSlackReplyStep(input: SlackReplyInput): Promise<ReplyState> {
   if (INPUT_STATUSES.has(run.status)) return { status: 'input' }
   if (run.status !== 'completed') return { status: 'running' }
   const messages = await conversations.getConversationMessages({ conversationId: input.conversationId as never, userId: input.userId })
-  const text = messages.find(message => message.role === 'assistant' && message.turnId === run.turnId)?.content ?? ''
-  return { status: 'completed', text }
+  return { status: 'completed', text: slackTurnText(messages, run.turnId) }
 }
 
-async function postSlackReplyStep(input: SlackReplyInput, markdown: string): Promise<void> {
+/** All of the turn's assistant text, in order, as the web shows the turn. */
+export function slackTurnText(messages: ReadonlyArray<{ role: string; turnId?: string | null; content?: string | null }>, turnId: string): string {
+  return messages
+    .filter((message) => message.role === 'assistant' && message.turnId === turnId)
+    .map((message) => message.content?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+async function renderSlackReplyStep(input: SlackReplyInput, markdown: string): Promise<string[]> {
   'use step'
-  const messages = renderSlackReply(markdown, { threadUrl: input.threadUrl })
-  if (messages.length === 0) return
+  return renderSlackReply(markdown, { threadUrl: input.threadUrl }).map((message) => message.markdown)
+}
+
+async function postSlackMessageStep(input: SlackReplyInput, markdown: string): Promise<void> {
+  'use step'
   const { postToSlackThread } = await import(/* workflow-vm-exclusion */ '@/server/integrations/slack/slack-bot')
-  await postToSlackThread({ teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, messages })
+  await postToSlackThread({ teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, messages: [{ markdown }] })
+}
+
+/**
+ * One step per Slack message: a step that fails and retries re-posts only its own message, never the ones before
+ * it, because finished steps replay from the workflow log.
+ */
+async function postSlackReply(input: SlackReplyInput, markdown: string): Promise<void> {
+  const messages = await renderSlackReplyStep(input, markdown)
+  for (const message of messages) await postSlackMessageStep(input, message)
 }
 
 async function postSlackApprovalStep(input: SlackReplyInput, approval: { agentRunId: string; title: string; tools: string[] }): Promise<void> {
@@ -92,7 +117,7 @@ async function offerPrivateStep(input: SlackReplyInput): Promise<void> {
   }, { throwOnError: true })
   if (!hasPersonal) return
   const claimed = await convex.mutation<boolean>('integrations/slack:stateSetIfNotExists', {
-    serverSecret: getInternalApiSecret(), key: 'private-offer:' + input.conversationId, value: 'true',
+    serverSecret: getInternalApiSecret(), key: 'private-offer:' + input.conversationId, value: 'true', ttlMs: SLACK_MARKER_TTL_MS,
   }, { throwOnError: true })
   if (!claimed) return
   const { postSlackPrivateOffer } = await import(/* workflow-vm-exclusion */ '@/server/integrations/slack/slack-bot')
@@ -112,12 +137,12 @@ export async function slackReplyWorkflow(input: SlackReplyInput): Promise<{ stat
     const state = await readSlackReplyStep(input)
     if (state.status === 'revoked') return { status: 'revoked' }
     if (state.status === 'completed') {
-      await postSlackReplyStep(input, state.text || '_Overlay finished without a reply._ [Open in Overlay](' + input.threadUrl + ')')
+      await postSlackReply(input, state.text || '_Overlay finished without a reply._ [Open in Overlay](' + input.threadUrl + ')')
       if (input.offerPrivate) await offerPrivateStep(input)
       return { status: 'completed' }
     }
     if (state.status === 'failed' || state.status === 'cancelled') {
-      await postSlackReplyStep(input, (state.status === 'failed' ? 'I couldn’t finish this.' : 'This request was stopped.')
+      await postSlackReply(input, (state.status === 'failed' ? 'I couldn’t finish this.' : 'This request was stopped.')
         + ' [Open in Overlay](' + input.threadUrl + ')')
       return { status: state.status }
     }
@@ -127,7 +152,7 @@ export async function slackReplyWorkflow(input: SlackReplyInput): Promise<{ stat
     }
     if (state.status === 'input' && !toldInput) {
       toldInput = true
-      await postSlackReplyStep(input, 'I need your answer to continue. [Open in Overlay](' + input.threadUrl + ')')
+      await postSlackReply(input, 'I need your answer to continue. [Open in Overlay](' + input.threadUrl + ')')
     }
     const delayMs = waited < 2 * 60_000 ? 3_000 : 30_000
     await sleep(delayMs)

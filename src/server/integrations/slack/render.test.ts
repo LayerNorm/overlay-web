@@ -215,3 +215,13 @@ test('the default limit keeps every message below Slack\'s 12,000 characters', (
   for (const { markdown } of messages) assert.ok(markdown.length <= 11_000)
   assert.ok(messages[1]!.markdown.startsWith('- Item '))
 })
+
+test('an agent cannot ping people, user groups or the whole channel', () => {
+  const wj = '⁠'
+  const out = only('Heads up <!channel> and <!here|here>, ask <@U123ABC> or <@U9|bob>; @here @everyone @channel @ada, mail a@b.co\n\n<!subteam^S1|@eng>\n\n`@here stays in code`')
+  assert.doesNotMatch(out, /<[@!]/)
+  for (const name of ['channel', 'here', 'everyone', 'U123ABC', 'bob', 'ada', 'eng']) assert.ok(out.includes('@' + wj + name), name)
+  assert.doesNotMatch(out.replace(/`[^`]*`/g, ''), /(^|[^\w\\])@\w/)
+  assert.match(out, /a\\?@b\.co/)
+  assert.ok(out.includes('`@here stays in code`'))
+})

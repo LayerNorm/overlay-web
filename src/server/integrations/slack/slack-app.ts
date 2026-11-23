@@ -62,6 +62,28 @@ export function slackLinkUrl(config: SlackAppConfig, state: string, redirectUri:
   return url.toString()
 }
 
+/**
+ * An org-wide Enterprise Grid install is keyed by the organization, not one workspace. Overlay binds one Slack
+ * workspace, so it is refused at the install instead of leaving an installation that silently answers nobody.
+ */
+export function assertSingleWorkspaceInstall(result: { isEnterpriseInstall?: boolean }): void {
+  if (result.isEnterpriseInstall) throw new Error('SLACK_ENTERPRISE_INSTALL')
+}
+
+const INSTALL_ERRORS: Record<string, string> = {
+  SLACK_INSTALL_FORBIDDEN: 'forbidden',
+  SLACK_TEAM_IN_OTHER_WORKSPACE: 'other_workspace',
+  SLACK_WORKSPACE_HAS_OTHER_TEAM: 'other_team',
+  SLACK_ENTERPRISE_INSTALL: 'enterprise_install',
+}
+
+/** The `slackError` the Settings page explains for a failed install. */
+export function slackInstallErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const code = Object.keys(INSTALL_ERRORS).find((key) => message.includes(key))
+  return code ? INSTALL_ERRORS[code]! : 'install_failed'
+}
+
 export type SlackIdentity = { teamId: string; slackUserId: string; name?: string }
 
 /** Exchanges a Sign in with Slack code for the Slack account that signed in. */
@@ -130,10 +152,21 @@ export function openSlackConnectState(value: string | null | undefined, now = Da
   }
 }
 
-/** Only a same-origin path may be a return target, so the redirect cannot leave this deployment. */
+/**
+ * Only a same-origin path may be a return target, so the redirect cannot leave this deployment. Browsers read `/\host`
+ * and paths with tabs or newlines as other hosts, so the value is resolved against a fixed origin and must stay on it.
+ */
 export function sanitizeSlackReturnTo(value: string | null | undefined): string | undefined {
   if (!value) return undefined
   const trimmed = value.trim()
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return undefined
-  return trimmed.slice(0, 512)
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || /[\\\u0000-\u001f\u007f]/.test(trimmed)) return undefined
+  const base = 'https://return.invalid'
+  let resolved: URL
+  try {
+    resolved = new URL(trimmed, base)
+  } catch (_error) {
+    return undefined
+  }
+  if (resolved.origin !== base) return undefined
+  return `${resolved.pathname}${resolved.search}${resolved.hash}`.slice(0, 512)
 }

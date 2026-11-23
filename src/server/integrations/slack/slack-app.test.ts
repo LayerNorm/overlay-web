@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { openSlackConnectState, sanitizeSlackReturnTo, sealSlackConnectState, slackIdentityFromCode, slackInstallUrl, SLACK_BOT_SCOPES } from './slack-app'
+import {
+  assertSingleWorkspaceInstall, openSlackConnectState, sanitizeSlackReturnTo, sealSlackConnectState, slackIdentityFromCode,
+  slackInstallErrorCode, slackInstallUrl, SLACK_BOT_SCOPES,
+} from './slack-app'
 
 process.env.SESSION_SECRET ??= 'test-session-secret-for-slack-state'
 
@@ -21,6 +24,10 @@ test('connect state round-trips and rejects tampering, expiry and unknown kinds'
 test('return targets stay on this deployment', () => {
   assert.equal(sanitizeSlackReturnTo('/app/settings?section=connected-apps'), '/app/settings?section=connected-apps')
   assert.equal(sanitizeSlackReturnTo('//evil.example'), undefined)
+  for (const escape of ['/\\evil.example', '/\t/evil.example', '/%09/evil.example/../\\evil.example', '/\n//evil.example', '/\\/evil.example']) {
+    assert.equal(sanitizeSlackReturnTo(escape), undefined, escape)
+  }
+  assert.equal(sanitizeSlackReturnTo('/%09/x'), '/%09/x')
   assert.equal(sanitizeSlackReturnTo('https://evil.example'), undefined)
 })
 
@@ -38,4 +45,18 @@ test('Sign in with Slack identity comes from the OpenID token claims', async () 
   assert.deepEqual(await slackIdentityFromCode(config, 'code', 'https://overlay.test/cb', fetchImpl), { teamId: 'T1', slackUserId: 'U1', name: 'Ada' })
   const failing = (async () => new Response(JSON.stringify({ ok: false, error: 'invalid_code' }))) as typeof fetch
   await assert.rejects(slackIdentityFromCode(config, 'code', 'https://overlay.test/cb', failing), /invalid_code/)
+})
+
+test('an org-wide Enterprise Grid install is refused with its own reason', () => {
+  assert.doesNotThrow(() => assertSingleWorkspaceInstall({ isEnterpriseInstall: false }))
+  assert.doesNotThrow(() => assertSingleWorkspaceInstall({}))
+  let refused: unknown
+  try {
+    assertSingleWorkspaceInstall({ isEnterpriseInstall: true })
+  } catch (error) {
+    refused = error
+  }
+  assert.equal(slackInstallErrorCode(refused), 'enterprise_install')
+  assert.equal(slackInstallErrorCode(new Error('[CONVEX] SLACK_TEAM_IN_OTHER_WORKSPACE')), 'other_workspace')
+  assert.equal(slackInstallErrorCode(new Error('network down')), 'install_failed')
 })

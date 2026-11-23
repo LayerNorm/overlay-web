@@ -5,7 +5,7 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getClientIp } from '@/server/security/rate-limit'
 import { logger } from '@/server/observability/logger'
-import { openSlackConnectState, slackAppConfig } from '@/server/integrations/slack/slack-app'
+import { assertSingleWorkspaceInstall, openSlackConnectState, slackAppConfig, slackInstallErrorCode } from '@/server/integrations/slack/slack-app'
 import { getSlackAdapter } from '@/server/integrations/slack/slack-bot'
 import { slackBack, slackInstallRedirectUri, slackRateLimited } from '@/server/integrations/slack/slack-routes'
 
@@ -14,12 +14,6 @@ import { slackBack, slackInstallRedirectUri, slackRateLimited } from '@/server/i
  * signed-in person; the Slack adapter exchanges the code and stores the encrypted bot token, and Convex binds the
  * Slack workspace to the Overlay workspace only for an owner or admin, and only when neither is bound elsewhere.
  */
-const INSTALL_ERRORS: Record<string, string> = {
-  SLACK_INSTALL_FORBIDDEN: 'forbidden',
-  SLACK_TEAM_IN_OTHER_WORKSPACE: 'other_workspace',
-  SLACK_WORKSPACE_HAS_OTHER_TEAM: 'other_team',
-}
-
 export async function GET(request: NextRequest) {
   const rateLimited = await slackRateLimited(request)
   if (rateLimited) return rateLimited
@@ -35,6 +29,7 @@ export async function GET(request: NextRequest) {
   try {
     const result = await adapter.handleOAuthCallback(request, { redirectUri: slackInstallRedirectUri() })
     teamId = result.teamId
+    assertSingleWorkspaceInstall(result)
     await convex.mutation('integrations/slack:installByServer', {
       serverSecret: getInternalApiSecret(), workspaceId: state.workspaceId, teamId,
       teamName: result.installation.teamName ?? teamId, installedByUserId: state.userId,
@@ -42,15 +37,14 @@ export async function GET(request: NextRequest) {
       ...(result.installation.botUserId ? { botUserId: result.installation.botUserId } : {}),
     }, { throwOnError: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    const code = Object.keys(INSTALL_ERRORS).find((key) => message.includes(key))
-    logger.warn('[slack] install callback failed', { reason: code ?? message.slice(0, 200) })
+    const code = slackInstallErrorCode(error)
+    logger.warn('[slack] install callback failed', { reason: code === 'install_failed' ? (error instanceof Error ? error.message : String(error)).slice(0, 200) : code })
     if (teamId) {
       await convex.mutation('integrations/slack:discardUnboundTokenByServer', {
         serverSecret: getInternalApiSecret(), teamId,
       }).catch((_error: unknown) => undefined)
     }
-    return slackBack(state.returnTo, { slackError: code ? INSTALL_ERRORS[code]! : 'install_failed' })
+    return slackBack(state.returnTo, { slackError: code })
   }
   await getOverlayServerContext().auditService.record({
     action: 'integration.slack.installed',

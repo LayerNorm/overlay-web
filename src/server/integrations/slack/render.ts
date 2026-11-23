@@ -32,6 +32,8 @@ import { math } from 'micromark-extension-math'
  * so GitHub-flavored structure passes through; Overlay-only syntax (citation
  * numbers, inline HTML, `$…$` math, app-relative links) is rewritten, and long
  * replies are split on block boundaries under Slack's 12,000 character limit.
+ * Mentions in the text never ping anyone: an agent must not be able to notify a
+ * person, a user group or the whole channel.
  */
 
 export interface SlackReplyMessage {
@@ -157,7 +159,7 @@ function sourcesSection(sources: Source[]): RootContent[] {
       type: 'paragraph',
       children: [
         ...(sequential ? [] : [{ type: 'text' as const, value: `[${source.number}] ` }]),
-        { type: 'link', url: source.url, children: [{ type: 'text', value: source.title }] },
+        { type: 'link', url: source.url, children: [{ type: 'text', value: withoutPings(source.title) }] },
       ],
     }],
   }))
@@ -228,14 +230,40 @@ function rewriteNode(node: Nodes, parent: Parent, context: RewriteContext): Node
     }
     case 'math':
       return [{ type: 'code', lang: 'latex', value: node.value }]
-    case 'html':
+    case 'html': {
+      // Markdown reads Slack's special mentions (<!channel>, <!here>, <!subteam^…>) as HTML; keep them as plain text.
+      const special = node.value.trim()
+      if (SLACK_SPECIAL_MENTION.test(special)) {
+        const text: PhrasingContent = { type: 'text', value: withoutPings(special) }
+        return isPhrasingParent(parent) ? [text] : [{ type: 'paragraph', children: [text] }]
+      }
       return isPhrasingParent(parent) ? htmlInline(node.value, context) : htmlBlock(node.value, context)
-    case 'text':
+    }
+    case 'text': {
+      node.value = withoutPings(node.value)
       return context.sources.size > 0 ? linkCitations(node.value, context.sources) : [node]
+    }
     default:
       if ('children' in node) rewrite(node, context)
       return [node]
   }
+}
+
+const SLACK_SPECIAL_MENTION = /^<![a-z][^<>\s]*>$/i
+const WORD_JOINER = '\u2060'
+
+/**
+ * Slack mention markup (`<@U123>`, `<!here>`, `<!subteam^S1|@eng>`) becomes its plain name, and a bare `@name`
+ * gets an invisible word joiner after the `@`, which stops both Slack and the Chat SDK (which turns `@name` into a
+ * mention) from linking it. Code spans are separate nodes and stay as written; emails are untouched.
+ */
+export function withoutPings(value: string): string {
+  return value
+    .replace(/<([@!])([^<>|\s]+)(?:\|([^<>]*))?>/g, (_token, sigil: string, id: string, label: string | undefined) => {
+      if (label) return label.startsWith('@') ? label : '@' + label
+      return '@' + (sigil === '!' ? id.split('^')[0] : id)
+    })
+    .replace(/(^|[^\p{L}\p{N}_])@(?=[\p{L}\p{N}_])/gu, '$1@' + WORD_JOINER)
 }
 
 function isPhrasingParent(parent: Parent): boolean {
@@ -259,7 +287,7 @@ function linkCitations(value: string, sources: Map<number, Source>): PhrasingCon
 
 function embedLink(url: string, label: string | null | undefined, origin: string): Link {
   const absolute = absoluteUrl(url, origin)
-  return { type: 'link', url: absolute, children: [{ type: 'text', value: label?.trim() || 'Image' }] }
+  return { type: 'link', url: absolute, children: [{ type: 'text', value: withoutPings(label?.trim() || 'Image') }] }
 }
 
 function absoluteUrl(url: string, origin: string): string {
