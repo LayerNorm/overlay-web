@@ -1,3 +1,4 @@
+import { getDescriptiveToolLabel } from '@overlay/chat-core/tool-labels'
 import 'server-only'
 
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -62,4 +63,13 @@ export async function mirrorWebMessageToSlack(args: {
     })
   }
   return true
+}
+
+/** The approval card's body: what Overlay wants to do, in the words the web app uses for each tool. */
+export function slackApprovalDetail(tools: readonly string[]): string {
+  const steps = tools.map((tool) => {
+    const label = getDescriptiveToolLabel(tool)
+    return label.charAt(0).toLowerCase() + label.slice(1)
+  })
+  return (steps.length ? 'Overlay wants your OK for: ' + steps.join('; ') + '. ' : '') + 'Only the person who asked can answer.'
 }

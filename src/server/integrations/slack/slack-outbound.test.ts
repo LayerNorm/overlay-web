@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mirrorWebMessageToSlack } from './slack-outbound'
+import { mirrorWebMessageToSlack, slackApprovalDetail } from './slack-outbound'
 
 process.env.NEXT_PUBLIC_APP_URL ??= 'https://overlay.test'
 
@@ -47,4 +47,9 @@ test('only turns Overlay runs are followed into Slack', async () => {
     post: (async () => undefined) as never, startDelivery: async (input) => { deliveries.push(input.turnId) },
   })
   assert.deepEqual(deliveries, ['turn_a'])
+})
+
+test('the approval card names each step in plain words', () => {
+  assert.equal(slackApprovalDetail(['computer_exec']), 'Overlay wants your OK for: running a command on the computer. Only the person who asked can answer.')
+  assert.equal(slackApprovalDetail([]), 'Only the person who asked can answer.')
 })

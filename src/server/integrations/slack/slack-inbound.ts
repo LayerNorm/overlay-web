@@ -292,13 +292,15 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
   if (message.author.isBot === true || message.author.isMe) return
   const adapter = bot.getAdapter('slack')
   const decoded = adapter.decodeThreadId(thread.id)
-  const raw = message.raw as { team?: string; team_id?: string; user_team?: string; text?: string } | undefined
+  const raw = message.raw as { team?: string; team_id?: string; user_team?: string; text?: string; ts?: string; thread_ts?: string } | undefined
   const teamId = installedTeamId(adapter, raw)
   const authorTeamId = raw?.user_team ?? raw?.team ?? teamId
   if (!teamId) {
     logger.warn('[slack] message without a team id')
     return
   }
+  // Slack sets thread_ts only on a reply inside an existing thread.
+  const inThread = Boolean(raw?.thread_ts && raw.thread_ts !== raw.ts)
   const inbound: SlackInbound = {
     teamId,
     channelId: decoded.channel,
@@ -309,11 +311,12 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
     outsider: authorTeamId !== teamId,
     slackUserId: message.author.userId,
     text: await promptFromSlack(adapter, typeof raw?.text === 'string' ? raw.text : message.text),
-    ...(decoded.threadTs ? { inThread: true } : {}),
+    ...(inThread ? { inThread: true } : {}),
   }
   // Slack shows a private note sent into a thread only to people viewing that thread. A new top-level message has no
-  // thread yet, so its notes go to the channel (still only visible to the asker).
-  const notes = decoded.threadTs || thread.isDM ? thread : thread.channel
+  // thread yet (the SDK still names its thread after the message), so its notes go to the channel, still only visible
+  // to the asker.
+  const notes = inThread || thread.isDM ? thread : thread.channel
   const admission = await admitSlackMessage(inbound)
   if (admission.status === 'link_required') {
     await savePendingRequest(inbound).catch((error: unknown) => {

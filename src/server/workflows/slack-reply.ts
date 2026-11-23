@@ -101,11 +101,11 @@ async function postSlackReply(input: SlackReplyInput, markdown: string): Promise
 async function postSlackApprovalStep(input: SlackReplyInput, approval: { agentRunId: string; title: string; tools: string[] }): Promise<void> {
   'use step'
   const { postSlackApprovalCard } = await import(/* workflow-vm-exclusion */ '@/server/integrations/slack/slack-bot')
+  const { slackApprovalDetail } = await import(/* workflow-vm-exclusion */ '@/server/integrations/slack/slack-outbound')
   await postSlackApprovalCard({
     teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs,
     title: approval.title,
-    detail: (approval.tools.length ? 'Overlay wants to use ' + approval.tools.map((tool) => '`' + tool + '`').join(', ') + '. ' : '')
-      + 'Only the person who asked can answer.',
+    detail: slackApprovalDetail(approval.tools),
     conversationId: input.conversationId, agentRunId: approval.agentRunId, threadUrl: input.threadUrl,
   })
 }
