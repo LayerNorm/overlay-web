@@ -748,7 +748,9 @@ expands for it (`showComputerExpanded`). Releasing returns the panel to its earl
 covers the conversation.
 
 The working orb's line has no left padding and pulls the orb back by its 5.5px inset, so its first
-dots line up with the agent's name.
+dots line up with the agent's name. Reply text, the "Worked for" row, tool, reasoning and trace rows,
+files, drafts and error notices have no horizontal padding either, so everything in a reply starts on
+the same left edge as the agent's name.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain

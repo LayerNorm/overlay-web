@@ -760,7 +760,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
       {message.folderSaves ? <FolderSavesCard data={message.folderSaves} /> : null}
-      {message.generationError ? <ExchangeErrorDisclosure className="mt-2 px-1" errorMessage={message.generationError} /> : null}
+      {message.generationError ? <ExchangeErrorDisclosure className="mt-2" errorMessage={message.generationError} /> : null}
     </>
   )
 }

@@ -41,7 +41,7 @@ export function WorkedForGroup({
     (toolCallCount > 0 ? `, called ${toolCallCount} tool${toolCallCount === 1 ? '' : 's'}` : '')
 
   return (
-    <Trace className="px-1 py-0.5">
+    <Trace className="py-0.5">
       <Button
         variant="ghost"
         onClick={onToggle}

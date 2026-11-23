@@ -35,10 +35,10 @@ export function TraceStep({
     </TraceLine>
   )
   if (!children) {
-    return <Trace className="max-w-[min(100%,36rem)] px-1 py-1 text-[13px] leading-snug">{line}</Trace>
+    return <Trace className="max-w-[min(100%,36rem)] py-1 text-[13px] leading-snug">{line}</Trace>
   }
   return (
-    <Trace className="max-w-[min(100%,36rem)] px-1 py-0.5">
+    <Trace className="max-w-[min(100%,36rem)] py-0.5">
       <TraceCollapsible open={open} onOpenChange={onOpenChange ?? (() => {})}>
         <TraceCollapsibleTrigger className="py-1 text-[13px] leading-snug" aria-label={expandLabel}>
           {line}

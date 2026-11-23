@@ -332,7 +332,7 @@ function ExchangeUserMessage({
 
 function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
   return (
-    <div className="flex justify-start px-1 py-1">
+    <div className="flex justify-start py-1">
       {isUsageExhaustedError(errorMessage) ? (
         <UsageExhaustedNotice />
       ) : (
@@ -356,13 +356,13 @@ function ExchangeSettledNotices({
   return (
     <>
       {interrupted && responseSettled && !errorMessage && (
-        <div className="flex justify-start px-1 py-1">
+        <div className="flex justify-start py-1">
           <p className="text-sm text-(--muted)">{INTERRUPTED_RESPONSE_NOTICE}</p>
         </div>
       )}
 
       {onContinue && responseSettled && !errorMessage && (
-        <div className="flex justify-start px-1 py-1">
+        <div className="flex justify-start py-1">
           <Button variant="secondary" size="sm"
             type="button"
             onClick={onContinue}

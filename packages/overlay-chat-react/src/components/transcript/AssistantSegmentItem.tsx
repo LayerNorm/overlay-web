@@ -233,7 +233,7 @@ function FileSegmentItem({ seg }: SegmentItemProps<'file'>) {
   if (!isImg && !isVideo) return null
   const fileId = fileIdFromContentHref(block.url) ?? undefined
   return (
-    <div className="w-full px-1 py-1">
+    <div className="w-full py-1">
       {isImg
         ? <ChatImageThumb src={block.url} name="Generated image" fileId={fileId} />
         : <span className="block max-w-[320px]"><ChatVideoCard src={block.url} name="Generated video" fileId={fileId} /></span>}
@@ -261,7 +261,7 @@ function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
   const isLastText = seg.originIndex === ctx.lastTextBlockIndex
   return (
     <div
-      className="w-full px-1 py-1 text-sm leading-relaxed text-(--foreground)"
+      className="w-full py-1 text-sm leading-relaxed text-(--foreground)"
     >
       <MarkdownConnectorActionsContext.Provider value={ctx.generatedUiConnectorActions}>
         <MarkdownMessage
