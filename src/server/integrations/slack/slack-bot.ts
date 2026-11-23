@@ -13,15 +13,20 @@ import { ConvexSlackState } from './convex-state'
  * specifiers and inlines every reachable serde package into the workflow vm, where the SDK throws at module scope.
  * The comment inside the dynamic import keeps it invisible to that scan (src/server/workflows/workflow-imports.test.ts).
  */
-async function createSlackBot() {
-  const config = slackAppConfig()
-  if (!config) throw new Error('The Overlay Slack app is not configured.')
-  const [{ Chat }, { createSlackAdapter }] = await Promise.all([
+async function loadSdk() {
+  const [sdk, { createSlackAdapter }] = await Promise.all([
     import(/* workflow-vm-exclusion */ 'chat'),
     import('@chat-adapter/slack'),
   ])
-  type BotState = ConstructorParameters<typeof Chat>[0]['state']
-  return new Chat<{ slack: SlackAdapter }>({
+  return { sdk, createSlackAdapter }
+}
+
+async function createSlackBot() {
+  const config = slackAppConfig()
+  if (!config) throw new Error('The Overlay Slack app is not configured.')
+  const { sdk, createSlackAdapter } = await loadSdk()
+  type BotState = ConstructorParameters<typeof sdk.Chat>[0]['state']
+  const instance = new sdk.Chat<{ slack: SlackAdapter }>({
     userName: 'Overlay',
     adapters: {
       slack: createSlackAdapter({
@@ -33,9 +38,11 @@ async function createSlackBot() {
     },
     state: new ConvexSlackState() as unknown as BotState,
   })
+  return Object.assign(instance, { sdk })
 }
 
 export type SlackBot = Awaited<ReturnType<typeof createSlackBot>>
+export type SlackSdk = SlackBot['sdk']
 export type SlackBotThread = Parameters<Parameters<SlackBot['onNewMention']>[0]>[0]
 export type SlackBotMessage = Parameters<Parameters<SlackBot['onNewMention']>[0]>[1]
 
@@ -56,6 +63,20 @@ export async function getSlackAdapter(): Promise<SlackAdapter> {
   return instance.getAdapter('slack')
 }
 
+/** Runs Slack work outside a webhook as the bot of the workspace that owns teamId. */
+export async function withSlackInstallation<T>(teamId: string, work: (instance: SlackBot, adapter: SlackAdapter) => Promise<T>): Promise<T> {
+  const instance = await getSlackBot()
+  await instance.initialize()
+  const adapter = instance.getAdapter('slack')
+  const installation = await adapter.getInstallation(teamId)
+  if (!installation) throw new Error('SLACK_TEAM_NOT_INSTALLED')
+  return await adapter.withBotToken(installation.botToken, () => work(instance, adapter), {
+    installationId: teamId, ...(installation.botUserId ? { botUserId: installation.botUserId } : {}),
+  })
+}
+
+const threadKey = (channelId: string, threadTs: string) => 'slack:' + channelId + ':' + threadTs
+
 /** Posts messages into a Slack thread as the bot of the workspace that owns it. */
 export async function postToSlackThread(args: {
   teamId: string
@@ -63,13 +84,70 @@ export async function postToSlackThread(args: {
   threadTs: string
   messages: Array<{ markdown: string }>
 }): Promise<void> {
-  const instance = await getSlackBot()
-  await instance.initialize()
-  const adapter = instance.getAdapter('slack')
-  const installation = await adapter.getInstallation(args.teamId)
-  if (!installation) throw new Error('SLACK_TEAM_NOT_INSTALLED')
-  await adapter.withBotToken(installation.botToken, async () => {
-    const thread = instance.thread('slack:' + args.channelId + ':' + args.threadTs)
+  await withSlackInstallation(args.teamId, async (instance) => {
+    const thread = instance.thread(threadKey(args.channelId, args.threadTs))
     for (const message of args.messages) await thread.post({ markdown: message.markdown })
-  }, { installationId: args.teamId, ...(installation.botUserId ? { botUserId: installation.botUserId } : {}) })
+  })
+}
+
+export const SLACK_ACTIONS = {
+  approve: 'overlay_approve',
+  deny: 'overlay_deny',
+  private: 'overlay_private',
+} as const
+
+/** Asks the requester to approve a step, in the Slack thread the request came from. */
+export async function postSlackApprovalCard(args: {
+  teamId: string
+  channelId: string
+  threadTs: string
+  title: string
+  detail: string
+  conversationId: string
+  agentRunId: string
+  threadUrl: string
+}): Promise<void> {
+  await withSlackInstallation(args.teamId, async (instance) => {
+    const { Actions, Button, Card, CardText, LinkButton } = instance.sdk
+    const value = JSON.stringify({ c: args.conversationId, r: args.agentRunId })
+    await instance.thread(threadKey(args.channelId, args.threadTs)).post(Card({
+      title: args.title,
+      children: [
+        CardText(args.detail),
+        Actions([
+          Button({ id: SLACK_ACTIONS.approve, label: 'Approve', style: 'primary', value }),
+          Button({ id: SLACK_ACTIONS.deny, label: 'Deny', style: 'danger', value }),
+          LinkButton({ url: args.threadUrl, label: 'Open in Overlay' }),
+        ]),
+      ],
+    }))
+  })
+}
+
+/** Offers, only to the requester, to continue a channel request privately with their personal Overlay. */
+export async function postSlackPrivateOffer(args: {
+  teamId: string
+  channelId: string
+  threadTs: string
+  slackUserId: string
+  conversationId: string
+}): Promise<void> {
+  await withSlackInstallation(args.teamId, async (instance) => {
+    const { Actions, Button, Card, CardText } = instance.sdk
+    await instance.thread(threadKey(args.channelId, args.threadTs)).postEphemeral(args.slackUserId, Card({
+      children: [
+        CardText('Overlay doesn’t use your own files, memories or connected accounts in a channel. Your personal Overlay can answer in a DM instead.'),
+        Actions([Button({ id: SLACK_ACTIONS.private, label: 'Ask privately', value: JSON.stringify({ c: args.conversationId }) })]),
+      ],
+    }), { fallbackToDM: false })
+  })
+}
+
+/** Starts a new thread in the requester's DM with the app; returns where it is. */
+export async function startSlackDmThread(args: { teamId: string; slackUserId: string; markdown: string }): Promise<{ channelId: string; threadTs: string }> {
+  return await withSlackInstallation(args.teamId, async (instance, adapter) => {
+    const threadId = await adapter.openDM(args.slackUserId)
+    const sent = await instance.thread(threadId).post({ markdown: args.markdown })
+    return { channelId: adapter.decodeThreadId(threadId).channel, threadTs: sent.id }
+  })
 }

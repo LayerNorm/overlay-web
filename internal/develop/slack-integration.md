@@ -4,7 +4,7 @@ Overlay in Slack is a first-class integration, like the GitHub App. One Overlay 
 
 ## Status
 
-| Phase 1 piece | State |
+| Piece | State |
 |---|---|
 | Install (OAuth), Sign in with Slack linking, uninstall | Built, unit tested; not yet tested against a real Slack app |
 | Mentions and DMs from linked members become Workspace Overlay turns | Built, unit tested |
@@ -13,6 +13,9 @@ Overlay in Slack is a first-class integration, like the GitHub App. One Overlay 
 | Room rule: Slack channel threads are shared rooms | Built |
 | Settings › Connected apps list, GitHub, Slack and MCP pages | Built |
 | Slack mark on threads, channel and Open in Slack in the header | Built |
+| Phase 2: a web reply in a Slack-started thread is posted to Slack as "<name> replied in Overlay" by the Overlay bot, and the answer follows it | Built, unit tested; asker only |
+| Phase 2: approvals as a Slack card (Approve, Deny, Open in Overlay); only the asker can answer, through the same path as the web | Built, unit tested |
+| Phase 2: in a channel, a "Continue privately" button (once per thread, only for people with a personal Overlay) moves the question to a DM thread with their personal Overlay | Built, unit tested |
 | Web visibility for other linked channel members, Slack participants without accounts | Not built: each asker has their own thread, visible to them |
 
 Hosted QA needs a test Slack app on a PR Preview (see QA below).

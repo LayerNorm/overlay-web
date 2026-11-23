@@ -2,6 +2,7 @@ import { after, NextResponse } from 'next/server'
 import { slackAppConfig } from '@/server/integrations/slack/slack-app'
 import { getSlackBot } from '@/server/integrations/slack/slack-bot'
 import { registerSlackHandlers } from '@/server/integrations/slack/slack-inbound'
+import { registerSlackActions } from '@/server/integrations/slack/slack-actions'
 
 /**
  * Slack Events API endpoint for the Overlay Slack app (internal/develop/slack-integration.md). The Slack adapter
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
   const bot = await getSlackBot()
   if (!registered) {
     registerSlackHandlers(bot)
+    registerSlackActions(bot)
     registered = true
   }
   return await bot.webhooks.slack(request, {

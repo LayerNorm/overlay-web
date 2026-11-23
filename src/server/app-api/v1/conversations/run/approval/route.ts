@@ -1,7 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { NATIVE_RUN_RETIRED_CODE, NATIVE_RUN_RETIRED_MESSAGE } from '@/shared/agents/native-run-retirement'
-import { resumeHook } from 'workflow/api'
 import { HookNotFoundError } from 'workflow/internal/errors'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
@@ -9,8 +8,8 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { readValidatedJson } from '@/server/app-api/validated-input'
 import { AgentRunApprovalRequest } from '@/shared/schemas/chat'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
-import { agentRunApprovalAccess } from '@/server/agents/agent-approval-authority'
-import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import { submitAgentRunApproval } from '@/server/agents/submit-agent-run-approval'
+import type { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 
 type ApprovalRepositories = ReturnType<typeof getOverlayServerContext>['appData']['repositories']
 type ApprovalRouteDependencies = {
@@ -48,16 +47,16 @@ export async function POST(
       && conversation.workspaceId !== context.workspace.workspace.id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    const run = await conversations.getLatestAgentRun({
-      conversationId: asConversationId(body.data.conversationId),
-      agentRunId: body.data.agentRunId,
-      userId: actorUserId,
-    })
-    const access = agentRunApprovalAccess(run, {
+    const access = await submitAgentRunApproval({
       actorUserId,
-      agentRunId: body.data.agentRunId,
+      workspaceId: context.workspace.workspace.id,
       conversationId: body.data.conversationId,
+      agentRunId: body.data.agentRunId,
       token: body.data.token,
+      decision: { approved: body.data.approved, ...(body.data.reason ? { reason: body.data.reason } : {}) },
+    }, {
+      getLatestAgentRun: (args) => conversations.getLatestAgentRun(args),
+      ...(dependencies ? { resume: dependencies.resume, submitWaitReply: dependencies.submitWaitReply ?? null } : {}),
     })
     if (access === 'inactive') {
       return NextResponse.json({ error: 'This approval request is no longer active.' }, { status: 409 })
@@ -68,19 +67,6 @@ export async function POST(
     if (access === 'retired') {
       return NextResponse.json({ error: NATIVE_RUN_RETIRED_MESSAGE, code: NATIVE_RUN_RETIRED_CODE }, { status: 410 })
     }
-    const resume = dependencies?.resume ?? resumeHook
-    const submit = dependencies ? dependencies.submitWaitReply
-      : (input: Parameters<ConvexHarnessRepository['submitWaitReply']>[0]) => new ConvexHarnessRepository().submitWaitReply(input)
-    if (run?.harnessRunId && submit && await submit({
-      actorUserId, workspaceId: context.workspace.workspace.id, deliveryAgentRunId: run.id,
-      token: body.data.token, reply: {
-        approved: body.data.approved, ...(body.data.reason ? { reason: body.data.reason } : {}),
-      },
-    })) return NextResponse.json({ success: true })
-    await resume(body.data.token, {
-      approved: body.data.approved,
-      ...(body.data.reason ? { reason: body.data.reason } : {}),
-    })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (HookNotFoundError.is(error)) {

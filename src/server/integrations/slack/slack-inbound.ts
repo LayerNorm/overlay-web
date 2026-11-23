@@ -37,6 +37,12 @@ export type SlackInbound = {
   text: string
 }
 
+export type SlackAgentRole = 'workspace_chief' | 'personal_chief'
+
+export type SlackOrigin = {
+  platform: 'slack'; teamId: string; channelId: string; threadTs: string; kind: 'channel' | 'dm'; channelName?: string
+}
+
 export type SlackAdmission =
   | { status: 'started'; conversationId: string; turnId: string }
   | { status: 'not_installed' }
@@ -47,8 +53,7 @@ export type SlackAdmission =
 export type SlackAdmissionDependencies = {
   resolveRequester?: (args: { teamId: string; slackUserId: string }) => Promise<SlackRequester | null>
   resolveThread?: (args: {
-    workspaceId: string; userId: string; title: string
-    origin: { platform: 'slack'; teamId: string; channelId: string; threadTs: string; kind: 'channel' | 'dm'; channelName?: string }
+    workspaceId: string; userId: string; title: string; agentRole: SlackAgentRole; origin: SlackOrigin
   }) => Promise<{ conversationId: string; agentId: string; created: boolean }>
   startTurn?: (args: {
     workspaceId: string; userId: string; conversationId: string; prompt: string; turnId: string
@@ -78,28 +83,53 @@ export async function admitSlackMessage(input: SlackInbound, dependencies: Slack
   if (input.external && !requester.settings.slackConnect) return { status: 'not_allowed', reason: 'slack_connect' }
   if (!requester.userId) return { status: 'link_required', workspaceId: requester.workspaceId }
   if (requester.guest && !requester.settings.guests) return { status: 'not_allowed', reason: 'guest' }
-  const userId = requester.userId
-  const origin = {
-    platform: 'slack' as const, teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind,
-    ...(input.channelName ? { channelName: input.channelName } : {}),
-  }
-  const thread = await (dependencies.resolveThread ?? ((args) => convex.mutation<{ conversationId: string; agentId: string; created: boolean }>(
-    'integrations/slack:resolveThreadByServer', { serverSecret: getInternalApiSecret(), ...args }, call,
-  ).then((value) => value!)))({ workspaceId: requester.workspaceId, userId, title: prompt.slice(0, 80), origin })
-  const messageTurnId = randomUUID()
+  const started = await startSlackRequest({
+    workspaceId: requester.workspaceId, userId: requester.userId, slackUserId: input.slackUserId, prompt,
+    agentRole: 'workspace_chief',
+    origin: {
+      platform: 'slack', teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind,
+      ...(input.channelName ? { channelName: input.channelName } : {}),
+    },
+  }, dependencies)
+  return { status: 'started', ...started }
+}
+
+/**
+ * Runs one Slack request in the asker's own thread under the chosen Overlay, and starts the workflow that posts the
+ * reply back to the Slack thread.
+ */
+export async function startSlackRequest(args: {
+  workspaceId: string
+  userId: string
+  slackUserId: string
+  prompt: string
+  agentRole: SlackAgentRole
+  origin: SlackOrigin
+}, dependencies: SlackAdmissionDependencies = {}): Promise<{ conversationId: string; turnId: string }> {
+  const thread = await (dependencies.resolveThread ?? ((resolve) => convex.mutation<{ conversationId: string; agentId: string; created: boolean }>(
+    'integrations/slack:resolveThreadByServer', { serverSecret: getInternalApiSecret(), ...resolve }, call,
+  ).then((value) => value!)))({
+    workspaceId: args.workspaceId, userId: args.userId, title: args.prompt.slice(0, 80), agentRole: args.agentRole, origin: args.origin,
+  })
   const turnId = await (dependencies.startTurn ?? startSlackTurn)({
-    workspaceId: requester.workspaceId, userId, conversationId: thread.conversationId, prompt, turnId: messageTurnId,
+    workspaceId: args.workspaceId, userId: args.userId, conversationId: thread.conversationId, prompt: args.prompt, turnId: randomUUID(),
   })
-  await (dependencies.startDelivery ?? (async (delivery) => { await start(slackReplyWorkflow, [delivery]) }))({
-    teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, slackUserId: input.slackUserId,
-    workspaceId: requester.workspaceId, userId, conversationId: thread.conversationId, turnId,
-    threadUrl: slackThreadUrl(requester.workspaceId, thread.conversationId, thread.agentId),
+  await (dependencies.startDelivery ?? startSlackDelivery)({
+    teamId: args.origin.teamId, channelId: args.origin.channelId, threadTs: args.origin.threadTs, kind: args.origin.kind,
+    slackUserId: args.slackUserId, workspaceId: args.workspaceId, userId: args.userId,
+    conversationId: thread.conversationId, turnId,
+    threadUrl: slackThreadUrl(args.workspaceId, thread.conversationId, thread.agentId),
+    offerPrivate: args.agentRole === 'workspace_chief' && args.origin.kind === 'channel',
   })
-  return { status: 'started', conversationId: thread.conversationId, turnId }
+  return { conversationId: thread.conversationId, turnId }
+}
+
+export async function startSlackDelivery(input: SlackReplyInput): Promise<void> {
+  await start(slackReplyWorkflow, [input])
 }
 
 /** Saves the question as the asker's message and starts the Workspace Overlay's turn; returns the agent's turn id. */
-async function startSlackTurn(args: {
+export async function startSlackTurn(args: {
   workspaceId: string; userId: string; conversationId: string; prompt: string; turnId: string
 }): Promise<string> {
   const server = getOverlayServerContext()

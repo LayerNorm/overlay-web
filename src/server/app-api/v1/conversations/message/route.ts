@@ -1,5 +1,5 @@
 import { logger } from '@/server/observability/logger'
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
@@ -8,6 +8,7 @@ import {
 } from '@/server/chat/chat-message-persistence'
 import { normalizeGeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
+import { mirrorWebMessageToSlack } from '@/server/integrations/slack/slack-outbound'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { nativeRunRetirementErrorResponse } from '@/server/conversations/native-run-retirement-http'
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     if (isCollaborationConversation && messageId) {
-      await startWorkspaceAgentTurns({
+      const invocations = await startWorkspaceAgentTurns({
         actorUserId: auth.userId,
         conversationId: body.conversationId,
         initiatorPrincipalId: context.workspace.principal.id,
@@ -183,7 +184,22 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         // `resolveWorkspaceAgentInvocations` throws when no agent was addressed,
         // which is the common case for a message between people.
         logger.debug('[conversations/message POST] No agent turn started', { error })
+        return []
       })
+      // A reply in a thread that started in Slack is posted there too, followed by Overlay's answer.
+      const mirroredConversationId = body.conversationId
+      if (invocations.length > 0) {
+        after(() => mirrorWebMessageToSlack({
+          conversationId: mirroredConversationId,
+          workspaceId,
+          userId: auth.userId,
+          authorName: context.workspace.principal.displayName ?? 'A member',
+          content: normalizedContent,
+          agentTurnIds: invocations.map((invocation) => invocation.turnId),
+        }).catch((error) => {
+          logger.warn('[conversations/message POST] Could not post the reply to Slack', { reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' })
+        }))
+      }
     }
 
     return NextResponse.json({ success: true, conversationId: body.conversationId, turnId, messageId })

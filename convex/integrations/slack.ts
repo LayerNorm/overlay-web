@@ -298,6 +298,8 @@ export const resolveThreadByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), userId: v.string(), title: v.string(),
     origin: conversationOriginValidator,
+    /** The asker's own personal Overlay instead of the Workspace Overlay, for a private handoff. */
+    agentRole: v.optional(v.union(v.literal('workspace_chief'), v.literal('personal_chief'))),
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -314,8 +316,10 @@ export const resolveThreadByServer = mutation({
     }
     const definitions = await ctx.db.query('workspaceAgentDefinitions')
       .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect()
-    const chief = definitions.find(row => row.agentRole === 'workspace_chief' && !row.deletedAt && !row.archivedAt)
-    if (!chief) throw new ConvexError('SLACK_WORKSPACE_OVERLAY_MISSING')
+    const role = args.agentRole ?? 'workspace_chief'
+    const chief = definitions.find(row => row.agentRole === role && !row.deletedAt && !row.archivedAt
+      && (role === 'workspace_chief' || row.chiefOwnerUserId === args.userId))
+    if (!chief) throw new ConvexError(role === 'workspace_chief' ? 'SLACK_WORKSPACE_OVERLAY_MISSING' : 'SLACK_PERSONAL_OVERLAY_MISSING')
     const thread = await createAgentThread(ctx, {
       workspaceId: args.workspaceId, agentId: chief.agentId, userId: args.userId, title: args.title,
     })
@@ -328,12 +332,43 @@ export const resolveThreadByServer = mutation({
   },
 })
 
+/** A Slack thread's origin with its owner and agent, for posting web replies back to Slack. */
 export const originByServer = query({
-  args: { serverSecret: v.string(), conversationId: v.id('conversations') },
+  args: { serverSecret: v.string(), conversationId: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const conversation = await ctx.db.get(args.conversationId)
-    return conversation?.origin ?? null
+    const id = ctx.db.normalizeId('conversations', args.conversationId)
+    const conversation = id ? await ctx.db.get(id) : null
+    if (!conversation?.origin || conversation.deletedAt !== undefined || !conversation.workspaceId || !conversation.agentId) return null
+    const mapping = await ctx.db.query('slackThreads').withIndex('by_conversationId', q => q.eq('conversationId', conversation._id)).first()
+    if (!mapping) return null
+    return { origin: conversation.origin, workspaceId: conversation.workspaceId, agentId: conversation.agentId, userId: mapping.userId }
+  },
+})
+
+/** Whether a member has a personal Overlay to hand a request to. */
+export const hasPersonalOverlayByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const definitions = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect()
+    return definitions.some(row => row.agentRole === 'personal_chief' && row.chiefOwnerUserId === args.userId && !row.deletedAt && !row.archivedAt)
+  },
+})
+
+/** A member's active Slack link in the Slack workspace installed for their Overlay workspace. */
+export const linkForUserByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const [installation, link] = await Promise.all([
+      activeInstallationForWorkspace(ctx, args.workspaceId),
+      activeLinkForUser(ctx, args.workspaceId, args.userId),
+    ])
+    if (!installation || !link || link.teamId !== installation.teamId) return null
+    if (!await activeMember(ctx, args.workspaceId, args.userId)) return null
+    return { teamId: link.teamId, slackUserId: link.slackUserId }
   },
 })
 
