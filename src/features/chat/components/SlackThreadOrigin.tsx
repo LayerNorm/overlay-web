@@ -18,7 +18,7 @@ export function SlackThreadOriginLabel({ origin }: { origin: SlackThreadOriginVa
   return (
     <span className="inline-flex items-center gap-1.5">
       <SlackMark size={11} />
-      {origin.kind === 'dm' ? 'Your Slack DM' : origin.channelName ? '#' + origin.channelName : 'Slack'}
+      {origin.kind === 'dm' ? 'Your Slack DM' : origin.channelName ? '#' + origin.channelName.replace(/^#/, '') : 'Slack'}
       <span aria-hidden>·</span>
       <a href={origin.openUrl} target="_blank" rel="noreferrer" className="hover:text-(--foreground) hover:underline">Open in Slack</a>
     </span>
