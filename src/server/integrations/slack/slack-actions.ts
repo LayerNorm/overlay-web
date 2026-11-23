@@ -53,18 +53,18 @@ function parseValue(value: string | undefined): { c?: string; r?: string } {
 async function ownerFor(
   args: { teamId: string; slackUserId: string; conversationId: string },
   dependencies: SlackActionDependencies,
-): Promise<{ owner: ThreadOwner } | { outcome: 'link_required' | 'not_owner' | 'not_allowed' }> {
+): Promise<{ owner: ThreadOwner; principalId: string } | { outcome: 'link_required' | 'not_owner' | 'not_allowed' }> {
   const requester = await (dependencies.resolveRequester ?? ((input) => serverQuery<SlackRequester | null>('resolveRequesterByServer', input)))({
     teamId: args.teamId, slackUserId: args.slackUserId,
   })
-  if (!requester?.userId) return { outcome: 'link_required' }
+  if (!requester?.userId || !requester.principalId) return { outcome: 'link_required' }
   // Buttons follow the same rules as asking: a blocked member, or a guest while guests are off, can't use them.
   if (!requester.allowed || (requester.guest && !requester.settings.guests)) return { outcome: 'not_allowed' }
   const owner = await (dependencies.threadOwner ?? ((conversationId) => serverQuery<ThreadOwner | null>('originByServer', { conversationId })))(args.conversationId)
   if (!owner || owner.userId !== requester.userId || owner.workspaceId !== requester.workspaceId || owner.origin.teamId !== args.teamId) {
     return { outcome: 'not_owner' }
   }
-  return { owner }
+  return { owner, principalId: requester.principalId }
 }
 
 export async function answerSlackApproval(
@@ -102,7 +102,7 @@ export async function continueSlackRequestPrivately(
   if (!conversationId) return 'inactive'
   const found = await ownerFor({ teamId: args.teamId, slackUserId: args.slackUserId, conversationId }, dependencies)
   if ('outcome' in found) return found.outcome
-  const { owner } = found
+  const { owner, principalId } = found
   if (owner.origin.kind !== 'channel') return 'inactive'
   const hasPersonal = await (dependencies.hasPersonalOverlay ?? ((input) => serverQuery<boolean>('hasPersonalOverlayByServer', input)))({
     workspaceId: owner.workspaceId, userId: owner.userId,
@@ -122,7 +122,7 @@ export async function continueSlackRequestPrivately(
       markdown: 'Continuing privately with your personal Overlay:\n\n> ' + question.replace(/\n/g, '\n> '),
     })
     await (dependencies.startRequest ?? startSlackRequest)({
-      workspaceId: owner.workspaceId, userId: owner.userId, slackUserId: args.slackUserId, prompt: question,
+      workspaceId: owner.workspaceId, userId: owner.userId, principalId, slackUserId: args.slackUserId, prompt: question,
       agentRole: 'personal_chief',
       origin: { platform: 'slack', teamId: args.teamId, channelId: dm.channelId, threadTs: dm.threadTs, kind: 'dm' },
     })

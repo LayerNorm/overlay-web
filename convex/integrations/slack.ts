@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { createAgentThread } from '../agents/agentThreads'
+import { ensureWorkspaceChiefs } from '../collaboration/agents'
 import {
   conversationOriginValidator, slackActionsValidator, slackPersonAccessValidator, slackUnlinkedPeopleValidator,
   slackWhoCanAskValidator,
@@ -354,7 +355,7 @@ export const resolveRequesterByServer = query({
  */
 export const resolveThreadByServer = mutation({
   args: {
-    serverSecret: v.string(), workspaceId: v.string(), userId: v.string(), title: v.string(),
+    serverSecret: v.string(), workspaceId: v.string(), userId: v.string(), principalId: v.string(), title: v.string(),
     origin: conversationOriginValidator,
     /** The asker's own personal Overlay instead of the Workspace Overlay, for a private handoff. */
     agentRole: v.optional(v.union(v.literal('workspace_chief'), v.literal('personal_chief'))),
@@ -372,11 +373,17 @@ export const resolveThreadByServer = mutation({
       }
       await ctx.db.delete(existing._id)
     }
-    const definitions = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect()
     const role = args.agentRole ?? 'workspace_chief'
-    const chief = definitions.find(row => row.agentRole === role && !row.deletedAt && !row.archivedAt
-      && (role === 'workspace_chief' || row.chiefOwnerUserId === args.userId))
+    const findChief = async () => (await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect())
+      .find(row => row.agentRole === role && !row.deletedAt && !row.archivedAt
+        && (role === 'workspace_chief' || row.chiefOwnerUserId === args.userId))
+    // Chiefs are otherwise created when a member first opens Overlay; a workspace can ask from Slack before that.
+    let chief = await findChief()
+    if (!chief) {
+      await ensureWorkspaceChiefs(ctx, { workspaceId: args.workspaceId, actorUserId: args.userId, actorPrincipalId: args.principalId, now: Date.now() })
+      chief = await findChief()
+    }
     if (!chief) throw new ConvexError(role === 'workspace_chief' ? 'SLACK_WORKSPACE_OVERLAY_MISSING' : 'SLACK_PERSONAL_OVERLAY_MISSING')
     const thread = await createAgentThread(ctx, {
       workspaceId: args.workspaceId, agentId: chief.agentId, userId: args.userId, title: args.title,

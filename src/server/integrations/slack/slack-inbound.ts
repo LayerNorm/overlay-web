@@ -40,6 +40,8 @@ export type SlackInbound = {
   slackUserId: string
   /** The question as markdown, already converted from Slack's markup by slackPromptText. */
   text: string
+  /** Asked inside an existing Slack thread (not a new top-level message). */
+  inThread?: boolean
 }
 
 export type SlackAgentRole = 'workspace_chief' | 'personal_chief'
@@ -60,7 +62,7 @@ export type SlackAdmission =
 export type SlackAdmissionDependencies = {
   resolveRequester?: (args: { teamId: string; slackUserId: string }) => Promise<SlackRequester | null>
   resolveThread?: (args: {
-    workspaceId: string; userId: string; title: string; agentRole: SlackAgentRole; origin: SlackOrigin
+    workspaceId: string; userId: string; principalId: string; title: string; agentRole: SlackAgentRole; origin: SlackOrigin
   }) => Promise<{ conversationId: string; agentId: string; created: boolean }>
   startTurn?: (args: {
     workspaceId: string; userId: string; conversationId: string; prompt: string; turnId: string
@@ -124,12 +126,12 @@ export async function admitSlackMessage(input: SlackInbound, dependencies: Slack
   if (!requester) return { status: 'not_installed' }
   if (input.external && !requester.settings.slackConnect) return { status: 'not_allowed', reason: 'slack_connect' }
   if (input.outsider) return { status: 'not_allowed', reason: 'outsider' }
-  if (!requester.userId) return { status: 'link_required', workspaceId: requester.workspaceId }
+  if (!requester.userId || !requester.principalId) return { status: 'link_required', workspaceId: requester.workspaceId }
   if (requester.guest && !requester.settings.guests) return { status: 'not_allowed', reason: 'guest' }
   if (!requester.allowed) return { status: 'not_allowed', reason: 'not_listed' }
   try {
     const started = await startSlackRequest({
-      workspaceId: requester.workspaceId, userId: requester.userId, slackUserId: input.slackUserId, prompt,
+      workspaceId: requester.workspaceId, userId: requester.userId, principalId: requester.principalId, slackUserId: input.slackUserId, prompt,
       agentRole: 'workspace_chief',
       origin: {
         platform: 'slack', teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind,
@@ -160,6 +162,7 @@ export function slackAdmissionNotice(admission: SlackAdmission): string | null {
 export async function startSlackRequest(args: {
   workspaceId: string
   userId: string
+  principalId: string
   slackUserId: string
   prompt: string
   agentRole: SlackAgentRole
@@ -168,7 +171,7 @@ export async function startSlackRequest(args: {
   const thread = await (dependencies.resolveThread ?? ((resolve) => convex.mutation<{ conversationId: string; agentId: string; created: boolean }>(
     'integrations/slack:resolveThreadByServer', { serverSecret: getInternalApiSecret(), ...resolve }, call,
   ).then((value) => value!)))({
-    workspaceId: args.workspaceId, userId: args.userId, title: args.prompt.slice(0, 80), agentRole: args.agentRole, origin: args.origin,
+    workspaceId: args.workspaceId, userId: args.userId, principalId: args.principalId, title: args.prompt.slice(0, 80), agentRole: args.agentRole, origin: args.origin,
   })
   const threadUrl = slackThreadUrl(args.workspaceId, thread.conversationId, thread.agentId)
   try {
@@ -267,7 +270,8 @@ export async function resumeSlackRequestAfterLink(
   const notice = slackAdmissionNotice(admission)
   if (notice) {
     await (dependencies.notify ?? postSlackEphemeral)({
-      teamId: pending.teamId, channelId: pending.channelId, threadTs: pending.threadTs, slackUserId: pending.slackUserId, markdown: notice,
+      teamId: pending.teamId, channelId: pending.channelId, threadTs: pending.inThread ? pending.threadTs : undefined,
+      slackUserId: pending.slackUserId, markdown: notice,
     })
   }
   return admission
@@ -305,7 +309,11 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
     outsider: authorTeamId !== teamId,
     slackUserId: message.author.userId,
     text: await promptFromSlack(adapter, typeof raw?.text === 'string' ? raw.text : message.text),
+    ...(decoded.threadTs ? { inThread: true } : {}),
   }
+  // Slack shows a private note sent into a thread only to people viewing that thread. A new top-level message has no
+  // thread yet, so its notes go to the channel (still only visible to the asker).
+  const notes = decoded.threadTs || thread.isDM ? thread : thread.channel
   const admission = await admitSlackMessage(inbound)
   if (admission.status === 'link_required') {
     await savePendingRequest(inbound).catch((error: unknown) => {
@@ -313,13 +321,13 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
     })
     const url = new URL('/api/v1/integrations/slack/link', getBaseUrl())
     url.searchParams.set('workspaceId', admission.workspaceId)
-    await thread.postEphemeral(message.author, {
+    await notes.postEphemeral(message.author, {
       markdown: 'Connect your Slack account to Overlay so I can answer with your access. I’ll answer this once you’re linked. [Connect to Overlay](' + url.toString() + ')',
     }, { fallbackToDM: false })
     return
   }
   const notice = slackAdmissionNotice(admission)
-  if (notice) await thread.postEphemeral(message.author, { markdown: notice }, { fallbackToDM: false })
+  if (notice) await notes.postEphemeral(message.author, { markdown: notice }, { fallbackToDM: false })
 }
 
 /** The question from a message's raw Slack text, with mentioned people's names looked up (cached by the adapter). */

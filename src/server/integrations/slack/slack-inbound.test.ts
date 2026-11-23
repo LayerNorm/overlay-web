@@ -110,17 +110,22 @@ test('a request that cannot start tells the asker where to see why', async () =>
 
 test('a question asked before linking that is now refused is answered with the reason, only to the asker', async () => {
   const { calls, dependencies } = deps({ ...member, allowed: false })
-  const notices: Array<{ channelId: string; threadTs: string; slackUserId: string; markdown: string }> = []
+  const notices: Array<{ channelId: string; threadTs?: string; slackUserId: string; markdown: string }> = []
+  const notify = async (notice: (typeof notices)[number]) => { notices.push(notice) }
+  // A new top-level question has no Slack thread yet, so the note goes to the channel, where Slack shows it.
   const result = await resumeSlackRequestAfterLink({ teamId: 'T1', slackUserId: 'U1' }, {
-    ...dependencies,
-    takePending: async () => inbound,
-    notify: async (notice: (typeof notices)[number]) => { notices.push(notice) },
+    ...dependencies, takePending: async () => inbound, notify,
   } as never)
   assert.equal(result?.status, 'not_allowed')
   assert.deepEqual(calls, [])
   assert.equal(notices.length, 1)
-  assert.deepEqual([notices[0]!.channelId, notices[0]!.threadTs, notices[0]!.slackUserId], ['C1', '1.2', 'U1'])
+  assert.deepEqual([notices[0]!.channelId, notices[0]!.threadTs, notices[0]!.slackUserId], ['C1', undefined, 'U1'])
   assert.match(notices[0]!.markdown, /can’t ask Overlay in Slack/)
+  // Asked inside a thread: the note goes into that thread.
+  await resumeSlackRequestAfterLink({ teamId: 'T1', slackUserId: 'U1' }, {
+    ...dependencies, takePending: async () => ({ ...inbound, inThread: true }), notify,
+  } as never)
+  assert.equal(notices[1]!.threadTs, '1.2')
 })
 
 test('a revoked bot token removes the installation; revoked user tokens and other events do not', async () => {

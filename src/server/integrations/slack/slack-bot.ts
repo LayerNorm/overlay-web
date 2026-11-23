@@ -100,12 +100,13 @@ export async function postToSlackThread(args: {
 export async function postSlackEphemeral(args: {
   teamId: string
   channelId: string
-  threadTs: string
+  /** Omit to post at the channel level, which is where Slack shows a note about a new top-level message. */
+  threadTs?: string
   slackUserId: string
   markdown: string
 }): Promise<void> {
   await withSlackInstallation(args.teamId, async (instance) => {
-    await instance.thread(threadKey(args.channelId, args.threadTs)).postEphemeral(args.slackUserId, { markdown: args.markdown }, { fallbackToDM: false })
+    await instance.thread(threadKey(args.channelId, args.threadTs ?? '')).postEphemeral(args.slackUserId, { markdown: args.markdown }, { fallbackToDM: false })
   })
 }
 
