@@ -1,7 +1,8 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
+import { COMPUTER_LSP_DRIVER_SOURCE } from './lsp-driver'
 
-export const DRIVER_VERSION = '11'
+export const DRIVER_VERSION = '13'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -395,6 +396,7 @@ def run_input(request):
 
 ${COMPUTER_TERMINAL_DRIVER_SOURCE}
 ${COMPUTER_BROWSER_DRIVER_SOURCE}
+${COMPUTER_LSP_DRIVER_SOURCE}
 
 def dispatch(request):
     if not isinstance(request, dict):
@@ -408,6 +410,10 @@ def dispatch(request):
         return terminal_cancel(request)
     if command == "terminal_list":
         return terminal_list()
+    if command == "lsp_request":
+        return lsp_request(request)
+    if command == "lsp_stop":
+        return lsp_stop()
     if command == "capabilities":
         return capabilities()
     if command == "screenshot":
@@ -453,5 +459,7 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "--lsp-daemon":
+        sys.exit(lsp_daemon_main(sys.argv[2], sys.argv[3]))
     sys.exit(main())
 `

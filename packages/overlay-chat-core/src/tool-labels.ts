@@ -236,6 +236,7 @@ export function getDescriptiveToolLabel(
     computer_list_files: 'Listing files on the computer',
     computer_grep: 'Searching files on the computer',
     computer_glob: 'Finding files on the computer',
+    computer_code_nav: 'Navigating code on the computer',
     computer_open_url: 'Opening a URL on the computer',
     computer_screenshot: 'Taking a screenshot of the computer',
     computer_input: 'Interacting with the computer',

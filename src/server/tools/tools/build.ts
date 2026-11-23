@@ -37,6 +37,7 @@ import {
   executeComputerReadFile,
   executeComputerEditFile,
   executeComputerApplyPatch,
+  executeComputerCodeNav,
   executeComputerGrep,
   executeComputerGlob,
   executeComputerScreenshot,
@@ -1157,6 +1158,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           replace_all: z.boolean().optional().describe('Replace every occurrence instead of requiring exactly one'),
         })).min(1).max(50),
         expected_sha: z.string().regex(/^[0-9a-f]{16}$/).optional().describe('sha from computer_read_file; the edit is refused if the file changed since'),
+        diagnostics: z.boolean().optional().describe('Set false to skip the language-server check (default true)'),
         target: computerTargetSchema,
       }),
       execute: async (input) => {
@@ -1171,14 +1173,37 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       description:
         'Apply a multi-file patch on the bound computer: add, update, delete or move files in one atomic call. Use it for changes across several files or many hunks; use computer_edit_file for a single small change. '
         + 'Format (paths must be absolute):\n*** Begin Patch\n*** Add File: /abs/new.ts\n+line\n*** Update File: /abs/a.ts\n*** Move to: /abs/b.ts (optional)\n@@ optional line near the change, e.g. a function signature\n context line\n-removed line\n+added line\n*** Delete File: /abs/old.ts\n*** End Patch\n'
-        + 'Include about 3 unchanged context lines around each change. If any hunk does not match, nothing is written. Returns a diff and new sha per file.',
+        + 'Include about 3 unchanged context lines around each change. If any hunk does not match, nothing is written. Returns a diff and new sha per file, '
+        + 'plus diagnostics for touched TypeScript/JavaScript and Python files: the type errors and warnings the patch introduced.',
       inputSchema: z.object({
         patch: z.string().min(1).max(500_000).describe('The full patch text, from *** Begin Patch to *** End Patch'),
+        diagnostics: z.boolean().optional().describe('Set false to skip the language-server check (default true)'),
         target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_apply_patch')
         return executeComputerApplyPatch(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_code_nav')) {
+      tools.computer_code_nav = tool({
+      description:
+        'Navigate code on the bound computer with a language server (TypeScript/JavaScript and Python). '
+        + 'definition: where the symbol at line/column is defined. references: every use of it. hover: its type and docs. '
+        + 'symbols: the outline of a file. diagnostics: current type errors and warnings in a file. '
+        + 'Lines and columns are 1-based, as shown by computer_read_file. Prefer this over grep when you need the real definition or all callers.',
+      inputSchema: z.object({
+        action: z.enum(['definition', 'references', 'hover', 'symbols', 'diagnostics']),
+        path: z.string().max(4096).describe('Absolute path of the source file'),
+        line: z.number().int().min(1).optional().describe('1-based line (definition, references, hover)'),
+        column: z.number().int().min(1).optional().describe('1-based column of the symbol (definition, references, hover)'),
+        target: computerTargetSchema,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_code_nav')
+        return executeComputerCodeNav(options, input)
       },
     })
     }

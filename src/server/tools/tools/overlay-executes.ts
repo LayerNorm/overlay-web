@@ -37,6 +37,13 @@ import {
 } from './computer-file-tools'
 import { applyComputerEdits, unifiedComputerDiff, type ComputerEdit } from './computer-edit'
 import { ComputerPatchError, computerPatchPaths, parseComputerPatch, planComputerPatch } from './computer-patch'
+import {
+  computerDiagnosticsBatches,
+  parseComputerDiagnostics,
+  summarizeComputerDiagnostics,
+  type ComputerDiagnosticsSummary,
+  type ComputerFileDiagnostics,
+} from './computer-diagnostics'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -1357,13 +1364,59 @@ export async function executeComputerWriteFile(
   }
 }
 
+/** Baseline checks run on the file as it was; they are short so a cold language server never delays the edit much. */
+const COMPUTER_DIAGNOSTICS_BASELINE_MS = 8_000
+const COMPUTER_DIAGNOSTICS_AFTER_MS = 15_000
+
+/**
+ * Asks the computer's language servers for diagnostics on the given files. Never throws: when a server is missing,
+ * still loading or the language is unsupported, the result is null and the edit result simply has no diagnostics.
+ */
+async function computerDiagnosticsFor(
+  instance: SandboxInstance,
+  paths: string[],
+  timeoutMs: number,
+): Promise<{ files: ComputerFileDiagnostics[] } | { files: null; note: string }> {
+  if (isLocalHostSandboxInstance(instance)) return { files: null, note: 'Language servers run on cloud computers only.' }
+  const batches = computerDiagnosticsBatches(paths)
+  if (!batches.length) return { files: null, note: '' }
+  const files: ComputerFileDiagnostics[] = []
+  const notes: string[] = []
+  await Promise.all(batches.map(async ({ paths: group }) => {
+    try {
+      const response = await runComputerDriverCommand(
+        instance,
+        'lsp_request',
+        { op: 'diagnostics', path: group[0], paths: group.slice(1), timeoutMs },
+        { requireDesktop: false },
+      )
+      files.push(...parseComputerDiagnostics(response))
+    } catch (err) {
+      notes.push(err instanceof Error ? err.message : 'The language server was unavailable.')
+    }
+  }))
+  if (!files.length && notes.length) return { files: null, note: notes[0]! }
+  return { files }
+}
+
+function computerDiagnosticsResult(
+  before: Awaited<ReturnType<typeof computerDiagnosticsFor>> | null,
+  after: Awaited<ReturnType<typeof computerDiagnosticsFor>> | null,
+): { diagnostics?: ComputerDiagnosticsSummary; diagnosticsNote?: string } {
+  if (!after) return {}
+  if (after.files === null) return after.note ? { diagnosticsNote: after.note } : {}
+  const baseline = before && before.files !== null ? before.files : null
+  return { diagnostics: summarizeComputerDiagnostics(baseline, after.files) }
+}
+
 /** Files larger than this are refused by computer_edit_file; rewrite them with computer_exec instead. */
 const COMPUTER_EDIT_MAX_BYTES = 2 * 1024 * 1024
 
 export async function executeComputerEditFile(
   options: OverlayToolsOptions,
-  input: { path: string; edits: ComputerEdit[]; expected_sha?: string; target?: ComputerTarget },
+  input: { path: string; edits: ComputerEdit[]; expected_sha?: string; diagnostics?: boolean; target?: ComputerTarget },
 ) {
+  const checkDiagnostics = input.diagnostics !== false && computerDiagnosticsBatches([input.path]).length > 0
   const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_edit_file' })
   if (!resolved.ok) return { success: false, error: resolved.error }
   try {
@@ -1392,10 +1445,15 @@ export async function executeComputerEditFile(
       if (latest === null || computerContentSha(latest) !== sha) {
         return { success: false as const, code: 'stale', error: `${input.path} changed while the edit was being applied. Nothing was written. Re-read and retry.` }
       }
+      const baseline = checkDiagnostics ? await computerDiagnosticsFor(instance, [input.path], COMPUTER_DIAGNOSTICS_BASELINE_MS) : null
       const written = new TextEncoder().encode(applied.text)
       await instance.writeFiles([{ path: input.path, contents: written }])
-      return { success: true as const, before, after: applied.text, replacements: applied.replacements, sha: computerContentSha(written) }
-    })
+      const checked = checkDiagnostics ? await computerDiagnosticsFor(instance, [input.path], COMPUTER_DIAGNOSTICS_AFTER_MS) : null
+      return {
+        success: true as const, before, after: applied.text, replacements: applied.replacements, sha: computerContentSha(written),
+        ...computerDiagnosticsResult(baseline, checked),
+      }
+    }, checkDiagnostics ? 90_000 : undefined)
     if (!outcome.success) return outcome
     const { diff, linesAdded, linesRemoved, truncated } = unifiedComputerDiff(input.path, outcome.before, outcome.after)
     return {
@@ -1408,6 +1466,8 @@ export async function executeComputerEditFile(
       diff,
       ...(truncated ? { diffTruncated: true } : {}),
       sha: outcome.sha,
+      ...(outcome.diagnostics ? { diagnostics: outcome.diagnostics } : {}),
+      ...(outcome.diagnosticsNote ? { diagnosticsNote: outcome.diagnosticsNote } : {}),
       computerId: resolved.computer.id,
     }
   } catch (err) {
@@ -1419,7 +1479,7 @@ const COMPUTER_PATCH_MAX_FILES = 50
 
 export async function executeComputerApplyPatch(
   options: OverlayToolsOptions,
-  input: { patch: string; target?: ComputerTarget },
+  input: { patch: string; diagnostics?: boolean; target?: ComputerTarget },
 ) {
   let operations
   try {
@@ -1452,6 +1512,9 @@ export async function executeComputerApplyPatch(
         if (err instanceof ComputerPatchError) return { success: false as const, code: 'patch_failed', error: `${err.message} Nothing was written.` }
         throw err
       }
+      const checkPaths = input.diagnostics === false ? [] : changes.flatMap(change => change.kind === 'delete' ? [] : [change.kind === 'update' && change.moveTo ? change.moveTo : change.path])
+      const existing = checkPaths.filter(path => files.get(path) !== null && files.get(path) !== undefined)
+      const baseline = existing.length ? await computerDiagnosticsFor(instance, existing, COMPUTER_DIAGNOSTICS_BASELINE_MS) : null
       // Nothing changed on disk between planning and writing, or the patch is refused.
       const latest = await load()
       for (const path of paths) {
@@ -1470,8 +1533,9 @@ export async function executeComputerApplyPatch(
           return { success: false as const, code: 'partial', error: `Files were written, but removing ${removals.join(', ')} failed: ${result.stderr.trim().slice(0, 300)}` }
         }
       }
-      return { success: true as const, changes }
-    })
+      const checked = checkPaths.length ? await computerDiagnosticsFor(instance, checkPaths, COMPUTER_DIAGNOSTICS_AFTER_MS) : null
+      return { success: true as const, changes, ...computerDiagnosticsResult(baseline, checked) }
+    }, input.diagnostics === false ? undefined : 90_000)
     if (!outcome.success) return outcome
     const files = outcome.changes.map((change) => {
       const before = change.kind === 'add' ? '' : change.before
@@ -1493,10 +1557,53 @@ export async function executeComputerApplyPatch(
       files,
       linesAdded: files.reduce((sum, file) => sum + file.linesAdded, 0),
       linesRemoved: files.reduce((sum, file) => sum + file.linesRemoved, 0),
+      ...(outcome.diagnostics ? { diagnostics: outcome.diagnostics } : {}),
+      ...(outcome.diagnosticsNote ? { diagnosticsNote: outcome.diagnosticsNote } : {}),
       computerId: resolved.computer.id,
     }
   } catch (err) {
     return computerErrorResult(err, 'Computer patch failed')
+  }
+}
+
+export type ComputerCodeNavAction = 'definition' | 'references' | 'hover' | 'symbols' | 'diagnostics'
+
+export async function executeComputerCodeNav(
+  options: OverlayToolsOptions,
+  input: { action: ComputerCodeNavAction; path: string; line?: number; column?: number; target?: ComputerTarget },
+) {
+  if (!input.path.startsWith('/')) return { success: false as const, code: 'invalid_input', error: 'path must be absolute.' }
+  if ((input.action === 'definition' || input.action === 'references' || input.action === 'hover') && (input.line === undefined || input.column === undefined)) {
+    return { success: false as const, code: 'invalid_input', error: `${input.action} needs line and column (1-based, as shown by computer_read_file).` }
+  }
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_code_nav' })
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  try {
+    const result = await resolved.operate(async (instance) => {
+      if (isLocalHostSandboxInstance(instance)) {
+        return { success: false as const, code: 'lsp_unsupported', error: 'computer_code_nav runs on cloud computers only. Use computer_grep on this computer instead.' }
+      }
+      const response = await runComputerDriverCommand(
+        instance,
+        'lsp_request',
+        {
+          op: input.action,
+          path: input.path,
+          ...(input.line !== undefined ? { line: input.line } : {}),
+          ...(input.column !== undefined ? { column: input.column } : {}),
+          timeoutMs: 20_000,
+        },
+        { requireDesktop: false },
+      )
+      if (input.action === 'diagnostics') {
+        const files = parseComputerDiagnostics(response)
+        return { success: true as const, action: input.action, language: response.language, ...(files[0] ?? { path: input.path, diagnostics: [], total: 0 }) }
+      }
+      return { success: true as const, action: input.action, ...response }
+    }, 60_000)
+    return { ...result, computerId: resolved.computer.id }
+  } catch (err) {
+    return computerErrorResult(err, 'Code navigation failed')
   }
 }
 
