@@ -1,0 +1,150 @@
+# Native surface checklist
+
+Status: inventory written 2026-11-22 from the `native-shell` code (`app/`, `components/`) and simulator testing against PR preview 595. It lists every page, sheet, drawer and menu a person can reach, and whether it uses native iOS chrome.
+
+Tick a row only after it has been checked in the simulator, in light and dark, at phone width.
+
+## What "native" means here
+
+A surface passes when:
+
+- **Header.** The title sits in the native navigation bar (`Stack` options or the tab-root header item). Buttons use `Stack.Toolbar`. There is no in-page heading, breadcrumb or back row, and no raw route name such as `dm/[id]` ever shows.
+- **Content.** The page body is a `ScrollView` or `FlatList` with `contentInsetAdjustmentBehavior="automatic"`.
+- **Sheets and forms.** These use a native `formSheet` / `pageSheet` route, or `@expo/ui` (`Form`, `Section`, `Picker`, `Toggle`). The JS `BottomSheet`, `ResourceSheet`, `WorkSheet` and `SheetModal` don't count.
+- **Choices.** Action choices are native menus: a toolbar menu, a context menu, or the `@expo/ui` `ContextMenu`. `Alert.alert` is only for a destructive confirmation.
+- **Controls.** Segmented controls are `NativeSegmented`. Toggles are a system `Switch` with default iOS colours (no custom `trackColor`/`thumbColor`). Date and time inputs use the native picker, not typed `YYYY-MM-DD` text.
+- **Loading and empty states.** Loading shows cached content or a skeleton, not a lone "Opening…" line. Errors are understandable and offer Retry; empty states use `CreatureEmpty`.
+- **Edits.** Changes save automatically, or the save action is a toolbar button. There are no full-width "Save changes" buttons at the bottom of a form.
+
+Status key:
+
+- **Native**: passes in code. Still tick it after a simulator check.
+- **Partial**: native shell with custom pieces inside.
+- **Custom**: hand-built chrome.
+- **Dead**: not reachable; delete it or wire it up.
+
+## 1. Tabs (tab roots)
+
+| ✓ | Surface | Route / file | Status | What to fix |
+| --- | --- | --- | --- | --- |
+| [ ] | Work | `app/(tabs)/work/index.tsx`, `components/work/WorkScreen.tsx`, `WorkViews.tsx` | Partial | <ul><li>Native header, toolbar menu and segmented control are fine.</li><li>The board's Move button should be drag or a context menu.</li><li>Task rows have no swipe or long-press.</li><li>Unassigned tasks show an empty grey avatar circle.</li></ul> |
+| [ ] | Agents | `app/(tabs)/agents/index.tsx`, `components/agents/AgentDirectory.tsx` | Native | Add a long-press context menu (Open, Edit, Archive). |
+| [ ] | Chats | `app/(tabs)/chats/index.tsx`, `components/chat/ChatsScreen.tsx`, `components/shell/SidebarView.tsx` | Partial | <ul><li>Scrolled rows slide under the title with no blur.</li><li>The shortcut cards keep a half-scrolled position.</li><li>Section collapse uses custom toggles.</li><li>No swipe, long-press or search.</li><li>The list is not virtualised.</li></ul> |
+| [ ] | Files | `app/(tabs)/files/index.tsx`, `components/knowledge/ResourceScreens.tsx` (`FilesBrowserScreen`) | Partial | <ul><li>Header search and `+` menu are native.</li><li>File options open a JS `ResourceSheet`; use a context menu instead.</li><li>No swipe or multi-select.</li></ul> |
+| [ ] | Search | `app/(tabs)/search/index.tsx`, `components/search/WorkspaceSearchScreen.tsx` | Partial | Result actions open a JS `ResourceSheet`; use a native menu. |
+
+## 2. Pushed pages
+
+| ✓ | Surface | Route / file | Status | What to fix |
+| --- | --- | --- | --- | --- |
+| [ ] | **Edit agent** | `app/agent/[id].tsx` (`headerShown: false`), `components/agents/AgentEditorScreen.tsx`, `AgentEditorView.tsx` | Custom | <ul><li>Custom back row and "Workspace › Agents" breadcrumb.</li><li>In-page "Edit agent" heading.</li><li>"Change appearance" is a grey button.</li><li>Recoloured switches look washed out.</li><li>The model field is a fake dropdown.</li><li>Full-width "Save changes" button.</li><li>The picker uses `SheetModal`.</li></ul>Rebuild as a native-header `@expo/ui` `Form`:<ul><li>Sections for Appearance, Name, Description, Model (`Picker`), Tools (`Toggle`s), Access, Archive.</li><li>Save from the toolbar, or autosave.</li></ul> |
+| [ ] | **Agent thread** | `app/dm/[id].tsx` → `components/agents/AgentThreadScreen.tsx`, `AgentThreadViews.tsx` | Partial | <ul><li>The header shows the raw route name `dm/[id]` while opening; set a title or the agent capsule straight away.</li><li>"Opening agent thread…" is a bare text line.</li><li>After editing an agent, its thread can show "This agent thread is unavailable in this workspace." Investigate: the thread or compatibility reload after an edit is suspected.</li><li>Composer focus needs two taps.</li></ul> |
+| [ ] | DM / channel / thread rooms | `app/dm/[id].tsx`, `app/channel/[id].tsx`, `app/thread/[id].tsx` → `components/chat/RoomScreen.tsx` | Partial | <ul><li>Native header.</li><li>Message actions, Members, Pinned and Saved open JS `BottomSheet`s; actions should be a native context menu on long-press, and the lists `pageSheet` routes.</li><li>Reactions are 4 fixed emoji.</li><li>8 `Alert.alert` calls.</li></ul> |
+| [ ] | Personal chat | `app/chat/[id].tsx`, `app/chat/index.tsx` → `components/chat/ChatScreen.tsx` | Partial | <ul><li>Native header.</li><li>Full-screen "Loading conversation…" spinner while sending.</li><li>The transcript is a DOM web view with no native long-press menu.</li><li>The composer attachment and tools sheets are JS `BottomSheet`s.</li><li>`DrawerSidebar` is still mounted, but nothing opens it.</li></ul> |
+| [ ] | Task detail | `app/(tabs)/work/[id].tsx` → `WorkViews.tsx` | Partial | <ul><li>Dates are typed text; use a native date picker.</li><li>The Comment button is loose centred text.</li><li>Inline fields aren't a native `Form`.</li></ul> |
+| [ ] | Organization | `app/(tabs)/work/organization.tsx` → `components/work/WorkOrganization.tsx` | Partial | Agent details use `SheetModal`; use a `pageSheet` route. |
+| [ ] | File detail | `app/(tabs)/files/file/[id].tsx` | Partial | File options use a JS sheet; use a toolbar menu. |
+| [ ] | Note (in Files) | `app/note/[id].tsx` → `components/knowledge/ResourceViews.tsx` note editor | Custom | <ul><li>Manual "Save changes" button in mid-screen.</li><li>Write/Preview switch.</li><li>Edits are lost when you go back.</li></ul>Autosave, use a toolbar Done, and add a native keyboard toolbar for formatting. |
+| [ ] | Output detail | `app/(tabs)/files/output/[id].tsx` | Native | Check that the toolbar actions match web (download, share). |
+| [ ] | Memory detail | `app/(tabs)/files/memory/[id].tsx` | Partial | Toolbar Save is fine; 3 `Alert.alert` calls. |
+| [ ] | Settings | `app/settings.tsx` → `components/settings/SettingsScreen.tsx`, `SettingsViews.tsx` | Custom | <ul><li>A flat custom list instead of native grouped rows.</li><li>Sub-pages are drawn by hand.</li><li>`ResourceSheet` pickers.</li></ul>Rebuild as an `@expo/ui` `Form` with `Section`s and pushed sub-pages. Sub-pages: account, billing, help, members, memories, models, notifications, push-permission, voice, webhooks. |
+| [ ] | Settings › Providers | `components/settings/ProvidersSection.tsx` | Custom | Two JS `BottomSheet`s (Provider, Add provider), `SheetButton`s and 5 `Alert.alert` calls. |
+| [ ] | Settings › Webhooks | `components/settings/WebhooksSection.tsx` | Custom | Two JS `BottomSheet`s, 9 `Alert.alert` calls and no accessibility labels. |
+| [ ] | Settings › Subscription connection | `components/settings/SubscriptionSheet.tsx` | Custom | `ResourceSheet`. |
+| [ ] | Settings › Room notifications | `components/settings/RoomNotifications.tsx` | Custom | `ResourceSheet`; saving throws "not available on mobile yet". |
+| [ ] | Settings › Billing | `SettingsViews.tsx` (billing) | Partial | <ul><li>Read-only.</li><li>Raw values: "Not initialized", lowercase "active", and credits as bare numbers.</li><li>No upgrade or top-up path.</li></ul> |
+| [ ] | Automations | `app/automations.tsx` → `components/automations/AutomationBrowserScreen.tsx` | Partial | <ul><li>Native header.</li><li>Empty state is bare text.</li><li>`ResourceSheet` actions.</li></ul> |
+| [ ] | Automation detail | `components/automations/AutomationDetailSheet.tsx` | Custom | JS `BottomSheet` and 7 `Alert.alert` calls; make it a pushed page or `pageSheet`. |
+| [ ] | Automation editor | `components/automations/AutomationEditorSheet.tsx` | Custom | <ul><li>JS `BottomSheet` with no close button.</li><li>Interval and time are typed text; use native pickers.</li><li>No agent or model choice.</li></ul> |
+| [ ] | Automation run | `components/automations/AutomationRunSheet.tsx` | Custom | JS `BottomSheet`. |
+| [ ] | Extensions | `app/tools.tsx` → `components/tools/ToolsScreen.tsx` | Partial | <ul><li>Native header and segmented control.</li><li>Skill and app editors use JS `BottomSheet`s.</li><li>10 `Alert.alert` calls.</li><li>Delete has no confirmation.</li><li>`EmptyState` instead of `CreatureEmpty`.</li></ul> |
+| [ ] | MCP server detail | `components/tools/McpDetailSheet.tsx` | Custom | JS `BottomSheet` and 7 `Alert.alert` calls. |
+| [ ] | Activity | `app/activity.tsx` → `components/chat/ActivityScreen.tsx` | Partial | Native header and segmented control; no swipe to mark read. |
+| [ ] | Archived | `app/archived.tsx` → `components/chat/ArchivedScreen.tsx` | Partial | Long-press uses `Alert.alert` with the hint "Long-press a chat to unarchive"; use a native context menu. |
+| [ ] | Workspace | `app/workspace.tsx` → `components/workspace/WorkspaceScreen.tsx` | Partial | <ul><li>Native header.</li><li>Four JS `BottomSheet`s (member actions, invite, team, billing).</li><li>Ten spinners.</li><li>Unreachable from the UI (see P0 #1 in the parity audit).</li></ul> |
+| [ ] | Slack import | `components/workspace/SlackImportPanel.tsx` | Custom | Hand-built steps. |
+| [ ] | Voice | `app/voice.tsx` → `components/voice/VoiceScreen.tsx` | Custom | <ul><li>No stack header (the root default hides it).</li><li>`MainScreenHeader` plus `DrawerSidebar`.</li><li>Custom toggles.</li></ul>Give it a native header and a `Form`. |
+| [ ] | Notes | `app/notes.tsx` → `components/notes/NotesEditorScreen.tsx`, `NoteEditor.tsx` | Custom | `MainScreenHeader` plus `DrawerSidebar` and no stack header. Only reachable by deep link; remove it or merge it into Files. |
+| [ ] | Invitation | `app/invitations/[id].tsx` | Custom | <ul><li>Floating card with no native header.</li><li>Doesn't name the workspace, inviter or role.</li></ul>Use a native header with a `Form` summary and Accept and Decline buttons. |
+| [ ] | Shared chat link | `app/share/c/[token].tsx` | Custom | Opens the web page in the in-app browser. |
+
+## 3. Native sheets (routes)
+
+| ✓ | Surface | Route / file | Status | What to fix |
+| --- | --- | --- | --- | --- |
+| [ ] | Account | `app/account.tsx` (`formSheet`, `@expo/ui` `Form`) | Native | <ul><li>The workspace switcher shows only with 2+ workspaces.</li><li>No Manage or New workspace rows.</li><li>Sign-out logs an unhandled `POP`.</li></ul> |
+| [ ] | New agent | `app/agent-create.tsx` (`formSheet`) | Native | First-tap focus on its fields. |
+| [ ] | Agent profile | `components/agents/AgentProfileSheet.tsx` (RN `Modal`) | Partial | Make it a `pageSheet` route so it gets native detents and dismissal. |
+
+## 4. JS sheets and modals to convert
+
+Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacing with a menu.
+
+| ✓ | Sheet | File | Opened from | Better native form |
+| --- | --- | --- | --- | --- |
+| [ ] | Chat options (rename, share, archive, delete, temporary) | `components/chat/ChatActionsSheet.tsx` | Chat header `…` | Toolbar menu |
+| [ ] | Composer attach / tools / mode | `components/chat/Composer.tsx` (2 sheets) | Composer `+` and tools chip | Native menu |
+| [ ] | Model picker | `components/chat/ModelPicker.tsx` | Composer model chip | `pageSheet` route (already looks right; check the X resets the model) |
+| [ ] | Draft review | `components/chat/DraftReviewSheet.tsx` | Draft card | `pageSheet` |
+| [ ] | New DM | `components/chat/NewDirectMessageSheet.tsx` | Chats `+` menu | `formSheet` route |
+| [ ] | New channel | `components/chat/NewChannelSheet.tsx` | Chats `+` menu | `formSheet` route with a `Form` |
+| [ ] | Room message actions | `components/chat/RoomScreen.tsx` | Long-press a message | Context menu |
+| [ ] | Room members / pinned / saved | `components/chat/RoomScreen.tsx` | Room header menu | `pageSheet` |
+| [ ] | Share | `components/workspace/ShareSheet.tsx` | File and chat options | `pageSheet` with a `Form` |
+| [ ] | Create workspace | `components/workspace/CreateWorkspaceSheet.tsx` | Old drawer only | `formSheet` route from the account sheet |
+| [ ] | Workspace switcher | `components/workspace/WorkspaceSwitcher.tsx` | Old drawer only (dead) | Delete; the account sheet replaces it |
+| [ ] | Connect a machine | `components/agents/ConnectMachineSheet.tsx` | Agent editor | `formSheet` |
+| [ ] | Agent editor picker | `components/agents/AgentEditorView.tsx` (`SheetModal`) | Edit agent | `@expo/ui` `Picker` in the `Form` |
+| [ ] | Agent computer viewer | `components/agents/AgentComputerPreview.tsx` (RN `Modal`) | Agent profile | `fullScreenModal` route |
+| [ ] | Upgrade prompt | `components/auth/UpgradePrompt.tsx` (RN `Modal`) | Locked model | `formSheet` |
+| [ ] | Work new task / schedule / move / organization | `components/work/WorkScreen.tsx`, `WorkViews.tsx`, `WorkTaskActions.tsx`, `WorkOrganization.tsx` (`SheetModal` + `WorkSheet`) | Work toolbar and task actions | `formSheet` routes with `Form` and native date pickers |
+| [ ] | Files options / new folder / rename / move | `components/knowledge/ResourceScreens.tsx` (`ResourceSheet`) | Files `+` and file options | Native menu, plus an `Alert.prompt` or `formSheet` for names |
+| [ ] | Settings pickers | `components/settings/SettingsScreen.tsx` (`ResourceSheet` ×2) | Settings rows | `@expo/ui` `Picker` |
+| [ ] | Search result actions | `components/search/WorkspaceSearchScreen.tsx` (`ResourceSheet`) | Person result | Context menu |
+| [ ] | Skill editor / app connect | `components/tools/ToolsScreen.tsx` (3 sheets) | Extensions | `formSheet` routes |
+
+## 5. Menus and confirmations
+
+- [ ] Replace `Alert.alert` used as an action list with native menus. There are 112 calls across 35 files. The heaviest are:
+  - `ToolsScreen` (10)
+  - `WebhooksSection` (9)
+  - `RoomScreen` (8)
+  - `McpDetailSheet` (7)
+  - `AutomationDetailSheet` (7)
+  - `FilesTree` (7)
+  - `MemoriesList` (6)
+  - `ProvidersSection` (5)
+- [ ] Use `Alert.alert` only for destructive confirmations. Show non-blocking errors inline or as a toast.
+- [ ] Add long-press context menus to the rows of Chats, Agents, Work tasks, Files and Activity.
+- [ ] Add swipe actions: archive a chat, mark Activity read, complete a task.
+
+## 6. Drawers and dead surfaces
+
+| ✓ | Surface | File | Action |
+| --- | --- | --- | --- |
+| [ ] | Drawer sidebar | `components/chat/DrawerSidebar.tsx` (mounted by `ChatScreen`, `FilesScreen`, `NotesEditorScreen`, `VoiceScreen`, `PlaceholderScreen`; nothing opens it) | Delete it, and move Manage/New workspace into the account sheet. |
+| [ ] | Old account sheet | `components/shell/AccountSheet.tsx` | Delete (`app/account.tsx` replaces it). |
+| [ ] | Chat history sheet | `components/chat/ChatHistorySheet.tsx` | Delete, or wire it up as a native history menu. |
+| [ ] | Legacy files UI | `components/knowledge/FilesScreen.tsx`, `FilesTree.tsx`, `OutputsGallery.tsx`, `MemoriesList.tsx` | Reuse the parts the live Files tab lacks (Outputs, multi-select), then delete. |
+| [ ] | Other unused | `MessageBubble.tsx`, `SharedMarkdownConversation.tsx`, `EnvironmentsPanel.tsx`, `settings/ComputersSection.tsx`, `settings/ModelsSection.tsx`, `work/WorkHeader.tsx`, `ui/PlaceholderScreen.tsx`, `AppChrome` `MainScreenHeader` | Delete, or wire up Computers and Environments as native Settings pages. |
+
+## 7. Entry and system screens
+
+| ✓ | Surface | Route | Status | Check |
+| --- | --- | --- | --- | --- |
+| [ ] | Boot / opening workspace | `app/index.tsx`, `components/shell/SessionGate.tsx` | Custom by design | Every deep link reboots through "Opening Workspace…"; links should navigate in place. |
+| [ ] | Welcome and sign-in | `app/auth-flow.tsx` (`fullScreenModal`) | Custom by design | Check light and dark mode, and that the sign-in button uses a system web auth session. |
+| [ ] | Auth callbacks | `app/auth/callback.tsx`, `app/auth/native/callback.tsx`, `app/auth/transfer.tsx` | Spinner | Show a branded loading state, not a bare spinner. |
+| [ ] | Onboarding | `app/onboarding.tsx` (`fullScreenModal`) | Custom by design | Check paging, haptics and the notification prompt. |
+| [ ] | Deep-link routing | `app/+native-intent.tsx`, `lib/incomingLinks.ts` | — | Add `overlay://account` and `/workspace`. |
+
+## Cross-cutting checks for every surface
+
+- [ ] Light and dark mode both work; dark mode uses grey surfaces, not black cards.
+- [ ] The title never shows a raw route name.
+- [ ] The first tap focuses a text field, and no iOS "AutoFill" bubble appears on non-credential fields.
+- [ ] Keyboard: the field and its submit button stay visible, and the keyboard dismisses on scroll.
+- [ ] Every button and row has an accessibility label.
+- [ ] Haptics fire on selection and on success.
+- [ ] Loading never blanks a screen that has cached data.
+- [ ] Empty and error states use `CreatureEmpty`, centred in the visible area, with a Retry where it applies.
