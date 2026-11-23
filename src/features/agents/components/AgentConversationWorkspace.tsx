@@ -45,6 +45,7 @@ import { useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
 import { captureNavigationIntent } from '@/shared/app/navigation-intent'
+import { useOnboardingHandoffReady } from '@/components/providers/OnboardingHandoff'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -434,6 +435,7 @@ function AgentConversationWorkspaceContent() {
     requestedScope,
     scope,
   })
+  useOnboardingHandoffReady(requestedThreadId, detailState === 'unavailable' || (detailState === 'ready' && !threadScope.pending))
   if (detailState === 'unavailable') {
     return (
       <ChatSurfaceEmptyState

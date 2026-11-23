@@ -1,37 +1,26 @@
 'use client'
 
-import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 
-type WorkHandoff = { taskId: string; onReady(): void; onTaskMissing(): void }
-const WorkHandoffContext = createContext<WorkHandoff | null>(null)
+type Handoff = { conversationId: string; onReady(): void; onConversationMissing(): void }
+const HandoffContext = createContext<Handoff | null>(null)
 
-export function OnboardingWorkHandoff({ pending, children }: { pending: WorkHandoff | null; children: ReactNode }) {
-  return <WorkHandoffContext.Provider value={pending}>
+/** Keeps the finished onboarding conversation over the page it hands off to until that page has painted. */
+export function OnboardingHandoff({ pending, children }: { pending: Handoff | null; children: ReactNode }) {
+  return <HandoffContext.Provider value={pending}>
     <div className={pending ? 'absolute inset-0 z-0' : 'contents'} aria-hidden={Boolean(pending)} inert={Boolean(pending)}>{children}</div>
-  </WorkHandoffContext.Provider>
+  </HandoffContext.Provider>
 }
 
-export function useOnboardingWorkReady(taskId: string | null, ready: boolean) {
-  const pending = useContext(WorkHandoffContext)
-  const content = useRef<HTMLDivElement>(null)
+export function useOnboardingHandoffReady(conversationId: string | null, ready: boolean) {
+  const pending = useContext(HandoffContext)
   useEffect(() => {
     if (!pending || !ready) return
-    if (taskId !== pending.taskId) {
-      pending.onTaskMissing()
+    if (conversationId !== pending.conversationId) {
+      pending.onConversationMissing()
       return
     }
-    let frame = 0
-    const afterPaint = () => {
-      const panel = content.current?.closest<HTMLElement>('[data-slot="app-screen-right-panel"]')
-      if (panel && (panel.getAttribute('aria-hidden') === 'true'
-        || Number(getComputedStyle(panel).opacity) < 1 || panel.getBoundingClientRect().width === 0)) {
-        frame = requestAnimationFrame(afterPaint)
-        return
-      }
-      frame = requestAnimationFrame(pending.onReady)
-    }
-    frame = requestAnimationFrame(afterPaint)
+    let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(pending.onReady) })
     return () => cancelAnimationFrame(frame)
-  }, [pending, ready, taskId])
-  return content
+  }, [pending, ready, conversationId])
 }

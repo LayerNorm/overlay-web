@@ -28,7 +28,6 @@ import { WorkAssignmentGroup, WorkAssignmentPeek } from './WorkAssignments'
 import { useLiveAssignments } from '../lib/use-live-work'
 import { matchesAssignmentQuery } from '@/shared/work/assignment-state'
 import type { AssignmentExecution } from '@/shared/work/assignment-execution'
-import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 
 function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
   return (
@@ -138,7 +137,6 @@ function WorkScreen() {
   const title = WORK_VIEW_LABELS[view]
   const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
-  useOnboardingWorkReady(taskId, state === 'error' || state === 'signed_out' || (loaded && !taskId))
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || (visible.length === 0 && assignmentItems.length === 0)
 
@@ -186,8 +184,6 @@ function WorkScreen() {
 }
 
 function WorkUnavailable() {
-  const { taskId } = useWorkUrlState()
-  useOnboardingWorkReady(taskId, true)
   return (
     <AppScreenShell>
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center px-6">

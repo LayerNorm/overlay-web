@@ -451,7 +451,7 @@ test('a verified first task completes onboarding durably', async () => {
   assert.deepEqual(retry, result)
   assert.equal(f.messages.length, messageCount)
   assert.equal((await f.service.get('user-1', 'workspace-1')).completed, true)
-  assert.equal(f.messages.at(-1)?.content, "Your first task is now in Work. I'll keep you updated there.")
+  assert.equal(f.messages.at(-1)?.content, "Your first task is running. You can follow it in Work, and ask me anything here.")
 })
 
 test('a lost Start response recovers from the durable assignment even after billing closes', async () => {
@@ -484,7 +484,7 @@ test('GET recovers a completed final transcript outbox after a write failure', a
   assert.equal(result.session?.taskId, 'task-1')
   assert.deepEqual(f.messages.slice(-2).map((message) => message.content), [
     'Review the launch plan',
-    "Your first task is now in Work. I'll keep you updated there.",
+    "Your first task is running. You can follow it in Work, and ask me anything here.",
   ])
 })
 

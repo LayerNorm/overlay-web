@@ -15,7 +15,6 @@ import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { formatAgo } from '@/shared/work/activity'
-import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 import { eligibleParents } from '../lib/work-state'
 import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Section, WaitingOnSection } from './WorkPeekSections'
 import { useWorkData } from './WorkDataProvider'
@@ -212,11 +211,10 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   const { item, missing } = useWorkTask(taskId)
   const { viewer, canWork, updateTask, moveTask } = useWorkData()
   const scopeMatches = useScopeFollowsTask(item)
-  const handoffContent = useOnboardingWorkReady(taskId, scopeMatches && (Boolean(item) || missing))
   useEscapeToClose(onClose)
 
   if (missing) {
-    return <PanelMessage title="Task" onClose={onClose}><div ref={handoffContent} className="px-6 py-10 text-center text-sm text-(--muted)">This task is not available. It may have been deleted, or it belongs to someone else.</div></PanelMessage>
+    return <PanelMessage title="Task" onClose={onClose}><div className="px-6 py-10 text-center text-sm text-(--muted)">This task is not available. It may have been deleted, or it belongs to someone else.</div></PanelMessage>
   }
   if (!item || !scopeMatches) {
     // The loaded panel's shape: the title in the header, then the property grid.
@@ -269,7 +267,7 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
         </AppScreenSidePanelHeader>
       )}
     >
-      <div ref={handoffContent} className="px-7 pb-10 pt-2">
+      <div className="px-7 pb-10 pt-2">
         {archived ? (
           <div className="mb-5 flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-[13px] text-(--muted)" data-testid="work-archived-note">
             <Undo2 size={14} aria-hidden />
