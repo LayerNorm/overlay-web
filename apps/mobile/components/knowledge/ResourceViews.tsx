@@ -106,7 +106,7 @@ export function ResourcePage({
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
         style={{ backgroundColor: theme.background }}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
       >
         {children}
       </ScrollView>

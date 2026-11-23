@@ -192,7 +192,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           </Button>
         </View>
       ) : data.error || unavailable ? (
-        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ flex: 1 }}>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
           <CreatureEmpty
             title={id ? 'Task unavailable' : 'Work is unavailable'}
             detail={

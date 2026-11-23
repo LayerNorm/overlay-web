@@ -33,10 +33,12 @@ Severity:
 - The agents list shows "Personal's Overlay" twice. Check the data vs deduping in the UI.
 
 ### Agents
-- No per-agent thread list with status (Working, Needs you, Ready to review, Paused) or PR badges.
+- No per-agent thread list or PR badges. (The Agents tab now shows each agent's live status: Working, Needs you, Ready to review.)
 - The agent composer is text only: no attachments, mentions or model choice.
 - The Computer viewer is view-only; web has take control and open in new tab. The profile's "Computer" row opens the web app.
-- Creating an agent sets only avatar and name. No permission level, computer size, templates, or connected-agent setup.
+- Creating an agent sets avatar, name and what it helps with. No permission level, computer size, templates, or connected-agent setup yet.
+- Possible: in the simulator the new agent saved as "Tr" though the field showed "Trip Planner" (fast synthetic typing into a controlled field). Recheck on a device.
+- While opening a new agent's chat, the header briefly shows the raw route name "dm/[id]".
 - No long-press menu on agent cards.
 
 ### Work

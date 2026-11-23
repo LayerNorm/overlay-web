@@ -20,6 +20,7 @@ export function FeatureGate({
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       style={{ flex: 1, backgroundColor: theme.background }}
+      contentContainerStyle={{ flexGrow: 1 }}
     >
       <CreatureEmpty title={title} detail={description} shape="squircle" color="#94a3b8" />
     </ScrollView>

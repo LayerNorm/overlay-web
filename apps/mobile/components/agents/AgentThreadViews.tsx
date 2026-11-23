@@ -36,6 +36,7 @@ import {
   formatRunAnswers,
 } from '../../lib/agentThread'
 import { AgentAvatar } from '../shell/AgentAvatar'
+import { creatureEyeColor, hexToRgb, themeCreatureFills } from '../../lib/agentCreature'
 import { Button, IconButton, T } from '../shell/primitives'
 import { WorkMarkdown } from '../work/WorkMarkdown'
 
@@ -783,6 +784,25 @@ function ReplyActions({ theme, text, workedFor }: { theme: Theme; text: string; 
   )
 }
 
+/**
+ * Your messages to an agent wear its body color, so each conversation reads as
+ * that agent's. The default Overlay agent is monochrome and keeps the neutral
+ * bubble; text contrast follows the creature's eye rule.
+ */
+function agentBubbleColors(
+  agent: { isDefault?: boolean; avatarColor?: string },
+  dark: boolean,
+  theme: Theme,
+): { background: string; text: string } {
+  // Unparseable (non-hex) colors keep the neutral bubble rather than guess contrast.
+  if (agent.isDefault || !agent.avatarColor || !hexToRgb(agent.avatarColor)) {
+    return { background: theme.surfaceSubtle as string, text: theme.foreground as string }
+  }
+  const fills = themeCreatureFills(agent.avatarColor)
+  const background = dark ? fills.dark : fills.light
+  return { background, text: creatureEyeColor(background) }
+}
+
 export function AgentThreadView({
   agent,
   messages,
@@ -811,6 +831,7 @@ export function AgentThreadView({
   onOlder?: () => void
 }) {
   const headerHeight = useHeaderHeight()
+  const bubble = agentBubbleColors(agent, dark, theme)
   const [draft, setDraft] = useState('')
   const [failure, setFailure] = useState('')
   const [busy, setBusy] = useState(false)
@@ -915,12 +936,12 @@ export function AgentThreadView({
                   maxWidth: '82%',
                   paddingHorizontal: 16,
                   paddingVertical: 10,
-                  backgroundColor: theme.surfaceSubtle,
+                  backgroundColor: bubble.background,
                   borderRadius: 22,
                   borderCurve: 'continuous',
                 }}
               >
-                <T selectable style={{ color: theme.foreground, fontSize: 16, lineHeight: 22 }}>
+                <T selectable style={{ color: bubble.text, fontSize: 16, lineHeight: 22 }}>
                   {message.content}
                 </T>
               </View>
@@ -1142,86 +1163,3 @@ export function AgentDetailsView({
   )
 }
 
-export function AgentDirectoryView({
-  agents,
-  theme,
-  dark,
-  onOpen,
-  onCreate,
-}: {
-  agents: AgentRecord[]
-  theme: Theme
-  dark: boolean
-  onOpen: (agent: AgentRecord) => void
-  onCreate?: () => void
-}) {
-  // Default agent first, then the rest as the directory orders them.
-  const ordered = [...agents.filter((agent) => agent.isDefault), ...agents.filter((agent) => !agent.isDefault)]
-  const card = {
-    flexBasis: '47%' as const,
-    flexGrow: 1,
-    maxWidth: '50%' as const,
-    minHeight: 172,
-    padding: 16,
-    gap: 12,
-    borderRadius: 24,
-    borderCurve: 'continuous' as const,
-  }
-  return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={{ padding: 16, paddingBottom: 32, flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}
-    >
-      {ordered.map((agent) => (
-        <Pressable
-          key={agent.id}
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${agent.name}`}
-          onPress={() => onOpen(agent)}
-          style={({ pressed }) => ({
-            ...card,
-            backgroundColor: pressed ? theme.surfaceMuted : theme.surfaceSubtle,
-            transform: [{ scale: pressed ? 0.98 : 1 }],
-          })}
-        >
-          <AgentAvatar agent={agent} dark={dark} foreground={theme.foreground} size={56} />
-          <View style={{ flex: 1, justifyContent: 'flex-end', gap: 3 }}>
-            <T numberOfLines={1} style={{ color: theme.foreground, fontSize: 16, fontFamily: 'GeistSemibold' }}>
-              {agent.name}
-            </T>
-            <T numberOfLines={2} style={{ color: theme.muted, fontSize: 13, lineHeight: 18 }}>
-              {agent.isDefault ? 'Your AI Chief of Staff' : agent.description || 'Ready when you are'}
-            </T>
-          </View>
-        </Pressable>
-      ))}
-      {onCreate ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New agent"
-          onPress={onCreate}
-          style={({ pressed }) => ({
-            ...card,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderStyle: 'dashed',
-            borderColor: theme.border,
-            backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
-          })}
-        >
-          <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceSubtle }}>
-            <Image source="sf:plus" style={{ width: 20, height: 20 }} contentFit="contain" tintColor={theme.foreground as string} />
-          </View>
-          <T style={{ color: theme.foreground, fontSize: 15, fontFamily: 'GeistMedium' }}>New agent</T>
-        </Pressable>
-      ) : null}
-      {!agents.length && !onCreate ? (
-        <T style={{ color: theme.muted, textAlign: 'center', padding: 48, flex: 1 }}>
-          No agents in this workspace.
-        </T>
-      ) : null}
-    </ScrollView>
-  )
-}

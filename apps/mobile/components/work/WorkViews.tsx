@@ -303,7 +303,7 @@ export function WorkListView({
           </View>
         ))
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}>
       {nativeLayout ? (
         <View style={{ paddingTop: 4, paddingBottom: 4, paddingHorizontal: 16 }}>
           <NativeSegmented

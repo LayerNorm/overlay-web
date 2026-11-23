@@ -33,11 +33,8 @@ import {
   compareRoomMessageRecords,
   type RoomMessageRecord,
 } from '../../lib/roomMessages'
-import {
-  AgentDirectoryView,
-  AgentThreadView,
-  type AgentActions,
-} from './AgentThreadViews'
+import { AgentThreadView, type AgentActions } from './AgentThreadViews'
+import { AgentDirectoryView } from './AgentDirectory'
 import { RoomScreen } from '../chat/RoomScreen'
 import { T, Button } from '../shell/primitives'
 import { ConversationHeader, TabToolbar } from '../navigation/nativeHeader'
@@ -589,6 +586,7 @@ function ConnectedAgentDirectory({
       </TabToolbar>
       <AgentDirectoryView
         agents={directory}
+        workspaceId={workspaceId}
         theme={theme}
         dark={isDark}
         onCreate={canCreate ? () => router.push('/agent-create') : undefined}
