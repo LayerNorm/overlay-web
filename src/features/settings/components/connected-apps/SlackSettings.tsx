@@ -141,6 +141,8 @@ export function SlackSettings() {
         </SettingsAppRow>
       </SettingsGroup>
       {canManage && listMode ? (
+        <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-(--muted)">Linked members</h3>
         <SettingsGroup>
           {people.length === 0
             ? <SettingsAppRow icon={<UsersRound size={15} />} title="No linked members yet" description="People appear here once they link their Slack account." />
@@ -166,6 +168,7 @@ export function SlackSettings() {
               )
             })}
         </SettingsGroup>
+        </section>
       ) : null}
       <ConfirmDialog
         isOpen={confirming}
