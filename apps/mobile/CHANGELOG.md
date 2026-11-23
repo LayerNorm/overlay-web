@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rebuild Settings as native iOS forms. The home page is a grouped list with an inline Appearance picker, and each section (Memories, Members, Models and connections, Billing, Notifications, Webhooks, Voice, Account, Help) opens as its own screen with the system back button and swipe-back, instead of swapping content inside one hand-drawn page. Notification banners and voice input use system switches, transcription retention is an inline picker, Billing shows labelled rows with readable status, and the notification prompt is a centred page. Account shows your real name and email (it fell back to "User" and a blank email when the account record lacked them), and renaming yourself works: the app no longer adds its token and user id to request bodies, which the profile route's strict validation rejected as "Invalid request".
 - Rebuild Edit agent as a native iOS form. It now has a real navigation bar with Chat and a ✓ to save, and one grouped form for:
   - the creature's look
   - name and what the agent helps with

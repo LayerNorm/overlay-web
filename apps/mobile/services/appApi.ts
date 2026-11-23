@@ -237,7 +237,9 @@ async function sendAppRequest(
       let body: BodyInit | undefined = options.formData
       if (!body && options.json) {
         headers.set('Content-Type', 'application/json')
-        body = JSON.stringify({ ...options.json, accessToken: session?.accessToken, userId: session?.user.id })
+        // Identity travels in the Authorization header (and `userId` query);
+        // copying it into the body made strict request schemas reject it.
+        body = JSON.stringify(options.json)
       }
       return fetch(createUrl(path, session, options.query), {
         method: options.method ?? 'GET', headers, body, signal: controller?.signal,

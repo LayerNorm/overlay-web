@@ -53,7 +53,9 @@ test('JSON requests retry once with refreshed credentials and the same idempoten
   const response = await state.service.appRequest('/api/v1/example', { method: 'POST', json: { turnId: 'turn' }, headers: { 'Idempotency-Key': 'stable-turn' } })
   assert.equal(response.status, 200)
   assert.equal(state.calls.length, 2)
-  assert.equal(JSON.parse(state.calls[1].init.body).accessToken, 'new')
+  // The refreshed token rides in the Authorization header; the body is the caller's JSON only.
+  assert.equal(state.calls[1].init.headers.get('Authorization'), 'Bearer new')
+  assert.deepEqual(JSON.parse(state.calls[1].init.body), { turnId: 'turn' })
   assert.equal(state.calls[1].init.headers.get('Idempotency-Key'), 'stable-turn')
 })
 

@@ -438,21 +438,19 @@ function nodes(tree) {
     : [tree, ...(tree.props?.children ?? []).flat(Infinity).flatMap(nodes)]
 }
 function views(h) {
+  const names = new Proxy({}, { get: (_, key) => key })
   return load('components/settings/SettingsViews.tsx', {
     react: h.react,
-    'react-native': new Proxy({}, { get: (_, key) => key }),
-    'lucide-react-native': new Proxy({}, { get: (_, key) => key }),
-    '../knowledge/ResourceViews': {
-      ResourceHeading: 'Heading',
-      ResourceLabel: 'Label',
-      ResourceRow: 'Row',
-      ResourceState: 'State',
-    },
-    '../shell/primitives': { T: 'T', Button: 'Button' },
+    'react-native': names,
+    'expo-router': { Stack: { Screen: 'Screen' } },
+    '@expo/ui/swift-ui': names,
+    '@expo/ui/swift-ui/modifiers': new Proxy({}, { get: (_, key) => (...args) => ({ modifier: key, args }) }),
+    '../knowledge/ResourceViews': { ResourceState: 'State' },
     '../shell/AgentAvatar': { AgentAvatar: 'AgentAvatar' },
     './SettingsPrompts': { PushPrePrompt: 'PushPrePrompt' },
   })
 }
+const text = (tree) => JSON.stringify(tree)
 test('Settings views cover all ten pages, empty/error states and billing has no purchasing actions', () => {
   const h = hooks(),
     { SettingsView, SETTINGS_PAGES } = views(h)
@@ -460,10 +458,11 @@ test('Settings views cover all ten pages, empty/error states and billing has no 
     props = { theme: {}, data: {}, actions }
   for (const page of ['settings', ...SETTINGS_PAGES.map((row) => row[0]), 'push-permission']) {
     const tree = h.render(SettingsView, { ...props, page })
-    assert.ok(nodes(tree).some((node) => node.type === 'Heading'))
+    // Every page names itself in the native navigation bar.
+    assert.ok(nodes(tree).some((node) => node.type === 'Screen' && node.props.options?.title))
   }
   const empty = h.render(SettingsView, { ...props, page: 'memories' })
-  assert.ok(nodes(empty).some((node) => node.props.empty === 'No memories yet.'))
+  assert.match(text(empty), /No memories yet/)
   const failure = h.render(SettingsView, {
     ...props,
     page: 'models',
@@ -615,19 +614,18 @@ test('failed profile saves keep the edited name; retry can succeed without chang
     },
   }
   const render = () => h.render(SettingsView, props)
+  const save = () => nodes(render()).find((node) => node.type === 'Button' && node.props.label === 'Save name')
+  assert.equal(save(), undefined)
   nodes(render())
-    .find((node) => node.type === 'TextInput')
-    .props.onChangeText('Changed')
-  nodes(render())
-    .find((node) => node.type === 'Button' && node.props.children.includes('Save changes'))
-    .props.onPress()
+    .find((node) => node.type === 'TextField')
+    .props.onValueChange('Changed')
+  save().props.onPress()
   await new Promise(setImmediate)
-  assert.equal(nodes(render()).find((node) => node.type === 'TextInput').props.value, 'Changed')
-  assert.ok(nodes(render()).some((node) => node.props.error === 'Offline'))
+  // The edit survives a failed save (the field is rebuilt from it) and can be retried.
+  assert.equal(nodes(render()).find((node) => node.type === 'TextField').props.defaultValue, 'Changed')
+  assert.match(text(render()), /Offline/)
   fail = false
-  nodes(render())
-    .find((node) => node.type === 'Button' && node.props.children.includes('Save changes'))
-    .props.onPress()
+  save().props.onPress()
   await new Promise(setImmediate)
   assert.equal(saved, 'Changed')
 })

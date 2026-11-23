@@ -1,25 +1,32 @@
 import React, { useState } from 'react'
-import { Image, Pressable, Switch, TextInput, View } from 'react-native'
+import { ActivityIndicator, Image as RNImage, Text as RNText, ScrollView, View } from 'react-native'
+import { Stack } from 'expo-router'
 import {
-  Bell,
-  BookOpen,
-  Sparkles,
-  Bot,
-  CircleHelp,
-  CreditCard,
-  ExternalLink,
-  Mail,
-  Mic,
-  MoreHorizontal,
-  Plus,
-  Settings,
-  Shield,
-  Trash2,
-  User,
-  Users,
-  Webhook,
-  Zap,
-} from 'lucide-react-native'
+  Button,
+  Form,
+  HStack,
+  Host,
+  Image as Symbol,
+  LabeledContent,
+  Picker,
+  RNHostView,
+  Section,
+  Spacer,
+  Text,
+  TextField,
+  Toggle,
+} from '@expo/ui/swift-ui'
+import {
+  foregroundStyle,
+  frame,
+  lineLimit,
+  pickerStyle,
+  submitLabel,
+  tag,
+  textInputAutocapitalization,
+  tint,
+} from '@expo/ui/swift-ui/modifiers'
+import type { SFSymbol } from 'sf-symbols-typescript'
 import type { Theme } from '../../constants/theme'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { PushPrePrompt } from './SettingsPrompts'
@@ -28,27 +35,22 @@ import type {
   WorkspaceBillingSummaryResponse,
   WorkspaceManagementItem,
 } from '@overlay/workspace-contracts'
-import {
-  ResourceHeading,
-  ResourceLabel,
-  ResourceRow,
-  ResourceState,
-} from '../knowledge/ResourceViews'
-import { T, Button } from '../shell/primitives'
+import { ResourceState } from '../knowledge/ResourceViews'
 import type { BannerPreferences, BannerCategory } from '../../services/bannerPreferencesService'
 
 export const SETTINGS_PAGES = [
-  ['memories', 'Memories', Sparkles],
-  ['members', 'Members', Users],
-  ['models', 'Models and connections', Bot],
-  ['billing', 'Billing', CreditCard],
-  ['notifications', 'Notifications', Bell],
-  ['webhooks', 'Webhooks', Webhook],
-  ['voice', 'Voice and transcription', Mic],
-  ['account', 'Account', User],
-  ['help', 'Help and feedback', CircleHelp],
-] as const
+  ['memories', 'Memories', 'sparkles'],
+  ['members', 'Members', 'person.2'],
+  ['models', 'Models and connections', 'cpu'],
+  ['billing', 'Billing', 'creditcard'],
+  ['notifications', 'Notifications', 'bell'],
+  ['webhooks', 'Webhooks', 'arrow.triangle.branch'],
+  ['voice', 'Voice and transcription', 'waveform'],
+  ['account', 'Account', 'person.crop.circle'],
+  ['help', 'Help and feedback', 'questionmark.circle'],
+] as const satisfies readonly (readonly [string, string, SFSymbol])[]
 export type SettingsPage = 'settings' | (typeof SETTINGS_PAGES)[number][0] | 'push-permission'
+export type AppearanceMode = 'auto' | 'light' | 'dark'
 export const BANNER_LABELS: [BannerCategory, string, string][] = [
   ['dm', 'Direct messages', 'Messages sent to you'],
   ['mention', 'Mentions', 'When someone mentions you'],
@@ -56,6 +58,7 @@ export const BANNER_LABELS: [BannerCategory, string, string][] = [
   ['reaction', 'Reactions', 'Reactions to your messages'],
   ['channel', 'Channel messages', 'Your workspace conversations'],
 ]
+const RETENTION_DAYS = [7, 30, 90, 365, 0] as const
 export type SettingsViewData = {
   memories?: MemoryRow[]
   members?: WorkspaceManagementItem[]
@@ -85,6 +88,7 @@ export type SettingsViewData = {
   voiceSupported?: boolean
   retention?: number
   historyCount?: number
+  /** Display label: System, Light or Dark. */
   appearance?: string
 }
 export type SettingsActions = {
@@ -97,84 +101,85 @@ export type SettingsActions = {
   banner: (category: BannerCategory, enabled: boolean) => void
   room: (id: string) => void
   voice: (enabled: boolean) => void
-  retention: () => void
+  retention: (days?: number) => void
   clearHistory: () => void
   saveName: (name: string) => Promise<void>
   photo: () => void
   signOut: () => void
   deleteAccount: () => void
   help: (kind: 'docs' | 'email' | 'bug') => void
-  appearance: () => void
+  appearance: (mode?: AppearanceMode) => void
   permission: () => void
+  /** Leaves the current Settings page (used by the notification pre-prompt). */
+  back?: () => void
 }
-export function SettingMeta({
-  theme,
+
+const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })
+
+/** A tappable form row that opens something: icon, title, current value, chevron. */
+function NavRow({
   title,
+  icon,
   value,
-}: {
-  theme: Theme
-  title: string
-  value: string
-}) {
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 20,
-        paddingVertical: 17,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.border,
-      }}
-    >
-      <T style={{ color: theme.muted, fontSize: 13 }}>{title}</T>
-      <T style={{ color: theme.foreground, fontSize: 13, flexShrink: 1, textAlign: 'right' }}>
-        {value}
-      </T>
-    </View>
-  )
-}
-export function SettingToggle({
-  theme,
-  title,
-  subtitle,
-  value,
+  onPress,
   disabled,
-  onChange,
 }: {
-  theme: Theme
   title: string
-  subtitle?: string
-  value: boolean
+  icon?: SFSymbol
+  value?: string
+  onPress: () => void
   disabled?: boolean
-  onChange: (value: boolean) => void
 }) {
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 17,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.border,
-      }}
-    >
-      <View style={{ flex: 1, gap: 5 }}>
-        <T style={{ color: theme.foreground, fontSize: 14 }}>{title}</T>
-        {subtitle ? <T style={{ color: theme.muted, fontSize: 12 }}>{subtitle}</T> : null}
-      </View>
-      <Switch
-        accessibilityLabel={title}
-        value={value}
-        disabled={disabled}
-        onValueChange={onChange}
-        trackColor={{ false: theme.surfaceSubtle, true: theme.foreground }}
-        thumbColor={theme.surface}
-      />
-    </View>
+    <Button onPress={disabled ? undefined : onPress}>
+      <HStack spacing={12}>
+        {icon ? <Symbol systemName={icon} size={17} modifiers={[frame({ width: 26 })]} /> : null}
+        <Text>{title}</Text>
+        <Spacer />
+        {value ? <Text modifiers={[secondary, lineLimit(1)]}>{value}</Text> : null}
+        <Symbol systemName="chevron.right" size={12} modifiers={[secondary]} />
+      </HStack>
+    </Button>
   )
 }
+
+/** A form action with a leading icon, drawn in the text colour (system buttons tint icons blue). */
+function ActionRow({ title, icon, onPress }: { title: string; icon: SFSymbol; onPress: () => void }) {
+  return (
+    <Button onPress={onPress}>
+      <HStack spacing={12}>
+        <Symbol systemName={icon} size={17} modifiers={[frame({ width: 26 })]} />
+        <Text>{title}</Text>
+        <Spacer />
+      </HStack>
+    </Button>
+  )
+}
+
+function formatDate(seconds: number) {
+  return new Date(seconds * (seconds < 1e12 ? 1000 : 1)).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function sentence(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' ') : value
+}
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .map((value) => value[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+}
+
+/**
+ * One Settings page as a native SwiftUI form under the navigation bar. The
+ * home page lists the sections; each section opens as its own pushed page.
+ */
 export function SettingsView({
   theme,
   page,
@@ -198,439 +203,385 @@ export function SettingsView({
   onRetry?: () => void
   webhooks?: React.ReactNode
 }) {
-  const [name, setName] = useState<string | null>(null)
+  // A name edit only counts against the saved name it started from, so a
+  // refreshed profile (or the field reporting its initial value) never shows Save.
+  const [edit, setEdit] = useState<{ base: string; value: string } | null>(null)
+  const savedName = data.profile?.displayName ?? ''
+  const name = edit && edit.base === savedName && edit.value.trim() !== savedName ? edit.value : null
   const [nameError, setNameError] = useState<string | null>(null)
   const [savingName, setSavingName] = useState(false)
   const title =
     page === 'settings'
       ? 'Settings'
       : page === 'push-permission'
-        ? 'Stay in the loop'
+        ? 'Notifications'
         : (SETTINGS_PAGES.find((row) => row[0] === page)?.[1] ?? 'Settings')
-  const copy = (text: string) => (
-    <T style={{ color: theme.muted, fontSize: 13, lineHeight: 21, marginBottom: 22 }}>{text}</T>
+  const screen = <Stack.Screen options={{ title }} />
+  const plain = (children: React.ReactNode) => (
+    <>
+      {screen}
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
+      >
+        {children}
+      </ScrollView>
+    </>
   )
-  const row = (label: string, icon: typeof Settings, onPress: () => void, subtitle?: string) => (
-    <ResourceRow
-      key={label}
-      theme={theme}
-      icon={icon}
-      title={label}
-      subtitle={subtitle}
-      onPress={onPress}
-    />
-  )
+
+  if (loading)
+    return (
+      <>
+        {screen}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
+          <ActivityIndicator color={theme.muted as string} />
+        </View>
+      </>
+    )
+  if (blocked) return plain(<ResourceState theme={theme} error={error ?? undefined} onRetry={onRetry} />)
+  if (page === 'webhooks')
+    return plain(webhooks ?? <ResourceState theme={theme} empty="Webhooks are unavailable in this workspace." />)
+  if (page === 'push-permission')
+    return plain(
+      <PushPrePrompt
+        theme={theme}
+        busy={busy}
+        permission={data.permission}
+        onContinue={actions.permission}
+        onLater={() => (actions.back ? actions.back() : actions.navigate('notifications'))}
+      />,
+    )
+
+  const errorSection = error ? (
+    <Section>
+      <Text>{error}</Text>
+      {onRetry ? <Button label="Try again" onPress={onRetry} /> : null}
+    </Section>
+  ) : null
+  const members = data.members?.filter((item) => item.kind === 'member') ?? []
+  const invitations = data.members?.filter((item) => item.kind === 'invitation') ?? []
+  const subscriptions = data.providers?.filter((item) => item.authKind === 'subscription') ?? []
+  const apiConnections = data.providers?.filter((item) => item.authKind !== 'subscription') ?? []
+  const billing = data.billing
+
   return (
-    <View accessibilityLabel={`Settings ${page}`} style={{ gap: 0 }}>
-      <ResourceHeading theme={theme} title={title} />
-      {error ? <ResourceState theme={theme} error={error} onRetry={onRetry} /> : null}
-      {loading ? (
-        <ResourceState theme={theme} loading />
-      ) : blocked ? null : (
-        <>
+    <>
+      {screen}
+      <Host style={{ flex: 1 }} colorScheme={data.dark ? 'dark' : 'light'}>
+        <Form modifiers={[tint(theme.foreground as string)]}>
+          {errorSection}
+
           {page === 'settings' ? (
             <>
-              {SETTINGS_PAGES.filter(([id]) => id !== 'webhooks' || webhooks).map(([id, label, Icon]) => (
-                <View key={id} style={{ minHeight: 52, justifyContent: 'center' }}>
-                  {row(label, Icon, () => actions.navigate(id))}
-                </View>
-              ))}
-              <ResourceLabel theme={theme}>On this device</ResourceLabel>
-              {row('Appearance', Settings, actions.appearance, data.appearance ?? 'System')}
+              <Section>
+                {SETTINGS_PAGES.filter(([id]) => id !== 'webhooks' || webhooks).map(([id, label, icon]) => (
+                  <NavRow key={id} title={label} icon={icon} onPress={() => actions.navigate(id)} />
+                ))}
+              </Section>
+              <Section title="On this device">
+                <Picker
+                  label="Appearance"
+                  selection={data.appearance ?? 'System'}
+                  onSelectionChange={(value: string) =>
+                    actions.appearance(value === 'Dark' ? 'dark' : value === 'Light' ? 'light' : 'auto')
+                  }
+                  modifiers={[pickerStyle('menu')]}
+                >
+                  {['System', 'Light', 'Dark'].map((value) => (
+                    <Text key={value} modifiers={[tag(value)]}>{value}</Text>
+                  ))}
+                </Picker>
+              </Section>
             </>
           ) : null}
+
           {page === 'memories' ? (
             <>
-              {copy('What Overlay remembers about you.')}
-              <ResourceLabel theme={theme}>Memories</ResourceLabel>
-              {data.memories?.length ? (
-                data.memories.map((memory) => (
-                  <Pressable
-                    key={memory.key}
-                    accessibilityRole="button"
-                    accessibilityLabel={memory.content}
-                    style={{ minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-                    onPress={() => actions.memory(memory)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <T
-                        numberOfLines={2}
-                        style={{ color: theme.muted, fontSize: 14, lineHeight: 21 }}
-                      >
-                        {memory.content}
-                      </T>
-                      {memory.creatorName ? (
-                        <T style={{ color: theme.muted, fontSize: 11 }}>{memory.creatorName}</T>
-                      ) : null}
-                    </View>
-                    <MoreHorizontal size={16} color={theme.muted} />
-                  </Pressable>
-                ))
-              ) : (
-                <ResourceState theme={theme} empty="No memories yet." />
-              )}
-              <View style={{ alignSelf: 'flex-start' }}>
-                <Button theme={theme} secondary icon={Plus} onPress={() => actions.memory()}>
-                  Add memory
-                </Button>
-              </View>
+              <Section
+                title="What Overlay remembers"
+                footer={data.memories?.length ? undefined : <Text>No memories yet. Add one, or Overlay saves them as you chat.</Text>}
+              >
+                {data.memories?.map((memory) => (
+                  <Button key={memory.key} onPress={() => actions.memory(memory)}>
+                    <HStack>
+                      <Text modifiers={[lineLimit(3)]}>{memory.content}</Text>
+                      <Spacer />
+                    </HStack>
+                  </Button>
+                ))}
+              </Section>
+              <Section>
+                <ActionRow title="Add memory" icon="plus" onPress={() => actions.memory()} />
+              </Section>
             </>
           ) : null}
+
           {page === 'members' ? (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
-                <T style={{ flex: 1, color: theme.muted, fontSize: 12 }}>
-                  {data.workspaceName} ·{' '}
-                  {data.members?.filter((item) => item.kind === 'member').length ?? 0} members
-                </T>
-                {data.canManage ? (
-                  <Button theme={theme} secondary icon={Plus} onPress={actions.invite}>
-                    Invite
+              <Section
+                title={`${data.workspaceName ?? 'Workspace'} · ${members.length} ${members.length === 1 ? 'member' : 'members'}`}
+              >
+                {members.map((member) => (
+                  <Button key={member.id} onPress={() => actions.invitation(member)}>
+                    <HStack spacing={12}>
+                      <RNHostView matchContents>
+                        {member.principalType === 'agent' ? (
+                          <AgentAvatar
+                            agent={{
+                              name: member.name,
+                              isDefault: member.isDefault,
+                              avatarShape: member.avatarShape,
+                              avatarColor: member.avatarColor,
+                            }}
+                            dark={data.dark ?? false}
+                            foreground={theme.foreground}
+                            size={30}
+                          />
+                        ) : (
+                          <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.surfaceSubtle, alignItems: 'center', justifyContent: 'center' }}>
+                            <RNInitials text={initials(member.name)} color={theme.muted as string} />
+                          </View>
+                        )}
+                      </RNHostView>
+                      <Text modifiers={[lineLimit(1)]}>{member.name}</Text>
+                      <Spacer />
+                      <Text modifiers={[secondary]}>{sentence(member.role ?? member.badge ?? '')}</Text>
+                    </HStack>
                   </Button>
-                ) : null}
-              </View>
-              {data.members
-                ?.filter((item) => item.kind === 'member')
-                .map((member) => (
-                  <ResourceRow
-                    key={member.id}
-                    theme={theme}
-                    icon={User}
-                    leading={
-                      member.principalType === 'agent' ? (
-                        <AgentAvatar
-                          agent={{
-                            name: member.name,
-                            isDefault: member.isDefault,
-                            avatarShape: member.avatarShape,
-                            avatarColor: member.avatarColor,
-                          }}
-                          dark={data.dark ?? false}
-                          foreground={theme.foreground}
-                          size={30}
-                        />
-                      ) : (
-                        <View
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 15,
-                            backgroundColor: theme.surfaceSubtle,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <T style={{ color: theme.muted, fontSize: 11 }}>
-                            {member.name
-                              .split(' ')
-                              .map((value) => value[0])
-                              .slice(0, 2)
-                              .join('')
-                              .toUpperCase()}
-                          </T>
-                        </View>
-                      )
-                    }
-                    title={member.name}
-                    subtitle={member.description ?? member.detail}
-                    trailing={
-                      <T style={{ color: theme.muted, fontSize: 11 }}>
-                        {member.role ?? member.badge}
-                      </T>
-                    }
-                    onPress={() => actions.invitation(member)}
-                  />
                 ))}
-              <ResourceLabel theme={theme}>Invitations</ResourceLabel>
-              {data.members?.some((item) => item.kind === 'invitation')
-                ? data.members
-                    .filter((item) => item.kind === 'invitation')
-                    .map((item) => (
-                      <ResourceRow
-                        key={item.id}
-                        theme={theme}
-                        icon={Mail}
-                        title={item.name}
-                        subtitle={item.detail ?? item.status}
-                        onPress={() => actions.invitation(item)}
-                      />
-                    ))
-                : copy(
-                    data.canManage
-                      ? 'No pending invitations.'
-                      : 'Invitations are visible to workspace administrators.',
-                  )}
+                {data.canManage ? <ActionRow title="Invite people" icon="person.badge.plus" onPress={actions.invite} /> : null}
+              </Section>
+              <Section
+                title="Invitations"
+                footer={
+                  invitations.length
+                    ? undefined
+                    : <Text>{data.canManage ? 'No pending invitations.' : 'Invitations are visible to workspace admins.'}</Text>
+                }
+              >
+                {invitations.map((item) => (
+                  <NavRow key={item.id} title={item.name} icon="envelope" value={item.detail ?? item.status} onPress={() => actions.invitation(item)} />
+                ))}
+              </Section>
             </>
           ) : null}
+
           {page === 'models' ? (
             <>
-              {row('Default model', Bot, actions.defaultModel, data.defaultModel ?? 'Auto')}
-              <ResourceLabel theme={theme}>Subscription connections</ResourceLabel>
-              {data.providers
-                ?.filter((item) => item.authKind === 'subscription')
-                .map((item) =>
-                  row(item.displayName, Zap, () => actions.connection(item._id), item.status),
-                )}
-              {!data.providers?.some((item) => item.authKind === 'subscription')
-                ? copy('No connected subscriptions.')
-                : null}
-              <Button theme={theme} secondary icon={Plus} onPress={() => actions.connection()}>
-                Connect subscription
-              </Button>
-              <ResourceLabel theme={theme}>API connections</ResourceLabel>
-              {data.providers
-                ?.filter((item) => item.authKind !== 'subscription')
-                .map((item) =>
-                  row(item.displayName, Shield, () => actions.connection(item._id), item.status),
-                )}
-              <Button
-                theme={theme}
-                secondary
-                icon={Plus}
-                onPress={() => actions.connection('new-api')}
+              <Section>
+                <NavRow title="Default model" icon="cpu" value={data.defaultModel ?? 'Auto'} onPress={actions.defaultModel} />
+              </Section>
+              <Section
+                title="Subscriptions"
+                footer={<Text>Use a ChatGPT or other AI subscription you already pay for.</Text>}
               >
-                Add connection
-              </Button>
+                {subscriptions.map((item) => (
+                  <NavRow key={item._id} title={item.displayName} icon="bolt" value={sentence(item.status)} onPress={() => actions.connection(item._id)} />
+                ))}
+                <ActionRow title="Connect a subscription" icon="plus" onPress={() => actions.connection()} />
+              </Section>
+              <Section title="API keys">
+                {apiConnections.map((item) => (
+                  <NavRow key={item._id} title={item.displayName} icon="key" value={sentence(item.status)} onPress={() => actions.connection(item._id)} />
+                ))}
+                <ActionRow title="Add an API key" icon="plus" onPress={() => actions.connection('new-api')} />
+              </Section>
             </>
           ) : null}
+
           {page === 'billing' ? (
-            data.billing ? (
+            billing ? (
               <>
-                <View
-                  style={{
-                    backgroundColor: theme.surfaceSubtle,
-                    padding: 22,
-                    borderRadius: 10,
-                    gap: 10,
-                    marginBottom: 18,
-                  }}
-                >
-                  <T style={{ color: theme.muted, fontSize: 12 }}>Current plan</T>
-                  <T style={{ color: theme.foreground, fontSize: 29, fontWeight: '500' }}>
-                    {data.billing.subscription.planKind === 'paid' ? 'Paid' : 'Free'}
-                  </T>
-                  <T style={{ color: theme.muted, fontSize: 12 }}>{data.workspaceName}</T>
-                </View>
-                <SettingMeta
-                  theme={theme}
-                  title="Available credits"
-                  value={data.billing.credits.remaining.toLocaleString()}
-                />
-                <SettingMeta
-                  theme={theme}
-                  title="Used this period"
-                  value={data.billing.credits.used.toLocaleString()}
-                />
-                <SettingMeta
-                  theme={theme}
-                  title="Status"
-                  value={
-                    data.billing.subscription.status ??
-                    (data.billing.initialized ? 'Active' : 'Not initialized')
-                  }
-                />
-                {data.billing.subscription.currentPeriodEnd ? (
-                  <SettingMeta
-                    theme={theme}
-                    title="Period ends"
-                    value={new Date(
-                      data.billing.subscription.currentPeriodEnd *
-                        (data.billing.subscription.currentPeriodEnd < 1e12 ? 1000 : 1),
-                    ).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
-                  />
-                ) : null}
+                <Section title={data.workspaceName}>
+                  <LabeledContent label="Plan">
+                    <Text>{billing.subscription.planKind === 'paid' ? 'Paid' : 'Free'}</Text>
+                  </LabeledContent>
+                  <LabeledContent label="Status">
+                    <Text>{sentence(billing.subscription.status ?? (billing.initialized ? 'active' : 'not set up'))}</Text>
+                  </LabeledContent>
+                  {billing.subscription.currentPeriodEnd ? (
+                    <LabeledContent label="Renews">
+                      <Text>{formatDate(billing.subscription.currentPeriodEnd)}</Text>
+                    </LabeledContent>
+                  ) : null}
+                </Section>
+                <Section title="Credits this period">
+                  <LabeledContent label="Available">
+                    <Text>{billing.credits.remaining.toLocaleString()}</Text>
+                  </LabeledContent>
+                  <LabeledContent label="Used">
+                    <Text>{billing.credits.used.toLocaleString()}</Text>
+                  </LabeledContent>
+                </Section>
               </>
             ) : (
-              <ResourceState theme={theme} empty="Billing information is unavailable." />
+              <Section>
+                <Text>Billing information is unavailable.</Text>
+              </Section>
             )
           ) : null}
+
           {page === 'notifications' ? (
             <>
-              {copy('Choose foreground banners on this device. Activity history is unchanged.')}
-              <ResourceLabel theme={theme}>In-app banners</ResourceLabel>
-              {BANNER_LABELS.map(([category, label, subtitle]) => (
-                <SettingToggle
-                  key={category}
-                  theme={theme}
-                  title={label}
-                  subtitle={subtitle}
-                  value={data.bannerPreferences?.[category] ?? true}
-                  disabled={busy}
-                  onChange={(value) => actions.banner(category, value)}
-                />
-              ))}
-              <ResourceLabel theme={theme}>Device permission</ResourceLabel>
-              {row(
-                'Device notifications',
-                Bell,
-                () => actions.navigate('push-permission'),
-                data.permission ?? 'Not requested',
-              )}
-              {copy(
-                'Background notifications require device permission. Banner choices above apply on this device while using the app. Conversation notification levels below sync with your workspace.',
-              )}
-              <ResourceLabel theme={theme}>Conversation notifications</ResourceLabel>
-              {data.rooms?.length
-                ? data.rooms.map((room) =>
-                    row(
-                      room.title,
-                      Bell,
-                      () => actions.room(room.id),
-                      'All messages, mentions, or muted',
-                    ),
-                  )
-                : copy('No active conversations.')}
+              <Section
+                title="Device"
+                footer={<Text>Needed for notifications when Overlay isn&apos;t open.</Text>}
+              >
+                <NavRow title="Notifications" icon="bell.badge" value={data.permission ?? 'Not requested'} onPress={() => actions.navigate('push-permission')} />
+              </Section>
+              <Section
+                title="Banners while using the app"
+                footer={<Text>Applies on this device only. Your Activity history is unchanged.</Text>}
+              >
+                {BANNER_LABELS.map(([category, label]) => (
+                  <Toggle
+                    key={category}
+                    label={label}
+                    isOn={data.bannerPreferences?.[category] ?? true}
+                    onIsOnChange={(value) => {
+                      if (!busy) actions.banner(category, value)
+                    }}
+                  />
+                ))}
+              </Section>
+              <Section
+                title="Conversations"
+                footer={<Text>{data.rooms?.length ? 'All messages, mentions only, or muted. Syncs with your workspace.' : 'No active conversations.'}</Text>}
+              >
+                {data.rooms?.map((room) => (
+                  <NavRow key={room.id} title={room.title} onPress={() => actions.room(room.id)} />
+                ))}
+              </Section>
             </>
           ) : null}
+
           {page === 'voice' ? (
             <>
-              <SettingToggle
-                theme={theme}
-                title="Voice input"
-                subtitle={
-                  data.voiceSupported
-                    ? 'Transcribe messages'
-                    : 'Background voice is available on iOS with the voice extension'
-                }
-                value={data.voiceEnabled ?? false}
-                disabled={!data.voiceSupported || busy}
-                onChange={actions.voice}
-              />
-              <ResourceLabel theme={theme}>Transcription</ResourceLabel>
-              <SettingMeta theme={theme} title="Language" value="Auto detect" />
-              {row(
-                'Keep transcriptions',
-                BookOpen,
-                actions.retention,
-                data.retention === 0 ? 'Off' : `${data.retention ?? 30} days`,
-              )}
-              {row(
-                'Clear transcription history',
-                Trash2,
-                actions.clearHistory,
-                `${data.historyCount ?? 0} on this device`,
-              )}
-              {copy(
-                'Microphone access is requested when you enable voice or start recording. Transcription retention is local to this device.',
-              )}
+              <Section
+                footer={<Text>{data.voiceSupported ? 'Dictate into any text field with Overlay Voice.' : 'Background voice needs the Overlay voice extension on iOS.'}</Text>}
+              >
+                <Toggle
+                  label="Voice input"
+                  isOn={data.voiceEnabled ?? false}
+                  onIsOnChange={(value) => {
+                    if (data.voiceSupported && !busy) actions.voice(value)
+                  }}
+                />
+              </Section>
+              <Section
+                title="Transcription"
+                footer={<Text>Microphone access is asked for when you first record. Transcriptions stay on this device.</Text>}
+              >
+                <LabeledContent label="Language">
+                  <Text>Auto detect</Text>
+                </LabeledContent>
+                <Picker
+                  label="Keep transcriptions"
+                  selection={data.retention ?? 30}
+                  onSelectionChange={(days: number) => actions.retention(days)}
+                  modifiers={[pickerStyle('menu')]}
+                >
+                  {RETENTION_DAYS.map((days) => (
+                    <Text key={days} modifiers={[tag(days)]}>{days === 0 ? 'Off' : `${days} days`}</Text>
+                  ))}
+                </Picker>
+                <Button
+                  role="destructive"
+                  label={`Clear history (${data.historyCount ?? 0})`}
+                  onPress={actions.clearHistory}
+                />
+              </Section>
             </>
           ) : null}
+
           {page === 'account' ? (
             <>
-              <View style={{ alignItems: 'center', gap: 10, marginBottom: 28 }}>
-                <View
-                  style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 29,
-                    backgroundColor: theme.surfaceSubtle,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {data.profile?.photoUrl ? (
-                    <Image
-                      alt="Your profile"
-                      accessibilityLabel="Account photo"
-                      source={{ uri: data.profile.photoUrl, headers: data.profile.headers }}
-                      style={{ width: 58, height: 58, borderRadius: 29 }}
-                    />
-                  ) : (
-                    <User size={24} color={theme.foreground} />
-                  )}
-                </View>
-                <T style={{ color: theme.foreground, fontSize: 19, fontWeight: '500' }}>
-                  {data.profile?.displayName}
-                </T>
-                <T style={{ color: theme.muted, fontSize: 12 }}>{data.profile?.email}</T>
-                <Button theme={theme} onPress={actions.photo}>
-                  Change photo
-                </Button>
-              </View>
-              <ResourceLabel theme={theme}>Name</ResourceLabel>
-              <TextInput
-                accessibilityLabel="Name"
-                maxLength={80}
-                style={{
-                  color: theme.foreground,
-                  borderColor: theme.border,
-                  borderWidth: 1,
-                  borderRadius: 8,
-                  padding: 12,
-                  fontFamily: 'Geist',
-                  fontSize: 14,
-                }}
-                value={name ?? data.profile?.displayName ?? ''}
-                onChangeText={setName}
-              />
-              <View style={{ height: 18 }} />
-              <SettingMeta theme={theme} title="Email" value={data.profile?.email ?? ''} />
-              <T style={{ color: theme.muted, fontSize: 11, marginTop: 8, marginBottom: 18 }}>
-                Email is managed by your sign-in provider.
-              </T>
-              <Button
-                theme={theme}
-                secondary
-                disabled={busy || savingName || name === null}
-                onPress={() => {
-                  if (savingName) return
-                  setSavingName(true)
-                  setNameError(null)
-                  void actions
-                    .saveName(name ?? '')
-                    .then(() => setName(null))
-                    .catch((value) =>
-                      setNameError(value instanceof Error ? value.message : 'Could not save name.'),
-                    )
-                    .finally(() => setSavingName(false))
-                }}
+              <Section>
+                <HStack spacing={14}>
+                  <RNHostView matchContents>
+                    <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: theme.surfaceSubtle, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {data.profile?.photoUrl ? (
+                        <RNImage
+                          alt="Your profile"
+                          accessibilityLabel="Account photo"
+                          source={{ uri: data.profile.photoUrl, headers: data.profile.headers }}
+                          style={{ width: 56, height: 56 }}
+                        />
+                      ) : (
+                        <RNInitials text={initials(data.profile?.displayName ?? '?')} color={theme.muted as string} size={18} />
+                      )}
+                    </View>
+                  </RNHostView>
+                  <Text modifiers={[lineLimit(1)]}>{data.profile?.displayName ?? ''}</Text>
+                  <Spacer />
+                </HStack>
+                <ActionRow title="Change photo" icon="camera" onPress={actions.photo} />
+              </Section>
+              <Section
+                title="Name"
+                footer={nameError ? <Text>{nameError}</Text> : undefined}
               >
-                Save changes
-              </Button>
-              {nameError ? <ResourceState theme={theme} error={nameError} /> : null}
-              <View style={{ height: 28 }} />
-              {row('Sign out', User, actions.signOut)}
-              {row(
-                'Delete account',
-                Trash2,
-                actions.deleteAccount,
-                'Permanently delete your account and data',
-              )}
+                <TextField
+                  key={savedName}
+                  // Keep an unsaved edit if SwiftUI rebuilds the field (e.g. when an error appears).
+                  defaultValue={name ?? savedName}
+                  placeholder="Your name"
+                  onValueChange={(value) => setEdit({ base: savedName, value })}
+                  modifiers={[textInputAutocapitalization('words'), submitLabel('done')]}
+                />
+                {name !== null ? (
+                  <Button
+                    label={savingName ? 'Saving…' : 'Save name'}
+                    onPress={() => {
+                      if (savingName || busy) return
+                      setSavingName(true)
+                      setNameError(null)
+                      void actions
+                        .saveName(name ?? '')
+                        .then(() => setEdit(null))
+                        .catch((value) =>
+                          setNameError(value instanceof Error ? value.message : 'Could not save name.'),
+                        )
+                        .finally(() => setSavingName(false))
+                    }}
+                  />
+                ) : null}
+              </Section>
+              <Section footer={<Text>Email is managed by your sign-in provider.</Text>}>
+                <LabeledContent label="Email">
+                  <Text>{data.profile?.email ?? ''}</Text>
+                </LabeledContent>
+              </Section>
+              <Section>
+                <Button label="Sign out" onPress={actions.signOut} />
+                <Button role="destructive" label="Delete account" onPress={actions.deleteAccount} />
+              </Section>
             </>
           ) : null}
-          {page === 'webhooks' ? webhooks ?? copy('Webhooks are unavailable in this workspace.') : null}
+
           {page === 'help' ? (
             <>
-              {row('Help centre', CircleHelp, () => actions.help('docs'), 'Guides and answers')}
-              {row('Contact support', Mail, () => actions.help('email'), 'We’re here to help')}
-              <ResourceLabel theme={theme}>Report a bug</ResourceLabel>
-              {copy(
-                'Bug reports and attachments are public on GitHub. In the web app, open Help → Submit a bug. You may need to sign in.',
-              )}
-              <Button
-                theme={theme}
-                secondary
-                icon={ExternalLink}
-                onPress={() => actions.help('bug')}
+              <Section>
+                <NavRow title="Help centre" icon="book" onPress={() => actions.help('docs')} />
+                <NavRow title="Contact support" icon="envelope" onPress={() => actions.help('email')} />
+              </Section>
+              <Section
+                title="Report a bug"
+                footer={<Text>Bug reports and attachments are public on GitHub. You may need to sign in on the web.{'\n\n'}Overlay for iOS · 1.0.0</Text>}
               >
-                Submit a bug
-              </Button>
-              <T style={{ color: theme.muted, fontSize: 11, marginTop: 30 }}>
-                Overlay for mobile · 1.0.0
-              </T>
+                <ActionRow title="Submit a bug" icon="ladybug" onPress={() => actions.help('bug')} />
+              </Section>
             </>
           ) : null}
-          {page === 'push-permission' ? (
-            <PushPrePrompt
-              theme={theme}
-              busy={busy}
-              permission={data.permission}
-              onContinue={actions.permission}
-              onLater={() => actions.navigate('notifications')}
-            />
-          ) : null}
-        </>
-      )}
-    </View>
+        </Form>
+      </Host>
+    </>
   )
+}
+
+/** Initials drawn as React Native text inside a hosted RN view. */
+function RNInitials({ text, color, size = 11 }: { text: string; color: string; size?: number }) {
+  return <RNText style={{ color, fontSize: size, fontFamily: 'GeistMedium' }}>{text}</RNText>
 }

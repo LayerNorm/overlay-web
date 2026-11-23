@@ -12,6 +12,7 @@ import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useLiveResource } from '../../hooks/useLiveResource'
 import { useMobilePreferences } from '../../hooks/useMobilePreferences'
+import type { TranscriptionRetentionDays } from '../../services/mobilePreferencesService'
 import { useFavoriteModels } from '../../hooks/useFavoriteModels'
 import { api } from '../../services/convexClient'
 import { appRequest } from '../../services/appApi'
@@ -44,7 +45,7 @@ import {
   getTranscriptionHistory,
   pruneTranscriptionHistory,
 } from '../../services/voiceService'
-import { ResourcePage, ResourceSheet, ResourceState } from '../knowledge/ResourceViews'
+import { ResourceSheet, ResourceState } from '../knowledge/ResourceViews'
 import { T, Button } from '../shell/primitives'
 import { ModelPicker } from '../chat/ModelPicker'
 import { WebhooksSection } from './WebhooksSection'
@@ -53,14 +54,14 @@ import { SubscriptionSheet } from './SubscriptionSheet'
 import { SETTINGS_PAGES, SettingsView, type SettingsPage } from './SettingsViews'
 import { accountPhotoSource } from '../../lib/settingsPhoto'
 import { RoomNotifications } from './RoomNotifications'
-import { AccountDeletionConfirmation, PushPrePrompt } from './SettingsPrompts'
+import { AccountDeletionConfirmation } from './SettingsPrompts'
 import { syncPushRegistration } from '../../services/pushRegistrationService'
 
 type Dialog =
   | { kind: 'room'; conversationId: string }
   | { kind: 'memory'; row?: MemoryRow }
   | { kind: 'invitation'; row: WorkspaceManagementItem }
-  | { kind: 'invite' | 'delete' | 'model' | 'api' | 'appearance' | 'retention' }
+  | { kind: 'invite' | 'delete' | 'model' | 'api' }
   | { kind: 'subscription'; connectionId?: string; providerId?: string }
 export default function SettingsScreen() {
   const { activeWorkspaceId } = useWorkspace()
@@ -68,14 +69,12 @@ export default function SettingsScreen() {
 }
 function SettingsScope() {
   const { section } = useLocalSearchParams<{ section?: string }>()
-  const initial = SETTINGS_PAGES.some((row) => row[0] === section)
-    ? (section as SettingsPage)
-    : 'settings'
-  const [page, setPage] = useState<SettingsPage>(initial)
-  useEffect(() => {
-    if (section && SETTINGS_PAGES.some((row) => row[0] === section))
-      setPage(section as SettingsPage)
-  }, [section])
+  // Each Settings screen shows one page, chosen by its route; sections open
+  // as their own pushed screens so back and swipe-back are the system's.
+  const page: SettingsPage =
+    section === 'push-permission' || SETTINGS_PAGES.some((row) => row[0] === section)
+      ? (section as SettingsPage)
+      : 'settings'
   const { theme, appearanceMode, setAppearanceMode, isDark } = useTheme()
   const { user, session, signOut } = useAuth()
   const { activeWorkspaceId: workspaceId, activeWorkspace } = useWorkspace()
@@ -233,8 +232,16 @@ function SettingsScope() {
     billing: billing.data,
     providers: providers.data ?? [],
     profile: {
-      displayName: profile.data?.displayName ?? user?.email ?? 'Your account',
-      email: profile.data?.email ?? user?.email ?? '',
+      // The account record can lack the provider name and email (it then
+      // resolves to "User"); fall back to the signed-in identity, as the
+      // server's resolver would, before showing a placeholder.
+      displayName:
+        profile.data?.displayNameOverride ||
+        (profile.data?.email ? profile.data.displayName : '') ||
+        [user?.firstName, user?.lastName].filter(Boolean).join(' ') ||
+        user?.email ||
+        'Your account',
+      email: profile.data?.email || user?.email || '',
       ...accountPhotoSource(profile.data?.photoUrl, AUTH_BASE_URL, session?.accessToken),
     },
     workspaceName: activeWorkspace?.name,
@@ -298,26 +305,11 @@ function SettingsScope() {
       if (granted && user) await syncPushRegistration(user.id)
     })
   return (
-    <ResourcePage
-      theme={theme}
-      title="Settings"
-      onBack={
-        page === 'settings'
-          ? undefined
-          : () => {
-              if (!workspaceId) {
-                router.replace('/')
-                return
-              }
-              setPage('settings')
-              setError(null)
-            }
-      }
-    >
+    <>
       <SettingsView
-        key={page === 'push-permission' ? 'notifications' : page}
+        key={page}
         theme={theme}
-        page={page === 'push-permission' ? 'notifications' : page}
+        page={page}
         data={data}
         webhooks={capabilities.webhooks && workspaceId ? <WebhooksSection theme={theme} workspaceId={workspaceId} /> : undefined}
         loading={resource?.loading}
@@ -328,9 +320,10 @@ function SettingsScope() {
         actions={{
           room: (conversationId) => open({ kind: 'room', conversationId }),
           navigate: (next) => {
-            setPage(next)
-            setError(null)
+            if (working.current || deletion.busy) return
+            router.push({ pathname: '/settings', params: { section: next } })
           },
+          back: () => router.back(),
           memory: (row) => {
             setDraft(row?.fullContent ?? '')
             open({ kind: 'memory', row })
@@ -367,7 +360,16 @@ function SettingsScope() {
               } else await disableBackgroundVoice()
               await loadVoice()
             }),
-          retention: () => open({ kind: 'retention' }),
+          retention: (days) => {
+            const allowed: TranscriptionRetentionDays[] = [7, 30, 90, 365, 0]
+            const choice = allowed.find((value) => value === days)
+            if (choice === undefined) return
+            void run(async () => {
+              await updatePreferences({ transcriptionRetentionDays: choice })
+              await pruneTranscriptionHistory(choice)
+              await loadVoice()
+            })
+          },
           clearHistory: () =>
             Alert.alert(
               'Clear transcription history?',
@@ -425,29 +427,12 @@ function SettingsScope() {
                     : `${AUTH_BASE_URL}/home`,
               ),
             ),
-          appearance: () => open({ kind: 'appearance' }),
+          appearance: (mode) => {
+            if (mode) void run(() => setAppearanceMode(mode))
+          },
           permission: requestPermission,
         }}
       />
-      {page === 'push-permission' ? (
-        <ResourceSheet
-          theme={theme}
-          visible
-          title="Stay in the loop"
-          onClose={() => {
-            if (!busy) setPage('notifications')
-          }}
-        >
-          <PushPrePrompt
-            error={error}
-            theme={theme}
-            permission={permission}
-            busy={busy}
-            onContinue={requestPermission}
-            onLater={() => setPage('notifications')}
-          />
-        </ResourceSheet>
-      ) : null}
       {dialog?.kind === 'subscription' && workspaceId ? (
         <SubscriptionSheet
           theme={theme}
@@ -485,11 +470,7 @@ function SettingsScope() {
                     ? dialog.row.name
                     : dialog.kind === 'model'
                       ? 'Default model'
-                      : dialog.kind === 'api'
-                        ? 'API connections'
-                        : dialog.kind === 'retention'
-                          ? 'Keep transcriptions'
-                          : 'Appearance'
+                      : 'API keys'
           }
           onClose={close}
         >
@@ -648,41 +629,9 @@ function SettingsScope() {
               />
             ) : null}
             {dialog.kind === 'api' ? <ProvidersSection theme={theme} /> : null}
-            {dialog.kind === 'appearance'
-              ? (['auto', 'light', 'dark'] as const).map((value) => (
-                  <Button
-                    key={value}
-                    theme={theme}
-                    secondary={appearanceMode === value}
-                    disabled={busy}
-                    onPress={() => void run(() => setAppearanceMode(value), true)}
-                  >
-                    {value === 'auto' ? 'System' : value === 'light' ? 'Light' : 'Dark'}
-                  </Button>
-                ))
-              : null}
-            {dialog.kind === 'retention'
-              ? ([7, 30, 90, 365, 0] as const).map((days) => (
-                  <Button
-                    key={days}
-                    theme={theme}
-                    secondary={preferences.transcriptionRetentionDays === days}
-                    disabled={busy}
-                    onPress={() =>
-                      void run(async () => {
-                        await updatePreferences({ transcriptionRetentionDays: days })
-                        await pruneTranscriptionHistory(days)
-                        await loadVoice()
-                      }, true)
-                    }
-                  >
-                    {days === 0 ? 'Do not keep transcriptions' : `${days} days`}
-                  </Button>
-                ))
-              : null}
           </View>
         </ResourceSheet>
       ) : null}
-    </ResourcePage>
+    </>
   )
 }

@@ -76,21 +76,31 @@ export function PushPrePrompt({
   onContinue: () => void
   onLater: () => void
 }) {
+  const denied = permission?.startsWith('Denied')
   return (
-    <View style={{ gap: 16 }}>
-      {error ? <ResourceState theme={theme} error={error} /> : null}
-      <Bell size={26} color={theme.foreground} />
-      <T style={{ color: theme.muted, fontSize: 13, lineHeight: 21 }}>
+    <View style={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', gap: 14, paddingHorizontal: 12, paddingBottom: 80 }}>
+      <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surfaceSubtle }}>
+        <Bell size={30} color={theme.foreground} />
+      </View>
+      <T style={{ color: theme.foreground, fontSize: 20, fontFamily: 'GeistSemibold', textAlign: 'center' }}>
+        Stay in the loop
+      </T>
+      <T style={{ color: theme.muted, fontSize: 15, lineHeight: 21, textAlign: 'center' }}>
         Know when your agents need you or important updates arrive, even when the app is closed.
       </T>
-      <Button theme={theme} secondary disabled={busy} onPress={onContinue}>
-        {permission?.startsWith('Denied') ? 'Open device settings' : 'Enable notifications'}
-      </Button>
-      <Button theme={theme} disabled={busy} onPress={onLater}>
-        Not now
-      </Button>
-      {permission ? (
-        <T style={{ color: theme.muted, fontSize: 11 }}>Device permission: {permission}</T>
+      {error ? <ResourceState theme={theme} error={error} /> : null}
+      <View style={{ alignSelf: 'stretch', gap: 8, marginTop: 10 }}>
+        <Button theme={theme} secondary disabled={busy} onPress={onContinue}>
+          {denied ? 'Open device settings' : 'Enable notifications'}
+        </Button>
+        <Button theme={theme} disabled={busy} onPress={onLater}>
+          Not now
+        </Button>
+      </View>
+      {denied ? (
+        <T style={{ color: theme.muted, fontSize: 12, textAlign: 'center' }}>
+          Notifications are turned off for Overlay in iOS Settings.
+        </T>
       ) : null}
     </View>
   )
