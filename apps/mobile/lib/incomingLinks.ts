@@ -36,6 +36,8 @@ export function incomingRoute(value: string): string {
     const path = incomingPath.replace(/^\/app(?=\/)/, '').replace(/^\/agents\//, '/agent/')
     if (path === '/dictate') return '/voice?autoEnable=1'
     if (path === '/auth/mcp-callback') return '/tools'
+    if (path === '/account') return '/account'
+    if (path === '/workspace' || path === '/settings/workspace') return '/workspace' + url.search
     if (path === '/extensions' || path === '/integrations' || path === '/tools') return '/tools' + url.search
     if (/^\/auth\/(?:native\/callback|callback|transfer)$/.test(path)) return path + url.search
     const invite = /^\/(?:app\/)?invitations\/([A-Za-z0-9_-]+)$/.exec(path)

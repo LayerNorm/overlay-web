@@ -278,8 +278,9 @@ function MemoryEditor() {
 function InviteEditor() {
   const router = useRouter()
   const { activeWorkspaceId: workspaceId, activeWorkspace } = useWorkspace()
+  const initialRole = useParam('role') === 'guest' ? 'guest' : 'member'
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'member' | 'admin'>('member')
+  const [role, setRole] = useState<'member' | 'admin' | 'guest'>(initialRole)
   const { busy, error, setError, run } = useAction()
   const send = () => {
     const address = email.trim()
@@ -290,7 +291,7 @@ function InviteEditor() {
     void run(() => inviteToWorkspace(workspaceId, address, role), 'Could not send the invitation.').then((ok) => ok && router.back())
   }
   return (
-    <EditorPage title="Invite people" save={{ label: 'Send invitation', icon: 'paperplane', disabled: busy || !email.trim(), onPress: send }}>
+    <EditorPage title={role === 'guest' ? 'Invite guest' : 'Invite people'} save={{ label: 'Send invitation', icon: 'paperplane', disabled: busy || !email.trim(), onPress: send }}>
       <Section footer={<Text>{`They'll get an email to join ${activeWorkspace?.name ?? 'this workspace'}.`}</Text>}>
         <TextField
           placeholder="name@company.com"
@@ -299,10 +300,11 @@ function InviteEditor() {
           modifiers={[keyboardType('email-address'), textInputAutocapitalization('never'), autocorrectionDisabled(true)]}
         />
       </Section>
-      <Section title="Role" footer={<Text>{role === 'admin' ? 'Admins can invite people and manage the workspace.' : 'Members can chat, run agents and use shared files.'}</Text>}>
-        <Picker selection={role} onSelectionChange={(value: 'member' | 'admin') => setRole(value)} modifiers={[pickerStyle('segmented')]}>
+      <Section title="Role" footer={<Text>{role === 'admin' ? 'Admins can invite people and manage the workspace.' : role === 'guest' ? 'Guests only see the chats and files shared with them.' : 'Members can chat, run agents and use shared files.'}</Text>}>
+        <Picker selection={role} onSelectionChange={(value: 'member' | 'admin' | 'guest') => setRole(value)} modifiers={[pickerStyle('segmented')]}>
           <Text modifiers={[tag('member')]}>Member</Text>
           <Text modifiers={[tag('admin')]}>Admin</Text>
+          <Text modifiers={[tag('guest')]}>Guest</Text>
         </Picker>
       </Section>
       <ErrorSection error={error} />

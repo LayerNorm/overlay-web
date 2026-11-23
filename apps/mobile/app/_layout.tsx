@@ -279,6 +279,9 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="invitations/[id]"
           options={{
+            ...nativeHeader,
+            title: 'Join workspace',
+            headerLargeTitle: false,
             presentation: 'card',
             animation: 'slide_from_right',
           }}

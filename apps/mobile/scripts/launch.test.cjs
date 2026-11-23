@@ -67,6 +67,9 @@ test('universal and custom links use existing native destinations', () => {
   assert.equal(incomingRoute('https://getoverlay.io/app/work/id'), '/work/id')
   assert.equal(incomingRoute('overlay://auth/transfer?token=test'), '/auth/transfer?token=test')
   assert.equal(incomingRoute('/app/invitations/id'), '/invitations/id')
+  assert.equal(incomingRoute('overlay://workspace'), '/workspace')
+  assert.equal(incomingRoute('https://getoverlay.io/app/settings/workspace?workspaceId=ws'), '/workspace?workspaceId=ws')
+  assert.equal(incomingRoute('overlay://account'), '/account')
 })
 test('extension links keep the selected workspace when opening Tools', () => {
   assert.equal(incomingRoute('overlay://extensions'), '/tools')

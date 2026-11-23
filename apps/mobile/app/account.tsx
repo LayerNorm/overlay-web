@@ -43,6 +43,29 @@ export default function AccountSheet(): React.ReactElement {
       },
     ])
 
+  const newWorkspace = () =>
+    Alert.prompt(
+      'New workspace',
+      'Workspaces hold shared agents, channels, files and their own billing.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create',
+          onPress: (value?: string) => {
+            const trimmed = value?.trim().slice(0, 64)
+            if (!trimmed) return
+            void workspace
+              .createWorkspace(trimmed)
+              .then(() => router.dismiss())
+              .catch((error) =>
+                Alert.alert('Could not create the workspace', error instanceof Error ? error.message : 'Try again in a moment.'),
+              )
+          },
+        },
+      ],
+      'plain-text',
+    )
+
   const selectedWorkspace = pendingId ?? workspace.activeWorkspaceId ?? ''
   return (
     <>
@@ -54,7 +77,7 @@ export default function AccountSheet(): React.ReactElement {
           <Section footer={<Text>{user?.email ?? ''}</Text>}>
             <Button onPress={() => go('/settings?section=account')} systemImage="person.crop.circle" label={name} />
           </Section>
-          {workspace.workspaces.length > 1 ? (
+          {workspace.workspacesEnabled && workspace.workspaces.length ? (
             <Section title="Workspace">
               <Picker
                 selection={selectedWorkspace}
@@ -75,6 +98,8 @@ export default function AccountSheet(): React.ReactElement {
                   </Text>
                 ))}
               </Picker>
+              <Button onPress={() => go('/workspace')} systemImage="building.2" label="Manage workspace" />
+              <Button onPress={newWorkspace} systemImage="plus" label="New workspace" />
             </Section>
           ) : null}
           <Section>

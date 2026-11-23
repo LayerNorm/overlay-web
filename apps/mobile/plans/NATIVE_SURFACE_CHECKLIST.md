@@ -61,18 +61,18 @@ Status key:
 | [x] | MCP server detail | `components/tools/McpDetailSheet.tsx` in `NativePageSheet` | Native presentation | iOS page sheet; Edit opens the native MCP form. Body (OAuth connect, test) is still RN with alerts. |
 | [ ] | Activity | `app/activity.tsx` → `components/chat/ActivityScreen.tsx` | Partial | Native header and segmented control; no swipe to mark read. |
 | [x] | Archived | `app/archived.tsx` → `components/chat/ArchivedScreen.tsx` | Native | SwiftUI list with the system search bar and empty state; touch and hold for Unarchive (and Delete for personal chats). Now includes archived channels and DMs (`collaboration.archive.rooms`), which opened as personal chats before or were missing. Checked 2026-11-23: archive a channel, find it, unarchive it. |
-| [ ] | Workspace | `app/workspace.tsx` → `components/workspace/WorkspaceScreen.tsx` | Partial | <ul><li>Native header.</li><li>Four JS `BottomSheet`s (member actions, invite, team, billing).</li><li>Ten spinners.</li><li>Unreachable from the UI (see P0 #1 in the parity audit).</li></ul> |
+| [x] | Workspace | `app/workspace.tsx` → `components/workspace/WorkspaceScreen.tsx` | Native | <ul><li>Reached from the account sheet's Manage workspace. A SwiftUI `Form` home (type, your role, members) with pushed section pages (`/workspace?section=…`): People, Agents, Teams, Team, Guests, Sharing and policies, Billing, Import from Slack, Shared with me (2026-11-23).</li><li>Member rows are native menus (role picker, make owner, remove with confirmation); invitation rows resend or cancel. Teams: create by prompt, member switches, archive from a context menu with confirmation. Policies are switches; billing is read-only rows with a usage bar; owners archive the workspace with a confirmation.</li><li>Lists read live Convex views, so the four JS sheets and spinners are gone. Invite reuses the Settings invite page (now with Guest).</li><li>Checked 2026-11-23 light and dark: role change and restore, team create/member/archive, policy toggle and persistence, billing, new workspace then archive.</li><li>Open: Import from Slack is still the RN panel; invites were not sent (they email real addresses).</li></ul> |
 | [ ] | Slack import | `components/workspace/SlackImportPanel.tsx` | Custom | Hand-built steps. |
 | [ ] | Voice | `app/voice.tsx` → `components/voice/VoiceScreen.tsx` | Custom | <ul><li>No stack header (the root default hides it).</li><li>`MainScreenHeader` plus `DrawerSidebar`.</li><li>Custom toggles.</li></ul>Give it a native header and a `Form`. |
 | [ ] | Notes | `app/notes.tsx` → `components/notes/NotesEditorScreen.tsx`, `NoteEditor.tsx` | Custom | `MainScreenHeader` plus `DrawerSidebar` and no stack header. Only reachable by deep link; remove it or merge it into Files. |
-| [ ] | Invitation | `app/invitations/[id].tsx` | Custom | <ul><li>Floating card with no native header.</li><li>Doesn't name the workspace, inviter or role.</li></ul>Use a native header with a `Form` summary and Accept and Decline buttons. |
+| [x] | Invitation | `app/invitations/[id].tsx` | Native | Native header and `Form`: the account that will accept, Accept invitation, Not now, and Sign in with another account when the server says the invitation is for a different email; errors show in a form section (2026-11-23). Open: it still can't name the workspace, inviter or role, because no endpoint looks an invitation up for the invitee. |
 | [ ] | Shared chat link | `app/share/c/[token].tsx` | Custom | Opens the web page in the in-app browser. |
 
 ## 3. Native sheets (routes)
 
 | ✓ | Surface | Route / file | Status | What to fix |
 | --- | --- | --- | --- | --- |
-| [ ] | Account | `app/account.tsx` (`formSheet`, `@expo/ui` `Form`) | Native | <ul><li>The workspace switcher shows only with 2+ workspaces.</li><li>No Manage or New workspace rows.</li><li>Sign-out logs an unhandled `POP`.</li></ul> |
+| [x] | Account | `app/account.tsx` (`formSheet`, `@expo/ui` `Form`) | Native | <ul><li>Fixed 2026-11-23: the Workspace section always shows (an inline picker of your workspaces), with Manage workspace and New workspace (iOS prompt; the new workspace becomes active).</li><li>Open: sign-out logs an unhandled `POP`.</li></ul> |
 | [ ] | New agent | `app/agent-create.tsx` (`formSheet`) | Native | First-tap focus on its fields. |
 | [ ] | Agent profile | `components/agents/AgentProfileSheet.tsx` (RN `Modal`) | Partial | Make it a `pageSheet` route so it gets native detents and dismissal. |
 
@@ -91,8 +91,8 @@ Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacin
 | [x] | Room message actions | `components/chat/RoomMessageMenu.tsx` | Long-press a message | Context menu (2026-11-23) |
 | [x] | Room members / pinned / saved | `components/chat/RoomSheets.tsx` | Room header menu | SwiftUI sheet with detents (2026-11-23) |
 | [ ] | Share | `components/workspace/ShareSheet.tsx` | File and chat options | `pageSheet` with a `Form` |
-| [ ] | Create workspace | `components/workspace/CreateWorkspaceSheet.tsx` | Old drawer only | `formSheet` route from the account sheet |
-| [ ] | Workspace switcher | `components/workspace/WorkspaceSwitcher.tsx` | Old drawer only (dead) | Delete; the account sheet replaces it |
+| [x] | Create workspace | removed | Account sheet | An iOS text prompt from the account sheet's New workspace (2026-11-23); `CreateWorkspaceSheet` deleted |
+| [x] | Workspace switcher | removed | — | Deleted with its drawer mount; the account sheet replaces it (2026-11-23) |
 | [ ] | Connect a machine | `components/agents/ConnectMachineSheet.tsx` | Agent editor | `formSheet` |
 | [ ] | Agent editor picker | `components/agents/AgentEditorView.tsx` (`SheetModal`) | Edit agent | `@expo/ui` `Picker` in the `Form` |
 | [ ] | Agent computer viewer | `components/agents/AgentComputerPreview.tsx` (RN `Modal`) | Agent profile | `fullScreenModal` route |
@@ -134,7 +134,7 @@ Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacin
 | [ ] | Welcome and sign-in | `app/auth-flow.tsx` (`fullScreenModal`) | Custom by design | Check light and dark mode, and that the sign-in button uses a system web auth session. |
 | [ ] | Auth callbacks | `app/auth/callback.tsx`, `app/auth/native/callback.tsx`, `app/auth/transfer.tsx` | Spinner | Show a branded loading state, not a bare spinner. |
 | [ ] | Onboarding | `app/onboarding.tsx` (`fullScreenModal`) | Custom by design | Check paging, haptics and the notification prompt. |
-| [ ] | Deep-link routing | `app/+native-intent.tsx`, `lib/incomingLinks.ts` | — | Add `overlay://account` and `/workspace`. |
+| [ ] | Deep-link routing | `app/+native-intent.tsx`, `lib/incomingLinks.ts` | — | `overlay://account`, `/workspace` and `/settings/workspace` now route (2026-11-23, covered by launch.test). Open: links still reboot through "Opening Workspace…". |
 
 ## Cross-cutting checks for every surface
 

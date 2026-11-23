@@ -26,7 +26,6 @@ import { useDrawer } from '../../contexts/DrawerContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { resolveNavDestinations, type ResolvedNavItem } from '../../lib/destinations'
-import { WorkspaceSwitcher } from '../workspace/WorkspaceSwitcher'
 import { AppIcon } from '../ui/AppIcon'
 import { DRAWER_WIDTH } from '../ui/ScreenWithDrawer'
 import { GlassSurface } from '../ui/GlassSurface'
@@ -428,14 +427,11 @@ function DrawerContent({
 
   return (
     <View style={styles.drawerContent}>
-      {/* Header with Logo, Brand, and Workspace Switcher */}
+      {/* Header with Logo and Brand */}
       <View style={[styles.drawerHeader, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.brandContainer}>
           <Image source={OVERLAY_LOGO} style={styles.drawerLogo} resizeMode="contain" alt="Overlay logo" />
           <Text style={[styles.brandText, { color: theme.text }]}>overlay</Text>
-        </View>
-        <View style={styles.workspaceSwitcherWrap}>
-          <WorkspaceSwitcher theme={theme} />
         </View>
       </View>
 

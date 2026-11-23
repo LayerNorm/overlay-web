@@ -1,157 +1,85 @@
 /**
- * Workspace invitation landing — native counterpart of web
- * `/app/invitations/[invitationId]`: accept card → POST
+ * Workspace invitation — native counterpart of web
+ * `/app/invitations/[invitationId]`: accept → POST
  * `/workspace-invitations/{id}/accept` → activate the joined workspace and
- * route into it. 401 surfaces a sign-in prompt (invitations are bound to the
- * invited email address).
+ * open it. Invitations are bound to the invited email address, so the page
+ * names the account that will accept; a 401 offers signing in with another
+ * account.
  */
-import React, { useCallback, useState } from 'react'
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native'
-import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Feather } from '@expo/vector-icons'
+import React, { useState } from 'react'
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
+import { Button, Form, Host, LabeledContent, Section, Text } from '@expo/ui/swift-ui'
+import { tint } from '@expo/ui/swift-ui/modifiers'
 import { useTheme } from '../../hooks/useTheme'
+import { useAuth } from '../../contexts/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { acceptWorkspaceInvitation } from '../../services/workspaceManagementService'
 import { OverlayApiError } from '../../services/appApi'
-import { borderRadius, fontSize, spacing } from '../../constants/theme'
 
 export default function InvitationScreen(): React.ReactElement {
-  const { theme } = useTheme()
-  const insets = useSafeAreaInsets()
+  const { theme, isDark } = useTheme()
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { user, signOut } = useAuth()
   const { refresh, switchWorkspace } = useWorkspace()
-  const [status, setStatus] = useState<'idle' | 'accepting' | 'error'>('idle')
+  const [accepting, setAccepting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [requiresSignIn, setRequiresSignIn] = useState(false)
 
-  const accept = useCallback(async () => {
-    if (!id || status === 'accepting') return
-    setStatus('accepting')
+  const leave = () => (router.canGoBack() ? router.back() : router.replace('/chat'))
+
+  const accept = async () => {
+    if (!id || accepting) return
+    setAccepting(true)
     setError(null)
     setRequiresSignIn(false)
     try {
       const response = await acceptWorkspaceInvitation(id)
       await refresh()
-      if (response.activeWorkspaceId) {
-        await switchWorkspace(response.activeWorkspaceId).catch(() => undefined)
-      }
+      const joined = response.activeWorkspaceId ?? response.workspace?.id
+      if (joined) await switchWorkspace(joined).catch(() => undefined)
       router.replace('/chat')
-    } catch (acceptError) {
-      if (acceptError instanceof OverlayApiError && acceptError.status === 401) {
-        setRequiresSignIn(true)
-      }
-      setStatus('error')
-      setError(
-        acceptError instanceof Error ? acceptError.message : 'Could not accept this invitation.',
-      )
+    } catch (cause) {
+      if (cause instanceof OverlayApiError && cause.status === 401) setRequiresSignIn(true)
+      setError(cause instanceof Error ? cause.message : 'Could not accept this invitation.')
+    } finally {
+      setAccepting(false)
     }
-  }, [id, status, refresh, switchWorkspace, router])
+  }
+
+  const switchAccount = () =>
+    void signOut()
+      .catch(() => undefined)
+      .then(() => router.replace('/auth-flow'))
 
   return (
-    <View
-      style={[
-        styles.screen,
-        { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
-      <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
-        <View style={[styles.iconWrap, { borderColor: theme.border, backgroundColor: theme.surfaceSubtle }]}>
-          <Feather name="users" size={21} color={theme.text} />
-        </View>
-        <Text style={[styles.title, { color: theme.text }]}>Join an Overlay workspace</Text>
-        <Text style={[styles.description, { color: theme.textSecondary }]}>
-          Invitations are bound to the exact invited email address. Sign in with that account, then
-          accept to join.
-        </Text>
-        {error ? (
-          <View style={styles.errorBox}>
-            <Feather name="alert-circle" size={14} color="#EF4444" />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-        {requiresSignIn ? (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => router.replace('/auth-flow')}
-            style={[styles.button, { backgroundColor: theme.foreground }]}
+    <>
+      <Stack.Screen options={{ title: 'Join workspace' }} />
+      <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
+        <Form modifiers={[tint(theme.foreground as string)]}>
+          <Section
+            title="You're invited"
+            footer={<Text>{'Invitations only work for the email address they were sent to. Expired, cancelled or already used invitations can’t be accepted.'}</Text>}
           >
-            <Text style={[styles.buttonText, { color: theme.background }]}>Sign in to continue</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            disabled={status === 'accepting'}
-            onPress={() => void accept()}
-            style={[styles.button, { backgroundColor: theme.foreground }]}
-          >
-            {status === 'accepting' ? (
-              <ActivityIndicator size="small" color={theme.background} />
+            <LabeledContent label="Accepting as">
+              <Text>{user?.email ?? 'Not signed in'}</Text>
+            </LabeledContent>
+          </Section>
+          {error ? (
+            <Section title="Couldn't join">
+              <Text>{error}</Text>
+            </Section>
+          ) : null}
+          <Section>
+            {requiresSignIn || !user ? (
+              <Button label="Sign in with another account" onPress={switchAccount} />
             ) : (
-              <Text style={[styles.buttonText, { color: theme.background }]}>Accept invitation</Text>
+              <Button label={accepting ? 'Joining…' : 'Accept invitation'} onPress={() => void accept()} />
             )}
-          </TouchableOpacity>
-        )}
-        <Text style={[styles.footnote, { color: theme.textDisabled }]}>
-          Expired, cancelled, replaced, or already-used invitations cannot be accepted.
-        </Text>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={[styles.backLink, { color: theme.textSecondary }]}>Go back</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+            <Button label="Not now" onPress={leave} />
+          </Section>
+        </Form>
+      </Host>
+    </>
   )
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.xl,
-    padding: spacing.xl,
-    alignItems: 'center',
-  },
-  iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  title: { fontSize: fontSize.lg, fontWeight: '700', marginBottom: spacing.xs },
-  description: { fontSize: fontSize.sm, lineHeight: 20, textAlign: 'center', maxWidth: 320 },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    borderRadius: borderRadius.lg,
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.md,
-    alignSelf: 'stretch',
-  },
-  errorText: { flex: 1, fontSize: fontSize.xs, color: '#EF4444', lineHeight: 16 },
-  button: {
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 11,
-    marginTop: spacing.lg,
-    minWidth: 180,
-    alignItems: 'center',
-  },
-  buttonText: { fontSize: fontSize.sm, fontWeight: '700' },
-  footnote: { fontSize: 11, textAlign: 'center', marginTop: spacing.md, maxWidth: 300 },
-  backLink: { fontSize: fontSize.sm, marginTop: spacing.sm },
-})

@@ -1,6 +1,6 @@
 # Mobile parity and interaction maturity audit
 
-Status: audit written 2026-11-22. It is based on a code inventory of web (`overlay-landing` main) and mobile (`native-shell` at `7a72bef`), plus hands-on testing in the iOS 26 simulator (iPhone 16e) against the isolated PR preview (`pr-595`). Testing covered the free Personal workspace and the seeded paid **Preview QA Team** workspace. Only P0 #5 is fixed so far.
+Status: audit written 2026-11-22. It is based on a code inventory of web (`overlay-landing` main) and mobile (`native-shell` at `7a72bef`), plus hands-on testing in the iOS 26 simulator (iPhone 16e) against the isolated PR preview (`pr-595`). Testing covered the free Personal workspace and the seeded paid **Preview QA Team** workspace. P0 #1 (fixed in the app on `native-shell`, 2026-11-23) and P0 #5 are fixed so far.
 
 Severity:
 - **P0**: blocks a core job or loses data.
@@ -11,7 +11,7 @@ Severity:
 
 | # | Area | Problem | Seen in test | Fix direction |
 | --- | --- | --- | --- | --- |
-| 1 | Workspaces | No way to see the current workspace, manage it, or create one. The account sheet shows a switcher only when you belong to 2+ workspaces. `/workspace`, "Manage workspace" and "New workspace" live only in the old drawer, which nothing opens anymore. | Yes | Always show the current workspace in the account sheet with Switch, Manage and New. |
+| 1 | Workspaces | No way to see the current workspace, manage it, or create one. The account sheet shows a switcher only when you belong to 2+ workspaces. `/workspace`, "Manage workspace" and "New workspace" live only in the old drawer, which nothing opens anymore. | Yes | **Fixed on `native-shell` 2026-11-23**: the account sheet always lists your workspaces with Manage workspace and New workspace; Manage opens the native Workspace pages. |
 | 2 | Billing | An unpaid workspace can't run anything, and mobile never says why or how to fix it. Sending returns HTTP 402 `subscription_required` (`recovery: "billing"`). Chat shows "Could not send. Your draft is ready to retry." plus a dev error toast. Agent threads say "Open Workspace Billing" with no button. Settings → Billing is read-only ("Free", "Status: Not initialized"). Web blocks the composer up front using `executionAccess`. | Yes | Read `executionAccess` and block the composer with a clear banner: a billing action for owners, "ask an admin" for members. Map 402 billing errors to the same banner. Decide the App Store–compliant upgrade path (link out to web vs in-app purchase). |
 | 3 | Notes | Leaving a note with unsaved edits silently discards them. The editor is manual-save Markdown with a "Save changes" button floating mid-screen. Text typed before the body field had focus was also lost. | Yes: typed "Ship it", tapped Back, reopened to an empty note | Autosave (debounced and revision-guarded like web), and save on blur, background and Back. Rich editor, or at least a formatting bar. |
 | 4 | Chats | A failed send duplicates the message: the sent bubble stays and the draft is also restored. Reopening the chat shows the user message with no failed state and no Retry. | Yes | Mark the failed turn inline with Retry and Edit. Restore the draft only if the bubble is removed. |
@@ -112,6 +112,6 @@ Severity:
 | Model picker | Native sheet with Text/Image/Video, search, favourites, provider rail and capability chips. Older Opus sorts above the newer Fable models, and the rail ends in stray letter entries. Closing the sheet with X reset the composer chip to "Auto". |
 | Agent thread (QA Workspace Agent) | Works. Your message shows instantly, the avatar animates while working, and the reply ends with "Worked for 16s". The composer needs a second tap to focus and shows an iOS "AutoFill" bubble. |
 | Billing | Shows "Paid", "817" available and "184" used without units or dollars, a lowercase "active", and the period end. No top-up, auto top-up or manage actions. |
-| Workspace switch | Accept moves you into the paid workspace, but there's still no visible current-workspace row (P0 #1). |
+| Workspace switch | Accept moves you into the paid workspace; the account sheet now shows the current workspace (P0 #1, fixed 2026-11-23). |
 
 Not covered: Computer (its fixture belongs to the configured Preview login, not the mobile test account), image and video generation (to avoid spending the $1 fixture allowance), connector OAuth, push notifications on a device, iPad and Android.
