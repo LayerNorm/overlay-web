@@ -35,6 +35,8 @@ import {
   executeComputerListFiles,
   executeComputerOpenUrl,
   executeComputerReadFile,
+  executeComputerGrep,
+  executeComputerGlob,
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerPublishFile,
@@ -1078,14 +1080,62 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
     if (shouldExposeTool('computer_read_file')) {
       tools.computer_read_file = tool({
-      description: 'Read a text file from the bound computer’s filesystem (up to 256KB).',
+      description:
+        'Read a text file on the bound computer. Returns numbered lines (number, tab, text), totalLines and a sha. '
+        + 'Reads up to 2000 lines by default; for large files pass offset (1-based first line) and limit to read only the part you need. '
+        + 'Pass sha as expected_sha to edit tools so you never overwrite a newer version.',
       inputSchema: z.object({
         path: z.string().describe('Absolute path of the file to read'),
+        offset: z.number().int().min(1).optional().describe('1-based line to start from (default 1)'),
+        limit: z.number().int().min(1).max(10_000).optional().describe('Number of lines to read (default 2000)'),
         target: computerTargetSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('computer_read_file')
         return executeComputerReadFile(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_grep')) {
+      tools.computer_grep = tool({
+      description:
+        'Search file contents on the bound computer with ripgrep (respects .gitignore). Prefer this over computer_exec grep. '
+        + 'output_mode files_with_matches (default, newest first) lists files; content returns matching lines with line numbers and optional context; count returns matches per file.',
+      inputSchema: z.object({
+        pattern: z.string().min(1).max(4_000).describe('Regular expression (Rust regex syntax), or literal text with fixed_strings'),
+        path: z.string().max(4096).optional().describe('File or directory to search (default: the home directory)'),
+        glob: z.string().max(500).optional().describe('Only files matching this glob, e.g. "*.tsx" or "src/**/*.ts"'),
+        type: z.string().max(40).optional().describe('ripgrep file type, e.g. ts, py, rust, go, js'),
+        output_mode: z.enum(['files_with_matches', 'content', 'count']).optional(),
+        context: z.number().int().min(0).max(20).optional().describe('Lines of context around each match (content mode)'),
+        case_insensitive: z.boolean().optional(),
+        fixed_strings: z.boolean().optional().describe('Treat pattern as literal text'),
+        multiline: z.boolean().optional().describe('Let patterns span lines'),
+        max_results: z.number().int().min(1).max(1_000).optional().describe('Max files or matches to return (default 100)'),
+        target: computerTargetSchema,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_grep')
+        return executeComputerGrep(options, input)
+      },
+    })
+    }
+
+    if (shouldExposeTool('computer_glob')) {
+      tools.computer_glob = tool({
+      description:
+        'Find files by name pattern on the bound computer, newest first. Respects .gitignore and skips .git. '
+        + 'Examples: "**/*.test.ts", "src/**/route.ts", "*.md".',
+      inputSchema: z.object({
+        pattern: z.string().min(1).max(500).describe('Glob pattern'),
+        path: z.string().max(4096).optional().describe('Directory to search (default: the home directory)'),
+        max_results: z.number().int().min(1).max(1_000).optional().describe('Max files to return (default 100)'),
+        target: computerTargetSchema,
+      }),
+      execute: async (input) => {
+        assertToolAllowed('computer_glob')
+        return executeComputerGlob(options, input)
       },
     })
     }

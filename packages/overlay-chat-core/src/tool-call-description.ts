@@ -242,6 +242,15 @@ const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription
     return path ? call.make(VERBS.read, { target: target(basename(path)), title: path }) : null
   },
   computer_write_file: describeComputerWrite,
+  computer_grep: (call) => {
+    const pattern = inputString(call, 'pattern')
+    const path = inputString(call, 'path')
+    return pattern ? call.make(VERBS.searched, { target: path ? target(basenameOrPath(path)) : '.', detail: `for “${clip(pattern, 48)}”` }) : null
+  },
+  computer_glob: (call) => {
+    const pattern = inputString(call, 'pattern')
+    return pattern ? call.make(VERBS.searched, { target: target(pattern), ...(inputString(call, 'path') ? { title: inputString(call, 'path')! } : {}) }) : null
+  },
   computer_list_files: (call) => {
     const path = inputString(call, 'path')
     return call.make(VERBS.listed, path ? { target: target(basenameOrPath(path)), title: path } : { target: '.' })
