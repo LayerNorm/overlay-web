@@ -7,7 +7,7 @@
 - Only the **Workspace Overlay** (`workspace_chief`) is in Slack. It delegates to other agents through the Harness.
 - **Build from first principles on the Chat SDK** (`chat` + `@chat-adapter/slack`). Do not restore #582; its retired tables stay read-only.
 - **Slack is a first-class integration, like the GitHub App:** its own app, `convex/integrations/slack*`, `src/server/integrations/slack/` and settings.
-- **Connected apps** lists **GitHub**, **Slack** and **MCP** (today's page), plus "coming soon". Each opens its own page: Settings › Connected apps › Slack.
+- **Connected apps** lists **GitHub**, **Slack** and **MCP**; each opens its own page.
 
 ## Formatting
 
