@@ -1,5 +1,12 @@
 import 'server-only'
 import { roomListScope } from './room-scope'
+import {
+  computerRecordingChapters,
+  computerRecordingFileName,
+  parseComputerRecordingStop,
+  summarizeComputerRecording,
+  type ComputerRecordingStatus,
+} from './computer-recording'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
@@ -1288,6 +1295,124 @@ export async function executeComputerWriteFile(
     }
   } catch (err) {
     return computerErrorResult(err, 'Computer file write failed')
+  }
+}
+
+export type ComputerRecordingInput = {
+  action: 'start' | 'annotate' | 'stop' | 'status'
+  id?: string
+  title?: string
+  maxSeconds?: number
+  fps?: number
+  label?: string
+  status?: ComputerRecordingStatus
+  name?: string
+  scope?: 'personal' | 'workspace'
+  public?: boolean
+  target?: ComputerTarget
+}
+
+/** The fields each action sends to the driver; anything else is dropped, and missing required fields fail early. */
+export function computerRecordingDriverArgs(input: ComputerRecordingInput):
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; error: string } {
+  const pick = (...keys: Array<keyof ComputerRecordingInput>) =>
+    Object.fromEntries(keys.filter(key => input[key] !== undefined).map(key => [key, input[key]]))
+  if (input.action === 'start') return { ok: true, args: pick('title', 'maxSeconds', 'fps') }
+  if (input.action === 'status') return { ok: true, args: {} }
+  if (!input.id) return { ok: false, error: `${input.action} needs the recording id returned by start.` }
+  if (input.action === 'annotate') {
+    if (!input.label?.trim()) return { ok: false, error: 'annotate needs a label.' }
+    return { ok: true, args: pick('id', 'label', 'status') }
+  }
+  return { ok: true, args: pick('id') }
+}
+
+/**
+ * Screen recordings as proof of work. start/annotate/status are driver calls; stop finalizes an MP4 with one chapter
+ * per annotation, publishes it to Files (kept until deleted) and only creates a public link when asked to.
+ */
+export async function executeComputerRecording(options: OverlayToolsOptions, input: ComputerRecordingInput) {
+  const prepared = computerRecordingDriverArgs(input)
+  if (!prepared.ok) return { success: false as const, code: 'invalid_input', error: prepared.error }
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_recording' })
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action } = input
+  let response: Record<string, unknown>
+  try {
+    response = await resolved.operate(async (instance) => {
+      if (isLocalHostSandboxInstance(instance)) {
+        throw new ComputerDesktopDriverError('recording_unsupported', 'Screen recording runs on cloud computers only.')
+      }
+      return await runComputerDriverCommand(instance, `recording_${action}`, prepared.args, { requireDesktop: true })
+    }, action === 'stop' ? 180_000 : 45_000)
+  } catch (err) {
+    return computerErrorResult(err, 'Screen recording failed')
+  }
+  if (action !== 'stop') return { success: true as const, action, ...response, computerId: resolved.computer.id }
+
+  const stop = parseComputerRecordingStop(response)
+  if (!stop) return { success: false as const, error: 'The recording finished but returned no file.' }
+  const stopInput = input
+  const summary = summarizeComputerRecording(stop)
+  const recording = {
+    id: stop.id,
+    path: stop.path,
+    durationSeconds: stop.durationSeconds,
+    sizeBytes: stop.sizeBytes,
+    summary,
+    counts: stop.counts,
+    chapters: computerRecordingChapters(stop.annotations),
+  }
+  const scope = stopInput.scope ?? 'personal'
+  const published = await publishComputerFile({
+    request: {
+      sourcePath: stop.path,
+      name: computerRecordingFileName(stop, stopInput.name),
+      artifactId: `recording-${stop.id}`,
+      mimeType: 'video/mp4',
+      scope: roomListScope(options, scope) ?? scope,
+    },
+    authority: options.artifactPublicationAuthority,
+    userId: options.userId,
+    workspaceId: options.workspaceId,
+    resolveComputer: () => computerInstanceFor(options, { target: input.target, toolName: 'computer_recording' }),
+  })
+  if (!published.success) {
+    return {
+      success: true as const, action, ...recording, published: false,
+      publishError: published.message,
+      note: 'The MP4 is still on the computer; publish it with computer_publish_file.',
+      computerId: resolved.computer.id,
+    }
+  }
+  let shareUrl: string | null = null
+  let shareError: string | undefined
+  if (stopInput.public === true) {
+    try {
+      const { fileService } = await import('@/server/files/http')
+      const share = await fileService.setShare({
+        fileId: published.artifact.fileId,
+        origin: options.baseUrl ?? '',
+        userId: options.userId,
+        visibility: 'public',
+      })
+      shareUrl = share.url
+    } catch (err) {
+      shareError = err instanceof Error ? err.message : 'The public link could not be created.'
+    }
+  }
+  return {
+    success: true as const,
+    action,
+    ...recording,
+    published: true,
+    fileId: published.artifact.fileId,
+    downloadUrl: published.downloadUrl,
+    visibility: shareUrl ? 'public' as const : 'private' as const,
+    ...(shareUrl ? { shareUrl } : {}),
+    ...(shareError ? { shareError } : {}),
+    computerId: resolved.computer.id,
   }
 }
 
