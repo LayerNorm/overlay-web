@@ -7,11 +7,12 @@ import { ProviderLogo } from '@overlay/ui/ai'
 import { useByokModels } from '@/components/providers/useByokModels'
 import { ConnectProviderDialog } from '@/features/settings/components/ConnectProviderDialog'
 import { subscriptionLogo } from '@/features/settings/components/subscription-connection-client'
+import { isApiKeySubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 
 export function OnboardingSubscriptions({ disabled }: { disabled: boolean }) {
   const [open, setOpen] = useState(false)
   const { connections, refresh } = useByokModels()
-  const subscriptions = connections.filter((connection) => connection.providerId.startsWith('subscription:') && connection.status === 'active')
+  const subscriptions = connections.filter((connection) => (connection.providerId.startsWith('subscription:') || isApiKeySubscriptionConnection(connection)) && connection.status === 'active')
   return <div className="mb-5">
     <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Bring your AI subscription</p>
     <div className="divide-y divide-(--border) overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)">

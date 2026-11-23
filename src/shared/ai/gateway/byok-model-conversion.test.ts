@@ -122,3 +122,25 @@ test('only the picker can include inactive subscriptions, without changing ident
   assert.ok(models.every((model) => model.subscription?.unavailable))
   assert.equal(models[0].subscription?.recoveryHref, '/app/settings?section=providers&reconnect=expired')
 })
+
+test('OpenCode Go shows as a subscription with the OpenCode logo; Zen stays an API key', () => {
+  const row = (providerId: string, displayName: string) => ({
+    _id: `${providerId}_1`,
+    providerId,
+    endpoint: '',
+    displayName,
+    enabledModelIds: ['kimi-k3'],
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  })
+  const [go, zen] = byokConnectionsToChatModels([row('opencode-go', 'OpenCode Go'), row('opencode-zen', 'OpenCode Zen')])
+  assert.equal(go?.provider, 'opencode')
+  assert.equal(go?.sourceLabel, 'Subscription')
+  assert.equal(go?.subscription?.connectionId, 'opencode-go_1')
+  assert.equal(go?.subscription?.scopeLabel, 'Personal')
+  assert.equal(go?.subscription?.recoveryHref, '/app/settings?section=providers')
+  assert.equal(zen?.provider, 'opencode')
+  assert.equal(zen?.sourceLabel, 'API key')
+  assert.equal(zen?.subscription, undefined)
+})

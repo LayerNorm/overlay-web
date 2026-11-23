@@ -123,22 +123,30 @@ test('account workspace creation and invitation acceptance skip workspace bootst
   const directory = await import('@/app/api/v1/account/workspaces/route')
   assert.equal('GET' in directory, false)
 
+  // The native app signs in with a verified user token instead of a browser session.
   sessionEnabled = false
-  const rejectedCreate = await directory.POST(
+  const provider = server.auth as { getUserById?: (userId: string) => Promise<unknown> }
+  const originalGetUserById = provider.getUserById
+  t.after(() => { provider.getUserById = originalGetUserById })
+  t.mock.method(server.auth, 'getUserProfile', async () => ({ id: 'user_1' }))
+  provider.getUserById = async (userId) => ({ id: userId, email: 'native@example.test', emailVerified: true })
+  const nativeCreate = await directory.POST(
     request('/api/v1/account/workspaces?userId=user_1', 'POST', { name: 'Studio' }, 'access-token'),
   )
-  assert.equal(rejectedCreate.status, 403)
+  assert.equal(nativeCreate.status, 201)
   const accept = await import('@/app/api/v1/workspace-invitations/[invitationId]/accept/route')
-  const rejectedAccept = await accept.POST(
+  const nativeAccept = await accept.POST(
     request('/api/v1/workspace-invitations/invite_1/accept?userId=user_1', 'POST', {}, 'access-token'),
     { params: Promise.resolve({ invitationId: 'invite_1' }) },
   )
-  assert.equal(rejectedAccept.status, 403)
-  assert.equal(createCalls, 0)
-  assert.equal(idempotencyReservations, 0)
-  assert.equal(acceptedEmail, '')
+  assert.equal(nativeAccept.status, 200)
+  assert.equal(acceptedEmail, 'native@example.test')
   assert.equal(resolveCalls, 0)
   assert.equal(ensureCalls, 0)
+  createCalls = 0
+  idempotencyReservations = 0
+  summaryResolveCalls = 0
+  acceptedEmail = ''
 
   sessionEnabled = true
   const create = await directory.POST(request('/api/v1/account/workspaces', 'POST', { name: 'Studio' }))

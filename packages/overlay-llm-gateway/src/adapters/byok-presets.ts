@@ -174,9 +174,37 @@ export const BYOK_PROVIDER_PRESETS: readonly ByokProviderPreset[] = [
     modelProtocols: [
       { prefix: 'grok-', protocol: 'responses' },
       { prefix: 'gpt-', protocol: 'responses' },
+      { prefix: 'muse-', protocol: 'responses' },
       { prefix: 'claude-', protocol: 'messages' },
     ],
     docsURL: 'https://opencode.ai/docs/go/',
+  },
+  {
+    // Pay-as-you-go OpenCode credits. The same OpenCode account key works for
+    // Go and Zen; Zen bills the account's credit balance instead of the plan.
+    id: 'opencode-zen',
+    label: 'OpenCode Zen',
+    defaultBaseURL: 'https://opencode.ai/zen/v1',
+    discoveryPath: '/models',
+    discoveryShape: 'openai',
+    requiresApiKey: true,
+    isDefault: false,
+    isDeletable: true,
+    headers: {
+      'User-Agent': 'overlay/1.0',
+    },
+    sessionHeader: 'x-opencode-session',
+    // Routes follow the endpoint table in https://opencode.ai/docs/zen/.
+    modelProtocols: [
+      { prefix: 'grok-', protocol: 'responses' },
+      { prefix: 'gpt-', protocol: 'responses' },
+      { prefix: 'muse-', protocol: 'responses' },
+      { prefix: 'claude-', protocol: 'messages' },
+      { prefix: 'qwen3.5-plus', protocol: 'messages' },
+      { prefix: 'qwen3.6-plus', protocol: 'messages' },
+      { prefix: 'qwen3.8-flash', protocol: 'messages' },
+    ],
+    docsURL: 'https://opencode.ai/docs/zen/',
   },
   {
     id: 'mistral',
