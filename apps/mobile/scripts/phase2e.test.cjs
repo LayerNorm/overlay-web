@@ -50,6 +50,11 @@ function hooks() {
     useEffect(effect) {
       effects.push(effect)
     },
+    useRef(initial) {
+      const index = cursor++
+      if (!(index in state)) state[index] = { current: initial }
+      return state[index]
+    },
   }
   react.default = react
   return {
@@ -70,7 +75,10 @@ function nodes(tree) {
 function views(h) {
   return load('components/knowledge/ResourceViews.tsx', {
     react: h.react,
-    'react-native': native,
+    'react-native': new Proxy(
+      { useWindowDimensions: () => ({ width: 390, height: 844 }) },
+      { get: (target, key) => (key in target ? target[key] : key) },
+    ),
     'lucide-react-native': native,
     'react-native-enriched-markdown': { EnrichedMarkdownText: 'Markdown' },
     '../shell/primitives': { T: 'T', Button: 'Button', IconButton: 'IconButton' },
@@ -79,6 +87,10 @@ function views(h) {
     '../../lib/automationSchedule': load('lib/automationSchedule.ts', {}),
     '../ui/AppChrome': { BottomSheet: 'Sheet' },
     '../../services/noteContentFormat': { normalizeHtmlForMobileMarkdown: (value) => value },
+    '../navigation/NativeSegmented': { NativeSegmented: 'NativeSegmented' },
+    './FileActions': { FileContextMenu: 'FileContextMenu' },
+    '../creatures/CreatureEmpty': { CreatureEmpty: 'CreatureEmpty' },
+    'expo-router': { Stack: { Toolbar: Object.assign(() => null, { Button: 'ToolbarButton' }) } },
   })
 }
 function backend() {
@@ -405,7 +417,7 @@ test('files filter/folder actions, unsupported preview, automation empty/history
   )
   assert.ok(
     nodes(ui.AutomationList({ theme: {}, items: [], onOpen() {}, onNew() {} })).some(
-      (node) => node.props.empty === 'No automations yet',
+      (node) => node.type === 'CreatureEmpty' && node.props.title === 'No automations yet',
     ),
   )
   assert.ok(
@@ -432,7 +444,7 @@ test('files filter/folder actions, unsupported preview, automation empty/history
   )
 })
 
-test('note saves include revision, retain drafts on failure and never overwrite concurrent typing', async () => {
+test('notes autosave after typing pauses, include the revision, keep the draft on failure and do not retry a conflict in a loop', async () => {
   const h = hooks(),
     ui = views(h),
     sent = [],
@@ -445,6 +457,9 @@ test('note saves include revision, retain drafts on failure and never overwrite 
         throw new Error('Conflict; reopen before saving.')
       },
     }
+  // NoteDocument registers three effects per render: autosave, draft ref, flush on leave.
+  const autosave = () => h.effects[h.effects.length - 3]()
+  const pause = () => new Promise((resolve) => setTimeout(resolve, ui.NOTE_AUTOSAVE_MS + 50))
   let tree = h.render(ui.NoteDocument, props)
   nodes(tree)
     .find((node) => node.props.accessibilityLabel === 'Edit note content')
@@ -453,18 +468,21 @@ test('note saves include revision, retain drafts on failure and never overwrite 
   nodes(tree)
     .find((node) => node.props.accessibilityLabel === 'Note content')
     .props.onChangeText('Keep this draft')
+  h.render(ui.NoteDocument, props)
+  autosave()
+  await pause()
   tree = h.render(ui.NoteDocument, props)
-  nodes(tree)
-    .find((node) => node.type === 'Button' && node.props.children.includes('Save changes'))
-    .props.onPress()
-  await new Promise((resolve) => setImmediate(resolve))
-  tree = h.render(ui.NoteDocument, props)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].expectedUpdatedAt, 10)
+  assert.equal(sent[0].content, 'Keep this draft')
   assert.equal(
     nodes(tree).find((node) => node.props.accessibilityLabel === 'Note content').props.value,
     'Keep this draft',
   )
-  assert.equal(sent[0].expectedUpdatedAt, 10)
   assert.ok(nodes(tree).some((node) => node.props.error?.includes('Conflict')))
+  autosave()
+  await pause()
+  assert.equal(sent.length, 1, 'a failed draft waits for a new edit')
 })
 
 test('production paths have no run polling/SSE; fixture modules are not imported by application routes', () => {

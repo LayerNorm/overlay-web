@@ -1,9 +1,9 @@
 import { NativeSegmented } from '../navigation/NativeSegmented'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { FileContextMenu, type FileActions } from './FileActions'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { Stack } from 'expo-router'
-import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native'
+import { ActivityIndicator, AppState, Image, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native'
 import {
   AtSign,
   Bell,
@@ -698,6 +698,12 @@ export function DocumentMarkdown({
   )
 }
 
+/** How long typing must pause before a note saves itself. */
+export const NOTE_AUTOSAVE_MS = 800
+
+type NoteDraft = { title: string; content: string }
+type NoteSave = (value: NoteDraft & { expectedUpdatedAt: number }) => Promise<{ title: string; content: string; updatedAt: number }>
+
 export function NoteDocument({
   theme,
   file,
@@ -707,11 +713,7 @@ export function NoteDocument({
   theme: Theme
   file: KnowledgeFile
   now?: number
-  onSave: (value: {
-    title: string
-    content: string
-    expectedUpdatedAt: number
-  }) => Promise<{ title: string; content: string; updatedAt: number }>
+  onSave: NoteSave
   /** Unused: note options live in the navigation-bar menu. */
   onOptions?: () => void
 }) {
@@ -727,32 +729,36 @@ export function NoteDocument({
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The draft that last failed to save. Autosave waits for a new edit rather
+  // than retrying a conflict in a loop.
+  const [failed, setFailed] = useState<string | null>(null)
   const dirty = title !== base.title || content !== base.content
   if (!dirty && !saving && incoming.updatedAt > base.updatedAt) {
     setBase(incoming)
     setTitle(incoming.title)
     setContent(incoming.content)
   }
+  const draftKey = `${title}\u0000${content}`
+
   async function save() {
-    if (saving) return
-    if (!dirty) {
-      setEditing(false)
-      return
-    }
+    if (saving || !dirty) return
+    const sent = { title, content }
     setSaving(true)
     setError(null)
     try {
       const saved = await onSave({
-        title: title.trim() || 'Untitled',
-        content,
+        title: sent.title.trim() || 'Untitled',
+        content: sent.content,
         expectedUpdatedAt: base.updatedAt,
       })
-      setBase(saved)
+      // The base is what was sent, not the server's round trip of it, so a
+      // formatting difference never looks like an unsaved edit. Text typed
+      // while the save was in flight stays and saves next.
+      setBase({ ...sent, updatedAt: saved.updatedAt })
+      setFailed(null)
       setClock(Date.now())
-      setTitle((current) => (current === title ? saved.title : current))
-      setContent((current) => (current === content ? saved.content : current))
-      setEditing(false)
     } catch (cause) {
+      setFailed(`${sent.title}\u0000${sent.content}`)
       setError(
         cause instanceof Error
           ? cause.message
@@ -762,6 +768,43 @@ export function NoteDocument({
       setSaving(false)
     }
   }
+
+  // Save a pause after typing stops.
+  useEffect(() => {
+    if (!dirty || saving || failed === draftKey) return
+    const timer = setTimeout(() => void save(), NOTE_AUTOSAVE_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, dirty, saving, failed])
+
+  // Leaving the note or the app saves what is there right away. Kept in a ref
+  // so the unmount and background handlers see the latest draft.
+  const pending = useRef<{ draft: NoteDraft; expectedUpdatedAt: number } | null>(null)
+  const saveRef = useRef(onSave)
+  useEffect(() => {
+    saveRef.current = onSave
+    pending.current = dirty && !saving && failed !== draftKey ? { draft: { title, content }, expectedUpdatedAt: base.updatedAt } : null
+  })
+  useEffect(() => {
+    const flush = () => {
+      const next = pending.current
+      if (!next) return
+      pending.current = null
+      void saveRef.current({
+        title: next.draft.title.trim() || 'Untitled',
+        content: next.draft.content,
+        expectedUpdatedAt: next.expectedUpdatedAt,
+      }).catch(() => undefined)
+    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') flush()
+    })
+    return () => {
+      subscription.remove()
+      flush()
+    }
+  }, [])
+
   return (
     <>
       {editing ? (
@@ -770,18 +813,20 @@ export function NoteDocument({
             icon="checkmark"
             variant="prominent"
             tintColor={theme.foreground as string}
-            accessibilityLabel={dirty ? 'Save note' : 'Done'}
-            disabled={saving}
-            onPress={() => void save()}
+            accessibilityLabel="Done"
+            onPress={() => {
+              void save()
+              setEditing(false)
+            }}
           />
         </Stack.Toolbar>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
         <T style={{ color: theme.muted, fontSize: 12, flex: 1 }}>
-          {saving
-            ? 'Saving…'
-            : dirty
-              ? 'Unsaved changes'
+          {error
+            ? 'Not saved'
+            : saving || dirty
+              ? 'Saving…'
               : Math.abs((now ?? clock) - base.updatedAt) < 60000
                 ? 'Saved just now'
                 : `Saved ${resourceDate(base.updatedAt)}`}
@@ -792,6 +837,7 @@ export function NoteDocument({
         <>
           <TextInput
             accessibilityLabel="Note title"
+            selectionColor={theme.foreground as string}
             value={title}
             onChangeText={setTitle}
             maxLength={100}
@@ -804,6 +850,10 @@ export function NoteDocument({
           />
           <TextInput
             accessibilityLabel="Note content"
+            selectionColor={theme.foreground as string}
+            autoFocus
+            placeholder="Start writing…"
+            placeholderTextColor={theme.muted as string}
             multiline
             textAlignVertical="top"
             value={content}

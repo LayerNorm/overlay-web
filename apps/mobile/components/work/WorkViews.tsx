@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native'
 import { Stack } from 'expo-router'
+import { HeaderHeightContext } from '@react-navigation/elements'
 import {
   Button,
   Form,
@@ -225,6 +226,7 @@ export function WorkListView({
   const groups = layout === 'Board' ? columnsByStatus(visibleItems) : groupByStatus(visibleItems)
   const people = new Map(context.people.map((person) => [person.principalId, person]))
   const today = toWorkDate(new Date(useWorkClock()))
+  const headerHeight = React.use(HeaderHeightContext) ?? 0
   const statusGroups =
     layout === 'Timeline'
       ? null
@@ -332,8 +334,18 @@ export function WorkListView({
             })}
           </View>
         ))
+  // With nothing to list there is nothing to scroll, so the empty page is a
+  // plain view below the navigation bar. Inside an automatically inset
+  // ScrollView, a sheet presented over Work (the account sheet) could leave the
+  // native top inset at the sheet's height, stranding the filter mid-screen
+  // and the empty-state creature behind the tab bar.
+  const empty = nativeLayout && layout !== 'Timeline' && !visibleItems.length
+  const Container = empty ? View : ScrollView
+  const containerProps = empty
+    ? { style: { flex: 1, paddingTop: headerHeight } }
+    : { contentInsetAdjustmentBehavior: 'automatic' as const, contentContainerStyle: { flexGrow: 1, paddingBottom: 24 } }
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}>
+    <Container {...containerProps}>
       {nativeLayout ? (
         <View style={{ paddingTop: 4, paddingBottom: 4, paddingHorizontal: 16 }}>
           <NativeSegmented
@@ -413,7 +425,7 @@ export function WorkListView({
           Showing the first 2,000 tasks in this scope.
         </T>
       ) : null}
-    </ScrollView>
+    </Container>
   )
 }
 
