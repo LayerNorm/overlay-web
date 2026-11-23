@@ -405,3 +405,12 @@ test('assignee picker respects web creator-agent and personal human restrictions
     ['task'],
   )
 })
+
+test('work date and dependency helpers behind the native task forms', () => {
+  const date = work.fromWorkDate('2026-03-08')
+  assert.equal(work.toWorkDate(date), '2026-03-08')
+  assert.equal(date.getHours(), 12)
+  assert.deepEqual([...work.toggleDependency(['a', 'b'], 'a')], ['b'])
+  assert.deepEqual([...work.toggleDependency(['a'], 'b')], ['a', 'b'])
+  assert.equal(work.toggleDependency(Array.from({ length: 50 }, (_, index) => String(index)), 'new'), null)
+})

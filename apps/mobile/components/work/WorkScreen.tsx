@@ -1,33 +1,19 @@
 import React, { useRef, useState } from 'react'
-import { ActivityIndicator, ScrollView, View } from 'react-native'
+import { ActivityIndicator, Alert, ScrollView, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import type {
-  CreateWorkItemRequest,
-  UpdateWorkItemRequest,
-  WorkItem,
-  WorkStatus,
-} from '@overlay/app-core'
+import type { UpdateWorkItemRequest, WorkItem, WorkStatus } from '@overlay/app-core'
 import { useTheme } from '../../hooks/useTheme'
 import { useWork } from '../../hooks/useWork'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
-import {
-  commentWork,
-  createWork,
-  moveWork,
-  updateWork,
-  type WorkView,
-} from '../../services/workService'
-import { getRequestWorkspaceId } from '../../services/appApi'
+import { commentWork, moveWork, updateWork, type WorkView } from '../../services/workService'
 import { canWorkOnItem } from '../../lib/work'
 import { parseWorkErrorReason, workErrorMessage } from '../../../src/shared/work/errors'
 import { Button } from '../shell/primitives'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
-import { SheetModal } from '../ui/SheetModal'
-import { WorkComposer, WorkDetailView, WorkListView, workLayouts, type WorkLayout } from './WorkViews'
+import { WorkDetailView, WorkListView, workLayouts, type WorkLayout } from './WorkViews'
 import { TabToolbar } from '../navigation/nativeHeader'
-import { WorkPlacementSheet, WorkScheduleSheet } from './WorkTaskActions'
+import { workError } from './WorkForms'
 
 export function WorkScreen({ id }: { id?: string }) {
   const { activeWorkspaceId } = useWorkspace()
@@ -44,11 +30,8 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
   const { theme, isDark } = useTheme()
   const { user } = useAuth()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const [view, setView] = useState<WorkView>('workspace')
   const [layout, setLayout] = useState<WorkLayout>('List')
-  const [composer, setComposer] = useState(false)
-  const [editor, setEditor] = useState<{ type: 'move' | 'schedule'; item: WorkItem } | null>(null)
   const [busy, setBusy] = useState(false)
   const lock = useRef(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,15 +60,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
     }
   }
   const back = () => router.dismissTo('/(tabs)/work')
-  const onCreate = (input: CreateWorkItemRequest) =>
-    perform(async () => {
-      if (!workspaceId) throw new Error('Choose a workspace to continue.')
-      const item = await createWork(workspaceId, input)
-      if (getRequestWorkspaceId() === workspaceId) {
-        setComposer(false)
-        router.push(`/work/${item.id}` as never)
-      }
-    })
+  const newTask = () => router.push({ pathname: '/work/new', params: { scope: view } })
   const onPatch = (patch: UpdateWorkItemRequest) =>
     perform(async () => {
       if (!workspaceId || !id || !data.item) throw new Error('This task is no longer available.')
@@ -174,14 +149,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
             ) : null}
           </Stack.Toolbar.Menu>
           {user && data.context && (view === 'personal' || data.context.canCreateInWorkspace) ? (
-            <Stack.Toolbar.Button
-              icon="plus"
-              accessibilityLabel="New task"
-              onPress={() => {
-                setError(null)
-                setComposer(true)
-              }}
-            />
+            <Stack.Toolbar.Button icon="plus" accessibilityLabel="New task" onPress={newTask} />
           ) : null}
         </TabToolbar>
       )}
@@ -237,88 +205,18 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           theme={theme}
           dark={isDark}
           onOpen={(taskId) => router.push(`/work/${taskId}` as never)}
-          onCreate={() => {
-            setError(null)
-            setComposer(true)
-          }}
+          onCreate={newTask}
           canCreate={view === 'personal' || data.context.canCreateInWorkspace}
           canEdit={canEdit}
-          onMove={(item) => {
-            setError(null)
-            setEditor({ type: 'move', item })
+          onMove={(item, move) => {
+            if (!workspaceId) return
+            void moveWork(workspaceId, { ...move, id: item.id }).catch((reason) =>
+              Alert.alert('Could not move the task', workError(reason, 'Try again in a moment.')),
+            )
           }}
-          onSchedule={(item) => {
-            setError(null)
-            setEditor({ type: 'schedule', item })
-          }}
+          onSchedule={(item) => router.push({ pathname: '/work/schedule', params: { id: item.id, scope: view } })}
         />
       )}
-      <SheetModal
-        visible={Boolean(editor && workspaceId)}
-        onRequestClose={() => {
-          if (!busy) setEditor(null)
-        }}
-      >
-        {!editor || !workspaceId ? null : editor.type === 'move' ? (
-            <WorkPlacementSheet
-              item={editor.item}
-              items={data.items ?? []}
-              theme={theme}
-              busy={busy}
-              error={error}
-              onClose={() => {
-                if (!busy) setEditor(null)
-              }}
-              onMove={(move) =>
-                void perform(async () => {
-                  await moveWork(workspaceId, { ...move, id: editor.item.id })
-                  setEditor(null)
-                })
-              }
-            />
-          ) : (
-            <WorkScheduleSheet
-              item={editor.item}
-              theme={theme}
-              busy={busy}
-              error={error}
-              onClose={() => {
-                if (!busy) setEditor(null)
-              }}
-              onSave={(dates) =>
-                void perform(async () => {
-                  await updateWork(workspaceId, editor.item.id, {
-                    ...dates,
-                    expectedUpdatedAt: editor.item.updatedAt,
-                  })
-                  setEditor(null)
-                })
-              }
-            />
-          )}
-      </SheetModal>
-      <SheetModal
-        visible={composer && Boolean(data.context)}
-        onRequestClose={() => {
-          if (!busy) setComposer(false)
-        }}
-      >
-        {data.context ? (
-          <WorkComposer
-            key={`${workspaceId}:${view}:${composer}`}
-            theme={theme}
-            dark={isDark}
-            context={data.context}
-            items={data.items ?? []}
-            scope={view}
-            onClose={() => setComposer(false)}
-            onCreate={onCreate}
-            busy={busy}
-            error={error}
-            bottomInset={insets.bottom}
-          />
-        ) : null}
-      </SheetModal>
     </View>
   )
 }

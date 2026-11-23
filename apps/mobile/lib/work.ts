@@ -43,3 +43,15 @@ export function workRequest(
 export function dependencyChoices(items: readonly WorkItem[], currentId?: string) {
   return items.filter((item) => item.archivedAt === null && item.id !== currentId)
 }
+
+/** `YYYY-MM-DD` to a local date at noon, so time zones can't shift the day. */
+export function fromWorkDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day, 12)
+}
+
+/** Add or remove a dependency; null when adding would pass the 50-task limit. */
+export function toggleDependency(values: readonly string[], id: string): string[] | null {
+  if (values.includes(id)) return values.filter((value) => value !== id)
+  return values.length < 50 ? [...values, id] : null
+}

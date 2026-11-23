@@ -1,17 +1,26 @@
-import { SheetModal } from '../ui/SheetModal'
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
-import { useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ArrowLeft, Pin } from 'lucide-react-native'
+import { Stack, useRouter } from 'expo-router'
+import {
+  Button,
+  Form,
+  HStack,
+  Host,
+  Image as Symbol,
+  Picker,
+  RNHostView,
+  Section,
+  Spacer,
+  Text,
+  VStack,
+} from '@expo/ui/swift-ui'
+import { font, lineLimit, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers'
 import { agentsForCreatorScope } from '../../../src/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '../../../src/shared/agents/chief-identity'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useTheme } from '../../hooks/useTheme'
 import { subscribeAgents, type ShellAgent } from '../../services/shellService'
 import { AgentAvatar } from '../shell/AgentAvatar'
-import { Button, IconButton, T } from '../shell/primitives'
-import { WorkSheet } from './WorkControls'
+import { secondary } from './WorkForms'
 
 type Scope = 'workspace' | 'personal'
 type Directory = { agents: ShellAgent[]; viewerPrincipalId: string | null }
@@ -28,10 +37,8 @@ export function WorkOrganization({
   const { theme, isDark } = useTheme()
   const ready = useNativeDataReady()
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const [scope, setScope] = useState(initialScope)
   const [directory, setDirectory] = useState<Directory | null>(null)
-  const [selection, select] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
@@ -59,155 +66,63 @@ export function WorkOrganization({
   const chief = agents.find(
     (agent) => agent.agentRole === (scope === 'workspace' ? 'workspace_chief' : 'personal_chief'),
   )
-  const selected = agents.find((agent) => agent.id === selection)
   const owner = (agent: ShellAgent) =>
     agent.agentRole === 'workspace_chief'
       ? workspaceName || 'Workspace'
       : (agent.createdByDisplayName || 'Member') +
         (agent.createdByPrincipalId === viewer ? ' · You' : '')
 
-  function agentCard(agent: ShellAgent) {
+  function agentRow(agent: ShellAgent) {
     return (
-      <Pressable
-        key={agent.id}
-        accessibilityRole="button"
-        accessibilityLabel={`${agent.name}, ${chiefRoleLabel(agent)}, ${owner(agent)}`}
-        onPress={() => select(agent.id)}
-        style={({ pressed }) => ({
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          padding: 14,
-          borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 10,
-          backgroundColor: pressed ? theme.surfaceSubtle : theme.surfaceElevated,
-        })}
-      >
-        <AgentAvatar agent={agent} foreground={theme.foreground} dark={isDark} size={34} />
-        <View style={{ flex: 1, gap: 3 }}>
-          <T style={{ color: theme.foreground, fontWeight: '500' }}>{agent.name}</T>
-          <T style={{ color: theme.muted, fontSize: 12 }}>{chiefRoleLabel(agent)}</T>
-          <T style={{ color: theme.muted, fontSize: 12 }}>{owner(agent)}</T>
-        </View>
-        {isPinnedChief(agent, viewer) ? <Pin size={14} color={theme.muted} /> : null}
-      </Pressable>
+      <Button key={agent.id} onPress={() => router.push({ pathname: '/agent/[id]', params: { id: agent.id } })}>
+        <HStack spacing={12}>
+          <RNHostView matchContents>
+            <AgentAvatar agent={agent} foreground={theme.foreground} dark={isDark} size={34} />
+          </RNHostView>
+          <VStack alignment="leading" spacing={2}>
+            <Text modifiers={[lineLimit(1)]}>{agent.name}</Text>
+            <Text modifiers={[secondary, font({ size: 13 }), lineLimit(2)]}>
+              {`${chiefRoleLabel(agent)} · ${owner(agent)}`}
+            </Text>
+          </VStack>
+          <Spacer />
+          {isPinnedChief(agent, viewer) ? <Symbol systemName="pin" size={13} modifiers={[secondary]} /> : null}
+          <Symbol systemName="chevron.right" size={13} modifiers={[secondary]} />
+        </HStack>
+      </Button>
     )
   }
+  const others = agents.filter(({ id }) => id !== chief?.id)
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: theme.surfaceElevated }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          paddingHorizontal: 12,
-          height: 52,
-        }}
-      >
-        <IconButton
-          icon={ArrowLeft}
-          label="Back to Work"
-          theme={theme}
-          onPress={() => router.dismissTo('/(tabs)/work')}
-        />
-        <T style={{ color: theme.foreground, fontWeight: '500' }}>Organization</T>
-      </View>
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 16, gap: 12 }}
-      >
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(['workspace', 'personal'] as const).map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="button"
-              accessibilityState={{ selected: scope === value }}
-              onPress={() => {
-                setScope(value)
-                select(null)
-              }}
-              style={{
-                padding: 10,
-                borderRadius: 7,
-                backgroundColor: scope === value ? theme.surfaceSubtle : 'transparent',
-              }}
-            >
-              <T style={{ color: scope === value ? theme.foreground : theme.muted }}>
-                {value === 'workspace' ? 'Workspace' : 'Personal'}
-              </T>
-            </Pressable>
-          ))}
-        </View>
-        {failed ? (
-          <>
-            <T accessibilityRole="alert" style={{ color: theme.foreground }}>
-              Could not load the organization.
-            </T>
-            <Button
-              theme={theme}
-              onPress={() => {
-                setFailed(false)
-                setAttempt(attempt + 1)
-              }}
-            >
-              Try again
-            </Button>
-          </>
-        ) : !workspaceId ? (
-          <T style={{ color: theme.muted }}>Choose a workspace to view its organization.</T>
-        ) : !ready || !directory ? (
-          <ActivityIndicator accessibilityLabel="Loading organization" color={theme.muted} />
-        ) : (
-          <>
-            {chief ? (
-              agentCard(chief)
-            ) : (
-              <T style={{ color: theme.muted }}>No chief of staff is available in this scope.</T>
-            )}
-            {agents.some(({ id }) => id !== chief?.id) ? (
-              <View
-                style={{
-                  marginLeft: 16,
-                  paddingLeft: 12,
-                  borderLeftWidth: 1,
-                  borderColor: theme.border,
-                  gap: 8,
-                }}
-              >
-                {agents.filter(({ id }) => id !== chief?.id).map(agentCard)}
-              </View>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
-      <SheetModal visible={Boolean(selected)} onRequestClose={() => select(null)}>
-        {selected ? (
-          <WorkSheet
-            title={selected.name}
-            theme={theme}
-            onClose={() => select(null)}
-            bottomInset={insets.bottom}
-          >
-            <T style={{ color: theme.muted }}>
-              {chiefRoleLabel(selected)} · {owner(selected)}
-            </T>
-            {selected.description ? (
-              <T style={{ color: theme.foreground }}>{selected.description}</T>
-            ) : null}
-            <Button
-              theme={theme}
-              secondary
-              onPress={() => {
-                select(null)
-                router.push({ pathname: '/agent/[id]', params: { id: selected.id } })
-              }}
-            >
-              Open agent
-            </Button>
-          </WorkSheet>
-        ) : null}
-      </SheetModal>
-    </View>
+    <>
+      <Stack.Screen options={{ title: 'Organization', headerLargeTitle: false }} />
+      <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
+        <Form modifiers={[tint(theme.foreground as string)]}>
+          <Section>
+            <Picker selection={scope} onSelectionChange={(value: Scope) => setScope(value)} modifiers={[pickerStyle('segmented')]}>
+              <Text modifiers={[tag('workspace')]}>Workspace</Text>
+              <Text modifiers={[tag('personal')]}>Personal</Text>
+            </Picker>
+          </Section>
+          {failed ? (
+            <Section footer={<Text>Could not load the organization.</Text>}>
+              <Button label="Try again" onPress={() => { setFailed(false); setAttempt(attempt + 1) }} />
+            </Section>
+          ) : !workspaceId ? (
+            <Section footer={<Text>Choose a workspace to view its organization.</Text>}>{null}</Section>
+          ) : !ready || !directory ? (
+            <Section footer={<Text>Loading…</Text>}>{null}</Section>
+          ) : (
+            <>
+              <Section title="Chief of staff" footer={chief ? undefined : <Text>No chief of staff is available in this scope.</Text>}>
+                {chief ? agentRow(chief) : null}
+              </Section>
+              {others.length ? <Section title="Reports to the chief">{others.map(agentRow)}</Section> : null}
+            </>
+          )}
+        </Form>
+      </Host>
+    </>
   )
 }

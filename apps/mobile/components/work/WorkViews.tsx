@@ -1,20 +1,36 @@
-import { SheetModal } from '../ui/SheetModal'
-import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native'
+import { Stack } from 'expo-router'
+import {
+  Button,
+  Form,
+  HStack,
+  Host,
+  Image as SwiftSymbol,
+  LabeledContent,
+  Section,
+  Spacer,
+  Text as SwiftText,
+  TextField,
+  VStack,
+  type TextFieldRef,
+} from '@expo/ui/swift-ui'
+import {
+  disabled as swiftDisabled,
+  font as swiftFont,
+  foregroundStyle,
+  frame as swiftFrame,
+  lineLimit,
+  scrollDismissesKeyboard,
+  submitLabel,
+  tint,
+} from '@expo/ui/swift-ui/modifiers'
 import Svg, { Circle, Path } from 'react-native-svg'
 import {
-  ArrowUp,
-  CalendarDays,
-  Check,
-  GitFork,
-  MessageSquare,
-  Move,
   Plus,
-  User,
-  X,
 } from 'lucide-react-native'
 import type {
-  CreateWorkItemRequest,
+  MoveWorkItemRequest,
   UpdateWorkItemRequest,
   WorkContext,
   WorkEvent,
@@ -35,20 +51,27 @@ import {
   formatWorkDate,
   groupByStatus,
   indexPeople,
+  toggleDependency,
   toWorkDate,
-  workRequest,
-  WORK_STATUSES,
   WORK_STATUS_LABELS,
   type WorkFilter,
 } from '../../lib/work'
 import { columnsByStatus } from '../../../src/shared/work/query'
-import { Button, IconButton, T } from '../shell/primitives'
+import { IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
-import { WorkMarkdown } from './WorkMarkdown'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { NativeSegmented } from '../navigation/NativeSegmented'
 import { WorkTimeline } from './WorkTimeline'
-import { WorkField, WorkOptions, WorkSheet } from './WorkControls'
+import { useTheme } from '../../hooks/useTheme'
+import { validateWorkDates } from '../../../src/shared/work/status'
+import {
+  secondary,
+  WorkAssigneePicker,
+  WorkDateRows,
+  WorkDependsOnMenu,
+  WorkTaskMenu,
+  WorkStatusPicker,
+} from './WorkForms'
 
 function useWorkClock() {
   const [now, setNow] = useState(Date.now)
@@ -178,13 +201,14 @@ export function WorkListView({
   onOpen: (id: string) => void
   onCreate: () => void
   canEdit: (item: WorkItem) => boolean
-  onMove: (item: WorkItem) => void
+  onMove: (item: WorkItem, move: Omit<MoveWorkItemRequest, 'id'>) => void
   onSchedule: (item: WorkItem) => void
   canCreate?: boolean
   filter?: WorkFilter
   /** Set when the screen owns the native navigation bar (title, create, layout menu). */
   layout?: WorkLayout
 }) {
+  const { width } = useWindowDimensions()
   const [filter, setFilter] = useState<WorkFilter>(initialFilter)
   const [inlineLayout, setLayout] = useState<WorkLayout>('List')
   const layout = nativeLayout ?? inlineLayout
@@ -232,7 +256,8 @@ export function WorkListView({
               {group.status === 'review' ? 'Ready for review' : WORK_STATUS_LABELS[group.status]} ·{' '}
               {group.items.length}
             </T>
-            {group.items.map((item) => (
+            {group.items.map((item) => {
+              const card = (
               <View
                 key={item.id}
                 style={
@@ -290,16 +315,21 @@ export function WorkListView({
                     dark={dark}
                   />
                 </Pressable>
-                {layout === 'Board' && canEdit(item) ? (
-                  <IconButton
-                    icon={Move}
-                    label={`Move ${item.title}`}
-                    theme={theme}
-                    onPress={() => onMove(item)}
-                  />
-                ) : null}
               </View>
-            ))}
+              )
+              return canEdit(item) ? (
+                <WorkTaskMenu
+                  key={item.id}
+                  item={item}
+                  items={items}
+                  width={layout === 'Board' ? 254 : width}
+                  onMove={(move) => onMove(item, move)}
+                  onSchedule={() => onSchedule(item)}
+                >
+                  {card}
+                </WorkTaskMenu>
+              ) : card
+            })}
           </View>
         ))
   return (
@@ -387,232 +417,39 @@ export function WorkListView({
   )
 }
 
-export function WorkComposer({
-  theme,
-  dark,
-  context,
-  items,
-  scope,
-  onClose,
-  onCreate,
-  busy,
-  error,
-  bottomInset = 0,
-  initialTitle = '',
-  initialAssignee = '',
+/**
+ * A title or description being edited in place. It focuses itself (autoFocus
+ * is unreliable for a row just inserted into a Form) and commits its own text
+ * when it loses focus or on Done.
+ */
+function InlineEditor({
+  initial,
+  title,
+  field,
+  onCommit,
 }: {
-  theme: Theme
-  dark: boolean
-  context: WorkContext
-  items: WorkItem[]
-  scope: 'personal' | 'workspace'
-  onClose: () => void
-  onCreate: (input: CreateWorkItemRequest) => Promise<boolean>
-  busy: boolean
-  error?: string | null
-  bottomInset?: number
-  initialTitle?: string
-  initialAssignee?: string
+  initial: string
+  title: boolean
+  field: React.RefObject<TextFieldRef | null>
+  onCommit: (value: string) => void
 }) {
-  const [tab, setTab] = useState('Task')
-  const [title, setTitle] = useState(initialTitle)
-  const [description, setDescription] = useState('')
-  const [assignee, setAssignee] = useState(initialAssignee)
-  const [startDate, setStart] = useState('')
-  const [dueDate, setDue] = useState('')
-  const [blockedBy, setDependencies] = useState<string[]>([])
-  const [status, setStatus] = useState<'todo' | 'backlog'>('todo')
-  const [priority, setPriority] = useState<1 | 2 | 3>(2)
-  const [picker, setPicker] = useState<string | null>(null)
-  const [validation, setValidation] = useState<string | null>(null)
-  const selected = context.people.find((person) => person.principalId === assignee)
-  async function submit() {
-    try {
-      const input = workRequest(`${title}\n${description}`, {
-        scope,
-        status,
-        priority,
-        blockedBy,
-        ...(assignee ? { assigneePrincipalId: assignee } : {}),
-        ...(startDate ? { startDate } : {}),
-        ...(dueDate ? { dueDate } : {}),
-      })
-      setValidation(null)
-      await onCreate(input)
-    } catch (reason) {
-      setValidation(reason instanceof Error ? reason.message : 'Unable to create task.')
-    }
-  }
+  const value = useRef(initial)
+  useEffect(() => {
+    const timer = setTimeout(() => void field.current?.focus(), 80)
+    return () => clearTimeout(timer)
+  }, [field])
+  const done = () => onCommit(value.current)
   return (
-    <WorkSheet
-      minHeight={454}
-      title="New task"
-      theme={theme}
-      onClose={() => {
-        if (!busy) onClose()
-      }}
-      bottomInset={bottomInset}
-    >
-      <Tabs values={['Task', 'Details']} value={tab} onChange={setTab} theme={theme} />
-      <View style={{ backgroundColor: theme.surfaceMuted, borderRadius: 12, padding: 16, gap: 14 }}>
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <IconButton
-            label="Assignee"
-            icon={User}
-            theme={theme}
-            onPress={() => setPicker('Assignee')}
-          />
-          <IconButton
-            label="Schedule"
-            icon={CalendarDays}
-            theme={theme}
-            onPress={() => setPicker('Schedule')}
-          />
-          <IconButton
-            label="Depends on"
-            icon={GitFork}
-            theme={theme}
-            onPress={() => setPicker('Depends on')}
-          />
-          <View style={{ flex: 1 }} />
-          <T style={{ fontSize: 11, color: theme.muted, alignSelf: 'center' }}>
-            {blockedBy.length ? `${blockedBy.length} dependencies` : ''}
-          </T>
-        </View>
-        {tab === 'Task' ? (
-          <WorkField
-            theme={theme}
-            accessibilityLabel="Task title"
-            placeholder="What needs to be done?"
-            multiline
-            editable={!busy}
-            value={title}
-            onChangeText={setTitle}
-            style={{ minHeight: 82, padding: 0, textAlignVertical: 'top' }}
-          />
-        ) : (
-          <>
-            <WorkField
-              theme={theme}
-              accessibilityLabel="Description"
-              placeholder="Describe a good result"
-              multiline
-              editable={!busy}
-              value={description}
-              onChangeText={setDescription}
-              style={{ minHeight: 100 }}
-            />
-            <Tabs
-              values={['Todo', 'Backlog']}
-              value={status === 'todo' ? 'Todo' : 'Backlog'}
-              onChange={(value) => setStatus(value === 'Todo' ? 'todo' : 'backlog')}
-              theme={theme}
-            />
-            <Tabs
-              values={['Low', 'Medium', 'High']}
-              value={['Low', 'Medium', 'High'][priority - 1]}
-              onChange={(value) =>
-                setPriority((['Low', 'Medium', 'High'].indexOf(value) + 1) as 1 | 2 | 3)
-              }
-              theme={theme}
-            />
-          </>
-        )}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <WorkAvatar person={selected} theme={theme} dark={dark} />
-          <T style={{ color: theme.muted, fontSize: 11, flex: 1 }}>
-            {selected?.displayName ?? 'Unassigned'}
-          </T>
-          <Button
-            theme={theme}
-            secondary
-            icon={ArrowUp}
-            disabled={busy || !title.trim()}
-            onPress={() => void submit()}
-          >
-            {busy ? 'Creating...' : 'Create task'}
-          </Button>
-        </View>
-      </View>
-      {startDate || dueDate ? (
-        <T style={{ color: theme.muted, fontSize: 12 }}>
-          {startDate ? `Starts ${startDate}` : ''}
-          {dueDate ? `  Due ${dueDate}` : ''}
-        </T>
-      ) : null}
-      {selected?.type === 'agent' ? (
-        <T style={{ color: theme.muted, fontSize: 11 }}>
-          {blockedBy.length
-            ? 'Starts when dependencies finish.'
-            : 'Assigning an agent starts work.'}
-        </T>
-      ) : null}
-      {validation || error ? (
-        <T accessibilityRole="alert" style={{ color: theme.foreground, fontSize: 12 }}>
-          {validation ?? error}
-        </T>
-      ) : null}
-      <SheetModal
-        visible={picker !== null}
-        onRequestClose={() => setPicker(null)}
-      >
-        {picker === 'Schedule' ? (
-          <WorkSheet title="Schedule" theme={theme} onClose={() => setPicker(null)}>
-            <T style={{ color: theme.muted }}>Start</T>
-            <WorkField
-              theme={theme}
-              accessibilityLabel="Start date"
-              placeholder="YYYY-MM-DD"
-              value={startDate}
-              onChangeText={setStart}
-              autoCapitalize="none"
-            />
-            <T style={{ color: theme.muted }}>Due</T>
-            <WorkField
-              theme={theme}
-              accessibilityLabel="Due date"
-              placeholder="YYYY-MM-DD"
-              value={dueDate}
-              onChangeText={setDue}
-              autoCapitalize="none"
-            />
-            <Button theme={theme} secondary onPress={() => setPicker(null)}>
-              Done
-            </Button>
-          </WorkSheet>
-        ) : (
-          <WorkOptions
-            title={picker ?? ''}
-            theme={theme}
-            onClose={() => setPicker(null)}
-            choices={
-              picker === 'Assignee'
-                ? [
-                    { id: '', label: 'Unassigned' },
-                    ...availableWorkPeople(context.people, scope, context.principalId).map(
-                      (person) => ({ id: person.principalId, label: person.displayName }),
-                    ),
-                  ]
-                : dependencyChoices(items).map((item) => ({ id: item.id, label: item.title }))
-            }
-            selected={picker === 'Assignee' ? [assignee] : blockedBy}
-            onSelect={(id) => {
-              if (picker === 'Assignee') {
-                setAssignee(id)
-                setPicker(null)
-              } else
-                setDependencies((values) =>
-                  values.includes(id)
-                    ? values.filter((value) => value !== id)
-                    : values.length < 50
-                      ? [...values, id]
-                      : values,
-                )
-            }}
-          />
-        )}
-      </SheetModal>
-    </WorkSheet>
+    <TextField
+      ref={field}
+      placeholder={title ? 'Title' : 'Describe what a good result looks like.'}
+      defaultValue={initial}
+      // A one-line title ends editing on Return, which commits via focus loss.
+      axis={title ? 'horizontal' : 'vertical'}
+      onValueChange={(next) => { value.current = next }}
+      onFocusChange={(focused) => { if (!focused) done() }}
+      modifiers={title ? [swiftFont({ size: 22, weight: 'semibold' }), submitLabel('done')] : [lineLimit({ min: 3, max: 14 })]}
+    />
   )
 }
 
@@ -622,8 +459,6 @@ export function WorkDetailView({
   context,
   events,
   thread,
-  theme,
-  dark,
   onThread,
   onPatch,
   onStatus,
@@ -637,8 +472,8 @@ export function WorkDetailView({
   context: WorkContext
   events?: WorkEvent[]
   thread?: WorkThread
-  theme: Theme
-  dark: boolean
+  theme?: Theme
+  dark?: boolean
   onThread: (id: string) => void
   onPatch: (patch: UpdateWorkItemRequest) => Promise<boolean>
   onStatus: (status: WorkStatus) => Promise<boolean>
@@ -647,296 +482,194 @@ export function WorkDetailView({
   error?: string | null
   editable?: boolean
 }) {
-  const [editor, setEditor] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
+  const { theme, isDark } = useTheme()
+  const [editing, setEditing] = useState<'title' | 'description' | null>(null)
   const [comment, setComment] = useState('')
   const [validation, setValidation] = useState<string | null>(null)
-  const people = indexPeople(context.people)
+  const commentField = useRef<TextFieldRef>(null)
+  const editorField = useRef<TextFieldRef>(null)
   const now = useWorkClock()
+  const people = indexPeople(context.people)
   const activityPeople = { ...people, viewerPrincipalId: context.principalId }
-  const assignee = context.people.find((person) => person.principalId === item.assigneePrincipalId)
-  function edit(field: string, value = '') {
-    setDraft(value)
+  const locked = !editable || busy
+  const message = validation ?? error
+  function start(field: 'title' | 'description') {
+    if (locked) return
     setValidation(null)
-    setEditor(field)
+    setEditing(field)
   }
-  async function save(patch: UpdateWorkItemRequest) {
-    if (await onPatch(patch)) setEditor(null)
+  // Each field commits its own draft, so tapping from one field into the
+  // other can't save one field's text into the other.
+  function commit(field: 'title' | 'description', value: string) {
+    setEditing((current) => (current === field ? null : current))
+    if (field === 'title') {
+      const title = value.trim()
+      if (!title) return setValidation('Give the task a title.')
+      if (title !== item.title) void onPatch({ title })
+    } else if (value !== (item.description ?? '')) {
+      void onPatch({ description: value || null })
+    }
   }
+  const editableField = (field: 'title' | 'description') =>
+    editing === field ? (
+      <InlineEditor
+        key={field}
+        initial={field === 'title' ? item.title : (item.description ?? '')}
+        title={field === 'title'}
+        field={editorField}
+        onCommit={(value) => commit(field, value)}
+      />
+    ) : field === 'title' ? (
+      <Button onPress={() => start('title')}>
+        <SwiftText modifiers={[swiftFont({ size: 22, weight: 'semibold' }), foregroundStyle(theme.foreground as string)]}>{item.title}</SwiftText>
+      </Button>
+    ) : (
+      <Button onPress={() => start('description')}>
+        <SwiftText markdownEnabled modifiers={item.description ? [foregroundStyle(theme.foreground as string)] : [secondary]}>
+          {item.description || (editable ? 'Describe what a good result looks like.' : 'No description.')}
+        </SwiftText>
+      </Button>
+    )
+  const blockedTitles = item.blockedBy.map((id) => items.find((task) => task.id === id)?.title ?? 'Another task')
   return (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ padding: 18, paddingTop: 22, paddingBottom: 30, gap: 18 }}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Change status"
-        disabled={!editable || busy}
-        onPress={() => edit('Status')}
-        style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}
-      >
-        <WorkStatusIcon status={item.status} theme={theme} />
-        <T style={{ fontSize: 12, color: theme.muted }}>
-          {item.status === 'review' ? 'Ready for review' : WORK_STATUS_LABELS[item.status]}
-        </T>
-      </Pressable>
-      <Pressable
-        disabled={!editable || busy}
-        accessibilityRole="button"
-        accessibilityLabel="Edit task title"
-        onPress={() => edit('Title', item.title)}
-      >
-        <T style={{ fontSize: 24, fontWeight: '500', color: theme.foreground }}>{item.title}</T>
-      </Pressable>
-      <Pressable
-        disabled={!editable || busy}
-        accessibilityRole="button"
-        accessibilityLabel="Edit description"
-        onPress={() => edit('Description', item.description ?? '')}
-        style={{ marginBottom: 8 }}
-      >
-        <WorkMarkdown
-          theme={theme}
-          text={item.description || 'Describe what a good result looks like.'}
-        />
-      </Pressable>
-      <View>
-        {[
-          { name: 'Assignee', value: assignee?.displayName ?? 'Unassigned' },
-          {
-            name: 'Due',
-            value: item.dueDate
-              ? formatWorkDate(item.dueDate, toWorkDate(new Date(now)))
-              : 'No date',
-          },
-          {
-            name: 'Started',
-            value: item.startDate ? formatWorkDate(item.startDate) : 'Not started',
-          },
-          {
-            name: 'Blocked by',
-            value:
-              item.blockedBy
-                .map((id) => items.find((task) => task.id === id)?.title ?? 'Another task')
-                .join(', ') || 'Nothing',
-          },
-        ].map((row) => (
-          <Pressable
-            key={row.name}
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${row.name}`}
-            disabled={!editable || busy}
-            onPress={() =>
-              edit(
-                row.name,
-                row.name === 'Due'
-                  ? (item.dueDate ?? '')
-                  : row.name === 'Started'
-                    ? (item.startDate ?? '')
-                    : '',
-              )
-            }
-            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 11, gap: 10 }}
-          >
-            <T style={{ color: theme.muted, fontSize: 13, width: 90 }}>{row.name}</T>
-            <View
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                justifyContent: 'flex-end',
-              }}
-            >
-              {row.name === 'Assignee' ? (
-                <WorkAvatar person={assignee} theme={theme} dark={dark} />
-              ) : null}
-              <T numberOfLines={2} style={{ color: theme.foreground, fontSize: 13, flexShrink: 1 }}>
-                {row.value}
-              </T>
-            </View>
-          </Pressable>
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {editable && item.status !== 'done' ? (
-          <Button
-            theme={theme}
-            secondary
-            disabled={busy}
-            icon={Check}
-            onPress={() => void onStatus('done')}
-          >
-            Mark done
-          </Button>
-        ) : null}
-        {thread?.visible ? (
-          <Button
-            theme={theme}
-            icon={MessageSquare}
-            onPress={() => onThread(thread.conversationId)}
-          >
-            View thread
-          </Button>
-        ) : null}
-      </View>
-      {thread && !thread.visible ? (
-        <T style={{ color: theme.muted, fontSize: 12 }}>In the assigner’s thread</T>
-      ) : null}
-      {item.assignmentExecution?.status === 'failed' ? (
-        <T style={{ color: theme.muted }}>Agent assignment failed. Reassign to try again.</T>
-      ) : null}
-      <T style={{ color: theme.muted, fontSize: 12, marginTop: 10 }}>Activity</T>
-      {events === undefined ? (
-        <ActivityIndicator color={theme.muted} />
-      ) : !events.length ? (
-        <T style={{ color: theme.muted }}>No activity yet.</T>
-      ) : (
-        events.map((event) => (
-          <View key={event.id} style={{ flexDirection: 'row', gap: 12, paddingVertical: 4 }}>
-            <WorkAvatar
-              person={context.people.find(
-                (person) => person.principalId === event.actorPrincipalId,
-              )}
-              theme={theme}
-              dark={dark}
-            />
-            <View style={{ flex: 1, gap: 5 }}>
-              <T style={{ color: theme.foreground, fontSize: 13, lineHeight: 19 }}>
-                {commentBody(event) ??
-                  `${actorName(event, activityPeople)} ${describeEvent(event, activityPeople) ?? 'updated this'}.`}
-              </T>
-              <T style={{ color: theme.muted, fontSize: 11 }}>{formatAgo(event.createdAt, now)}</T>
-            </View>
-          </View>
-        ))
-      )}
-      {editable ? (
-        <View style={{ gap: 8 }}>
-          <WorkField
-            theme={theme}
-            accessibilityLabel="Comment"
-            placeholder="Add a comment..."
-            value={comment}
-            multiline
-            maxLength={5000}
-            editable={!busy}
-            onChangeText={setComment}
+    <>
+      {editing ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="checkmark"
+            variant="prominent"
+            tintColor={theme.foreground as string}
+            accessibilityLabel="Done"
+            onPress={() => void editorField.current?.blur()}
           />
-          <Button
-            theme={theme}
-            disabled={busy || !comment.trim()}
-            onPress={() => {
-              void onComment(comment).then((ok) => {
-                if (ok) setComment('')
-              })
-            }}
-          >
-            Comment
-          </Button>
-        </View>
+        </Stack.Toolbar>
       ) : null}
-      {error ? (
-        <T accessibilityRole="alert" style={{ color: theme.foreground }}>
-          {error}
-        </T>
-      ) : null}
-      <SheetModal
-        visible={editor !== null}
-        onRequestClose={() => setEditor(null)}
-      >
-        {['Status', 'Assignee', 'Blocked by'].includes(editor ?? '') ? (
-          <WorkOptions
-            title={editor ?? ''}
-            theme={theme}
-            error={validation ?? error}
-            busy={busy}
-            onClose={() => setEditor(null)}
-            selected={
-              editor === 'Status'
-                ? [item.status]
-                : editor === 'Assignee'
-                  ? [item.assigneePrincipalId ?? '']
-                  : item.blockedBy
-            }
-            choices={
-              editor === 'Status'
-                ? WORK_STATUSES.map((id) => ({ id, label: WORK_STATUS_LABELS[id] }))
-                : editor === 'Assignee'
-                  ? [
-                      { id: '', label: 'Unassigned' },
-                      ...availableWorkPeople(context.people, item.scope, context.principalId).map(
-                        (person) => ({ id: person.principalId, label: person.displayName }),
-                      ),
-                    ]
-                  : dependencyChoices(items, item.id).map((task) => ({
-                      id: task.id,
-                      label: task.title,
-                    }))
-            }
-            onSelect={(id) => {
-              if (busy) return
-              if (editor === 'Status')
-                void onStatus(id as WorkStatus).then((ok) => {
-                  if (ok) setEditor(null)
-                })
-              else if (editor === 'Assignee') void save({ assigneePrincipalId: id || null })
-              else {
-                const next = item.blockedBy.includes(id)
-                  ? item.blockedBy.filter((value) => value !== id)
-                  : [...item.blockedBy, id]
-                if (next.length > 50) {
-                  setValidation('A task can depend on up to 50 others.')
-                  return
-                }
-                setValidation(null)
-                void onPatch({ blockedBy: next })
+      <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
+        <Form modifiers={[tint(theme.foreground as string), scrollDismissesKeyboard('interactively')]}>
+          <Section>
+            {editableField('title')}
+            {editableField('description')}
+          </Section>
+          <Section footer={message ? <SwiftText>{message}</SwiftText> : undefined}>
+            {editable ? (
+              <>
+                <WorkStatusPicker value={item.status} onChange={(status) => { if (!busy) void onStatus(status) }} />
+                <WorkAssigneePicker
+                  people={availableWorkPeople(context.people, item.scope, context.principalId)}
+                  value={item.assigneePrincipalId ?? ''}
+                  onChange={(id) => { if (!busy) void onPatch({ assigneePrincipalId: id || null }) }}
+                />
+                <WorkDateRows
+                  start={item.startDate ?? null}
+                  due={item.dueDate ?? null}
+                  onChange={(dates) => {
+                    const invalid = validateWorkDates(dates.startDate, dates.dueDate)
+                    setValidation(invalid)
+                    if (!invalid && !busy) void onPatch(dates)
+                  }}
+                />
+                <WorkDependsOnMenu
+                  choices={dependencyChoices(items, item.id)}
+                  selected={item.blockedBy}
+                  onToggle={(id) => {
+                    const next = toggleDependency(item.blockedBy, id)
+                    if (!next) return setValidation('A task can depend on up to 50 others.')
+                    setValidation(null)
+                    if (!busy) void onPatch({ blockedBy: next })
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <LabeledContent label="Status"><SwiftText>{WORK_STATUS_LABELS[item.status]}</SwiftText></LabeledContent>
+                <LabeledContent label="Assignee">
+                  <SwiftText>{people.byPrincipal.get(item.assigneePrincipalId ?? '')?.displayName ?? 'Unassigned'}</SwiftText>
+                </LabeledContent>
+                <LabeledContent label="Starts">
+                  <SwiftText>{item.startDate ? formatWorkDate(item.startDate, toWorkDate(new Date(now))) : 'No date'}</SwiftText>
+                </LabeledContent>
+                <LabeledContent label="Due">
+                  <SwiftText>{item.dueDate ? formatWorkDate(item.dueDate, toWorkDate(new Date(now))) : 'No date'}</SwiftText>
+                </LabeledContent>
+                <LabeledContent label="Depends on"><SwiftText>{blockedTitles.join(', ') || 'Nothing'}</SwiftText></LabeledContent>
+              </>
+            )}
+          </Section>
+          {(editable && item.status !== 'done') || thread?.visible ? (
+            <Section
+              footer={
+                thread && !thread.visible ? <SwiftText>In the assigner’s thread.</SwiftText>
+                : item.assignmentExecution?.status === 'failed' ? <SwiftText>Agent assignment failed. Reassign to try again.</SwiftText>
+                : undefined
               }
-            }}
-          />
-        ) : (
-          <WorkSheet title={editor ?? ''} theme={theme} onClose={() => setEditor(null)}>
-            <WorkField
-              theme={theme}
-              accessibilityLabel={editor ?? 'Value'}
-              value={draft}
-              onChangeText={setDraft}
-              multiline={editor === 'Description'}
-              placeholder={editor === 'Due' || editor === 'Started' ? 'YYYY-MM-DD' : ''}
-              editable={!busy}
-            />
-            <Button
-              theme={theme}
-              secondary
-              disabled={busy}
-              onPress={() => {
-                const patch: UpdateWorkItemRequest =
-                  editor === 'Title'
-                    ? { title: draft.trim() }
-                    : editor === 'Description'
-                      ? { description: draft || null }
-                      : editor === 'Due'
-                        ? { dueDate: draft || null }
-                        : { startDate: draft || null }
-                if (editor === 'Title' && !draft.trim()) {
-                  setValidation('Give the task a title.')
-                  return
-                }
-                void save(patch)
-              }}
             >
-              Save
-            </Button>
-            {validation || error ? (
-              <T accessibilityRole="alert" style={{ color: theme.foreground }}>
-                {validation ?? error}
-              </T>
-            ) : null}
-          </WorkSheet>
-        )}
-      </SheetModal>
-    </ScrollView>
+              {editable && item.status !== 'done' ? (
+                <Button onPress={() => { if (!busy) void onStatus('done') }}>
+                  <HStack spacing={12}>
+                    <SwiftSymbol systemName="checkmark.circle" size={17} modifiers={[swiftFrame({ width: 26 })]} />
+                    <SwiftText>Mark done</SwiftText>
+                    <Spacer />
+                  </HStack>
+                </Button>
+              ) : null}
+              {thread?.visible ? (
+                <Button onPress={() => onThread(thread.conversationId)}>
+                  <HStack spacing={12}>
+                    <SwiftSymbol systemName="bubble.left.and.bubble.right" size={17} modifiers={[swiftFrame({ width: 26 })]} />
+                    <SwiftText>View thread</SwiftText>
+                    <Spacer />
+                    <SwiftSymbol systemName="chevron.right" size={13} modifiers={[secondary]} />
+                  </HStack>
+                </Button>
+              ) : null}
+            </Section>
+          ) : null}
+          <Section title="Activity">
+            {events === undefined ? (
+              <SwiftText modifiers={[secondary]}>Loading…</SwiftText>
+            ) : !events.length ? (
+              <SwiftText modifiers={[secondary]}>No activity yet.</SwiftText>
+            ) : (
+              events.map((event) => (
+                <VStack key={event.id} alignment="leading" spacing={3}>
+                  <SwiftText>
+                    {commentBody(event) ??
+                      `${actorName(event, activityPeople)} ${describeEvent(event, activityPeople) ?? 'updated this'}.`}
+                  </SwiftText>
+                  <SwiftText modifiers={[secondary, swiftFont({ size: 13 })]}>{formatAgo(event.createdAt, now)}</SwiftText>
+                </VStack>
+              ))
+            )}
+          </Section>
+          {editable ? (
+            <Section>
+              <HStack spacing={10}>
+                <TextField
+                  ref={commentField}
+                  placeholder="Add a comment"
+                  axis="vertical"
+                  onValueChange={setComment}
+                  modifiers={[lineLimit({ min: 1, max: 6 })]}
+                />
+                <Button
+                  onPress={() => {
+                    const body = comment.trim()
+                    if (!body || busy) return
+                    void onComment(body).then((ok) => {
+                      if (!ok) return
+                      setComment('')
+                      void commentField.current?.setText('')
+                    })
+                  }}
+                  modifiers={[swiftDisabled(!comment.trim() || busy)]}
+                >
+                  <SwiftSymbol systemName="arrow.up.circle.fill" size={26} />
+                </Button>
+              </HStack>
+            </Section>
+          ) : null}
+        </Form>
+      </Host>
+    </>
   )
 }
-
