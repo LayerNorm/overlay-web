@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Alert, Linking, View } from 'react-native'
+import { ActivityIndicator, Alert, Linking, ScrollView, View } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../hooks/useTheme'
@@ -40,6 +40,43 @@ import { T, Button } from '../shell/primitives'
 import { ConversationHeader, TabToolbar } from '../navigation/nativeHeader'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { AgentProfileSheet } from './AgentProfileSheet'
+import { CreatureEmpty } from '../creatures/CreatureEmpty'
+
+/**
+ * While a conversation loads, show nothing for a beat (most open instantly),
+ * then a small spinner, never a line of status text.
+ */
+function AgentLoading() {
+  const { theme } = useTheme()
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setShow(true), 450)
+    return () => clearTimeout(timer)
+  }, [])
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
+      {show ? <ActivityIndicator color={theme.muted as string} /> : null}
+    </View>
+  )
+}
+
+/** A conversation or agent that can't be opened: say why and offer the way back. */
+function AgentGone({ title, detail }: { title: string; detail: string }) {
+  const { theme } = useTheme()
+  const router = useRouter()
+  return (
+    <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={{ flexGrow: 1 }}>
+      <CreatureEmpty
+        title={title}
+        detail={detail}
+        shape="cloud"
+        color="#94a3b8"
+        action="Back to Agents"
+        onAction={() => router.dismissTo('/(tabs)/agents')}
+      />
+    </ScrollView>
+  )
+}
 
 function AgentState({ text, retry }: { text: string; retry?: () => void }) {
   const { theme } = useTheme()
@@ -133,10 +170,13 @@ function ResolveAgentRoute({
       />
     )
   if (!workspaceId || compatibility === undefined)
-    return <AgentState text="Opening conversation…" />
+    return <AgentLoading />
   if (!compatibility)
     return (
-      <AgentState text="This conversation is unavailable in this workspace." />
+      <AgentGone
+        title="Conversation unavailable"
+        detail="It may have been deleted, or you no longer have access in this workspace."
+      />
     )
   return compatibility.agentId ? (
     <ConnectedAgentThread
@@ -354,10 +394,22 @@ function ConnectedAgentThread({
         }}
       />
     )
-  if (opening) return <AgentState text="Opening agent thread…" />
-  if (!agent || !allowed || !compatibility)
+  if (opening) return <AgentLoading />
+  // The directory hides archived and private agents, so a missing agent most
+  // often means it was archived from its editor or profile.
+  if (!agent)
     return (
-      <AgentState text="This agent thread is unavailable in this workspace." />
+      <AgentGone
+        title="This agent isn't available"
+        detail="It was archived, made private, or removed from this workspace. Restore archived agents from Settings › Archived on the web."
+      />
+    )
+  if (!allowed || !compatibility)
+    return (
+      <AgentGone
+        title="Thread unavailable"
+        detail="This thread was deleted or isn't shared with you."
+      />
     )
   const thread = bundle?.threads.find(
     (item) => item.conversationId === conversationId,
@@ -574,7 +626,7 @@ function ConnectedAgentDirectory({
         }}
       />
     )
-  if (directory === undefined) return <AgentState text="Opening agents…" />
+  if (directory === undefined) return <AgentLoading />
   if (!directory)
     return <AgentState text="Agents are unavailable in this workspace." />
   return (

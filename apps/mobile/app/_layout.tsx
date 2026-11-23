@@ -127,7 +127,9 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen
           name="agent/[id]"
           options={{
-            headerShown: false,
+            ...nativeHeader,
+            title: '',
+            headerLargeTitle: false,
             presentation: 'card',
             animation: 'slide_from_right',
           }}
@@ -136,6 +138,8 @@ function RootLayoutNav(): React.ReactElement {
           name="dm/[id]"
           options={{
             ...conversationHeader,
+            // Blank until the conversation names itself, never the route path.
+            title: '',
             presentation: 'card',
             animation: 'slide_from_right',
           }}
@@ -144,6 +148,8 @@ function RootLayoutNav(): React.ReactElement {
           name="channel/[id]"
           options={{
             ...conversationHeader,
+            // Blank until the conversation names itself, never the route path.
+            title: '',
             presentation: 'card',
             animation: 'slide_from_right',
           }}
@@ -152,6 +158,8 @@ function RootLayoutNav(): React.ReactElement {
           name="thread/[id]"
           options={{
             ...conversationHeader,
+            // Blank until the conversation names itself, never the route path.
+            title: '',
             presentation: 'card',
             animation: 'slide_from_right',
           }}

@@ -24,7 +24,7 @@ export function modelSections<T extends ModelItem>(models: readonly T[], favorit
 }
 
 export function providerLabel(provider: string) {
-  return ({ openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', xai: 'xAI', spacexai: 'xAI', moonshotai: 'Moonshot', 'z-ai': 'Z.ai', zai: 'Z.ai', alibaba: 'Alibaba', deepseek: 'DeepSeek', minimax: 'MiniMax' } as Record<string, string>)[provider] ?? provider
+  return ({ openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google', xai: 'xAI', spacexai: 'xAI', moonshotai: 'Moonshot', 'z-ai': 'Z.ai', zai: 'Z.ai', alibaba: 'Alibaba', deepseek: 'DeepSeek', minimax: 'MiniMax' } as Record<string, string>)[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1)
 }
 
 export function resolveAutoModel(models: readonly ChatModel[], preferred?: string) {

@@ -7,18 +7,14 @@ import { useTheme } from '../hooks/useTheme'
 import { useAppSession } from '../contexts/AppSessionContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { AgentAvatar } from '../components/shell/AgentAvatar'
-import { CREATURE_SHAPES } from '../lib/agentCreature'
+import { CREATURE_COLORS, CREATURE_SHAPES } from '../lib/agentCreature'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../lib/agentToolGroups'
 import { buildWorkspaceAgentInput } from '../lib/agentByo'
 import { hapticSelect } from '../lib/haptics'
 import { createAgent } from '../services/agentsService'
 import { openAgentThread } from '../services/shellService'
 
-/** Body colors offered for new agents (web `AVATAR_COLORS`). */
-const COLORS = [
-  '#f5f5f4', '#8a6240', '#dc2626', '#ea580c', '#f59e0b', '#16a34a',
-  '#14b8a6', '#2563eb', '#7c3aed', '#db2777', '#64748b',
-]
+const COLORS = CREATURE_COLORS
 
 /**
  * Create-agent sheet: pick a creature, a name and what it should help with,
@@ -33,7 +29,7 @@ export default function CreateAgentSheet(): React.ReactElement {
   const [name, setName] = useState('')
   const [purpose, setPurpose] = useState('')
   const [shape, setShape] = useState<WorkspaceAgentCreatureShape>('cloud')
-  const [color, setColor] = useState(COLORS[9])
+  const [color, setColor] = useState<string>(COLORS[9])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Rebuild Edit agent as a native iOS form. It now has a real navigation bar with Chat and a ✓ to save, and one grouped form for:
+  - the creature's look
+  - name and what the agent helps with
+  - where it runs
+  - model, picked from a menu grouped by provider
+  - instructions
+  - tool switches
+  - who can use it
+  - Archive
+
+  This replaces the old hand-drawn page with its breadcrumb, washed-out switches and a separate "advanced" screen. Archiving an agent now returns you to Agents instead of to a thread that can no longer open. Agent threads no longer flash the route name `dm/[id]` while opening or show "Opening agent thread…" text. When an agent was archived, made private or removed, the thread now says so and offers Back to Agents, instead of "This agent thread is unavailable in this workspace." Unknown model providers show a capitalised name in model pickers.
 - Rework the Agents tab and agent creation. The tab now opens with a quick row of creatures (Overlay first, then the agents you opened most recently on this device) above a list of every agent with what it is for and a live status: Working, Needs you or Ready to review. Creating an agent asks what it should help with (saved as its description and starting instructions), has a button that picks a random shape and colour, and confirms with a check in the navigation bar instead of a Create button. In an agent's chat, your messages now use that agent's colour. Empty states (Work, Files, Activity, turned-off features) sit in the middle of the visible screen instead of near the top.
 - Make bottom sheets open the iOS way: the shade behind a sheet now fades in place while only the sheet slides up (and back down when it closes), instead of the shade sliding up with it. Applies to the Work task, schedule, move, picker and organization sheets and the agent editor picker. The native segmented control no longer gets clipped inside sheets.
 - Put every screen's title in the navigation bar itself (tab titles sit on the same row as the bar buttons, sub-pages use an inline title), so screens no longer open with an empty band above the content. Every segmented toggle (Work filters, Activity filters, Extensions tabs, the new-task sheet, the model picker, the agent profile) is now the native iOS segmented control. Extensions, Archived, Workspace and the output and memory pages drop their old in-page header and drawer menu for the native bar. Fix Extensions crashing (skills, MCP servers and outputs now read the paginated list responses), keep the app opening when its remembered workspace is no longer available, show Work's unavailable state below the header, give Activity plain-text two-line previews and a creature empty state, and stop showing an empty "Recent" label in Files.

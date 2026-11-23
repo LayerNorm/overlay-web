@@ -4,25 +4,25 @@
  * Mirrors web `AgentEditorPage` semantics: overlay vs BYO type, tool-group
  * grants (capability grant ids), creature avatar, model + instructions,
  * visibility, environment binding upsert/disable, and agent-computer
- * provision/destroy on save. Layout is native — grouped fields, radio rows,
- * bottom-sheet pickers — not the web form grid.
+ * provision/destroy on save. Layout is a native SwiftUI form under the
+ * navigation bar, saved from the toolbar check.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { ActivityIndicator, Alert, Pressable, ScrollView, View, useWindowDimensions } from 'react-native'
+import { Stack, useRouter } from 'expo-router'
+import { Button, Form, Host, Menu, Picker, RNHostView, Section, Text, TextField, Toggle } from '@expo/ui/swift-ui'
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { useRouter } from 'expo-router'
+  autocorrectionDisabled,
+  lineLimit,
+  pickerStyle,
+  scrollDismissesKeyboard,
+  submitLabel,
+  tag,
+  textInputAutocapitalization,
+  tint,
+} from '@expo/ui/swift-ui/modifiers'
 import { hapticSelect } from '../../lib/haptics'
-import type { ChatModel } from '@overlay/app-core'
+import { modelSections } from '../../lib/chatModels'
 import type {
   Computer,
   WorkspaceAgentCreatureShape,
@@ -33,13 +33,9 @@ import { useTheme } from '../../hooks/useTheme'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import type { Theme } from '../../constants/theme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
-import { borderRadius, fontSize, spacing } from '../../constants/theme'
-import { BottomSheet, EmptyState, SegmentedControl, TopBarIconButton } from '../ui/AppChrome'
 import { FeatureGate } from '../ui/FeatureGate'
-import { ListRow, Section } from '../ui/primitives'
-import { AppIcon } from '../ui/AppIcon'
-import { AgentCreature } from './AgentCreature'
-import { AgentEditorView } from './AgentEditorView'
+import { CreatureEmpty } from '../creatures/CreatureEmpty'
+import { AgentAvatar } from '../shell/AgentAvatar'
 import { AgentComputerPanel } from './AgentComputerPreview'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { ConnectMachineSheet } from './ConnectMachineSheet'
@@ -59,7 +55,7 @@ import {
   type AgentEnvironmentItem,
 } from '../../services/agentsService'
 import {
-  AGENT_AVATAR_COLORS,
+  CREATURE_COLORS,
   CREATURE_SHAPES,
   DEFAULT_AGENT_AVATAR_COLOR,
 } from '../../lib/agentCreature'
@@ -90,7 +86,6 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   const isNew = agentId === 'new'
 
   const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(null)
-  const [advanced, setAdvanced] = useState(false)
   const [editable, setEditable] = useState(isNew)
   const [loading, setLoading] = useState(!isNew)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -116,7 +111,8 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   // Agent computer (computer tool group ↔ persistent desktop)
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
 
-  const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  // Bumped once an agent loads so the uncontrolled native fields pick up its values.
+  const [loadedKey, setLoadedKey] = useState(0)
   const [busy, setBusy] = useState(false)
   const [chatBusy, setChatBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -205,6 +201,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
       setAgentComputer(
         computers.find((computer) => computer.ownerType === 'agent' && computer.ownerId === loaded.id) ?? null,
       )
+      setLoadedKey((key) => key + 1)
     }).catch((nextError) => {
       if (!cancelled) {
         setLoadError(nextError instanceof Error ? nextError.message : 'Could not load this agent.')
@@ -353,7 +350,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
           onPress: () => {
             setBusy(true)
             void archiveAgent(workspaceId, agent.id)
-              .then(() => router.back())
+              .then(() => router.dismissTo('/(tabs)/agents'))
               .catch((nextError) => setError(nextError instanceof Error ? nextError.message : 'Archive failed.'))
               .finally(() => setBusy(false))
           },
@@ -379,22 +376,28 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     return <FeatureGate title="Agents are turned off" />
   }
 
+  const title = isNew ? 'New agent' : 'Edit agent'
+  const screenOptions = <Stack.Screen options={{ title, headerLargeTitle: false }} />
+
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color={theme.textSecondary} style={styles.centered} />
-      </SafeAreaView>
+      <>
+        {screenOptions}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
+          <ActivityIndicator color={theme.muted as string} />
+        </View>
+      </>
     )
   }
 
   if (loadError) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
-        <View style={styles.navRow}>
-          <TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />
-        </View>
-        <EmptyState theme={theme} icon="alert-circle" title="Agent unavailable" description={loadError} />
-      </SafeAreaView>
+      <>
+        {screenOptions}
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={{ flexGrow: 1 }}>
+          <CreatureEmpty title="Agent unavailable" detail={loadError} shape="cloud" color="#64748b" />
+        </ScrollView>
+      </>
     )
   }
 
@@ -404,353 +407,233 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     ? <AgentComputerPanel key={agentComputer.id} computer={agentComputer} theme={theme} canManage={editable} onChange={setAgentComputer} />
     : null
 
-  if (!isNew && !editable) return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }} edges={['top', 'bottom']}>
-      <View style={styles.navRow}>
-        <TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />
-      </View>
-      <EmptyState theme={theme} icon="lock" title="This agent is read-only" description="Only people with edit access can change this agent." />
-      {computerPreview}
-    </SafeAreaView>
-  )
+  if (!isNew && !editable) {
+    return (
+      <>
+        {screenOptions}
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={{ flexGrow: 1 }}>
+          <CreatureEmpty
+            title="This agent is read-only"
+            detail="Only people with edit access can change this agent."
+            shape={avatarShape}
+            color={avatarColor}
+          />
+          {computerPreview ? <View style={{ padding: 16 }}>{computerPreview}</View> : null}
+        </ScrollView>
+      </>
+    )
+  }
 
-  if (!advanced && agentType === 'overlay') return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface }} edges={['top', 'bottom']}>
-      <AgentEditorView theme={theme} dark={isDark} agent={{ id: agent?.id ?? 'new', name, isDefault: agent?.isDefault, avatarColor, avatarShape }} name={name} description={description} modelId={modelId} models={sortedModels} groups={toolGroups.filter(group => ['web_search', 'knowledge', 'computer'].includes(group.id))} enabled={enabledToolGroups} onName={setName} onDescription={setDescription} onModel={setModelId} onToggle={toggleToolGroup} onAdvanced={() => setAdvanced(true)} onSave={save} onBack={() => router.back()} busy={busy || !editable} valid={isValid && editable} error={error} isNew={isNew} computerPreview={computerPreview} />
-    </SafeAreaView>
-  )
+  // Provider groups ordered by each provider's best model, with display names (shared with the chat picker).
+  const providerSections = modelSections(sortedModels, [])
+  const fieldModifiers = [textInputAutocapitalization('sentences')]
+  const canSave = isValid && !busy && editable
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'bottom']}>
-      <View style={[styles.navRow, { paddingHorizontal: spacing.md }]}>
-        <TopBarIconButton theme={theme} icon="arrow-left" onPress={() => router.back()} />
-        <Text style={[styles.navTitle, { color: theme.text }]} numberOfLines={1}>
-          {isNew ? 'New agent' : agent?.name ?? 'Agent'}
-        </Text>
-        <View style={styles.navRight}>
-          {!isNew && agent ? (
-            <TouchableOpacity
-              onPress={() => void startChat()}
-              disabled={chatBusy}
-              style={[styles.navIconButton, { backgroundColor: theme.surfaceSubtle }]}
-              accessibilityRole="button"
-              accessibilityLabel={`Chat with ${agent.name}`}
-            >
-              {chatBusy ? (
-                <ActivityIndicator size="small" color={theme.textSecondary} />
-              ) : (
-                <AppIcon sfSymbol="bubble.left" featherIcon="message-circle" size={15} color={theme.text} />
-              )}
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            onPress={save}
-            disabled={!isValid || busy}
-            style={[styles.saveButton, { backgroundColor: theme.foreground, opacity: !isValid || busy ? 0.45 : 1 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Save agent"
-          >
-            {busy ? (
-              <ActivityIndicator size="small" color={theme.background} />
-            ) : (
-              <Text style={[styles.saveButtonText, { color: theme.background }]}>Save</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Live avatar preview */}
-        <View style={styles.preview}>
-          <AgentCreature shape={avatarShape} color={avatarColor} size={72} label={name || 'New agent'} />
-          <Text style={[styles.previewName, { color: theme.text }]} numberOfLines={1}>
-            {name.trim() || 'Untitled agent'}
-          </Text>
-        </View>
-
-        {error ? (
-          <View style={[styles.errorBanner, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
-            <Text style={[styles.errorText, { color: '#EF4444' }]}>{error}</Text>
-          </View>
-        ) : null}
-
-        <FieldCard theme={theme} label="Name">
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Research assistant"
-            placeholderTextColor={theme.textDisabled}
-            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceSubtle }]}
-            accessibilityLabel="Agent name"
+    <>
+      {screenOptions}
+      <Stack.Toolbar placement="right">
+        {!isNew && agent ? (
+          <Stack.Toolbar.Button
+            icon="bubble.left"
+            accessibilityLabel={`Chat with ${agent.name}`}
+            disabled={chatBusy}
+            onPress={() => void startChat()}
           />
-        </FieldCard>
-
-        <FieldCard theme={theme} label="Description">
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="What this agent does for the workspace"
-            placeholderTextColor={theme.textDisabled}
-            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceSubtle }]}
-            accessibilityLabel="Agent description"
-          />
-        </FieldCard>
-
-        {/* Avatar */}
-        <View style={styles.fieldBlock}>
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Avatar</Text>
-          <View style={styles.swatchRow}>
-            {AGENT_AVATAR_COLORS.map((color) => {
-              const active = avatarColor === color
-              return (
-                <TouchableOpacity
-                  key={color}
-                  onPress={() => setAvatarColor(color)}
-                  style={[styles.swatch, { backgroundColor: color, borderColor: active ? theme.text : 'transparent' }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Avatar color ${color}`}
-                  accessibilityState={{ selected: active }}
-                />
-              )
-            })}
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shapeRow}>
-            {CREATURE_SHAPES.map((shape) => {
-              const active = avatarShape === shape
-              return (
-                <TouchableOpacity
-                  key={shape}
-                  onPress={() => setAvatarShape(shape)}
-                  style={[styles.shapeCell, { borderColor: active ? theme.text : theme.border, backgroundColor: active ? theme.surfaceSubtle : 'transparent' }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Shape ${shape}`}
-                  accessibilityState={{ selected: active }}
-                >
-                  <AgentCreature shape={shape} color={avatarColor} size={34} label={shape} />
-                </TouchableOpacity>
-              )
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Runtime type */}
-        {!isMaster && connectedAgentsEnabled ? (
-          <View style={styles.fieldBlock}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Run on</Text>
-            <SegmentedControl
-              theme={theme}
-              value={agentType}
-              onChange={setAgentType}
-              options={[
-                { label: 'Overlay', value: 'overlay' },
-                { label: 'Connected machine', value: 'byo' },
-              ]}
-            />
-          </View>
         ) : null}
-
-        {agentType === 'overlay' ? (
-          <>
-            {/* Model */}
-            <View style={styles.fieldBlock}>
-              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Model</Text>
-              <Section theme={theme}>
-                <ListRow
-                  theme={theme}
-                  title={selectedModel?.name ?? 'Choose a model'}
-                  subtitle={selectedModel?.provider}
-                  icon="cpu"
-                  iconSfSymbol="cpu"
-                  showChevron
-                  onPress={() => setModelPickerOpen(true)}
-                />
-              </Section>
-            </View>
-
-            <FieldCard theme={theme} label="Instructions">
-              <TextInput
-                value={instructions}
-                onChangeText={setInstructions}
-                placeholder="How this agent should behave, what it owns, and how it responds"
-                placeholderTextColor={theme.textDisabled}
-                multiline
-                style={[styles.textArea, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceSubtle }]}
-                accessibilityLabel="Agent instructions"
+        <Stack.Toolbar.Button
+          icon="checkmark"
+          variant="prominent"
+          tintColor={theme.foreground as string}
+          accessibilityLabel={isNew ? 'Create agent' : 'Save agent'}
+          disabled={!canSave}
+          onPress={save}
+        />
+      </Stack.Toolbar>
+      <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
+        <Form modifiers={[tint(theme.foreground as string), scrollDismissesKeyboard('interactively')]}>
+          <Section>
+            <RNHostView matchContents>
+              <AppearancePicker
+                theme={theme}
+                dark={isDark}
+                name={name}
+                shape={avatarShape}
+                color={avatarColor}
+                isDefault={Boolean(agent?.isDefault)}
+                onShape={(shape) => {
+                  hapticSelect()
+                  setAvatarShape(shape)
+                }}
+                onColor={(color) => {
+                  hapticSelect()
+                  setAvatarColor(color)
+                }}
               />
-            </FieldCard>
+            </RNHostView>
+          </Section>
 
-            {/* Tool grants */}
-            <View style={styles.fieldBlock}>
-              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Tools</Text>
-              <Section theme={theme}>
-                {toolGroups.map((group) => (
-                  <View key={group.id} style={styles.toggleRow}>
-                    <View style={styles.toggleBody}>
-                      <Text style={[styles.toggleTitle, { color: theme.text }]}>{group.label}</Text>
-                      <Text style={[styles.toggleDesc, { color: theme.textSecondary }]}>{group.description}</Text>
-                    </View>
-                    <Switch
-                      value={enabledToolGroups.has(group.id)}
-                      onValueChange={() => toggleToolGroup(group.id)}
-                      trackColor={{ false: theme.toggleBg, true: theme.toggleBgActive }}
-                      thumbColor={theme.toggleThumb}
-                      accessibilityLabel={`${group.label} tool access`}
-                    />
-                  </View>
-                ))}
-              </Section>
-              {computersAvailable && enabledToolGroups.has('computer') ? (
-                <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
-                  A persistent cloud desktop is provisioned for this agent on save.
-                </Text>
-              ) : null}
-              {computerPreview}
-            </View>
-          </>
-        ) : (
-          <>
-            {/* BYO: harness → environment → working directory */}
-            <View style={styles.fieldBlock}>
-              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Harness</Text>
-              <Section theme={theme}>
-                {harnessOptions.map((harness) => (
-                  <ListRow
-                    key={harness.id}
-                    theme={theme}
-                    title={harness.label}
-                    subtitle={harness.description}
-                    selected={adapterId === harness.id}
-                    onPress={() => {
-                      setAdapterId(harness.id)
-                      const selected = environments.find((env) => env.id === environmentId)
-                      if (selected && !environmentSupportsHarness(selected, harness.id)) {
-                        setEnvironmentId('')
-                        setWorkingDirectory('')
-                      }
-                    }}
-                  />
-                ))}
-              </Section>
-            </View>
-
-            <View style={styles.fieldBlock}>
-              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Environment</Text>
-              <Section theme={theme}>
-                {compatibleEnvironments.map((environment) => (
-                  <ListRow
-                    key={environment.id}
-                    theme={theme}
-                    title={environment.name}
-                    subtitle={`${environment.platform ?? environment.kind} · ${environment.status}`}
-                    icon="server"
-                    iconSfSymbol="server.rack"
-                    selected={environmentId === environment.id}
-                    onPress={() => chooseEnvironment(environment.id)}
-                  />
-                ))}
-                <ListRow
-                  theme={theme}
-                  title="Connect a machine"
-                  subtitle="Enroll a computer, VPS, or sandbox"
-                  icon="plus"
-                  iconSfSymbol="plus"
-                  showChevron
-                  onPress={() => setConnectOpen(true)}
-                />
-              </Section>
-              {compatibleEnvironments.length === 0 ? (
-                <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
-                  No connected environment currently advertises this harness.
-                </Text>
-              ) : null}
-            </View>
-
-            <FieldCard theme={theme} label="Working directory">
-              <TextInput
-                value={workingDirectory}
-                onChangeText={setWorkingDirectory}
-                placeholder="/Users/you/Projects/app"
-                placeholderTextColor={theme.textDisabled}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceSubtle }]}
-                accessibilityLabel="Working directory"
-              />
-              <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
-                Must be inside the environment&apos;s approved roots. The environment may host other agents too.
-              </Text>
-            </FieldCard>
-          </>
-        )}
-
-        {/* Visibility */}
-        <View style={styles.fieldBlock}>
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Access</Text>
-          <Section theme={theme}>
-            <ListRow
-              theme={theme}
-              title="Workspace"
-              subtitle="Everyone in this workspace can see and chat with this agent"
-              icon="users"
-              iconSfSymbol="person.2"
-              selected={visibility === 'workspace'}
-              onPress={() => setVisibility('workspace')}
-            />
-            <ListRow
-              theme={theme}
-              title="Only me"
-              subtitle="Private — other members can't see this agent"
-              icon="lock"
-              iconSfSymbol="lock"
-              selected={visibility === 'creator'}
-              onPress={() => setVisibility('creator')}
+          <Section title="Name">
+            <TextField
+              key={`name:${loadedKey}`}
+              defaultValue={name}
+              placeholder="Research assistant"
+              onValueChange={setName}
+              modifiers={[...fieldModifiers, submitLabel('done')]}
             />
           </Section>
-        </View>
 
-        {!isNew && agent && !isMaster ? (
-          <View style={styles.fieldBlock}>
-            <TouchableOpacity
-              onPress={confirmArchive}
-              disabled={busy}
-              style={[styles.dangerButton, { borderColor: 'rgba(239,68,68,0.4)' }]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.dangerButtonText}>Archive agent</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </ScrollView>
-
-      {/* Model picker */}
-      <BottomSheet
-        theme={theme}
-        visible={modelPickerOpen}
-        onClose={() => setModelPickerOpen(false)}
-        title="Choose model"
-      >
-        <View style={styles.modelList}>
-          {sortedModels.map((model) => (
-            <ListRow
-              key={model.id}
-              theme={theme}
-              title={model.name}
-              subtitle={model.provider}
-              selected={model.id === modelId}
-              accessory={<ModelCapabilityChips theme={theme} model={model} />}
-              onPress={() => {
-                setModelId(model.id)
-                setModelPickerOpen(false)
-              }}
+          <Section title="What it helps with">
+            <TextField
+              key={`description:${loadedKey}`}
+              defaultValue={description}
+              placeholder="Plan trips, triage email, or keep an eye on a project."
+              axis="vertical"
+              onValueChange={setDescription}
+              modifiers={[...fieldModifiers, lineLimit({ min: 2, max: 5 })]}
             />
-          ))}
-        </View>
-      </BottomSheet>
+          </Section>
 
-      {/* BYO enrollment */}
+          {!isMaster && connectedAgentsEnabled ? (
+            <Section title="Runs on">
+              <Picker
+                selection={agentType}
+                onSelectionChange={(value: AgentType) => setAgentType(value)}
+                modifiers={[pickerStyle('segmented')]}
+              >
+                <Text modifiers={[tag('overlay')]}>Overlay</Text>
+                <Text modifiers={[tag('byo')]}>Your machine</Text>
+              </Picker>
+            </Section>
+          ) : null}
+
+          {agentType === 'overlay' ? (
+            <>
+              <Section title="Model">
+                <Menu label={selectedModel?.name ?? 'Choose a model'}>
+                  {providerSections.map((section) => (
+                    <Menu key={section.id} label={section.label}>
+                      {section.models
+                        .map((model) => (
+                          <Button
+                            key={model.id}
+                            label={model.name}
+                            systemImage={model.id === modelId ? 'checkmark' : undefined}
+                            onPress={() => {
+                              hapticSelect()
+                              setModelId(model.id)
+                            }}
+                          />
+                        ))}
+                    </Menu>
+                  ))}
+                </Menu>
+              </Section>
+
+              <Section title="Instructions" footer={<Text>How the agent should behave, what it owns and how it replies.</Text>}>
+                <TextField
+                  key={`instructions:${loadedKey}`}
+                  defaultValue={instructions}
+                  placeholder="You are a helpful assistant."
+                  axis="vertical"
+                  onValueChange={setInstructions}
+                  modifiers={[...fieldModifiers, lineLimit({ min: 4, max: 12 })]}
+                />
+              </Section>
+
+              <Section
+                title="Tools"
+                footer={computersAvailable && enabledToolGroups.has('computer') && !agentComputer
+                  ? <Text>A cloud computer is set up for this agent when you save.</Text>
+                  : undefined}
+              >
+                {toolGroups.map((group) => (
+                  <Toggle
+                    key={group.id}
+                    label={group.label}
+                    isOn={enabledToolGroups.has(group.id)}
+                    onIsOnChange={() => toggleToolGroup(group.id)}
+                  />
+                ))}
+              </Section>
+
+              {computerPreview ? (
+                <Section title="Computer">
+                  <RNHostView matchContents>
+                    <View style={{ paddingVertical: 4 }}>{computerPreview}</View>
+                  </RNHostView>
+                </Section>
+              ) : null}
+            </>
+          ) : (
+            <Section
+              title="Your machine"
+              footer={<Text>The folder must be inside the machine&apos;s approved roots.</Text>}
+            >
+              <Picker
+                label="Harness"
+                selection={adapterId}
+                onSelectionChange={(value: string) => {
+                  setAdapterId(value)
+                  const selected = environments.find((env) => env.id === environmentId)
+                  if (selected && !environmentSupportsHarness(selected, value)) {
+                    setEnvironmentId('')
+                    setWorkingDirectory('')
+                  }
+                }}
+                modifiers={[pickerStyle('menu')]}
+              >
+                {harnessOptions.map((harness) => (
+                  <Text key={harness.id} modifiers={[tag(harness.id)]}>{harness.label}</Text>
+                ))}
+              </Picker>
+              <Picker
+                label="Machine"
+                selection={environmentId}
+                onSelectionChange={(value: string) => chooseEnvironment(value)}
+                modifiers={[pickerStyle('menu')]}
+              >
+                <Text modifiers={[tag('')]}>{compatibleEnvironments.length ? 'Choose' : 'None available'}</Text>
+                {compatibleEnvironments.map((environment) => (
+                  <Text key={environment.id} modifiers={[tag(environment.id)]}>{environment.name}</Text>
+                ))}
+              </Picker>
+              <TextField
+                key={`folder:${loadedKey}:${environmentId}`}
+                defaultValue={workingDirectory}
+                placeholder="/Users/you/Projects/app"
+                onValueChange={setWorkingDirectory}
+                modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled(true)]}
+              />
+              <Button label="Connect a machine" systemImage="plus" onPress={() => setConnectOpen(true)} />
+            </Section>
+          )}
+
+          <Section title="Who can use it">
+            <Picker
+              selection={visibility}
+              onSelectionChange={(value: WorkspaceAgentVisibility) => setVisibility(value)}
+              modifiers={[pickerStyle('inline')]}
+            >
+              <Text modifiers={[tag('workspace')]}>Everyone in the workspace</Text>
+              <Text modifiers={[tag('creator')]}>Only me</Text>
+            </Picker>
+          </Section>
+
+          {error ? (
+            <Section>
+              <Text>{error}</Text>
+            </Section>
+          ) : null}
+
+          {!isNew && agent && !isMaster ? (
+            <Section>
+              <Button role="destructive" label="Archive agent" onPress={confirmArchive} />
+            </Section>
+          ) : null}
+        </Form>
+      </Host>
+
       <ConnectMachineSheet
         theme={theme}
         visible={connectOpen}
@@ -762,139 +645,97 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
           chooseEnvironment(environment.id)
         }}
       />
-    </SafeAreaView>
+    </>
   )
 }
 
-function FieldCard({
+/** Live creature preview with shape and color choices, hosted inside the form. */
+function AppearancePicker({
   theme,
-  label,
-  children,
+  dark,
+  name,
+  shape,
+  color,
+  isDefault,
+  onShape,
+  onColor,
 }: {
   theme: Theme
-  label: string
-  children: React.ReactNode
+  dark: boolean
+  name: string
+  shape: WorkspaceAgentCreatureShape
+  color: string
+  isDefault: boolean
+  onShape: (shape: WorkspaceAgentCreatureShape) => void
+  onColor: (color: string) => void
 }): React.ReactElement {
+  const agent = { name: name || 'Agent', isDefault, avatarShape: shape, avatarColor: color }
+  // The hosted view doesn't inherit the card's width: size it to the inset
+  // grouped card (20pt margins, 16pt row padding) so rows wrap evenly.
+  const { width: screen } = useWindowDimensions()
+  const width = Math.min(screen, 700) - 66
+  const half = <T,>(items: readonly T[]) => [items.slice(0, Math.ceil(items.length / 2)), items.slice(Math.ceil(items.length / 2))]
   return (
-    <View style={styles.fieldBlock}>
-      <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>{label}</Text>
-      {children}
+    <View style={{ width, alignItems: 'center', gap: 16, paddingVertical: 12 }}>
+      <AgentAvatar agent={agent} dark={dark} foreground={theme.foreground} size={96} working />
+      {isDefault ? null : (
+        <>
+          {half(CREATURE_SHAPES).map((row, index) => (
+          <View key={index} style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+            {row.map((option) => {
+              const selected = option === shape
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${option} shape`}
+                  accessibilityState={{ selected }}
+                  onPress={() => onShape(option)}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 2,
+                    borderColor: selected ? theme.foreground : 'transparent',
+                  }}
+                >
+                  <AgentAvatar agent={{ name: option, avatarShape: option, avatarColor: color }} dark={dark} foreground={theme.foreground} size={30} />
+                </Pressable>
+              )
+            })}
+          </View>
+          ))}
+          {half(CREATURE_COLORS).map((row, index) => (
+          <View key={`c${index}`} style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+            {row.map((option) => {
+              const selected = option === color
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Color ${option}`}
+                  accessibilityState={{ selected }}
+                  onPress={() => onColor(option)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 2,
+                    borderColor: selected ? theme.foreground : 'transparent',
+                  }}
+                >
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: option, borderWidth: 0.5, borderColor: theme.border }} />
+                </Pressable>
+              )
+            })}
+          </View>
+          ))}
+        </>
+      )}
     </View>
   )
 }
-
-function ModelCapabilityChips({ theme, model }: { theme: Theme; model: ChatModel }): React.ReactElement | null {
-  if (!model.supportsVision && !model.supportsReasoning) return null
-  return (
-    <View style={styles.chipRow}>
-      {model.supportsVision ? (
-        <View style={[styles.chip, { backgroundColor: theme.surfaceSubtle }]}>
-          <AppIcon sfSymbol="eye" featherIcon="eye" size={11} color={theme.textSecondary} />
-        </View>
-      ) : null}
-      {model.supportsReasoning ? (
-        <View style={[styles.chip, { backgroundColor: theme.surfaceSubtle }]}>
-          <AppIcon sfSymbol="sparkles" featherIcon="star" size={11} color={theme.textSecondary} />
-        </View>
-      ) : null}
-    </View>
-  )
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  navTitle: { flex: 1, fontSize: fontSize.md, fontWeight: '600', textAlign: 'center' },
-  navRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  navIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButton: {
-    minWidth: 56,
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-  },
-  saveButtonText: { fontSize: fontSize.sm, fontWeight: '700' },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl * 2, gap: spacing.lg },
-  preview: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
-  previewName: { fontSize: fontSize.md, fontWeight: '600' },
-  errorBanner: {
-    borderRadius: borderRadius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.md,
-  },
-  errorText: { fontSize: fontSize.sm },
-  fieldBlock: { gap: spacing.sm },
-  fieldLabel: { fontSize: fontSize.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  fieldHint: { fontSize: fontSize.xs, lineHeight: 16 },
-  input: {
-    borderRadius: borderRadius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    fontSize: fontSize.md,
-  },
-  textArea: {
-    minHeight: 120,
-    borderRadius: borderRadius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.md,
-    fontSize: fontSize.sm,
-    lineHeight: 19,
-    textAlignVertical: 'top',
-  },
-  swatchRow: { flexDirection: 'row', gap: spacing.sm },
-  swatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2.5,
-  },
-  shapeRow: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 2 },
-  shapeCell: {
-    width: 52,
-    height: 52,
-    borderRadius: borderRadius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  toggleBody: { flex: 1, gap: 2 },
-  toggleTitle: { fontSize: fontSize.md, fontWeight: '500' },
-  toggleDesc: { fontSize: fontSize.xs, lineHeight: 16 },
-  dangerButton: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm + 2,
-    borderRadius: borderRadius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  dangerButtonText: { color: '#EF4444', fontSize: fontSize.sm, fontWeight: '600' },
-  modelList: { paddingBottom: spacing.md },
-  chipRow: { flexDirection: 'row', gap: 4 },
-  chip: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-})

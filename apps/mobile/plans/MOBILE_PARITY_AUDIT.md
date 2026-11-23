@@ -38,7 +38,7 @@ Severity:
 - The Computer viewer is view-only; web has take control and open in new tab. The profile's "Computer" row opens the web app.
 - Creating an agent sets avatar, name and what it helps with. No permission level, computer size, templates, or connected-agent setup yet.
 - Possible: in the simulator the new agent saved as "Tr" though the field showed "Trip Planner" (fast synthetic typing into a controlled field). Recheck on a device.
-- While opening a new agent's chat, the header briefly shows the raw route name "dm/[id]".
+- **Fixed:** while opening a new agent's chat, the header briefly showed the raw route name "dm/[id]".
 - No long-press menu on agent cards.
 
 ### Work

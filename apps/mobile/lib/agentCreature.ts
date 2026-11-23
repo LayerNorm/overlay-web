@@ -24,6 +24,12 @@ export const AGENT_AVATAR_COLORS = [
 
 export const DEFAULT_AGENT_AVATAR_COLOR = AGENT_AVATAR_COLORS[0]
 
+/** Body colors offered when creating or restyling an agent (web `AVATAR_COLORS`). */
+export const CREATURE_COLORS = [
+  '#f5f5f4', '#8a6240', '#dc2626', '#ea580c', '#f59e0b', '#16a34a',
+  '#14b8a6', '#2563eb', '#7c3aed', '#db2777', '#64748b',
+] as const
+
 type RGB = { r: number; g: number; b: number }
 
 export function hexToRgb(hex: string): RGB | null {
