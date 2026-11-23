@@ -124,7 +124,7 @@ export function SlackSettings() {
         <SettingsAppRow icon={<UserRoundPlus size={15} />} title="Guests" description="Let workspace guests ask Overlay from Slack.">
           <SettingsToggle checked={settings.guests} disabled={!canManage || busy} onChange={() => save({ guests: !settings.guests })} aria-label="Guests" />
         </SettingsAppRow>
-        <SettingsAppRow icon={<Building2 size={15} />} title="Slack Connect" description="Answer linked members in channels shared with other companies.">
+        <SettingsAppRow icon={<Building2 size={15} />} title="Slack Connect" description="Answer linked members in channels shared with other companies. People from those companies can read the answers, which may draw on workspace memories and files.">
           <SettingsToggle
             checked={settings.slackConnect}
             disabled={!canManage || busy}
