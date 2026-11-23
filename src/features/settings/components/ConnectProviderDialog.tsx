@@ -16,6 +16,9 @@ import {
   SubscriptionScopeSelector,
 } from './SubscriptionDialogPanels'
 import { useSubscriptionConnection } from './use-subscription-connection'
+import { OPENCODE_SUBSCRIPTION_ID, OPENCODE_SUBSCRIPTION_OPTION, OpenCodeFooter, OpenCodeKeyPanel, useOpenCodeConnection } from './OpenCodeSubscriptionPanel'
+
+const EXTRA_SUBSCRIPTION_PROVIDERS = [OPENCODE_SUBSCRIPTION_OPTION]
 
 type Props = { connection?: ByokConnectionRow; onClose(): void; onConnected(): Promise<void> | void }
 
@@ -38,19 +41,21 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
   const [providerId, setProviderId] = useState(connection?.providerId.replace(/^subscription:/, '') ?? '')
   const [copied, setCopied] = useState(false)
   const [callbackUrl, setCallbackUrl] = useState('')
+  const openCode = useOpenCodeConnection(onConnected)
+  const isOpenCode = !connection && providerId === OPENCODE_SUBSCRIPTION_ID
   const selected = flow.availability?.providers.find((provider) => provider.id === providerId)
   const authorization = flow.login?.authorization
   const copyCode = () => {
     if (!authorization?.userCode) return
     void navigator.clipboard.writeText(authorization.userCode).then(() => setCopied(true), () => setCopied(false))
   }
-  const title = flow.connected ? `${flow.connected.displayName} connected` : authorization ? `Connect ${selected?.label ?? connection?.displayName ?? 'provider'}` : connection ? `Reconnect ${connection.displayName}` : 'Add provider'
+  const { connectedName, connectedModelCount, error, title, showTabs } = subscriptionDialogView({ flow, openCode, isOpenCode, selectedLabel: selected?.label, connection })
   return <DialogFrame
     open
     title={title}
     className="w-[min(480px,92vw)] max-h-[calc(100dvh-2rem)] overflow-y-auto"
     onOpenChange={(open) => { if (!open) flow.close() }}
-    footer={<SubscriptionFooter
+    footer={isOpenCode ? <OpenCodeFooter openCode={openCode} onClose={flow.close} /> : <SubscriptionFooter
       flow={flow}
       selected={selected}
       onClose={flow.close}
@@ -59,8 +64,8 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
     />}
   >
     <div className="mt-4 space-y-4">
-      {!authorization && !flow.busy && !flow.selectionLocked ? tabs : null}
-      {flow.connected ? <ConnectedStatePanel flow={flow} /> : authorization
+      {showTabs ? tabs : null}
+      {connectedName ? <ConnectedStatePanel modelCount={connectedModelCount} /> : authorization
         ? <AuthorizationPanel
           flow={flow}
           authorization={authorization}
@@ -74,15 +79,41 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
           }}
         />
         : <>
-          <SubscriptionScopeSelector scope={scope} onScopeChange={setScope} workspaceName={workspaceName} workspaceAvailable={Boolean(workspaceId) && workspaceReady} disabled={flow.busy || flow.selectionLocked} />
+          {isOpenCode ? null : <SubscriptionScopeSelector scope={scope} onScopeChange={setScope} workspaceName={workspaceName} workspaceAvailable={Boolean(workspaceId) && workspaceReady} disabled={flow.busy || flow.selectionLocked} />}
           <ProviderChoicePanel
           flow={flow}
           connection={connection}
           providerId={providerId}
-          onProviderChange={setProviderId}
-        /></>}
-      {flow.error ? <p role="alert" className="text-xs text-destructive">{flow.error}</p> : null}
+          onProviderChange={(next) => { if (!openCode.busy) setProviderId(next) }}
+          extraProviders={EXTRA_SUBSCRIPTION_PROVIDERS}
+        />
+          {isOpenCode ? <OpenCodeKeyPanel openCode={openCode} /> : null}</>}
+      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
       <SubscriptionPrivacyNote />
     </div>
   </DialogFrame>
+}
+
+function subscriptionDialogView({ flow, openCode, isOpenCode, selectedLabel, connection }: {
+  flow: ReturnType<typeof useSubscriptionConnection>
+  openCode: ReturnType<typeof useOpenCodeConnection>
+  isOpenCode: boolean
+  selectedLabel?: string
+  connection?: ByokConnectionRow
+}) {
+  const connected = isOpenCode ? openCode.connected : flow.connected
+  const authorization = flow.login?.authorization
+  const title = connected
+    ? `${connected.displayName} connected`
+    : authorization
+      ? `Connect ${selectedLabel ?? connection?.displayName ?? 'provider'}`
+      : connection ? `Reconnect ${connection.displayName}` : 'Add provider'
+  const idle = !authorization && !flow.busy && !flow.selectionLocked && !openCode.busy && !openCode.connected
+  return {
+    connectedName: connected?.displayName,
+    connectedModelCount: connected?.enabledModelIds.length ?? 0,
+    error: isOpenCode ? openCode.error : flow.error,
+    title,
+    showTabs: idle,
+  }
 }

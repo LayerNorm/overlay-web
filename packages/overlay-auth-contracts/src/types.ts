@@ -42,5 +42,7 @@ export interface AuthProvider {
   signOut?(req: Request): Promise<Response | Headers | void>
   verifyAccessToken(token: string): Promise<TokenClaims | null>
   getUserProfile(token: string): Promise<UserProfile | null>
+  /** Provider-held profile for a verified user id, for tokens that omit profile claims. */
+  getUserById?(userId: string): Promise<UserProfile | null>
   deleteUser?(userId: string, req?: Request): Promise<void>
 }

@@ -79,7 +79,8 @@ export function isBffSessionSatisfied(
   authType: AuthenticatedAppUser['authType'],
   requireSession: boolean | undefined,
 ): boolean {
-  return !requireSession || authType === 'session'
+  // Signed-in people only: a browser session or the native app's verified user token.
+  return !requireSession || authType === 'session' || authType === 'access-token'
 }
 
 export type AccountBffDomainService = (
@@ -286,7 +287,7 @@ async function handleScopedBffRoute(
     && !isBffSessionSatisfied(auth.authType, configuration.options.requireSession)
   ) {
     const response = NextResponse.json(
-      { error: 'This endpoint requires a signed-in browser session', code: 'forbidden' },
+      { error: 'This endpoint requires a signed-in user', code: 'forbidden' },
       { status: 403 },
     )
     await emitMetric(response, auth.authType)

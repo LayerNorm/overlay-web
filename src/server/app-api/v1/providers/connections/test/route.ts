@@ -16,9 +16,12 @@ import { overlayProviderDiscoveryModels } from '@/server/ai/gateway/overlay-prov
 import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import {
+  checkOpenCodeZenKey,
+  isOpenCodeChatModel,
+  isOpenCodeProviderId,
   sanitizeOpenCodeGoProbeError,
   selectOpenCodeGoProbeModel,
-} from '@/server/ai/gateway/opencode-go-probe'
+} from '@/server/ai/gateway/opencode-probe'
 import { isSubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 
 const MAX_API_KEY_LENGTH = 16_384
@@ -56,12 +59,15 @@ async function readLimitedText(response: Response): Promise<string> {
   return text + decoder.decode()
 }
 
-function normalizeDiscoveredModels(payload: unknown): Array<{ id: string; name: string }> {
+function normalizeDiscoveredModels(
+  payload: unknown,
+  include: (candidate: Record<string, unknown>) => boolean = () => true,
+): Array<{ id: string; name: string }> {
   if (!isRecord(payload) || !Array.isArray(payload.data)) return []
   const seen = new Set<string>()
   const models: Array<{ id: string; name: string }> = []
   for (const candidate of payload.data) {
-    if (!isRecord(candidate) || typeof candidate.id !== 'string') continue
+    if (!isRecord(candidate) || typeof candidate.id !== 'string' || !include(candidate)) continue
     const id = candidate.id.trim()
     if (
       !id ||
@@ -205,8 +211,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
 
     if (!response.ok) {
+      const rejectedKey = (response.status === 401 || response.status === 403) && isOpenCodeProviderId(preset.id)
       return NextResponse.json(
-        { ok: false, models: [], error: `Provider returned HTTP ${response.status}` },
+        {
+          ok: false,
+          models: [],
+          error: rejectedKey ? `${preset.label} rejected the API key or account access.` : `Provider returned HTTP ${response.status}`,
+        },
         { status: 502 },
       )
     }
@@ -221,7 +232,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 502 },
       )
     }
-    const models = normalizeDiscoveredModels(payload)
+    const models = normalizeDiscoveredModels(
+      payload,
+      isOpenCodeProviderId(preset.id) ? isOpenCodeChatModel : undefined,
+    )
+    if (preset.id === 'opencode-zen') {
+      const keyError = await checkOpenCodeZenKey({
+        endpoint: resolvedEndpoint,
+        apiKey: resolvedApiKey,
+        fetch: providerFetch,
+        sessionId: randomUUID(),
+      })
+      if (keyError) {
+        logger.warn('[BYOK] OpenCode Zen key check failed', {
+          providerId: resolvedProviderId,
+          error: keyError,
+        })
+        return NextResponse.json({ ok: false, models: [], error: keyError }, { status: 502 })
+      }
+    }
     if (preset.id === 'opencode-go') {
       const probeModel = selectOpenCodeGoProbeModel(models)
       if (!probeModel) {
