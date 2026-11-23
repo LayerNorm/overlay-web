@@ -1,15 +1,15 @@
 import { NativeSegmented } from '../navigation/NativeSegmented'
 import React, { useState } from 'react'
+import { FileContextMenu, type FileActions } from './FileActions'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { Stack } from 'expo-router'
-import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { ActivityIndicator, Image, Pressable, ScrollView, TextInput, View, useWindowDimensions } from 'react-native'
 import {
   AtSign,
   Bell,
   Bug,
   Check,
   ChevronRight,
-  Download,
   File,
   FileText,
   Folder,
@@ -463,6 +463,7 @@ export function FilesBrowser({
   onOpen,
   onAdd,
   query: nativeQuery,
+  actions,
 }: {
   theme: Theme
   files: KnowledgeFile[]
@@ -470,10 +471,20 @@ export function FilesBrowser({
   onFolder: (id: string | null) => void
   onOpen: (file: KnowledgeFile) => void
   onAdd?: () => void
+  /** When set, rows and folder cards get a native long-press menu. */
+  actions?: FileActions
   /** Search text from the native navigation-bar search field. */
   query?: string
 }) {
   const [inlineQuery, setQuery] = useState('')
+  const { width } = useWindowDimensions()
+  const cardWidth = (width - 40 - 12) / 2
+  const withMenu = (file: KnowledgeFile, rowWidth: number, open: () => void, node: React.ReactElement) =>
+    actions ? (
+      <FileContextMenu key={file._id} file={file} files={files} actions={actions} width={rowWidth} onOpen={open}>
+        {node}
+      </FileContextMenu>
+    ) : node
   const query = nativeQuery ?? inlineQuery
   const visible = files.filter((file) =>
     query.trim() ? fileMatches(file, query) : file.parentId === parentId,
@@ -506,7 +517,7 @@ export function FilesBrowser({
         <>
           <ResourceLabel theme={theme}>Folders</ResourceLabel>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {folders.map((folder) => (
+            {folders.map((folder) => withMenu(folder, cardWidth, () => { setQuery(''); onFolder(folder._id) },
               <Pressable
                 key={folder._id}
                 accessibilityRole="button"
@@ -516,7 +527,7 @@ export function FilesBrowser({
                   onFolder(folder._id)
                 }}
                 style={{
-                  width: '48%',
+                  width: actions ? cardWidth : '48%',
                   minHeight: 118,
                   backgroundColor: theme.surfaceMuted,
                   borderWidth: 1,
@@ -531,9 +542,12 @@ export function FilesBrowser({
                   {folder.name}
                 </T>
                 <T style={{ color: theme.muted, fontSize: 11 }}>
-                  {files.filter((file) => file.parentId === folder._id).length} files
+                  {(() => {
+                    const count = files.filter((file) => file.parentId === folder._id).length
+                    return `${count} ${count === 1 ? 'file' : 'files'}`
+                  })()}
                 </T>
-              </Pressable>
+              </Pressable>,
             ))}
           </View>
         </>
@@ -546,14 +560,14 @@ export function FilesBrowser({
           <ResourceState theme={theme} empty="No matching files" />
         ) : (
           <CreatureEmpty
-            title="No files yet"
-            detail="Files you upload and files your agents make show up here."
+            title={parentId ? 'This folder is empty' : 'No files yet'}
+            detail={parentId ? 'Add a note, a folder or a file with +, or move files here.' : 'Files you upload and files your agents make show up here.'}
             shape="cloud"
             color="#2563eb"
           />
         )
       ) : null}
-      {recent.map((file) => (
+      {recent.map((file) => withMenu(file, width - 40, () => onOpen(file),
         <ResourceRow
           key={file._id}
           theme={theme}
@@ -561,7 +575,7 @@ export function FilesBrowser({
           title={file.name}
           subtitle={fileSubtitle(file)}
           onPress={() => onOpen(file)}
-        />
+        />,
       ))}
     </>
   )
@@ -570,26 +584,18 @@ export function FilesBrowser({
 export function FilePaper({
   theme,
   file,
-  onDownload,
   image,
 }: {
   theme: Theme
   file: KnowledgeFile
-  onDownload: () => void
+  /** Unused: saving a copy lives in the navigation-bar menu. */
+  onDownload?: () => void
   image?: { uri: string; headers: Record<string, string> }
 }) {
   const text = file.textContent ?? (file.kind === 'note' ? file.content : '') ?? ''
   return (
     <>
-      <ResourceHeading
-        compact
-        theme={theme}
-        title={file.name}
-        action={
-          <IconButton theme={theme} icon={Download} label="Download file" onPress={onDownload} />
-        }
-      />
-      <T style={{ color: theme.muted, fontSize: 11, marginTop: -14, marginBottom: 24 }}>
+      <T style={{ color: theme.muted, fontSize: 12, marginTop: 4, marginBottom: 16 }}>
         {fileSubtitle(file)}
       </T>
       <View
@@ -697,7 +703,6 @@ export function NoteDocument({
   theme,
   file,
   onSave,
-  onOptions,
   now,
 }: {
   theme: Theme
@@ -708,7 +713,8 @@ export function NoteDocument({
     content: string
     expectedUpdatedAt: number
   }) => Promise<{ title: string; content: string; updatedAt: number }>
-  onOptions: () => void
+  /** Unused: note options live in the navigation-bar menu. */
+  onOptions?: () => void
 }) {
   const incoming = {
     title: file.name,
@@ -729,7 +735,11 @@ export function NoteDocument({
     setContent(incoming.content)
   }
   async function save() {
-    if (saving || !dirty) return
+    if (saving) return
+    if (!dirty) {
+      setEditing(false)
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -742,6 +752,7 @@ export function NoteDocument({
       setClock(Date.now())
       setTitle((current) => (current === title ? saved.title : current))
       setContent((current) => (current === content ? saved.content : current))
+      setEditing(false)
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -754,8 +765,20 @@ export function NoteDocument({
   }
   return (
     <>
+      {editing ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="checkmark"
+            variant="prominent"
+            tintColor={theme.foreground as string}
+            accessibilityLabel={dirty ? 'Save note' : 'Done'}
+            disabled={saving}
+            onPress={() => void save()}
+          />
+        </Stack.Toolbar>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-        <T style={{ color: theme.muted, fontSize: 11, flex: 1 }}>
+        <T style={{ color: theme.muted, fontSize: 12, flex: 1 }}>
           {saving
             ? 'Saving…'
             : dirty
@@ -763,13 +786,8 @@ export function NoteDocument({
               : Math.abs((now ?? clock) - base.updatedAt) < 60000
                 ? 'Saved just now'
                 : `Saved ${resourceDate(base.updatedAt)}`}
+          {editing ? '' : ' · Tap to edit'}
         </T>
-        {editing ? (
-          <Button theme={theme} onPress={() => setEditing(false)}>
-            Preview
-          </Button>
-        ) : null}
-        <IconButton theme={theme} icon={MoreHorizontal} label="Note options" onPress={onOptions} />
       </View>
       {editing ? (
         <>
@@ -799,16 +817,6 @@ export function NoteDocument({
               color: theme.foreground,
             }}
           />
-          <Button
-            secondary
-            theme={theme}
-            disabled={saving || !dirty}
-            onPress={() => {
-              void save()
-            }}
-          >
-            {saving ? 'Saving…' : 'Save changes'}
-          </Button>
         </>
       ) : (
         <Pressable

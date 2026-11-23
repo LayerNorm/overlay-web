@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Alert, TextInput, View } from 'react-native'
+import { Alert } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as DocumentPicker from 'expo-document-picker'
@@ -17,30 +17,25 @@ import { api, type Id } from '../../services/convexClient'
 import {
   createKnowledgeFolder,
   createFileWithStorage,
-  deleteKnowledgeFile,
   getKnowledgeFileContent,
   getUploadUrl,
   uploadToR2,
-  shareKnowledgeFile,
 } from '../../services/knowledgeService'
 import { createNote, saveNote } from '../../services/noteStorage'
-import { moveFile, renameFile } from '../../services/filesService'
+import { moveFile } from '../../services/filesService'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { appRequest, getRequestWorkspaceId } from '../../services/appApi'
 import { normalizeHtmlForMobileMarkdown, toStoredHtml } from '../../services/noteContentFormat'
-import { Button, T } from '../shell/primitives'
 import { TabToolbar } from '../navigation/nativeHeader'
 import { FeatureGate } from '../ui/FeatureGate'
-import { ShareSheet } from '../workspace/ShareSheet'
 import {
   FilePaper,
   FilesBrowser,
   NoteDocument,
   ResourcePage,
-  ResourceRow,
-  ResourceSheet,
   ResourceState,
 } from './ResourceViews'
+import { FileToolbarMenu, useFileActions } from './FileActions'
 
 export function useResourceScope() {
   const { activeWorkspaceId } = useWorkspace()
@@ -63,10 +58,8 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
   const [folder] = useState<{ workspaceId: string; id: string | null } | null>(
     initialParentId && workspaceId ? { workspaceId, id: initialParentId } : null,
   )
-  const [addScope, setAddScope] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [name, setName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const actions = useFileActions()
   const parentId = folder?.workspaceId === workspaceId ? folder.id : null
   const personal = useLiveResource(
     api.files.browse.children,
@@ -88,18 +81,21 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
     parentId && files.data
       ? [...files.data.filter((file) => file.parentId !== parentId), ...childRows]
       : files.data
-  async function add(kind: 'note' | 'folder' | 'upload') {
+  const newFolder = () =>
+    Alert.prompt('New folder', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Create', onPress: (value?: string) => { if (value?.trim()) void add('folder', value.trim()) } },
+    ], 'plain-text')
+  async function add(kind: 'note' | 'folder' | 'upload', name = '') {
     if (!workspaceId || getRequestWorkspaceId() !== workspaceId || busy) return
     const scope = workspaceId
     setBusy(true)
-    setError(null)
     try {
       let id: string | undefined
       if (kind === 'folder') {
-        if (!name.trim()) throw new Error('Enter a folder name.')
-        id = (await createKnowledgeFolder({ name: name.trim(), parentId })).id
+        id = (await createKnowledgeFolder({ name, parentId })).id
       } else if (kind === 'note') {
-        id = (await createNote({ title: name.trim() || 'Untitled', content: '' })).id
+        id = (await createNote({ title: 'Untitled', content: '' })).id
         if (getRequestWorkspaceId() !== scope) return
         if (parentId) await moveFile(id, parentId)
       } else {
@@ -126,12 +122,10 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
         ).id
       }
       if (getRequestWorkspaceId() !== scope) return
-      setAddScope(null)
-      setName('')
       if (kind === 'note' && id) router.push({ pathname: '/note/[id]', params: { id } })
     } catch (cause) {
       if (getRequestWorkspaceId() === scope)
-        setError(cause instanceof Error ? cause.message : 'Could not add this file.')
+        Alert.alert(kind === 'folder' ? 'Could not create the folder' : kind === 'note' ? 'Could not create the note' : 'Could not upload the file', cause instanceof Error ? cause.message : 'Try again in a moment.')
     } finally {
       setBusy(false)
     }
@@ -156,13 +150,7 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
             <Stack.Toolbar.MenuAction icon="doc.text" onPress={() => void add('note')}>
               New note
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction
-              icon="folder.badge.plus"
-              onPress={() => {
-                setAddScope(workspaceId)
-                setError(null)
-              }}
-            >
+            <Stack.Toolbar.MenuAction icon="folder.badge.plus" onPress={newFolder}>
               New folder
             </Stack.Toolbar.MenuAction>
             <Stack.Toolbar.MenuAction icon="square.and.arrow.up" onPress={() => void add('upload')}>
@@ -192,6 +180,7 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
               files={displayed}
               parentId={parentId}
               query={query}
+              actions={actions}
               onFolder={(id) => {
                 if (id) router.push({ pathname: '/(tabs)/files/file/[id]', params: { id } })
                 else router.back()
@@ -236,38 +225,7 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
           />
         )}
       </ResourcePage>
-      <ResourceSheet
-        theme={theme}
-        title="New folder"
-        visible={Boolean(workspaceId && addScope === workspaceId)}
-        onClose={() => {
-          if (!busy) setAddScope(null)
-        }}
-      >
-        <TextInput
-          accessibilityLabel="File or folder name"
-          placeholder="Folder name"
-          autoFocus
-          placeholderTextColor={theme.muted}
-          value={name}
-          onChangeText={setName}
-          style={{ color: theme.foreground, fontFamily: 'Geist', fontSize: 14, padding: 12 }}
-        />
-        {busy ? (
-          <ResourceState theme={theme} loading />
-        ) : (
-          <>
-            <ResourceRow
-              theme={theme}
-              title="Create folder"
-              onPress={() => {
-                void add('folder')
-              }}
-            />
-          </>
-        )}
-        {error ? <ResourceState theme={theme} error={error} /> : null}
-      </ResourceSheet>
+      {actions.overlays}
     </>
   )
 }
@@ -279,8 +237,6 @@ export function ResourceDocumentScreen({ id }: { id: string }) {
 
 function ResourceDocumentBody({ id }: { id: string }) {
   const { session } = useAuth()
-  const { workspacesEnabled } = useWorkspace()
-  const { isFeatureEnabled } = useAppSession()
   const { workspaceId, theme, router } = useResourceScope()
   const file = useLiveResource(
     api.files.browse.get,
@@ -309,32 +265,8 @@ function ResourceDocumentBody({ id }: { id: string }) {
     }
   }, [needsBody, workspaceId, id, bodyKey])
   const tree = useLiveResource(api.files.browse.list, workspaceId ? { workspaceId } : null)
-  const [menu, setMenu] = useState(false)
-  const [sharing, setSharing] = useState(false)
-  const [rename, setRename] = useState<string | null>(null)
-  const [moving, setMoving] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const actions = useFileActions({ onDeleted: () => router.back() })
   const [error, setError] = useState<string | null>(null)
-  async function act(operation: () => Promise<unknown>, after?: () => void) {
-    if (busy || !workspaceId || getRequestWorkspaceId() !== workspaceId) return
-    const scope = workspaceId
-    setBusy(true)
-    setError(null)
-    try {
-      await operation()
-      if (getRequestWorkspaceId() === scope) {
-        setMenu(false)
-        setRename(null)
-        setMoving(false)
-        after?.()
-      }
-    } catch (cause) {
-      if (getRequestWorkspaceId() === scope)
-        setError(cause instanceof Error ? cause.message : 'Could not update this file.')
-    } finally {
-      setBusy(false)
-    }
-  }
   const loadedBody = body.key === bodyKey ? body : undefined
   const doc =
     file.data && (!needsBody || loadedBody?.content !== undefined)
@@ -401,10 +333,6 @@ function ResourceDocumentBody({ id }: { id: string }) {
             key={`${workspaceId}:${id}`}
             theme={theme}
             file={doc}
-            onOptions={() => {
-              setMenu(true)
-              setError(null)
-            }}
             onSave={async (value) => {
               if (getRequestWorkspaceId() !== workspaceId)
                 throw new Error('Workspace changed. Reopen this note.')
@@ -426,25 +354,7 @@ function ResourceDocumentBody({ id }: { id: string }) {
             }}
           />
         ) : (
-          <>
-            <FilePaper
-              theme={theme}
-              file={doc}
-              image={image}
-              onDownload={() => {
-                void download()
-              }}
-            />
-            <Button
-              theme={theme}
-              onPress={() => {
-                setMenu(true)
-                setError(null)
-              }}
-            >
-              File options
-            </Button>
-          </>
+          <FilePaper theme={theme} file={doc} image={image} />
         )
       ) : (
         <ResourceState
@@ -462,109 +372,15 @@ function ResourceDocumentBody({ id }: { id: string }) {
         />
       )}
       {error ? <ResourceState theme={theme} error={error} /> : null}
-      <ResourceSheet
-        theme={theme}
-        title="File options"
-        visible={menu && Boolean(doc)}
-        onClose={() => {
-          if (!busy) {
-            setMenu(false)
-            setRename(null)
-            setMoving(false)
-          }
-        }}
-      >
-        {busy ? (
-          <ResourceState theme={theme} loading />
-        ) : rename !== null ? (
-          <View style={{ gap: 14 }}>
-            <TextInput
-              accessibilityLabel="File name"
-              value={rename}
-              onChangeText={setRename}
-              style={{ color: theme.foreground, fontFamily: 'Geist', padding: 12 }}
-            />
-            <Button
-              theme={theme}
-              secondary
-              onPress={() => {
-                void act(() => renameFile(id, rename))
-              }}
-            >
-              Rename
-            </Button>
-          </View>
-        ) : moving ? (
-          <>
-            <ResourceRow
-              theme={theme}
-              title="Move to root"
-              onPress={() => {
-                void act(() => moveFile(id, null))
-              }}
-            />
-            {tree.data
-              ?.filter((folder) => folder.type === 'folder' && folder._id !== id)
-              .map((folder) => (
-                <ResourceRow
-                  key={folder._id}
-                  theme={theme}
-                  title={folder.name}
-                  onPress={() => {
-                    void act(() => moveFile(id, folder._id))
-                  }}
-                />
-              ))}
-          </>
-        ) : (
-          <>
-            <ResourceRow theme={theme} title="Rename" onPress={() => setRename(doc?.name || '')} />
-            <ResourceRow theme={theme} title="Move" onPress={() => setMoving(true)} />
-            {workspacesEnabled && isFeatureEnabled('resourceSharing') ? (
-              <ResourceRow
-                theme={theme}
-                title="Share"
-                onPress={() => {
-                  setMenu(false)
-                  setSharing(true)
-                }}
-              />
-            ) : null}
-            <ResourceRow
-              theme={theme}
-              title="Delete file"
-              onPress={() =>
-                Alert.alert('Delete file?', 'This removes the file from your workspace.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => {
-                      void act(
-                        () => deleteKnowledgeFile(id),
-                        () => router.back(),
-                      )
-                    },
-                  },
-                ])
-              }
-            />
-          </>
-        )}
-        {error ? (
-          <T accessibilityRole="alert" style={{ color: theme.danger }}>
-            {error}
-          </T>
-        ) : null}
-      </ResourceSheet>
-      <ShareSheet
-        visible={sharing && Boolean(doc)}
-        theme={theme}
-        resource={workspaceId && doc ? { workspaceId, resourceType: 'file', resourceId: id } : null}
-        resourceTitle={doc?.name ?? 'File'}
-        onSetPublicVisibility={async (visibility) => (await shareKnowledgeFile(id, visibility)).url}
-        onClose={() => setSharing(false)}
-      />
+      {doc ? (
+        <FileToolbarMenu
+          file={doc}
+          files={tree.data ?? []}
+          actions={actions}
+          onDownload={doc.kind === 'note' ? undefined : () => void download()}
+        />
+      ) : null}
+      {actions.overlays}
     </ResourcePage>
   )
 }
