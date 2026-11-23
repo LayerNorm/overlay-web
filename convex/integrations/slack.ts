@@ -160,6 +160,33 @@ async function removeInstallation(ctx: MutationCtx, teamId: string) {
   if (token) await ctx.db.delete(token._id)
 }
 
+/** Where a thread that started in Slack came from, for anyone taking part in it. */
+export const threadOrigin = query({
+  args: { conversationId: v.string() },
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId('conversations', args.conversationId)
+    const conversation = id ? await ctx.db.get(id) : null
+    if (!conversation?.origin || !conversation.workspaceId || conversation.deletedAt !== undefined) return null
+    let viewer
+    try {
+      viewer = await requireNativeWorkspace(ctx, conversation.workspaceId)
+    } catch {
+      return null
+    }
+    const participant = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id).eq('principalId', viewer.principal.principalId))
+      .unique()
+    if (!participant || participant.status !== 'active') return null
+    const { teamId, channelId, kind, channelName } = conversation.origin
+    return {
+      kind,
+      channelName: channelName ?? null,
+      openUrl: conversation.origin.permalink
+        ?? 'https://slack.com/app_redirect?team=' + encodeURIComponent(teamId) + '&channel=' + encodeURIComponent(channelId),
+    }
+  },
+})
+
 // ─── Server: install, link and admission ────────────────────────────────────
 
 export const installByServer = mutation({

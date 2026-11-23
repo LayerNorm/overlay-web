@@ -31,6 +31,7 @@ export type SlackInbound = {
   channelId: string
   threadTs: string
   kind: 'channel' | 'dm'
+  channelName?: string
   external: boolean
   slackUserId: string
   text: string
@@ -47,7 +48,7 @@ export type SlackAdmissionDependencies = {
   resolveRequester?: (args: { teamId: string; slackUserId: string }) => Promise<SlackRequester | null>
   resolveThread?: (args: {
     workspaceId: string; userId: string; title: string
-    origin: { platform: 'slack'; teamId: string; channelId: string; threadTs: string; kind: 'channel' | 'dm' }
+    origin: { platform: 'slack'; teamId: string; channelId: string; threadTs: string; kind: 'channel' | 'dm'; channelName?: string }
   }) => Promise<{ conversationId: string; agentId: string; created: boolean }>
   startTurn?: (args: {
     workspaceId: string; userId: string; conversationId: string; prompt: string; turnId: string
@@ -78,7 +79,10 @@ export async function admitSlackMessage(input: SlackInbound, dependencies: Slack
   if (!requester.userId) return { status: 'link_required', workspaceId: requester.workspaceId }
   if (requester.guest && !requester.settings.guests) return { status: 'not_allowed', reason: 'guest' }
   const userId = requester.userId
-  const origin = { platform: 'slack' as const, teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind }
+  const origin = {
+    platform: 'slack' as const, teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, kind: input.kind,
+    ...(input.channelName ? { channelName: input.channelName } : {}),
+  }
   const thread = await (dependencies.resolveThread ?? ((args) => convex.mutation<{ conversationId: string; agentId: string; created: boolean }>(
     'integrations/slack:resolveThreadByServer', { serverSecret: getInternalApiSecret(), ...args }, call,
   ).then((value) => value!)))({ workspaceId: requester.workspaceId, userId, title: prompt.slice(0, 80), origin })
@@ -151,6 +155,7 @@ async function handleSlackMessage(bot: SlackBot, thread: SlackBotThread, message
     channelId: decoded.channel,
     threadTs: decoded.threadTs || message.id,
     kind: thread.isDM ? 'dm' : 'channel',
+    ...(thread.isDM ? {} : { channelName: await thread.channel.fetchMetadata().then((info) => info.name, () => undefined) }),
     external: adapter.getChannelVisibility(thread.id) === 'external',
     slackUserId: message.author.userId,
     text: message.text,

@@ -33,7 +33,7 @@ import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
 import { SettingsRouteSkeleton } from '../_components/PageRouteSkeletons'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
-import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
+import { ConnectedAppsHub, connectedAppHeader } from '@/features/settings/components/connected-apps/ConnectedAppsHub'
 import { ArchivedSettings } from '@/features/settings/components/ArchivedSettings'
 import { ComputerSettings } from '@/features/settings/components/ComputerSettings'
 import { ShortcutsSettings } from '@/features/settings/components/ShortcutsSettings'
@@ -325,7 +325,7 @@ function SettingsSectionContent({
   if (section === 'desktop') return <DesktopSettings />
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
-  if (section === 'connected-apps') return <ConnectedAppsSettings />
+  if (section === 'connected-apps') return <ConnectedAppsHub />
   if (section === 'computers') return <ComputerSettings />
   if (section === 'archived') return <ArchivedSettings />
   if (section === 'contact') return <ContactSettingsSection supportEmail={supportEmail} />
@@ -380,6 +380,7 @@ function SettingsPage() {
     () => sections.find((s) => s.id === section)?.label ?? 'General',
     [section, sections],
   )
+  const appHeader = connectedAppHeader(section, searchParams?.get('app'))
   const registeredPanel = useMemo(
     () => resolveSettingsPanel(settingsPanels, section),
     [section, settingsPanels],
@@ -398,7 +399,8 @@ function SettingsPage() {
 
   return (
     <SettingsPageShell
-      activeLabel={sectionLabel}
+      activeLabel={appHeader?.label ?? sectionLabel}
+      parents={appHeader?.parents}
       activeDetail={
         section === 'memories' && memoriesHeaderState && memoriesHeaderState.count > 0 ? (
           <span className="text-xs text-(--muted-light)">{memoriesHeaderState.count}</span>

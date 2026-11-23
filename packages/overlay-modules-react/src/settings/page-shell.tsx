@@ -8,6 +8,8 @@ export interface SettingsPageShellProps {
   activeLabel: string
   activeDetail?: ReactNode
   actions?: ReactNode
+  /** Breadcrumbs between Settings and the active page, such as Connected apps on an app's own page. */
+  parents?: { label: string; href: string }[]
   /**
    * When true, children fill the body directly without the centered
    * max-width padding wrapper. Used by sections that manage their own
@@ -22,6 +24,7 @@ export function SettingsPageShell({
   activeLabel,
   activeDetail,
   actions,
+  parents = [],
   fullBleed = false,
   children,
 }: SettingsPageShellProps) {
@@ -30,7 +33,7 @@ export function SettingsPageShell({
       header={
         <AppScreenHeader
           title={activeLabel}
-          breadcrumbs={[{ label: title }]}
+          breadcrumbs={[{ label: title }, ...parents]}
           metadata={activeDetail}
           actions={actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
           className="px-6"

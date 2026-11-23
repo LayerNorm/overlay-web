@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { SlackThreadOriginLabel, useSlackThreadOrigin } from './SlackThreadOrigin'
 import { MarkdownMessage, UserMessageBubble } from '@overlay/chat-react'
 import { QuestionnaireComposerProvider } from '@overlay/chat-react/questionnaire'
 import { usePathname, useRouter } from 'next/navigation'
@@ -277,6 +278,7 @@ export function DirectMessageExperience({
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
   const pathname = usePathname()
   const agentId = roomAgentId(vm)
+  const slackOrigin = useSlackThreadOrigin(conversationId)
   // Where an agent thread runs and its folder: chosen before the first message, fixed after it.
   const threadWorkEnabled = Boolean(agentId && activeWorkspaceId && !guided)
   const threadWork = useThreadWork({
@@ -384,7 +386,7 @@ export function DirectMessageExperience({
           <AppScreenHeader
             title={header.title}
             breadcrumbs={header.breadcrumbs}
-            subtitle={guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
+            subtitle={slackOrigin ? <SlackThreadOriginLabel origin={slackOrigin} /> : guided ? 'Your chief of staff' : roster.participants.length > 2 ? `${roster.participants.length} people` : vm.online > 0 ? 'Online' : undefined}
             leading={header.leading}
             actions={guided ? guided.headerActions : (
               <RoomHeaderActions
