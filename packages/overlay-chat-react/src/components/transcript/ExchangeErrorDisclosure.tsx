@@ -25,11 +25,9 @@ export function ExchangeErrorDisclosure({ errorMessage, className = '' }: { erro
           <ChevronRight size={14} strokeWidth={1.75} className={`shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
         </span>
       </Button>
-      {expanded ? (
-        <p id={detailsId} className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-(--chat-alert-error-text)">
-          {errorMessage}
-        </p>
-      ) : null}
+      <p id={detailsId} hidden={!expanded} className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-(--chat-alert-error-text)">
+        {errorMessage}
+      </p>
     </div>
   )
 }
