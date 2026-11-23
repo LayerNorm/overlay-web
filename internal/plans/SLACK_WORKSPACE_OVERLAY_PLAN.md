@@ -1,6 +1,6 @@
 # Overlay in Slack (Chat SDK)
 
-**Status:** Plan approved. Phase 1 in progress. Mockup: [slack-integration.html](mockups/slack-integration.html).
+**Status:** Phase 1 built; QA pending ([progress](../develop/slack-integration.md)). Mockup: [slack-integration.html](mockups/slack-integration.html).
 
 ## Decisions
 

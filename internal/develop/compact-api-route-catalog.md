@@ -164,6 +164,11 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST, PUT /api/v1/extensions/[extensionId]/[...path]`
 - `GET /api/v1/github/callback`
 - `GET /api/v1/github/connect`
+- `GET /api/v1/integrations/slack/install`
+- `GET /api/v1/integrations/slack/link`
+- `GET /api/v1/integrations/slack/link/callback`
+- `GET /api/v1/integrations/slack/oauth`
+- `POST /api/v1/integrations/slack/events`
 - `GET /api/v1/github/repositories`
 - `GET, POST /api/v1/integrations`
 - `GET, POST /api/v1/mcp/agents`
