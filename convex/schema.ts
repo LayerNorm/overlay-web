@@ -1774,6 +1774,11 @@ export default defineSchema({
               state: v.optional(v.string()),
               toolInput: v.optional(v.any()),
               toolOutput: v.optional(v.any()),
+              // Written by persist-assistant-turn for approved, denied and provider-run tool calls.
+              providerExecuted: v.optional(v.boolean()),
+              approvalId: v.optional(v.string()),
+              approvalStatus: v.optional(v.union(v.literal('requested'), v.literal('approved'), v.literal('denied'))),
+              approvalReason: v.optional(v.string()),
             }),
           }),
           v.object({
