@@ -22,20 +22,19 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { Stack, useFocusEffect, useRouter } from 'expo-router'
 import { useAndroidKeyboardVisible } from '../../hooks/useAndroidKeyboardVisible'
 import { Feather } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
-import { hapticImpact } from '../../lib/haptics'
-import * as Haptics from 'expo-haptics'
+import { hapticImpact, hapticNotify } from '../../lib/haptics'
 import type { ConversationParticipant, ConversationPresence } from '@overlay/workspace-contracts'
 import { useTheme } from '../../hooks/useTheme'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
-import { borderRadius, fontSize, spacing } from '../../constants/theme'
+import { borderRadius, spacing } from '../../constants/theme'
 import {
   compareRoomMessageRecords,
   channelComposerPlaceholder,
@@ -77,14 +76,11 @@ import { uploadDocument } from '../../services/aiService'
 import type { ChatMentionItem } from '../../services/chatTypes'
 import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
 import { RoomMessageItem } from './RoomMessageItem'
-import { RoomMessageActions } from './RoomMessageActions'
-import { ChatHeader, ChatSheet } from './ChatViews'
+import { RoomMessageMenu, type RoomAction } from './RoomMessageMenu'
+import { RoomConfirmDialog, RoomMembersSheet, RoomMessagesSheet, type RoomConfirmation } from './RoomSheets'
+import { ChatHeader } from './ChatViews'
 import { useDrawer } from '../../contexts/DrawerContext'
-import {
-  BottomSheet,
-  EmptyState,
-} from '../ui/AppChrome'
-import { Badge, ListRow, Section } from '../ui/primitives'
+import { EmptyState } from '../ui/AppChrome'
 import { FeatureGate } from '../ui/FeatureGate'
 import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 
@@ -196,12 +192,11 @@ export function RoomScreen({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
 
   // Sheet state
-  const [actionsMessage, setActionsMessage] = useState<RoomMessageView | null>(null)
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [pinsOpen, setPinsOpen] = useState(false)
   const [savedOpen, setSavedOpen] = useState(false)
   const [addPeopleOpen, setAddPeopleOpen] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
+  const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
   const [muted, setMuted] = useState(false)
 
   const sessionIdRef = useRef(`mobile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`)
@@ -704,38 +699,34 @@ export function RoomScreen({
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
       if (!COLLABORATION_NATIVE_READY) return
-      Alert.alert('Delete message', 'Remove this message for everyone?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void deleteRoomMessage(conversationId, messageId)
-              .then(() => loadAll('poll'))
-              .catch(() => Alert.alert('Could not delete the message', 'Try again in a moment.'))
-          },
+      setConfirmation({
+        title: 'Delete this message?',
+        message: 'It will be removed for everyone.',
+        label: 'Delete message',
+        destructive: true,
+        run: () => {
+          void deleteRoomMessage(conversationId, messageId)
+            .then(() => loadAll('poll'))
+            .catch(() => Alert.alert('Could not delete the message', 'Try again in a moment.'))
         },
-      ])
+      })
     },
     [conversationId, loadAll],
   )
 
   const handleReportMessage = useCallback(
     (view: RoomMessageView) => {
-      Alert.alert('Report message', 'Flag this message for workspace admins?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report',
-          onPress: () => {
-            void reportRoomMessage(conversationId, {
-              messageId: view.id,
-              reason: 'inappropriate',
-            })
-              .then(() => Alert.alert('Reported', 'Thanks — the workspace team will take a look.'))
-              .catch(() => Alert.alert('Could not report', 'Try again in a moment.'))
-          },
+      setConfirmation({
+        title: 'Report this message?',
+        message: 'Workspace admins will review it.',
+        label: 'Report message',
+        destructive: true,
+        run: () => {
+          void reportRoomMessage(conversationId, { messageId: view.id, reason: 'inappropriate' })
+            .then(() => hapticNotify())
+            .catch(() => Alert.alert('Could not report the message', 'Try again in a moment.'))
         },
-      ])
+      })
     },
     [conversationId],
   )
@@ -807,25 +798,12 @@ export function RoomScreen({
   // ── Participant actions ────────────────────────────────────────────────────
 
   const handleRemoveParticipant = useCallback(
-    (participant: ConversationParticipant) => {
-      Alert.alert(
-        'Remove member',
-        `Remove ${participant.displayName} from this ${conversationType}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: () => {
-              void removeRoomParticipant(conversationId, participant.principalId)
-                .then(() => loadAll('poll'))
-                .catch(() => Alert.alert('Could not remove the member', 'Try again in a moment.'))
-            },
-          },
-        ],
-      )
+    (principalId: string) => {
+      void removeRoomParticipant(conversationId, principalId)
+        .then(() => loadAll('poll'))
+        .catch(() => Alert.alert('Could not remove the member', 'Try again in a moment.'))
     },
-    [conversationId, conversationType, loadAll],
+    [conversationId, loadAll],
   )
 
   const handleToggleMute = useCallback(() => {
@@ -836,7 +814,6 @@ export function RoomScreen({
     }).catch(() => {
       setMuted(!next)
     })
-    setMoreOpen(false)
   }, [conversationId, muted])
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -856,6 +833,11 @@ export function RoomScreen({
   const myParticipant = participantsById.get(state.currentPrincipalId)
   const canManageParticipants =
     conversationType === 'channel' || activeParticipants.length > 2 || myParticipant?.role === 'moderator'
+  const roomLabel = conversationType === 'channel' ? '#' + state.title.replace(/^#/, '') : 'this conversation'
+  const messageRows = (ids: Set<string>) =>
+    messageViews
+      .filter((view) => ids.has(view.id))
+      .map((view) => ({ id: view.id, author: view.authorName, text: view.deletedAt ? 'Message deleted' : view.text || 'Attachment' }))
 
   const renderItem = ({ item, index }: { item: RoomMessageRecord; index: number }) => {
     const view = messageViews.find((candidate) => candidate.id === item.id)
@@ -874,28 +856,74 @@ export function RoomScreen({
             <View style={[styles.dayLine, { backgroundColor: theme.border }]} />
           </View>
         ) : null}
-        <RoomMessageItem
-          view={view}
-          theme={theme}
-          grouped={grouped}
-          reactions={state.reactions[item.id]}
-          replyCount={threadReplyCounts.get(item.id) ?? 0}
-          pinned={state.pinnedIds.has(item.id)}
-          saved={state.savedIds.has(item.id)}
-          onToggleReaction={(emoji) => handleToggleReaction(item.id, emoji)}
-          onOpenThread={() => openThread(item.id)}
-          onLongPress={(target) => {
-            hapticImpact(Haptics.ImpactFeedbackStyle.Medium)
-            setActionsMessage(target)
-          }}
-        />
+        {withMenu(
+          view,
+          <RoomMessageItem
+            view={view}
+            theme={theme}
+            grouped={grouped}
+            reactions={state.reactions[item.id]}
+            replyCount={threadReplyCounts.get(item.id) ?? 0}
+            pinned={state.pinnedIds.has(item.id)}
+            saved={state.savedIds.has(item.id)}
+            onToggleReaction={(emoji) => handleToggleReaction(item.id, emoji)}
+            onOpenThread={() => openThread(item.id)}
+          />,
+        )}
       </View>
     )
   }
 
+  const handleMessageAction = (message: RoomMessageView, action: RoomAction) => {
+    if (action === 'thread') { if (isThread) inputRef.current?.focus(); else openThread(message.id) }
+    else if (action === 'reply') handleQuoteReply(message)
+    else if (action === 'pin') handleTogglePin(message.id)
+    else if (action === 'save') handleToggleSaved(message.id)
+    else if (action === 'copy') void Clipboard.setStringAsync(message.text)
+    else if (action === 'retry') handleRetryMessage(message)
+    else if (action === 'edit' && message.mine) handleStartEdit(message)
+    else if (action === 'delete' && message.mine) handleDeleteMessage(message.id)
+    else if (action === 'report' && !message.mine) handleReportMessage(message)
+  }
+  const withMenu = (view: RoomMessageView, item: React.ReactElement) => (
+    <RoomMessageMenu
+      mine={view.mine}
+      deleted={Boolean(view.deletedAt)}
+      failed={view.delivery === 'failed'}
+      pinned={state.pinnedIds.has(view.id)}
+      saved={state.savedIds.has(view.id)}
+      onReact={(emoji) => handleToggleReaction(view.id, emoji)}
+      onAction={(action) => handleMessageAction(view, action)}
+    >
+      {item}
+    </RoomMessageMenu>
+  )
+
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <ChatHeader theme={theme} subtitle={headerSubtitle} title={isThread ? 'Thread' : conversationType === 'channel' ? '#' + state.title.replace(/^#/, '') : state.title || 'Direct message'} topInset={insets.top} onDrawer={openDrawer} onBack={isThread ? () => router.back() : undefined} onOptions={() => setMoreOpen(true)} />
+      <ChatHeader theme={theme} subtitle={headerSubtitle} title={isThread ? 'Thread' : conversationType === 'channel' ? '#' + state.title.replace(/^#/, '') : state.title || 'Direct message'} topInset={insets.top} onDrawer={openDrawer} onBack={isThread ? () => router.back() : undefined} menu={[
+          isThread ? (
+            <Stack.Toolbar.MenuAction key="follow" icon={following ? 'bell.fill' : 'bell'} isOn={following} onPress={handleToggleFollow}>
+              Follow thread
+            </Stack.Toolbar.MenuAction>
+          ) : null,
+          <Stack.Toolbar.Menu key="panels" inline title="">
+            <Stack.Toolbar.MenuAction icon="person.2" subtitle={`${activeParticipants.length} member${activeParticipants.length === 1 ? '' : 's'}`} onPress={() => setParticipantsOpen(true)}>
+              Members
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="pin" subtitle={state.pinnedIds.size > 0 ? `${state.pinnedIds.size} pinned` : undefined} onPress={() => setPinsOpen(true)}>
+              Pinned messages
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="bookmark" subtitle={state.savedIds.size > 0 ? `${state.savedIds.size} saved` : undefined} onPress={() => setSavedOpen(true)}>
+              Saved messages
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>,
+          <Stack.Toolbar.Menu key="notify" inline title="">
+            <Stack.Toolbar.MenuAction icon={muted ? 'bell.slash.fill' : 'bell.slash'} isOn={muted} onPress={handleToggleMute}>
+              Mute notifications
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>,
+        ]} />
 
       <KeyboardAvoidingView
         style={styles.body}
@@ -941,15 +969,17 @@ export function RoomScreen({
                 <View>
                   {isThread && rootMessage ? (
                     <View style={[styles.rootMessageWrap, { borderBottomColor: theme.border }]}>
-                      <RoomMessageItem
-                        view={rootMessage}
-                        theme={theme}
-                        reactions={state.reactions[rootMessage.id]}
-                        pinned={state.pinnedIds.has(rootMessage.id)}
-                        saved={state.savedIds.has(rootMessage.id)}
-                        onToggleReaction={(emoji) => handleToggleReaction(rootMessage.id, emoji)}
-                        onLongPress={(target) => setActionsMessage(target)}
-                      />
+                      {withMenu(
+                        rootMessage,
+                        <RoomMessageItem
+                          view={rootMessage}
+                          theme={theme}
+                          reactions={state.reactions[rootMessage.id]}
+                          pinned={state.pinnedIds.has(rootMessage.id)}
+                          saved={state.savedIds.has(rootMessage.id)}
+                          onToggleReaction={(emoji) => handleToggleReaction(rootMessage.id, emoji)}
+                        />,
+                      )}
                       <View style={styles.threadHeaderRow}>
                         <Text style={[styles.threadHeaderText, { color: theme.textSecondary }]}>
                           Thread
@@ -1054,150 +1084,24 @@ export function RoomScreen({
         </View>
       </KeyboardAvoidingView>
 
-      {/* Long-press message actions */}
-<ChatSheet
-        theme={theme}
-        visible={actionsMessage !== null}
-        onClose={() => setActionsMessage(null)}
-        title="Message actions"
-      >
-        {actionsMessage ? <RoomMessageActions theme={theme} mine={actionsMessage.mine} deleted={Boolean(actionsMessage.deletedAt)} failed={actionsMessage.delivery === 'failed'} pinned={state.pinnedIds.has(actionsMessage.id)} saved={state.savedIds.has(actionsMessage.id)} onReact={emoji => { handleToggleReaction(actionsMessage.id, emoji); setActionsMessage(null) }} onAction={action => {
-          const message = actionsMessage
-          if (action === 'thread') { if (isThread) inputRef.current?.focus(); else openThread(message.id) }
-          else if (action === 'reply') handleQuoteReply(message)
-          else if (action === 'pin') handleTogglePin(message.id)
-          else if (action === 'save') handleToggleSaved(message.id)
-          else if (action === 'copy') void Clipboard.setStringAsync(message.text)
-          else if (action === 'retry') handleRetryMessage(message)
-          else if (action === 'edit' && message.mine) handleStartEdit(message)
-          else if (action === 'delete' && message.mine) handleDeleteMessage(message.id)
-          else if (action === 'report' && !message.mine) handleReportMessage(message)
-          setActionsMessage(null)
-        }} /> : null}
-      </ChatSheet>
-
-      {/* Room actions */}
-      <BottomSheet
-        theme={theme}
-        visible={moreOpen}
-        onClose={() => setMoreOpen(false)}
-        title={state.title || (conversationType === 'channel' ? 'Channel' : 'Conversation')}
-      >
-        <Section theme={theme}>
-          {isThread ? <ListRow theme={theme} icon={following ? 'bell' : 'bell-off'} title={following ? 'Unfollow thread' : 'Follow thread'} onPress={handleToggleFollow} /> : null}
-          <ListRow
-            theme={theme}
-            icon="users"
-            title="Members"
-            subtitle={`${activeParticipants.length} participant${activeParticipants.length === 1 ? '' : 's'}`}
-            onPress={() => {
-              setMoreOpen(false)
-              setParticipantsOpen(true)
-            }}
-            showChevron
-          />
-          <ListRow
-            theme={theme}
-            icon="map-pin"
-            title="Pinned messages"
-            subtitle={state.pinnedIds.size > 0 ? `${state.pinnedIds.size} pinned` : undefined}
-            onPress={() => {
-              setMoreOpen(false)
-              setPinsOpen(true)
-            }}
-            showChevron
-          />
-          <ListRow
-            theme={theme}
-            icon="bookmark"
-            title="Saved messages"
-            subtitle={state.savedIds.size > 0 ? `${state.savedIds.size} saved` : undefined}
-            onPress={() => {
-              setMoreOpen(false)
-              setSavedOpen(true)
-            }}
-            showChevron
-          />
-        </Section>
-        <Section theme={theme}>
-          <ListRow
-            theme={theme}
-            icon={muted ? 'bell' : 'bell-off'}
-            title={muted ? 'Unmute notifications' : 'Mute notifications'}
-            subtitle={muted ? 'You will not be notified about this room' : 'All messages notify you'}
-            onPress={() => void handleToggleMute()}
-          />
-        </Section>
-      </BottomSheet>
-
-      {/* Participants */}
-      <BottomSheet
-        theme={theme}
-        visible={participantsOpen}
+      <RoomMembersSheet
+        open={participantsOpen}
         onClose={() => setParticipantsOpen(false)}
-        title="Members"
-        headerAction={
-          canManageParticipants ? (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                setParticipantsOpen(false)
-                setAddPeopleOpen(true)
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Feather name="user-plus" size={18} color={theme.text} />
-            </TouchableOpacity>
-          ) : undefined
-        }
-      >
-        <Section theme={theme}>
-          {activeParticipants.map((participant) => {
-            const online = onlinePrincipalIds.has(participant.principalId)
-            const isSelf = participant.principalId === state.currentPrincipalId
-            const typing = state.presence.some(
-              (presence) => presence.principalId === participant.principalId && presence.typing,
-            )
-            return (
-              <ListRow
-                key={participant.principalId}
-                theme={theme}
-                title={`${participant.displayName}${isSelf ? ' (you)' : ''}`}
-                subtitle={
-                  typing
-                    ? 'typing…'
-                    : online
-                      ? 'online'
-                      : participant.principalType === 'agent'
-                        ? 'agent'
-                        : 'offline'
-                }
-                accessory={
-                  <View style={styles.participantTrailing}>
-                    {participant.role === 'moderator' ? (
-                      <Badge theme={theme} label="Moderator" />
-                    ) : null}
-                    <View
-                      style={[
-                        styles.presenceDot,
-                        { backgroundColor: online ? '#22C55E' : theme.surfaceMuted },
-                      ]}
-                    />
-                  </View>
-                }
-                onLongPress={
-                  !isSelf && canManageParticipants
-                    ? () => handleRemoveParticipant(participant)
-                    : undefined
-                }
-              />
-            )
-          })}
-          {activeParticipants.length === 0 ? (
-            <ListRow theme={theme} title="No members yet" disabled />
-          ) : null}
-        </Section>
-      </BottomSheet>
+        roomLabel={roomLabel}
+        members={activeParticipants.map((participant) => {
+          const isSelf = participant.principalId === state.currentPrincipalId
+          const typing = state.presence.some((presence) => presence.principalId === participant.principalId && presence.typing)
+          return {
+            id: participant.principalId,
+            name: `${participant.displayName}${isSelf ? ' (you)' : ''}`,
+            status: typing ? 'Typing…' : onlinePrincipalIds.has(participant.principalId) ? 'Online' : participant.principalType === 'agent' ? 'Agent' : 'Offline',
+            moderator: participant.role === 'moderator',
+            removable: !isSelf && canManageParticipants,
+          }
+        })}
+        onAdd={canManageParticipants ? () => { setParticipantsOpen(false); setAddPeopleOpen(true) } : undefined}
+        onRemove={handleRemoveParticipant}
+      />
 
       {/* Add people — principal search, add-participants mode */}
       <NewDirectMessageSheet
@@ -1218,75 +1122,23 @@ export function RoomScreen({
         }}
       />
 
-      {/* Pins panel */}
-      <BottomSheet
-        theme={theme}
-        visible={pinsOpen}
+      <RoomMessagesSheet
+        kind="pinned"
+        open={pinsOpen}
         onClose={() => setPinsOpen(false)}
-        title="Pinned messages"
-      >
-        {state.pinnedIds.size === 0 ? (
-          <Text style={[styles.sheetEmpty, { color: theme.textSecondary }]}>
-            Nothing pinned yet. Long-press a message to pin it.
-          </Text>
-        ) : (
-          <Section theme={theme}>
-            {messageViews
-              .filter((view) => state.pinnedIds.has(view.id))
-              .map((view) => (
-                <ListRow
-                  key={view.id}
-                  theme={theme}
-                  title={view.authorName}
-                  subtitle={view.deletedAt ? 'Message deleted' : view.text || 'Attachment'}
-                  accessory={
-                    <TouchableOpacity
-                      onPress={() => handleTogglePin(view.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather name="x" size={15} color={theme.textSecondary} />
-                    </TouchableOpacity>
-                  }
-                />
-              ))}
-          </Section>
-        )}
-      </BottomSheet>
-
-      {/* Saved messages */}
-      <BottomSheet
-        theme={theme}
-        visible={savedOpen}
+        messages={messageRows(state.pinnedIds)}
+        onRemove={handleTogglePin}
+        onCopy={(text) => void Clipboard.setStringAsync(text)}
+      />
+      <RoomMessagesSheet
+        kind="saved"
+        open={savedOpen}
         onClose={() => setSavedOpen(false)}
-        title="Saved messages"
-      >
-        {state.savedIds.size === 0 ? (
-          <Text style={[styles.sheetEmpty, { color: theme.textSecondary }]}>
-            Nothing saved yet. Long-press a message to save it here.
-          </Text>
-        ) : (
-          <Section theme={theme}>
-            {messageViews
-              .filter((view) => state.savedIds.has(view.id))
-              .map((view) => (
-                <ListRow
-                  key={view.id}
-                  theme={theme}
-                  title={view.authorName}
-                  subtitle={view.deletedAt ? 'Message deleted' : view.text || 'Attachment'}
-                  accessory={
-                    <TouchableOpacity
-                      onPress={() => handleToggleSaved(view.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather name="x" size={15} color={theme.textSecondary} />
-                    </TouchableOpacity>
-                  }
-                />
-              ))}
-          </Section>
-        )}
-      </BottomSheet>
+        messages={messageRows(state.savedIds)}
+        onRemove={handleToggleSaved}
+        onCopy={(text) => void Clipboard.setStringAsync(text)}
+      />
+      <RoomConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
     </View>
   )
 }
@@ -1295,28 +1147,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   body: { flex: 1, minHeight: 0 },
   transcriptRegion: { flex: 1, minHeight: 0 },
-  headerCenter: {
-    alignItems: 'center',
-    gap: 1,
-    maxWidth: 220,
-  },
-  headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  headerTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '700',
-  },
-  headerSubtitle: {
-    fontSize: 11,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
   loadingWrap: {
     flex: 1,
     alignItems: 'center',
@@ -1379,36 +1209,5 @@ const styles = StyleSheet.create({
   editingBarText: {
     flex: 1,
     fontSize: 12,
-  },
-  quickReactionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  quickReactionChip: {
-    width: 44,
-    height: 40,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickReactionEmoji: {
-    fontSize: 20,
-  },
-  participantTrailing: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  presenceDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  sheetEmpty: {
-    fontSize: fontSize.sm,
-    textAlign: 'center',
-    paddingVertical: spacing.lg,
   },
 })

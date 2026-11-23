@@ -15,11 +15,13 @@ export function ChatSheet({ modelPicker = false, ...props }: Omit<React.Componen
 }
 
 /** Native navigation bar for a conversation; actions sit in the trailing toolbar. */
-export function ChatHeader({ title, subtitle, onNew, onOptions }: { theme: Theme; title: string; subtitle?: string; busy?: boolean; topInset?: number; onDrawer?: () => void; onNew?: () => void; onOptions?: () => void; onBack?: () => void }) {
+export function ChatHeader({ title, subtitle, onNew, onOptions, menu }: { theme: Theme; title: string; subtitle?: string; busy?: boolean; topInset?: number; onDrawer?: () => void; onNew?: () => void; onOptions?: () => void; onBack?: () => void; /** Native toolbar menu items shown under the "…" button (replaces `onOptions`). */ menu?: React.ReactNode }) {
   return (
     <ConversationHeader title={title} subtitle={subtitle}>
       {onNew ? <Stack.Toolbar.Button icon="square.and.pencil" accessibilityLabel="New chat" onPress={onNew} /> : null}
-      {onOptions ? <Stack.Toolbar.Button icon="ellipsis" accessibilityLabel="More options" onPress={onOptions} /> : null}
+      {menu ? (
+        <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="More options">{menu}</Stack.Toolbar.Menu>
+      ) : onOptions ? <Stack.Toolbar.Button icon="ellipsis" accessibilityLabel="More options" onPress={onOptions} /> : null}
     </ConversationHeader>
   )
 }

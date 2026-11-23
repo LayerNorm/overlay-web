@@ -198,18 +198,28 @@ test('assistant shows exactly one bottom mark while active, none when settled or
   assert.doesNotMatch(source, /Thinking…|OVERLAY_LOGO|withRepeat|StreamingCursor/)
 })
 
-test('message action sheet keeps edit/delete own only; deleted and failed states are safe', () => {
-  const { RoomMessageActions } = load('components/chat/RoomMessageActions.tsx', ui)
-  const calls = [], props = { theme: {}, mine: false, onReact: value => calls.push(value), onAction: value => calls.push(value) }
-  const other = RoomMessageActions(props)
-  assert.doesNotMatch(texts(other), /Edit message|Delete message/)
-  assert.match(texts(other), /Reply in thread.*Pin message.*Save message.*Copy text/)
-  const own = RoomMessageActions({ ...props, mine: true })
-  assert.match(texts(own), /Edit message.*Delete message/)
-  nodes(own).find(node => node.props.accessibilityLabel === 'React 👍').props.onPress(); assert.deepEqual(calls, ['👍'])
-  assert.equal(nodes(RoomMessageActions({ ...props, deleted: true })).filter(node => node.props.accessibilityRole === 'button').length, 0)
-  assert.match(texts(RoomMessageActions({ ...props, failed: true })), /Retry send/)
-  assert.match(texts(RoomMessageActions(props)), /Reply in thread/)
+test('message context menu keeps edit/delete own only; deleted and failed states are safe', () => {
+  const swift = { Button: 'Button', Host: 'Host', Menu: 'Menu', RNHostView: 'RNHostView', ContextMenu: Object.assign(function ContextMenu() {}, { Items: 'Items', Trigger: 'Trigger' }) }
+  const { RoomMessageMenu } = load('components/chat/RoomMessageMenu.tsx', {
+    ...ui,
+    'react-native': new Proxy({ useWindowDimensions: () => ({ width: 390 }) }, { get: (target, key) => target[key] ?? key }),
+    '@expo/ui/swift-ui': swift,
+    '../../hooks/useTheme': { useTheme: () => ({ isDark: false }) },
+  })
+  const calls = [], child = { type: 'Bubble', props: { children: [] } }
+  const props = { mine: false, children: child, onReact: value => calls.push(value), onAction: value => calls.push(value) }
+  const labels = tree => nodes(tree).filter(node => node.type === 'Button').map(node => node.props.label).join(' | ')
+  const other = RoomMessageMenu(props)
+  assert.doesNotMatch(labels(other), /Edit|Delete/)
+  assert.match(labels(other), /Reply \| Reply in thread \| Copy \| Pin \| Save \| Report/)
+  const own = RoomMessageMenu({ ...props, mine: true })
+  assert.match(labels(own), /Edit \| Delete/)
+  assert.equal(nodes(own).find(node => node.props.label === 'Delete').props.role, 'destructive')
+  nodes(own).find(node => node.props.label === '👍').props.onPress(); assert.deepEqual(calls, ['👍'])
+  nodes(own).find(node => node.props.label === 'Pin').props.onPress(); assert.deepEqual(calls, ['👍', 'pin'])
+  assert.match(labels(RoomMessageMenu({ ...props, pinned: true, saved: true })), /Unpin .*Remove from saved/)
+  assert.equal(RoomMessageMenu({ ...props, deleted: true }), child)
+  assert.equal(labels(RoomMessageMenu({ ...props, failed: true })), 'Retry send')
   const source = fs.readFileSync(path.join(root, 'components/chat/RoomScreen.tsx'), 'utf8')
   assert.match(source, /channelComposerPlaceholder\(state.title\)/)
   const { channelComposerPlaceholder } = load('lib/roomMessages.ts')

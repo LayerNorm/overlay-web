@@ -39,7 +39,7 @@ Status key:
 | --- | --- | --- | --- | --- |
 | [x] | **Edit agent** | `app/agent/[id].tsx`, `components/agents/AgentEditorScreen.tsx` | Native | <ul><li>Native nav bar (back, Chat, ✓ save) and a SwiftUI `Form`: appearance, name, what it helps with, run on, model (provider menu), instructions, tool toggles, who can use it, archive.</li><li>Replaces the old simple and "advanced" modes.</li><li>Checked 2026-11-22 in light and dark: edit model and colour, save, values persisted.</li><li>Left: `AgentEditorView.tsx` is now used only by the preview fixture; `ConnectMachineSheet` is still a JS sheet.</li></ul> |
 | [x] | **Agent thread** | `app/dm/[id].tsx` → `components/agents/AgentThreadScreen.tsx`, `AgentThreadViews.tsx` | Partial | <ul><li>Fixed: no raw `dm/[id]` title.</li><li>Fixed: loading is a quiet delayed spinner.</li><li>Fixed: archived, private or deleted agents and threads explain why, with "Back to Agents". Cause of the reported "unavailable" screen: the agent had been archived, and the editor then returned to its thread.</li><li>Archiving now returns to Agents.</li><li>Still open: composer focus needs two taps.</li></ul> |
-| [ ] | DM / channel / thread rooms | `app/dm/[id].tsx`, `app/channel/[id].tsx`, `app/thread/[id].tsx` → `components/chat/RoomScreen.tsx` | Partial | <ul><li>Native header.</li><li>Message actions, Members, Pinned and Saved open JS `BottomSheet`s; actions should be a native context menu on long-press, and the lists `pageSheet` routes.</li><li>Reactions are 4 fixed emoji.</li><li>8 `Alert.alert` calls.</li></ul> |
+| [x] | DM / channel / thread rooms | `app/dm/[id].tsx`, `app/channel/[id].tsx`, `app/thread/[id].tsx` → `components/chat/RoomScreen.tsx`, `RoomMessageMenu.tsx`, `RoomSheets.tsx` | Native | <ul><li>Touch and hold a message for the system context menu: a React submenu (8 emoji), Reply, Reply in thread, Copy, Pin, Save, and Edit/Delete or Report.</li><li>The "…" button is a native toolbar menu: Follow thread, Members, Pinned and Saved (with counts), and a Mute switch.</li><li>Members, Pinned and Saved are SwiftUI sheets (medium/large detents) with inset-grouped lists, row context menus and system empty states.</li><li>Delete, report and member removal confirm with native confirmation dialogs; the 4 remaining `Alert.alert` calls are failure messages.</li><li>Checked 2026-11-23 in light and dark: react, pin, unpin, delete, member removal dialog (cancelled).</li><li>Open: the reaction bar is still a vertical submenu, not a row of emoji above the message.</li></ul> |
 | [ ] | Personal chat | `app/chat/[id].tsx`, `app/chat/index.tsx` → `components/chat/ChatScreen.tsx` | Partial | <ul><li>Native header.</li><li>Full-screen "Loading conversation…" spinner while sending.</li><li>The transcript is a DOM web view with no native long-press menu.</li><li>The composer attachment and tools sheets are JS `BottomSheet`s.</li><li>`DrawerSidebar` is still mounted, but nothing opens it.</li></ul> |
 | [ ] | Task detail | `app/(tabs)/work/[id].tsx` → `WorkViews.tsx` | Partial | <ul><li>Dates are typed text; use a native date picker.</li><li>The Comment button is loose centred text.</li><li>Inline fields aren't a native `Form`.</li></ul> |
 | [ ] | Organization | `app/(tabs)/work/organization.tsx` → `components/work/WorkOrganization.tsx` | Partial | Agent details use `SheetModal`; use a `pageSheet` route. |
@@ -88,8 +88,8 @@ Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacin
 | [ ] | Draft review | `components/chat/DraftReviewSheet.tsx` | Draft card | `pageSheet` |
 | [ ] | New DM | `components/chat/NewDirectMessageSheet.tsx` | Chats `+` menu | `formSheet` route |
 | [ ] | New channel | `components/chat/NewChannelSheet.tsx` | Chats `+` menu | `formSheet` route with a `Form` |
-| [ ] | Room message actions | `components/chat/RoomScreen.tsx` | Long-press a message | Context menu |
-| [ ] | Room members / pinned / saved | `components/chat/RoomScreen.tsx` | Room header menu | `pageSheet` |
+| [x] | Room message actions | `components/chat/RoomMessageMenu.tsx` | Long-press a message | Context menu (2026-11-23) |
+| [x] | Room members / pinned / saved | `components/chat/RoomSheets.tsx` | Room header menu | SwiftUI sheet with detents (2026-11-23) |
 | [ ] | Share | `components/workspace/ShareSheet.tsx` | File and chat options | `pageSheet` with a `Form` |
 | [ ] | Create workspace | `components/workspace/CreateWorkspaceSheet.tsx` | Old drawer only | `formSheet` route from the account sheet |
 | [ ] | Workspace switcher | `components/workspace/WorkspaceSwitcher.tsx` | Old drawer only (dead) | Delete; the account sheet replaces it |
@@ -107,13 +107,11 @@ Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacin
 
 - [ ] Replace `Alert.alert` used as an action list with native menus. There are 112 calls across 35 files. The heaviest are:
   - `ToolsScreen` (10)
-  - `WebhooksSection` (9)
-  - `RoomScreen` (8)
+  - `RoomScreen` (4, failure messages only)
   - `McpDetailSheet` (7)
   - `AutomationDetailSheet` (7)
   - `FilesTree` (7)
   - `MemoriesList` (6)
-  - `ProvidersSection` (5)
 - [ ] Use `Alert.alert` only for destructive confirmations. Show non-blocking errors inline or as a toast.
 - [ ] Add long-press context menus to the rows of Chats, Agents, Work tasks, Files and Activity.
 - [ ] Add swipe actions: archive a chat, mark Activity read, complete a task.

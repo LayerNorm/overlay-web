@@ -28,7 +28,8 @@ Severity:
 - The chats list has no search, pull-to-refresh, pagination, swipe actions or long-press menu. It's a plain, non-virtualized ScrollView, and long-press just opens the chat.
 - No in-chat history switcher (`ChatHistorySheet` is dead code).
 - Opening a chat shows a full-screen "Loading conversation…" spinner even when a cached copy exists. Sending a first message replaces the screen with that spinner instead of showing the message straight away.
-- Room reactions are limited to 4 fixed emoji, and message actions are a custom list rather than a native menu.
+- Room message actions are a native context menu with 8 reactions (2026-11-23), but there is no free emoji picker and no reaction row above the message.
+- Creating a channel leaves you on the Chats list instead of opening the new channel.
 - Archive "for everyone" and per-room notification preferences throw "not available on mobile".
 - The agents list shows "Personal's Overlay" twice. Check the data vs deduping in the UI.
 
