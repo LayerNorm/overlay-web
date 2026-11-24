@@ -171,6 +171,7 @@ function RootLayoutNav(): React.ReactElement {
           ['settings', 'Settings'],
           ['automations', 'Automations'],
           ['activity', 'Activity'],
+          ['voice', 'Voice'],
         ].map(([name, title]) => (
           <Stack.Screen key={name} name={name} options={{ ...nativeHeader, title, headerLargeTitle: false }} />
         ))}
