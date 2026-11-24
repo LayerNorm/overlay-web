@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { projectNativeHarnessToolProgress, type NativeHarnessToolProgress } from './native-tool-progress'
 import type { NativeHarnessAccess, NativeHarnessContext } from './native-access'
+import { mergeAgentToolProgressPart } from '@/shared/chat/agent-tool-progress'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), append: vi.fn(), complete: vi.fn(), refresh: vi.fn(), warn: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -31,14 +32,19 @@ const progress: NativeHarnessToolProgress = {
   toolCallId: 'call', toolName: 'read_file', input: { fileId: 'file' }, state: 'input-available',
 }
 
+let saved: () => Array<Record<string, unknown>> = () => []
+
 beforeEach(() => {
   vi.resetAllMocks()
   let message = { ...baseMessage, parts: baseMessage.parts.map(part => ({ ...part })) }
   mocks.refresh.mockResolvedValue({})
   mocks.list.mockImplementation(async () => [message])
-  mocks.append.mockImplementation(async (args: { parts?: Array<Record<string, unknown>> }) => {
-    message = { ...message, parts: (args.parts ?? []).map(part => ({ ...part })) }
+  // The store merges a call's part into the saved parts, as the Convex mutation does.
+  mocks.append.mockImplementation(async (args: { toolPart?: Record<string, unknown> }) => {
+    const merged = args.toolPart ? mergeAgentToolProgressPart(message.parts, args.toolPart) : undefined
+    if (merged) message = { ...message, parts: merged.map(part => ({ ...part })) as typeof message.parts }
   })
+  saved = () => message.parts
 })
 
 test('the delivery owner projects running then completed tool progress', async () => {
@@ -48,15 +54,10 @@ test('the delivery owner projects running then completed tool progress', async (
   })
 
   expect(mocks.append).toHaveBeenCalledTimes(2)
-  const running = mocks.append.mock.calls[0]![0].parts
-  const completed = mocks.append.mock.calls[1]![0].parts
-  expect(running).toEqual([
-    { type: 'text', text: 'Working' },
-    { type: 'tool-invocation', toolInvocation: {
-      toolCallId: 'call', toolName: 'read_file', state: 'input-available', toolInput: { fileId: 'file' },
-    } },
-  ])
-  expect(completed).toEqual([
+  expect(mocks.append.mock.calls[0]![0].toolPart).toEqual({ type: 'tool-invocation', toolInvocation: {
+    toolCallId: 'call', toolName: 'read_file', state: 'input-available', toolInput: { fileId: 'file' },
+  } })
+  expect(saved()).toEqual([
     { type: 'text', text: 'Working' },
     { type: 'tool-invocation', toolInvocation: {
       toolCallId: 'call', toolName: 'read_file', state: 'output-available',
@@ -242,5 +243,18 @@ test('persistence failures are presentation-only and bound', async () => {
   })).resolves.toBeUndefined()
   expect(mocks.warn).toHaveBeenCalled()
   expect(mocks.append).toHaveBeenCalledOnce()
-  expect(JSON.stringify(mocks.append.mock.calls[0]![0].parts).length).toBeLessThan(10_000)
+  expect(JSON.stringify(mocks.append.mock.calls[0]![0].toolPart).length).toBeLessThan(10_000)
+})
+
+test('overlapping calls keep each other\'s progress and a late running update never reopens a finished call', async () => {
+  const other = { ...progress, toolCallId: 'other', toolName: 'list_files', input: {} }
+  await Promise.all([
+    projectNativeHarnessToolProgress(access, context, progress),
+    projectNativeHarnessToolProgress(access, context, other),
+  ])
+  await projectNativeHarnessToolProgress(access, context, { ...progress, state: 'output-available', output: { ok: true } })
+  await projectNativeHarnessToolProgress(access, context, progress)
+  const calls = saved().filter(part => part.type === 'tool-invocation')
+    .map(part => part.toolInvocation as { toolCallId: string; state: string })
+  expect(calls.map(call => [call.toolCallId, call.state])).toEqual([['call', 'output-available'], ['other', 'input-available']])
 })

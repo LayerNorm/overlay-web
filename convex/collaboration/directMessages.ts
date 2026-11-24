@@ -20,6 +20,7 @@ import { enqueueNativeTurn } from './nativeTurnQueue'
 import { cleanupTerminalPublicStreams, readActivePublicStreams } from '../lib/publicStreamRead'
 import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
 import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
+import { mergeAgentToolProgressPart } from '../../src/shared/chat/agent-tool-progress'
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
@@ -1054,6 +1055,8 @@ export const appendAgentMessageDelta = mutation({
     emitEvent: v.optional(v.boolean()),
     messageId: v.id('conversationMessages'),
     parts: v.optional(v.array(v.any())),
+    /** One tool call's live progress, merged into the saved parts here so overlapping calls keep each other's. */
+    toolPart: v.optional(v.any()),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
@@ -1062,9 +1065,13 @@ export const appendAgentMessageDelta = mutation({
     const message = await loadGeneratingAgentMessage(ctx, args)
     if (!message) return
     const currentApprovalPart = (message.parts ?? []).find((part) => part.type === 'data-native-agent-approval')
-    const nextParts = args.parts
+    const replacementParts = args.toolPart
+      ? mergeAgentToolProgressPart((message.parts ?? []) as Array<Record<string, unknown>>, args.toolPart)
+      : args.parts
+    if (args.toolPart && !replacementParts) return
+    const nextParts = replacementParts
       ? [
-          ...args.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+          ...replacementParts.filter((part) => part.type !== 'data-native-agent-approval'),
           ...(currentApprovalPart ? [currentApprovalPart] : []),
         ]
       : undefined

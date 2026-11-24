@@ -119,6 +119,8 @@ export interface ConversationCollaborationRepository {
     conversationId: string
     /** Full replacement for the row's parts; omitted when only text advanced. */
     parts?: Array<Record<string, unknown>>
+    /** One tool call's progress for the store to merge into the saved parts; used instead of `parts`. */
+    toolPart?: Record<string, unknown>
     /** Publishes `message.delta`. Throttled by the caller, not per flush. */
     emitEvent?: boolean
     messageId: string

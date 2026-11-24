@@ -64,12 +64,12 @@ export function harnessFileLockKey(path: string | undefined): string | undefined
 
 /**
  * A file read or write takes the computer lock shared plus a lock on that file. When the file's identity is
- * unknown, writes and snapshots lock the whole computer instead, so they cannot overlap a write to the same file
- * under another spelling.
+ * unknown (a relative or `~` path, or none), the call locks the whole computer instead, so it cannot overlap a
+ * write to the same file under another spelling.
  */
 function fileLock(path: string | undefined, access: 'read' | 'write' | 'snapshot'): HarnessResourceLock[] {
   const key = harnessFileLockKey(path)
-  if (!key) return access === 'read' ? [shared(COMPUTER)] : [exclusive(COMPUTER)]
+  if (!key) return [exclusive(COMPUTER)]
   return [shared(COMPUTER), { key, exclusive: access === 'write' }]
 }
 

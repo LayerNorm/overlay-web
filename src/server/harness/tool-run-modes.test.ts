@@ -38,6 +38,8 @@ test('path aliases share a file lock; unknown file identities lock the computer 
   const relativeWrite = harnessToolRunMode('computer_write_file', { path: 'output.txt' })
   expect(harnessRunModesConflict(relativeWrite, harnessToolRunMode('computer_read_file', { path: '/tmp/other.txt' }))).toBe(true)
   expect(harnessRunModesConflict(relativeWrite, harnessToolRunMode('web_search', {}))).toBe(false)
+  const relativeRead = harnessToolRunMode('computer_read_file', { path: 'a.txt' })
+  expect(harnessRunModesConflict(relativeRead, harnessToolRunMode('computer_write_file', { path: '/repo/a.txt' }))).toBe(true)
 })
 
 test('publishing a file waits for writes to that file but not for other files or reads', () => {

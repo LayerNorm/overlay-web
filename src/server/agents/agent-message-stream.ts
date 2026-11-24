@@ -2,7 +2,8 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { toolFailureOutput } from '@/shared/chat/tool-outcomes'
-import { compactAssistantPersistenceForConvex, isAssistantStorageOmission } from '@/shared/chat/persist-assistant-turn'
+import { isAssistantStorageOmission } from '@/shared/chat/persist-assistant-turn'
+import { compactAgentParts } from '@/shared/chat/agent-tool-progress'
 
 /**
  * The slice of the collaboration repository a streaming agent turn needs. Kept
@@ -26,6 +27,7 @@ export type AgentMessageStreamStore = {
     emitEvent?: boolean
     messageId: string
     parts?: Array<Record<string, unknown>>
+    toolPart?: Record<string, unknown>
     workspaceId: string
   }): Promise<void>
   finalizeAgentMessage(args: {
@@ -69,20 +71,7 @@ export function appendAgentTextPart(parts: Array<Record<string, unknown>>, delta
 
 export type AgentMessageStream = ReturnType<typeof createAgentMessageStream>
 
-export function compactAgentPartsForPersistence(parts: Array<Record<string, unknown>>) {
-  return compactAssistantPersistenceForConvex({ content: '', parts }).parts.map((part) => {
-    if (part.type !== 'tool-invocation') return part
-    const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'
-      ? (part.toolInvocation as Record<string, unknown>)
-      : {}
-    return {
-      ...part,
-      toolInvocation: Object.fromEntries(
-        Object.entries(invocation).filter(([, value]) => value !== undefined),
-      ),
-    }
-  })
-}
+export const compactAgentPartsForPersistence = compactAgentParts
 
 export async function persistAgentToolProgress(args: {
   store: Pick<AgentMessageStreamStore, 'appendAgentMessageDelta'>
@@ -90,15 +79,17 @@ export async function persistAgentToolProgress(args: {
   conversationId: string
   messageId: string
   workspaceId: string
-  parts: Array<Record<string, unknown>>
+  /** One call's part; the store merges it, so calls running at the same time never drop each other's progress. */
+  toolPart: Record<string, unknown>
 }): Promise<void> {
   try {
+    const [toolPart] = compactAgentParts([args.toolPart])
     await args.store.appendAgentMessageDelta({
       actorUserId: args.actorUserId,
       contentDelta: '',
       conversationId: args.conversationId,
       messageId: args.messageId,
-      parts: compactAgentPartsForPersistence(args.parts),
+      toolPart: toolPart ?? args.toolPart,
       workspaceId: args.workspaceId,
     })
   } catch (error) {
