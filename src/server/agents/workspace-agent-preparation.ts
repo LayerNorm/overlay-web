@@ -6,7 +6,6 @@ import { ActEntitlementService } from '@/server/conversations/ActEntitlementServ
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { buildWorkspaceAgentTooling } from './agent-tooling'
-import { agentMemoryOwner } from '@/shared/agents/agent-memory'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { sanitizeWorkflowToolSchemaValue } from '@/server/conversations/personal-chat-work-tools'
 import { loadRoomTurnContext } from './workspace-agent-invocation'
@@ -63,7 +62,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     idempotencyKey: identity.invocationNonce,
     latestUserText: room.latestUserText,
     memoryEnabled: input.memoryEnabled,
-    memoryOwnerId: agentMemoryOwner(agent),
+    memoryAgent: agent,
     paid: gate.paid,
     requestFingerprint: identity.requestFingerprint,
     turnId: identity.turnId,

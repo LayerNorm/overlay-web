@@ -7,6 +7,7 @@ import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import { resolveSharedRoom } from '@/server/agents/shared-room'
+import { memoryOwnerForPlace, type MemoryPlaceAgent } from '@/shared/agents/agent-memory'
 import { assignedTaskToolIdsToAdd, findAssignedTaskId, scopeAssignedTaskTools } from '@/server/agents/assigned-task-tools'
 import {
   agentToolCapabilities,
@@ -171,8 +172,8 @@ export async function buildWorkspaceAgentTooling(args: {
   idempotencyKey: string
   latestUserText?: string
   memoryEnabled: boolean
-  /** Who keeps what the agent remembers: `agentMemoryOwner(agent)`. */
-  memoryOwnerId: string
+  /** The agent whose memories this turn saves; `memoryOwnerForPlace` picks the owner from the room. */
+  memoryAgent: MemoryPlaceAgent
   paid: boolean
   requestFingerprint: string
   turnId: string
@@ -221,7 +222,9 @@ export async function buildWorkspaceAgentTooling(args: {
     latestUserText: args.latestUserText,
     mediaToolIntent: null,
     memoryEnabled: args.memoryEnabled,
-    memoryOwnerId: args.memoryOwnerId,
+    memoryOwnerId: memoryOwnerForPlace({
+      actorUserId: args.actorUserId, agent: args.memoryAgent, workspaceContext: sharedRoom,
+    }),
     mode: 'chat',
     paid: args.paid,
     preloadTasks: preloadActExternalToolTasks({

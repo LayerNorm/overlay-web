@@ -95,6 +95,8 @@ export type MemoryRowForSidebar = {
   tags?: string[]
   actor?: 'user' | 'agent'
   canDelete: boolean
+  /** Only its owner can see it; they may move it to the workspace (one-way). */
+  isPrivate: boolean
   creatorEmail?: string
   creatorName: string
   creatorPrincipalId?: string
@@ -126,6 +128,7 @@ export function memoriesToClientListRows(
     turnId?: string
     tags?: string[]
     actor?: 'user' | 'agent'
+    visibility?: 'owner' | 'workspace'
     createdAt: number
     updatedAt?: number
   }>,
@@ -159,6 +162,7 @@ export function memoriesToClientListRows(
       // its own, so any member of the workspace can prune them. A teammate's
       // memories stay theirs to delete.
       canDelete: options?.viewerUserId === m.userId || isAgentMemoryOwnerId(m.userId),
+      isPrivate: m.visibility === 'owner',
       creatorEmail: attribution?.email,
       creatorName: attribution?.name ?? (options?.viewerUserId === m.userId ? 'You' : 'Former member'),
       creatorPrincipalId: attribution?.principalId,
@@ -208,6 +212,7 @@ export function expandMemoriesForSidebarList(
         tags: m.tags,
         actor: m.actor,
         canDelete: false,
+        isPrivate: false,
         creatorName: 'Workspace member',
         creatorUserId: m.userId,
         createdAt: m.createdAt,

@@ -12,7 +12,8 @@ import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
-import { agentMemoryOwner, agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
+import { agentMemoryOwnerId, memoryOwnerForPlace } from '../../src/shared/agents/agent-memory'
+import { conversationIsWorkspaceContext } from '../harness/runs'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
@@ -728,8 +729,15 @@ export const enqueueMemoryExtraction = mutation({
         .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId!))
         .unique()
       if (!agent || agent.workspaceId !== args.workspaceId) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
-      // A personal Overlay's memories are its owner's private memories.
-      memoryOwnerId = agentMemoryOwner({ ...agent, id: agent.agentId })
+      // Memories follow the place: workspace knowledge only from a room others can read or a thread asked from one.
+      memoryOwnerId = memoryOwnerForPlace({
+        actorUserId: args.actorUserId,
+        agent: { ...agent, id: agent.agentId },
+        workspaceContext: await conversationIsWorkspaceContext(ctx, {
+          workspaceId: args.workspaceId, actorUserId: args.actorUserId,
+          conversationId: args.conversationId, serverSecret: args.serverSecret,
+        }),
+      })
     }
 
     // No daily count: extraction is charged to the workspace budget like other work.

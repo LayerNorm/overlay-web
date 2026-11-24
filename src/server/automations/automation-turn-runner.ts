@@ -63,7 +63,7 @@ import {
   applyAgentCapabilityFilter,
   resolveAgentGrant,
 } from '@/server/agents/agent-tooling'
-import { agentMemoryOwner } from '@/shared/agents/agent-memory'
+import { memoryOwnerForPlace } from '@/shared/agents/agent-memory'
 import type {
   PersonalChatWorkToolDefinition,
   PersonalChatWorkToolingContext,
@@ -629,8 +629,10 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // An agent-bound automation remembers as its agent (a personal Overlay remembers for its owner).
-    memoryOwnerId: automationAgent ? agentMemoryOwner(automationAgent) : undefined,
+    // An automation still reads its owner's private memories, so what it learns stays private until P5.
+    memoryOwnerId: automationAgent
+      ? memoryOwnerForPlace({ actorUserId: userId, agent: automationAgent, workspaceContext: false })
+      : undefined,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,
     preloadTasks: toolPreloadTasks,
