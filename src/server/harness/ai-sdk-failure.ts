@@ -68,6 +68,25 @@ function requestFailure(status: number | undefined): string | undefined {
   }
 }
 
+const NETWORK_TIMEOUT_CODES = new Set([
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ETIMEDOUT', 'ECONNABORTED',
+])
+
+// A request that failed without an HTTP status keeps the network error as its cause.
+function causedByNetworkTimeout(error: object): boolean {
+  const seen = new Set<object>()
+  let current = readErrorField(error, 'cause')
+  for (let depth = 0; depth < 4 && current && typeof current === 'object' && !seen.has(current); depth++) {
+    seen.add(current)
+    const code = readErrorField(current, 'code')
+    const name = readErrorField(current, 'name')
+    if ((typeof code === 'string' && NETWORK_TIMEOUT_CODES.has(code))
+      || name === 'TimeoutError' || name === 'BodyTimeoutError' || name === 'HeadersTimeoutError') return true
+    current = readErrorField(current, 'cause')
+  }
+  return false
+}
+
 function retryFailure(reason: unknown): string | undefined {
   switch (reason) {
     case 'maxRetriesExceeded': return 'The model request still failed after the AI SDK exhausted its retries.'
@@ -77,25 +96,36 @@ function retryFailure(reason: unknown): string | undefined {
   }
 }
 
-export function describeAISDKFailure(error: object): string | undefined {
-  const name = readErrorField(error, 'name')
-  if (typeof name !== 'string' || !/^AI_[A-Za-z][A-Za-z0-9]{0,70}Error$/.test(name)) return undefined
+function isProviderContentFilter(name: string, error: object): boolean {
   const providerError = name === 'AI_TypeValidationError'
     ? readErrorField(readErrorField(error, 'value'), 'error')
     : name === 'AI_APICallError' || name === 'AI_StreamProviderError'
       ? readErrorField(readErrorField(error, 'data'), 'error')
       : undefined
-  if (readErrorField(providerError, 'code') === 'data_inspection_failed'
-    || (name === 'AI_StreamProviderError' && readErrorField(error, 'code') === 'data_inspection_failed')) {
-    return PROVIDER_CONTENT_FILTER_REASON
-  }
+  return readErrorField(providerError, 'code') === 'data_inspection_failed'
+    || (name === 'AI_StreamProviderError' && readErrorField(error, 'code') === 'data_inspection_failed')
+}
+
+function httpStatus(name: string, error: object): number | undefined {
   const rawStatus = readErrorField(error, 'statusCode')
-  const status = ['AI_APICallError', 'AI_StreamProviderError', 'AI_DownloadError'].includes(name)
+  return ['AI_APICallError', 'AI_StreamProviderError', 'AI_DownloadError'].includes(name)
     && typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
     ? rawStatus : undefined
-  const requestReason = name === 'AI_APICallError' || name === 'AI_StreamProviderError' ? requestFailure(status) : undefined
-  const retryReason = name === 'AI_RetryError' ? retryFailure(readErrorField(error, 'reason')) : undefined
-  const description = requestReason ?? retryReason ?? descriptions[name]
+}
+
+function failureReason(name: string, error: object, status: number | undefined): string | undefined {
+  if (name === 'AI_APICallError' || name === 'AI_StreamProviderError') {
+    return requestFailure(status) ?? (status === undefined && causedByNetworkTimeout(error) ? requestFailure(408) : undefined)
+  }
+  return name === 'AI_RetryError' ? retryFailure(readErrorField(error, 'reason')) : undefined
+}
+
+export function describeAISDKFailure(error: object): string | undefined {
+  const name = readErrorField(error, 'name')
+  if (typeof name !== 'string' || !/^AI_[A-Za-z][A-Za-z0-9]{0,70}Error$/.test(name)) return undefined
+  if (isProviderContentFilter(name, error)) return PROVIDER_CONTENT_FILTER_REASON
+  const status = httpStatus(name, error)
+  const description = failureReason(name, error, status) ?? descriptions[name]
     ?? 'The AI SDK could not complete this operation. Share this error type with support.'
   const partial = name === 'AI_StreamProviderError' || name === 'AI_UIMessageStreamError' || name === 'AI_InvalidStreamPartError'
     ? ' Any partial response is incomplete.' : ''

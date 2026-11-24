@@ -53,6 +53,15 @@ test('a finished reply that only links to its video still shows the video card',
   assert.deepEqual(collectCreatedFileIds(blocks), ['vid1'])
 })
 
+test('a saved screen recording gets a card; start and unpublished stops do not', () => {
+  const blocks: AssistantVisualBlock[] = [
+    tool('computer_recording', { success: true, action: 'start', id: 'r-1' }),
+    tool('computer_recording', { success: true, action: 'stop', published: false, path: '/tmp/r.mp4' }),
+    tool('computer_recording', { success: true, action: 'stop', published: true, fileId: 'vid1' }),
+  ]
+  assert.deepEqual(collectCreatedFileIds(blocks), ['vid1'])
+})
+
 test('the strip renders videos, images and notes as compact cards', () => {
   const html = withHost(<ChatFileCardStrip fileIds={['vid1', 'img1', 'note1', 'unreadable']} />)
   assert.match(html, /aria-label="Play day-01\.mp4"/)

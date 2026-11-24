@@ -298,15 +298,18 @@ export async function runComputerDriverCommand(
   options: {
     requireDesktop?: boolean
     environment?: Record<string, string>
+    /** Overrides the default 30s command limit for commands that are known to run longer. */
+    timeoutMs?: number
   } = {},
 ): Promise<Record<string, unknown>> {
   if (isLocalHostSandboxInstance(instance)) return await runLocalDriverCommand(instance, command, args)
   const requireDesktop = options.requireDesktop !== false
+  const timeoutMs = options.timeoutMs ?? DRIVER_ACTION_TIMEOUT_MS
   await ensureDriver(instance, requireDesktop)
   const request = command === 'terminal_start'
     ? { ...args, terminalCommand: args.command, command }
     : { ...args, command }
-  let result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS, options.environment)
+  let result = await runCommand(instance, request, timeoutMs, options.environment)
   let response: Record<string, unknown>
   try {
     response = responseFromResult(result)
@@ -322,7 +325,7 @@ export async function runComputerDriverCommand(
     ) {
       throw error
     }
-    result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS, options.environment)
+    result = await runCommand(instance, request, timeoutMs, options.environment)
     response = responseFromResult(result)
   }
 

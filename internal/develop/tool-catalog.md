@@ -14,7 +14,7 @@ One toggle per thing a person would recognise. Reading and writing the same kind
 | Skills | `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `save_skill`, `draft_skill_from_chat` |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Media generation | `generate_image`, `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
-| Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
+| Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal`, `computer_publish_file`, `computer_recording` |
 | Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps), `resolve_assignment` (only in the Chief's native Harness run; withheld from connected agents and outside apps) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
 
@@ -32,13 +32,28 @@ request selects these Computer tools; it cannot bypass Computer availability or
 approvals. Old saved browser-only grants do not automatically gain Computer
 permissions.
 
-Every `computer_*` tool also runs on the user's own connected Mac (Settings →
+Every `computer_*` tool except `computer_recording` also runs on the user's own connected Mac (Settings →
 Desktop → This Mac) through its Agent Host. Each takes an optional `target`:
 `local` for the Mac, `cloud` for the cloud Computer; without one a bound cloud
 Computer is used and the Mac is the fallback. A connected Mac also makes the
 computer tools available in personal chat. Approvals are the same on both;
 automations never use the Mac, and only the person who approved the Mac can use
 it. See `local-computer.md`.
+
+`computer_recording` records the cloud Computer's screen as proof of work (cloud
+only; the Mac returns `recording_unsupported`). `start` begins one recording per
+Computer (ffmpeg, up to 30 minutes or about 95 MB); `annotate` adds a timestamped
+note with a status (`setup`, `step`, `pass`, `fail`) that becomes an MP4 chapter,
+and is refused once the capture has hit its limit; `stop` finishes the MP4, saves it
+to Files and returns a pass/fail summary, chapters and a `downloadUrl`; `status`
+reports the active recording. Recordings are private: personal Files by default, or
+workspace Files when asked or in a room others can read (the same rule as
+`computer_publish_file`). It publishes under its own grant, so an agent given only
+`computer_recording` (plus `write_file`) can save its recordings. `stop` with
+`public: true` also creates a public share link; that needs approval in Ask
+(`approval_required` where there is no approval UI) and is refused when the
+workspace turned public links off. The Computer keeps the newest five stopped
+recordings and deletes the raw capture once the MP4 is written.
 
 ## How tool calls appear in chat
 
@@ -53,7 +68,7 @@ in commands are hidden on screen only. Results that feed this:
   omitted when the old file is over 1 MB or unreadable).
 - `generate_image`, `generate_video` and `animate_image` return `fileId` and `url`
   (`/api/v1/files/<id>/content`) next to `outputId`.
-- Files a turn creates (`write_file`, `create_note`, `generate_*`, `computer_publish_file`) render
+- Files a turn creates (`write_file`, `create_note`, `generate_*`, `computer_publish_file`, `computer_recording`) render
   as cards after the reply unless the reply already embeds them.
 
 ## Scope on list tools

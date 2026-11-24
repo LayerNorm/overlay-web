@@ -1,7 +1,8 @@
 import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
+import { COMPUTER_RECORDING_DRIVER_SOURCE } from './recording-driver'
 
-export const DRIVER_VERSION = '11'
+export const DRIVER_VERSION = '15'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
@@ -394,6 +395,7 @@ def run_input(request):
 
 
 ${COMPUTER_TERMINAL_DRIVER_SOURCE}
+${COMPUTER_RECORDING_DRIVER_SOURCE}
 ${COMPUTER_BROWSER_DRIVER_SOURCE}
 
 def dispatch(request):
@@ -408,6 +410,14 @@ def dispatch(request):
         return terminal_cancel(request)
     if command == "terminal_list":
         return terminal_list()
+    if command == "recording_start":
+        return recording_start(request)
+    if command == "recording_annotate":
+        return recording_annotate(request)
+    if command == "recording_stop":
+        return recording_stop(request)
+    if command == "recording_status":
+        return recording_status()
     if command == "capabilities":
         return capabilities()
     if command == "screenshot":

@@ -3,6 +3,7 @@
 import { useState, type ComponentProps } from 'react'
 import { Archive, CloudOff, Workflow } from 'lucide-react'
 import { isPrivateThreadId } from '@/shared/agents/private-threads'
+import { SlackMark } from '@/components/brand/AppMarks'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
 import { ThreadPullRequests } from './sidebar/ThreadPullRequests'
@@ -110,6 +111,7 @@ export function AgentThreadRows({
             >
               <span className="agent-thread-icon"><ThreadActivityIndicator status={status} /></span>
               <span className="flex-1 truncate">{thread.title}</span>
+              {thread.origin?.platform === 'slack' ? <SlackMark size={11} className="shrink-0 text-(--muted-light)" /> : null}
               {isPrivate ? <CloudOff size={12} strokeWidth={1.75} aria-label="Not synced" className="shrink-0 text-(--muted-light)" /> : null}
             </ThreadButton>
             {thread.pullRequests?.length ? <div className="mr-8 shrink-0">
