@@ -187,10 +187,9 @@ async function resolveAutomationSourceGrant(
     agent: {
       agentId: automation.agentId,
       agentPrincipalId: agent.principalId,
+      // An automation still reads its owner's private memories, so what it learns stays private until P5.
       memoryOwnerId: memoryOwnerForPlace({
-        actorUserId: access.actorUserId,
-        agent: { ...agent, id: automation.agentId },
-        workspaceContext: automation.scope === 'workspace',
+        actorUserId: access.actorUserId, agent: { ...agent, id: automation.agentId }, workspaceContext: false,
       }),
     },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask',

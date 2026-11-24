@@ -729,8 +729,7 @@ export const enqueueMemoryExtraction = mutation({
         .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId!))
         .unique()
       if (!agent || agent.workspaceId !== args.workspaceId) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
-      // Memories follow the place: workspace knowledge only from a workspace context (shared room, a thread asked from
-      // one, or a workspace automation's thread).
+      // Memories follow the place: workspace knowledge only from a room others can read or a thread asked from one.
       memoryOwnerId = memoryOwnerForPlace({
         actorUserId: args.actorUserId,
         agent: { ...agent, id: agent.agentId },

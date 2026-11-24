@@ -165,8 +165,8 @@ export class ConvexHarnessRepository extends ConvexHarnessAssignments implements
     return restrictions
   }
 
-  async resolveConversationRoomRestrictions(input: { actorUserId: string; workspaceId: string; conversationId: string }): Promise<{ inheritedSharedRoom: boolean; workspaceMemory: boolean }> {
-    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean; workspaceMemory: boolean }>('harness/runs:resolveConversationRoomRestrictions', {
+  async resolveConversationRoomRestrictions(input: { actorUserId: string; workspaceId: string; conversationId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:resolveConversationRoomRestrictions', {
       ...input,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })

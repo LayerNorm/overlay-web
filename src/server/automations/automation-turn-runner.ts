@@ -295,13 +295,11 @@ async function resolveTurnAgentAuthorization(
   let approvalMode: 'ask' | 'auto' = 'ask'
   let automationAgent: AutomationBoundAgent | null = null
   let automationAgentId: string | undefined
-  let workspaceAutomation = false
   if (input.automationId) {
     const automation = await automationService.getAutomationForExecution({
       automationId: input.automationId,
       userId,
     })
-    workspaceAutomation = automation?.scope === 'workspace'
     const agentId = automation?.agentId
     if (agentId) {
       automationAgentId = agentId
@@ -316,7 +314,7 @@ async function resolveTurnAgentAuthorization(
       approvalMode = automationAgent.permissionMode === 'auto' ? 'auto' : 'ask'
     }
   }
-  return { approvalMode, automationAgent, automationAgentId, workspaceAutomation }
+  return { approvalMode, automationAgent, automationAgentId }
 }
 
 function narrowTurnAgentGrant(
@@ -576,7 +574,7 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
 
-  const { approvalMode, automationAgent, automationAgentId, workspaceAutomation } = await resolveTurnAgentAuthorization(
+  const { approvalMode, automationAgent, automationAgentId } = await resolveTurnAgentAuthorization(
     input, userId, billingWorkspaceId, overlayContext,
   )
   const toolPreloadTasks = preloadActExternalToolTasks({
@@ -631,9 +629,9 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // A workspace automation's agent adds workspace knowledge; a personal one remembers privately for its owner.
+    // An automation still reads its owner's private memories, so what it learns stays private until P5.
     memoryOwnerId: automationAgent
-      ? memoryOwnerForPlace({ actorUserId: userId, agent: automationAgent, workspaceContext: workspaceAutomation })
+      ? memoryOwnerForPlace({ actorUserId: userId, agent: automationAgent, workspaceContext: false })
       : undefined,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,

@@ -128,7 +128,7 @@ test('an agent memory write follows the room it was learned in', async () => {
     readFile(`${root}/src/server/app-api/v1/memory/route.ts`, 'utf8'),
   ])
 
-  assert.match(tooling, /memoryOwnerForPlace\(\{\s*actorUserId: args\.actorUserId, agent: args\.memoryAgent, workspaceContext: sharedRoom \|\| workspaceMemory,/)
+  assert.match(tooling, /memoryOwnerForPlace\(\{\s*actorUserId: args\.actorUserId, agent: args\.memoryAgent, workspaceContext: sharedRoom,/)
   assert.match(preparation, /memoryAgent: agent/)
   assert.match(delivery, /memoryOwnerId: agentMemoryOwnerId\(access\.agentId\)/)
   assert.match(delivery, /targetActor: 'agent'/)

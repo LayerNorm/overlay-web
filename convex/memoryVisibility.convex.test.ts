@@ -211,7 +211,7 @@ describe('moving a private memory to the workspace', () => {
 })
 
 describe('where an agent’s memory belongs', () => {
-  test('a workspace automation’s thread is a workspace context; a personal one’s is not', async () => {
+  test('an automation’s thread is not a workspace context yet: it reads its owner’s private memories', async () => {
     const { conversationIsWorkspaceContext } = await import('./harness/runs')
     const convex = convexTest(schema, modules)
     const result = await convex.run(async (ctx) => {
@@ -229,6 +229,6 @@ describe('where an agent’s memory belongs', () => {
       })
       return { workspace: await check(await thread('workspace')), personal: await check(await thread('personal')), unscoped: await check(await thread()) }
     })
-    expect(result).toEqual({ workspace: true, personal: false, unscoped: false })
+    expect(result).toEqual({ workspace: false, personal: false, unscoped: false })
   })
 })

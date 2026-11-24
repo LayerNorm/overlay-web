@@ -91,11 +91,10 @@ test('post-wait refresh rejects cancelled runs and intersects a revoked agent gr
   const refreshed = await refreshAutomationHarnessSource(access, context)
   expect(refreshed.allowedToolIds).toEqual(['read_file', 'gmail_send'])
   expect(refreshed.approvalMode).toBe('ask')
-  // A personal automation's agent remembers privately for the person.
+  // An automation reads its owner's private memories, so its agent remembers privately for them, workspace or not.
   expect(refreshed.agent).toEqual({ agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'user' })
-  // A workspace automation's agent adds workspace knowledge.
   mocks.run.mockResolvedValueOnce({ automation: { ...automation, scope: 'workspace' }, run })
-  expect((await refreshAutomationHarnessSource(access, context)).agent?.memoryOwnerId).toBe('agent-memory:agent')
+  expect((await refreshAutomationHarnessSource(access, context)).agent?.memoryOwnerId).toBe('user')
   mocks.run.mockResolvedValueOnce({ automation, run: { ...run, status: 'cancelled' } })
   await expect(refreshAutomationHarnessSource(access, context)).rejects.toBeInstanceOf(FatalError)
   mocks.agent.mockResolvedValueOnce({ harness: 'other', allowedToolIds: [] })

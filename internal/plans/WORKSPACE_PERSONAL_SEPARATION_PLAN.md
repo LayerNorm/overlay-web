@@ -35,7 +35,7 @@ One scope engine (`src/shared/workspaces/resource-scope.ts`, `convex/lib/resourc
 
 **P1 — Memories follow the place, not the agent.** A memory saved in a personal context is private to the person; one saved in a workspace context is workspace knowledge, whichever agent saves it. This replaces "agents' memories are shared" (`agent-memory.ts`) and closes the workspace-agent-in-a-1:1 leak. Creator-only agents' memories are recalled only by their creator. Settings → Memories gets "Move to workspace".
 
-As built: `memoryOwnerForPlace` decides for tool saves (by shared room), reply extraction (by the room's audience, in Convex) and automations (by automation scope). Human messages in a shared room still become the person's private memories. Moves go through `knowledge/memories:moveToWorkspace` only; `update` can no longer change visibility. Untested so far: a hosted preview run of a 1:1 save, a channel save and the Settings move.
+As built: `memoryOwnerForPlace` decides for tool saves (by shared room) and reply extraction (by the same room lineage, in Convex). Automations, workspace ones included, remember privately for their owner because they still read the owner's private memories; P5 makes workspace automations workspace contexts. Human messages in a shared room still become the person's private memories. Moves go through `knowledge/memories:moveToWorkspace` only; `update` can no longer change visibility. Untested so far: a hosted preview run of a 1:1 save, a channel save and the Settings move.
 
 **P2 — Workspace by default.** New files, notes, skills and automations created in the normal app default to Workspace; Personal is a visible choice in the create flow and a label on the item. Chats keep their type, and the sidebar label stops using `scope` (rename to what it is).
 
@@ -43,7 +43,7 @@ As built: `memoryOwnerForPlace` decides for tool saves (by shared room), reply e
 
 **P4 — Credentials move honestly.** Moving a connector or MCP server to Workspace asks the person to reconnect it as a workspace account (held by the workspace entity), never silently sharing their own token. Until reconnected it stays Personal.
 
-**P5 — Workspace runs use workspace reach.** Workspace automations and turns in shared rooms use workspace connectors and the workspace's provider budget, not the creator's or asker's personal keys and accounts.
+**P5 — Workspace runs use workspace reach.** Workspace automations and turns in shared rooms use workspace connectors and the workspace's provider budget, not the creator's or asker's personal keys and accounts. Workspace automations stop reading the owner's private memories, and then save what they learn as workspace knowledge.
 
 **P6 — Workspace knowledge is searchable by everyone.** Workspace files are indexed once for the workspace, so any member's chats can search them. This is what makes "personal reads workspace" real.
 
