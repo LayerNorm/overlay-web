@@ -801,6 +801,12 @@ export const webApiBoundaryDefinitions = [
     publicReference: false,
   },
   { method: 'DELETE', path: '/api/v1/mcp/connections', schema: { query: z.object({ id: z.string().min(1) }), response: UnknownResponse }, summary: 'Disconnect an AI app or revoke a token', tag: 'MCP access', publicReference: false },
+  {
+    method: 'POST', path: '/api/v1/mcp/private-thread',
+    schema: { json: z.object({ workspaceId: z.string().min(1).max(256), agentId: z.string().min(1).max(256) }).strict(), response: UnknownResponse },
+    summary: 'Get a short-lived MCP token for one private thread turn on Overlay Desktop', tag: 'MCP access',
+    publicReference: false,
+  },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
   { method: 'POST', path: '/api/v1/memory', schema: { json: CreateMemoryRequest }, summary: 'Create a memory', tag: 'Memory' },
