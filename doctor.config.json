@@ -4,6 +4,7 @@
     "files": [
       "benchmarks/**",
       "overlay-desktop/**",
+      "overlay-mobile/**",
       "scripts/**",
       "convex/_generated/**",
       "**/*.test.*",
