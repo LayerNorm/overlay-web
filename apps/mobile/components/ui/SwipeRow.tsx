@@ -25,6 +25,8 @@ export type SwipeAction = {
 
 const ACTION_WIDTH = 80
 const RED = { light: '#ff3b30', dark: '#ff453a' }
+// Dark mode uses a grey button (iOS systemGray3), not a near-white one.
+const DARK_GREY = '#48484a'
 
 /**
  * A list row with iOS-style swipe actions, like Mail. Swipe a little to
@@ -116,8 +118,8 @@ function Panel({
   return (
     <Animated.View style={[{ flexDirection: side === 'leading' ? 'row' : 'row-reverse' }, style]}>
       {actions.map((action, index) => {
-        const background = action.destructive ? (isDark ? RED.dark : RED.light) : (theme.foreground as string)
-        const foreground = action.destructive ? '#ffffff' : (theme.background as string)
+        const background = action.destructive ? (isDark ? RED.dark : RED.light) : isDark ? DARK_GREY : (theme.foreground as string)
+        const foreground = action.destructive || isDark ? '#ffffff' : (theme.background as string)
         return (
           <Pressable
             key={action.label}

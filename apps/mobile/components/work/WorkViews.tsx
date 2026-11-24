@@ -325,6 +325,7 @@ export function WorkListView({
                   item={item}
                   items={items}
                   width={layout === 'Board' ? 254 : width}
+                  swipe={layout !== 'Board'}
                   onMove={(move) => onMove(item, move)}
                   onSchedule={() => onSchedule(item)}
                 >

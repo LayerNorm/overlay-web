@@ -27,7 +27,7 @@ Status key:
 
 | ✓ | Surface | Route / file | Status | What to fix |
 | --- | --- | --- | --- | --- |
-| [ ] | Work | `app/(tabs)/work/index.tsx`, `components/work/WorkScreen.tsx`, `WorkViews.tsx` | Partial | <ul><li>Native header, toolbar menu and segmented control are fine.</li><li>Touch and hold a task row or board card for a native context menu: Move to (column), Move to top or bottom, Schedule (2026-11-23).</li><li>Open: no drag to reorder; unassigned tasks show an empty grey avatar circle; the board's empty state sits below the columns.</li></ul> |
+| [ ] | Work | `app/(tabs)/work/index.tsx`, `components/work/WorkScreen.tsx`, `WorkViews.tsx` | Partial | <ul><li>Native header, toolbar menu and segmented control are fine.</li><li>Touch and hold a task row or board card for a native context menu: Move to (column), Move to top or bottom, Schedule (2026-11-23).</li><li>List rows swipe right for Done/Reopen and left for Schedule (2026-11-23).</li><li>Open: no drag to reorder; unassigned tasks show an empty grey avatar circle; the board's empty state sits below the columns.</li></ul> |
 | [ ] | Agents | `app/(tabs)/agents/index.tsx`, `components/agents/AgentDirectory.tsx` | Native | Add a long-press context menu (Open, Edit, Archive). |
 | [ ] | Chats | `app/(tabs)/chats/index.tsx`, `components/chat/ChatsScreen.tsx`, `ChatRowMenu.tsx` | Partial | <ul><li>Touch and hold a row for a native context menu (2026-11-23): personal chats Rename (native prompt), Archive, Delete (confirmation); channels and DMs Archive; agents Open chat and Agent settings. Archive and delete hide the row at once.</li><li>Swipe left on a chat, channel or DM for Archive (full swipe archives) and, on personal chats, Delete with confirmation (`components/ui/SwipeRow.tsx`, 2026-11-23). Checked light and dark: short swipe, full-swipe archive, delete, unarchive returning to the list.</li><li>New message and New channel are `formSheet` routes.</li><li>Open: rows slide under the title with no blur; shortcut cards keep a half-scrolled position; section collapse is custom; no search; the list is not virtualised; the dev-client gear covers the Channels +.</li></ul> |
 | [ ] | Files | `app/(tabs)/files/index.tsx`, `components/knowledge/ResourceScreens.tsx` (`FilesBrowserScreen`), `FileActions.tsx` | Partial | <ul><li>Header search and `+` menu are native; New folder is an iOS prompt.</li><li>Touch and hold a file or folder for a context menu: Open, Rename (prompt), Move to (folder submenu), Share, Delete (confirmation) — 2026-11-23.</li><li>Open: no swipe or multi-select; the header search field is nearly invisible in dark mode; deleting can take a moment to leave the list.</li></ul> |
@@ -114,7 +114,7 @@ Each needs either a native sheet route, an `@expo/ui` `BottomSheet`, or replacin
   - `MemoriesList` (6)
 - [ ] Use `Alert.alert` only for destructive confirmations. Show non-blocking errors inline or as a toast.
 - [ ] Add long-press context menus to the rows of Chats, Agents, Work tasks, Files and Activity.
-- [ ] Add swipe actions: archive a chat (done 2026-11-23), mark Activity read (done 2026-11-23), complete a task.
+- [x] Add swipe actions: archive a chat, mark Activity read, complete or schedule a task (all done 2026-11-23).
 
 ## 6. Drawers and dead surfaces
 

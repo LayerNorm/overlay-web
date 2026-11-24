@@ -48,7 +48,7 @@ Severity:
 ### Work
 - No task search and no delete or archive.
 - The board uses a Move button instead of drag.
-- No swipe actions.
+- ~~No swipe actions~~ (fixed 2026-11-23: list rows swipe right for Done/Reopen, left for Schedule).
 - Tapping a task's status circle opens the task instead of completing it.
 - Unassigned tasks show an empty grey circle where the assignee avatar goes.
 - Dates are typed as `YYYY-MM-DD` text instead of using a native date picker.
@@ -88,7 +88,7 @@ Severity:
 ## P2: interaction maturity across the app
 - **Native controls**: 112 `Alert.alert` calls stand in for action sheets, confirmations and error toasts, and most sheets are JS modals. Prefer native menus (toolbar menus, context menus, `@expo/ui`), form sheets, and an inline toast for errors.
 - **Long-press / context menus**: none on chats, agents, tasks or files. Add native context menus with previews.
-- **Swipe actions**: Chats (archive, delete) and Activity (mark read) done 2026-11-23 via the shared `SwipeRow`; completing a task by swipe is still missing.
+- **Swipe actions**: Chats (archive, delete) and Activity (mark read) and Work tasks (done/reopen, schedule) done 2026-11-23 via the shared `SwipeRow`.
 - **Pull-to-refresh**: only on Archived and Workspace.
 - **Optimistic updates**: only room sends. Add them for chat sends, task status, renames, and archive with Undo.
 - **Undo**: web shows Undo after archive; mobile has none.

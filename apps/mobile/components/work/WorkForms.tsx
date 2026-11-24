@@ -49,6 +49,7 @@ import {
 } from '../../lib/work'
 import { createWork, updateWork } from '../../services/workService'
 import { getRequestWorkspaceId } from '../../services/appApi'
+import { SwipeRow } from '../ui/SwipeRow'
 
 export const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })
 
@@ -390,6 +391,8 @@ function ScheduleForm({ workspaceId, item }: { workspaceId: string; item: WorkIt
 /**
  * Touch and hold a task row or board card for the system context menu:
  * move it to another column, to the top or bottom of its own, or schedule it.
+ * With `swipe`, a list row also swipes right for Done (Reopen once done) and
+ * left for Schedule; a full swipe runs the action.
  */
 export function WorkTaskMenu({
   item,
@@ -398,11 +401,14 @@ export function WorkTaskMenu({
   children,
   onMove,
   onSchedule,
+  swipe = false,
 }: {
   item: WorkItem
   items: readonly WorkItem[]
   width: number
   children: React.ReactNode
+  /** List rows: swipe right to mark done (or reopen), swipe left to schedule. */
+  swipe?: boolean
   onMove: (move: Omit<MoveWorkItemRequest, 'id'>) => void
   onSchedule: () => void
 }) {
@@ -425,7 +431,22 @@ export function WorkTaskMenu({
         </ContextMenu.Items>
         <ContextMenu.Trigger>
           <RNHostView matchContents>
-            <View style={{ width }}>{children}</View>
+            <View style={{ width }}>
+              {swipe ? (
+                <SwipeRow
+                  leading={[
+                    item.status === 'done'
+                      ? { label: 'Reopen', icon: 'arrow.uturn.backward', onPress: () => end('todo') }
+                      : { label: 'Done', icon: 'checkmark', onPress: () => end('done') },
+                  ]}
+                  trailing={[{ label: 'Schedule', icon: 'calendar', onPress: onSchedule }]}
+                >
+                  {children}
+                </SwipeRow>
+              ) : (
+                children
+              )}
+            </View>
           </RNHostView>
         </ContextMenu.Trigger>
       </ContextMenu>
