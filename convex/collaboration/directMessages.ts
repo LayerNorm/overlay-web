@@ -13,7 +13,7 @@ import { resolveConversationActivityState } from '../../src/shared/chat/conversa
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { agentMemoryOwnerId, memoryOwnerForPlace } from '../../src/shared/agents/agent-memory'
-import { conversationAudienceIsShared } from '../lib/roomAudience'
+import { conversationIsWorkspaceContext } from '../harness/runs'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
@@ -729,11 +729,15 @@ export const enqueueMemoryExtraction = mutation({
         .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId!))
         .unique()
       if (!agent || agent.workspaceId !== args.workspaceId) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
-      // Memories follow the place: workspace knowledge only from a room others can read.
+      // Memories follow the place: workspace knowledge only from a workspace context (shared room, a thread asked from
+      // one, or a workspace automation's thread).
       memoryOwnerId = memoryOwnerForPlace({
         actorUserId: args.actorUserId,
         agent: { ...agent, id: agent.agentId },
-        workspaceContext: await conversationAudienceIsShared(ctx, args.conversationId),
+        workspaceContext: await conversationIsWorkspaceContext(ctx, {
+          workspaceId: args.workspaceId, actorUserId: args.actorUserId,
+          conversationId: args.conversationId, serverSecret: args.serverSecret,
+        }),
       })
     }
 

@@ -1800,9 +1800,28 @@ async function inheritedRoomRestriction(
   return false
 }
 
+/**
+ * Whether what an agent learns in this conversation is workspace knowledge (`memoryOwnerForPlace`): a room others can
+ * read, a thread an agent was asked in from such a room, or the thread of a workspace automation.
+ */
+export async function conversationIsWorkspaceContext(
+  ctx: MutationCtx | QueryCtx,
+  args: { workspaceId: string; actorUserId: string; conversationId: string; serverSecret: string },
+): Promise<boolean> {
+  if (await restrictionForSource(ctx, args.workspaceId, args.actorUserId, { conversationId: args.conversationId }, args.serverSecret)) {
+    return true
+  }
+  const conversationId = ctx.db.normalizeId('conversations', args.conversationId)
+  if (!conversationId) return false
+  const automation = await ctx.db.query('automations')
+    .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversationId).eq('deletedAt', undefined))
+    .first()
+  return automation?.workspaceId === args.workspaceId && automation.scope === 'workspace'
+}
+
 export const resolveConversationRoomRestrictions = mutation({
   args: { actorUserId: v.string(), workspaceId: v.string(), conversationId: v.id('conversations'), serverSecret: v.string() },
-  returns: v.object({ inheritedSharedRoom: v.boolean() }),
+  returns: v.object({ inheritedSharedRoom: v.boolean(), workspaceMemory: v.boolean() }),
   handler: async (ctx, args) => {
     requireHarnessServerSecret(args.serverSecret)
     const [workspace, principal] = await Promise.all([
@@ -1822,9 +1841,13 @@ export const resolveConversationRoomRestrictions = mutation({
       actorUserId: args.actorUserId, conversationId: args.conversationId,
       workspaceId: args.workspaceId, serverSecret: args.serverSecret,
     })
-    return { inheritedSharedRoom: await restrictionForSource(
+    const inheritedSharedRoom = await restrictionForSource(
       ctx, args.workspaceId, args.actorUserId, { conversationId: args.conversationId }, args.serverSecret,
-    ) }
+    )
+    return {
+      inheritedSharedRoom,
+      workspaceMemory: inheritedSharedRoom || await conversationIsWorkspaceContext(ctx, { ...args, conversationId: args.conversationId }),
+    }
   },
 })
 

@@ -4,6 +4,7 @@ import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
+import { retargetMemoryIndex } from '../lib/memoryChunks'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -336,7 +337,7 @@ export const moveToWorkspace = mutation({
     }
     if (existing.visibility !== 'owner') return
     await ctx.db.patch(memoryId, { visibility: 'workspace', updatedAt: Date.now() })
-    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId })
+    await retargetMemoryIndex(ctx, memoryId, { visibility: 'workspace' })
   },
 })
 

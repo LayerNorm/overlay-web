@@ -42,3 +42,27 @@ export async function resolveSharedRoom(args: {
     return true
   }
 }
+
+/**
+ * Whether what an agent learns in this conversation is workspace knowledge (`memoryOwnerForPlace`): a room others can
+ * read, a thread asked from one, or a workspace automation's thread. Decided by Convex, the same check reply extraction
+ * uses. If it cannot be read the answer is no: a private memory is the safe side.
+ */
+export async function resolveWorkspaceMemoryContext(args: {
+  actorUserId: string
+  conversationId: string
+  workspaceId: string
+  roomRestrictions?: Pick<ConvexHarnessRepository, 'resolveConversationRoomRestrictions'>
+}): Promise<boolean> {
+  try {
+    const restrictions = await (args.roomRestrictions ?? new ConvexHarnessRepository()).resolveConversationRoomRestrictions({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    })
+    return restrictions.workspaceMemory
+  } catch (error) {
+    logger.warn('[workspace-agent] could not tell where memories belong; keeping them private', { error })
+    return false
+  }
+}

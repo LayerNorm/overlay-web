@@ -1,6 +1,7 @@
 "use node";
 
 import { createHash } from "node:crypto";
+import { defaultMemoryVisibility } from "../../src/shared/knowledge/memory-visibility";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
@@ -355,11 +356,13 @@ export const extractFromTurn = internalAction({
                 userId: ownerId,
                 memoryIds: sourceIds as Id<"memories">[],
                 serverSecret,
-              })) as Array<{ _id: Id<"memories">; content: string; workspaceId?: string }>;
-              // Match findExactDuplicate's scope: same owner AND same workspace.
+              })) as Array<{ _id: Id<"memories">; content: string; workspaceId?: string; visibility?: "owner" | "workspace" }>;
+              // Match findExactDuplicate's scope: same owner AND same workspace. A new memory may only merge into one
+              // just as private: merging a private fact into a memory the person shared would show it to teammates.
+              const newIsPrivate = defaultMemoryVisibility(ownerId) === "owner";
               const byId = new Map(
                 docs
-                  .filter((d) => d.workspaceId === workspaceId)
+                  .filter((d) => d.workspaceId === workspaceId && (d.visibility === "owner") === newIsPrivate)
                   .map((d) => [d._id as string, d.content]),
               );
               const seen = new Set<string>();

@@ -17,6 +17,7 @@ import { applyMarkupToDollars } from '../lib/usageMarkup'
 import { chargeProviderUsageDirect, checkProviderBudget } from '../lib/providerBudgetCharge'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { isSharedRoom } from '../../src/shared/agents/room-access'
+import { retargetMemoryIndex } from '../lib/memoryChunks'
 import {
   KNOWLEDGE_CHUNK_CHARS,
   KNOWLEDGE_CHUNK_OVERLAP,
@@ -601,13 +602,9 @@ export const moveAgentMemoriesToTheirPlaceByServer = mutation({
         const owner = await memoryPlaceOwner(ctx, agent, creatorUserId, memory)
         if (!owner) { memoriesKept++; continue }
         memoriesMoved++
-        const chunks = await ctx.db.query('knowledgeChunks')
-          .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
-          .collect()
-        chunksMoved += chunks.length
         if (dryRun) continue
         await ctx.db.patch(memory._id, { userId: owner, visibility: 'owner' })
-        await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { userId: owner, visibility: 'owner' })))
+        chunksMoved += await retargetMemoryIndex(ctx, memory._id, { userId: owner, visibility: 'owner' })
       }
     }
     return {

@@ -6,7 +6,7 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
-import { resolveSharedRoom } from '@/server/agents/shared-room'
+import { resolveSharedRoom, resolveWorkspaceMemoryContext } from '@/server/agents/shared-room'
 import { memoryOwnerForPlace, type MemoryPlaceAgent } from '@/shared/agents/agent-memory'
 import { assignedTaskToolIdsToAdd, findAssignedTaskId, scopeAssignedTaskTools } from '@/server/agents/assigned-task-tools'
 import {
@@ -181,8 +181,13 @@ export async function buildWorkspaceAgentTooling(args: {
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant(args.grant)
   // The room rule: in a room others can read, the summoner's private reach is withheld (see `prepareActTooling`).
-  const [localSharedRoom, assignedTaskId] = await Promise.all([
+  const [localSharedRoom, workspaceMemory, assignedTaskId] = await Promise.all([
     resolveSharedRoom({
+      actorUserId: args.actorUserId,
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+    }),
+    resolveWorkspaceMemoryContext({
       actorUserId: args.actorUserId,
       conversationId: args.conversationId,
       workspaceId: args.workspaceId,
@@ -223,7 +228,7 @@ export async function buildWorkspaceAgentTooling(args: {
     mediaToolIntent: null,
     memoryEnabled: args.memoryEnabled,
     memoryOwnerId: memoryOwnerForPlace({
-      actorUserId: args.actorUserId, agent: args.memoryAgent, workspaceContext: sharedRoom,
+      actorUserId: args.actorUserId, agent: args.memoryAgent, workspaceContext: sharedRoom || workspaceMemory,
     }),
     mode: 'chat',
     paid: args.paid,
