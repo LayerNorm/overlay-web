@@ -237,6 +237,7 @@ export function getDescriptiveToolLabel(
     computer_input: 'Interacting with the computer',
     computer_browser: 'Controlling the browser on the computer',
     computer_terminal: 'Managing a terminal session on the computer',
+    computer_recording: 'Recording the computer screen',
   }
   if (map[toolName]) return map[toolName]!
 

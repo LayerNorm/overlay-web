@@ -67,6 +67,13 @@ crons.interval(
 )
 
 crons.interval(
+  'expired Slack state cleanup',
+  { hours: 1 },
+  internal.integrations.slack.cleanupExpiredState,
+  {},
+)
+
+crons.interval(
   'api idempotency cleanup',
   { hours: 1 },
   internal.platform.idempotency.cleanupExpiredInternal,
@@ -112,17 +119,6 @@ crons.interval(
   { minutes: 1 },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).files.ingestion.runner.runMinuteTick,
-  {},
-)
-
-// Project workflow step events from the Workflow SDK into Convex so clients
-// can subscribe via Convex subscription instead of polling the SSE endpoint
-// every 2 seconds. This runs every 10 seconds for near-realtime updates.
-crons.interval(
-  'workflow step event projector',
-  { seconds: 10 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).automations.workflowEventProjectorRunner.runProjectionTick,
   {},
 )
 

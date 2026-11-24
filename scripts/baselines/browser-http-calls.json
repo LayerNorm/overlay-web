@@ -169,7 +169,8 @@
     "src/features/knowledge/adapters/webKnowledgeFilePort.ts"
   ],
   "github.connectUrl": [
-    "src/features/chat/components/thread-work/useThreadWork.ts"
+    "src/features/chat/components/thread-work/useThreadWork.ts",
+    "src/features/settings/components/connected-apps/GitHubSettings.tsx"
   ],
   "github.repositories": [
     "src/features/chat/components/thread-work/useThreadWork.ts"

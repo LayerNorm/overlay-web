@@ -1081,7 +1081,8 @@ export async function requireHarnessPublicationAuthority(
   const { run, lineage, metadata } = await loadWaitAuthority(ctx, reference, serverSecret)
   assertActiveWaitLineage(lineage)
   if (metadata.status !== 'running' || !metadata.policy.workspaceId
-    || !metadata.policy.allowedToolIds.includes('computer_publish_file')
+    // computer_recording publishes its own recordings; the server checks which of the two grants a call relies on.
+    || !['computer_publish_file', 'computer_recording'].some(toolId => metadata.policy.allowedToolIds.includes(toolId))
     || !metadata.policy.allowedToolIds.includes('write_file')
     || lineage.some(entry => entry.metadata.policy.deadlineAt <= Date.now())) {
     throw new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED')
@@ -1693,6 +1694,7 @@ async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, convers
   const conversation = id ? await ctx.db.get(id) : null
   if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
   if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
+  if (conversation.origin?.kind === 'channel') return true
   const participants = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
     .collect()
