@@ -26,6 +26,7 @@ export const COMPUTER_TOOL_IDS = [
   'computer_browser',
   'computer_terminal',
   'computer_publish_file',
+  'computer_recording',
 ] as const
 
 export const OVERLAY_TOOL_IDS = [
@@ -113,6 +114,11 @@ export function toolRequiresApproval(
   if (toolName === 'computer_terminal') {
     return Boolean(input && typeof input === 'object' && !Array.isArray(input)
       && (input as { action?: unknown }).action === 'start')
+  }
+  // Recording itself is private; making it public shares the screen outside the workspace, so ask first.
+  if (toolName === 'computer_recording') {
+    return Boolean(input && typeof input === 'object' && !Array.isArray(input)
+      && (input as { action?: unknown }).action === 'stop' && (input as { public?: unknown }).public === true)
   }
   if (toolName === 'EXECUTOR_EXECUTE_TOOL') return options.executorRequiresApproval !== false
   return false

@@ -38,6 +38,7 @@ import {
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerPublishFile,
+  executeComputerRecording,
   executeComputerActionWithApproval,
   type ComputerTerminalAction,
   executeCreateAutomation,
@@ -1122,6 +1123,43 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           assertToolAllowed('computer_publish_file')
           assertToolAllowed('write_file')
           return executeComputerPublishFile(options, input)
+        },
+      })
+    }
+
+    if (shouldExposeTool('computer_recording') && shouldExposeTool('write_file')) {
+      tools.computer_recording = tool({
+        description:
+          'Record the bound computer\'s screen as proof of work. start begins a recording (one at a time); annotate marks the current moment with a label and status '
+          + '(setup, step, pass, fail) and becomes a chapter; stop finishes the MP4, saves it to Files and returns a summary such as "3 checks: 2 passed, 1 failed" '
+          + 'plus a downloadUrl. Embed the video in your reply as ![name](downloadUrl). Recordings are private unless you pass public: true on stop, which needs '
+          + 'approval and creates a public share link; only do that when the person asks. status reports the active recording. '
+          + 'Typical use: start, annotate setup, do each check and annotate pass or fail right after, then stop.',
+        inputSchema: z.object({
+          action: z.enum(['start', 'annotate', 'stop', 'status']),
+          id: z.string().regex(/^r-[0-9a-f]{12}$/).optional().describe('Recording id from start (annotate, stop)'),
+          title: z.string().max(200).optional().describe('start: video title and default file name'),
+          maxSeconds: z.number().int().min(5).max(1800).optional().describe('start: hard stop after this many seconds (default 600)'),
+          fps: z.number().int().min(1).max(30).optional().describe('start: frames per second (default 10)'),
+          label: z.string().min(1).max(200).optional().describe('annotate: what is happening or what was checked'),
+          status: z.enum(['setup', 'step', 'pass', 'fail']).optional().describe('annotate: default step'),
+          name: z.string().max(200).optional().describe('stop: file name in Files (default: the title)'),
+          scope: z.enum(['personal', 'workspace']).optional().describe('stop: where to save it in Files (default personal)'),
+          public: z.boolean().optional().describe('stop: create a public share link (needs approval; only when asked)'),
+          target: computerTargetSchema,
+        }),
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_recording', input, { approvalMode: options.approvalMode }) }
+          : {}),
+        execute: async (input) => {
+          assertToolAllowed('computer_recording')
+          assertToolAllowed('write_file')
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_recording',
+            input,
+            () => executeComputerRecording(options, input),
+          )
         },
       })
     }

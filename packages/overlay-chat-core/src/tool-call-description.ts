@@ -251,6 +251,24 @@ const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription
     return url ? call.make(VERBS.opened, { target: target(url.replace(/^https?:\/\//, '').replace(/\/$/, '')), title: url }) : null
   },
   computer_screenshot: call => call.make(VERBS.screenshot),
+  computer_recording: (call) => {
+    const action = inputString(call, 'action')
+    if (action === 'annotate') {
+      const label = inputString(call, 'label')
+      const status = inputString(call, 'status') ?? 'step'
+      return label ? call.make(VERBS.saved, { target: target(clip(label, 48)), detail: `${status} in recording` }) : null
+    }
+    if (action === 'stop') {
+      const summary = typeof call.output?.summary === 'string' ? call.output.summary : undefined
+      return call.make(VERBS.saved, {
+        target: 'screen recording',
+        detail: summary ?? 'to Files',
+        ...(call.succeeded ? { fileId: fileIdFrom(call.output) } : {}),
+      })
+    }
+    if (action === 'start') return call.make(VERBS.opened, { target: 'screen recording', ...(inputString(call, 'title') ? { title: inputString(call, 'title')! } : {}) })
+    return null
+  },
   computer_publish_file: (call) => {
     const name = inputString(call, 'name') ?? basename(inputString(call, 'sourcePath') ?? '')
     if (!name) return null

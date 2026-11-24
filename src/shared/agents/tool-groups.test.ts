@@ -98,6 +98,7 @@ test('the computer group maps to all computer tool ids', () => {
     'computer_open_url',
     'computer_publish_file',
     'computer_read_file',
+    'computer_recording',
     'computer_screenshot',
     'computer_terminal',
     'computer_write_file',

@@ -279,3 +279,25 @@ test('refuses quota exhaustion and does not allocate a manifest or upload intent
     expect(await ctx.db.query('r2UploadIntents').collect()).toHaveLength(0)
   })
 })
+
+test('a run granted computer_recording may publish its recordings; one with neither publishing grant may not', async () => {
+  const setTools = async (f: Awaited<ReturnType<typeof fixture>>, allowedToolIds: string[]) => {
+    await f.convex.run(async ctx => {
+      const run = await ctx.db.query('harnessRuns')
+        .withIndex('by_runId', query => query.eq('runId', f.admission.runId))
+        .unique()
+      if (!run) throw new Error('Harness fixture run is missing')
+      const metadata = JSON.parse(run.metadataJson) as { policy: { allowedToolIds: string[] } }
+      metadata.policy.allowedToolIds = allowedToolIds
+      await ctx.db.patch(run._id, { metadataJson: JSON.stringify(metadata) })
+    })
+  }
+  const recording = await fixture()
+  await setTools(recording, ['computer_recording', 'write_file'])
+  await expect(recording.convex.mutation(publicationMutation('prepare'), publicationArgs(recording.reference)))
+    .resolves.toMatchObject({ artifactId: input.artifactId })
+  const neither = await fixture()
+  await setTools(neither, ['computer_exec', 'write_file'])
+  await expect(neither.convex.query(publicationQuery, { reference: neither.reference, input, serverSecret: secret }))
+    .rejects.toThrow('HARNESS_PUBLICATION_NOT_AUTHORIZED')
+})
