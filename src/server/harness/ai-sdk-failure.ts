@@ -68,6 +68,25 @@ function requestFailure(status: number | undefined): string | undefined {
   }
 }
 
+const NETWORK_TIMEOUT_CODES = new Set([
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ETIMEDOUT', 'ECONNABORTED',
+])
+
+// A request that failed without an HTTP status keeps the network error as its cause.
+function causedByNetworkTimeout(error: object): boolean {
+  const seen = new Set<object>()
+  let current = readErrorField(error, 'cause')
+  for (let depth = 0; depth < 4 && current && typeof current === 'object' && !seen.has(current); depth++) {
+    seen.add(current)
+    const code = readErrorField(current, 'code')
+    const name = readErrorField(current, 'name')
+    if ((typeof code === 'string' && NETWORK_TIMEOUT_CODES.has(code))
+      || name === 'TimeoutError' || name === 'BodyTimeoutError' || name === 'HeadersTimeoutError') return true
+    current = readErrorField(current, 'cause')
+  }
+  return false
+}
+
 function retryFailure(reason: unknown): string | undefined {
   switch (reason) {
     case 'maxRetriesExceeded': return 'The model request still failed after the AI SDK exhausted its retries.'
@@ -93,7 +112,9 @@ export function describeAISDKFailure(error: object): string | undefined {
   const status = ['AI_APICallError', 'AI_StreamProviderError', 'AI_DownloadError'].includes(name)
     && typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
     ? rawStatus : undefined
-  const requestReason = name === 'AI_APICallError' || name === 'AI_StreamProviderError' ? requestFailure(status) : undefined
+  const requestReason = name === 'AI_APICallError' || name === 'AI_StreamProviderError'
+    ? requestFailure(status) ?? (status === undefined && causedByNetworkTimeout(error) ? requestFailure(408) : undefined)
+    : undefined
   const retryReason = name === 'AI_RetryError' ? retryFailure(readErrorField(error, 'reason')) : undefined
   const description = requestReason ?? retryReason ?? descriptions[name]
     ?? 'The AI SDK could not complete this operation. Share this error type with support.'
