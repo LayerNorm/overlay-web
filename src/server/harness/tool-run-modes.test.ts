@@ -76,6 +76,15 @@ test('note and task writes lock per id', () => {
   )).toBe(true)
 })
 
+test('reading a note or task waits for an earlier edit to it but overlaps other work', () => {
+  const read = harnessToolRunMode('get_note', { noteId: 'a' })
+  expect(harnessRunModesConflict(harnessToolRunMode('edit_note', { noteId: 'a' }), read)).toBe(true)
+  expect(harnessRunModesConflict(harnessToolRunMode('edit_note', { noteId: 'b' }), read)).toBe(false)
+  expect(harnessRunModesConflict(read, harnessToolRunMode('get_note', { noteId: 'a' }))).toBe(false)
+  expect(harnessRunModesConflict(read, harnessToolRunMode('web_search', {}))).toBe(false)
+  expect(harnessRunModesConflict(harnessToolRunMode('update_task', { taskId: 't' }), harnessToolRunMode('get_task', { taskId: 't' }))).toBe(true)
+})
+
 test('scheduler overlaps independent work and orders conflicting work by call order', async () => {
   const scheduler = createHarnessToolScheduler()
   const events: string[] = []

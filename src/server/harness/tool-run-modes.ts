@@ -25,8 +25,8 @@ export type HarnessToolRunMode =
 const PARALLEL_TOOL_IDS = new Set([
   'search_knowledge', 'search_in_files', 'list_files', 'read_file',
   'search_memory', 'search_messages', 'list_chats', 'read_chat',
-  'list_notes', 'get_note', 'list_skills', 'find_skills', 'load_skill', 'search_skill_registries',
-  'list_automations', 'list_tasks', 'get_task', 'list_agents', 'read_agent_reply',
+  'list_notes', 'list_skills', 'find_skills', 'load_skill', 'search_skill_registries',
+  'list_automations', 'list_tasks', 'list_agents', 'read_agent_reply',
   'web_search', 'deep_search', 'web_fetch', 'search_mcp_tools',
 ])
 
@@ -107,6 +107,12 @@ function computerRunMode(name: string, input: unknown): HarnessToolRunMode | und
 
 function overlayRunMode(name: string, input: unknown): HarnessToolRunMode | undefined {
   const noteId = stringField(input, 'noteId')
+  // Reading one note or task waits for earlier edits to it, so a step that edits and then checks sees its own change.
+  if (name === 'get_note') return { kind: 'resource', locks: noteId ? [shared(`note:${noteId}`)] : [] }
+  if (name === 'get_task') {
+    const taskId = stringField(input, 'taskId')
+    return { kind: 'resource', locks: taskId ? [shared(`task:${taskId}`)] : [] }
+  }
   if (noteId && ['append_to_note', 'replace_note_section', 'edit_note', 'update_note', 'delete_note'].includes(name)) {
     return { kind: 'resource', locks: [exclusive(`note:${noteId}`)] }
   }
