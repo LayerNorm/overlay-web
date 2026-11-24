@@ -94,8 +94,8 @@ function computerRunMode(name: string, input: unknown): HarnessToolRunMode | und
       const action = field(input, 'action')
       return { kind: 'resource', locks: [action === 'read' || action === 'list' ? shared(COMPUTER) : exclusive(COMPUTER)] }
     }
+    // Every capture rewrites the same image file on the computer, so screenshots run one at a time.
     case 'computer_screenshot':
-      return { kind: 'resource', locks: [shared(DESKTOP)] }
     case 'computer_open_url':
     case 'computer_input':
     case 'computer_browser':

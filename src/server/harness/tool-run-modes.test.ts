@@ -61,6 +61,10 @@ test('terminal reads share the computer while starts lock it; desktop actions se
     harnessToolRunMode('computer_screenshot', {}),
   )).toBe(true)
   expect(harnessRunModesConflict(
+    harnessToolRunMode('computer_screenshot', {}),
+    harnessToolRunMode('computer_screenshot', {}),
+  )).toBe(true)
+  expect(harnessRunModesConflict(
     harnessToolRunMode('computer_browser', { action: 'snapshot' }),
     harnessToolRunMode('computer_read_file', { path: '/a' }),
   )).toBe(false)
