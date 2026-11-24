@@ -105,16 +105,11 @@ export async function projectNativeHarnessToolProgress(
     })
     if (!isTargetAgentMessage(message, access)) return
 
-    const parts = (message.parts ?? [])
-      .filter(part => part.type !== 'reasoning')
-      .map(part => ({ ...part }))
     const nextPart = toolInvocationPart(progress)
-    const existingIndex = parts.findIndex(part => sameToolCall(part, progress.toolCallId))
-    const canFinalizeCancelledCall = isCancelledFinalToolCall(progress, parts[existingIndex])
+    const existing = (message.parts ?? []).find(part => sameToolCall(part, progress.toolCallId))
+    const canFinalizeCancelledCall = isCancelledFinalToolCall(progress, existing)
     if (message.status !== 'generating' && !canFinalizeCancelledCall) return
     if (before.runStatus === 'cancelled' && !canFinalizeCancelledCall) return
-    if (existingIndex >= 0) parts[existingIndex] = nextPart
-    else parts.push(nextPart)
 
     const after = await refreshNativeHarnessAccess(access, context, progress.toolName, accessOptions)
     const cancelled = before.runStatus === 'cancelled' || after.runStatus === 'cancelled'
@@ -129,7 +124,7 @@ export async function projectNativeHarnessToolProgress(
       actorUserId: access.actorUserId,
       conversationId: access.conversationId,
       messageId: access.assistantMessageId,
-      parts,
+      toolPart: nextPart,
       workspaceId: access.workspaceId,
     })
   } catch (error) {

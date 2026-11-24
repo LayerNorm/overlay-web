@@ -197,3 +197,25 @@ test('rejects checkpoint payloads whose persisted target identity does not match
     checkpointToken: 'root:5',
   })).rejects.toThrow('Harness continuation checkpoint identity is invalid.')
 })
+
+test('owned lease renewal retries a lost revision race and stops when ownership changes', async () => {
+  const repository = new ConvexHarnessRepository()
+  const owner = { actorUserId: 'user', runId: 'root', workflowRunId: 'workflow', executionGeneration: 1 }
+  const get = vi.spyOn(repository, 'get')
+  const renew = vi.spyOn(repository, 'renewLease')
+  get.mockResolvedValueOnce({ revision: 4, workflowRunId: 'workflow', executionGeneration: 1 } as never)
+    .mockResolvedValueOnce({ revision: 5, workflowRunId: 'workflow', executionGeneration: 1 } as never)
+  renew.mockRejectedValueOnce(new Error('[Request ID: x] Server Error: HARNESS_LEASE_CAS_CONFLICT'))
+    .mockResolvedValueOnce({} as never)
+  expect(await repository.renewOwnedLease(owner)).toBe('renewed')
+  expect(renew.mock.calls.map(([input]) => input.expectedRevision)).toEqual([4, 5])
+
+  get.mockResolvedValueOnce({ revision: 6, workflowRunId: 'workflow', executionGeneration: 1 } as never)
+    .mockResolvedValueOnce({ revision: 7, workflowRunId: 'successor', executionGeneration: 2 } as never)
+  renew.mockRejectedValueOnce(new Error('HARNESS_LEASE_CAS_CONFLICT'))
+  expect(await repository.renewOwnedLease(owner)).toBe('ownership_changed')
+
+  get.mockResolvedValueOnce({ revision: 8, workflowRunId: 'workflow', executionGeneration: 1 } as never)
+  renew.mockRejectedValueOnce(new Error('HARNESS_LEASE_RENEWAL_NOT_AUTHORIZED'))
+  await expect(repository.renewOwnedLease(owner)).rejects.toThrow('HARNESS_LEASE_RENEWAL_NOT_AUTHORIZED')
+})

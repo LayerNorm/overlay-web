@@ -168,6 +168,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "apps/**",
     "overlay-desktop/**",
+    "overlay-mobile/**",
     "overlay-chrome/dist/**",
     "next-env.d.ts",
   ]),
