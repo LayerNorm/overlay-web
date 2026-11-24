@@ -74,30 +74,31 @@ function streamFor(store: AgentMessageStreamStore, now: () => number) {
 test('tool progress compacts large results without changing the in-memory transcript', async () => {
   const { calls, store } = recordingStore()
   const output = { success: true, data: 'x'.repeat(1_100_000) }
-  const parts = [{
+  const toolPart = {
     type: 'tool-invocation',
     toolInvocation: {
       toolCallId: 'tool_1', toolName: 'read_file', state: 'output-available',
       toolInput: { fileId: 'file_1' }, toolOutput: output,
     },
-  }]
+  }
   await persistAgentToolProgress({
     store, actorUserId: 'user_1', conversationId: 'conversation_1',
-    messageId: 'message_1', workspaceId: 'workspace_1', parts,
+    messageId: 'message_1', workspaceId: 'workspace_1', toolPart,
   })
-  const saved = calls[0].args.parts as typeof parts
+  const saved = calls[0].args.toolPart as typeof toolPart
   assert.equal(calls[0].args.contentDelta, '')
-  assert.equal(saved[0].toolInvocation.toolCallId, 'tool_1')
-  assert.equal(saved[0].toolInvocation.state, 'output-available')
+  assert.equal(calls[0].args.parts, undefined)
+  assert.equal(saved.toolInvocation.toolCallId, 'tool_1')
+  assert.equal(saved.toolInvocation.state, 'output-available')
   assert.ok(JSON.stringify(saved).length < 10_000)
-  assert.equal(parts[0].toolInvocation.toolOutput, output)
+  assert.equal(toolPart.toolInvocation.toolOutput, output)
   assert.equal(output.data.length, 1_100_000)
 
   const stream = streamFor(store, () => 0)
-  stream.pushParts(parts)
+  stream.pushParts([toolPart])
   await stream.flush()
   const streamed = calls.filter((call) => call.method === 'append').at(-1)!
-  assert.deepEqual(streamed.args.parts, saved)
+  assert.deepEqual(streamed.args.parts, [saved])
 })
 
 test('the durable row is opened lazily, so an empty turn leaves no bubble', async () => {

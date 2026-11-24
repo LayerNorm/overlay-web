@@ -455,10 +455,10 @@ it('Streaming — live text/tool parts arrive before finalization, and final per
     toolCallId: 'anonymous', toolName: 'read_file', input: {}, state: 'input-available',
   })
   expect(mocks.persistAgentToolProgress).toHaveBeenCalledTimes(2)
-  expect(mocks.persistAgentToolProgress.mock.calls[1][0].parts).toEqual([expect.objectContaining({
+  expect(mocks.persistAgentToolProgress.mock.calls[1][0].toolPart).toEqual(expect.objectContaining({
     type: 'tool-invocation',
     toolInvocation: expect.objectContaining({ toolCallId: 'read-1', state: 'output-available' }),
-  })])
+  }))
   const delivery = buildPersonalHarnessDelivery({
     snapshot: result.snapshot,
     messages: [

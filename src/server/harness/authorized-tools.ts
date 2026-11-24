@@ -5,6 +5,8 @@ import type { HarnessExecutionPorts } from './ports'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
 import { harnessToolInputDigest } from './tool-input-digest'
 import { redactSecrets } from '@/shared/security/sentry-sanitize'
+import { createHarnessToolScheduler, harnessToolRunMode } from './tool-run-modes'
+import { toolRequiresApproval } from '@overlay/tools-core/policy'
 
 const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
   'create_note', 'create_task', 'create_automation', 'create_folder', 'create_agent',
@@ -46,24 +48,42 @@ export function createHarnessAuthorizedTools(
 ): { tools: ToolSet; approvals: HarnessToolApprovals } {
   const approvals = createHarnessToolApprovals(initialApprovals)
   const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
-  let toolTail: Promise<unknown> = Promise.resolve()
+  // Calls from one model step arrive together. Read-only calls overlap, calls on one resource keep their order,
+  // and control or approval-gated calls run alone.
+  const scheduler = createHarnessToolScheduler()
+  // Lease renewal and tool authorization compare-and-swap the run's revision, so two overlapping calls would
+  // conflict. Admission runs one call at a time; only the tools themselves overlap.
+  let admission: Promise<unknown> = Promise.resolve()
+  const admit = (name: string): Promise<HarnessSnapshot> => {
+    const next = admission.then(async () => {
+      if (guard?.publicProgress()) throw new Error("Tools are disabled during a public progress update.")
+      let state = await ports.read()
+      if (state.policy.executionPolicyVersion === 2) {
+        await ports.renewLease()
+        state = await ports.read()
+      }
+      assertHarnessRunnable(state, Date.now())
+      if (!controls.has(name)) {
+        if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')
+        await ports.authorizeTool(name)
+      }
+      return state
+    })
+    // The failing call reports its own error; the next call still gets its turn.
+    admission = next.catch((_error: unknown) => undefined)
+    return next
+  }
   const tools = Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
     const execute = definition.execute
     return [name, !execute ? definition : {
       ...definition,
       execute: (value: unknown, options: Parameters<NonNullable<typeof execute>>[1]) => {
-        const pending = toolTail.then(async () => {
-          if (guard?.publicProgress()) throw new Error("Tools are disabled during a public progress update.")
-          let state = await ports.read()
-          if (state.policy.executionPolicyVersion === 2) {
-            await ports.renewLease()
-            state = await ports.read()
-          }
-          assertHarnessRunnable(state, Date.now())
-          if (!controls.has(name)) {
-            if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')
-            await ports.authorizeTool(name)
-          }
+        // Approval itself happens before execute; this only keeps gated actions from overlapping other work.
+        const gated = definition.needsApproval === true
+          || (typeof definition.needsApproval === 'function' && toolRequiresApproval(name, value))
+        const mode = harnessToolRunMode(name, value, { control: controls.has(name), needsApproval: gated })
+        return scheduler.run(mode, async () => {
+          const state = await admit(name)
           const duplicate = duplicateCreateEvidence(state, name, value)
           if (duplicate) {
             return {
@@ -82,8 +102,6 @@ export function createHarnessAuthorizedTools(
             throw harnessToolFailure(name, error)
           }
         })
-        toolTail = pending.then(() => undefined, () => undefined)
-        return pending
       },
     }]
   }))

@@ -332,6 +332,28 @@ describe('native agent approval projection', () => {
     const resumed = await convex.run(ctx => ctx.db.get(seeded.assistantMessageA))
     expect(resumed?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
 
+    // Overlapping tool calls each send only their own part; the mutation merges it into the saved parts.
+    const toolPart = (toolCallId: string, state: string) => ({
+      type: 'tool-invocation', toolInvocation: { toolCallId, toolName: 'read_file', state, toolInput: {} },
+    })
+    const sendToolProgress = (part: Record<string, unknown>) => convex.mutation(
+      api.collaboration.directMessages.appendAgentMessageDelta,
+      { actorUserId: initiatorUserId, contentDelta: '', conversationId: seeded.conversationId,
+        messageId: seeded.assistantMessageA, toolPart: part, workspaceId, serverSecret },
+    )
+    await sendToolProgress(toolPart('parallel-a', 'input-available'))
+    await sendToolProgress(toolPart('parallel-b', 'input-available'))
+    await sendToolProgress(toolPart('parallel-a', 'output-available'))
+    await sendToolProgress(toolPart('parallel-a', 'input-available'))
+    const merged = await convex.run(ctx => ctx.db.get(seeded.assistantMessageA))
+    expect(merged?.parts?.filter(part => part.type === 'tool-invocation')
+      .map(part => [(part as { toolInvocation: { toolCallId: string; state: string } }).toolInvocation.toolCallId,
+        (part as { toolInvocation: { state: string } }).toolInvocation.state])
+      .filter(([id]) => String(id).startsWith('parallel-'))).toEqual([
+      ['parallel-a', 'output-available'], ['parallel-b', 'input-available'],
+    ])
+    expect(merged?.parts?.some(part => part.type === 'text' && (part as { text?: string }).text === 'stale')).toBe(true)
+
     await convex.mutation(api.chat.conversations.transitionAgentRun, {
       runId: seeded.runA,
       serverSecret,
