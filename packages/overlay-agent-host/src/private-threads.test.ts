@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import { tool } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
+import { z } from 'zod'
 import { PrivateThreadService } from './private-threads'
 import { PrivateThreadStore } from './private-threads-store'
 import type { PrivateEvent, PrivateUIMessage } from './private-threads-protocol'
@@ -37,7 +39,7 @@ function scripted(steps: LanguageModelV4StreamPart[][], gate?: Promise<void>) {
   })
 }
 
-async function fixture(model: MockLanguageModelV4) {
+async function fixture(model: MockLanguageModelV4, extra: Partial<ConstructorParameters<typeof PrivateThreadService>[0]> = {}, sendExtra: Record<string, unknown> = {}) {
   const base = await realpath(await mkdtemp(join(tmpdir(), 'overlay-private-')))
   const store = new PrivateThreadStore(join(base, 'private.sqlite'))
   const events: PrivateEvent[] = []
@@ -48,6 +50,7 @@ async function fixture(model: MockLanguageModelV4) {
   const service = new PrivateThreadService({
     store, stateDirectory: join(base, 'state'), createModel: () => model,
     emit: event => { events.push(event); settle() },
+    ...extra,
   })
   await service.handle({ method: 'create', owner, threadId: 'p1', agentId: 'agent-1', title: 'New thread', folder: base, model: null })
   const user = (text: string): PrivateUIMessage => ({ id: `u-${text.length}`, role: 'user', parts: [{ type: 'text', text }] })
@@ -56,7 +59,7 @@ async function fixture(model: MockLanguageModelV4) {
     await service.handle({
       method: 'send', owner, threadId: 'p1', turnId: `turn-${events.length}`, messages,
       model: { provider: 'anthropic', modelId: 'claude-test', apiKey: 'sk-test' },
-      agent: { name: 'Atlas', instructions: 'Be brief.' }, roots: [base], approvalMode,
+      agent: { name: 'Atlas', instructions: 'Be brief.' }, roots: [base], approvalMode, ...sendExtra,
     })
     return await ended
   }
@@ -154,5 +157,61 @@ test('requests are validated: folders must be absolute', async () => {
   const f = await fixture(scripted([reply('hi')]))
   try {
     await assert.rejects(f.service.handle({ method: 'create', owner, threadId: 'p2', agentId: 'a', title: 'x', folder: 'relative/path', model: null }))
+  } finally { await f.cleanup() }
+})
+
+test('the agent\'s Overlay tools join the turn and the connection closes when it ends', async () => {
+  const connected: unknown[] = []
+  let closed = 0
+  let instructions = ''
+  const model = new MockLanguageModelV4({
+    doStream: async ({ prompt }) => {
+      instructions = prompt.filter(message => message.role === 'system').map(message => String(message.content)).join('\n')
+      const sawResult = prompt.some(message => message.role === 'tool')
+      const parts = sawResult ? reply('You prefer tea.') : toolCall('search_memory', { query: 'drink' })
+      return { stream: new ReadableStream({ start(c) { parts.forEach(p => c.enqueue(p)); c.close() } }) }
+    },
+  })
+  const access = { url: 'https://overlay.example/api/mcp', token: 'ovmcu_t_test.sig' }
+  const f = await fixture(model, {
+    connectOverlayTools: async (given) => {
+      connected.push(given)
+      return {
+        tools: { search_memory: tool({ inputSchema: z.object({ query: z.string() }), execute: async () => ({ memories: ['Prefers tea'] }) }) },
+        instructions: 'Overlay tools act on the person\'s Overlay workspace.',
+        close: async () => { closed++ },
+      }
+    },
+  }, { overlay: access })
+  try {
+    const ended = await f.send([f.user('What do I drink?')])
+    assert.equal(ended.kind === 'turn' && ended.state, 'finished')
+    assert.deepEqual(connected, [access])
+    assert.equal(closed, 1)
+    assert.match(instructions, /Overlay tools act on/)
+    const { messages } = await f.service.handle({ method: 'get', owner, threadId: 'p1' })
+    assert.ok(messages[1]!.parts.some(part => part.type === 'tool-search_memory' && 'state' in part && part.state === 'output-available'))
+  } finally { await f.cleanup() }
+})
+
+test('a turn runs with this computer\'s tools when Overlay\'s are unavailable, and the token stays out of the log', async () => {
+  const logs: string[] = []
+  const model = scripted([reply('Hello.')])
+  const f = await fixture(model, {
+    log: message => logs.push(message),
+    connectOverlayTools: async (_access, options) => { options.onUnavailable?.('401 for ovmcu_t_secretvalue.sig'); return null },
+  }, { overlay: { url: 'https://overlay.example/api/mcp', token: 'ovmcu_t_secretvalue.sig' } })
+  try {
+    const ended = await f.send([f.user('Hi')])
+    assert.equal(ended.kind === 'turn' && ended.state, 'finished')
+    assert.equal(logs.length, 1)
+    assert.ok(!logs[0]!.includes('secretvalue'))
+  } finally { await f.cleanup() }
+})
+
+test('Overlay tools need an https address', async () => {
+  const f = await fixture(scripted([reply('Hi.')]), {}, { overlay: { url: 'http://overlay.example/api/mcp', token: 't' } })
+  try {
+    await assert.rejects(f.send([f.user('Hi')]), /https/)
   } finally { await f.cleanup() }
 })

@@ -187,6 +187,7 @@ import type * as platform_idempotency from "../platform/idempotency.js";
 import type * as platform_metrics from "../platform/metrics.js";
 import type * as platform_migrations from "../platform/migrations.js";
 import type * as platform_nativePolicy from "../platform/nativePolicy.js";
+import type * as platform_privateThreadAllowances from "../platform/privateThreadAllowances.js";
 import type * as platform_rateLimits from "../platform/rateLimits.js";
 import type * as platform_uiSettings from "../platform/uiSettings.js";
 import type * as platform_usage from "../platform/usage.js";
@@ -390,6 +391,7 @@ declare const fullApi: ApiFromModules<{
   "platform/metrics": typeof platform_metrics;
   "platform/migrations": typeof platform_migrations;
   "platform/nativePolicy": typeof platform_nativePolicy;
+  "platform/privateThreadAllowances": typeof platform_privateThreadAllowances;
   "platform/rateLimits": typeof platform_rateLimits;
   "platform/uiSettings": typeof platform_uiSettings;
   "platform/usage": typeof platform_usage;

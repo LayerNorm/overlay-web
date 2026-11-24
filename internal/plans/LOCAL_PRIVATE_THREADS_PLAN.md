@@ -2,8 +2,8 @@
 
 Status: Mockup approved (2026-11-21). Phases 1 and 2 merged (PR 586), Agent
 Host 0.6.0 published to npm, and shipped in Overlay Desktop 0.4.0 (2026-11-21).
-Phases 3–5 not started. Free-tier allowances and the paid-first conflict still
-open (Decision 4). Living doc: `internal/develop/private-threads.md`.
+Free tier approved (Decision 4, 2026-11-24) and the paid-first plan amended.
+Phase 3 in progress; Phases 4–5 not started. Living doc: `internal/develop/private-threads.md`.
 
 Repos: `LayerNorm/overlay-desktop`, `LayerNorm/overlay-web` (Agent Host package,
 web UI).
@@ -92,19 +92,30 @@ Non-goals: replacing the cloud harness, durable or scheduled local runs
    is the agent's existing tool grant, set by the person when they set up the
    agent. No separate private-thread tool policy.
 
-4. **A new free tier.** Private threads with own keys or local subscriptions run
-   for free, and some Overlay tool use is included for free. Resources with a
-   real per-use cost stay paid: cloud machines and sandboxes (Boat/E2B),
-   Overlay-billed inference, and likely media generation.
-   *Still open, for the owner:*
-   - the allowances: which tools are free and how much (for example memory and
-     notes unlimited within a storage cap, web search N per day, file storage
-     X MB, media generation paid);
-   - **this reverses `PAID_FIRST_EXECUTION_PLAN.md`**, which is approved and in
-     progress and says there is no free execution tier and BYO keys are never a
-     payment bypass. That plan must be amended before Phase 3 ships, and its
-     "remove free-tier infrastructure" step must not delete what this tier
-     needs.
+4. **A free tier for private threads (approved 2026-11-24).** It applies only
+   to private threads in the desktop app, in a personal workspace with no paid
+   plan. Team workspaces stay paid-only, and paying lifts every limit and
+   charges usage to the workspace.
+
+   | Item | Free tier |
+   | --- | --- |
+   | Local agent loop and computer tools | Unlimited |
+   | Own API keys and local subscriptions | Unlimited |
+   | Notes, tasks, memory and knowledge reads and search | Unlimited within the storage cap |
+   | Saving a memory when the agent explicitly does so | Unlimited; nothing is extracted from private conversations automatically |
+   | Overlay Files storage | 100 MB |
+   | Web search | 50 a month |
+   | Overlay Cloud computers, image and video generation, transcription, automations, browser tasks, Overlay-billed models, synced threads | Paid only |
+
+   - Limits are counted per person, not per workspace, on the server in
+     `/api/mcp`; the desktop is never trusted for them.
+   - At a limit the tool returns a plain refusal ("You've used this month's 50
+     free web searches. Upgrade the workspace to keep searching."), so the agent
+     carries on without that tool.
+   - `PAID_FIRST_EXECUTION_PLAN.md` is amended: no free execution in Overlay's
+     cloud stays the rule. The only exception is private threads, where Overlay
+     runs no inference, plus this capped tool allowance. BYO keys remain no
+     payment bypass for hosted execution.
 
 5. **Sync is chosen when the thread is created and locked.** Later, a one-way
    **Sync to cloud** action uploads a private thread's transcript and turns it
@@ -144,16 +155,17 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
 
 | Phase | State |
 | --- | --- |
-| 0: Decisions and mockup | Mockup approved; Decision 4 allowances still open |
+| 0: Decisions and mockup | Done: mockup approved, free tier approved 2026-11-24 |
 | 1: Private runtime in the Agent Host | Merged; Agent Host 0.6.0 published; shipped in desktop 0.4.0 |
 | 2: Bridge and UI | Merged and live on web; desktop 0.4.0 released; tested end to end in a desktop dev build against the PR preview, not yet in the released app |
-| 3: Overlay tools and free tier | Not started |
+| 3: Overlay tools and free tier | Built on a branch (server token, free tier, host MCP client, desktop token request); not merged, published or QA'd yet |
 | 4: Local subscriptions and Overlay-billed models | Not started |
 | 5: Sync to cloud | Not started |
 
 ### Phase 0: Decisions and mockup
 
-Owner sets the free-tier allowances and amends the paid-first plan. Mockup of
+Done: the owner set the free-tier allowances (Decision 4) and the paid-first
+plan is amended. Mockup of
 the composer choice, the started-thread label, the thread list mark and Sync to
 cloud, checked in light and dark, desktop and narrow, and in a browser (where
 the thread is not listed). Drafted; the agent-settings model picker moves to
@@ -201,6 +213,14 @@ a desktop dev build against the PR preview ran a real turn (write file, approval
   subscriptions plus the Decision 4 tool allowances; sandboxes, cloud machines
   and Overlay-billed inference stay paid.
 - Product analytics count private threads and runs only, never content.
+
+Built: `POST /api/v1/mcp/private-thread` mints a one-hour sealed token (person,
+workspace, agent; no grant row) that the desktop main process asks for with its
+own session before each turn; `/api/mcp` serves the agent's grant (paid), the
+free tier (unpaid, one person) or nothing (unpaid team); web searches are counted
+in `privateThreadAllowances` before they run; free storage is 100 MB per person;
+the host connects with `@ai-sdk/mcp` for the turn. Not built: product analytics
+for private threads, and a usage display of the free allowance.
 
 Acceptance: a private thread on a free account uses memory and web search within
 its allowances, is refused cleanly past them, and a network capture shows

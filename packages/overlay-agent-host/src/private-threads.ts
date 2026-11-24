@@ -14,6 +14,7 @@ import {
 } from 'ai'
 import { LocalToolExecutor } from './local-tools.js'
 import { listProviderModels } from './private-threads-models.js'
+import { connectOverlayTools, withOverlayTools, type OverlayToolsConnection } from './private-threads-overlay-tools.js'
 import { privateComputerTools } from './private-threads-tools.js'
 import { PrivateThreadStore } from './private-threads-store.js'
 import {
@@ -40,6 +41,9 @@ export type PrivateThreadServiceOptions = {
   /** Tests replace the model; production builds it from the person's key. */
   createModel?: (provider: PrivateModelProvider, modelId: string, apiKey: string) => LanguageModel
   listModels?: typeof listProviderModels
+  /** Tests replace the connection to Overlay's MCP server. */
+  connectOverlayTools?: typeof connectOverlayTools
+  log?: (message: string) => void
 }
 
 /**
@@ -142,11 +146,16 @@ export class PrivateThreadService {
       grant: () => ({ mode: 'selected_roots', roots: request.roots }),
     })
     let failure: string | undefined
+    let overlay: OverlayToolsConnection | null = null
     try {
+      overlay = await (this.options.connectOverlayTools ?? connectOverlayTools)(request.overlay, {
+        signal,
+        onUnavailable: (reason) => this.options.log?.(`Overlay tools unavailable for this turn: ${publicError(reason)}`),
+      })
       const agent = new ToolLoopAgent({
         model: (this.options.createModel ?? createModel)(request.model.provider, request.model.modelId, request.model.apiKey),
-        instructions: instructionsFor(request),
-        tools: privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }),
+        instructions: instructionsFor(request, overlay),
+        tools: withOverlayTools(privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }), overlay),
         stopWhen: isStepCount(MAX_STEPS),
       })
       const stream = await createAgentUIStream({
@@ -168,7 +177,7 @@ export class PrivateThreadService {
     } catch (error) {
       if (!signal.aborted) failure = publicError(error)
     } finally {
-      await executor.shutdown().catch(() => undefined)
+      await Promise.all([executor.shutdown().catch(() => undefined), overlay?.close()])
     }
     emit({ kind: 'turn', threadId, turnId, state: signal.aborted ? 'stopped' : failure ? 'error' : 'finished', ...(failure ? { error: failure } : {}) })
   }
@@ -214,7 +223,7 @@ export function createModel(provider: PrivateModelProvider, modelId: string, api
   }
 }
 
-function instructionsFor(request: SendRequest): string {
+function instructionsFor(request: SendRequest, overlay: OverlayToolsConnection | null): string {
   const os = platform() === 'darwin' ? 'macOS' : platform() === 'win32' ? 'Windows' : 'Linux'
   return [
     `You are ${request.agent.name}, an agent in Overlay.`,
@@ -226,6 +235,7 @@ function instructionsFor(request: SendRequest): string {
       `Today is ${new Date().toDateString()}.`,
       'Work step by step, check your results, and finish with a short summary of what you did.',
     ].join('\n'),
+    overlay && Object.keys(overlay.tools).length > 0 ? overlay.instructions : '',
   ].filter(Boolean).join('\n\n')
 }
 
@@ -239,7 +249,7 @@ function titleFrom(messages: PrivateUIMessage[]): string | null {
 /** Provider errors can echo request details; keep the message and drop anything that looks like a key. */
 function publicError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
-  return message.replace(/(sk|key|pk|AIza)[-_A-Za-z0-9]{12,}/g, '[redacted]').slice(0, 1_000) || 'The model call failed.'
+  return message.replace(/(sk|key|pk|AIza)[-_A-Za-z0-9]{12,}/g, '[redacted]').replace(/ovmcu_[a-z]_[-_.A-Za-z0-9]+/g, '[redacted]').slice(0, 1_000) || 'The model call failed.'
 }
 
 function toReadable<T>(iterable: AsyncIterable<T>): ReadableStream<T> {

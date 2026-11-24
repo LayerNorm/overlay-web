@@ -61,6 +61,15 @@ export const privateRequestSchema = z.discriminatedUnion('method', [
     /** The folders this run may use: the thread's folder, or the person's work folder. */
     roots: z.array(folder).min(1).max(20),
     approvalMode: z.enum(['ask', 'auto']).default('ask'),
+    /**
+     * The agent's Overlay tools for this turn: Overlay's MCP server and a short-lived token Overlay Desktop got for
+     * this person, workspace and agent. Absent when the desktop could not get one; the turn then has only this
+     * computer's tools.
+     */
+    overlay: z.object({
+      url: z.string().url().max(2_048).refine(value => /^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(value), 'Overlay tools need https.'),
+      token: z.string().min(1).max(4_096),
+    }).strict().optional(),
   }).strict(),
   z.object({ method: z.literal('stop'), owner, threadId: id }).strict(),
   z.object({

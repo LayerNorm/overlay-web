@@ -13,6 +13,7 @@ import {
   buildTavilyRequestBody,
   buildTinyfishRequestBody,
   buildTinyfishSearchParams,
+  executeDeepSearch,
   fetchTinyfishPages,
   fetchTinyfishSearch,
   searchWebWithFallback,
@@ -440,4 +441,17 @@ test('mergeExactEntityFallbackResults dedupes and marks augmentation', () => {
   assert.equal(merged.search_strategy, 'exact_entity_deep_augmentation')
   assert.match(String(merged.search_note), /Entries labeled search_snippet are not page text/)
   assert.equal(searchResults(merged).length, 2)
+})
+
+test('a free-tier search uses its allowance before running, instead of the workspace budget', async () => {
+  const counted: Array<[string, number]> = []
+  const refused = new Error('You have used this month\'s free web searches.')
+  const context = {
+    entitlements: {} as never,
+    userId: 'user-1',
+    allowance: async (toolName: string, searches: number) => { counted.push([toolName, searches]); throw refused },
+  }
+  // The allowance refuses, so neither the budget policy nor a provider is reached.
+  await assert.rejects(executeDeepSearch({ objective: 'x', searchQueries: ['x'] } as never, context), refused)
+  assert.deepEqual(counted, [['deep_search', 1]])
 })

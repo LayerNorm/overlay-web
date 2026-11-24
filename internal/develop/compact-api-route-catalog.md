@@ -174,6 +174,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/mcp/authorize`
 - `GET /api/v1/mcp/client`
 - `DELETE, GET, POST /api/v1/mcp/connections`
+- `POST /api/v1/mcp/private-thread`
 - `GET, POST /api/v1/mcps/oauth/callback`
 - `DELETE, POST /api/v1/mcps/oauth`
 - `DELETE, GET, PATCH, POST /api/v1/mcps`
