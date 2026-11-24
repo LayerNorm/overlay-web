@@ -3,7 +3,7 @@ import 'server-only'
 import { FatalError, RetryableError } from 'workflow'
 import { agentWithheldToolIds, resolveAgentGrant } from '@/server/agents/agent-tooling'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { agentMemoryOwner } from '@/shared/agents/agent-memory'
+import { memoryOwnerForPlace } from '@/shared/agents/agent-memory'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { automationRunTurnId } from '@/shared/automations/run-identity'
 import type { PersonalHarnessAccess } from './personal-access'
@@ -187,7 +187,11 @@ async function resolveAutomationSourceGrant(
     agent: {
       agentId: automation.agentId,
       agentPrincipalId: agent.principalId,
-      memoryOwnerId: agentMemoryOwner({ ...agent, id: automation.agentId }),
+      memoryOwnerId: memoryOwnerForPlace({
+        actorUserId: access.actorUserId,
+        agent: { ...agent, id: automation.agentId },
+        workspaceContext: automation.scope === 'workspace',
+      }),
     },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask',
     allowedToolIds: [

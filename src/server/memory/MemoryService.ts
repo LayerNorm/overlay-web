@@ -107,6 +107,13 @@ export class MemoryService {
     return memory
   }
 
+  async moveToWorkspace(args: { memoryId: string; userId: string; workspaceId: string }): Promise<MemoryRecord> {
+    await this.repository.moveToWorkspace(args)
+    const memory = await this.repository.get(args)
+    if (!memory) throw new MemoryServiceError('Not found', 404)
+    return memory
+  }
+
   async remove(args: { memoryId: string; userId: string; workspaceId?: string }) {
     const result = await this.repository.remove(args)
     if (!result) throw new MemoryServiceError('Not found', 404)

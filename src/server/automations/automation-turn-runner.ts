@@ -63,7 +63,7 @@ import {
   applyAgentCapabilityFilter,
   resolveAgentGrant,
 } from '@/server/agents/agent-tooling'
-import { agentMemoryOwner } from '@/shared/agents/agent-memory'
+import { memoryOwnerForPlace } from '@/shared/agents/agent-memory'
 import type {
   PersonalChatWorkToolDefinition,
   PersonalChatWorkToolingContext,
@@ -295,11 +295,13 @@ async function resolveTurnAgentAuthorization(
   let approvalMode: 'ask' | 'auto' = 'ask'
   let automationAgent: AutomationBoundAgent | null = null
   let automationAgentId: string | undefined
+  let workspaceAutomation = false
   if (input.automationId) {
     const automation = await automationService.getAutomationForExecution({
       automationId: input.automationId,
       userId,
     })
+    workspaceAutomation = automation?.scope === 'workspace'
     const agentId = automation?.agentId
     if (agentId) {
       automationAgentId = agentId
@@ -314,7 +316,7 @@ async function resolveTurnAgentAuthorization(
       approvalMode = automationAgent.permissionMode === 'auto' ? 'auto' : 'ask'
     }
   }
-  return { approvalMode, automationAgent, automationAgentId }
+  return { approvalMode, automationAgent, automationAgentId, workspaceAutomation }
 }
 
 function narrowTurnAgentGrant(
@@ -574,7 +576,7 @@ export async function prepareAutomationAgentTurn(
     userId,
   })
 
-  const { approvalMode, automationAgent, automationAgentId } = await resolveTurnAgentAuthorization(
+  const { approvalMode, automationAgent, automationAgentId, workspaceAutomation } = await resolveTurnAgentAuthorization(
     input, userId, billingWorkspaceId, overlayContext,
   )
   const toolPreloadTasks = preloadActExternalToolTasks({
@@ -629,8 +631,10 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // An agent-bound automation remembers as its agent (a personal Overlay remembers for its owner).
-    memoryOwnerId: automationAgent ? agentMemoryOwner(automationAgent) : undefined,
+    // A workspace automation's agent adds workspace knowledge; a personal one remembers privately for its owner.
+    memoryOwnerId: automationAgent
+      ? memoryOwnerForPlace({ actorUserId: userId, agent: automationAgent, workspaceContext: workspaceAutomation })
+      : undefined,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,
     preloadTasks: toolPreloadTasks,

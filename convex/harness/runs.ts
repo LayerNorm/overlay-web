@@ -14,7 +14,7 @@ import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snap
 import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
 import { readActivePublicStreams, transcriptStepHasOutput } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
-import { isSharedRoom } from '../../src/shared/agents/room-access'
+import { conversationAudienceIsShared } from '../lib/roomAudience'
 import {
   admitHarnessChild,
   admitHarnessNamedChild,
@@ -1688,23 +1688,6 @@ export const get = query({
 })
 
 const MAX_ROOM_RESTRICTION_DEPTH = 32
-
-async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, conversationId: string): Promise<boolean> {
-  const id = ctx.db.normalizeId('conversations', conversationId)
-  const conversation = id ? await ctx.db.get(id) : null
-  if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
-  if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
-  if (conversation.origin?.kind === 'channel') return true
-  const participants = await ctx.db.query('conversationParticipants')
-    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
-    .collect()
-  return isSharedRoom({
-    conversationType: conversation.conversationType ?? 'personal',
-    channelVisibility: conversation.channelVisibility,
-    humanParticipants: participants.filter(participant => participant.status === 'active'
-      && participant.principalType === 'human').length,
-  })
-}
 
 function conversationIdFromSource(source: HarnessSource): string | null {
   return typeof source.conversationId === 'string' && source.conversationId.trim()

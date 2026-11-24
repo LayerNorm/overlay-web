@@ -38,7 +38,7 @@ Each person asking in a Slack thread gets their own Overlay thread, so nobody's 
 ## Access
 
 - Slack channel threads count as shared rooms (`conversationAudienceIsShared` in `convex/harness/runs.ts`): the agent does not load the asker's personal memories, files or skills there. DMs behave like a private web thread.
-- A personal Overlay's memories belong to its owner and are private (`agentMemoryOwner` in `src/shared/agents/agent-memory.ts`), so a channel answer can never recall them. Other agents' memories are workspace knowledge.
+- Memories follow the place (`memoryOwnerForPlace` in `src/shared/agents/agent-memory.ts`): what an agent learns in a Slack channel is workspace knowledge; what it learns in a DM is the person's private memory, which a channel answer never recalls. A personal Overlay's and a creator-only agent's memories are always private to their person.
 - Installing needs an owner or admin. One Slack team binds to one Overlay workspace and vice versa.
 - Disconnecting deletes the bot token; uninstalling in Slack (`app_uninstalled`) or revoking the bot token (`tokens_revoked` with bot tokens; the SDK doesn't surface it, so the events route handles the verified body with `handleSlackTokensRevoked`) does the same.
 - Org-wide Enterprise Grid installs are refused at the OAuth callback (`slackError=enterprise_install`); install into a single workspace.

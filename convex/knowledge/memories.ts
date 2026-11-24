@@ -289,7 +289,6 @@ export const update = mutation({
     actor: v.optional(v.union(v.literal('user'), v.literal('agent'))),
     expiresAt: v.optional(v.number()),
     eventAt: v.optional(v.number()),
-    visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
   },
   handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
@@ -314,11 +313,35 @@ export const update = mutation({
     if (updates.actor !== undefined) patch.actor = updates.actor
     if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt
     if (updates.eventAt !== undefined) patch.eventAt = updates.eventAt
-    if (updates.visibility !== undefined) patch.visibility = updates.visibility
     await ctx.db.patch(memoryId, patch)
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
       memoryId,
     })
+  },
+})
+
+/**
+ * Moves one of a person's private memories to the workspace, by their own action (Settings → Memories). One-way:
+ * nothing makes a workspace memory private again, because once others may rely on it one person shouldn't be able to
+ * take it away (WORKSPACE_PERSONAL_SEPARATION_PLAN.md).
+ */
+export const moveToWorkspace = mutation({
+  args: {
+    userId: v.string(),
+    workspaceId: v.string(),
+    accessToken: v.optional(v.string()),
+    serverSecret: v.optional(v.string()),
+    memoryId: v.id('memories'),
+  },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId }) => {
+    await authorizeUserAccess({ userId, accessToken, serverSecret })
+    const existing = await ctx.db.get(memoryId)
+    if (!existing || existing.userId !== userId || existing.deletedAt || existing.workspaceId !== workspaceId) {
+      throw new Error('Unauthorized')
+    }
+    if (existing.visibility !== 'owner') return
+    await ctx.db.patch(memoryId, { visibility: 'workspace', updatedAt: Date.now() })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, { memoryId })
   },
 })
 

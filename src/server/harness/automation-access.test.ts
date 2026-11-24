@@ -91,7 +91,11 @@ test('post-wait refresh rejects cancelled runs and intersects a revoked agent gr
   const refreshed = await refreshAutomationHarnessSource(access, context)
   expect(refreshed.allowedToolIds).toEqual(['read_file', 'gmail_send'])
   expect(refreshed.approvalMode).toBe('ask')
-  expect(refreshed.agent).toEqual({ agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'agent-memory:agent' })
+  // A personal automation's agent remembers privately for the person.
+  expect(refreshed.agent).toEqual({ agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'user' })
+  // A workspace automation's agent adds workspace knowledge.
+  mocks.run.mockResolvedValueOnce({ automation: { ...automation, scope: 'workspace' }, run })
+  expect((await refreshAutomationHarnessSource(access, context)).agent?.memoryOwnerId).toBe('agent-memory:agent')
   mocks.run.mockResolvedValueOnce({ automation, run: { ...run, status: 'cancelled' } })
   await expect(refreshAutomationHarnessSource(access, context)).rejects.toBeInstanceOf(FatalError)
   mocks.agent.mockResolvedValueOnce({ harness: 'other', allowedToolIds: [] })
@@ -120,7 +124,7 @@ test('the refreshed grant names the connected-app router tools exactly as admiss
   expect(await refreshAutomationHarnessSource(access, { ...context, accountAllowedConnectorIds: ['gmail'] } as never))
     .toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [],
       withheldToolIds: ['web_search', 'deep_search', 'web_fetch', 'COMPOSIO_SEARCH_TOOLS'],
-      agent: { agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'agent-memory:agent' } })
+      agent: { agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'user' } })
 })
 
 test('a run claimed by the Convex scheduler is admitted with the turn ID derived from its run', async () => {

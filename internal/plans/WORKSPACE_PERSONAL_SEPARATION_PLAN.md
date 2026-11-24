@@ -1,6 +1,11 @@
 # Workspace and Personal separation
 
-Status: proposed. Nothing implemented beyond the personal Overlay memory fix (PR 612).
+Status: P1 implemented on `codex/memory-follows-place` (not merged or deployed; the production backfill has not run). P2–P7 proposed.
+
+| Phase | State |
+|---|---|
+| P1 Memories follow the place | Implemented, tested locally; awaiting preview QA, merge, deploy and the one-time `moveAgentMemoriesToTheirPlaceByServer` run |
+| P2–P7 | Not started |
 
 ## The model
 
@@ -29,6 +34,8 @@ One scope engine (`src/shared/workspaces/resource-scope.ts`, `convex/lib/resourc
 ## Phases
 
 **P1 — Memories follow the place, not the agent.** A memory saved in a personal context is private to the person; one saved in a workspace context is workspace knowledge, whichever agent saves it. This replaces "agents' memories are shared" (`agent-memory.ts`) and closes the workspace-agent-in-a-1:1 leak. Creator-only agents' memories are recalled only by their creator. Settings → Memories gets "Move to workspace".
+
+As built: `memoryOwnerForPlace` decides for tool saves (by shared room), reply extraction (by the room's audience, in Convex) and automations (by automation scope). Human messages in a shared room still become the person's private memories. Moves go through `knowledge/memories:moveToWorkspace` only; `update` can no longer change visibility. Untested so far: a hosted preview run of a 1:1 save, a channel save and the Settings move.
 
 **P2 — Workspace by default.** New files, notes, skills and automations created in the normal app default to Workspace; Personal is a visible choice in the create flow and a label on the item. Chats keep their type, and the sidebar label stops using `scope` (rename to what it is).
 

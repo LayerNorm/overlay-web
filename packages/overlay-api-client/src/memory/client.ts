@@ -46,6 +46,11 @@ export class MemoryClient {
     return this.http.request('/api/v1/memory', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }
 
+  /** One-way: the caller's private memory becomes workspace knowledge. */
+  moveToWorkspaceResponse(body: { memoryId: string }, init?: RequestInit) {
+    return this.http.request('/api/v1/memory', this.http.jsonRequest({ ...body, moveTo: 'workspace' }, { ...init, method: 'PATCH' }))
+  }
+
   deleteResponse(query: { memoryId: string }, init?: RequestInit) {
     return this.http.request(this.path(query), { ...init, method: 'DELETE' })
   }

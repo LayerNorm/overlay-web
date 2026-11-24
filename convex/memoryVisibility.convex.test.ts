@@ -103,8 +103,8 @@ describe('backfilling memories from before the rule', () => {
   })
 })
 
-describe('moving a personal Overlay’s past memories to its owner', () => {
-  const move = makeFunctionReference<'mutation'>('knowledge/knowledge:movePersonalOverlayMemoriesToOwnersByServer')
+describe('moving agent memories to the place they were learned in', () => {
+  const move = makeFunctionReference<'mutation'>('knowledge/knowledge:moveAgentMemoriesToTheirPlaceByServer')
   const defineAgent = (convex: Convex, agentId: string, extra: Record<string, unknown>) => convex.run(async (ctx) => {
     await ctx.db.insert('workspaceAgentDefinitions', {
       agentId, workspaceId: 'ws-1', principalId: `p-${agentId}`, name: agentId, instructions: '', harness: 'overlay',
@@ -112,27 +112,72 @@ describe('moving a personal Overlay’s past memories to its owner', () => {
       createdAt: 1, updatedAt: 1, ...extra,
     } as never)
   })
+  /** A conversation with these active people in it; returns its id. */
+  const room = (convex: Convex, people: string[], extra: Record<string, unknown> = {}) => convex.run(async (ctx) => {
+    const id = await ctx.db.insert('conversations', {
+      userId: people[0] ?? 'alice', workspaceId: 'ws-1', title: 'room', lastModified: 1, createdAt: 1, lastMode: 'act',
+      askModelIds: [], actModelId: 'model', ...extra,
+    } as never)
+    for (const person of people) {
+      await ctx.db.insert('conversationParticipants', {
+        conversationId: id, workspaceId: 'ws-1', principalId: `p-${person}`, principalType: 'human', role: 'member',
+        status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1,
+      })
+    }
+    return id as string
+  })
+  const savedIn = (convex: Convex, ownerId: string, content: string, conversationId?: string) =>
+    convex.mutation(add, { serverSecret: secret, userId: ownerId, workspaceId: 'ws-1', content, source: 'chat', ...(conversationId ? { conversationId } : {}) })
 
-  test('its memories become the owner’s private ones; a workspace agent’s stay shared', async () => {
+  test('private places give memories to their person; workspace places keep them shared; running it again does nothing', async () => {
     const convex = convexTest(schema, modules)
-    await defineAgent(convex, 'personal', { agentRole: 'personal_chief', chiefOwnerUserId: 'alice' })
-    await defineAgent(convex, 'chief', { agentRole: 'workspace_chief' })
-    await save(convex, agentMemoryOwnerId('personal'), 'Alice’s favorite fruit is durian')
-    await save(convex, agentMemoryOwnerId('chief'), 'Standup is at 10')
-    expect(await recalledBy(convex, 'bob')).toEqual(['Alice’s favorite fruit is durian', 'Standup is at 10'])
+    await convex.run(async (ctx) => {
+      for (const person of ['alice', 'bob']) {
+        await ctx.db.insert('workspacePrincipals', {
+          principalId: `p-${person}`, workspaceId: 'ws-1', type: 'human', userId: person, displayName: person, createdAt: 1, updatedAt: 1,
+        } as never)
+      }
+    })
+    await defineAgent(convex, 'personal', { agentRole: 'personal_chief', chiefOwnerUserId: 'alice', visibility: 'creator' })
+    await defineAgent(convex, 'mine', { agentRole: 'agent', visibility: 'creator' })
+    await defineAgent(convex, 'team', { agentRole: 'agent', visibility: 'workspace' })
+    const bobAlone = await room(convex, ['bob'])
+    const bothOfUs = await room(convex, ['alice', 'bob'])
+    await savedIn(convex, agentMemoryOwnerId('personal'), 'Alice’s favorite fruit is durian')
+    await savedIn(convex, agentMemoryOwnerId('mine'), 'Alice drafts on Sundays')
+    await savedIn(convex, agentMemoryOwnerId('team'), 'Bob is interviewing elsewhere', bobAlone)
+    await savedIn(convex, agentMemoryOwnerId('team'), 'Launch is on Friday', bothOfUs)
+    await savedIn(convex, agentMemoryOwnerId('team'), 'Standup is at 10')
+    expect(await recalledBy(convex, 'bob')).toHaveLength(5)
 
     const dry = await convex.mutation(move, { serverSecret: secret, dryRun: true })
-    expect(dry.memoriesMoved).toBe(1)
-    expect(await recalledBy(convex, 'bob')).toHaveLength(2)
+    expect(dry).toMatchObject({ memoriesMoved: 3, memoriesKept: 2 })
+    expect(await recalledBy(convex, 'bob')).toHaveLength(5)
 
-    const result = await convex.mutation(move, { serverSecret: secret, dryRun: false })
-    expect(result).toMatchObject({ memoriesMoved: 1, isDone: true })
-    expect(await recalledBy(convex, 'bob')).toEqual(['Standup is at 10'])
-    expect(await recalledBy(convex, 'alice')).toEqual(['Alice’s favorite fruit is durian', 'Standup is at 10'])
+    expect(await convex.mutation(move, { serverSecret: secret, dryRun: false })).toMatchObject({ memoriesMoved: 3, isDone: true })
+    expect(await recalledBy(convex, 'bob')).toEqual(['Bob is interviewing elsewhere', 'Launch is on Friday', 'Standup is at 10'])
+    expect(await recalledBy(convex, 'alice')).toEqual(['Alice drafts on Sundays', 'Alice’s favorite fruit is durian', 'Launch is on Friday', 'Standup is at 10'])
     const chunks = await convex.run(async (ctx) => await ctx.db.query('knowledgeChunks').collect())
-    for (const chunk of chunks.filter((c) => c.text?.includes?.('durian'))) {
-      expect(chunk).toMatchObject({ userId: 'alice', visibility: 'owner' })
+    for (const chunk of chunks.filter((c) => c.text?.includes?.('interviewing'))) {
+      expect(chunk).toMatchObject({ userId: 'bob', visibility: 'owner' })
     }
     expect((await convex.mutation(move, { serverSecret: secret, dryRun: false })).memoriesMoved).toBe(0)
+  })
+})
+
+describe('moving a private memory to the workspace', () => {
+  const moveToWorkspace = makeFunctionReference<'mutation'>('knowledge/memories:moveToWorkspace')
+
+  test('its owner can share it, and nothing makes it private again', async () => {
+    const convex = convexTest(schema, modules)
+    const memoryId = await save(convex, 'alice', 'The team standup is at 10')
+    expect(await recalledBy(convex, 'bob')).toEqual([])
+    await expect(convex.mutation(moveToWorkspace, { serverSecret: secret, userId: 'bob', workspaceId: 'ws-1', memoryId })).rejects.toThrow()
+    await convex.mutation(moveToWorkspace, { serverSecret: secret, userId: 'alice', workspaceId: 'ws-1', memoryId })
+    expect(await recalledBy(convex, 'bob')).toEqual(['The team standup is at 10'])
+    const update = makeFunctionReference<'mutation'>('knowledge/memories:update')
+    await expect(convex.mutation(update, {
+      serverSecret: secret, userId: 'alice', workspaceId: 'ws-1', memoryId, content: 'The team standup is at 10', visibility: 'owner',
+    })).rejects.toThrow()
   })
 })
