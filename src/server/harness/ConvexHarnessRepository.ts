@@ -24,6 +24,8 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { requireNativeThreadCompatibilityBackend } from '@/server/conversations/native-thread-compatibility-backend'
 import { artifactClient, ConvexHarnessAssignments } from './ConvexHarnessAssignments'
 
+const MAX_LEASE_RENEWAL_ATTEMPTS = 5
+
 export class ConvexHarnessRepository extends ConvexHarnessAssignments implements HarnessRepository {
 
   async storeContextArtifact(input: {
@@ -281,6 +283,35 @@ export class ConvexHarnessRepository extends ConvexHarnessAssignments implements
     }, { throwOnError: true })
     if (!snapshot) throw new Error('Harness lease renewal returned no state.')
     return snapshot
+  }
+
+  /**
+   * Renews the lease for the execution that owns the run. Tool calls from one step run concurrently and each
+   * renews, so a renewal can lose the revision race to another call's renewal or progress write. A lost race is
+   * retried against a fresh read, which re-checks that this execution still owns the run.
+   */
+  async renewOwnedLease(owner: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    executionGeneration: number
+  }): Promise<'renewed' | 'ownership_changed'> {
+    for (let attempt = 1; ; attempt += 1) {
+      const current = await this.get({ actorUserId: owner.actorUserId, runId: owner.runId })
+      if (!current || current.workflowRunId !== owner.workflowRunId
+        || (current.executionGeneration ?? 0) !== owner.executionGeneration) {
+        return 'ownership_changed'
+      }
+      try {
+        await this.renewLease({
+          ...owner, expectedRevision: current.revision, now: Date.now(), leaseMs: 24 * 60 * 60 * 1_000,
+        })
+        return 'renewed'
+      } catch (error) {
+        const conflict = error instanceof Error && error.message.includes('HARNESS_LEASE_CAS_CONFLICT')
+        if (!conflict || attempt >= MAX_LEASE_RENEWAL_ATTEMPTS) throw error
+      }
+    }
   }
 
   async handoffContinuation(input: {

@@ -195,6 +195,7 @@ implements ConversationCollaborationRepository {
     emitEvent?: boolean
     messageId: string
     parts?: Array<Record<string, unknown>>
+    toolPart?: Record<string, unknown>
     workspaceId: string
   }) {
     await convex.mutation('collaboration/directMessages:appendAgentMessageDelta', {
