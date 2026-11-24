@@ -18,7 +18,7 @@ import { ChangesPanel, ProgressPanel } from './ThreadPanel.parts'
 export const PANEL_META: Record<ThreadPanelKind, { label: string; icon: LucideIcon; hint: string }> = {
   assignments: { label: 'Assignments', icon: GitBranch, hint: 'Work handed to other agents' },
   progress: { label: 'Progress', icon: ListChecks, hint: 'Plan and activity' },
-  computer: { label: 'Computer', icon: Monitor, hint: 'Watch or take control' },
+  computer: { label: 'Cloud computer', icon: Monitor, hint: "The agent's machine in the cloud, not your Mac" },
   changes: { label: 'Changes', icon: GitCompare, hint: 'Edits and pull requests' },
   files: { label: 'Files', icon: Folder, hint: 'What this thread made' },
   agent: { label: 'Settings', icon: SlidersHorizontal, hint: 'Model, instructions, tools' },

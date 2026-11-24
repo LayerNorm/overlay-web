@@ -16,6 +16,8 @@ import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogP
 import { applyMarkupToDollars } from '../lib/usageMarkup'
 import { chargeProviderUsageDirect, checkProviderBudget } from '../lib/providerBudgetCharge'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
+import { isSharedRoom } from '../../src/shared/agents/room-access'
+import { retargetMemoryIndex } from '../lib/memoryChunks'
 import {
   KNOWLEDGE_CHUNK_CHARS,
   KNOWLEDGE_CHUNK_OVERLAP,
@@ -386,10 +388,9 @@ export const listWorkspaceMemoryUserIds = internalQuery({
         .filter((membership) => membership.status === 'active')
         .map((membership) => membership.principalId),
     )
-    // Agents own memories the same way members do, under a synthetic owner id
-    // derived from the agent id. Their memories are workspace knowledge, so
-    // they join the recall scope for every member of the workspace rather than
-    // staying private to the agent that wrote them.
+    // What an agent learns in a workspace context is kept under a synthetic owner
+    // id derived from the agent id (agent-memory.ts). That is workspace knowledge,
+    // so it joins the recall scope for every member of the workspace.
     const userIds = principals.flatMap((principal) => {
       if (principal.archivedAt || !activePrincipalIds.has(principal.principalId)) return []
       if (principal.type === 'human' && principal.userId) return [principal.userId]
@@ -536,11 +537,46 @@ export const backfillMemoryVisibilityByServer = mutation({
 })
 
 /**
- * Gives each personal Overlay's past memories to the person it belongs to, as their private memories: before this, a
- * personal Overlay remembered as itself, which made what it learned workspace knowledge that shared rooms (Slack
- * channels) could recall. Pure patches, no re-embedding; idempotent. `dryRun` only counts. Run until `isDone`.
+ * Who should keep an agent-owned memory under "memories follow the place" (WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1),
+ * or null to keep it as the agent's workspace knowledge: a personal Overlay's go to its owner, a creator-only agent's
+ * to its creator, and a workspace agent's to the one person in the 1:1 chat it was learned in.
  */
-export const movePersonalOverlayMemoriesToOwnersByServer = mutation({
+async function memoryPlaceOwner(
+  ctx: MutationCtx,
+  agent: Doc<'workspaceAgentDefinitions'>,
+  creatorUserId: string | null,
+  memory: Doc<'memories'>,
+): Promise<string | null> {
+  if (agent.agentRole === 'personal_chief') return agent.chiefOwnerUserId ?? null
+  if (agent.visibility === 'creator') return creatorUserId
+  const conversationId = memory.conversationId ? ctx.db.normalizeId('conversations', memory.conversationId) : null
+  const conversation = conversationId ? await ctx.db.get(conversationId) : null
+  if (!conversation) return null
+  if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined
+    || conversation.origin?.kind === 'channel') return null
+  const humans = (await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', conversation._id))
+    .collect()).filter((participant) => participant.status === 'active' && participant.principalType === 'human')
+  if (humans.length !== 1 || isSharedRoom({
+    conversationType: conversation.conversationType ?? 'personal',
+    channelVisibility: conversation.channelVisibility,
+    humanParticipants: humans.length,
+  })) return null
+  return await principalUserId(ctx, humans[0]!.principalId)
+}
+
+async function principalUserId(ctx: MutationCtx, principalId: string): Promise<string | null> {
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', principalId))
+    .unique()
+  return principal?.type === 'human' && principal.userId ? principal.userId : null
+}
+
+/**
+ * Moves agent memories saved before "memories follow the place" to where they belong (`memoryPlaceOwner`), as that
+ * person's private memories. Pure patches, no re-embedding; idempotent. `dryRun` only counts. Run until `isDone`.
+ */
+export const moveAgentMemoriesToTheirPlaceByServer = mutation({
   args: {
     serverSecret: v.string(),
     dryRun: v.boolean(),
@@ -552,28 +588,27 @@ export const movePersonalOverlayMemoriesToOwnersByServer = mutation({
     const page = await ctx.db
       .query('workspaceAgentDefinitions')
       .order('asc')
-      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 50 })
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 20 })
     let memoriesMoved = 0
     let chunksMoved = 0
+    let memoriesKept = 0
     for (const agent of page.page) {
-      if (agent.agentRole !== 'personal_chief' || !agent.chiefOwnerUserId) continue
-      const owner = agent.chiefOwnerUserId
       const memories = await ctx.db.query('memories')
         .withIndex('by_userId', (q) => q.eq('userId', agentMemoryOwnerId(agent.agentId)))
         .collect()
+      if (memories.length === 0) continue
+      const creatorUserId = await principalUserId(ctx, agent.createdByPrincipalId)
       for (const memory of memories) {
+        const owner = await memoryPlaceOwner(ctx, agent, creatorUserId, memory)
+        if (!owner) { memoriesKept++; continue }
         memoriesMoved++
-        const chunks = await ctx.db.query('knowledgeChunks')
-          .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
-          .collect()
-        chunksMoved += chunks.length
         if (dryRun) continue
         await ctx.db.patch(memory._id, { userId: owner, visibility: 'owner' })
-        await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { userId: owner, visibility: 'owner' })))
+        chunksMoved += await retargetMemoryIndex(ctx, memory._id, { userId: owner, visibility: 'owner' })
       }
     }
     return {
-      scanned: page.page.length, memoriesMoved, chunksMoved,
+      scanned: page.page.length, memoriesMoved, chunksMoved, memoriesKept,
       isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
     }
   },

@@ -120,7 +120,7 @@ test('agent turns carry role-tagged messages and loaded context, not a flattened
   assert.doesNotMatch(workflowInput, /^\s*prompt: \[/m)
 })
 
-test('an agent memory write is owned by the agent, not by whoever summoned it', async () => {
+test('an agent memory write follows the room it was learned in', async () => {
   const [tooling, preparation, delivery, memoryRoute] = await Promise.all([
     readFile(`${root}/src/server/agents/agent-tooling.ts`, 'utf8'),
     readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
@@ -128,12 +128,13 @@ test('an agent memory write is owned by the agent, not by whoever summoned it', 
     readFile(`${root}/src/server/app-api/v1/memory/route.ts`, 'utf8'),
   ])
 
-  assert.match(tooling, /memoryOwnerId: args\.memoryOwnerId/)
-  assert.match(preparation, /memoryOwnerId: agentMemoryOwner\(agent\)/)
+  assert.match(tooling, /memoryOwnerForPlace\(\{\s*actorUserId: args\.actorUserId, agent: args\.memoryAgent, workspaceContext: sharedRoom,/)
+  assert.match(preparation, /memoryAgent: agent/)
   assert.match(delivery, /memoryOwnerId: agentMemoryOwnerId\(access\.agentId\)/)
   assert.match(delivery, /targetActor: 'agent'/)
   assert.match(memoryRoute, /resolveMemoryOwner/)
   assert.match(memoryRoute, /Unknown agent memory owner/)
+  assert.match(memoryRoute, /This agent does not keep workspace memories/)
 })
 
 test('room memory ingestion is owner-scoped and gated by the message toggle', async () => {

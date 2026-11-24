@@ -14,7 +14,7 @@ import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snap
 import { reconcileToolInvocationOutcomes } from '@/shared/chat/tool-outcomes'
 import { readActivePublicStreams, transcriptStepHasOutput } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
-import { isSharedRoom } from '../../src/shared/agents/room-access'
+import { conversationAudienceIsShared } from '../lib/roomAudience'
 import {
   admitHarnessChild,
   admitHarnessNamedChild,
@@ -1689,23 +1689,6 @@ export const get = query({
 
 const MAX_ROOM_RESTRICTION_DEPTH = 32
 
-async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, conversationId: string): Promise<boolean> {
-  const id = ctx.db.normalizeId('conversations', conversationId)
-  const conversation = id ? await ctx.db.get(id) : null
-  if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
-  if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
-  if (conversation.origin?.kind === 'channel') return true
-  const participants = await ctx.db.query('conversationParticipants')
-    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
-    .collect()
-  return isSharedRoom({
-    conversationType: conversation.conversationType ?? 'personal',
-    channelVisibility: conversation.channelVisibility,
-    humanParticipants: participants.filter(participant => participant.status === 'active'
-      && participant.principalType === 'human').length,
-  })
-}
-
 function conversationIdFromSource(source: HarnessSource): string | null {
   return typeof source.conversationId === 'string' && source.conversationId.trim()
     ? source.conversationId
@@ -1815,6 +1798,19 @@ async function inheritedRoomRestriction(
       serverSecret, newRoomRestrictionTrail())) return true
   }
   return false
+}
+
+/**
+ * Whether what an agent learns in this conversation is workspace knowledge (`memoryOwnerForPlace`): a room others can
+ * read, or a thread an agent was asked in from one. The same lineage the room rule uses, so a turn saves workspace
+ * knowledge exactly when it could not read the asker's private material. Automations are not workspace contexts yet:
+ * they still read their owner's private memories, so what they learn stays private until they get workspace reach (P5).
+ */
+export async function conversationIsWorkspaceContext(
+  ctx: MutationCtx | QueryCtx,
+  args: { workspaceId: string; actorUserId: string; conversationId: string; serverSecret: string },
+): Promise<boolean> {
+  return await restrictionForSource(ctx, args.workspaceId, args.actorUserId, { conversationId: args.conversationId }, args.serverSecret)
 }
 
 export const resolveConversationRoomRestrictions = mutation({
