@@ -21,6 +21,19 @@ export function agentMemoryOwnerId(agentId: string): string {
   return `${AGENT_MEMORY_OWNER_PREFIX}${normalized}`
 }
 
+/**
+ * Who keeps what an agent remembers. A personal Overlay remembers for the one person it belongs to, so its memories are
+ * that person's private memories (`memory-visibility.ts` makes them `owner`) and never surface in a shared room. Every
+ * other agent remembers as itself, which is workspace knowledge.
+ */
+export function agentMemoryOwner(agent: { id: string; agentRole?: string; chiefOwnerUserId?: string }): string {
+  if (agent.agentRole === 'personal_chief') {
+    if (!agent.chiefOwnerUserId) throw new Error('A personal Overlay must have an owner')
+    return agent.chiefOwnerUserId
+  }
+  return agentMemoryOwnerId(agent.id)
+}
+
 /** Whether a memory owner id belongs to an agent rather than a human. */
 export function isAgentMemoryOwnerId(ownerId: string | undefined): boolean {
   return Boolean(ownerId?.startsWith(AGENT_MEMORY_OWNER_PREFIX))

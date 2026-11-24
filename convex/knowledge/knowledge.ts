@@ -535,6 +535,50 @@ export const backfillMemoryVisibilityByServer = mutation({
   },
 })
 
+/**
+ * Gives each personal Overlay's past memories to the person it belongs to, as their private memories: before this, a
+ * personal Overlay remembered as itself, which made what it learned workspace knowledge that shared rooms (Slack
+ * channels) could recall. Pure patches, no re-embedding; idempotent. `dryRun` only counts. Run until `isDone`.
+ */
+export const movePersonalOverlayMemoriesToOwnersByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    dryRun: v.boolean(),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { serverSecret, dryRun, cursor, numItems }) => {
+    requireServerSecret(serverSecret)
+    const page = await ctx.db
+      .query('workspaceAgentDefinitions')
+      .order('asc')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 50 })
+    let memoriesMoved = 0
+    let chunksMoved = 0
+    for (const agent of page.page) {
+      if (agent.agentRole !== 'personal_chief' || !agent.chiefOwnerUserId) continue
+      const owner = agent.chiefOwnerUserId
+      const memories = await ctx.db.query('memories')
+        .withIndex('by_userId', (q) => q.eq('userId', agentMemoryOwnerId(agent.agentId)))
+        .collect()
+      for (const memory of memories) {
+        memoriesMoved++
+        const chunks = await ctx.db.query('knowledgeChunks')
+          .withIndex('by_source', (q) => q.eq('sourceKind', 'memory').eq('sourceId', memory._id))
+          .collect()
+        chunksMoved += chunks.length
+        if (dryRun) continue
+        await ctx.db.patch(memory._id, { userId: owner, visibility: 'owner' })
+        await Promise.all(chunks.map((chunk) => ctx.db.patch(chunk._id, { userId: owner, visibility: 'owner' })))
+      }
+    }
+    return {
+      scanned: page.page.length, memoriesMoved, chunksMoved,
+      isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})
+
 export const fetchChunkPayloads = internalQuery({
   args: { ids: v.array(v.id('knowledgeChunks')) },
   handler: async (ctx, { ids }) => {

@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
+import { agentMemoryOwner } from '@/shared/agents/agent-memory'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
 import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
 import { agentAskRefusalResult } from '@/server/agents/agent-asks/AgentAskService'
@@ -64,7 +65,8 @@ async function freshTooling(call: NativeToolCall) {
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
     ...(call.context.work ? { work: call.context.work } : {}),
     idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText,
-    memoryEnabled: call.context.memoryEnabled, requestFingerprint: call.context.requestFingerprint,
+    memoryEnabled: call.context.memoryEnabled, memoryOwnerId: agentMemoryOwner(agent),
+    requestFingerprint: call.context.requestFingerprint,
     turnId: call.access.turnId, workspaceId: call.access.workspaceId,
     artifactPublicationAuthority: { kind: 'native', access: call.access, context: call.context },
   })

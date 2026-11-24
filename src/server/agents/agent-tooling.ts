@@ -6,7 +6,6 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { logger } from '@/server/observability/logger'
 import type { McpToolApprovalFn } from '@/server/tools/mcp-tools'
-import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { resolveSharedRoom } from '@/server/agents/shared-room'
 import { assignedTaskToolIdsToAdd, findAssignedTaskId, scopeAssignedTaskTools } from '@/server/agents/assigned-task-tools'
 import {
@@ -172,6 +171,8 @@ export async function buildWorkspaceAgentTooling(args: {
   idempotencyKey: string
   latestUserText?: string
   memoryEnabled: boolean
+  /** Who keeps what the agent remembers: `agentMemoryOwner(agent)`. */
+  memoryOwnerId: string
   paid: boolean
   requestFingerprint: string
   turnId: string
@@ -220,9 +221,7 @@ export async function buildWorkspaceAgentTooling(args: {
     latestUserText: args.latestUserText,
     mediaToolIntent: null,
     memoryEnabled: args.memoryEnabled,
-    // The agent remembers as itself, so what it learns accrues to the agent
-    // rather than to the memory of whoever happened to summon it.
-    memoryOwnerId: agentMemoryOwnerId(args.grant.agentId),
+    memoryOwnerId: args.memoryOwnerId,
     mode: 'chat',
     paid: args.paid,
     preloadTasks: preloadActExternalToolTasks({
