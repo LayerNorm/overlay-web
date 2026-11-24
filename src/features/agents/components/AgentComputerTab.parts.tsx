@@ -89,7 +89,7 @@ export function AgentComputerTabView({
             {waking ? 'Waking...' : 'Wake'}
           </Button>
         </div>
-        <p className="text-center text-xs text-(--muted)">{agentName}&apos;s computer</p>
+        <p className="text-center text-xs text-(--muted)">{agentName}&apos;s cloud computer</p>
       </div>
     )
   }
@@ -163,7 +163,7 @@ function ReadyComputerPreview({
     ? `You have control. ${agentName} is paused.`
     : controlledByAnotherUser
       ? `${agentName} is paused. Another member has control.`
-      : `${agentName} is working`
+      : `${agentName} is working in the cloud`
   // Taking control keeps the stream here, in the panel (widened for it), and makes it interactive.
   if (controlled && controlledByCurrentUser) {
     return (

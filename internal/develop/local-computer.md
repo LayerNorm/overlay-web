@@ -69,6 +69,12 @@ revokes its credentials. Connecting a machine follows the Computers feature
   can change its approved folders (`PATCH roots`); the host applies the change
   when it next renews its credential, within 15 minutes. `POST copy-to-files`
   copies one of them into Overlay Files once.
+- **Unavailable reasons.** When no usable Mac is found, `unavailableReason`
+  reports whether the user's Mac is offline (with its last check-in),
+  connected without local tools, or not set up, and the tool result tells the
+  agent what the user should turn on (Settings → Desktop → This computer, with
+  "Keep this computer available"; without it the desktop app leaves This
+  computer off after a restart or sign-out).
 - **Folders are a scope, not a sandbox.** Use a restricted account, container or
   VM when strict isolation is needed.
 
