@@ -96,27 +96,36 @@ function retryFailure(reason: unknown): string | undefined {
   }
 }
 
-export function describeAISDKFailure(error: object): string | undefined {
-  const name = readErrorField(error, 'name')
-  if (typeof name !== 'string' || !/^AI_[A-Za-z][A-Za-z0-9]{0,70}Error$/.test(name)) return undefined
+function isProviderContentFilter(name: string, error: object): boolean {
   const providerError = name === 'AI_TypeValidationError'
     ? readErrorField(readErrorField(error, 'value'), 'error')
     : name === 'AI_APICallError' || name === 'AI_StreamProviderError'
       ? readErrorField(readErrorField(error, 'data'), 'error')
       : undefined
-  if (readErrorField(providerError, 'code') === 'data_inspection_failed'
-    || (name === 'AI_StreamProviderError' && readErrorField(error, 'code') === 'data_inspection_failed')) {
-    return PROVIDER_CONTENT_FILTER_REASON
-  }
+  return readErrorField(providerError, 'code') === 'data_inspection_failed'
+    || (name === 'AI_StreamProviderError' && readErrorField(error, 'code') === 'data_inspection_failed')
+}
+
+function httpStatus(name: string, error: object): number | undefined {
   const rawStatus = readErrorField(error, 'statusCode')
-  const status = ['AI_APICallError', 'AI_StreamProviderError', 'AI_DownloadError'].includes(name)
+  return ['AI_APICallError', 'AI_StreamProviderError', 'AI_DownloadError'].includes(name)
     && typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
     ? rawStatus : undefined
-  const requestReason = name === 'AI_APICallError' || name === 'AI_StreamProviderError'
-    ? requestFailure(status) ?? (status === undefined && causedByNetworkTimeout(error) ? requestFailure(408) : undefined)
-    : undefined
-  const retryReason = name === 'AI_RetryError' ? retryFailure(readErrorField(error, 'reason')) : undefined
-  const description = requestReason ?? retryReason ?? descriptions[name]
+}
+
+function failureReason(name: string, error: object, status: number | undefined): string | undefined {
+  if (name === 'AI_APICallError' || name === 'AI_StreamProviderError') {
+    return requestFailure(status) ?? (status === undefined && causedByNetworkTimeout(error) ? requestFailure(408) : undefined)
+  }
+  return name === 'AI_RetryError' ? retryFailure(readErrorField(error, 'reason')) : undefined
+}
+
+export function describeAISDKFailure(error: object): string | undefined {
+  const name = readErrorField(error, 'name')
+  if (typeof name !== 'string' || !/^AI_[A-Za-z][A-Za-z0-9]{0,70}Error$/.test(name)) return undefined
+  if (isProviderContentFilter(name, error)) return PROVIDER_CONTENT_FILTER_REASON
+  const status = httpStatus(name, error)
+  const description = failureReason(name, error, status) ?? descriptions[name]
     ?? 'The AI SDK could not complete this operation. Share this error type with support.'
   const partial = name === 'AI_StreamProviderError' || name === 'AI_UIMessageStreamError' || name === 'AI_InvalidStreamPartError'
     ? ' Any partial response is incomplete.' : ''
