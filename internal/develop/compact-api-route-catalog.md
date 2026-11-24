@@ -110,7 +110,6 @@ For a description of what each route does and its associated implementation file
 
 ## Automations
 
-- `POST /api/v1/automations/project-events`
 - `POST /api/v1/automations/[id]/approve`
 - `GET /api/v1/automations/[id]/events`
 - `POST /api/v1/automations/[id]/run`

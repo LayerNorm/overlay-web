@@ -1059,7 +1059,6 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/conversations/direct-messages', reason: 'Direct message management; boundary definition pending. Protected by workspace authorization.' },
   // File ingestion routes pending full boundary definitions.
   { routePath: '/api/v1/files/ingest-jobs', reason: 'File ingestion job management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/automations/project-events', reason: 'Deployment-secret authenticated Workflow SDK projection callback, not a member BFF route.' },
   { routePath: '/api/v1/files/ingest-jobs/process', reason: 'Internal ingestion job processor; not part of the public web API reference.' },
   // Mention search and link preview pending full boundary definitions.
   // Search and share routes pending full boundary definitions.

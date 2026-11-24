@@ -122,17 +122,6 @@ crons.interval(
   {},
 )
 
-// Project workflow step events from the Workflow SDK into Convex so clients
-// can subscribe via Convex subscription instead of polling the SSE endpoint
-// every 2 seconds. This runs every 10 seconds for near-realtime updates.
-crons.interval(
-  'workflow step event projector',
-  { seconds: 10 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).automations.workflowEventProjectorRunner.runProjectionTick,
-  {},
-)
-
 // knowledgeChunks have no tombstone — a chunk is dead when its source row is.
 // Interrupted purges can strand retrievable chunks; a daily whole-table scan
 // deletes provable orphans (missing source row, tombstoned memory). The action

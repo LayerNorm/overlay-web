@@ -39,8 +39,6 @@ import type * as automations_automations from "../automations/automations.js";
 import type * as automations_browse from "../automations/browse.js";
 import type * as automations_terminalWebhook from "../automations/terminalWebhook.js";
 import type * as automations_workflowAccess from "../automations/workflowAccess.js";
-import type * as automations_workflowEventProjector from "../automations/workflowEventProjector.js";
-import type * as automations_workflowEventProjectorRunner from "../automations/workflowEventProjectorRunner.js";
 import type * as automations_workflowEvents from "../automations/workflowEvents.js";
 import type * as billing_accountModel from "../billing/accountModel.js";
 import type * as billing_accountSubscriptions from "../billing/accountSubscriptions.js";
@@ -242,8 +240,6 @@ declare const fullApi: ApiFromModules<{
   "automations/browse": typeof automations_browse;
   "automations/terminalWebhook": typeof automations_terminalWebhook;
   "automations/workflowAccess": typeof automations_workflowAccess;
-  "automations/workflowEventProjector": typeof automations_workflowEventProjector;
-  "automations/workflowEventProjectorRunner": typeof automations_workflowEventProjectorRunner;
   "automations/workflowEvents": typeof automations_workflowEvents;
   "billing/accountModel": typeof billing_accountModel;
   "billing/accountSubscriptions": typeof billing_accountSubscriptions;

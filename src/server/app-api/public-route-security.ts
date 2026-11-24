@@ -29,7 +29,6 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/[environmentId]/local-tool-calls/[callId]/result': agentHostException(['POST'], 'Signed, size-limited answer to one claimed local tool call.'),
   '/api/v1/agent-environments/operations/reconcile': internalServiceException(['POST'], 'Internal-secret authenticated machine lease metering, idle checks and retired cloud cleanup.'),
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
-  '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
   '/api/v1/harness/continuation': internalContinuationException(),
   '/api/v1/work/resume-assignment': internalServiceException(['POST'], 'Internal-secret authenticated dependency release; generation-fenced assignment claim and current permissions/budget are rechecked.'),
   '/api/v1/github/connect': {
