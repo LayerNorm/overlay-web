@@ -6,6 +6,7 @@ import {
   parseComputerRecordingStop,
   summarizeComputerRecording,
   type ComputerRecordingStatus,
+  type ComputerRecordingStop,
 } from './computer-recording'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
@@ -1328,6 +1329,9 @@ export function computerRecordingDriverArgs(input: ComputerRecordingInput):
   return { ok: true, args: pick('id') }
 }
 
+/** Finalizing an MP4 can take ffmpeg shutdown (10s) + probe (20s) + remux (120s) on the computer. */
+const COMPUTER_RECORDING_STOP_TIMEOUT_MS = 170_000
+
 /**
  * Screen recordings as proof of work. start/annotate/status are driver calls; stop finalizes an MP4 with one chapter
  * per annotation, publishes it to Files (kept until deleted) and only creates a public link when asked to.
@@ -1344,75 +1348,94 @@ export async function executeComputerRecording(options: OverlayToolsOptions, inp
       if (isLocalHostSandboxInstance(instance)) {
         throw new ComputerDesktopDriverError('recording_unsupported', 'Screen recording runs on cloud computers only.')
       }
-      return await runComputerDriverCommand(instance, `recording_${action}`, prepared.args, { requireDesktop: true })
+      return await runComputerDriverCommand(instance, `recording_${action}`, prepared.args, {
+        requireDesktop: true,
+        ...(action === 'stop' ? { timeoutMs: COMPUTER_RECORDING_STOP_TIMEOUT_MS } : {}),
+      })
     }, action === 'stop' ? 180_000 : 45_000)
   } catch (err) {
     return computerErrorResult(err, 'Screen recording failed')
   }
   if (action !== 'stop') return { success: true as const, action, ...response, computerId: resolved.computer.id }
-
   const stop = parseComputerRecordingStop(response)
   if (!stop) return { success: false as const, error: 'The recording finished but returned no file.' }
-  const stopInput = input
-  const summary = summarizeComputerRecording(stop)
+  return await publishComputerRecording(options, input, stop, resolved.computer.id)
+}
+
+async function publishComputerRecording(
+  options: OverlayToolsOptions,
+  input: ComputerRecordingInput,
+  stop: ComputerRecordingStop,
+  computerId: string,
+) {
   const recording = {
     id: stop.id,
     path: stop.path,
     durationSeconds: stop.durationSeconds,
     sizeBytes: stop.sizeBytes,
-    summary,
+    summary: summarizeComputerRecording(stop),
     counts: stop.counts,
     chapters: computerRecordingChapters(stop.annotations),
   }
-  const scope = stopInput.scope ?? 'personal'
+  const scope = input.scope ?? 'personal'
   const published = await publishComputerFile({
     request: {
       sourcePath: stop.path,
-      name: computerRecordingFileName(stop, stopInput.name),
+      name: computerRecordingFileName(stop, input.name),
       artifactId: `recording-${stop.id}`,
       mimeType: 'video/mp4',
       scope: roomListScope(options, scope) ?? scope,
     },
     authority: options.artifactPublicationAuthority,
+    grantToolId: 'computer_recording',
     userId: options.userId,
     workspaceId: options.workspaceId,
     resolveComputer: () => computerInstanceFor(options, { target: input.target, toolName: 'computer_recording' }),
   })
   if (!published.success) {
     return {
-      success: true as const, action, ...recording, published: false,
+      success: true as const, action: 'stop' as const, ...recording, published: false,
       publishError: published.message,
       note: 'The MP4 is still on the computer; publish it with computer_publish_file.',
-      computerId: resolved.computer.id,
+      computerId,
     }
   }
-  let shareUrl: string | null = null
-  let shareError: string | undefined
-  if (stopInput.public === true) {
-    try {
-      const { fileService } = await import('@/server/files/http')
-      const share = await fileService.setShare({
-        fileId: published.artifact.fileId,
-        origin: options.baseUrl ?? '',
-        userId: options.userId,
-        visibility: 'public',
-      })
-      shareUrl = share.url
-    } catch (err) {
-      shareError = err instanceof Error ? err.message : 'The public link could not be created.'
-    }
-  }
+  const share = input.public === true
+    ? await createComputerRecordingPublicLink(options, published.artifact.fileId)
+    : {}
   return {
     success: true as const,
-    action,
+    action: 'stop' as const,
     ...recording,
     published: true,
     fileId: published.artifact.fileId,
     downloadUrl: published.downloadUrl,
-    visibility: shareUrl ? 'public' as const : 'private' as const,
-    ...(shareUrl ? { shareUrl } : {}),
-    ...(shareError ? { shareError } : {}),
-    computerId: resolved.computer.id,
+    visibility: share.shareUrl ? 'public' as const : 'private' as const,
+    ...share,
+    computerId,
+  }
+}
+
+/** Public links are General access, so they follow the workspace's public-link policy like the Files share route. */
+async function createComputerRecordingPublicLink(
+  options: OverlayToolsOptions,
+  fileId: string,
+): Promise<{ shareUrl?: string; shareError?: string }> {
+  try {
+    await getOverlayServerContext().workspaceService.assertPublicLinksAllowed({
+      actorUserId: options.userId,
+      workspaceId: options.workspaceId,
+    })
+    const { fileService } = await import('@/server/files/http')
+    const share = await fileService.setShare({
+      fileId,
+      origin: options.baseUrl ?? '',
+      userId: options.userId,
+      visibility: 'public',
+    })
+    return share.url ? { shareUrl: share.url } : {}
+  } catch (err) {
+    return { shareError: err instanceof Error ? err.message : 'The public link could not be created.' }
   }
 }
 
@@ -1590,7 +1613,7 @@ function isComputerUserInControlResult(
 
 export async function executeComputerActionWithApproval<T>(
   options: Pick<OverlayToolsOptions, 'approvalMode' | 'computerApprovalContext'>,
-  toolName: 'computer_input' | 'computer_browser' | 'computer_exec' | 'computer_terminal',
+  toolName: 'computer_input' | 'computer_browser' | 'computer_exec' | 'computer_terminal' | 'computer_recording',
   input: unknown,
   operate: () => Promise<T>,
 ): Promise<T | { success: false; error: 'approval_required'; message: string }> {

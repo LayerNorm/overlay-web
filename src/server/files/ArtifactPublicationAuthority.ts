@@ -11,11 +11,16 @@ export type ArtifactPublicationAuthority =
   | { kind: 'personal'; access: PersonalHarnessAccess;
     context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'> }
 
+/** The run's grant that allows publishing: computer_publish_file, or computer_recording for its own recordings. */
+export type ComputerPublicationGrant = 'computer_publish_file' | 'computer_recording'
+
 export async function authorizeComputerPublication(options: {
   userId: string
   workspaceId?: string
   artifactPublicationAuthority?: ArtifactPublicationAuthority
+  grantToolId?: ComputerPublicationGrant
 }): Promise<ArtifactExecutionReference> {
+  const grantToolId = options.grantToolId ?? 'computer_publish_file'
   const authority = options.artifactPublicationAuthority
   if (!authority || authority.access.actorUserId !== options.userId
     || !options.workspaceId || authority.access.workspaceId !== options.workspaceId) {
@@ -23,11 +28,11 @@ export async function authorizeComputerPublication(options: {
   }
   if (authority.kind === 'native') {
     const { refreshNativeHarnessAccess } = await import('@/server/harness/native-access')
-    await refreshNativeHarnessAccess(authority.access, authority.context, 'computer_publish_file')
+    await refreshNativeHarnessAccess(authority.access, authority.context, grantToolId)
     await refreshNativeHarnessAccess(authority.access, authority.context, 'write_file')
   } else {
     const { refreshPersonalHarnessAccess } = await import('@/server/harness/personal-access')
-    await refreshPersonalHarnessAccess(authority.access, authority.context, 'computer_publish_file')
+    await refreshPersonalHarnessAccess(authority.access, authority.context, grantToolId)
     await refreshPersonalHarnessAccess(authority.access, authority.context, 'write_file')
   }
   const authorization = getOverlayServerContext().authorizationService

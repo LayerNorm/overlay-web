@@ -1148,10 +1148,18 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           public: z.boolean().optional().describe('stop: create a public share link (needs approval; only when asked)'),
           target: computerTargetSchema,
         }),
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_recording', input, { approvalMode: options.approvalMode }) }
+          : {}),
         execute: async (input) => {
           assertToolAllowed('computer_recording')
           assertToolAllowed('write_file')
-          return executeComputerRecording(options, input)
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_recording',
+            input,
+            () => executeComputerRecording(options, input),
+          )
         },
       })
     }

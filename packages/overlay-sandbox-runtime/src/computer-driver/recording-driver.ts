@@ -12,6 +12,8 @@ RECORDING_MAX_BYTES = 95 * 1024 * 1024
 RECORDING_MAX_ANNOTATIONS = 200
 RECORDING_STATUSES = ("setup", "step", "pass", "fail")
 RECORDING_STOP_WAIT_SECONDS = 10
+# Stopped recordings kept on the computer (the newest few, so an MP4 whose publication failed can still be published).
+RECORDING_KEEP_STOPPED = 5
 
 
 def recording_directory(recording_id):
@@ -40,6 +42,43 @@ def recording_process_running(pid):
             return handle.read().split(")")[-1].split()[0] != "Z"
     except OSError:
         return True
+
+
+def recording_process_identity(pid):
+    """The process start time (field 22 of /proc/<pid>/stat), so a reused PID is never mistaken for the recorder."""
+    try:
+        with open("/proc/%d/stat" % pid, "r", encoding="utf-8") as handle:
+            return handle.read().rsplit(")", 1)[-1].split()[19]
+    except (OSError, IndexError):
+        return ""
+
+
+def recording_capture_pid(directory):
+    """The recorder's PID while that same ffmpeg process is still capturing, otherwise 0."""
+    try:
+        pid = int(recording_read(os.path.join(directory, "pid"), "0") or 0)
+    except ValueError:
+        return 0
+    if not pid:
+        return 0
+    identity = recording_read(os.path.join(directory, "pid_start"), "") or ""
+    if identity and recording_process_identity(pid) != identity:
+        return 0
+    return pid if recording_process_running(pid) else 0
+
+
+def recording_prune():
+    """Deletes stopped recordings beyond the newest RECORDING_KEEP_STOPPED; never touches unstopped ones."""
+    stopped = []
+    with contextlib.suppress(OSError):
+        for entry in os.listdir(RECORDING_ROOT):
+            marker = os.path.join(RECORDING_ROOT, entry, "stopped")
+            if RECORDING_ID_PATTERN.fullmatch(entry) and os.path.isfile(marker):
+                with contextlib.suppress(OSError):
+                    stopped.append((os.path.getmtime(marker), entry))
+    stopped.sort(reverse=True)
+    for _, entry in stopped[RECORDING_KEEP_STOPPED:]:
+        shutil.rmtree(os.path.join(RECORDING_ROOT, entry), ignore_errors=True)
 
 
 def recording_active():
@@ -85,6 +124,7 @@ def recording_start(request):
         current = recording_active()
         if current:
             raise DriverError("recording_active", "A recording is already running (" + current + "). Stop it first.", detail={"id": current})
+        recording_prune()
         recording_id = "r-" + secrets.token_hex(6)
         directory = recording_directory(recording_id)
         os.makedirs(directory, mode=0o700)
@@ -116,6 +156,7 @@ def recording_start(request):
             log.close()
         started_at = time.time()
         terminal_write_text(os.path.join(directory, "pid"), str(process.pid))
+        terminal_write_text(os.path.join(directory, "pid_start"), recording_process_identity(process.pid))
         terminal_write_text(os.path.join(directory, "started_at"), repr(started_at))
         terminal_write_text(os.path.join(directory, "meta.json"), json.dumps({
             "title": title or "", "maxSeconds": max_seconds, "fps": fps, "width": width, "height": height,
@@ -144,6 +185,9 @@ def recording_annotate(request):
     if status not in RECORDING_STATUSES:
         raise DriverError("invalid_input", "status must be one of: " + ", ".join(RECORDING_STATUSES) + ".")
     started_at = float(recording_read(os.path.join(directory, "started_at"), "0") or 0)
+    if not recording_capture_pid(directory):
+        # ffmpeg stops at maxSeconds or the size cap; a note after that would point past the end of the footage.
+        raise DriverError("recording_ended", "The capture already ended (time or size limit reached). Stop the recording to save it.")
     existing = recording_annotations(directory)
     if len(existing) >= RECORDING_MAX_ANNOTATIONS:
         raise DriverError("recording_limit", "A recording can have at most %d annotations." % RECORDING_MAX_ANNOTATIONS)
@@ -170,26 +214,44 @@ def recording_probe_duration(path):
     return None
 
 
-def recording_stop(request):
-    recording_id = request.get("id")
-    directory = recording_directory(recording_id)
-    if not os.path.isdir(directory):
-        raise DriverError("not_found", "No such recording.")
-    output = os.path.join(directory, "recording.mp4")
-    pid = int(recording_read(os.path.join(directory, "pid"), "0") or 0)
-    if pid and recording_process_running(pid):
+def recording_chapter_metadata(title, annotations, duration):
+    """ffmetadata with one chapter per note, each starting at its note; a gap before the first note gets a Start chapter."""
+    lines = [";FFMETADATA1"]
+    if title:
+        lines.append("title=" + recording_escape(title))
+    end_ms = int(duration * 1000)
+    chapters = [
+        (min(int(float(item.get("t", 0)) * 1000), end_ms) if end_ms else int(float(item.get("t", 0)) * 1000),
+         "[" + str(item.get("status", "step")) + "] " + str(item.get("label", "")))
+        for item in annotations
+    ]
+    if chapters and chapters[0][0] > 0:
+        chapters.insert(0, (0, "Start"))
+    for index, (start, name) in enumerate(chapters):
+        end = chapters[index + 1][0] if index + 1 < len(chapters) else end_ms
+        if end <= start:
+            end = start + 1
+        lines += ["[CHAPTER]", "TIMEBASE=1/1000", "START=%d" % start, "END=%d" % end, "title=" + recording_escape(name)]
+    return "\n".join(lines) + "\n"
+
+
+def recording_interrupt(directory):
+    """SIGINT lets ffmpeg close the Matroska file cleanly; SIGKILL only if that same process is still running after."""
+    pid = recording_capture_pid(directory)
+    if not pid:
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.kill(pid, signal.SIGINT)
+    deadline = time.time() + RECORDING_STOP_WAIT_SECONDS
+    while time.time() < deadline and recording_capture_pid(directory):
+        time.sleep(0.1)
+    pid = recording_capture_pid(directory)
+    if pid:
         with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.kill(pid, signal.SIGINT)
-        deadline = time.time() + RECORDING_STOP_WAIT_SECONDS
-        while time.time() < deadline and recording_process_running(pid):
-            time.sleep(0.1)
-        if recording_process_running(pid):
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.kill(pid, signal.SIGKILL)
-    terminal_write_text(os.path.join(directory, "stopped"), repr(time.time()))
-    if recording_read(RECORDING_ACTIVE_PATH) == recording_id:
-        with contextlib.suppress(OSError):
-            os.unlink(RECORDING_ACTIVE_PATH)
+            os.kill(pid, signal.SIGKILL)
+
+
+def recording_finalize(directory, recording_id):
     capture = os.path.join(directory, "capture.mkv")
     if not os.path.isfile(capture) or os.path.getsize(capture) == 0:
         raise DriverError("recording_empty", "The recording captured nothing.")
@@ -198,24 +260,15 @@ def recording_stop(request):
         meta = json.loads(recording_read(os.path.join(directory, "meta.json"), "{}") or "{}")
     duration = recording_probe_duration(capture) or 0.0
     annotations = sorted(recording_annotations(directory), key=lambda item: float(item.get("t", 0)))
-    annotations = [item for item in annotations if float(item.get("t", 0)) <= duration + 1] if duration else annotations
-    lines = [";FFMETADATA1"]
-    if meta.get("title"):
-        lines.append("title=" + recording_escape(meta["title"]))
-    for index, item in enumerate(annotations):
-        start = int(float(item.get("t", 0)) * 1000)
-        end = int(float(annotations[index + 1].get("t", 0)) * 1000) if index + 1 < len(annotations) else int(duration * 1000)
-        if end <= start:
-            end = start + 1
-        lines += [
-            "[CHAPTER]", "TIMEBASE=1/1000", "START=%d" % start, "END=%d" % end,
-            "title=" + recording_escape("[" + str(item.get("status", "step")) + "] " + str(item.get("label", ""))),
-        ]
+    if duration:
+        # Notes are only accepted while ffmpeg captures; the second of slack covers ffmpeg's start-up before the first frame.
+        annotations = [item for item in annotations if float(item.get("t", 0)) <= duration + 1]
     metadata_path = os.path.join(directory, "chapters.txt")
-    terminal_write_text(metadata_path, "\n".join(lines) + "\n")
+    terminal_write_text(metadata_path, recording_chapter_metadata(meta.get("title") or "", annotations, duration))
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise DriverError("recording_unsupported", "Screen recording requires ffmpeg.", ["ffmpeg"])
+    output = os.path.join(directory, "recording.mp4")
     result = subprocess.run(
         [
             ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-i", capture, "-i", metadata_path,
@@ -241,18 +294,43 @@ def recording_stop(request):
     }
 
 
+def recording_stop(request):
+    recording_id = request.get("id")
+    directory = recording_directory(recording_id)
+    if not os.path.isdir(directory):
+        raise DriverError("not_found", "No such recording.")
+    result_path = os.path.join(directory, "result.json")
+    if os.path.exists(os.path.join(directory, "stopped")):
+        # Stopping again never signals a PID; it returns the finished MP4, or retries a finalize that failed.
+        saved = None
+        with contextlib.suppress(ValueError):
+            saved = json.loads(recording_read(result_path, "null") or "null")
+        if isinstance(saved, dict) and os.path.isfile(str(saved.get("path", ""))):
+            return saved
+    else:
+        recording_interrupt(directory)
+        terminal_write_text(os.path.join(directory, "stopped"), repr(time.time()))
+    if recording_read(RECORDING_ACTIVE_PATH) == recording_id:
+        with contextlib.suppress(OSError):
+            os.unlink(RECORDING_ACTIVE_PATH)
+    result = recording_finalize(directory, recording_id)
+    terminal_write_text(result_path, json.dumps(result))
+    with contextlib.suppress(OSError):
+        os.unlink(os.path.join(directory, "capture.mkv"))
+    return result
+
+
 def recording_status():
     recording_id = recording_active()
     if not recording_id:
         return {"active": None}
     directory = os.path.join(RECORDING_ROOT, recording_id)
     started_at = float(recording_read(os.path.join(directory, "started_at"), "0") or 0)
-    pid = int(recording_read(os.path.join(directory, "pid"), "0") or 0)
     return {
         "active": {
             "id": recording_id,
             "elapsedSeconds": round(time.time() - started_at, 1),
-            "capturing": bool(pid and recording_process_running(pid)),
+            "capturing": bool(recording_capture_pid(directory)),
             "annotations": len(recording_annotations(directory)),
         },
     }
