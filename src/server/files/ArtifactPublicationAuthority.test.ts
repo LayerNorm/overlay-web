@@ -62,6 +62,17 @@ test('refreshes both personal tool grants and fails closed without workspace aut
   })).rejects.toThrow('HARNESS_PUBLICATION_NOT_AUTHORIZED')
 })
 
+test('computer_recording publishes under its own grant', async () => {
+  await authorizeComputerPublication({
+    userId: 'user',
+    workspaceId: 'workspace',
+    artifactPublicationAuthority: { kind: 'native', access, context: {} as never },
+    grantToolId: 'computer_recording',
+  })
+  expect(mocks.refreshNativeHarnessAccess.mock.calls.map(call => call[2]))
+    .toEqual(['computer_recording', 'write_file'])
+})
+
 test('rejects when the files.upload capability is unavailable', async () => {
   mocks.getOverlayServerContext.mockReturnValue({
     authorizationService: {

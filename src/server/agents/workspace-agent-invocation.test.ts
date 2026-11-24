@@ -121,13 +121,15 @@ test('agent turns carry role-tagged messages and loaded context, not a flattened
 })
 
 test('an agent memory write is owned by the agent, not by whoever summoned it', async () => {
-  const [tooling, delivery, memoryRoute] = await Promise.all([
+  const [tooling, preparation, delivery, memoryRoute] = await Promise.all([
     readFile(`${root}/src/server/agents/agent-tooling.ts`, 'utf8'),
+    readFile(`${root}/src/server/agents/workspace-agent-preparation.ts`, 'utf8'),
     readFile(`${root}/src/server/harness/native-delivery-steps.ts`, 'utf8'),
     readFile(`${root}/src/server/app-api/v1/memory/route.ts`, 'utf8'),
   ])
 
-  assert.match(tooling, /memoryOwnerId: agentMemoryOwnerId\(args\.grant\.agentId\)/)
+  assert.match(tooling, /memoryOwnerId: args\.memoryOwnerId/)
+  assert.match(preparation, /memoryOwnerId: agentMemoryOwner\(agent\)/)
   assert.match(delivery, /memoryOwnerId: agentMemoryOwnerId\(access\.agentId\)/)
   assert.match(delivery, /targetActor: 'agent'/)
   assert.match(memoryRoute, /resolveMemoryOwner/)

@@ -118,6 +118,11 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/github/repositories', methods: { GET: authenticated() } },
   { path: '/api/v1/github/connect', methods: { GET: authenticated() } },
   { path: '/api/v1/github/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/install', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/oauth', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/link', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/link/callback', methods: { GET: authenticated() } },
+  { path: '/api/v1/integrations/slack/events', methods: { POST: publicPolicy() } },
   {
     path: '/api/v1/agent-environments/:environmentId/revoke',
     methods: { POST: authenticated() },
@@ -354,7 +359,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   // Called by the Convex ingestion runner with the internal API secret.
   { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
-  { path: '/api/v1/automations/project-events', methods: { POST: internal() } },
   { path: '/api/v1/harness/continuation', methods: { POST: internal() } },
   { path: '/api/v1/work/resume-assignment', methods: { POST: internal() } },
   { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },

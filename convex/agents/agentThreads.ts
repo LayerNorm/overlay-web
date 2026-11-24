@@ -18,6 +18,7 @@ const threadView = v.object({
   archivedAt: v.optional(v.number()),
   pullRequests: v.optional(v.array(threadPullRequestValidator)),
   isMain: v.boolean(),
+  origin: v.optional(v.object({ platform: v.literal('slack'), kind: v.union(v.literal('channel'), v.literal('dm')) })),
 })
 
 const agentAutomationView = v.object({
@@ -419,6 +420,7 @@ export async function listAgentThreads(ctx: Ctx, args: { workspaceId: string; ag
     archivedAt,
     ...(thread.pullRequests?.length ? { pullRequests: thread.pullRequests } : {}),
     isMain: thread._id === mainThreadId,
+    ...(thread.origin ? { origin: { platform: thread.origin.platform, kind: thread.origin.kind } } : {}),
   }))
   return views.sort((a, b) => b.lastModified - a.lastModified)
 }

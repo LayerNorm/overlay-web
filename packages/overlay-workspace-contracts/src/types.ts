@@ -726,6 +726,8 @@ export type WorkspaceAgentThread = {
   pullRequests?: WorkspaceThreadPullRequest[]
   /** True for the oldest thread the caller has not archived (the main-thread designation). */
   isMain: boolean
+  /** Set when the thread started in Slack (internal/develop/slack-integration.md). */
+  origin?: { platform: 'slack'; kind: 'channel' | 'dm' }
 }
 
 /** An automation created inside an agent thread; runs append to its own thread. */

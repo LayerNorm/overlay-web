@@ -12,7 +12,7 @@ import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
-import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
+import { agentMemoryOwner, agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
@@ -705,6 +705,7 @@ export const enqueueMemoryExtraction = mutation({
       || message.deletedAt
     ) throw new Error('MESSAGE_NOT_FOUND')
 
+    let memoryOwnerId = args.memoryOwnerId
     if (args.targetActor === 'human') {
       if (message.authorKind !== 'human' || message.userId !== args.memoryOwnerId) {
         throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
@@ -722,13 +723,19 @@ export const enqueueMemoryExtraction = mutation({
         || !principal.agentId
         || agentMemoryOwnerId(principal.agentId) !== args.memoryOwnerId
       ) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      const agent = await ctx.db.query('workspaceAgentDefinitions')
+        .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId!))
+        .unique()
+      if (!agent || agent.workspaceId !== args.workspaceId) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      // A personal Overlay's memories are its owner's private memories.
+      memoryOwnerId = agentMemoryOwner({ ...agent, id: agent.agentId })
     }
 
     // No daily count: extraction is charged to the workspace budget like other work.
     await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
       billingActorUserId: args.actorUserId,
       conversationId: args.conversationId,
-      memoryOwnerId: args.memoryOwnerId,
+      memoryOwnerId,
       messageId: args.messageId,
       targetActor: args.targetActor,
       turnId: args.turnId,

@@ -12,6 +12,10 @@ export const CHAT_RATE_LIMITS: RateLimitSpec[] = [
 ]
 
 const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
+  'GET /api/v1/integrations/slack/install': [{ bucket: 'slack:install:ip', limit: 30, windowMs: TEN_MINUTES }],
+  'GET /api/v1/integrations/slack/oauth': [{ bucket: 'slack:oauth:ip', limit: 30, windowMs: TEN_MINUTES }],
+  'GET /api/v1/integrations/slack/link': [{ bucket: 'slack:link:ip', limit: 60, windowMs: TEN_MINUTES }],
+  'GET /api/v1/integrations/slack/link/callback': [{ bucket: 'slack:link-callback:ip', limit: 60, windowMs: TEN_MINUTES }],
   'GET /api/v1/workspace-handles/:handle': [
     { bucket: 'workspace-handles:resolve:ip', limit: 240, windowMs: TEN_MINUTES },
     { bucket: 'workspace-handles:resolve:user', limit: 120, windowMs: TEN_MINUTES },

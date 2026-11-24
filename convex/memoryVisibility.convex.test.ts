@@ -102,3 +102,37 @@ describe('backfilling memories from before the rule', () => {
     expect(await convex.mutation(backfill, { serverSecret: secret, dryRun: false })).toMatchObject({ madePrivate: 0, chunksMadePrivate: 0 })
   })
 })
+
+describe('moving a personal Overlay’s past memories to its owner', () => {
+  const move = makeFunctionReference<'mutation'>('knowledge/knowledge:movePersonalOverlayMemoriesToOwnersByServer')
+  const defineAgent = (convex: Convex, agentId: string, extra: Record<string, unknown>) => convex.run(async (ctx) => {
+    await ctx.db.insert('workspaceAgentDefinitions', {
+      agentId, workspaceId: 'ws-1', principalId: `p-${agentId}`, name: agentId, instructions: '', harness: 'overlay',
+      modelId: 'model', allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'p-alice',
+      createdAt: 1, updatedAt: 1, ...extra,
+    } as never)
+  })
+
+  test('its memories become the owner’s private ones; a workspace agent’s stay shared', async () => {
+    const convex = convexTest(schema, modules)
+    await defineAgent(convex, 'personal', { agentRole: 'personal_chief', chiefOwnerUserId: 'alice' })
+    await defineAgent(convex, 'chief', { agentRole: 'workspace_chief' })
+    await save(convex, agentMemoryOwnerId('personal'), 'Alice’s favorite fruit is durian')
+    await save(convex, agentMemoryOwnerId('chief'), 'Standup is at 10')
+    expect(await recalledBy(convex, 'bob')).toEqual(['Alice’s favorite fruit is durian', 'Standup is at 10'])
+
+    const dry = await convex.mutation(move, { serverSecret: secret, dryRun: true })
+    expect(dry.memoriesMoved).toBe(1)
+    expect(await recalledBy(convex, 'bob')).toHaveLength(2)
+
+    const result = await convex.mutation(move, { serverSecret: secret, dryRun: false })
+    expect(result).toMatchObject({ memoriesMoved: 1, isDone: true })
+    expect(await recalledBy(convex, 'bob')).toEqual(['Standup is at 10'])
+    expect(await recalledBy(convex, 'alice')).toEqual(['Alice’s favorite fruit is durian', 'Standup is at 10'])
+    const chunks = await convex.run(async (ctx) => await ctx.db.query('knowledgeChunks').collect())
+    for (const chunk of chunks.filter((c) => c.text?.includes?.('durian'))) {
+      expect(chunk).toMatchObject({ userId: 'alice', visibility: 'owner' })
+    }
+    expect((await convex.mutation(move, { serverSecret: secret, dryRun: false })).memoriesMoved).toBe(0)
+  })
+})

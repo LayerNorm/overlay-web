@@ -605,11 +605,7 @@ The synchronous `POST /api/v1/files/ingest-document` endpoint remains for backwa
 
 ### Durable workflow step events
 
-Workflow step events are projected into Convex by `automations/workflowEventProjectorRunner:runProjectionTick` every ten seconds. The action calls the deployment-secret protected `POST /api/v1/automations/project-events` bridge on its own web deployment: Workflow SDK state and credentials belong to that host. Preview callbacks use the canonical PR origin and existing hosting bypass.
-
-The bridge reads ascending SDK pages of at most 100 events without input/result payloads. Convex commits the page with its opaque SDK cursor, deduplicates source event IDs and preserves SDK timestamps; it resolves completion names through the step correlation ID. It re-reads the last page while a run is active, rather than comparing ingestion timestamps with source timestamps. Recent terminal runs are included so short executions finishing between ticks are projected; completed projections leave the pending set. Each tick visits at most twenty runs and rotates active runs by their last successful projection time. Terminal catch-up covers the previous 24 hours.
-
-Clients subscribe through `automations/workflowEvents:watchWorkflowStepEvents` or `watchAutomationRunStepEvents`; both enforce the parent automation's current access. The member-authorized SSE endpoint remains a fallback. Projection failures produce sanitized diagnostics and retain the cursor for retry. The source event ID and correlation indexes supplement the existing workflow/user/automation timestamp indexes.
+Automation runs no longer start Workflow SDK runs: they post into their bound thread and store the owner token `automation-thread:<runId>` in `automationRuns.workflowRunId` (`src/shared/automations/run-identity.ts`). The former ten-second projector cron and its `POST /api/v1/automations/project-events` bridge were removed because they asked the SDK for those tokens, failed on every tick and never finished. `workflowStepEvents` keeps the rows projected before that, and `automations/workflowEvents:watchWorkflowStepEvents` / `watchAutomationRunStepEvents` still serve them with the parent automation's access checks until phase (c) of `internal/plans/automation-threads-and-connector-return.md` removes the run visualization.
 
 ### Automation scheduling
 

@@ -45,7 +45,11 @@ import {
 } from './FileServicePayloads'
 import { serviceError } from './FileServiceErrors'
 import { verifyArtifactObject } from './verify-artifact-object'
-import { authorizeComputerPublication, type ArtifactPublicationAuthority } from './ArtifactPublicationAuthority'
+import {
+  authorizeComputerPublication,
+  type ArtifactPublicationAuthority,
+  type ComputerPublicationGrant,
+} from './ArtifactPublicationAuthority'
 import type {
   ArtifactExecutionReference,
   ComputerArtifactInput,
@@ -211,6 +215,7 @@ export class FileService {
   async verifyAndCommitComputerArtifact(args: {
     manifest: ComputerArtifactManifest
     authority: ArtifactPublicationAuthority
+    grantToolId?: ComputerPublicationGrant
   }): Promise<{ kind: 'missing' } | { kind: 'published'; artifact: PublishedComputerArtifact }> {
     const { manifest } = args
     const verification = await verifyArtifactObject({
@@ -228,6 +233,7 @@ export class FileService {
       userId: manifest.userId,
       workspaceId: manifest.workspaceId,
       artifactPublicationAuthority: args.authority,
+      grantToolId: args.grantToolId,
     })
     const fileId = await this.deps.repository.commitComputerArtifact({
       reference,

@@ -153,6 +153,47 @@ test('computer_browser typing in durable personal runs requires approval', async
   }, {}), true)
 })
 
+test('computer_recording asks before a public link and nothing else', async () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['computer_recording', 'write_file'],
+    computerApprovalContext: 'work',
+  })
+  const recording = tools.computer_recording as unknown as {
+    needsApproval?: (input: unknown, options: unknown) => boolean | Promise<boolean>
+  }
+  assert.equal(typeof recording.needsApproval, 'function')
+  const id = 'r-000000000000'
+  assert.equal(await recording.needsApproval?.({ action: 'stop', id, public: true }, {}), true)
+  assert.equal(await recording.needsApproval?.({ action: 'stop', id }, {}), false)
+  assert.equal(await recording.needsApproval?.({ action: 'start' }, {}), false)
+  assert.equal(await recording.needsApproval?.({ action: 'annotate', id, label: 'Saved' }, {}), false)
+})
+
+test('computer_recording fails closed for a public link where no one can approve it', async () => {
+  const tools = buildOverlayToolSet({
+    userId: 'user-test',
+    baseUrl: 'http://localhost:3000',
+    allowedToolIds: ['computer_recording', 'write_file'],
+  })
+  const recording = tools.computer_recording as unknown as {
+    execute: (input: unknown, options: unknown) => Promise<unknown>
+    needsApproval?: unknown
+  }
+  assert.equal(recording.needsApproval, undefined)
+  assert.deepEqual(await recording.execute({ action: 'stop', id: 'r-000000000000', public: true }, {}), {
+    success: false,
+    error: 'approval_required',
+    message: "This action needs approval. Review it in personal chat with a connected Computer, or set this agent's Permissions to Auto.",
+  })
+  // A private stop goes straight to the computer (which fails here only because the test has no workspace).
+  assert.deepEqual(await recording.execute({ action: 'stop', id: 'r-000000000000' }, {}), {
+    success: false,
+    error: 'Computers need a workspace context.',
+  })
+})
+
 test('computer input fails closed before operate for typing while scroll still operates', async () => {
   const tools = buildOverlayToolSet({
     userId: 'user-test',

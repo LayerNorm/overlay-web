@@ -9,6 +9,7 @@ import { v } from 'convex/values'
 import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
 import { threadPullRequestValidator } from './lib/threadPullRequests'
 import { folderCopyEntryValidator, folderCopyFolderValidator, threadWorkValidator } from './lib/threadWork'
+import { conversationOriginValidator, slackTables } from './lib/slackSchema'
 
 const runPlanStepValidator = v.object({
   id: v.string(),
@@ -1374,6 +1375,8 @@ export default defineSchema({
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
     surfaceBindingId: v.optional(v.string()),
+    // Agent threads started from Slack (internal/develop/slack-integration.md): where requests come from and replies go.
+    origin: v.optional(conversationOriginValidator),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
@@ -1771,6 +1774,11 @@ export default defineSchema({
               state: v.optional(v.string()),
               toolInput: v.optional(v.any()),
               toolOutput: v.optional(v.any()),
+              // Written by persist-assistant-turn for approved, denied and provider-run tool calls.
+              providerExecuted: v.optional(v.boolean()),
+              approvalId: v.optional(v.string()),
+              approvalStatus: v.optional(v.union(v.literal('requested'), v.literal('approved'), v.literal('denied'))),
+              approvalReason: v.optional(v.string()),
             }),
           }),
           v.object({
@@ -3268,4 +3276,6 @@ export default defineSchema({
   })
     .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
     .index('by_runId_generation', ['runId', 'generation']),
+
+  ...slackTables,
 })
