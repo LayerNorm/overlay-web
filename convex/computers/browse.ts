@@ -9,7 +9,8 @@ type Viewer = Awaited<ReturnType<typeof requireNativeWorkspace>>
 /**
  * The Computers a member may see in a workspace, live, so the sidebar, agent panel and settings agree without
  * polling. Rules match the server: personal computers are owner-only; computers of workspace-visible agents are open
- * to the workspace; a creator-only agent's computer is its creator's and the workspace owner's; a computer whose
+ * to the workspace; a personal chief's computer is its person's only; another creator-only agent's computer is its
+ * creator's and the workspace owner's; a computer whose
  * agent is gone falls to the workspace owner so it can still be stopped. Provider references, leases and desktop
  * tickets never appear. Null without access or when Computers are off.
  */
@@ -51,6 +52,8 @@ async function canSee(ctx: Parameters<typeof requireNativeWorkspace>[0], viewer:
   const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', row.ownerId)).unique()
   const owner = viewer.membership.role === 'owner'
   if (!agent || agent.workspaceId !== row.workspaceId || agent.deletedAt !== undefined) return owner
+  // A personal chief's computer is its person's only, not the workspace owner's.
+  if (agent.agentRole === 'personal_chief') return agent.chiefOwnerUserId === viewer.userId
   if ((agent.visibility ?? 'workspace') === 'workspace') return true
   return agent.createdByPrincipalId === viewer.principal.principalId || owner
 }

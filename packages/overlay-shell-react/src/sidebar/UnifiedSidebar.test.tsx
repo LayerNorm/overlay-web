@@ -99,16 +99,17 @@ test('More groups keep labelled items grouped away from the primary rail', () =>
   )
 })
 
-test('the scope toggle remains available to solo workspaces', () => {
+test('one mode switch lists Workspace first and marks the current mode', () => {
   const html = render()
-  assert.match(html, /aria-pressed="true"[^>]*>Workspace</)
-  assert.match(html, /aria-pressed="false"[^>]*>Personal</)
-  assert.match(html, /aria-label="Scope"/)
+  assert.match(html, /role="radiogroup" aria-label="Mode"/)
+  assert.match(html, /aria-checked="true"[^>]*>Workspace</)
+  assert.match(html, /aria-checked="false"[^>]*>Personal</)
+  assert.ok(html.indexOf('>Workspace<') < html.indexOf('>Personal<'))
 })
 
 test('Personal scope does not show Workspace Chat subviews', () => {
   const html = render({ scope: 'personal' })
-  assert.match(html, /aria-label="Scope"/)
+  assert.match(html, /aria-label="Mode"/)
   assert.doesNotMatch(html, /Direct messages|Channels|Activity/)
 })
 
@@ -140,7 +141,7 @@ test('collapsed shows icons only, with labels as titles', () => {
   const html = render({ collapsed: true })
   assert.doesNotMatch(html, /<span>Work<\/span>/)
   assert.match(html, /title="Work"/)
-  assert.doesNotMatch(html, /aria-label="Scope"/)
+  assert.doesNotMatch(html, /aria-label="Mode"/)
   assert.doesNotMatch(html, /Direct messages/)
 })
 
@@ -194,7 +195,7 @@ test('settings turn the sidebar into a settings sidebar with search and grouped 
   assert.match(html, /href="\/app\/settings\?section=customization"/)
   assert.match(html, /aria-current="page"[^>]*href="\/app\/settings\?section=general"|href="\/app\/settings\?section=general"[^>]*aria-current="page"/)
   assert.doesNotMatch(html, /href="\/app\/work"/)
-  assert.doesNotMatch(html, /aria-label="Scope"/)
+  assert.doesNotMatch(html, /aria-label="Mode"/)
   assert.doesNotMatch(html, /aria-label="More"/)
 })
 

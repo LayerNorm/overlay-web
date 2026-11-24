@@ -6,6 +6,7 @@ import { requireServerSecret } from '../lib/auth'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { WORKSPACE_AGENT_CREATURE_SHAPES } from '@overlay/workspace-contracts'
+import { defaultPersonalChiefName } from '@/shared/workspaces/default-name'
 
 const harness = v.union(
   v.literal('overlay'),
@@ -222,9 +223,9 @@ export const listByServer = query({
 })
 
 /**
- * Atomically provisions the two chief scopes for a workspace. Convex retries
- * concurrent mutations, while deterministic IDs and role checks make retries
- * idempotent even when an older row is being adopted.
+ * Atomically provisions the workspace chief and, with `includePersonal`, the actor's own personal chief. Convex retries
+ * concurrent mutations, while deterministic IDs and role checks make retries idempotent even when an older row is
+ * being adopted.
  */
 export const ensureChiefsByServer = mutation({
   args: {
@@ -232,6 +233,7 @@ export const ensureChiefsByServer = mutation({
     workspaceId: v.string(),
     actorUserId: v.string(),
     actorPrincipalId: v.string(),
+    includePersonal: v.optional(v.boolean()),
     now: v.number(),
   },
   returns: v.array(agentValidator),
@@ -241,10 +243,14 @@ export const ensureChiefsByServer = mutation({
   },
 })
 
-/** Idempotently provisions a workspace's chief agents for an active, non-guest human member. */
+/**
+ * Idempotently provisions a workspace's chief for an active, non-guest human member, and that member's own personal
+ * chief when `includePersonal` is set. Personal chiefs are created lazily, only for the person who asks: someone who
+ * never opens Personal (or only talks to Overlay in Slack) never gets one.
+ */
 export async function ensureWorkspaceChiefs(
   ctx: MutationCtx,
-  args: { workspaceId: string; actorUserId: string; actorPrincipalId: string; now: number },
+  args: { workspaceId: string; actorUserId: string; actorPrincipalId: string; includePersonal?: boolean; now: number },
 ) {
     const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const actor = await requireActiveHumanMembership(ctx, args.workspaceId, args.actorUserId, args.actorPrincipalId)
@@ -284,44 +290,33 @@ export async function ensureWorkspaceChiefs(
           })
     }
 
-    const eligible = await eligiblePersonalOwners(ctx, workspace, args.actorUserId, args.actorPrincipalId)
     const ensured: Doc<'workspaceAgentDefinitions'>[] = [workspaceChief]
-    for (const owner of eligible) {
+    const owner = args.includePersonal
+      ? eligiblePersonalOwner(workspace, actor.principal)
+      : null
+    if (owner) {
+      // Retired shared (`chiefScope: 'workspace'`) rows are archived and ignored; only the private chief counts.
       const existingRows = live.filter((row) =>
         row.agentRole === 'personal_chief'
-        && row.chiefOwnerUserId === owner.userId)
-      if (existingRows.some((row) => row.chiefScope !== 'personal' && row.chiefScope !== 'workspace')) {
-        throw new Error('CHIEF_BINDING_INVARIANT')
-      }
-      const existingPrivateRows = existingRows.filter((row) => row.chiefScope === 'personal')
-      const existingWorkspaceRows = existingRows.filter((row) => row.chiefScope === 'workspace')
-      if (existingPrivateRows.length > 1 || existingWorkspaceRows.length > 1) {
-        throw new Error('CHIEF_ROLE_NOT_UNIQUE')
-      }
-      const existingPrivate = existingPrivateRows[0]
-      const existingWorkspace = existingWorkspaceRows[0]
-      if (existingPrivate && (existingPrivate.harness !== 'overlay' || existingPrivate.archivedAt)) {
-        throw new Error('CHIEF_BINDING_INVARIANT')
-      }
-      if (existingWorkspace && ((existingWorkspace.visibility ?? 'workspace') !== 'workspace'
-        || existingWorkspace.harness !== 'overlay' || existingWorkspace.archivedAt)) {
+        && row.chiefOwnerUserId === owner.userId
+        && row.chiefScope === 'personal')
+      if (existingRows.length > 1) throw new Error('CHIEF_ROLE_NOT_UNIQUE')
+      const existing = existingRows[0]
+      if (existing && (existing.harness !== 'overlay' || existing.archivedAt)) {
         throw new Error('CHIEF_BINDING_INVARIANT')
       }
       const oldDefault = workspace.kind === 'personal' && owner.userId === workspace.personalOwnerUserId
         ? legacy
         : undefined
       if (oldDefault?.archivedAt) throw new Error('CHIEF_BINDING_INVARIANT')
-      const personal = existingPrivate
+      const personal = existing
         ?? (oldDefault && oldDefault.agentRole === undefined
           ? await adoptChief(ctx, oldDefault, 'personal_chief', 'personal', owner.userId, args.now)
-          : await createPersonalChief(ctx, workspace, owner, 'personal', args.now))
-      const privateBinding = personal.visibility === 'creator'
+          : await createPersonalChief(ctx, workspace, owner, args.now))
+      ensured.push(personal.visibility === 'creator'
         ? personal
         : (await ctx.db.patch(personal._id, { visibility: 'creator', updatedAt: args.now }),
-          { ...personal, visibility: 'creator' as const, updatedAt: args.now })
-      const workspaceBinding = existingWorkspace
-        ?? await createPersonalChief(ctx, workspace, owner, 'workspace', args.now)
-      ensured.push(privateBinding, workspaceBinding)
+          { ...personal, visibility: 'creator' as const, updatedAt: args.now }))
     }
     return await Promise.all(ensured.map((row) => directoryValue(ctx, row)))
 }
@@ -364,7 +359,7 @@ export const updateChiefIdentityByServer = mutation({
   },
 })
 
-async function applyChiefIdentityPatch(
+export async function applyChiefIdentityPatch(
   ctx: MutationCtx,
   args: {
     ownerUserId: string
@@ -414,18 +409,8 @@ async function applyChiefIdentityPatch(
   const next = { ...identity, ...patch }
   const rows = await ctx.db.query('workspaceAgentDefinitions')
     .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
-  await Promise.all(rows.filter((row) => row.agentRole === 'personal_chief').map(async (row) => {
-    const agentPrincipal = await ctx.db.query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
-    if (agentPrincipal) {
-      await ctx.db.patch(agentPrincipal._id, {
-        displayName: next.name,
-        avatarColor: next.avatarColor,
-        avatarShape: next.avatarShape,
-        updatedAt: args.now,
-      })
-    }
-  }))
+  await Promise.all(rows.filter((row) => row.agentRole === 'personal_chief')
+    .map((row) => syncChiefIdentityRow(ctx, row, next, args.now)))
   return {
     userId: next.userId,
     name: next.name,
@@ -434,6 +419,32 @@ async function applyChiefIdentityPatch(
     avatarShape: next.avatarShape,
     createdAt: next.createdAt,
     updatedAt: next.updatedAt,
+  }
+}
+
+/** Copies a personal chief's identity onto one of its definition rows and that row's principal. */
+async function syncChiefIdentityRow(
+  ctx: MutationCtx,
+  row: Doc<'workspaceAgentDefinitions'>,
+  identity: { name: string; description?: string; avatarColor: string; avatarShape: string },
+  now: number,
+) {
+  await ctx.db.patch(row._id, {
+    name: identity.name,
+    description: identity.description,
+    avatarColor: identity.avatarColor,
+    avatarShape: identity.avatarShape,
+    updatedAt: now,
+  })
+  const agentPrincipal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
+  if (agentPrincipal) {
+    await ctx.db.patch(agentPrincipal._id, {
+      displayName: identity.name,
+      avatarColor: identity.avatarColor,
+      avatarShape: identity.avatarShape,
+      updatedAt: now,
+    })
   }
 }
 
@@ -610,52 +621,62 @@ export const archiveByServer = mutation({
       return false
     if (row.isDefault || row.agentId === `default-overlay-${args.workspaceId}`
       || row.agentRole === 'workspace_chief' || row.agentRole === 'personal_chief') return false
-    await ctx.db.patch(row._id, {
-      archivedAt: args.now,
-      updatedAt: args.now,
-      roomCount: 0,
-      teamIds: [],
-    })
-    const principal = await ctx.db
-      .query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
-      .unique()
-    if (principal)
-      await ctx.db.patch(principal._id, {
-        archivedAt: args.now,
-        updatedAt: args.now,
-      })
-    const membership = await ctx.db
-      .query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) =>
-        q
-          .eq('workspaceId', args.workspaceId)
-          .eq('principalId', row.principalId),
-      )
-      .unique()
-    if (membership)
-      await ctx.db.patch(membership._id, {
-        status: 'suspended',
-        updatedAt: args.now,
-      })
-    const participants = await ctx.db
-      .query('conversationParticipants')
-      .withIndex('by_workspaceId_principalId_status', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
-    const participantConversations = await Promise.all(participants.map((participant) =>
-      ctx.db.get(participant.conversationId)))
-    // Threads (agentId-bound conversations) keep the agent as a participant
-    // while archived so the Archived view can render them and unarchive
-    // restores without re-joining.
-    await Promise.all(participants
-      .filter((_, i) => participantConversations[i]?.agentId !== row.agentId)
-      .map((participant) => ctx.db.patch(participant._id, { status: 'removed', removedAt: args.now, updatedAt: args.now })))
-    const memberships = await ctx.db.query('workspaceTeamMemberships')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
-    await Promise.all(memberships.map((teamMembership) => ctx.db.delete(teamMembership._id)))
+    await archiveAgentRow(ctx, row, args.now)
     return true
   },
 })
+
+/** The shared, workspace-visible copy of a personal chief that earlier versions made; retired by a migration. */
+export function isRetiredSharedPersonalChief(row: Pick<Doc<'workspaceAgentDefinitions'>, 'agentRole' | 'chiefScope'>) {
+  return row.agentRole === 'personal_chief' && row.chiefScope !== 'personal'
+}
+
+/**
+ * Archives an agent: hides it, suspends its membership so it can't be mentioned or invoked, and removes it from rooms.
+ * Its own threads keep it as a participant so the Archived view can render them and unarchive restores them.
+ */
+export async function archiveAgentRow(ctx: MutationCtx, row: Doc<'workspaceAgentDefinitions'>, now: number) {
+  await ctx.db.patch(row._id, {
+    archivedAt: now,
+    updatedAt: now,
+    roomCount: 0,
+    teamIds: [],
+  })
+  const principal = await ctx.db
+    .query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
+    .unique()
+  if (principal)
+    await ctx.db.patch(principal._id, {
+      archivedAt: now,
+      updatedAt: now,
+    })
+  const membership = await ctx.db
+    .query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) =>
+      q
+        .eq('workspaceId', row.workspaceId)
+        .eq('principalId', row.principalId),
+    )
+    .unique()
+  if (membership)
+    await ctx.db.patch(membership._id, {
+      status: 'suspended',
+      updatedAt: now,
+    })
+  const participants = await ctx.db
+    .query('conversationParticipants')
+    .withIndex('by_workspaceId_principalId_status', (q) =>
+      q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
+  const participantConversations = await Promise.all(participants.map((participant) =>
+    ctx.db.get(participant.conversationId)))
+  await Promise.all(participants
+    .filter((_, i) => participantConversations[i]?.agentId !== row.agentId)
+    .map((participant) => ctx.db.patch(participant._id, { status: 'removed', removedAt: now, updatedAt: now })))
+  const memberships = await ctx.db.query('workspaceTeamMemberships')
+    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
+  await Promise.all(memberships.map((teamMembership) => ctx.db.delete(teamMembership._id)))
+}
 
 export const unarchiveByServer = mutation({
   args: { serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(), now: v.number() },
@@ -668,6 +689,8 @@ export const unarchiveByServer = mutation({
       .unique()
     if (!row || row.workspaceId !== args.workspaceId || !row.archivedAt)
       return false
+    // A retired shared personal chief stays retired: each person has one personal chief, in Personal only.
+    if (isRetiredSharedPersonalChief(row)) return false
     await ctx.db.patch(row._id, { archivedAt: undefined, updatedAt: args.now })
     const principal = await ctx.db
       .query('workspacePrincipals')
@@ -841,27 +864,14 @@ async function requireActiveHumanMembershipForPrincipal(
   return { principal, membership }
 }
 
-async function eligiblePersonalOwners(
-  ctx: MutationCtx,
+/** The actor, when they may have a personal chief here: in a personal workspace, only its owner. */
+function eligiblePersonalOwner(
   workspace: Doc<'workspaces'>,
-  actorUserId: string,
-  actorPrincipalId: string,
+  principal: Doc<'workspacePrincipals'>,
 ) {
-  const memberships = await ctx.db.query('workspaceMemberships')
-    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId)).collect()
-  const principals = await ctx.db.query('workspacePrincipals')
-    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId)).collect()
-  const principalById = new Map(principals.map((principal) => [principal.principalId, principal]))
-  return memberships
-    .filter((membership) => membership.status === 'active' && membership.role !== 'guest')
-    .map((membership) => principalById.get(membership.principalId))
-    .filter((principal): principal is NonNullable<typeof principal> =>
-      Boolean(principal && principal.type === 'human' && principal.userId && !principal.archivedAt))
-    .filter((principal) => workspace.kind === 'organization'
-      ? true
-      : principal.userId === workspace.personalOwnerUserId && principal.userId === actorUserId
-        && principal.principalId === actorPrincipalId)
-    .map((principal) => ({ userId: principal.userId!, principalId: principal.principalId }))
+  if (!principal.userId) return null
+  if (workspace.kind !== 'organization' && principal.userId !== workspace.personalOwnerUserId) return null
+  return { userId: principal.userId, principalId: principal.principalId }
 }
 
 async function adoptChief(
@@ -881,7 +891,10 @@ async function adoptChief(
   }
   await ctx.db.patch(row._id, patch)
   if (role === 'personal_chief' && ownerUserId) {
-    await ensureIdentity(ctx, ownerUserId, row, now)
+    // The adopted row keeps its ID, settings and threads but takes the personal chief's identity everywhere.
+    const identity = await ensureIdentity(ctx, ownerUserId, row, now)
+    await syncChiefIdentityRow(ctx, row, identity, now)
+    return { ...row, ...patch, name: identity.name }
   }
   return { ...row, ...patch }
 }
@@ -890,23 +903,18 @@ async function createPersonalChief(
   ctx: MutationCtx,
   workspace: Doc<'workspaces'>,
   owner: { userId: string; principalId: string },
-  scope: 'personal' | 'workspace',
   now: number,
 ) {
   const profile = await ensureIdentity(ctx, owner.userId, undefined, now)
   return await insertChief(ctx, {
     workspace,
-    agentId: scope === 'personal'
-      ? `personal-chief-${workspace.workspaceId}-${owner.userId}`
-      : `personal-chief-workspace-${workspace.workspaceId}-${owner.userId}`,
-    principalId: scope === 'personal'
-      ? `personal-chief-principal-${workspace.workspaceId}-${owner.userId}`
-      : `personal-chief-principal-workspace-${workspace.workspaceId}-${owner.userId}`,
+    agentId: `personal-chief-${workspace.workspaceId}-${owner.userId}`,
+    principalId: `personal-chief-principal-${workspace.workspaceId}-${owner.userId}`,
     role: 'personal_chief',
-    scope,
+    scope: 'personal',
     ownerUserId: owner.userId,
     createdByPrincipalId: owner.principalId,
-    visibility: scope === 'personal' ? 'creator' : 'workspace',
+    visibility: 'creator',
     name: profile.name,
     description: profile.description,
     instructions: 'You are the personal chief of staff. Help the owner plan, decide, and follow through.',
@@ -926,31 +934,11 @@ async function ensureIdentity(
   const existing = await ctx.db.query('personalChiefIdentities')
     .withIndex('by_userId', (q) => q.eq('userId', userId)).unique()
   if (existing) return existing
+  // The look of an old default agent carries over; its name never does (it was "Overlay", the workspace chief's).
   const personalDefault = source ?? await findPersonalWorkspaceDefault(ctx, userId)
-  const account = await ctx.db.query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', userId)).first()
-  const ownerPrincipals = (await ctx.db.query('workspacePrincipals')
-    .withIndex('by_userId', (q) => q.eq('userId', userId)).collect())
-    .filter((principal) => principal.type === 'human' && !principal.archivedAt)
-    .sort((a, b) => a.workspaceId.localeCompare(b.workspaceId))
-  let ownerDisplayName: string | undefined
-  for (const principal of ownerPrincipals) {
-    const membership = await ctx.db.query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) =>
-        q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)).unique()
-    if (membership?.status === 'active' && membership.role !== 'guest' && principal.displayName.trim()) {
-      ownerDisplayName = principal.displayName.trim()
-      break
-    }
-  }
-  const ownerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
-    || account?.name?.trim()
-    || ownerDisplayName
-    || account?.email?.trim()
-    || userId
   const identity = {
     userId,
-    name: personalDefault?.name ?? `${ownerName}’s Overlay`,
+    name: await defaultChiefNameForUser(ctx, userId),
     ...(personalDefault?.description === undefined ? {} : { description: personalDefault.description }),
     avatarColor: personalDefault?.avatarColor ?? '#8b5cf6',
     avatarShape: personalDefault?.avatarShape ?? 'squircle',
@@ -961,6 +949,27 @@ async function ensureIdentity(
   const inserted = await ctx.db.get(id)
   if (!inserted) throw new Error('CHIEF_IDENTITY_NOT_FOUND')
   return inserted
+}
+
+/** "<First name>’s Chief" from the person's account or workspace display name, else "Personal Chief". */
+export async function defaultChiefNameForUser(ctx: QueryCtx | MutationCtx, userId: string) {
+  const account = await ctx.db.query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId)).first()
+  const accountName = account?.firstName?.trim() || account?.name?.trim()
+  if (accountName) return defaultPersonalChiefName(accountName)
+  const ownerPrincipals = (await ctx.db.query('workspacePrincipals')
+    .withIndex('by_userId', (q) => q.eq('userId', userId)).collect())
+    .filter((principal) => principal.type === 'human' && !principal.archivedAt)
+    .sort((a, b) => a.workspaceId.localeCompare(b.workspaceId))
+  for (const principal of ownerPrincipals) {
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) =>
+        q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)).unique()
+    if (membership?.status === 'active' && membership.role !== 'guest' && principal.displayName.trim()) {
+      return defaultPersonalChiefName(principal.displayName)
+    }
+  }
+  return defaultPersonalChiefName(null)
 }
 
 async function findPersonalWorkspaceDefault(ctx: MutationCtx, userId: string) {

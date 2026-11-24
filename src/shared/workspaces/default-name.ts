@@ -22,10 +22,17 @@ export function isStartingWorkspaceName(name: string): boolean {
   return isGenericWorkspaceName(name) || /^My workspace$/i.test(name.trim()) || /^\S+[’']s workspace$/.test(name.trim())
 }
 
+/** The name a personal chief starts with, until its person renames it: "<First name>’s Chief", else "Personal Chief". */
+export function defaultPersonalChiefName(displayName?: string | null): string {
+  const fromName = firstName(displayName)
+  return fromName ? `${fromName}’s Chief` : 'Personal Chief'
+}
+
 /** Names the system filled in when it knew nothing about the person. */
 const STAND_IN_NAMES = /^(personal|member|user|guest|owner|unknown)$/i
 
-function firstName(displayName?: string | null): string | null {
+/** The first word of a person's name, capitalized; null for an email address, a stand-in or nothing. */
+export function firstName(displayName?: string | null): string | null {
   const value = displayName?.trim()
   // An email address or a stand-in is not a name.
   if (!value || value.includes('@') || STAND_IN_NAMES.test(value)) return null

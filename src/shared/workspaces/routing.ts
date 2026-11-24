@@ -1,5 +1,5 @@
 import { validateWorkspaceHandleAddress } from './handle-policy'
-import { parsePanelScope, type PanelScope } from './panel-scope'
+import { DEFAULT_PANEL_SCOPE, parsePanelScope, type PanelScope } from './panel-scope'
 
 const FALLBACK_SURFACE = 'chat'
 export const APP_SURFACES = new Set([
@@ -113,7 +113,7 @@ function parseHandleRouteShape(remaining: string[], params: URLSearchParams): Ha
     return {
       surface: 'work',
       suffix: [],
-      scope: legacyScopeFromSearch('work', params) ?? 'personal',
+      scope: legacyScopeFromSearch('work', params) ?? DEFAULT_PANEL_SCOPE,
       explicitScope: false,
       legacy: true,
     }
@@ -139,7 +139,7 @@ function parseHandleRouteShape(remaining: string[], params: URLSearchParams): Ha
   return {
     surface: first,
     suffix: remaining.slice(1),
-    scope: legacyScopeFromSearch(first, params) ?? 'personal',
+    scope: legacyScopeFromSearch(first, params) ?? DEFAULT_PANEL_SCOPE,
     explicitScope: false,
     legacy: true,
   }
@@ -413,7 +413,7 @@ export function buildWorkspaceHandleHref(
     ? 'workspace'
     : explicitScope ?? routeScope
       ?? legacyScopeFromSearch(surface, source.searchParams)
-      ?? 'personal'
+      ?? DEFAULT_PANEL_SCOPE
   const scopedSurface = SCOPED_WORKSPACE_SURFACES.has(surface)
   const location = canonicalHandlePath(
     canonicalHandle,
@@ -473,7 +473,7 @@ function workspaceSwitchScope(
   return readWorkspacePathScope(pathname)
     ?? parsePanelScope(new URLSearchParams(search).get('scope'))
     ?? currentScope
-    ?? 'personal'
+    ?? DEFAULT_PANEL_SCOPE
 }
 
 function workspaceSwitchParams(search: string, surface: string, scope: PanelScope): URLSearchParams {
@@ -532,7 +532,7 @@ export function resolveChatBasePath(pathname: string | null | undefined): string
     const parsed = parseWorkspaceHandleRoute(source.pathname, source.search)
     return buildWorkspaceHandleHref(
       routeTarget.value,
-      `/w/${encodeURIComponent(routeTarget.value)}/${parsed?.scope ?? 'personal'}/chat`,
+      `/w/${encodeURIComponent(routeTarget.value)}/${parsed?.scope ?? DEFAULT_PANEL_SCOPE}/chat`,
       parsed?.scope ?? undefined,
     )
   }

@@ -5,6 +5,7 @@ import { useConvexAuth, useMutation, useQuery } from 'convex/react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { api } from '../../convex/_generated/api'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useSavedPanelScope } from '@/hooks/use-panel-scope'
 
 export type AgentDirectory = {
   workspaceId: string | null
@@ -31,11 +32,17 @@ export function useAgentDirectory(options: { includeArchived?: boolean; enabled?
     canQuery ? { workspaceId: workspaceId!, ...(options.includeArchived ? { includeArchived: true } : {}) } : 'skip',
   )
   const ensureChiefs = useMutation(api.agents.directory.ensureChiefs)
+  // Personal (and its chief) is created the first time someone is in Personal mode; Workspace only needs Overlay.
+  // The remembered mode follows the URL's (see usePanelScopeState), so a shared Personal link counts too.
+  const includePersonal = useSavedPanelScope() === 'personal'
   useEffect(() => {
-    if (!canQuery || !workspaceId || chiefsEnsured.has(workspaceId)) return
-    chiefsEnsured.add(workspaceId)
-    void ensureChiefs({ workspaceId }).catch(() => chiefsEnsured.delete(workspaceId))
-  }, [canQuery, ensureChiefs, workspaceId])
+    if (!canQuery || !workspaceId) return
+    const key = `${workspaceId}:${includePersonal ? 'personal' : 'workspace'}`
+    if (chiefsEnsured.has(key)) return
+    chiefsEnsured.add(key)
+    void ensureChiefs({ workspaceId, ...(includePersonal ? { includePersonal: true } : {}) })
+      .catch(() => chiefsEnsured.delete(key))
+  }, [canQuery, ensureChiefs, includePersonal, workspaceId])
 
   if (!canQuery || result === undefined) {
     return { workspaceId, agents: null, canCreate: false, viewerPrincipalId: null, status: 'loading' }

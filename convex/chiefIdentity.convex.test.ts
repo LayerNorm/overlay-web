@@ -110,9 +110,11 @@ async function seedWorkspace(
   })
 }
 
-function ensure(convex: ReturnType<typeof testBackend>, workspaceId: string, userId: string, principalId: string) {
+function ensure(
+  convex: ReturnType<typeof testBackend>, workspaceId: string, userId: string, principalId: string, includePersonal = true,
+) {
   return convex.mutation(mutationFn('ensureChiefsByServer'), {
-    serverSecret: secret, workspaceId, actorUserId: userId, actorPrincipalId: principalId, now,
+    serverSecret: secret, workspaceId, actorUserId: userId, actorPrincipalId: principalId, includePersonal, now,
   } as never)
 }
 
@@ -125,7 +127,7 @@ function list(convex: ReturnType<typeof testBackend>, workspaceId: string) {
 }
 
 describe('chief identity provisioning', () => {
-  test('concurrent repeated ensure calls create one workspace and one binding per eligible owner', async () => {
+  test('concurrent repeated ensure calls create one workspace chief and only the caller’s personal chief', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
       workspaceId: 'chief-concurrent',
@@ -140,12 +142,27 @@ describe('chief identity provisioning', () => {
       ensure(convex, 'chief-concurrent', 'owner', 'principal-owner'),
       ensure(convex, 'chief-concurrent', 'owner', 'principal-owner'),
     ])
+    await ensure(convex, 'chief-concurrent', 'member', 'principal-member', false)
     const agents = await list(convex, 'chief-concurrent')
     expect(agents.filter((row) => row.agentRole === 'workspace_chief')).toHaveLength(1)
-    expect(agents.filter((row) => row.agentRole === 'personal_chief')).toHaveLength(4)
-    expect(agents.some((row) => row.chiefOwnerUserId === 'guest')).toBe(false)
+    const personal = agents.filter((row) => row.agentRole === 'personal_chief')
+    expect(personal.map((row) => [row.chiefOwnerUserId, row.chiefScope, row.visibility]))
+      .toEqual([['owner', 'personal', 'creator']])
     await expect(ensure(convex, 'chief-concurrent', 'guest', 'principal-guest'))
       .rejects.toThrow('WORKSPACE_AGENT_EDIT_FORBIDDEN')
+  })
+
+  test('without includePersonal only the workspace chief is ensured', async () => {
+    const convex = testBackend()
+    await seedWorkspace(convex, {
+      workspaceId: 'chief-lazy',
+      kind: 'organization',
+      members: [{ userId: 'owner', principalId: 'principal-owner', role: 'owner' }],
+    })
+    await ensure(convex, 'chief-lazy', 'owner', 'principal-owner', false)
+    const agents = await list(convex, 'chief-lazy')
+    expect(agents.map((row) => row.agentRole)).toEqual(['workspace_chief'])
+    expect(await convex.run(async (ctx) => ctx.db.query('personalChiefIdentities').collect())).toHaveLength(0)
   })
 
   test('adopts an explicit legacy default without changing its ID, settings, or thread reference', async () => {
@@ -192,20 +209,20 @@ describe('chief identity provisioning', () => {
     expect(agents.find((row) => row.agentRole === 'workspace_chief')?.agentId).not.toBe('ordinary-overlay')
   })
 
-  test('personal profile updates project across scopes without changing roles or grants', async () => {
+  test('personal profile updates project across workspaces without changing roles or grants', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
       workspaceId: 'chief-personal-owner',
       kind: 'personal',
       personalOwnerUserId: 'owner',
-      members: [{ userId: 'owner', principalId: 'principal-owner', role: 'owner' }],
-      defaultAgent: { agentId: 'default-overlay-chief-personal-owner', name: 'Ada Local', explicit: true },
+      members: [{ userId: 'owner', principalId: 'principal-owner', role: 'owner', displayName: 'Ada Lovelace' }],
+      defaultAgent: { agentId: 'default-overlay-chief-personal-owner', name: 'Overlay', explicit: true },
     })
     await seedWorkspace(convex, {
       workspaceId: 'chief-personal-org',
       kind: 'organization',
       members: [
-        { userId: 'owner', principalId: 'principal-owner-org', role: 'owner' },
+        { userId: 'owner', principalId: 'principal-owner-org', role: 'owner', displayName: 'Ada Lovelace' },
         { userId: 'peer', principalId: 'principal-peer', role: 'member' },
       ],
     })
@@ -213,10 +230,16 @@ describe('chief identity provisioning', () => {
     await ensure(convex, 'chief-personal-owner', 'owner', 'principal-owner')
     const before = await list(convex, 'chief-personal-org')
     const ownerBinding = before.find((row) => row.agentRole === 'personal_chief' && row.chiefOwnerUserId === 'owner')!
+    // The old default's look carries over; its name ("Overlay") never does.
     expect(ownerBinding).toMatchObject({
-      name: 'Ada Local', description: 'Legacy appearance',
+      name: 'Ada’s Chief', description: 'Legacy appearance',
       avatarColor: '#123abc', avatarShape: 'droplet',
     })
+    const adopted = (await list(convex, 'chief-personal-owner')).find((row) => row.agentId === 'default-overlay-chief-personal-owner')!
+    expect(adopted).toMatchObject({ agentRole: 'personal_chief', name: 'Ada’s Chief', isDefault: true })
+    const adoptedPrincipal = await convex.run(async (ctx) => ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', 'principal-default-overlay-chief-personal-owner')).unique())
+    expect(adoptedPrincipal?.displayName).toBe('Ada’s Chief')
     const originalTools = ownerBinding.allowedToolIds
     await convex.mutation(mutationFn('updateChiefIdentityByServer'), {
       serverSecret: secret,
@@ -232,38 +255,34 @@ describe('chief identity provisioning', () => {
     const after = orgRows.find((row) => row.agentId === ownerBinding.agentId)!
     expect(after.agentRole).toBe('personal_chief')
     expect(after.allowedToolIds).toEqual(originalTools)
-    const privateBinding = orgRows.find((row) => row.agentRole === 'personal_chief' && row.chiefScope === 'personal')!
-    const workspaceBinding = orgRows.find((row) => row.agentRole === 'personal_chief' && row.chiefScope === 'workspace')!
-    const privateInstructions = privateBinding.instructions
     await convex.mutation(mutationFn('updateByServer'), {
       serverSecret: secret,
       workspaceId: 'chief-personal-org',
-      agentId: workspaceBinding.agentId,
-      instructions: 'Workspace binding instructions',
+      agentId: ownerBinding.agentId,
+      instructions: 'Org binding instructions',
       name: 'Mixed profile',
       updatedByPrincipalId: 'principal-owner-org',
       now: now + 2,
     } as never)
-    const mixedRows = await list(convex, 'chief-personal-org')
-    expect(mixedRows.filter((row) => row.agentRole === 'personal_chief' && row.chiefOwnerUserId === 'owner')
-      .every((row) => row.name === 'Mixed profile')).toBe(true)
-    expect(mixedRows.find((row) => row.agentId === workspaceBinding.agentId)?.instructions).toBe('Workspace binding instructions')
-    expect(mixedRows.find((row) => row.agentId === privateBinding.agentId)?.instructions).not.toBe('Workspace binding instructions')
-    expect(privateInstructions).toBeDefined()
+    const allPersonal = [...await list(convex, 'chief-personal-org'), ...await list(convex, 'chief-personal-owner')]
+      .filter((row) => row.agentRole === 'personal_chief')
+    expect(allPersonal.every((row) => row.name === 'Mixed profile')).toBe(true)
+    expect(allPersonal.find((row) => row.agentId === ownerBinding.agentId)?.instructions).toBe('Org binding instructions')
+    expect(allPersonal.find((row) => row.agentId === adopted.agentId)?.instructions).not.toBe('Org binding instructions')
     await expect(convex.mutation(mutationFn('updateByServer'), {
       serverSecret: secret,
       workspaceId: 'chief-personal-org',
-      agentId: workspaceBinding.agentId,
+      agentId: ownerBinding.agentId,
       instructions: '',
       name: 'Should rollback',
       updatedByPrincipalId: 'principal-owner-org',
       now: now + 3,
     } as never)).rejects.toThrow('WORKSPACE_AGENT_INVALID')
-    expect((await list(convex, 'chief-personal-org')).find((row) => row.agentId === workspaceBinding.agentId)?.name)
+    expect((await list(convex, 'chief-personal-org')).find((row) => row.agentId === ownerBinding.agentId)?.name)
       .toBe('Mixed profile')
   })
 
-  test('personal and workspace scopes have distinct IDs and isolated threads', async () => {
+  test('the personal and workspace chiefs have distinct IDs and isolated threads', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
       workspaceId: 'chief-scopes',
@@ -272,24 +291,18 @@ describe('chief identity provisioning', () => {
     })
     await ensure(convex, 'chief-scopes', 'owner', 'principal-owner')
     const agents = await list(convex, 'chief-scopes')
-    const personal = agents.find((row) => row.agentRole === 'personal_chief' && row.chiefScope === 'personal')!
-    const personalWorkspace = agents.find((row) => row.agentRole === 'personal_chief' && row.chiefScope === 'workspace')!
+    const personal = agents.filter((row) => row.agentRole === 'personal_chief')
+    expect(personal).toHaveLength(1)
     const workspace = agents.find((row) => row.agentRole === 'workspace_chief')!
-    expect(personal.agentId).not.toBe(workspace.agentId)
-    expect(personal.agentId).not.toBe(personalWorkspace.agentId)
-    expect(personal.visibility).toBe('creator')
-    expect(personalWorkspace.visibility).toBe('workspace')
+    expect(personal[0]!.agentId).not.toBe(workspace.agentId)
+    expect(personal[0]!.visibility).toBe('creator')
     const personalThread = await convex.mutation(threadsFn('resolveMainThreadByServer'), {
-      serverSecret: secret, workspaceId: 'chief-scopes', agentId: personal.agentId, userId: 'owner',
+      serverSecret: secret, workspaceId: 'chief-scopes', agentId: personal[0]!.agentId, userId: 'owner',
     } as never) as { conversationId: string }
     const workspaceThread = await convex.mutation(threadsFn('resolveMainThreadByServer'), {
       serverSecret: secret, workspaceId: 'chief-scopes', agentId: workspace.agentId, userId: 'owner',
     } as never) as { conversationId: string }
-    const personalWorkspaceThread = await convex.mutation(threadsFn('resolveMainThreadByServer'), {
-      serverSecret: secret, workspaceId: 'chief-scopes', agentId: personalWorkspace.agentId, userId: 'owner',
-    } as never) as { conversationId: string }
     expect(personalThread.conversationId).not.toBe(workspaceThread.conversationId)
-    expect(personalThread.conversationId).not.toBe(personalWorkspaceThread.conversationId)
   })
 
   test('hides removed owners and rejects cross-workspace reads', async () => {
@@ -303,6 +316,7 @@ describe('chief identity provisioning', () => {
       ],
     })
     await ensure(convex, 'chief-owner-removal', 'owner', 'principal-owner')
+    await ensure(convex, 'chief-owner-removal', 'removed', 'principal-removed')
     const before = await list(convex, 'chief-owner-removal')
     const removed = before.find((row) => row.chiefOwnerUserId === 'removed')!
     await convex.run(async (ctx) => {
@@ -340,9 +354,10 @@ describe('chief identity provisioning', () => {
       }
     })
     await ensure(convex, 'chief-duplicate-names', 'owner', 'principal-owner')
+    await ensure(convex, 'chief-duplicate-names', 'peer', 'principal-peer')
     const agents = await list(convex, 'chief-duplicate-names')
     const personalBindings = agents.filter((row) => row.agentRole === 'personal_chief')
-    expect(personalBindings).toHaveLength(4)
+    expect(personalBindings).toHaveLength(2)
     expect(personalBindings.every((row) => row.name === 'Shared custom name')).toBe(true)
     const ownerBinding = personalBindings.find((row) => row.chiefOwnerUserId === 'owner')!
     await expect(convex.mutation(mutationFn('updateByServer'), {
@@ -358,7 +373,7 @@ describe('chief identity provisioning', () => {
     } as never)).toBe(false)
   })
 
-  test('private personal bindings retain creator visibility', async () => {
+  test('the personal chief is creator-only and named Personal Chief without a name', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
       workspaceId: 'chief-private-binding',
@@ -368,10 +383,9 @@ describe('chief identity provisioning', () => {
     })
     await ensure(convex, 'chief-private-binding', 'owner', 'principal-owner')
     const personal = (await list(convex, 'chief-private-binding')).filter((row) => row.agentRole === 'personal_chief')
-    expect(personal).toHaveLength(2)
-    expect(personal.find((row) => row.chiefScope === 'personal')?.visibility).toBe('creator')
-    expect(personal.find((row) => row.chiefScope === 'workspace')?.visibility).toBe('workspace')
-    expect(personal.find((row) => row.chiefScope === 'personal')?.isDefault).toBeUndefined()
+    expect(personal).toHaveLength(1)
+    expect(personal[0]).toMatchObject({ chiefScope: 'personal', visibility: 'creator', name: 'Personal Chief' })
+    expect(personal[0]?.isDefault).toBeUndefined()
   })
 
   test('renaming a workspace chief does not make it archivable or deletable', async () => {
@@ -400,7 +414,7 @@ describe('chief identity provisioning', () => {
     } as never)).toBe(false)
   })
 
-  test('bootstraps appearance from the owner display name when no personal default exists', async () => {
+  test('names the personal chief after the owner’s first name when no personal default exists', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
       workspaceId: 'chief-display-name',
@@ -410,7 +424,7 @@ describe('chief identity provisioning', () => {
     await ensure(convex, 'chief-display-name', 'owner-id', 'principal-owner')
     const personal = (await list(convex, 'chief-display-name')).find((row) => row.agentRole === 'personal_chief')
     expect(personal).toMatchObject({
-      name: 'Ada Lovelace’s Overlay',
+      name: 'Ada’s Chief',
       avatarColor: '#8b5cf6',
       avatarShape: 'squircle',
     })

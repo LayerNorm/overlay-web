@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import {
+  DEFAULT_PANEL_SCOPE,
   listViewForScope,
   PANEL_SCOPE_PARAM,
   PANEL_SCOPE_STORAGE_KEY,
@@ -32,8 +33,14 @@ function readSavedPanelScope(): PanelScope | null {
 // The remembered scope as last read in this tab, shared by every caller. Undefined until it has been read once, which
 // only happens after hydration, so server and first client renders still agree. Later mounts (route changes, remounts
 // keyed by workspace or scope) start from it instead of from "nothing remembered", so the scope never flips back to
-// Personal for a render and the page never asks for the wrong list.
+// the default for a render and the page never asks for the wrong list.
 let savedSnapshot: { scope: PanelScope | null } | undefined
+
+/** The remembered scope outside React (event handlers, send paths); null when nothing was chosen or storage is blocked. */
+export function readRememberedPanelScope(): PanelScope | null {
+  if (typeof window === 'undefined') return null
+  return savedSnapshot ? savedSnapshot.scope : readSavedPanelScope()
+}
 
 /** Remembers the scope for the next page (the URL still carries it for the current one). */
 export function rememberPanelScope(scope: PanelScope): void {
@@ -49,7 +56,7 @@ export function rememberPanelScope(scope: PanelScope): void {
 
 /**
  * The remembered scope, and whether it has been read yet. Before the first read (on the server and during hydration)
- * it is unknown, not Personal.
+ * it is unknown, not the default.
  *
  * The first read happens after mount rather than through useSyncExternalStore: a snapshot that differs from the
  * server's during hydration made the production app shell hang on its loading screen. Reading it in an effect keeps
@@ -79,9 +86,9 @@ export function useSavedPanelScope(): PanelScope | null {
 }
 
 /**
- * The scope every scoped page shows: the URL's scope, else the remembered choice, else Personal. `known` is false
+ * The scope every scoped page shows: the URL's scope, else the remembered choice, else Workspace. `known` is false
  * only while the URL names no scope and the remembered choice has not been read yet (the hydration render); callers
- * that redirect or load data wait for it instead of acting on a Personal guess.
+ * that redirect or load data wait for it instead of acting on a guess.
  */
 export function usePanelScopeState(): { scope: PanelScope; known: boolean } {
   const pathname = usePathname() ?? ''
@@ -107,7 +114,7 @@ export function usePanelScopeState(): { scope: PanelScope; known: boolean } {
     rememberedRequestRef.current = requested
     if (requested && requested !== savedSnapshot?.scope) rememberPanelScope(requested)
   }, [param, pathScope, savedKnown, scopeLessHandleRoot])
-  if (scopeLessHandleRoot) return { scope: 'personal', known: true }
+  if (scopeLessHandleRoot) return { scope: DEFAULT_PANEL_SCOPE, known: true }
   return {
     scope: resolvePanelScope({ pathScope, param, saved }),
     known: Boolean(pathScope ?? param) || savedKnown,

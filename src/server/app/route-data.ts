@@ -21,7 +21,7 @@ import * as filesService from '@/server/app-api/v1/files/route'
 import * as notesService from '@/server/app-api/v1/notes/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
 import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
-import { parsePanelScope } from '@/shared/workspaces/panel-scope'
+import { DEFAULT_PANEL_SCOPE, parsePanelScope } from '@/shared/workspaces/panel-scope'
 import * as workspaceHandleService from '@/server/app-api/v1/workspace-handles/[handle]/route'
 
 
@@ -94,7 +94,7 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
 
 export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
   const headerList = await headers()
-  const scope = parsePanelScope(headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)) ?? 'personal'
+  const scope = parsePanelScope(headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)) ?? DEFAULT_PANEL_SCOPE
   const [files, notes] = await Promise.all([
     callAppApi<KnowledgeFileNode[]>(
       `/api/v1/files?limit=100&summary=true&view=${scope}`,

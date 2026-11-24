@@ -5,7 +5,9 @@ Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24,
 | Phase | State |
 |---|---|
 | P1 Memories follow the place | Merged, deployed, migrated. Preview-tested for 1:1, channel and the Settings move; automations covered by unit tests only |
-| P2–P7 | Not started |
+| P2 One mode switch | Implemented on `codex/workspace-personal-mockup`; not yet merged or preview-tested |
+| P3 The Personal Chief | Implemented on the same branch; migrations not yet run anywhere |
+| P4–P7 | Not started |
 
 ## The model
 

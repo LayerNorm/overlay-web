@@ -144,19 +144,21 @@ export async function postSlackApprovalCard(args: {
   })
 }
 
-/** Offers, only to the requester, to continue a channel request privately with their personal Overlay. */
+/** Offers, only to the requester, to continue a channel request privately with their personal chief. */
 export async function postSlackPrivateOffer(args: {
   teamId: string
   channelId: string
   threadTs: string
   slackUserId: string
   conversationId: string
+  /** The chief's name when the asker already has one. */
+  chiefName?: string | null
 }): Promise<void> {
   await withSlackInstallation(args.teamId, async (instance) => {
     const { Actions, Button, Card, CardText } = instance.sdk
     await instance.thread(threadKey(args.channelId, args.threadTs)).postEphemeral(args.slackUserId, Card({
       children: [
-        CardText('Overlay doesn’t use your own files, memories or connected accounts in a channel. Your personal Overlay can answer in a DM instead.'),
+        CardText('Overlay doesn’t use your own files, memories or connected accounts in a channel. ' + (args.chiefName ?? 'Your Chief') + ' can answer in a DM instead.'),
         Actions([Button({ id: SLACK_ACTIONS.private, label: 'Ask privately', value: JSON.stringify({ c: args.conversationId }) })]),
       ],
     }), { fallbackToDM: false })

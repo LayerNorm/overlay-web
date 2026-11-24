@@ -13,29 +13,41 @@ const STORAGE_KEY = 'overlay:last-agent-by-workspace'
 
 const MAX_ENTRIES = 200
 
-type ScopedAgent = { createdByPrincipalId: string; agentRole?: string; chiefScope?: 'personal' | 'workspace' }
+type ModeAgent = { createdByPrincipalId: string; agentRole?: string; visibility?: string; chiefScope?: string }
 
-export function agentBelongsToCreatorScope<T extends ScopedAgent>(
-  agent: T,
+/**
+ * Which mode lists an agent. It follows who can see the agent, not who made it: Overlay (the workspace chief) and
+ * workspace-visible agents are Workspace; the viewer's own Personal Chief and their creator-only agents are Personal.
+ * A personal chief is never listed in Workspace and nobody else's is listed at all; a legacy personal chief bound to the
+ * workspace (`chiefScope: 'workspace'`) is listed nowhere, so each person sees exactly one chief of their own.
+ */
+export function agentModeForViewer(
+  agent: ModeAgent,
   viewerPrincipalId: string | null | undefined,
-  scope: 'personal' | 'workspace',
-): boolean {
-  if (!viewerPrincipalId) return false
-  if (agent.agentRole === 'workspace_chief') return scope === 'workspace'
-  if (agent.agentRole === 'personal_chief') {
-    return agent.chiefScope === scope && (scope === 'workspace' || agent.createdByPrincipalId === viewerPrincipalId)
-  }
-  return scope === 'personal'
-    ? agent.createdByPrincipalId === viewerPrincipalId
-    : agent.createdByPrincipalId !== viewerPrincipalId
+): 'personal' | 'workspace' | null {
+  if (!viewerPrincipalId) return null
+  if (agent.agentRole === 'workspace_chief') return 'workspace'
+  const own = agent.createdByPrincipalId === viewerPrincipalId
+  if (agent.agentRole === 'personal_chief') return own && agent.chiefScope !== 'workspace' ? 'personal' : null
+  const visibility = agent.visibility ?? 'workspace'
+  if (visibility === 'workspace') return 'workspace'
+  return own ? 'personal' : null
 }
 
-export function agentsForCreatorScope<T extends ScopedAgent>(
+export function agentBelongsToMode(
+  agent: ModeAgent,
+  viewerPrincipalId: string | null | undefined,
+  mode: 'personal' | 'workspace',
+): boolean {
+  return agentModeForViewer(agent, viewerPrincipalId) === mode
+}
+
+export function agentsForMode<T extends ModeAgent>(
   agents: readonly T[],
   viewerPrincipalId: string | null | undefined,
-  scope: 'personal' | 'workspace',
+  mode: 'personal' | 'workspace',
 ): T[] {
-  return agents.filter((agent) => agentBelongsToCreatorScope(agent, viewerPrincipalId, scope))
+  return agents.filter((agent) => agentBelongsToMode(agent, viewerPrincipalId, mode))
 }
 
 function workspaceKey(workspaceId: string | null | undefined): string {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defaultWorkspaceName, isGenericWorkspaceName, isStartingWorkspaceName } from './default-name'
+import { defaultPersonalChiefName, defaultWorkspaceName, isGenericWorkspaceName, isStartingWorkspaceName } from './default-name'
 
 test('a first workspace is named after its owner, never "Personal"', () => {
   assert.equal(defaultWorkspaceName({ displayName: 'Divyansh Lalwani' }), 'Divyansh’s workspace')
@@ -25,4 +25,12 @@ test('the stand-in names early versions gave are recognised, real names are not'
 test('only a generated name counts as a starting name, so renaming is asked once', () => {
   for (const name of ['Maya’s workspace', 'My workspace', 'Personal', 'Sam\'s workspace']) assert.equal(isStartingWorkspaceName(name), true, name)
   for (const name of ['Acme', 'Maya and Sam’s workspace', 'Design team']) assert.equal(isStartingWorkspaceName(name), false, name)
+})
+
+test('a personal chief starts as "<First name>’s Chief", or "Personal Chief" without a name', () => {
+  assert.equal(defaultPersonalChiefName('ada lovelace'), 'Ada’s Chief')
+  assert.equal(defaultPersonalChiefName('Grace'), 'Grace’s Chief')
+  for (const name of [null, undefined, '', '  ', 'ada@example.com', 'Member']) {
+    assert.equal(defaultPersonalChiefName(name), 'Personal Chief')
+  }
 })

@@ -83,7 +83,8 @@ test('shared route parser distinguishes legacy immutable ids from readable handl
 })
 
 test('scoped handle paths default roots to Work and canonicalize legacy routes without losing safe URL state', () => {
-  assert.equal(parseWorkspaceHandleRoute('/w/layernorm')?.canonicalPath, '/w/layernorm/personal/work')
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm')?.canonicalPath, '/w/layernorm/workspace/work')
+  assert.equal(parseWorkspaceHandleRoute('/w/layernorm/files')?.canonicalPath, '/w/layernorm/workspace/files')
   assert.equal(parseWorkspaceHandleRoute('/w/layernorm/workspace')?.canonicalPath, '/w/layernorm/workspace/work')
   assert.equal(
     buildCanonicalWorkspaceRedirectLocation('/w/old-name/agents/agent-1', '?view=workspace&scope=personal&tab=threads', 'new-name'),
@@ -177,6 +178,16 @@ test('workspace switching keeps the strict scope on a legacy-ID destination', ()
   )
 })
 
+test('with no scope anywhere, handle routes and workspace switches open in Workspace', () => {
+  assert.equal(buildWorkspaceHandleHref('team-a', '/app/agents'), '/w/team-a/workspace/agents')
+  assert.equal(
+    buildWorkspaceSwitchHref({ workspaceId: 'workspace-b', handle: 'team-b', pathname: '/app/files', search: '' }),
+    '/w/team-b/workspace/files',
+  )
+  assert.equal(resolveChatBasePath('/w/team-a/chat?id=chat_1'), '/w/team-a/workspace/chat?view=workspace-chats')
+  assert.equal(resolveChatBasePath('/w/team-a/personal/chat?id=chat_1'), '/w/team-a/personal/chat?view=personal')
+})
+
 test('workspace handle builders leave unknown and account-global routes unchanged', () => {
   assert.equal(buildWorkspaceHandleHref('team-a', '/app/unknown?view=all'), '/app/unknown?view=all')
   assert.equal(buildWorkspaceHandleHref('team-a', '/app/settings?section=account'), '/app/settings?section=account')
@@ -213,7 +224,7 @@ test('handle targets gate scoped content until resolution and redirect aliases s
     '/w/old-team/agents/agent_1',
     '?tab=activity&x=1',
     'new-team',
-  ), '/w/new-team/personal/agents/agent_1?tab=activity&x=1')
+  ), '/w/new-team/workspace/agents/agent_1?tab=activity&x=1')
   assert.equal(buildCanonicalWorkspaceRedirectLocation('/w/old-team/agents/id/chat', '', 'new-team'), null)
 })
 

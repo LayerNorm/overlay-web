@@ -68,3 +68,33 @@ test('a URL scope is remembered once and does not overwrite a scope another tab 
   expect(storage.stored()).toBe('personal')
   act(() => renderer.unmount())
 })
+
+test('with no scope in the URL and nothing remembered, Workspace is shown', () => {
+  installWindow(null)
+  route.pathname = '/w/team/work'
+  route.search = ''
+  const seen: string[] = []
+  function Harness() {
+    seen.push(usePanelScope())
+    return null
+  }
+  let renderer!: ReturnType<typeof create>
+  act(() => { renderer = create(<Harness />) })
+  expect(seen.at(-1)).toBe('workspace')
+  act(() => renderer.unmount())
+})
+
+test('a bare workspace root opens in Workspace even when Personal was remembered', () => {
+  installWindow('personal')
+  route.pathname = '/w/team'
+  route.search = ''
+  const seen: string[] = []
+  function Harness() {
+    seen.push(usePanelScope())
+    return null
+  }
+  let renderer!: ReturnType<typeof create>
+  act(() => { renderer = create(<Harness />) })
+  expect(seen.at(-1)).toBe('workspace')
+  act(() => renderer.unmount())
+})
