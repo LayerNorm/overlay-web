@@ -43,7 +43,7 @@ it. See `local-computer.md`.
 When `local` can't be used, the tool result says why so the agent can tell the
 user what to change: the Mac is offline (with when it last checked in; the
 desktop app can be open with This computer turned off after a restart or
-sign-out unless "Keep this computer available" is on), it is connected with
+sign-out unless "Let agents run threads on this computer" is on), it is connected with
 computer control off, or no Mac is set up. Each result also says the agent
 thread's Computer panel (labelled "Cloud computer") shows the cloud machine,
 never the user's Mac.

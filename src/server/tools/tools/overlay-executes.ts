@@ -1033,8 +1033,8 @@ const LOCAL_TARGET_UNAVAILABLE =
   "The user's computer is not connected to Overlay right now. Do not retry with target \"local\". "
   + 'Ask the user to open the Overlay desktop app on their computer (Settings → Desktop → This computer), or use the cloud Computer.'
 
-const TURN_ON_THIS_COMPUTER = 'In the Overlay desktop app on that Mac, open Settings → Desktop → This computer, turn it on, '
-  + 'and turn on "Keep this computer available" so it stays on after the app restarts.'
+const TURN_ON_THIS_COMPUTER = 'In the Overlay desktop app on that Mac, open Settings → Desktop → This computer and turn on '
+  + '"Let agents run threads on this computer". That one switch also keeps it on after the app restarts.'
 const CLOUD_PANEL_NOTE = "The Computer panel in Overlay shows the cloud Computer, a separate machine; it is not the user's Mac "
   + "and does not have the user's own browser profile."
 
@@ -1053,7 +1053,7 @@ export function localComputerUnavailableMessage(reason: LocalComputerUnavailable
     case 'offline':
       return `The user's Mac "${reason.name}" is offline: it last checked in with Overlay ${reason.lastSeenAt ? timeAgo(reason.lastSeenAt, now) : 'never'}. `
         + 'The Overlay desktop app can be open while this computer is turned off, which happens after the app restarts or signs out '
-        + `unless "Keep this computer available" is on. ${noRetry} Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
+        + `unless "Let agents run threads on this computer" is on. ${noRetry} Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
     case 'computer_control_off':
       return `The user's Mac "${reason.name}" is connected to Overlay, but computer control is turned off on it. ${noRetry} `
         + `Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
@@ -1112,8 +1112,8 @@ export async function computerInstanceFor(
   if (target === 'local') return await localComputerFor(options, toolName)
   const cloud = await cloudComputerInstanceFor(options)
   if (cloud.ok || target === 'cloud' || !cloud.unbound) return cloud
-  const local = await localComputerFor(options, toolName)
-  return local.ok ? local : cloud
+  // No cloud Computer is bound, so the Mac was the only candidate: its reason is the one the user can act on.
+  return await localComputerFor(options, toolName)
 }
 
 async function cloudComputerInstanceFor(
