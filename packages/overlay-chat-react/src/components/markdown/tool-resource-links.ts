@@ -44,7 +44,7 @@ export function resolveToolResourceHref(href: string, canonicalHrefs?: readonly 
   }
 }
 
-const CREATING_TOOLS = new Set(['write_file', 'create_note', 'generate_image', 'generate_video', 'animate_image', 'computer_publish_file'])
+const CREATING_TOOLS = new Set(['write_file', 'create_note', 'generate_image', 'generate_video', 'animate_image', 'computer_publish_file', 'computer_recording'])
 const FILE_CONTENT_URL = /\/api\/v1\/files\/([^/?#)\s"']+)\/content/g
 const MARKDOWN_EMBED = /!\[[^\]]*\]\(\s*<?([^)\s>]+)/g
 

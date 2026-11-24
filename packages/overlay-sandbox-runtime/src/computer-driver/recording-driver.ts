@@ -299,6 +299,16 @@ def recording_stop(request):
     directory = recording_directory(recording_id)
     if not os.path.isdir(directory):
         raise DriverError("not_found", "No such recording.")
+    # Overlapping stops wait for each other, so only one finalizes and the next returns its saved result.
+    with open(os.path.join(directory, "stop.lock"), "a", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            return recording_stop_locked(directory, recording_id)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def recording_stop_locked(directory, recording_id):
     result_path = os.path.join(directory, "result.json")
     if os.path.exists(os.path.join(directory, "stopped")):
         # Stopping again never signals a PID; it returns the finished MP4, or retries a finalize that failed.

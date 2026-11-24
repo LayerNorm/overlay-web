@@ -2,7 +2,7 @@ import { COMPUTER_BROWSER_DRIVER_SOURCE } from './browser-driver'
 import { COMPUTER_TERMINAL_DRIVER_SOURCE } from './terminal-driver'
 import { COMPUTER_RECORDING_DRIVER_SOURCE } from './recording-driver'
 
-export const DRIVER_VERSION = '14'
+export const DRIVER_VERSION = '15'
 
 export const COMPUTER_DRIVER_SOURCE = String.raw`#!/usr/bin/env python3
 import base64
