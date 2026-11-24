@@ -49,7 +49,7 @@ Severity:
 - No task search and no delete or archive.
 - The board uses a Move button instead of drag.
 - ~~No swipe actions~~ (fixed 2026-11-23: list rows swipe right for Done/Reopen, left for Schedule).
-- Tapping a task's status circle opens the task instead of completing it.
+- ~~Tapping a task's status circle opens the task instead of completing it~~ (fixed 2026-11-23).
 - Unassigned tasks show an empty grey circle where the assignee avatar goes.
 - Dates are typed as `YYYY-MM-DD` text instead of using a native date picker.
 - The task page has no priority, reviewer, parent, "Done when", or Approve / Request changes.

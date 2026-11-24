@@ -57,7 +57,8 @@ import {
   WORK_STATUS_LABELS,
   type WorkFilter,
 } from '../../lib/work'
-import { columnsByStatus } from '../../../src/shared/work/query'
+import { columnsByStatus, sortByRank } from '../../../src/shared/work/query'
+import { hapticImpact } from '../../lib/haptics'
 import { IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
@@ -202,7 +203,8 @@ export function WorkListView({
   onOpen: (id: string) => void
   onCreate: () => void
   canEdit: (item: WorkItem) => boolean
-  onMove: (item: WorkItem, move: Omit<MoveWorkItemRequest, 'id'>) => void
+  /** Resolves false when the move failed (the screen has already said so). */
+  onMove: (item: WorkItem, move: Omit<MoveWorkItemRequest, 'id'>) => Promise<boolean>
   onSchedule: (item: WorkItem) => void
   canCreate?: boolean
   filter?: WorkFilter
@@ -218,7 +220,26 @@ export function WorkListView({
     mine: 'Assigned to me',
     all: 'Everything',
   }
-  const visibleItems = filterWork(items, {
+  // A moved task shows its new status at once; the override lasts until the
+  // live query returns a newer version of the task, or the move fails.
+  const [pending, setPending] = useState<Record<string, { status: WorkStatus; updatedAt: number }>>({})
+  const shown = items.map((item) => {
+    const override = pending[item.id]
+    return override && override.updatedAt === item.updatedAt ? { ...item, status: override.status } : item
+  })
+  const move = (item: WorkItem, change: Omit<MoveWorkItemRequest, 'id'>) => {
+    const status = change.status ?? item.status
+    setPending((current) => ({ ...current, [item.id]: { status, updatedAt: item.updatedAt } }))
+    void onMove(item, change).then((ok) => {
+      if (!ok)
+        setPending((current) => {
+          const next = { ...current }
+          delete next[item.id]
+          return next
+        })
+    })
+  }
+  const visibleItems = filterWork(shown, {
     filter,
     query: '',
     viewer: { userId, principalId: context.principalId },
@@ -226,6 +247,13 @@ export function WorkListView({
   const groups = layout === 'Board' ? columnsByStatus(visibleItems) : groupByStatus(visibleItems)
   const people = new Map(context.people.map((person) => [person.principalId, person]))
   const today = toWorkDate(new Date(useWorkClock()))
+  // Tapping a task's status circle completes it (or reopens a done task to
+  // Todo), placing it at the end of that column, like Reminders.
+  const complete = (item: WorkItem) => {
+    const status: WorkStatus = item.status === 'done' ? 'todo' : 'done'
+    const column = sortByRank(shown.filter((task) => task.id !== item.id && task.status === status))
+    move(item, { status, afterId: column.at(-1)?.id ?? null, beforeId: null })
+  }
   const headerHeight = React.use(HeaderHeightContext) ?? 0
   const statusGroups =
     layout === 'Timeline'
@@ -262,34 +290,54 @@ export function WorkListView({
               const card = (
               <View
                 key={item.id}
-                style={
-                  layout === 'Board'
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'stretch',
+                  ...(layout === 'Board'
                     ? {
-                        flexDirection: 'row',
-                        alignItems: 'center',
                         backgroundColor: theme.surfaceSubtle,
                         borderRadius: 8,
                         marginHorizontal: 8,
                         marginBottom: 6,
                       }
-                    : undefined
-                }
+                    : {}),
+                }}
               >
+                {/* The status circle is its own target, beside the row rather
+                    than inside it, so tapping it completes the task instead of
+                    opening it. */}
+                {canEdit(item) ? (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: item.status === 'done' }}
+                    accessibilityLabel={item.status === 'done' ? 'Reopen task' : 'Mark task done'}
+                    onPress={() => {
+                      hapticImpact()
+                      complete(item)
+                    }}
+                    style={{ justifyContent: 'center', paddingLeft: layout === 'Board' ? 10 : 18, paddingRight: 12 }}
+                  >
+                    <WorkStatusIcon status={item.status} theme={theme} />
+                  </Pressable>
+                ) : (
+                  <View style={{ justifyContent: 'center', paddingLeft: layout === 'Board' ? 10 : 18, paddingRight: 12 }}>
+                    <WorkStatusIcon status={item.status} theme={theme} />
+                  </View>
+                )}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={item.title}
                   onPress={() => onOpen(item.id)}
                   style={({ pressed }) => ({
+                    flex: 1,
                     flexDirection: 'row',
                     gap: 12,
-                    paddingHorizontal: 18,
+                    paddingRight: layout === 'Board' ? 10 : 18,
                     paddingVertical: 14,
                     alignItems: 'center',
                     backgroundColor: pressed ? theme.surfaceSubtle : 'transparent',
-                    ...(layout === 'Board' ? { flex: 1, paddingHorizontal: 10 } : {}),
                   })}
                 >
-                  <WorkStatusIcon status={item.status} theme={theme} />
                   <View style={{ flex: 1 }}>
                     <T
                       numberOfLines={1}
@@ -323,10 +371,10 @@ export function WorkListView({
                 <WorkTaskMenu
                   key={item.id}
                   item={item}
-                  items={items}
+                  items={shown}
                   width={layout === 'Board' ? 254 : width}
                   swipe={layout !== 'Board'}
-                  onMove={(move) => onMove(item, move)}
+                  onMove={(change) => move(item, change)}
                   onSchedule={() => onSchedule(item)}
                 >
                   {card}

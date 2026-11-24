@@ -208,12 +208,17 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           onCreate={newTask}
           canCreate={view === 'personal' || data.context.canCreateInWorkspace}
           canEdit={canEdit}
-          onMove={(item, move) => {
-            if (!workspaceId) return
-            void moveWork(workspaceId, { ...move, id: item.id }).catch((reason) =>
-              Alert.alert('Could not move the task', workError(reason, 'Try again in a moment.')),
-            )
-          }}
+          onMove={(item, move) =>
+            workspaceId
+              ? moveWork(workspaceId, { ...move, id: item.id }).then(
+                  () => true,
+                  (reason) => {
+                    Alert.alert('Could not move the task', workError(reason, 'Try again in a moment.'))
+                    return false
+                  },
+                )
+              : Promise.resolve(false)
+          }
           onSchedule={(item) => router.push({ pathname: '/work/schedule', params: { id: item.id, scope: view } })}
         />
       )}

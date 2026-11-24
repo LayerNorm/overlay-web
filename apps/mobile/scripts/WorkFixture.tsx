@@ -233,13 +233,16 @@ export function WorkFixture({
             onCreate={() => onAction('new-task')}
             canEdit={() => true}
             onMove={(moved, { status, beforeId, afterId }) => {
-              if (refused()) return
+              if (refused()) return Promise.resolve(false)
               const before = items.find((task) => task.id === beforeId)
               const after = items.find((task) => task.id === afterId)
               const rank = rankBetween(after?.rank ?? null, before?.rank ?? null)
               setItems((values) =>
-                values.map((task) => (task.id === moved.id ? { ...task, status: status ?? task.status, rank } : task)),
+                values.map((task) =>
+                  task.id === moved.id ? { ...task, status: status ?? task.status, rank, updatedAt: Date.now() } : task,
+                ),
               )
+              return Promise.resolve(true)
             }}
             onSchedule={(item) => onAction('schedule:' + item.id)}
           />
