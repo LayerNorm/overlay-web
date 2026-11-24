@@ -5,6 +5,7 @@ import {
   HarnessPersistenceError, harnessDiagnosticForFailure, harnessDiagnosticTerminalError, INTERRUPTED_MODEL_CALL_PROVIDER,
   describeHarnessFailureCause, logHarnessFailure, stableHarnessDiagnosticId,
 } from './harness-diagnostics'
+import { preserveHarnessSDKFailure } from './execution-failure'
 
 function snapshot(overrides: Partial<HarnessSnapshot> = {}): HarnessSnapshot {
   return {
@@ -67,6 +68,30 @@ test('an open dispatch with no known cause becomes MODEL_OUTCOME_UNKNOWN with pl
     retryable: true,
     message: `The model connection dropped before the response finished. Send your message again. Diagnostic ID: ${diagnostic.diagnosticId}`,
   })
+})
+
+test.each(['UND_ERR_BODY_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'ETIMEDOUT'])(
+  'a provider request that ends with network timeout %s is a provider timeout, not a dropped connection',
+  (code) => {
+    const networkError = Object.assign(new Error('private socket detail'), { code })
+    const apiError = new APICallError({
+      message: 'Cannot connect to API: private', url: 'https://provider.invalid', requestBodyValues: {},
+      cause: Object.assign(new TypeError('terminated'), { cause: networkError }),
+    })
+    const preserved = preserveHarnessSDKFailure(apiError)
+    expect(preserved).toMatchObject({ name: 'HarnessModelFailure', message: 'The model provider request timed out. (AI_APICallError)' })
+    const open = snapshot(openDispatch)
+    expect(harnessDiagnosticForFailure('root', open, { name: 'FatalError', cause: preserved }, 'model').code).toBe('PROVIDER_TIMEOUT')
+  },
+)
+
+test('a provider request that fails without a status or timeout stays an unknown model outcome', () => {
+  const apiError = new APICallError({
+    message: 'Cannot connect to API: private', url: 'https://provider.invalid', requestBodyValues: {},
+    cause: Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }),
+  })
+  expect(harnessDiagnosticForFailure('root', snapshot(openDispatch), preserveHarnessSDKFailure(apiError), 'model').code)
+    .toBe('MODEL_OUTCOME_UNKNOWN')
 })
 
 test('the real provider cause is classified before an open dispatch', () => {
