@@ -42,3 +42,4 @@ export async function resolveSharedRoom(args: {
     return true
   }
 }
+

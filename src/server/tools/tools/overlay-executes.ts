@@ -29,7 +29,7 @@ import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-ap
 import type { OverlayToolsOptions } from './types'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import { publishComputerFile } from '@/server/files/computer-publication'
-import { LocalComputerError } from '@/server/computers/local/LocalComputerService'
+import { LocalComputerError, type LocalComputerUnavailableReason } from '@/server/computers/local/LocalComputerService'
 import { LocalHostSandboxInstance, isLocalHostSandboxInstance } from '@/server/computers/local/LocalHostSandboxInstance'
 import type { ComputerTarget } from './types'
 
@@ -1033,6 +1033,36 @@ const LOCAL_TARGET_UNAVAILABLE =
   "The user's computer is not connected to Overlay right now. Do not retry with target \"local\". "
   + 'Ask the user to open the Overlay desktop app on their computer (Settings → Desktop → This computer), or use the cloud Computer.'
 
+const TURN_ON_THIS_COMPUTER = 'In the Overlay desktop app on that Mac, open Settings → Desktop → This computer and turn on '
+  + '"Let agents run threads on this computer". That one switch also keeps it on after the app restarts.'
+const CLOUD_PANEL_NOTE = "The Computer panel in Overlay shows the cloud Computer, a separate machine; it is not the user's Mac "
+  + "and does not have the user's own browser profile."
+
+function timeAgo(then: number, now: number): string {
+  const minutes = Math.max(1, Math.round((now - then) / 60_000))
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  return `${Math.round(hours / 24)} days ago`
+}
+
+/** The agent-facing reason the user's Mac can't take this call, with the one thing the user should change. */
+export function localComputerUnavailableMessage(reason: LocalComputerUnavailableReason, now = Date.now()): string {
+  const noRetry = 'Do not retry with target "local".'
+  switch (reason.kind) {
+    case 'offline':
+      return `The user's Mac "${reason.name}" is offline: it last checked in with Overlay ${reason.lastSeenAt ? timeAgo(reason.lastSeenAt, now) : 'never'}. `
+        + 'The Overlay desktop app can be open while this computer is turned off, which happens after the app restarts or signs out '
+        + `unless "Let agents run threads on this computer" is on. ${noRetry} Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
+    case 'computer_control_off':
+      return `The user's Mac "${reason.name}" is connected to Overlay, but computer control is turned off on it. ${noRetry} `
+        + `Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
+    case 'not_set_up':
+      return `The user has not connected their own computer to Overlay. ${noRetry} Tell the user: install the Overlay desktop app, `
+        + `sign in, then open Settings → Desktop → This computer and turn it on. Or use the cloud Computer. ${CLOUD_PANEL_NOTE}`
+  }
+}
+
 const PINNED_MAC_UNAVAILABLE =
   'This thread runs on a computer that is offline, or that belongs to someone else. Do not retry computer tools. '
   + 'Tell the user: open Overlay on that computer, or start a new thread in the cloud. '
@@ -1051,7 +1081,10 @@ async function localComputerFor(options: OverlayToolsOptions, toolName: string) 
     ...(options.localEnvironmentId ? { environmentId: options.localEnvironmentId } : {}),
   })
   if (!computer) {
-    return { ok: false as const, error: options.localEnvironmentId ? PINNED_MAC_UNAVAILABLE : LOCAL_TARGET_UNAVAILABLE }
+    if (options.localEnvironmentId) return { ok: false as const, error: PINNED_MAC_UNAVAILABLE }
+    const reason = await service.unavailableReason({ workspaceId: options.workspaceId, userId: options.userId })
+      .catch((_error: unknown) => null)
+    return { ok: false as const, error: reason ? localComputerUnavailableMessage(reason) : LOCAL_TARGET_UNAVAILABLE }
   }
   const instance = new LocalHostSandboxInstance(computer, service, {
     userId: options.userId, ...(options.agentId ? { agentId: options.agentId } : {}), toolName,
@@ -1079,8 +1112,8 @@ export async function computerInstanceFor(
   if (target === 'local') return await localComputerFor(options, toolName)
   const cloud = await cloudComputerInstanceFor(options)
   if (cloud.ok || target === 'cloud' || !cloud.unbound) return cloud
-  const local = await localComputerFor(options, toolName)
-  return local.ok ? local : cloud
+  // No cloud Computer is bound, so the Mac was the only candidate: its reason is the one the user can act on.
+  return await localComputerFor(options, toolName)
 }
 
 async function cloudComputerInstanceFor(

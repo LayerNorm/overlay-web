@@ -38,3 +38,12 @@ test('workspace memory rows expose creator attribution and creator-only deletion
     { canDelete: false, creatorName: 'Grace Hopper', creatorPrincipalId: 'principal_b' },
   ])
 })
+
+test('only a memory saved as owner-only reads as private', () => {
+  const rows = memoriesToClientListRows([
+    { _id: 'private', content: 'Mine', createdAt: 1, source: 'chat', userId: 'user_a', visibility: 'owner' as const },
+    { _id: 'shared', content: 'Ours', createdAt: 2, source: 'chat', userId: 'user_a', visibility: 'workspace' as const },
+    { _id: 'legacy', content: 'Old', createdAt: 3, source: 'chat', userId: 'user_a' },
+  ], { viewerUserId: 'user_a' })
+  assert.deepEqual(rows.map((row) => row.isPrivate), [true, false, false])
+})
