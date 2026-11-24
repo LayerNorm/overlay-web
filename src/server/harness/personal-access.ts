@@ -359,16 +359,13 @@ export async function refreshPersonalHarnessAccess(
     grants.gate.runtimeEntitlements,
   )
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
-    const current = await repository.get({ actorUserId: access.actorUserId, runId: access.runId })
-    if (!current || current.workflowRunId !== access.workflowRunId
-      || (current.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
+    const renewal = await repository.renewOwnedLease({
+      actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
+      executionGeneration: access.executionGeneration ?? 0,
+    })
+    if (renewal === 'ownership_changed') {
       throw new FatalError('Personal harness execution ownership changed during lease renewal.')
     }
-    await repository.renewLease({
-      actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
-      executionGeneration: access.executionGeneration ?? 0, expectedRevision: current.revision,
-      now: Date.now(), leaseMs: 24 * 60 * 60 * 1_000,
-    })
   }
   return buildExecutionContext(access, context, grants.accountAllowedToolIds, grants.accountAllowedConnectorIds, grants.gate, sourceGrant)
 }

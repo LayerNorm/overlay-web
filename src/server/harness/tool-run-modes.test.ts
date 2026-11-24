@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { createHarnessToolScheduler, harnessRunModesConflict, harnessToolRunMode } from './tool-run-modes'
+import { createHarnessToolScheduler, harnessFileLockKey, harnessRunModesConflict, harnessToolRunMode } from './tool-run-modes'
 
 const deferred = () => {
   let resolve!: () => void
@@ -26,6 +26,29 @@ test('file locks let reads overlap and keep writes to one path in order', () => 
   expect(harnessRunModesConflict(writeA, writeB)).toBe(false)
   expect(harnessRunModesConflict(exec, readA)).toBe(true)
   expect(harnessRunModesConflict(exec, harnessToolRunMode('web_fetch', {}))).toBe(false)
+})
+
+test('path aliases share a file lock; unknown file identities lock the computer for writes', () => {
+  expect(harnessFileLockKey('/repo/sub/../a.txt')).toBe('file:/repo/a.txt')
+  expect(harnessFileLockKey('/repo//./a.txt/')).toBe('file:/repo/a.txt')
+  expect(harnessFileLockKey('src/a.txt')).toBeUndefined()
+  expect(harnessFileLockKey('~/a.txt')).toBeUndefined()
+  const write = harnessToolRunMode('computer_write_file', { path: '/tmp/output.txt' })
+  expect(harnessRunModesConflict(write, harnessToolRunMode('computer_write_file', { path: '/tmp/sub/../output.txt' }))).toBe(true)
+  const relativeWrite = harnessToolRunMode('computer_write_file', { path: 'output.txt' })
+  expect(harnessRunModesConflict(relativeWrite, harnessToolRunMode('computer_read_file', { path: '/tmp/other.txt' }))).toBe(true)
+  expect(harnessRunModesConflict(relativeWrite, harnessToolRunMode('web_search', {}))).toBe(false)
+})
+
+test('publishing a file waits for writes to that file but not for other files or reads', () => {
+  const publish = harnessToolRunMode('computer_publish_file', { sourcePath: '/tmp/video.mp4' })
+  expect(harnessRunModesConflict(publish, harnessToolRunMode('computer_write_file', { path: '/tmp/./video.mp4' }))).toBe(true)
+  expect(harnessRunModesConflict(publish, harnessToolRunMode('computer_write_file', { path: '/tmp/other.mp4' }))).toBe(false)
+  expect(harnessRunModesConflict(publish, harnessToolRunMode('computer_read_file', { path: '/tmp/video.mp4' }))).toBe(false)
+  expect(harnessRunModesConflict(
+    harnessToolRunMode('computer_publish_file', { sourcePath: 'video.mp4' }),
+    harnessToolRunMode('computer_write_file', { path: '/tmp/video.mp4' }),
+  )).toBe(true)
 })
 
 test('terminal reads share the computer while starts lock it; desktop actions serialize', () => {

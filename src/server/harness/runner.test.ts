@@ -1758,3 +1758,27 @@ test('calls that change the same resource still run one at a time in call order'
   }, f.ports)
   expect(events).toEqual(['start:one', 'end:one', 'start:two', 'end:two'])
 })
+
+test('overlapping calls renew the lease and authorize one at a time', async () => {
+  const f = fixture(false, ['web_search'], { executionPolicyVersion: 2 })
+  let admitting = 0
+  let overlapped = false
+  const guarded = async () => {
+    admitting += 1
+    if (admitting > 1) overlapped = true
+    await new Promise(resolve => setTimeout(resolve, 5))
+    admitting -= 1
+  }
+  f.ports.renewLease = guarded
+  f.ports.authorizeTool = vi.fn(guarded)
+  model(index => index === 0
+    ? [call('web_search', 's1', { q: 'a' }), call('web_search', 's2', { q: 'b' }), call('web_search', 's3', { q: 'c' })]
+    : 'Done.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { web_search: tool({ inputSchema: z.object({ q: z.string() }), execute: async ({ q }) => ({ q }) }) },
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(f.ports.authorizeTool).toHaveBeenCalledTimes(3)
+  expect(overlapped).toBe(false)
+})

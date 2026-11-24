@@ -47,11 +47,30 @@ function stringField(input: unknown, name: string): string | undefined {
   return typeof value === 'string' && value ? value : undefined
 }
 
-/** File locks normalise trivial spelling differences; anything cleverer would need the computer's filesystem. */
-function fileLock(path: string | undefined, write: boolean): HarnessResourceLock[] {
-  if (!path) return write ? [exclusive(COMPUTER)] : [shared(COMPUTER)]
-  const normalized = path.replace(/\/+/g, '/').replace(/\/\.(?=\/|$)/g, '').replace(/(.)\/$/, '$1')
-  return [shared(COMPUTER), { key: `file:${normalized}`, exclusive: write }]
+/**
+ * The lock key for a path, resolved the way the computer resolves it: `.`, `..` and repeated slashes collapse, so
+ * `/repo/sub/../a.txt` and `/repo/a.txt` share a lock. Relative and `~` paths depend on the computer's working
+ * directory, so they have no key. Symlinks are not followed; two links to one file still get different keys.
+ */
+export function harnessFileLockKey(path: string | undefined): string | undefined {
+  if (!path || !path.startsWith('/')) return undefined
+  const parts: string[] = []
+  for (const part of path.split('/')) {
+    if (part === '..') parts.pop()
+    else if (part && part !== '.') parts.push(part)
+  }
+  return `file:/${parts.join('/')}`
+}
+
+/**
+ * A file read or write takes the computer lock shared plus a lock on that file. When the file's identity is
+ * unknown, writes and snapshots lock the whole computer instead, so they cannot overlap a write to the same file
+ * under another spelling.
+ */
+function fileLock(path: string | undefined, access: 'read' | 'write' | 'snapshot'): HarnessResourceLock[] {
+  const key = harnessFileLockKey(path)
+  if (!key) return access === 'read' ? [shared(COMPUTER)] : [exclusive(COMPUTER)]
+  return [shared(COMPUTER), { key, exclusive: access === 'write' }]
 }
 
 function computerRunMode(name: string, input: unknown): HarnessToolRunMode | undefined {
@@ -59,13 +78,15 @@ function computerRunMode(name: string, input: unknown): HarnessToolRunMode | und
     case 'computer_read_file':
     case 'computer_grep':
     case 'computer_glob':
-      return { kind: 'resource', locks: fileLock(stringField(input, 'path'), false) }
+      return { kind: 'resource', locks: fileLock(stringField(input, 'path'), 'read') }
     case 'computer_list_files':
-    case 'computer_publish_file':
       return { kind: 'resource', locks: [shared(COMPUTER)] }
+    // Publication snapshots the source, so it waits for earlier writes to that file and holds later ones back.
+    case 'computer_publish_file':
+      return { kind: 'resource', locks: fileLock(stringField(input, 'sourcePath'), 'snapshot') }
     case 'computer_write_file':
     case 'computer_edit_file':
-      return { kind: 'resource', locks: fileLock(stringField(input, 'path'), true) }
+      return { kind: 'resource', locks: fileLock(stringField(input, 'path'), 'write') }
     case 'computer_exec':
     case 'computer_apply_patch':
       return { kind: 'resource', locks: [exclusive(COMPUTER)] }
