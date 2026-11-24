@@ -9,6 +9,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { ChatSurfaceEmptyState } from '@/features/chat/components/ChatSurfaceEmptyState'
+import { ConversationRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
 import { AssignmentsPanel } from '@/features/chat/components/AssignmentsPanel'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
@@ -442,7 +443,7 @@ function AgentConversationWorkspaceContent() {
       />
     )
   }
-  if (detailState === 'pending' || threadScope.pending) return null
+  if (detailState === 'pending' || threadScope.pending) return <ConversationRouteSkeleton />
 
   const privateThread = privateThreadView({ privateThreadId, detailState, agent: requestedAgent, workspaceId: activeWorkspaceId })
   if (privateThread) return privateThread
@@ -511,6 +512,7 @@ function AgentConversationWorkspaceContent() {
   return (
     <>
       <AgentDirectoryScreen
+        loadingView={<ConversationRouteSkeleton label="Opening your agent" />}
         settingsButton={settingsButton}
         sideEditor={sideEditor}
         onRightPanelClose={closeEditor}

@@ -35,11 +35,15 @@ function WorkspaceList({
   return (
     <>
       {status === 'loading' ? (
-        <div className="space-y-1 px-2 py-2" aria-label="Loading workspaces">
-          {[0, 1].map((item) => (
-            <div key={item} className="flex items-center gap-2.5">
-              <span className="h-7 w-7 animate-pulse rounded-lg bg-(--surface-subtle)" />
-              <span className="h-3 flex-1 animate-pulse rounded-sm bg-(--surface-subtle)" />
+        // Laid out like the workspace `MenuItem`s below: small avatar, then the name over its member label.
+        <div role="status" aria-label="Loading workspaces">
+          {['60%', '45%'].map((width) => (
+            <div key={width} className="flex items-center gap-2.5 px-3 py-2 text-xs" aria-hidden>
+              <span className="ui-skeleton-line size-6 shrink-0 rounded-md" />
+              <span className="min-w-0 flex-1">
+                <span className="flex h-[1lh] items-center"><span className="ui-skeleton-line h-2.5 rounded-sm" style={{ width }} /></span>
+                <span className="flex h-[1lh] items-center text-[10px]"><span className="ui-skeleton-line h-2 w-12 rounded-sm" /></span>
+              </span>
             </div>
           ))}
         </div>
@@ -230,7 +234,8 @@ function WorkspaceSwitcherTriggerAvatar({
     return renderAvatar(activeWorkspace, compact || isFooter ? 'sm' : 'md')
   }
   return (
-    <span className={`${compact || isFooter ? 'h-6 w-6' : 'h-8 w-8'} shrink-0 animate-pulse rounded-lg bg-(--surface-subtle)`} />
+    // The shape of the workspace avatar it stands in for (`sm` or `md`).
+    <span className={`ui-skeleton-line shrink-0 ${compact || isFooter ? 'size-6 rounded-md' : 'size-8 rounded-lg'}`} />
   )
 }
 

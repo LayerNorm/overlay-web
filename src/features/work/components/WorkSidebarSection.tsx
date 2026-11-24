@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { WorkContext, WorkItem } from '@overlay/app-core'
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overlay/ui/primitives'
-import { SidebarListSkeleton } from '@overlay/ui/feedback'
+import { SidebarRowItemsSkeleton } from '@overlay/ui/feedback'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { matchesFilter, parseWorkFilter, sortByRank, type WorkFilter, type WorkViewer } from '@/shared/work/query'
@@ -65,13 +65,16 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
     )))
   }, [data, resolved, userId])
   const live = useLiveAssignments(listView)
+  const signedOut = useWorkSignedOut()
   const assignments = useMemo(() => sidebarAssignments(live.results, resolved), [live.results, resolved])
   const listClassName = 'ml-0 border-l-0 pl-0'
 
-  if (!data) {
+  // Wait for assignments too, or a section flashes its empty label before its assignment rows arrive. Signed out, the
+  // assignment query never runs (it still reports LoadingFirstPage), so there is nothing to wait for.
+  if (!data || (live.status === 'LoadingFirstPage' && !signedOut)) {
     return (
       <SidebarMenuSub className={listClassName}>
-        <SidebarListSkeleton rows={3} />
+        <SidebarRowItemsSkeleton rows={3} icon="round" iconSize={14} />
       </SidebarMenuSub>
     )
   }

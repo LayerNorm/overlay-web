@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { AtSign, Bell, BellOff, Check, Inbox, MessageCircle, Smile } from 'lucide-react'
+import { AtSign, Bell, BellOff, Check, MessageCircle, Smile } from 'lucide-react'
 import type {
   WorkspaceNotification,
   WorkspaceNotificationFilter,
 } from '@overlay/workspace-contracts'
 import { Button, SegmentedControl } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { SidebarListSkeleton } from '@overlay/ui/feedback'
+import { ACTIVITY_FILTERS, ActivityRowsSkeleton } from './ChatSkeletons'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
@@ -19,14 +19,6 @@ import {
   readWorkspaceIdFromPath,
 } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-
-const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
-  { value: 'all', label: 'All', icon: Inbox },
-  { value: 'unread', label: 'Unread', icon: Bell },
-  { value: 'mentions', label: 'Mentions', icon: AtSign },
-  { value: 'threads', label: 'Threads', icon: MessageCircle },
-  { value: 'reactions', label: 'Reactions', icon: Smile },
-]
 
 function notificationIcon(type: WorkspaceNotification['type']) {
   if (type === 'mention') return <AtSign size={13} />
@@ -106,7 +98,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
           actions={
             <SegmentedControl
               value={filter}
-              options={FILTERS}
+              options={ACTIVITY_FILTERS}
               onChange={setFilter}
               ariaLabel="Activity filters"
             />
@@ -116,9 +108,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     >
       <div className="h-full min-h-0 overflow-y-auto">
         {loading ? (
-          <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
-            <SidebarListSkeleton rows={8} />
-          </div>
+          <ActivityRowsSkeleton />
         ) : notifications.length === 0 ? (
           <ChatSurfaceEmptyState
             title="No activity yet"

@@ -88,7 +88,7 @@ export function FilesInlinePanel({
       <FilesInlineTree
         files={filteredFiles}
         loading={loading}
-        loadingContent={<SidebarListSkeleton rows={7} />}
+        loadingContent={<SidebarListSkeleton rows={7} className="gap-px" />}
         emptyLabel={q ? 'No results' : 'No files yet'}
         activeFileId={activeCanonicalFileId}
         expanded={expanded}

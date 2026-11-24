@@ -49,10 +49,10 @@ export function SubscriptionFooter({
   </div>
 }
 
-export function ConnectedStatePanel({ flow }: { flow: Flow }) {
+export function ConnectedStatePanel({ modelCount }: { modelCount: number }) {
   return <div className="space-y-3 py-4 text-center" role="status">
     <span className="mx-auto grid size-11 place-items-center rounded-full bg-(--surface-muted)"><Check size={21} /></span>
-    <p className="text-sm">{flow.connected?.enabledModelIds.length} models added to your dropdown.</p>
+    <p className="text-sm">{modelCount} models added to your dropdown.</p>
     <p className="text-xs text-muted-foreground">Choose a model in any compatible Overlay chat or agent.</p>
   </div>
 }
@@ -98,17 +98,24 @@ export function ProviderChoicePanel({
   connection,
   providerId,
   onProviderChange,
+  extraProviders = [],
 }: {
   flow: Flow
   connection?: ByokConnectionRow
   providerId: string
   onProviderChange(providerId: string): void
+  /** API-key subscriptions that never depend on the subscription bridge. */
+  extraProviders?: ReadonlyArray<Provider>
 }) {
+  const choices = [
+    ...(flow.availability?.providers ?? []).map((provider) => ({ provider, usable: provider.enabled && Boolean(flow.availability?.available) })),
+    ...(connection ? [] : extraProviders.map((provider) => ({ provider, usable: provider.enabled }))),
+  ]
   return <>
     {!flow.availability && !flow.error ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" />Loading providers...</p> : null}
     {flow.availability && !flow.availability.available ? <p className="rounded-lg bg-(--surface-muted) p-3 text-xs text-muted-foreground">{flow.availability.reason ?? 'Subscription connections are not configured on this deployment. You can still connect an API key.'}</p> : null}
     <div className="space-y-1.5" aria-label="Subscription providers">
-      {flow.availability?.providers.filter((provider) => !connection || provider.id === providerId).map((provider) => <Button key={provider.id} variant={providerId === provider.id ? 'secondary' : 'ghost'} className="h-auto min-h-14 w-full justify-start gap-3 px-3 py-2.5 text-left" disabled={flow.busy || flow.selectionLocked || !provider.enabled || !flow.availability?.available} aria-pressed={providerId === provider.id} onClick={() => onProviderChange(provider.id)}>
+      {choices.filter(({ provider }) => !connection || provider.id === providerId).map(({ provider, usable }) => <Button key={provider.id} variant={providerId === provider.id ? 'secondary' : 'ghost'} className="h-auto min-h-14 w-full justify-start gap-3 px-3 py-2.5 text-left" disabled={flow.busy || flow.selectionLocked || !usable} aria-pressed={providerId === provider.id} onClick={() => onProviderChange(provider.id)}>
         <ProviderLogo provider={subscriptionLogo(provider.id)} size={21} />
         <span className="min-w-0 flex-1"><span className="block text-sm">{provider.label}</span><span className="block text-xs font-normal text-muted-foreground">{provider.description}</span></span>
         {providerId === provider.id ? <Check size={15} /> : null}

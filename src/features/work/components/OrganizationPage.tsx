@@ -15,6 +15,7 @@ import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { OrganizationAgentDetails } from './OrganizationAgentDetails'
+import { OrganizationChartSkeleton } from './WorkSkeletons'
 
 type Agent = WorkspaceAgentDirectoryItem
 
@@ -64,7 +65,7 @@ export function OrganizationPage() {
           <h1 className="text-lg font-medium">{scope === 'workspace' ? activeWorkspace?.name || 'Workspace' : 'Your organization'}</h1>
           <p className="mt-2 text-center text-sm text-(--muted)">{scope === 'workspace' ? 'Workspace agents and member chiefs of staff.' : 'Your chief of staff and personal agents.'}</p>
           {!isLoading && !capabilities.work ? <p className="mt-12 text-sm text-(--muted)">Work is unavailable for this deployment.</p>
-            : isLoading || directory.status === 'loading' ? <p role="status" className="mt-12 text-sm text-(--muted)">Loading organization...</p>
+            : isLoading || directory.status === 'loading' ? <OrganizationChartSkeleton />
               : !data ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p></div>
                 : !root ? <p className="mt-12 text-sm text-(--muted)">No chief of staff is available in this scope.</p> : (
                   <section aria-label="Agent organization" className="mt-10 flex w-full flex-col items-center">

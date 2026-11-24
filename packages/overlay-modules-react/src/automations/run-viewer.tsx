@@ -5,6 +5,7 @@ import { lazy, Suspense } from 'react'
 import type { AutomationGraph, AutomationRunSummary } from '@overlay/app-core'
 import { Select, Button } from '@overlay/ui/primitives'
 import { useRunStatus, useReplayStatus } from './run-viewer-hooks'
+import { AutomationCanvasSkeleton } from './canvas-skeleton'
 
 const AutomationGraphCanvas = lazy(() =>
   import('./reactflow-canvas').then((mod) => ({ default: mod.AutomationGraphCanvas })),
@@ -195,7 +196,11 @@ function RunViewerCanvas({
   return (
     <Suspense
       fallback={
-        <div className="h-96 animate-pulse rounded-lg border border-(--border) bg-(--surface-subtle)" />
+        <AutomationCanvasSkeleton
+          hint={!selectedRunId}
+          status={Boolean(isLive && selectedRunId)}
+          scrubber={Boolean(!isLive && selectedRunId)}
+        />
       }
     >
       {isLive && selectedRunId ? (
@@ -259,13 +264,7 @@ function ReplayCanvas({ graph, workflowRunId }: { graph: AutomationGraph; workfl
     graph,
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle)">
-        <p className="text-sm text-(--muted)">Loading run events…</p>
-      </div>
-    )
-  }
+  if (isLoading) return <AutomationCanvasSkeleton scrubber />
 
   if (error) {
     return (

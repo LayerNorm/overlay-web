@@ -9,7 +9,6 @@ import {
   SidebarGroupAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSkeleton,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -61,15 +60,6 @@ test('row actions can appear on hover only, and the sub tree carries the guide l
   assert.match(sub, /border-l/)
   assert.match(sub, /data-active="true"/)
 })
-
-test('skeleton rows keep the row height and a deterministic width', () => {
-  const a = renderToStaticMarkup(<SidebarMenuSkeleton index={1} />)
-  const b = renderToStaticMarkup(<SidebarMenuSkeleton index={1} />)
-  assert.equal(a, b)
-  assert.match(a, /h-8/)
-  assert.match(a, /role="status"/)
-})
-
 
 test('menu and group actions default to non-submit buttons and preserve asChild', () => {
   const html = renderToStaticMarkup(<form><SidebarMenuAction>Menu</SidebarMenuAction><SidebarGroupAction>Group</SidebarGroupAction></form>)

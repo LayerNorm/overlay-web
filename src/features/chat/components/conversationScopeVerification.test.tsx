@@ -26,6 +26,7 @@ function renderGate(routeKey: string | null, status: ConversationDetailScopeStat
     <ConversationDetailScopeGate
       routeKey={routeKey}
       status={status}
+      pending={null}
       fallback={<span>Conversation unavailable</span>}
     >
       <span>{label}</span>

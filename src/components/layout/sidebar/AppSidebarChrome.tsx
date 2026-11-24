@@ -32,7 +32,7 @@ import { DoubleSidebar, UnifiedSidebar, type DoubleSidebarProps } from '@overlay
 import { OverlayMark } from '@/components/brand/OverlayMark'
 import { BrandLockup } from '@/components/brand/BrandLockup'
 import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
-import { AgentsInlinePanel } from '@/components/layout/AppSidebarAgentsPanel'
+import { AgentsInlinePanel, AgentsPanelSkeleton } from '@/components/layout/AppSidebarAgentsPanel'
 import { SecondaryPanelContent } from './AppSidebarSecondaryPanel'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import type {
@@ -181,6 +181,14 @@ export function SidebarRailBrand({
   )
 }
 
+/** Each panel's own loading state, so a panel that suspends shows one skeleton, not this and then its own. */
+function PanelSkeleton({ panelKind, activityOnly }: { panelKind: SecondaryPanelKind; activityOnly: boolean }) {
+  if (panelKind === 'agents') return <AgentsPanelSkeleton activityOnly={activityOnly} />
+  if (panelKind === 'chat') return <SidebarListSkeleton rows={6} iconSize={12} className="mb-1 mt-0.5 py-0.5" />
+  if (panelKind === 'automations') return <SidebarListSkeleton rows={3} icon="round" className="gap-px" />
+  return <SidebarListSkeleton rows={7} className="gap-px" />
+}
+
 export function SecondaryPanelResourceList({
   panelKind,
   chatsView,
@@ -209,7 +217,7 @@ export function SecondaryPanelResourceList({
   section?: boolean
 }) {
   return (
-    <Suspense fallback={<SidebarListSkeleton />}>
+    <Suspense fallback={<PanelSkeleton panelKind={panelKind} activityOnly={activityOnly} />}>
       {panelKind === 'chat' && renderChatPanel
         ? renderChatPanel({
           onNavigate,

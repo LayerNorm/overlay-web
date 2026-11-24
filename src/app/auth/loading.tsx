@@ -1,5 +1,1 @@
-import { AuthRouteLoading } from '../_components/RouteLoadingFallbacks'
-
-export default function Loading() {
-  return <AuthRouteLoading />
-}
+export { AuthLoadingScreen as default } from './_components/AuthPageChrome'

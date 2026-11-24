@@ -1,1 +1,1 @@
-export { NotesLoadingRouteSkeleton as default } from '../_components/AppRouteSkeletons'
+export { NoteRouteSkeleton as default } from '../_components/PageRouteSkeletons'

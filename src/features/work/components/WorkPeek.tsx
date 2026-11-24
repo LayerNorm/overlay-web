@@ -21,6 +21,7 @@ import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Sec
 import { useWorkData } from './WorkDataProvider'
 import { OwnerPicker, ParentPicker, PriorityPicker, ReviewerPicker, StatusPicker } from './WorkPickers'
 import { Avatar, StatusIcon, Tag } from './work-ui'
+import { PropertyGridSkeleton } from './WorkSkeletons'
 import { WORK_STATUS_LABELS } from '@/shared/work/status'
 
 function PropertyRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
@@ -217,24 +218,24 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   if (missing) {
     return <PanelMessage title="Task" onClose={onClose}><div ref={handoffContent} className="px-6 py-10 text-center text-sm text-(--muted)">This task is not available. It may have been deleted, or it belongs to someone else.</div></PanelMessage>
   }
-  if (!item) {
+  if (!item || !scopeMatches) {
+    // The loaded panel's shape: the title in the header, then the property grid.
     return (
-      <PanelMessage title="Task" onClose={onClose}>
-        <div className="px-6 py-10" role="status" aria-label="Loading task">
-          <div className="ui-skeleton-line mb-4 h-6 w-2/3 rounded-md" />
-          <div className="ui-skeleton-line h-3 w-1/2 rounded-md" />
-        </div>
-      </PanelMessage>
-    )
-  }
-  if (!scopeMatches) {
-    return (
-      <PanelMessage title="Task" onClose={onClose}>
-        <div className="px-6 py-10" role="status" aria-label="Loading task">
-          <div className="ui-skeleton-line mb-4 h-6 w-2/3 rounded-md" />
-          <div className="ui-skeleton-line h-3 w-1/2 rounded-md" />
-        </div>
-      </PanelMessage>
+      <AppScreenSidePanel
+        data-testid="work-peek"
+        header={(
+          <AppScreenSidePanelHeader className="gap-1 pl-5.5">
+            <div className="flex h-8 min-w-0 flex-1 items-center px-1.5" role="status" aria-label="Loading task">
+              <div className="ui-skeleton-line h-3.5 w-2/3 rounded-md" aria-hidden />
+            </div>
+            <AppScreenSidePanelActions className="gap-0.5">
+              <AppScreenSidePanelClose label="Close task" onClose={onClose} />
+            </AppScreenSidePanelActions>
+          </AppScreenSidePanelHeader>
+        )}
+      >
+        <div className="px-7 pb-10 pt-2"><PropertyGridSkeleton rows={6} /></div>
+      </AppScreenSidePanel>
     )
   }
 

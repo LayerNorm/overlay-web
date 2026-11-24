@@ -31,6 +31,7 @@ import {
 import { renderExtensionComponent } from '@/extensions/registry'
 import dynamic from 'next/dynamic'
 import { MemoriesLoadingState } from '@/features/knowledge/components/MemoriesLoadingState'
+import { SettingsRouteSkeleton } from '../_components/PageRouteSkeletons'
 import { WebhookSettings } from '@/features/settings/components/WebhookSettings'
 import { ConnectedAppsSettings } from '@/features/settings/components/ConnectedAppsSettings'
 import { ArchivedSettings } from '@/features/settings/components/ArchivedSettings'
@@ -339,7 +340,7 @@ function SettingsSectionContent({
 
 export default function Page() {
   return (
-    <Suspense fallback={<SettingsSectionSkeleton />}>
+    <Suspense fallback={<SettingsRouteSkeleton />}>
       <SettingsPage />
     </Suspense>
   )
@@ -407,7 +408,7 @@ function SettingsPage() {
       fullBleed={section === 'memories'}
     >
       {isLoading ? (
-        <SettingsSectionSkeleton rows={section === 'general' ? 3 : 1} />
+        section === 'memories' ? <MemoriesLoadingState /> : <SettingsSectionSkeleton rows={section === 'general' ? 3 : 1} />
       ) : (
         <SettingsSectionContent
           section={section}
