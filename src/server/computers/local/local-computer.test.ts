@@ -9,7 +9,7 @@ import { LocalToolExecutor, LocalToolLoop } from '../../../../packages/overlay-a
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ComputerServiceError } from '@/server/computers/ComputerService'
 import { runComputerDriverCommand } from '@/server/computers/ComputerDesktopDriver'
-import { executeComputerExec, executeComputerListFiles, executeComputerReadFile, executeComputerTerminal, executeComputerWriteFile } from '@/server/tools/tools/overlay-executes'
+import { executeComputerExec, executeComputerListFiles, executeComputerReadFile, executeComputerTerminal, executeComputerWriteFile, localComputerUnavailableMessage } from '@/server/tools/tools/overlay-executes'
 import { LocalComputerError, LocalComputerService, type LocalToolCallRepository } from './LocalComputerService'
 import { LocalHostSandboxInstance } from './LocalHostSandboxInstance'
 
@@ -108,6 +108,26 @@ test('only the approving user, an online machine and a local-tools host count as
   assert.equal(await service([macEnvironment({ kind: 'vps' })]).findForUser({ workspaceId: 'ws-1', userId: 'user-1' }), null)
   assert.equal(await service([macEnvironment({ status: 'revoked', revokedAt: 2 })]).findForUser({ workspaceId: 'ws-1', userId: 'user-1' }), null)
   assert.equal((await service([macEnvironment()]).findForUser({ workspaceId: 'ws-1', userId: 'user-1' }))?.name, 'Dev MacBook')
+})
+
+test('an unusable Mac reports why, so the agent can tell the user what to turn on', async () => {
+  const now = Date.UTC(2026, 10, 23, 12)
+  const reason = (environments: AgentEnvironment[]) => new LocalComputerService({ repository: new MemoryRepository(), listEnvironments: async () => environments, now: () => now })
+    .unavailableReason({ workspaceId: 'ws-1', userId: 'user-1' })
+  const twoDaysAgo = now - 2 * 24 * 60 * 60_000
+  assert.deepEqual(await reason([macEnvironment({ lastSeenAt: twoDaysAgo })]), { kind: 'offline', name: 'Dev MacBook', lastSeenAt: twoDaysAgo })
+  assert.deepEqual(await reason([macEnvironment({ lastSeenAt: now, capabilities: {} })]), { kind: 'computer_control_off', name: 'Dev MacBook' })
+  assert.deepEqual(await reason([macEnvironment({ approvedByUserId: 'someone-else' })]), { kind: 'not_set_up' })
+  assert.deepEqual(await reason([macEnvironment({ status: 'revoked', revokedAt: 2 })]), { kind: 'not_set_up' })
+  assert.deepEqual(await reason([]), { kind: 'not_set_up' })
+
+  const message = localComputerUnavailableMessage({ kind: 'offline', name: 'Dev MacBook', lastSeenAt: twoDaysAgo }, now)
+  assert.match(message, /"Dev MacBook" is offline: it last checked in with Overlay 2 days ago/)
+  assert.match(message, /Settings → Desktop → This computer/)
+  assert.match(message, /Let agents run threads on this computer/)
+  assert.doesNotMatch(message, /Keep this computer available/)
+  assert.match(message, /Do not retry with target "local"/)
+  assert.match(message, /Computer panel in Overlay shows the cloud Computer/)
 })
 
 test('a Mac that never answers fails the call with a clear message and expires it', async () => {

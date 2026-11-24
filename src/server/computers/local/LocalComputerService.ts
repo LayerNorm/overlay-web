@@ -29,6 +29,12 @@ export type LocalComputer = {
   roots?: string[]
 }
 
+/** Why the user's Mac can't take computer tools right now. */
+export type LocalComputerUnavailableReason =
+  | { kind: 'offline'; name: string; lastSeenAt?: number }
+  | { kind: 'computer_control_off'; name: string }
+  | { kind: 'not_set_up' }
+
 export class LocalComputerError extends Error {
   constructor(readonly code: string, message: string, readonly missing: string[] = [], readonly detail?: Record<string, unknown>) {
     super(message)
@@ -104,6 +110,26 @@ export class LocalComputerService {
       ownerUserId: input.userId, capability: localToolsCapabilityOf(environment)!,
       ...(environment.filesystemGrant?.mode === 'selected_roots' ? { roots: [...environment.filesystemGrant.roots] } : {}),
     }
+  }
+
+  /**
+   * Why `findForUser` found no usable Mac, so the agent can tell the user what to change
+   * instead of a bare "not connected". Considers only the user's own, unrevoked machines.
+   */
+  async unavailableReason(input: { workspaceId: string; userId: string }): Promise<LocalComputerUnavailableReason> {
+    const now = this.now()
+    const mine = (await this.dependencies.listEnvironments({ workspaceId: input.workspaceId }))
+      .filter((environment) => environment.kind === 'local'
+        && environment.approvedByUserId === input.userId
+        && environment.revokedAt === undefined && environment.status !== 'revoked' && environment.status !== 'pending')
+      .sort((left, right) => (right.lastSeenAt ?? 0) - (left.lastSeenAt ?? 0))
+    const withTools = mine.find((environment) => localToolsCapabilityOf(environment) !== null)
+    if (withTools && effectiveAgentEnvironmentStatus(withTools, now) !== 'online') {
+      return { kind: 'offline', name: withTools.name, ...(withTools.lastSeenAt ? { lastSeenAt: withTools.lastSeenAt } : {}) }
+    }
+    const online = mine.find((environment) => effectiveAgentEnvironmentStatus(environment, now) === 'online')
+    if (online) return { kind: 'computer_control_off', name: online.name }
+    return { kind: 'not_set_up' }
   }
 
   /** Sends one tool call to the machine and waits for its answer. */
