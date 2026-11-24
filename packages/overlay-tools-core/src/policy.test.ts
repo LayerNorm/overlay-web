@@ -64,3 +64,11 @@ test('Auto does not require approval for native actions or Executor calls', () =
     assert.equal(toolRequiresApproval(toolName, input, { ...options, approvalMode: 'auto' }), false, toolName)
   }
 })
+
+test('screen recordings only need approval when stop makes them public', () => {
+  assert.equal(toolRequiresApproval('computer_recording', { action: 'start', title: 'QA' }), false)
+  assert.equal(toolRequiresApproval('computer_recording', { action: 'annotate', id: 'r-000000000000', label: 'x' }), false)
+  assert.equal(toolRequiresApproval('computer_recording', { action: 'stop', id: 'r-000000000000' }), false)
+  assert.equal(toolRequiresApproval('computer_recording', { action: 'stop', id: 'r-000000000000', public: true }), true)
+  assert.equal(toolRequiresApproval('computer_recording', { action: 'stop', id: 'r-000000000000', public: true }, { approvalMode: 'auto' }), false)
+})

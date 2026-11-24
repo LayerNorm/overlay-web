@@ -1,7 +1,11 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { authorizeComputerPublication, type ArtifactPublicationAuthority } from './ArtifactPublicationAuthority'
+import {
+  authorizeComputerPublication,
+  type ArtifactPublicationAuthority,
+  type ComputerPublicationGrant,
+} from './ArtifactPublicationAuthority'
 import { COMPUTER_PUBLICATION_HELPER } from './computer-publication-helper'
 import type { ComputerArtifactInput, ComputerArtifactManifest, PublishedComputerArtifact } from '@/shared/storage/file-publication'
 
@@ -288,6 +292,8 @@ async function runOnComputer<T>(
 export async function publishComputerFile(args: {
   request: ComputerPublicationRequest
   authority: ArtifactPublicationAuthority | undefined
+  /** Defaults to computer_publish_file; computer_recording publishes its recordings under its own grant. */
+  grantToolId?: ComputerPublicationGrant
   userId: string
   workspaceId?: string
   resolveComputer(): Promise<ResolvedComputer>
@@ -307,11 +313,12 @@ export async function publishComputerFile(args: {
       userId: args.userId,
       workspaceId: args.workspaceId,
       artifactPublicationAuthority: args.authority,
+      grantToolId: args.grantToolId,
     })
     let manifest = await service.getComputerArtifact(reference, input)
     if (manifest?.fileId) return publishedResult(canonicalResult(manifest))
     if (manifest) {
-      const reconciled = await service.verifyAndCommitComputerArtifact({ manifest, authority: args.authority })
+      const reconciled = await service.verifyAndCommitComputerArtifact({ manifest, authority: args.authority, grantToolId: args.grantToolId })
       if (reconciled.kind === 'published') return publishedResult(reconciled.artifact)
     }
 
@@ -321,6 +328,7 @@ export async function publishComputerFile(args: {
       userId: args.userId,
       workspaceId: args.workspaceId,
       artifactPublicationAuthority: args.authority,
+      grantToolId: args.grantToolId,
     })
     const snapshotResult = await runOnComputer(computer, instance => runHelper(instance, {
       operation: 'snapshot',
@@ -356,6 +364,7 @@ export async function publishComputerFile(args: {
         userId: args.userId,
         workspaceId: args.workspaceId,
         artifactPublicationAuthority: args.authority,
+        grantToolId: args.grantToolId,
       })
       const url = await service.getComputerArtifactUploadUrl(manifest)
       uploadResult = await runOnComputer(computer, instance => runHelper(instance, {
@@ -370,6 +379,7 @@ export async function publishComputerFile(args: {
       const reconciled = await service.verifyAndCommitComputerArtifact({
         manifest,
         authority: args.authority,
+        grantToolId: args.grantToolId,
       })
       if (reconciled.kind === 'published') {
         try {
