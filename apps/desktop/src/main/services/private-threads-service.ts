@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { randomUUID } from 'node:crypto'
 import { join, resolve, sep } from 'node:path'
-import { app } from 'electron'
+import { app, session } from 'electron'
 import {
   localModelProviders,
   type Events,
@@ -16,6 +17,7 @@ import { resolveEmbeddedHostRuntime } from './embedded-host-config'
 import { createLocalHelperEnvironment } from './security/local-helper-process'
 import { safeStorageService } from './security/safe-storage-service'
 import { ensureLocalComputerWorkFolder } from './local-computer'
+import { getWebShellOrigin, WEB_SHELL_PARTITION } from './web-shell'
 
 /**
  * Private threads ("Cloud sync" off) run in the bundled Agent Host, started as
@@ -37,6 +39,7 @@ type HostEvent =
 
 const KEY_PREFIX = 'private-model-key-'
 const START_TIMEOUT_MS = 15_000
+const OVERLAY_TOOLS_TIMEOUT_MS = 15_000
 
 class PrivateThreadsService {
   private supported: boolean | null = null
@@ -170,10 +173,11 @@ class PrivateThreadsService {
     if (!apiKey) throw new Error('Add a key for this model provider in Settings → Desktop first.')
     const { thread } = await this.get({ owner: input.owner, threadId: input.threadId })
     const roots = [thread.folder ?? ensureLocalComputerWorkFolder()]
+    const overlay = await overlayToolsAccess(input.owner.workspaceId, thread.agentId)
     return await this.request<Results['localThreads.send']>({
       method: 'send', owner: input.owner, threadId: input.threadId, turnId: input.turnId,
       messages: input.messages, model: { ...input.model, apiKey }, agent: input.agent,
-      roots, approvalMode: input.approvalMode
+      roots, approvalMode: input.approvalMode, ...(overlay ? { overlay } : {})
     })
   }
 
@@ -279,3 +283,28 @@ function folderAllowed(folder: string): boolean {
 }
 
 export const privateThreadsService = new PrivateThreadsService()
+
+/**
+ * The agent's Overlay tools for one turn: a short-lived token for Overlay's MCP server, asked for with this app's own
+ * signed-in session so the page never holds it. It names the person, workspace and agent, never the conversation.
+ * Without one (signed out, offline, older server) the turn runs with this computer's tools only.
+ */
+async function overlayToolsAccess(workspaceId: string, agentId: string): Promise<{ url: string; token: string } | null> {
+  const origin = getWebShellOrigin()
+  try {
+    const response = await session.fromPartition(WEB_SHELL_PARTITION).fetch(`${origin}/api/v1/mcp/private-thread`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `desktop:${randomUUID()}`, Referer: `${origin}/app` },
+      body: JSON.stringify({ workspaceId, agentId }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(OVERLAY_TOOLS_TIMEOUT_MS)
+    })
+    if (!response.ok) return null
+    const body = (await response.json()) as { token?: unknown }
+    if (typeof body.token !== 'string') return null
+    // The token only ever goes to this app's own Overlay server.
+    return { url: `${origin}/api/mcp`, token: body.token }
+  } catch {
+    return null
+  }
+}

@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Give private threads their agent's Overlay tools (memory, files, notes, tasks, web search…). Before each turn the app asks Overlay for a one-hour token for that person, workspace and agent with its own signed-in session, so the page never holds it, and hands it to the bundled Agent Host (now 0.7.0), which calls the tools over Overlay's MCP server at this app's own server address. The conversation still stays on this computer. Without a token (signed out, offline) the turn runs with this computer's tools only. Which tools a thread gets, and the free tier for workspaces without a plan, are decided by the server.
+
 ## [0.4.0] - 2026-11-21
 
 - Connect to Overlay Cloud at `overlay.works`, its new main address. New installs start there, and a computer that was set up for `getoverlay.io` moves to `overlay.works` automatically, still treated as Overlay Cloud. The old address only redirects now, so earlier versions should update.
