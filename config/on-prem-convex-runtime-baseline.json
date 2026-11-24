@@ -289,6 +289,11 @@
       "target": "internal.agents.localToolCalls.cleanupExpired"
     },
     {
+      "cadence": "{ hours: 1 }",
+      "name": "expired Slack state cleanup",
+      "target": "internal.integrations.slack.cleanupExpiredState"
+    },
+    {
       "cadence": "{ hours: 6 }",
       "name": "function metrics cleanup",
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
@@ -592,6 +597,7 @@
     "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",
+    "convex/integrations/slack.ts",
     "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
