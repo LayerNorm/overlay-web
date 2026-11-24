@@ -67,8 +67,6 @@ export interface MemoryRepository {
     workspaceId?: string
   }): Promise<MemoryRecord | null>
   remove(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<{ deletedAt: number; memoryId: string } | null>
-  /** One-way: a person's private memory becomes workspace knowledge. */
-  moveToWorkspace(args: { memoryId: string; userId: string; workspaceId: string }): Promise<void>
   /** Freshness bump for a semantic-duplicate write — no reindex needed. */
   touch(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<void>
 }

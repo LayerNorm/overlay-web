@@ -155,8 +155,6 @@ type MemoryBody = {
   memoryOwnerId?: string
   memoryId?: string
   messageId?: string
-  /** PATCH only: move the caller's private memory to the workspace (one-way). */
-  moveTo?: 'workspace'
   noteId?: string
   source?: MemorySource | string
   tags?: string[]
@@ -264,15 +262,6 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = await request.json() as MemoryBody
     if (!body.memoryId?.trim()) return NextResponse.json({ error: 'memoryId and content required' }, { status: 400 })
-    if (body.moveTo === 'workspace') {
-      // Only the person themself moves their own memory; agent tools never send `moveTo`.
-      const memory = await getOverlayServerContext().memoryService.moveToWorkspace({
-        memoryId: body.memoryId.trim(),
-        userId: context.auth.userId,
-        workspaceId: context.workspace.workspace.id,
-      })
-      return NextResponse.json({ memory, success: true })
-    }
     const memoryBody = memoryFields(body)
     const owner = await resolveMemoryOwner(context, body.memoryOwnerId)
     const memory = await getOverlayServerContext().memoryService.update({

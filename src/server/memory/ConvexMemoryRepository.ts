@@ -84,15 +84,6 @@ export class ConvexMemoryRepository implements MemoryRepository {
     return { deletedAt: Date.now(), memoryId: args.memoryId }
   }
 
-  async moveToWorkspace(args: { memoryId: string; userId: string; workspaceId: string }): Promise<void> {
-    await convex.mutation('knowledge/memories:moveToWorkspace', {
-      memoryId: args.memoryId as Id<'memories'>,
-      serverSecret: this.serverSecret,
-      userId: args.userId,
-      workspaceId: args.workspaceId,
-    })
-  }
-
   async touch(args: { memoryId: string; userId: string; workspaceId?: string }): Promise<void> {
     await convex.mutation('knowledge/memories:touch', {
       memoryId: args.memoryId as Id<'memories'>,

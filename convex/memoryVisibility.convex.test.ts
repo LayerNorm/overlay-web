@@ -170,10 +170,18 @@ describe('moving a private memory to the workspace', () => {
 
   test('its owner can share it, and nothing makes it private again', async () => {
     const convex = convexTest(schema, modules)
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('workspaces', { workspaceId: 'ws-1', kind: 'organization', name: 'Team', slug: 'team', status: 'active', createdAt: 1, updatedAt: 1 } as never)
+      for (const person of ['alice', 'bob']) {
+        await ctx.db.insert('workspacePrincipals', { principalId: `p-${person}`, workspaceId: 'ws-1', type: 'human', userId: person, displayName: person, createdAt: 1, updatedAt: 1 } as never)
+        await ctx.db.insert('workspaceMemberships', { membershipId: `m-${person}`, workspaceId: 'ws-1', principalId: `p-${person}`, role: 'member', status: 'active', joinedAt: 1, updatedAt: 1 })
+      }
+    })
     const memoryId = await save(convex, 'alice', 'The team standup is at 10')
     expect(await recalledBy(convex, 'bob')).toEqual([])
-    await expect(convex.mutation(moveToWorkspace, { serverSecret: secret, userId: 'bob', workspaceId: 'ws-1', memoryId })).rejects.toThrow()
-    await convex.mutation(moveToWorkspace, { serverSecret: secret, userId: 'alice', workspaceId: 'ws-1', memoryId })
+    await expect(convex.withIdentity({ subject: 'bob' }).mutation(moveToWorkspace, { workspaceId: 'ws-1', memoryId })).rejects.toThrow()
+    await expect(convex.mutation(moveToWorkspace, { workspaceId: 'ws-1', memoryId })).rejects.toThrow()
+    await convex.withIdentity({ subject: 'alice' }).mutation(moveToWorkspace, { workspaceId: 'ws-1', memoryId })
     expect(await recalledBy(convex, 'bob')).toEqual(['The team standup is at 10'])
     const update = makeFunctionReference<'mutation'>('knowledge/memories:update')
     await expect(convex.mutation(update, {

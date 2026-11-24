@@ -3,6 +3,7 @@ import { internal } from '../_generated/api'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
+import { requireNativeWorkspace } from '../lib/nativeViewer'
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -326,17 +327,11 @@ export const update = mutation({
  * take it away (WORKSPACE_PERSONAL_SEPARATION_PLAN.md).
  */
 export const moveToWorkspace = mutation({
-  args: {
-    userId: v.string(),
-    workspaceId: v.string(),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    memoryId: v.id('memories'),
-  },
-  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, memoryId }) => {
-    await authorizeUserAccess({ userId, accessToken, serverSecret })
+  args: { workspaceId: v.string(), memoryId: v.id('memories') },
+  handler: async (ctx, { workspaceId, memoryId }) => {
+    const viewer = await requireNativeWorkspace(ctx, workspaceId)
     const existing = await ctx.db.get(memoryId)
-    if (!existing || existing.userId !== userId || existing.deletedAt || existing.workspaceId !== workspaceId) {
+    if (!existing || existing.userId !== viewer.userId || existing.deletedAt || existing.workspaceId !== workspaceId) {
       throw new Error('Unauthorized')
     }
     if (existing.visibility !== 'owner') return

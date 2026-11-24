@@ -11,6 +11,9 @@ import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMemories } from '@/hooks/use-memories'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import { useLiveWorkspaceManagement } from '@/hooks/use-workspace-members'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -202,6 +205,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const [isSaving, setIsSaving] = useState(false)
   const [movingMemoryId, setMovingMemoryId] = useState<string | null>(null)
   const [isMoving, setIsMoving] = useState(false)
+  const moveMemoryToWorkspace = useMutation(api.knowledge.memories.moveToWorkspace)
   const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
   const actionButtonClass =
     'flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)'
@@ -291,11 +295,8 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     if (!memoryId) return
     setIsMoving(true)
     try {
-      const response = await overlayAppClient.memory.moveToWorkspaceResponse({ memoryId })
-      if (!response.ok) {
-        toast.error('Could not move memory.')
-        return
-      }
+      if (!activeWorkspaceId) return
+      await moveMemoryToWorkspace({ workspaceId: activeWorkspaceId, memoryId: memoryId as Id<'memories'> })
       toast.success('Moved to workspace.')
       setMovingMemoryId(null)
     } catch (error) {
