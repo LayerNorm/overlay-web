@@ -43,9 +43,11 @@ async function assertNativeModelAllowed(
   actorUserId: string,
   workspaceId: string,
   entitlements: Parameters<typeof resolveAuthorizedModelIds>[0]['entitlements'],
+  sharedRoom: boolean,
 ): Promise<void> {
   if (isByokModelId(modelId)) {
-    await assertUserCanUseByokModel(modelId, actorUserId, workspaceId)
+    // A shared room or workspace automation spends only workspace connections (P6).
+    await assertUserCanUseByokModel(modelId, actorUserId, workspaceId, { workspaceOnly: sharedRoom })
   } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
     throw new FatalError('The native model is no longer allowed by server policy.')
   }
@@ -306,7 +308,7 @@ export async function refreshNativeHarnessAccess(
   const billingProgrammaticSubjectId = `agent:${access.agentId}`
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
-  await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements)
+  await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements, sharedRoom)
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
     const repository = new ConvexHarnessRepository()
     const renewal = await repository.renewOwnedLease({

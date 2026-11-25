@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { resolveSharedRoom } from '@/server/agents/shared-room'
+import { workspaceChiefMemoryOwnerId } from '@/server/harness/automation-access'
 import { createHash } from 'node:crypto'
 import type { ModelMessage, UIMessage } from 'ai'
 import type { CapabilityCheck } from '@overlay/app-core'
@@ -340,9 +342,10 @@ export async function assertAutomationByokModel(
   userId: string,
   workspaceId: string,
   check: typeof assertUserCanUseByokModel = assertUserCanUseByokModel,
+  workspaceOnly = false,
 ): Promise<void> {
   try {
-    await check(modelId, userId, workspaceId)
+    await check(modelId, userId, workspaceId, { workspaceOnly })
   } catch (error) {
     throw new AutomationTurnError(
       `Model ${modelId} is not available: ${error instanceof Error ? error.message : 'connection unavailable'}`,
@@ -362,6 +365,8 @@ export async function prepareAutomationAgentTurn(
   const billingWorkspaceId = input.workspaceId
 
   const effectiveModelId = resolveEffectiveActModelId(input.modelId)
+  // A workspace automation runs with workspace reach only (P6), by the same rule as shared rooms.
+  const workspaceReach = await resolveSharedRoom({ actorUserId: userId, conversationId: input.conversationId, workspaceId: billingWorkspaceId })
 
   const { billingProgrammaticSubjectId, requestIdempotencyKey, operationIdPrefix } = turnBillingKeys(input)
   const requestFingerprint = turnRequestFingerprint({
@@ -390,7 +395,7 @@ export async function prepareAutomationAgentTurn(
   // connection, as in chat and the harness refresh; the server catalog only
   // governs hosted models.
   if (isByokModelId(effectiveModelId)) {
-    await assertAutomationByokModel(effectiveModelId, userId, billingWorkspaceId)
+    await assertAutomationByokModel(effectiveModelId, userId, billingWorkspaceId, assertUserCanUseByokModel, workspaceReach)
   } else if (!authorizedModelIds.chat.has(effectiveModelId)) {
     throw new AutomationTurnError(
       `Model ${effectiveModelId} is not allowed by the server model policy.`,
@@ -484,6 +489,7 @@ export async function prepareAutomationAgentTurn(
     userId,
     externalContextEnabled: true,
     workspaceId: billingWorkspaceId,
+    workspaceOnly: workspaceReach,
   })
 
   const mediaIntentTask = (async () => {
@@ -629,10 +635,13 @@ export async function prepareAutomationAgentTurn(
     effectiveModelId,
     latestUserText: userText,
     memoryEnabled,
-    // An automation still reads its owner's private memories, so what it learns stays private until P5.
+    // A workspace automation is a workspace context: what it learns is workspace knowledge (P6).
     memoryOwnerId: automationAgent
-      ? memoryOwnerForPlace({ actorUserId: userId, agent: automationAgent, workspaceContext: false })
-      : undefined,
+      ? memoryOwnerForPlace({ actorUserId: userId, agent: automationAgent, workspaceContext: workspaceReach })
+      : workspaceReach
+        ? await workspaceChiefMemoryOwnerId(overlayContext.workspaceAgentService, { actorUserId: userId, workspaceId: billingWorkspaceId })
+        : undefined,
+    sharedRoom: workspaceReach,
     mediaToolIntent: resolvedMediaToolIntent,
     paid,
     preloadTasks: toolPreloadTasks,
