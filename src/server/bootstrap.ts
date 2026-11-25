@@ -275,7 +275,13 @@ export function createOverlayServerContext(
     agentOwner: async (workspaceId, agentId) => {
       const agent = await workspaceAgentRepository.get({ agentId, workspaceId })
       return agent
-        ? { visibility: agent.visibility, createdByPrincipalId: agent.createdByPrincipalId }
+        ? {
+            visibility: agent.visibility,
+            createdByPrincipalId: agent.createdByPrincipalId,
+            ...(agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId
+              ? { personalChiefOwnerUserId: agent.chiefOwnerUserId }
+              : {}),
+          }
         : null
     },
     limits: computerLimits,

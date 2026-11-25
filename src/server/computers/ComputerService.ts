@@ -41,7 +41,7 @@ export type ComputerLimits = {
 
 export type ComputerOwnerAccess =
   | { ownerType: 'user' }
-  | { ownerType: 'agent'; visibility: 'workspace' | 'creator'; createdByPrincipalId: string }
+  | { ownerType: 'agent'; visibility: 'workspace' | 'creator'; createdByPrincipalId: string; personalChiefOwnerUserId?: string }
 
 export class ComputerServiceError extends Error {
   constructor(
@@ -61,7 +61,8 @@ export class ComputerService {
     assertCanRun(input: { workspaceId: string; userId: string; agentId?: string }): Promise<void>
     requireExecution?: typeof requireWorkspaceExecution
     /** Resolve an agent owner's visibility and creator principal for access checks. */
-    agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string } | null>
+    /** `personalChiefOwnerUserId` is set when the agent is someone's personal chief. */
+    agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string; personalChiefOwnerUserId?: string } | null>
     limits?: ((input: { workspaceId: string; ownerType: ComputerOwnerType }) => Promise<ComputerLimits | undefined> | ComputerLimits | undefined) | ComputerLimits
     lifecycle: Pick<ComputerLifecycleService, 'provision' | 'openDesktop' | 'stop' | 'withOwnerOperation'>
   }) {}
@@ -293,8 +294,9 @@ export class ComputerService {
   }
 
   /** Access rules: personal computers are owner-only; workspace-visible agents'
-   * computers are open to the whole workspace; creator-only agents' computers
-   * are creator + workspace owner. A computer whose owner agent no longer
+   * computers are open to the whole workspace; a personal chief's computer is
+   * its person's only; other creator-only agents' computers are creator +
+   * workspace owner. A computer whose owner agent no longer
    * resolves (archived/deleted) falls to the workspace owner so the machine
    * can still be stopped or destroyed instead of billing forever. */
   private canAccess(
@@ -305,6 +307,7 @@ export class ComputerService {
   ): boolean {
     if (ownerType === 'user') return ownerId === actor.userId
     if (!ownerAccess || ownerAccess.ownerType !== 'agent') return actor.workspaceRole === 'owner'
+    if (ownerAccess.personalChiefOwnerUserId) return ownerAccess.personalChiefOwnerUserId === actor.userId
     if (ownerAccess.visibility === 'workspace') return true
     return ownerAccess.createdByPrincipalId === actor.principalId || actor.workspaceRole === 'owner'
   }

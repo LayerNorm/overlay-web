@@ -89,7 +89,7 @@ export function AgentSidebarDetails({
   }
 
   if (editor.agent?.canEdit === false) {
-    return <p className="text-xs leading-5 text-(--muted)">{editor.agent.agentRole === 'personal_chief' ? 'Only the owner can customize this personal Overlay.' : 'You do not have permission to edit this agent.'}</p>
+    return <p className="text-xs leading-5 text-(--muted)">{editor.agent.agentRole === 'personal_chief' ? `Only its owner can customize ${editor.agent.name}.` : 'You do not have permission to edit this agent.'}</p>
   }
 
   return (
@@ -97,7 +97,7 @@ export function AgentSidebarDetails({
       {editor.agent && isChief(editor.agent) ? (
         <div className="space-y-2 text-xs text-(--muted)">
           <p>{chiefRoleLabel(editor.agent)} · Pinned</p>
-          {editor.agent.agentRole === 'personal_chief' ? <p>Your name and avatar follow you across scopes. Owner, role, and permissions stay unchanged. Private threads and context stay separate.</p> : null}
+          {editor.agent.agentRole === 'personal_chief' ? <p>Your Chief lives in Personal, only for you. Its name and avatar are the same in every workspace.</p> : null}
         </div>
       ) : null}
       {saveFailed ? (

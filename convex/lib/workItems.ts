@@ -90,7 +90,8 @@ export async function agentAssignability(
     createdByPrincipalId: definition.createdByPrincipalId,
     ...(definition.avatarColor !== undefined ? { avatarColor: definition.avatarColor } : {}),
     ...(definition.avatarShape !== undefined ? { avatarShape: definition.avatarShape } : {}),
-    ...(definition.isDefault !== undefined ? { isDefault: definition.isDefault } : {}),
+    // A personal chief is a creature, never the Overlay mark, even when it is the adopted default.
+    ...(definition.isDefault !== undefined ? { isDefault: definition.agentRole !== 'personal_chief' && definition.isDefault } : {}),
   }
 }
 

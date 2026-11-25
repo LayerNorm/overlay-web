@@ -29,6 +29,7 @@ import { publishPageSubviews } from './pageSubviewStore'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { PageSections, badgeLabel } from './PageSections'
 import { CustomizeSidebarDialog, orderSidebarItems, type SidebarCustomization } from './CustomizeSidebarDialog'
+import { MODE_OPTIONS } from './ModeSwitch'
 
 type MoreGroup = { label?: string; ids: readonly string[] }
 type MoreItemGroup = { label?: string; items: readonly PrimaryRailItem[] }
@@ -236,51 +237,34 @@ export function MoreMenu({ groups, collapsed, items, customization }: {
   )
 }
 
-export const WORKSPACE_LOCKED_HINT = 'To enable Workspace features, invite members.'
-
+/** The Workspace | Personal switch for the single-sidebar layout, which has no rail (see `RailModeSwitch`). */
 export function ScopeToggle({
   scope,
-  workspaceLocked,
   onChange,
 }: {
   scope: PanelScope
-  workspaceLocked: boolean
   onChange: (scope: PanelScope) => void
 }) {
-  const options: ReadonlyArray<{ id: PanelScope; label: string }> = [
-    { id: 'personal', label: 'Personal' },
-    { id: 'workspace', label: 'Workspace' },
-  ]
   return (
-    <div role="group" aria-label="Scope" className="mx-2 mb-2 grid grid-cols-2 gap-0.5 rounded-lg bg-(--surface-subtle) p-0.5">
-      {options.map((option) => {
-        const locked = workspaceLocked && option.id === 'workspace'
-        const button = (
-          <Button
-            key={option.id}
-            variant="ghost"
-            type="button"
-            aria-pressed={scope === option.id}
-            aria-disabled={locked || undefined}
-            onClick={() => { if (!locked) onChange(option.id) }}
-            className={unstyledButton(cn(
-              'h-7 w-full rounded-md text-xs font-medium transition-colors',
-              scope === option.id
-                ? 'bg-(--surface-elevated) text-(--foreground) shadow-sm'
-                : locked
-                  ? 'cursor-not-allowed text-(--muted-light)'
-                  : 'text-(--muted) hover:text-(--foreground)',
-            ))}
-          >
-            {option.label}
-          </Button>
-        )
-        return locked ? (
-          <DelayedTooltip key={option.id} label={WORKSPACE_LOCKED_HINT} side="bottom">
-            {button}
-          </DelayedTooltip>
-        ) : button
-      })}
+    <div role="radiogroup" aria-label="Mode" className="mx-2 mb-2 grid grid-cols-2 gap-0.5 rounded-lg bg-(--surface-subtle) p-0.5">
+      {MODE_OPTIONS.map((option) => (
+        <Button
+          key={option.id}
+          variant="ghost"
+          type="button"
+          role="radio"
+          aria-checked={scope === option.id}
+          onClick={() => onChange(option.id)}
+          className={unstyledButton(cn(
+            'h-7 w-full rounded-md text-xs font-medium transition-colors',
+            scope === option.id
+              ? 'bg-(--surface-elevated) text-(--foreground) shadow-sm'
+              : 'text-(--muted) hover:text-(--foreground)',
+          ))}
+        >
+          {option.label}
+        </Button>
+      ))}
     </div>
   )
 }
@@ -487,7 +471,7 @@ export function UnifiedSidebar({
     >
       {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} livePreview minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
       <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} activityOnly={activityOnly} onToggleActivity={settingsNav ? undefined : onToggleActivity} />
-      {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
+      {collapsed || settingsNav ? null : <ScopeToggle scope={scope} onChange={changeScope} />}
       {settingsNav ? (
         <SidebarContent>
           <SettingsSidebarNav nav={settingsNav} collapsed={collapsed} onBack={settingsBack?.onSelect} settingsGroups={settingsGroups} />

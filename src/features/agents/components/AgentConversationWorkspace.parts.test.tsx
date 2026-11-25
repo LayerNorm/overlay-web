@@ -27,15 +27,16 @@ function renderDirectory(scope: 'personal' | 'workspace', directory: WorkspaceAg
   )
 }
 
-test('empty creator scope shows the create state despite agents in the opposite scope', () => {
-  const mine = { id: 'mine', createdByPrincipalId: 'viewer' } as WorkspaceAgentDirectoryItem
-  const theirs = { id: 'theirs', createdByPrincipalId: 'other' } as WorkspaceAgentDirectoryItem
-  for (const [scope, directory] of [['workspace', [mine]], ['personal', [theirs]]] as const) {
+test('an empty mode shows the create state despite agents in the other mode', () => {
+  const mine = { id: 'mine', createdByPrincipalId: 'viewer', visibility: 'creator' } as WorkspaceAgentDirectoryItem
+  const shared = { id: 'shared', createdByPrincipalId: 'viewer', visibility: 'workspace' } as WorkspaceAgentDirectoryItem
+  for (const [scope, directory] of [['workspace', [mine]], ['personal', [shared]]] as const) {
     const html = renderDirectory(scope, [...directory])
     assert.match(html, /Your agents work from here/)
     assert.match(html, /Create agent/)
     assert.doesNotMatch(html, /Opening your agent/)
   }
   assert.match(renderDirectory('personal', [mine]), /Opening your agent/)
+  assert.match(renderDirectory('workspace', [shared]), /Opening your agent/)
   assert.match(renderDirectory('workspace', null), /Opening your agent/)
 })

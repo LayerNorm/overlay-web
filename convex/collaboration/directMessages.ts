@@ -1371,6 +1371,18 @@ export const createDirectMessage = mutation({
       return principal
     }))
     const principals = resolved
+    if (principals.filter((principal) => principal.type === 'human').length > 1) {
+      // A group with other people is a shared room: no personal chief or creator-only agent may be in it.
+      for (const principal of principals) {
+        const agentId = principal.type === 'agent' ? principal.agentId : undefined
+        if (!agentId) continue
+        const agent = await ctx.db.query('workspaceAgentDefinitions')
+          .withIndex('by_agentId', (q) => q.eq('agentId', agentId)).unique()
+        if (agent && (agent.agentRole === 'personal_chief' || agent.visibility === 'creator')) {
+          throw new Error('PERSONAL_AGENT_NOT_IN_SHARED_ROOMS')
+        }
+      }
+    }
 
     // A one-to-one DM whose counterpart is an agent principal is that
     // agent's main thread: it binds the conversation to the agent so it
@@ -1611,6 +1623,15 @@ export async function addParticipantFor(ctx: MutationCtx, args: ObjectType<typeo
     || (principal.type !== 'human' && principal.type !== 'agent')
     || membership?.status !== 'active'
   ) throw new Error('Participant is not eligible')
+  if (principal.type === 'agent' && principal.agentId) {
+    // Shared rooms never take a personal chief or a creator-only agent: they live in their owner's Personal mode.
+    const agentId = principal.agentId
+    const agent = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', agentId)).unique()
+    if (agent && (agent.agentRole === 'personal_chief' || agent.visibility === 'creator')) {
+      throw new Error('PERSONAL_AGENT_NOT_IN_SHARED_ROOMS')
+    }
+  }
   const existing = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', (q) => (
       q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)

@@ -1,7 +1,7 @@
 'use client'
 
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { newItemScope, parsePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { DEFAULT_PANEL_SCOPE, newItemScope, parsePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { buildWorkspaceHandleHref, buildWorkspaceHref, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import {
   opensInDocumentEditor,
@@ -80,7 +80,7 @@ export function createWebKnowledgeRepository(
   commands: WebKnowledgeTreeCommands,
   client: WebKnowledgeAppClient = overlayAppClient,
   /** The scope being viewed: new files are created in it. */
-  getScope: () => PanelScope = () => 'personal',
+  getScope: () => PanelScope = () => DEFAULT_PANEL_SCOPE,
 ): KnowledgeRepository {
   async function get(id: string, signal?: AbortSignal): Promise<KnowledgeSurfaceNode | null> {
     const response = await client.files.getResponse({ fileId: id, fullText: true }, { signal })

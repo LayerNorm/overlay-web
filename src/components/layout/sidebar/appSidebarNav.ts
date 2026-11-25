@@ -35,7 +35,7 @@ import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { ROOT_APP_DESTINATION } from '@/shared/auth/root-entry'
 import { resolveFilesCategory, type FilesCategory } from '@/components/layout/FilesCategorySidebar'
 import type { AgentsPanelView } from '@/components/layout/sidebar-nav'
-import { PANEL_SCOPE_PARAM, parsePanelScope, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
+import { DEFAULT_PANEL_SCOPE, PANEL_SCOPE_PARAM, parsePanelScope, resolvePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { normalizeChatViewForScope, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import { resolveWorkView, type WorkView } from '@/shared/work/views'
@@ -154,8 +154,7 @@ function resolveChatsView({
     return chatViewParam
   }
   if (chatViewParam === 'all') return 'all'
-  if (savedScope) return normalizeChatViewForScope(savedScope, null)
-  return 'personal'
+  return normalizeChatViewForScope(savedScope ?? DEFAULT_PANEL_SCOPE, null)
 }
 
 export function resolveSidebarRouteState({
@@ -259,15 +258,15 @@ export function resolveSidebarRouteState({
 }
 
 /**
- * Where a primary nav item leads. Chats opens a new draft in the scope the person is already in (Personal or
- * Workspace), so moving between pages never drops them back into Personal.
+ * Where a primary nav item leads. Chats opens a new draft in the mode the person is already in (Workspace or
+ * Personal), so moving between pages never changes their mode.
  */
 export function resolveNavItemDestination(
   href: string,
   {
     activeWorkspaceId,
     buildWorkspaceHref,
-    scope = 'personal',
+    scope = DEFAULT_PANEL_SCOPE,
   }: {
     activeWorkspaceId: string | null
     buildWorkspaceHref: (workspaceId: string, href: string) => string
