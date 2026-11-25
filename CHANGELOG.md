@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Send OpenAI's own API through the Responses API when it is added as a custom OpenAI-compatible provider. Its reasoning models, such as GPT-5.6 Luna, rejected every reply with a 400 because Chat Completions sends `max_tokens`, which they do not accept; the Responses API sends `max_output_tokens`. Every model on `api.openai.com` (and its regional hosts) now uses the Responses API, and other custom endpoints still use Chat Completions. Tests cover the routing and the request body.
 - Record the live preview test of Workspace and Personal P6 in the plan (workspace automation without its owner's private memory or personal-only tools).
 - Give people their baseline member role when they sign in (password, sign-in callback and the preview test login), not only when they first open the app. Automation runs enforce that role's capabilities, so someone who had only used the API, and every fresh PR preview driven by scripts, had every automation refused with `authorization_denied models.use`. Opening the app still does the same thing, and a failure at sign-in is logged without blocking it.
 - Record Workspace and Personal P6 and P7 as merged, deployed and backfilled in the plan (PR 621; 1,665 production file chunks marked private, none in Workspace yet).

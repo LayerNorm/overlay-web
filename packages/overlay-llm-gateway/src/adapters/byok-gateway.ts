@@ -85,7 +85,7 @@ export class ByokGateway implements LLMGateway {
     const providerFetch = this.options.fetch && this.preset.sessionHeader
       ? this.createSessionFetch(headers ?? {})
       : this.options.fetch
-    const protocol = getByokModelProtocol(this.preset, modelId)
+    const protocol = getByokModelProtocol(this.preset, modelId, this.options.connection.endpoint)
     const providerOptions = {
       baseURL: this.options.connection.endpoint,
       ...(this.options.apiKey ? { apiKey: this.options.apiKey } : {}),
