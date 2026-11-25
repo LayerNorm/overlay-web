@@ -16,11 +16,11 @@ const m = (name: string) => makeFunctionReference<'mutation'>(name)
 
 type Convex = ReturnType<typeof convexTest>
 
-/** A workspace with an owner, an admin, two members, and a guest. */
+/** A workspace with an owner, an admin, and two members; `gus` is not in it. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
   await convex.run(async (ctx) => {
     await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Scope', slug: 'scope', status: 'active', createdAt: now, updatedAt: now })
-    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member'], ['gus', 'guest']] as const) {
+    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member']] as const) {
       await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId, type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
@@ -182,7 +182,7 @@ describe('files (notes, uploads, outputs, folders)', () => {
     await convex.mutation(m('knowledge/knowledge:purgeKnowledgeSource'), { sourceKind: 'file', sourceId: note, userId: 'alice' })
     expect(await visibilities()).toEqual([])
 
-    // Who may search the workspace's files: members, not guests or outsiders.
+    // Who may search the workspace's files: members, not outsiders.
     const may = (userId: string) => convex.query(q('knowledge/knowledge:canSearchWorkspaceFiles'), { requestingUserId: userId, workspaceId })
     expect([await may('bob'), await may('gus'), await may('stranger')]).toEqual([true, false, false])
   })

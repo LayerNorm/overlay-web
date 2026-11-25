@@ -8,7 +8,6 @@ import type {
   WorkspaceMembershipStatus,
   WorkspacePrincipal,
   WorkspacePrincipalType,
-  WorkspaceResourceGuest,
   WorkspaceResourceScope,
   WorkspaceAuditExportRecord,
   WorkspaceIdentityMapping,
@@ -277,28 +276,4 @@ export interface WorkspaceRepository {
     now: number
   }): Promise<WorkspaceAuditExportRecord>
   listAuditExports(args: { workspaceId: string; limit?: number }): Promise<WorkspaceAuditExportRecord[]>
-
-  createResourceGuest(input: {
-    id: string
-    workspaceId: string
-    resourceType: string
-    resourceId: string
-    principalId: string
-    accessRole: WorkspaceResourceGuest['accessRole']
-    status?: WorkspaceResourceGuest['status']
-    grantedByPrincipalId: string
-    expiresAt?: number
-    now: number
-  }): Promise<WorkspaceResourceGuest>
-  listResourceGuests(args: {
-    workspaceId: string
-    resourceType?: string
-    resourceId?: string
-    includeInactive?: boolean
-  }): Promise<WorkspaceResourceGuest[]>
-  revokeResourceGuest(args: {
-    id: string
-    revokedByPrincipalId: string
-    now: number
-  }): Promise<WorkspaceResourceGuest | null>
 }

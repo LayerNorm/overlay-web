@@ -322,7 +322,6 @@
   ],
   "workspaces.invite": [
     "src/app/_components/onboarding/OnboardingConversation.tsx",
-    "src/components/share/ShareDialog.tsx",
     "src/features/chat/components/NewDirectMessageDialog.tsx"
   ],
   "workspaces.list": [

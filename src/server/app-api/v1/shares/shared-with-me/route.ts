@@ -5,8 +5,7 @@ import { parseWorkspaceSearchKinds } from '@/shared/search/workspace-search'
 
 /**
  * Everything in this workspace the actor reaches through a grant rather than
- * ownership. Guests see only what was explicitly shared with them, which is
- * exactly what this returns.
+ * ownership.
  */
 export async function GET(_request: Request, context: AppApiRouteContext) {
   const results = await getOverlayServerContext().workspaceSearchService.listSharedWithMe({

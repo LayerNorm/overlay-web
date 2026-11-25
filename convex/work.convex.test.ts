@@ -19,13 +19,13 @@ const m = (name: string) => makeFunctionReference<'mutation'>(name)
 type Convex = ReturnType<typeof convexTest>
 type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; assignmentExecution?: { assignedByUserId: string; assigneePrincipalId: string; generation: number; status: 'pending' | 'starting' | 'started' | 'failed'; conversationId?: string; messageId?: string; turnId?: string; clientNonce?: string }; archivedAt?: number; blocked: boolean; updatedAt: number }
 
-/** A workspace with an owner, an admin, two members, a guest, and an agent. */
+/** A workspace with an owner, an admin, two members, and an agent; `gus` is not in it. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
   await convex.run(async (ctx) => {
     for (const ws of [workspaceId, otherWorkspaceId]) {
       await ctx.db.insert('workspaces', { workspaceId: ws, kind: 'organization', name: ws, slug: ws, status: 'active', createdAt: now, updatedAt: now })
     }
-    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member'], ['gus', 'guest']] as const) {
+    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member']] as const) {
       await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId, type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
@@ -184,7 +184,7 @@ test('task revisions advance for edits, moves and archive/restore within one clo
 })
 
 describe('personal and workspace visibility', () => {
-  test('personal tasks are private; workspace tasks are shared with members but not guests or other workspaces', async () => {
+  test('personal tasks are private; workspace tasks are shared with members but not outsiders or other workspaces', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const work = api(convex)
@@ -225,7 +225,7 @@ describe('personal and workspace visibility', () => {
     await expect(work.create('alice', { title: 'No', scope: 'workspace' })).rejects.toThrow(/workspace_creation_restricted/)
     expect((await work.create('admin', { title: 'Yes', scope: 'workspace' })).scope).toBe('workspace')
     expect((await work.create('alice', { title: 'Personal still fine' })).scope).toBe('personal')
-    await expect(work.create('gus', { title: 'Guest' })).rejects.toThrow()
+    await expect(work.create('gus', { title: 'Outsider' })).rejects.toThrow()
   })
 
   test('members may work on a workspace task when the policy allows, and only on assigned ones when admins-only', async () => {
