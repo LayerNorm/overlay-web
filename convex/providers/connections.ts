@@ -135,10 +135,9 @@ export const listPublicForUseByServer = query({
         q.eq('workspaceId', args.workspaceId!).eq('scope', 'workspace'),
       )
       .collect()
+    // The workspace's own providers (subscriptions and API keys), usable by every member.
     const rowsById = new Map<string, Doc<'userProviderConnections'>>()
-    for (const row of workspaceRows) {
-      if (row.authKind === 'subscription' && row.subscriptionProvider) rowsById.set(row._id, row)
-    }
+    for (const row of workspaceRows) rowsById.set(row._id, row)
     for (const row of personalRows) rowsById.set(row._id, row)
     return [...rowsById.values()].map((row) =>
       stripSecrets(row, row.userId === args.actorUserId),
@@ -196,9 +195,7 @@ export const createByServer = mutation({
     }
     const scope = args.scope ?? 'personal'
     if (scope === 'workspace') {
-      if (args.authKind !== 'subscription' || !args.workspaceId) {
-        throw new Error('Workspace scope is only supported for subscription connections')
-      }
+      if (!args.workspaceId) throw new Error('A workspace connection needs a workspace')
       await assertActiveWorkspaceMember(ctx, {
         userId: args.userId,
         workspaceId: args.workspaceId,
@@ -211,7 +208,7 @@ export const createByServer = mutation({
       providerId: args.providerId,
       authKind: args.authKind,
       subscriptionProvider: args.subscriptionProvider,
-      ...(args.authKind === 'subscription' ? { scope } : {}),
+      scope,
       ...(scope === 'workspace' ? { workspaceId: args.workspaceId } : {}),
       endpoint: args.endpoint,
       displayName: args.displayName,
