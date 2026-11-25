@@ -110,7 +110,7 @@ export async function buildAgentTurnContext(args: {
     : Promise.resolve('')
 
   const retrievalTask: Promise<string> = (async () => {
-    if (args.includeAutoRetrieval === false || !args.latestUserText.trim() || !access.personalRetrieval) return ''
+    if (args.includeAutoRetrieval === false || !args.latestUserText.trim()) return ''
     try {
       const { buildAutoRetrievalBundle } = await import('@/server/knowledge/ask-knowledge-context')
       const bundle = await buildAutoRetrievalBundle({
@@ -128,6 +128,8 @@ export async function buildAgentTurnContext(args: {
         userId: args.actorUserId,
         userMessage: args.latestUserText,
         workspaceId: args.workspaceId,
+        // In a room others can read, only what the workspace shares (its files and knowledge), never the summoner's.
+        workspaceOnly: !access.personalRetrieval,
       })
       return bundle.extension
     } catch (error) {

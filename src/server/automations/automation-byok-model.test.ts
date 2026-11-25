@@ -9,7 +9,13 @@ const byok = 'byok/connection_1/claude-opus-5-5'
 test('a BYOK automation model is authorized by the user connection in the run workspace', async () => {
   const check = vi.fn(async () => ({}) as never)
   await assertAutomationByokModel(byok, 'user_1', 'workspace_1', check)
-  expect(check).toHaveBeenCalledWith(byok, 'user_1', 'workspace_1')
+  expect(check).toHaveBeenCalledWith(byok, 'user_1', 'workspace_1', { workspaceOnly: false })
+})
+
+test('a workspace automation may only use a workspace connection', async () => {
+  const check = vi.fn(async () => ({}) as never)
+  await assertAutomationByokModel(byok, 'user_1', 'workspace_1', check, true)
+  expect(check).toHaveBeenCalledWith(byok, 'user_1', 'workspace_1', { workspaceOnly: true })
 })
 
 test('a BYOK model the user can no longer use is a terminal 403 refusal', async () => {

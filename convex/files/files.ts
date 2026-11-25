@@ -442,6 +442,13 @@ export const { setScope, archive, restore } = scopeMutations('files', 'content',
     }
     return out
   },
+  // A file's search chunks follow it: searchable by every member in Workspace, only by its uploader otherwise (P7).
+  afterApply: async (ctx, { affectedIds }) => {
+    const scheduler = (ctx as MutationCtx).scheduler
+    for (let i = 0; i < affectedIds.length; i += 100) {
+      await scheduler.runAfter(0, internal.knowledge.knowledge.restampFileChunks, { fileIds: affectedIds.slice(i, i + 100) })
+    }
+  },
 })
 
 // ─── Queries ──────────────────────────────────────────────────────────────────

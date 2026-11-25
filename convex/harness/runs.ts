@@ -1802,9 +1802,8 @@ async function inheritedRoomRestriction(
 
 /**
  * Whether what an agent learns in this conversation is workspace knowledge (`memoryOwnerForPlace`): a room others can
- * read, or a thread an agent was asked in from one. The same lineage the room rule uses, so a turn saves workspace
- * knowledge exactly when it could not read the asker's private material. Automations are not workspace contexts yet:
- * they still read their owner's private memories, so what they learn stays private until they get workspace reach (P5).
+ * read, a workspace automation's thread, or a thread an agent was asked in from one. The same lineage the room rule
+ * uses, so a turn saves workspace knowledge exactly when it could not read the asker's private material.
  */
 export async function conversationIsWorkspaceContext(
   ctx: MutationCtx | QueryCtx,
