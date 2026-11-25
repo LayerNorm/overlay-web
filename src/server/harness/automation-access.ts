@@ -40,7 +40,7 @@ export type AutomationSourceGrant = {
   /** The bound agent, re-read from the automation on every step; absent without one. */
   agent?: AutomationAgentIdentity
   /**
-   * A workspace automation runs with workspace reach only (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P6):
+   * A workspace automation runs with workspace reach only (internal/develop/workspace-and-personal.md):
    * workspace connectors, MCP servers and provider connections, and no private memories, skills or files.
    */
   workspaceReach: boolean

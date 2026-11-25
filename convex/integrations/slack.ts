@@ -5,7 +5,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { createAgentThread } from '../agents/agentThreads'
-import { ensureWorkspaceChiefs, isActiveNonGuestHumanOwner } from '../collaboration/agents'
+import { ensureWorkspaceChiefs, isActiveHumanMember } from '../collaboration/agents'
 import {
   conversationOriginValidator, slackActionsValidator, slackPersonAccessValidator, slackUnlinkedPeopleValidator,
   slackWhoCanAskValidator,
@@ -22,7 +22,6 @@ type Ctx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 const SLACK_DEFAULT_SETTINGS = {
   whoCanAsk: 'linked' as const,
   unlinkedPeople: 'link' as const,
-  guests: false,
   slackConnect: false,
   actionsInChannels: 'ask' as const,
 }
@@ -44,7 +43,7 @@ async function settingsFor(ctx: Ctx, workspaceId: string) {
   const row = await ctx.db.query('slackSettings').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
   if (!row) return { ...SLACK_DEFAULT_SETTINGS }
   return {
-    whoCanAsk: row.whoCanAsk, unlinkedPeople: row.unlinkedPeople, guests: row.guests,
+    whoCanAsk: row.whoCanAsk, unlinkedPeople: row.unlinkedPeople,
     slackConnect: row.slackConnect, actionsInChannels: row.actionsInChannels,
   }
 }
@@ -170,7 +169,6 @@ export const updateSettings = mutation({
     workspaceId: v.string(),
     whoCanAsk: slackWhoCanAskValidator,
     unlinkedPeople: slackUnlinkedPeopleValidator,
-    guests: v.boolean(),
     slackConnect: v.boolean(),
     actionsInChannels: slackActionsValidator,
   },
@@ -343,7 +341,6 @@ export const resolveRequesterByServer = query({
       settings,
       userId: member && link ? link.userId : null,
       principalId: member ? member.principal.principalId : null,
-      guest: member ? member.membership.role === 'guest' : false,
       allowed: member && link ? mayAsk(settings.whoCanAsk, await personAccess(ctx, installation.workspaceId, link.userId)) : false,
     }
   },
@@ -419,13 +416,13 @@ export const originByServer = query({
 
 /**
  * Whether a member may hand a channel request to their own personal chief, and its name when they already have one.
- * Null for anyone who can't have one (a guest, or not an active member). Asking privately creates the chief.
+ * Null for anyone who can't have one (not an active member). Asking privately creates the chief.
  */
 export const personalChiefByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
   handler: async (ctx, args): Promise<{ name: string | null } | null> => {
     requireServerSecret(args.serverSecret)
-    if (!await isActiveNonGuestHumanOwner(ctx, args.workspaceId, args.userId)) return null
+    if (!await isActiveHumanMember(ctx, args.workspaceId, args.userId)) return null
     const identity = await ctx.db.query('personalChiefIdentities')
       .withIndex('by_userId', q => q.eq('userId', args.userId)).unique()
     return { name: identity?.name ?? null }

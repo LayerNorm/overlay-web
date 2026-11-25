@@ -1,5 +1,5 @@
 'use client'
-import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
+import { unstyledButton } from '@overlay/ui/control-reset'
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Bot,
@@ -9,7 +9,6 @@ import {
   Hash,
   Loader2,
   Lock,
-  MailPlus,
   Trash2,
   TriangleAlert,
   User,
@@ -31,7 +30,7 @@ import {
   SHARE_RESOURCE_LABELS,
 } from '@/shared/share/share-access-policy'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { Select, Button, Input } from '@overlay/ui/primitives'
+import { Select, Button } from '@overlay/ui/primitives'
 
 /** A grant or revocation waiting on explicit confirmation of its disclosure. */
 type PendingShareChange =
@@ -58,8 +57,6 @@ export function ShareDialog({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [canInvite, setCanInvite] = useState(false)
   const [publicLinksEnabled, setPublicLinksEnabled] = useState(true)
   const [pending, setPending] = useState<PendingShareChange | null>(null)
   const resourceType = resource ? canonicalType(resource.type) : null
@@ -79,7 +76,6 @@ export function ShareDialog({
         ...response.directory.teams,
         ...response.directory.rooms,
       ])
-      setCanInvite(response.directory.canInvite)
       setPublicLinksEnabled(response.publicLinksEnabled)
       setLoading(false)
       setNotice(null)
@@ -204,23 +200,6 @@ export function ShareDialog({
     }
   }
 
-  async function invite() {
-    if (!activeWorkspaceId || !inviteEmail.trim()) return
-    setBusy(true)
-    try {
-      await overlayAppClient.workspaces.invite(activeWorkspaceId, {
-        email: inviteEmail.trim(),
-        role: 'guest',
-      })
-      setNotice('Invitation sent. Add them here after they join the workspace.')
-      setInviteEmail('')
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not send invitation')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   async function copyLink() {
     if (!resource?.url) return
     await navigator.clipboard.writeText(resource.url)
@@ -261,8 +240,6 @@ export function ShareDialog({
           busy={busy}
           notice={notice}
           copied={copied}
-          canInvite={canInvite}
-          inviteEmail={inviteEmail}
           pending={pending}
           target={target}
           role={role}
@@ -277,8 +254,6 @@ export function ShareDialog({
             else void commitRevoke(pending.grant)
           }}
           onCancelPending={() => setPending(null)}
-          onInviteEmailChange={setInviteEmail}
-          onInvite={() => void invite()}
           onCopyLink={() => void copyLink()}
         />
       </DialogContent>
@@ -303,8 +278,6 @@ export function ShareDialogContent({
   busy,
   notice,
   copied,
-  canInvite,
-  inviteEmail,
   pending,
   target,
   role,
@@ -315,8 +288,6 @@ export function ShareDialogContent({
   onRequestRevoke,
   onConfirmPending,
   onCancelPending,
-  onInviteEmailChange,
-  onInvite,
   onCopyLink,
 }: {
   resourceType: WorkspaceShareResourceType
@@ -331,8 +302,6 @@ export function ShareDialogContent({
   busy: boolean
   notice: string | null
   copied: boolean
-  canInvite: boolean
-  inviteEmail: string
   pending: PendingShareChange | null
   target: string
   role: WorkspaceShareAccessRole
@@ -343,8 +312,6 @@ export function ShareDialogContent({
   onRequestRevoke(grant: WorkspaceResourceGrant): void
   onConfirmPending(): void
   onCancelPending(): void
-  onInviteEmailChange(value: string): void
-  onInvite(): void
   onCopyLink(): void
 }) {
   const roleOptions = shareRoleOptions(resourceType)
@@ -384,15 +351,6 @@ export function ShareDialogContent({
             onRequestRevoke={onRequestRevoke}
           />
         </>
-      ) : null}
-
-      {canInvite ? (
-        <ShareInviteSection
-          inviteEmail={inviteEmail}
-          busy={busy}
-          onInviteEmailChange={onInviteEmailChange}
-          onInvite={onInvite}
-        />
       ) : null}
 
       <GeneralAccessSection
@@ -598,41 +556,6 @@ function ShareAccessList({
             </div>
           )
         })}
-      </div>
-    </section>
-  )
-}
-
-function ShareInviteSection({
-  inviteEmail,
-  busy,
-  onInviteEmailChange,
-  onInvite,
-}: {
-  inviteEmail: string
-  busy: boolean
-  onInviteEmailChange(value: string): void
-  onInvite(): void
-}) {
-  return (
-    <section className="mt-5 rounded-xl border border-(--border) p-4">
-      <div className="flex items-center gap-2 text-sm font-medium text-(--foreground)"><MailPlus size={15} /> Invite someone to the workspace</div>
-      <div className="mt-3 flex gap-2">
-        <Input
-          type="email"
-          value={inviteEmail}
-          aria-label="Guest email"
-          onChange={(event) => onInviteEmailChange(event.target.value)}
-          placeholder="name@company.com"
-          className={unstyledInput("h-9 min-w-0 flex-1 rounded-lg border border-(--border) bg-(--background) px-3 text-sm")}
-        />
-        <Button variant="outline" size="sm"
-          type="button"
-          disabled={busy || !inviteEmail.trim()}
-          onClick={onInvite}
-        >
-          Invite as guest
-        </Button>
       </div>
     </section>
   )

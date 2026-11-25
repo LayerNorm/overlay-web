@@ -231,7 +231,7 @@ export class ActContextService {
     userId: string
     workspaceId?: string
     /**
-     * A workspace context (a workspace automation, internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P6): only
+     * A workspace context (a workspace automation, internal/develop/workspace-and-personal.md): only
      * what the workspace shares is loaded — workspace memories, skills and files — never the person's private ones.
      */
     workspaceOnly?: boolean

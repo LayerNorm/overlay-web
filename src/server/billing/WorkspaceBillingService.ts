@@ -296,7 +296,6 @@ export class WorkspaceBillingService {
   /** Owners and admins may always add usage; members only when the workspace's `usageTopUpBy` setting says so. */
   private async memberMayTopUp(access: Awaited<ReturnType<Deps['workspaces']['resolveActiveWorkspace']>>, actorUserId: string): Promise<boolean> {
     if (canManageWorkspace(access.membership.role)) return true
-    if (access.membership.role !== 'member') return false
     const policy = await this.deps.workspaces.getSharingPolicy({ actorUserId, workspaceId: access.workspace.id })
     return policy.usageTopUpBy === 'members'
   }

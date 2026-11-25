@@ -87,7 +87,7 @@ export const DEFAULT_OVERLAY_FEATURE_FLAGS: readonly OverlayFeatureFlag[] = [
   {
     id: 'resourceSharing',
     label: 'Resource sharing',
-    description: 'Unified sharing with people, agents, teams, rooms, and resource guests.',
+    description: 'Unified sharing with people, agents, teams, and rooms.',
     enabled: false,
   },
 ] as const

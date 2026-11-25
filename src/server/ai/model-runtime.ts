@@ -43,7 +43,7 @@ export const WORKSPACE_RUN_PERSONAL_MODEL_ERROR =
 
 /**
  * `workspaceOnly` is for workspace runs (shared rooms and workspace automations, internal/plans/
- * WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P6): they may spend only a connection the workspace holds, never the
+ * internal/develop/workspace-and-personal.md): they may spend only a connection the workspace holds, never the
  * summoner's or automation owner's personal one.
  */
 export async function assertUserCanUseByokModel(

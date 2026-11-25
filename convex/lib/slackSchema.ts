@@ -50,7 +50,8 @@ export const slackTables = {
     workspaceId: v.string(),
     whoCanAsk: slackWhoCanAskValidator,
     unlinkedPeople: slackUnlinkedPeopleValidator,
-    guests: v.boolean(),
+    // Legacy (Overlay workspace guests, removed); migrations/removeGuestRole.ts clears it. Drop afterwards.
+    guests: v.optional(v.boolean()),
     slackConnect: v.boolean(),
     actionsInChannels: slackActionsValidator,
     updatedByUserId: v.string(),

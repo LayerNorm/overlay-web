@@ -13,7 +13,7 @@ export const workspace = query({
   args: { workspaceId: v.string() },
   returns: v.object({
     userId: v.string(), workspaceId: v.string(), principalId: v.string(),
-    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member'), v.literal('guest')),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member')),
   }),
   handler: async (ctx, { workspaceId }) => {
     const viewer = await requireNativeWorkspace(ctx, workspaceId)

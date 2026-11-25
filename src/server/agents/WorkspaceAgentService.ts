@@ -13,7 +13,6 @@ import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
 import {
   assertChiefBindingUpdateAllowed,
-  canCreateAgent,
   canSeeAgent,
   mapThreadError,
   validateWorkspaceAgentTeamIds,
@@ -22,7 +21,7 @@ import {
 import { applyChiefIdentityUpdate } from './WorkspaceAgentService.identity'
 import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, assertValidOverlayPermissionMode, normalizeVisibility, required, optional, color, shape, unique, workspaceAgentCreateModelFields, workspaceAgentUpdateModelFields } from './workspace-agent-validation'
 export { WorkspaceAgentServiceError } from './workspace-agent-validation'
-export { canCreateAgent, canSeeAgent } from './WorkspaceAgentService.helpers'
+export { canSeeAgent } from './WorkspaceAgentService.helpers'
 
 /** The ID a personal chief is created with (adopted older defaults keep their own). */
 export function personalChiefAgentId(workspaceId: string, userId: string) {
@@ -44,16 +43,14 @@ export class WorkspaceAgentService {
    */
   async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean; includePersonal?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.membership.role !== 'guest') {
-      await this.repository.ensureChiefs({
-        workspaceId: access.workspace.id,
-        actorUserId: args.actorUserId,
-        actorPrincipalId: access.principal.id,
-        // Sent only when set, so a backend that predates the argument keeps serving the workspace-only call.
-        ...(args.includePersonal ? { includePersonal: true } : {}),
-        now: this.now(),
-      })
-    }
+    await this.repository.ensureChiefs({
+      workspaceId: access.workspace.id,
+      actorUserId: args.actorUserId,
+      actorPrincipalId: access.principal.id,
+      // Sent only when set, so a backend that predates the argument keeps serving the workspace-only call.
+      ...(args.includePersonal ? { includePersonal: true } : {}),
+      now: this.now(),
+    })
     const agents = await this.repository.list({
       workspaceId: access.workspace.id,
       includeArchived: args.includeArchived,
@@ -80,7 +77,7 @@ export class WorkspaceAgentService {
         ...viewer,
         createdByDisplayName: creators[index]?.displayName,
       })),
-      canCreate: canCreateAgent(access.membership.role),
+      canCreate: true,
       viewerPrincipalId: access.principal.id,
       archivedThreads,
     }
@@ -88,16 +85,14 @@ export class WorkspaceAgentService {
 
   async get(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.membership.role !== 'guest') {
-      await this.repository.ensureChiefs({
-        workspaceId: access.workspace.id,
-        actorUserId: args.actorUserId,
-        actorPrincipalId: access.principal.id,
-        // Opening one's own personal chief by its ID (a link, or the first visit) creates it.
-        ...(args.agentId === personalChiefAgentId(access.workspace.id, args.actorUserId) ? { includePersonal: true } : {}),
-        now: this.now(),
-      })
-    }
+    await this.repository.ensureChiefs({
+      workspaceId: access.workspace.id,
+      actorUserId: args.actorUserId,
+      actorPrincipalId: access.principal.id,
+      // Opening one's own personal chief by its ID (a link, or the first visit) creates it.
+      ...(args.agentId === personalChiefAgentId(access.workspace.id, args.actorUserId) ? { includePersonal: true } : {}),
+      now: this.now(),
+    })
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
     // Invisible agents report as not found so their existence does not leak to
     // other members.
@@ -158,9 +153,6 @@ export class WorkspaceAgentService {
     input: WorkspaceAgentCreateInput
   }): Promise<WorkspaceAgentDirectoryItem> {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (!canCreateAgent(access.membership.role)) {
-      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot create agents')
-    }
     // Workspace policy can restrict agent creation to owners and admins, and can
     // restrict which runtimes are allowed to exist at all.
     await this.workspaces.assertMemberMayCreate({
@@ -337,12 +329,8 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
-    if (access.membership.role === 'guest'
-      && (agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')) {
-      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot edit chief agents')
-    }
     if (agent.agentRole === 'personal_chief'
-      && (access.membership.role === 'guest' || agent.chiefOwnerUserId !== args.actorUserId)) {
+      && agent.chiefOwnerUserId !== args.actorUserId) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can change this agent')
     }
     if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
@@ -515,10 +503,6 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
-    if (access.membership.role === 'guest'
-      && (agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')) {
-      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot edit chief agents')
-    }
     if (agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId !== args.actorUserId) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can edit this agent')
     }

@@ -27,7 +27,7 @@ import {
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 import { canRecallMessageChunk, messageChunkVisibility } from '../../src/shared/knowledge/message-visibility'
 import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
-import { chunkVisibleToSearch, fileChunkOwner, workspaceFilesOwnerId } from '../../src/shared/knowledge/chunk-visibility'
+import { chunkScope, chunkVisibleToSearch, fileChunkOwner, workspaceFilesOwnerId } from '../../src/shared/knowledge/chunk-visibility'
 
 export type HybridSearchChunk = {
   text: string
@@ -38,6 +38,8 @@ export type HybridSearchChunk = {
   score: number
   /** Raw vector similarity when ranked via vector search (absent for lexical-only hits). `score` is the fused RRF value. */
   vecScore?: number
+  /** Personal (only its owner sees it) or Workspace (every member does). */
+  scope: 'personal' | 'workspace'
 }
 
 const KNOWLEDGE_SOURCE_KINDS = v.union(
@@ -225,7 +227,7 @@ export const purgeKnowledgeSource = internalMutation({
 })
 
 /**
- * Who a file's chunks are indexed under and who may find them (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P7):
+ * Who a file's chunks are indexed under and who may find them (internal/develop/workspace-and-personal.md):
  * a live file in Workspace under its workspace (`workspaceFilesOwnerId`), searchable by every member; anything else under
  * its uploader, private. A missing or deleted file is private to no one in particular: its chunks are left as they are.
  */
@@ -457,7 +459,7 @@ export const searchChunksLexical = internalQuery({
   },
 })
 
-/** Whether this person may search the workspace's files: an active member who isn't a guest (`canReadResource`). */
+/** Whether this person may search the workspace's files: any active member (`canReadResource`). */
 export const canSearchWorkspaceFiles = internalQuery({
   args: { requestingUserId: v.string(), workspaceId: v.string() },
   returns: v.boolean(),
@@ -469,7 +471,7 @@ export const canSearchWorkspaceFiles = internalQuery({
     const membership = await ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId))
       .unique()
-    return membership?.status === 'active' && membership.role !== 'guest'
+    return membership?.status === 'active'
   },
 })
 
@@ -644,7 +646,7 @@ export const backfillMemoryVisibilityByServer = mutation({
 })
 
 /**
- * Who should keep an agent-owned memory under "memories follow the place" (WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1),
+ * Who should keep an agent-owned memory under "memories follow the place" (internal/develop/workspace-and-personal.md),
  * or null to keep it as the agent's workspace knowledge: a personal chief's go to its owner, a creator-only agent's
  * to its creator, and a workspace agent's to the one person in the 1:1 chat it was learned in.
  */
@@ -1471,6 +1473,7 @@ function packChunksForContext(
       chunkIndex: row.chunkIndex,
       score: scores.get(row._id) ?? 0,
       vecScore: vecScores.get(row._id),
+      scope: chunkScope(row),
     })
   }
   return out
@@ -1570,7 +1573,7 @@ export const hybridSearch = action({
     const memberKinds = (['memory', 'message'] as const).filter(
       (kind) => kind === 'memory' ? wantsMemory : wantsMessage,
     )
-    // Files in Workspace are indexed once for the workspace (P7), searched for every member who isn't a guest.
+    // Files in Workspace are indexed once for the workspace (P7), searched for every active member.
     const workspaceFiles = args.workspaceId && wantsFile && await ctx.runQuery(internal.knowledge.knowledge.canSearchWorkspaceFiles, {
       requestingUserId: args.userId, workspaceId: args.workspaceId,
     })
@@ -1781,6 +1784,7 @@ export const hybridSearch = action({
               sourceId: row.sourceId,
               chunkIndex: row.chunkIndex,
               score: hit.score * 0.9,
+              scope: chunkScope(row),
             })
           }
         }

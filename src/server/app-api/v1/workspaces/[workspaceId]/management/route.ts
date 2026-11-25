@@ -13,7 +13,6 @@ import { requiredWorkspaceParam } from '@/server/app-api/v1/workspaces/inputs'
 const MANAGEMENT_VIEWS = [
   'people',
   'teams',
-  'guests',
   'roles',
   'chats-agents',
   // Sharing policy is served by /policies; the view exists so a stale client
@@ -72,70 +71,17 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       ))
     }
 
-    if (view === 'guests') {
-      const [members, resourceGuests, invitations] = await Promise.all([
-        service.listMembers({ actorUserId: context.auth.userId, workspaceId }),
-        canManage
-          ? service.listResourceGuests({ actorUserId: context.auth.userId, workspaceId })
-          : Promise.resolve([]),
-        canManage
-          ? service.listInvitations({ actorUserId: context.auth.userId, workspaceId })
-          : Promise.resolve([]),
-      ])
-      const activeGrantsByPrincipal = new Map<string, number>()
-      for (const grant of resourceGuests) {
-        if (grant.status !== 'active') continue
-        activeGrantsByPrincipal.set(
-          grant.principalId,
-          (activeGrantsByPrincipal.get(grant.principalId) ?? 0) + 1,
-        )
-      }
-      return NextResponse.json(response([
-        ...members
-          .filter(({ membership }) => membership.role === 'guest')
-          .map(({ principal, membership }) => {
-            const grants = activeGrantsByPrincipal.get(principal.id) ?? 0
-            return {
-              id: principal.id,
-              kind: 'member' as const,
-              ...humanDetails(principal),
-              description: principal.email ?? 'Workspace guest',
-              detail: `${grants} ${grants === 1 ? 'resource' : 'resources'}`,
-              badge: membership.status,
-              principalId: principal.id,
-              principalType: principal.type,
-              role: membership.role,
-              status: membership.status,
-            }
-          }),
-        ...invitations
-          .filter((invitation) => invitation.role === 'guest' && invitation.status === 'pending')
-          .map((invitation) => ({
-            id: invitation.id,
-            kind: 'invitation' as const,
-            name: invitation.email,
-            description: 'Pending workspace invitation',
-            detail: invitation.status,
-            badge: invitation.status,
-            invitationId: invitation.id,
-            role: invitation.role,
-            status: invitation.status,
-          })),
-      ]))
-    }
-
     const members = await service.listMembers({
       actorUserId: context.auth.userId,
       workspaceId,
     })
 
     if (view === 'roles') {
-      const roles = ['owner', 'admin', 'member', 'guest'] as const
+      const roles = ['owner', 'admin', 'member'] as const
       const descriptions = {
         owner: 'Full control, ownership transfer, and workspace archive',
-        admin: 'Manage people, invitations, teams, guests, and policy',
+        admin: 'Manage people, invitations, teams, and policy',
         member: 'Create and collaborate in workspace resources',
-        guest: 'Access only explicitly shared rooms and resources',
       } as const
       return NextResponse.json(response(
         roles.map((role) => {
@@ -186,9 +132,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
       : []
     return NextResponse.json(response([
       ...members
-        .filter(({ principal, membership }) => (
-          principal.type === 'human' && membership.role !== 'guest'
-        ))
+        .filter(({ principal }) => principal.type === 'human')
         .map(({ principal, membership }) => ({
           id: principal.id,
           kind: 'member' as const,
@@ -202,7 +146,7 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
           status: membership.status,
         })),
       ...invitations
-        .filter((invitation) => invitation.role !== 'guest' && invitation.status === 'pending')
+        .filter((invitation) => invitation.status === 'pending')
         .map((invitation) => ({
           id: invitation.id,
           kind: 'invitation' as const,

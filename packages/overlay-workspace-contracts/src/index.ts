@@ -63,7 +63,6 @@ export {
   type WorkspaceMembershipStatus,
   type WorkspacePrincipal,
   type WorkspacePrincipalType,
-  type WorkspaceResourceGuest,
   type WorkspaceResourceScope,
   type WorkspaceStatus,
   type WorkspaceSummary,
