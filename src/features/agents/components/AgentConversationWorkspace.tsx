@@ -15,8 +15,8 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
 import { ChatFilesProvider, useChatFilesHost, type ChatFilesHost } from '@overlay/chat-react'
 import {
-  agentBelongsToCreatorScope,
-  agentsForCreatorScope,
+  agentModeForViewer,
+  agentsForMode,
   clearAgentOpened,
   pickAgentToOpen,
   rememberAgentOpened,
@@ -38,7 +38,7 @@ import { usePanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
-import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useAgentDirectory, useEnsurePersonalChief } from '@/hooks/use-agent-directory'
 import { isPrivateThreadId } from '@/shared/agents/private-threads'
 import { PrivateThreadExperience } from '@/features/chat/components/private-threads/PrivateThreadExperience'
 import { useMutation } from 'convex/react'
@@ -74,12 +74,13 @@ function useAgentWorkspaceActions(args: {
   activeWorkspaceId: string | null
   buildHref: ReturnType<typeof useWorkspaceHref>
   agentId: string | null
+  scope: PanelScope
   router: { push(href: string): void; replace(href: string): void }
   onEditorModeChange(mode: EditorMode): void
   onError(message: string | null): void
   onRetry(): void
 }) {
-  const { activeWorkspaceId, buildHref, agentId, router, onEditorModeChange, onError, onRetry } = args
+  const { activeWorkspaceId, buildHref, agentId, scope, router, onEditorModeChange, onError, onRetry } = args
   const resolveMainThread = useMutation(api.agents.threads.resolveMain)
 
   const openCreatedAgent = useCallback(
@@ -94,7 +95,8 @@ function useAgentWorkspaceActions(args: {
             agentPrincipalId: agent.principalId,
             initialMessage: agent.instructions,
             surface: 'agents',
-            scope: 'personal',
+            // A new agent belongs to the mode its visibility puts it in.
+            scope: agent.visibility === 'workspace' ? 'workspace' : 'personal',
             buildHref,
             resolveAgentThread: resolveMainThread,
             push: (href) => router.push(href),
@@ -113,8 +115,8 @@ function useAgentWorkspaceActions(args: {
   const handleArchived = useCallback(() => {
     onEditorModeChange(null)
     if (agentId) clearAgentOpened(activeWorkspaceId, agentId)
-    router.replace(buildHref(activeWorkspaceId, '/app/agents', 'personal'))
-  }, [activeWorkspaceId, buildHref, agentId, router, onEditorModeChange])
+    router.replace(buildHref(activeWorkspaceId, '/app/agents', scope))
+  }, [activeWorkspaceId, buildHref, agentId, scope, router, onEditorModeChange])
 
   const retryOpen = useCallback(() => {
     onError(null)
@@ -166,7 +168,7 @@ function useAgentAutoOpen(args: {
 
   useEffect(() => {
     if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
-    const scopedDirectory = agentsForCreatorScope(directory, viewerPrincipalId, scope)
+    const scopedDirectory = agentsForMode(directory, viewerPrincipalId, scope)
     if (agentId && !scopedDirectory.some((agent) => agent.id === agentId)) return
     const target = pickAgentToOpen(scopedDirectory, activeWorkspaceId, agentId)
     if (!target || attemptedAgentRef.current === target.id) return
@@ -202,8 +204,8 @@ function requestedAgentScope(
   agent: WorkspaceAgentDirectoryItem | null,
   viewerPrincipalId: string | null,
 ): PanelScope | null {
-  if (!agent || !viewerPrincipalId) return null
-  return agentBelongsToCreatorScope(agent, viewerPrincipalId, 'personal') ? 'personal' : 'workspace'
+  if (!agent) return null
+  return agentModeForViewer(agent, viewerPrincipalId)
 }
 
 function useRequestedAgentScopeRedirect(args: {
@@ -339,11 +341,14 @@ function AgentConversationWorkspaceContent() {
   }, [openCreate])
 
   const closeEditor = useCallback(() => setEditorMode(null), [])
+  const scope = usePanelScope()
+  useEnsurePersonalChief(scope === 'personal')
 
   const workspaceActions = useAgentWorkspaceActions({
     activeWorkspaceId,
     buildHref: buildWorkspaceHref,
     agentId,
+    scope,
     router,
     onEditorModeChange: setEditorMode,
     onError: setError,
@@ -359,7 +364,6 @@ function AgentConversationWorkspaceContent() {
   const threadScope = useAgentThreadScope({
     workspaceId: activeWorkspaceId, agentId, conversationId, directory,
   })
-  const scope = usePanelScope()
   const requestedAgent = directory?.find((agent) => agent.id === agentId) ?? null
   const requestedScope = requestedAgentScope(requestedAgent, viewerPrincipalId)
 
@@ -408,6 +412,7 @@ function AgentConversationWorkspaceContent() {
     <NewAgentDialog
       open={createOpen}
       workspaceId={activeWorkspaceId}
+      mode={scope}
       onClose={() => setCreateOpen(false)}
       onReopen={() => setCreateOpen(true)}
       onCreated={openCreatedAgent}

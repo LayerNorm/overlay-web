@@ -9,7 +9,8 @@ type Viewer = Awaited<ReturnType<typeof requireNativeWorkspace>>
 /**
  * The Computers a member may see in a workspace, live, so the sidebar, agent panel and settings agree without
  * polling. Rules match the server: personal computers are owner-only; computers of workspace-visible agents are open
- * to the workspace; a creator-only agent's computer is its creator's and the workspace owner's; a computer whose
+ * to the workspace; a personal chief's computer is its person's only; another creator-only agent's computer is its
+ * creator's and the workspace owner's; a computer whose
  * agent is gone falls to the workspace owner so it can still be stopped. Provider references, leases and desktop
  * tickets never appear. Null without access or when Computers are off.
  */
@@ -51,6 +52,22 @@ async function canSee(ctx: Parameters<typeof requireNativeWorkspace>[0], viewer:
   const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', row.ownerId)).unique()
   const owner = viewer.membership.role === 'owner'
   if (!agent || agent.workspaceId !== row.workspaceId || agent.deletedAt !== undefined) return owner
+  // A personal chief's computer is its person's only, not the workspace owner's, unless that person has left: then the
+  // owner may see it to clean it up, as the server's computer rules allow.
+  if (agent.agentRole === 'personal_chief') {
+    if (agent.chiefOwnerUserId === viewer.userId) return true
+    return owner && !await isActiveMember(ctx, row.workspaceId, agent.chiefOwnerUserId)
+  }
   if ((agent.visibility ?? 'workspace') === 'workspace') return true
   return agent.createdByPrincipalId === viewer.principal.principalId || owner
+}
+
+async function isActiveMember(ctx: Parameters<typeof requireNativeWorkspace>[0], workspaceId: string, userId: string | undefined) {
+  if (!userId) return false
+  const principals = await ctx.db.query('workspacePrincipals').withIndex('by_userId', q => q.eq('userId', userId)).collect()
+  const principal = principals.find(entry => entry.workspaceId === workspaceId && entry.type === 'human')
+  if (!principal) return false
+  const membership = await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId)).unique()
+  return membership?.status === 'active'
 }

@@ -130,19 +130,22 @@ function routeState(pathname: string, search: string, savedScope: 'personal' | '
   })
 }
 
-test('the URL scope wins, then the remembered one, then Personal', () => {
+test('the URL scope wins, then the remembered one, then Workspace', () => {
   assert.equal(routeState('/app/files', 'scope=workspace', 'personal').scope, 'workspace')
-  assert.equal(routeState('/app/files', '', 'workspace').scope, 'workspace')
-  assert.equal(routeState('/app/files', '').scope, 'personal')
-  // The retired Archived scope (old links, or a value remembered before it went) falls back to Personal.
-  assert.equal(routeState('/app/files', 'scope=archived').scope, 'personal')
+  assert.equal(routeState('/app/files', 'scope=personal', 'workspace').scope, 'personal')
+  assert.equal(routeState('/app/files', '', 'personal').scope, 'personal')
+  assert.equal(routeState('/app/files', '').scope, 'workspace')
+  // The retired Archived scope (old links, or a value remembered before it went) falls back to the default.
+  assert.equal(routeState('/app/files', 'scope=archived').scope, 'workspace')
 })
 
 test('old agent links that carried the tab as ?view= still open the right scope', () => {
   assert.equal(routeState('/app/agents', 'view=workspace').scope, 'workspace')
-  assert.equal(routeState('/app/agents', 'view=archived').scope, 'personal')
+  assert.equal(routeState('/app/agents', 'view=personal').scope, 'personal')
+  assert.equal(routeState('/app/agents', 'view=archived').scope, 'workspace')
   // `view` means something else on other pages (Files categories) and must not leak into the scope.
-  assert.equal(routeState('/app/files', 'view=archived').scope, 'personal')
+  assert.equal(routeState('/app/files', 'view=archived').scope, 'workspace')
+  assert.equal(routeState('/app/files', 'view=personal').scope, 'workspace')
 })
 
 test('chat scope follows an explicit subview or path before remembered scope', () => {
@@ -151,6 +154,9 @@ test('chat scope follows an explicit subview or path before remembered scope', (
   assert.equal(routeState('/w/team-a/personal/chat', 'scope=workspace&view=dms', 'workspace').scope, 'personal')
   assert.equal(routeState('/w/team-a/workspace/chat', 'scope=personal&view=personal', 'personal').scope, 'workspace')
   assert.equal(routeState('/app/activity', '', 'personal').scope, 'workspace')
+  // With nothing named or remembered, Chats opens in Workspace too.
+  assert.equal(routeState('/app/chat', '').scope, 'workspace')
+  assert.equal(routeState('/app/chat', '', 'personal').scope, 'personal')
 })
 
 const baseRules: PanelCreateRules = {

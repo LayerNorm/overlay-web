@@ -12,7 +12,7 @@ import { SLACK_MARKER_TTL_MS } from '@/server/workflows/slack-reply'
 
 /**
  * Buttons Overlay posts in Slack (internal/develop/slack-integration.md): approving or denying a step, and moving a
- * channel request to the asker's personal Overlay in a DM. Only the person who asked can use them; Slack shows the
+ * channel request to the asker's personal chief in a DM. Only the person who asked can use them; Slack shows the
  * approval card to the whole thread, so every click is checked against the thread's owner.
  */
 
@@ -22,14 +22,15 @@ type SlackActionEvent = Parameters<Parameters<SlackBot['onAction']>[1]>[0]
 type ThreadOwner = { origin: { teamId: string; kind: 'channel' | 'dm' }; workspaceId: string; agentId: string; userId: string }
 
 export type SlackActionOutcome =
-  | 'approved' | 'denied' | 'inactive' | 'not_owner' | 'not_allowed' | 'link_required' | 'private_started' | 'no_personal_overlay'
+  | 'approved' | 'denied' | 'inactive' | 'not_owner' | 'not_allowed' | 'link_required' | 'private_started' | 'no_personal_chief'
 
 export type SlackActionDependencies = {
   resolveRequester?: (args: { teamId: string; slackUserId: string }) => Promise<SlackRequester | null>
   threadOwner?: (conversationId: string) => Promise<ThreadOwner | null>
   getLatestAgentRun?: Parameters<typeof submitAgentRunApproval>[1]['getLatestAgentRun']
   submitApproval?: typeof submitAgentRunApproval
-  hasPersonalOverlay?: (args: { workspaceId: string; userId: string }) => Promise<boolean>
+  /** The asker's personal chief (its name when it exists yet), or null when they can't have one. */
+  personalChief?: (args: { workspaceId: string; userId: string }) => Promise<{ name: string | null } | null>
   latestQuestion?: (args: { conversationId: string; userId: string }) => Promise<string>
   openDm?: typeof startSlackDmThread
   startRequest?: typeof startSlackRequest
@@ -93,7 +94,7 @@ export async function answerSlackApproval(
   return access === 'initiator-only' ? 'not_owner' : 'inactive'
 }
 
-/** Moves a channel request to the asker's personal Overlay, in a new thread of their DM with the app. */
+/** Moves a channel request to the asker's personal chief (created if needed), in a new thread of their DM with the app. */
 export async function continueSlackRequestPrivately(
   args: { teamId: string; slackUserId: string; value?: string },
   dependencies: SlackActionDependencies = {},
@@ -104,10 +105,10 @@ export async function continueSlackRequestPrivately(
   if ('outcome' in found) return found.outcome
   const { owner, principalId } = found
   if (owner.origin.kind !== 'channel') return 'inactive'
-  const hasPersonal = await (dependencies.hasPersonalOverlay ?? ((input) => serverQuery<boolean>('hasPersonalOverlayByServer', input)))({
+  const chief = await (dependencies.personalChief ?? ((input) => serverQuery<{ name: string | null } | null>('personalChiefByServer', input)))({
     workspaceId: owner.workspaceId, userId: owner.userId,
   })
-  if (!hasPersonal) return 'no_personal_overlay'
+  if (!chief) return 'no_personal_chief'
   const question = await (dependencies.latestQuestion ?? latestQuestion)({ conversationId, userId: owner.userId })
   if (!question) return 'inactive'
   // A second click (or Slack retrying the click) must not open another DM thread or start another run.
@@ -119,7 +120,7 @@ export async function continueSlackRequestPrivately(
   try {
     const dm = await (dependencies.openDm ?? startSlackDmThread)({
       teamId: args.teamId, slackUserId: args.slackUserId,
-      markdown: 'Continuing privately with your personal Overlay:\n\n> ' + question.replace(/\n/g, '\n> '),
+      markdown: 'Continuing privately with ' + (chief.name ?? 'your Chief') + ':\n\n> ' + question.replace(/\n/g, '\n> '),
     })
     await (dependencies.startRequest ?? startSlackRequest)({
       workspaceId: owner.workspaceId, userId: owner.userId, principalId, slackUserId: args.slackUserId, prompt: question,
@@ -150,8 +151,8 @@ const OUTCOME_TEXT: Record<SlackActionOutcome, string> = {
   not_owner: 'Only the person who asked can answer this.',
   not_allowed: 'You can’t ask Overlay in this workspace right now.',
   link_required: 'Link your Slack account to Overlay first.',
-  private_started: 'Continuing in your DM with Overlay.',
-  no_personal_overlay: 'You don’t have a personal Overlay in this workspace yet.',
+  private_started: 'Continuing privately in your DM.',
+  no_personal_chief: 'Only workspace members can continue privately with their own Chief.',
 }
 
 function teamOf(event: SlackActionEvent): string | undefined {

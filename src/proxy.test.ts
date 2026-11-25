@@ -117,7 +117,7 @@ test('signed-out handle routes preserve a local return path and query', async ()
   assert.equal(location.searchParams.get('redirect'), '/w/acme-labs/agents/agent_1?tab=activity')
 })
 
-test('authenticated handle roots redirect to canonical Personal Work without leaking selectors', async () => {
+test('authenticated handle roots redirect to canonical Workspace Work without leaking selectors', async () => {
   process.env.AUTH_PROVIDER = 'workos'
   const payload = 'synthetic-workspace-session'
   const signature = createHmac('sha256', secret).update(payload).digest('hex')
@@ -126,7 +126,7 @@ test('authenticated handle roots redirect to canonical Personal Work without lea
   }))
   const location = new URL(response.headers.get('location')!)
   assert.equal(response.status, 307)
-  assert.equal(location.pathname, '/w/acme/personal/work')
+  assert.equal(location.pathname, '/w/acme/workspace/work')
   assert.equal(location.searchParams.get('workspaceId'), null)
   assert.equal(location.searchParams.get('tab'), 'activity')
   assert.equal(response.headers.get('cache-control'), 'private, no-store')

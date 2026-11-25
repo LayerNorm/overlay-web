@@ -51,14 +51,15 @@ test('a finished approval is reported as no longer waiting', async () => {
   }), 'inactive')
 })
 
-test('continuing privately starts the asker personal Overlay in a DM thread', async () => {
+test('continuing privately starts the asker personal chief in a DM thread, by its name', async () => {
   const started: Array<{ agentRole: string; origin: { kind: string; channelId: string; threadTs: string }; prompt: string }> = []
+  const posted: string[] = []
   const outcome = await continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {
     resolveRequester: async () => requester,
     threadOwner: async () => owner,
-    hasPersonalOverlay: async () => true,
+    personalChief: async () => ({ name: 'Ada’s Chief' }),
     latestQuestion: async () => 'what is on my calendar?',
-    openDm: async () => ({ channelId: 'D1', threadTs: '9.9' }),
+    openDm: async (args) => { posted.push(args.markdown); return { channelId: 'D1', threadTs: '9.9' } },
     startRequest: (async (args: (typeof started)[number]) => { started.push(args); return { conversationId: 'conv_2', turnId: 't' } }) as never,
     claim: async () => true,
   })
@@ -66,16 +67,31 @@ test('continuing privately starts the asker personal Overlay in a DM thread', as
   assert.equal(started[0]?.agentRole, 'personal_chief')
   assert.deepEqual(started[0]?.origin, { platform: 'slack', teamId: 'T1', channelId: 'D1', threadTs: '9.9', kind: 'dm' })
   assert.equal(started[0]?.prompt, 'what is on my calendar?')
+  assert.match(posted[0] ?? '', /^Continuing privately with Ada’s Chief:/)
 })
 
-test('no personal Overlay, or a DM thread, starts nothing', async () => {
+test('a member without a personal chief yet can still continue privately; it is created on the way', async () => {
+  const posted: string[] = []
+  const outcome = await continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {
+    resolveRequester: async () => requester, threadOwner: async () => owner,
+    personalChief: async () => ({ name: null }),
+    latestQuestion: async () => 'q',
+    openDm: async (args) => { posted.push(args.markdown); return { channelId: 'D1', threadTs: '9.9' } },
+    startRequest: (async () => ({ conversationId: 'conv_2', turnId: 't' })) as never,
+    claim: async () => true,
+  })
+  assert.equal(outcome, 'private_started')
+  assert.match(posted[0] ?? '', /^Continuing privately with your Chief:/)
+})
+
+test('someone who cannot have a personal chief, or a DM thread, starts nothing', async () => {
   const startRequest = (async () => assert.fail('must not start')) as never
   const base = { resolveRequester: async () => requester, latestQuestion: async () => 'q', openDm: async () => ({ channelId: 'D', threadTs: '1' }), startRequest }
   assert.equal(await continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {
-    ...base, threadOwner: async () => owner, hasPersonalOverlay: async () => false,
-  }), 'no_personal_overlay')
+    ...base, threadOwner: async () => owner, personalChief: async () => null,
+  }), 'no_personal_chief')
   assert.equal(await continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {
-    ...base, threadOwner: async () => ({ ...owner, origin: { teamId: 'T1', kind: 'dm' as const } }), hasPersonalOverlay: async () => true,
+    ...base, threadOwner: async () => ({ ...owner, origin: { teamId: 'T1', kind: 'dm' as const } }), personalChief: async () => ({ name: 'Ada’s Chief' }),
   }), 'inactive')
 })
 
@@ -85,7 +101,7 @@ test('a second click on Ask privately starts nothing more, and a failed start fr
   const release = async (key: string) => { claimed.delete(key) }
   let starts = 0
   const base = {
-    resolveRequester: async () => requester, threadOwner: async () => owner, hasPersonalOverlay: async () => true,
+    resolveRequester: async () => requester, threadOwner: async () => owner, personalChief: async () => ({ name: 'Ada’s Chief' }),
     latestQuestion: async () => 'q', openDm: async () => ({ channelId: 'D1', threadTs: '9.9' }), claim, release,
   }
   const click = (startRequest: unknown) => continueSlackRequestPrivately({ teamId: 'T1', slackUserId: 'U1', value: JSON.stringify({ c: 'conv_1' }) }, {

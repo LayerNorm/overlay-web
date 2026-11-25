@@ -28,7 +28,7 @@ test('assignment thread destinations follow actual parent kind and preserve agen
 
 test('Chats opens a new draft in the scope the person is already in, including without a workspace', () => {
   for (const activeWorkspaceId of [null, 'team-a']) {
-    for (const [scope, view] of [[undefined, 'personal'], ['personal', 'personal'], ['workspace', 'workspace-chats']] as const) {
+    for (const [scope, view] of [[undefined, 'workspace-chats'], ['personal', 'personal'], ['workspace', 'workspace-chats']] as const) {
       const href = resolveNavItemDestination('/app/chat', {
         activeWorkspaceId,
         buildWorkspaceHref: (id, path) => `/app/w/${id}${path.slice(4)}`,
@@ -36,7 +36,7 @@ test('Chats opens a new draft in the scope the person is already in, including w
       })
       const url = new URL(href, 'https://overlay.invalid')
       assert.equal(url.searchParams.get('view'), view)
-      assert.equal(url.searchParams.get('scope'), scope ?? 'personal')
+      assert.equal(url.searchParams.get('scope'), scope ?? 'workspace')
       assert.equal(url.searchParams.has('id'), false)
     }
   }
@@ -69,7 +69,7 @@ test('desktop and mobile Chats navigate directly without resolving saved convers
         selectDoubleSidebarItem({ ...item, active: isActive, onSelect: navigate }, false, (value) => collapsed.push(value))
         assert.deepEqual(collapsed, [false])
       } else navigate()
-      assert.deepEqual(destinations, ['/app/chat?view=personal&scope=personal'])
+      assert.deepEqual(destinations, ['/app/chat?view=workspace-chats&scope=workspace'])
     }
   }
 })

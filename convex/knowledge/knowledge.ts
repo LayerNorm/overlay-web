@@ -538,7 +538,7 @@ export const backfillMemoryVisibilityByServer = mutation({
 
 /**
  * Who should keep an agent-owned memory under "memories follow the place" (WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1),
- * or null to keep it as the agent's workspace knowledge: a personal Overlay's go to its owner, a creator-only agent's
+ * or null to keep it as the agent's workspace knowledge: a personal chief's go to its owner, a creator-only agent's
  * to its creator, and a workspace agent's to the one person in the 1:1 chat it was learned in.
  */
 async function memoryPlaceOwner(

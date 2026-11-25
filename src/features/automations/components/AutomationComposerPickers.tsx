@@ -12,7 +12,7 @@ import { WEEKDAY_LABELS, automationHref } from '@overlay/app-core/automations'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { newItemScope, type PanelScope } from '@/shared/workspaces/panel-scope'
-import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
+import { agentBelongsToMode } from '@/shared/agents/last-agent-by-workspace'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
@@ -31,7 +31,7 @@ export function AutomationAvatar({ agent, size = 16 }: { agent: WorkspaceAgentDi
 
 /**
  * The workspace's agents an automation can run as, the default Overlay agent aside ("No agent" covers it).
- * With a scope, only the agents the Agents sidebar lists in that scope, so each personal Overlay appears once.
+ * With a scope, only the agents the Agents sidebar lists in that mode.
  */
 export function useAutomationAgents(scope?: PanelScope): WorkspaceAgentDirectoryItem[] {
   const directory = useAgentDirectory()
@@ -39,7 +39,7 @@ export function useAutomationAgents(scope?: PanelScope): WorkspaceAgentDirectory
   return useMemo(
     () => directory.workspaceId === activeWorkspaceId
       ? (directory.agents ?? []).filter((agent) => !agent.isDefault
-        && (!scope || agentBelongsToCreatorScope(agent, directory.viewerPrincipalId, scope)))
+        && (!scope || agentBelongsToMode(agent, directory.viewerPrincipalId, scope)))
       : [],
     [activeWorkspaceId, directory.agents, directory.viewerPrincipalId, directory.workspaceId, scope],
   )

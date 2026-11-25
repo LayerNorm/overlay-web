@@ -6,6 +6,8 @@ import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { isPlaceholderChatTitle } from '@/shared/chat/chat-title'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import { legacyWorkspaceScopeForRoute, readWorkspacePathScope } from '@/shared/workspaces/routing'
+import { resolvePanelScope } from '@/shared/workspaces/panel-scope'
+import { readRememberedPanelScope } from '@/hooks/use-panel-scope'
 import { peekResolvedTitle } from '@/features/chat/lib/generate-title'
 import { markConversationScopeVerified } from '../conversationScopeVerification'
 import type {
@@ -255,13 +257,16 @@ export async function createNewChatForSend({
   return data.id
 }
 
-/** A chat started from the Workspace "Chats" list belongs to the Workspace scope. */
+/**
+ * Whether a new chat belongs to Workspace: the route's scope wins, then the remembered mode, then Workspace (the
+ * default). It must agree with the mode the sidebar shows, or a chat started in Workspace would be filed as Personal.
+ */
 export function workspaceChatsViewActive(): boolean {
   if (typeof window === 'undefined') return false
   const pathScope = readWorkspacePathScope(window.location.pathname)
-  if (pathScope) return pathScope === 'workspace'
-  return legacyWorkspaceScopeForRoute(
+  const routeScope = pathScope ?? legacyWorkspaceScopeForRoute(
     'chat',
     new URLSearchParams(window.location.search),
-  ) === 'workspace'
+  )
+  return resolvePanelScope({ param: routeScope, saved: readRememberedPanelScope() }) === 'workspace'
 }

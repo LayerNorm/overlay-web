@@ -284,7 +284,8 @@ export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaite
   return {
     kind: 'agent_assignment', assignmentId: assignment.assignmentId, attemptId: assignment.currentAttemptId, attemptOrdinal: attempt?.ordinal,
     conversationId: child._id, agentId: agent.agentId, agentName: agent.name,
-    agent: { avatarColor: agent.avatarColor, avatarShape: agent.avatarShape, isDefault: agent.isDefault },
+    // A personal chief is a creature, never the Overlay mark, even when it is the adopted default.
+    agent: { avatarColor: agent.avatarColor, avatarShape: agent.avatarShape, isDefault: agent.agentRole !== 'personal_chief' && agent.isDefault },
     title: child.title, brief: assignment.brief,
     scope: agentScope(agent), status: await projectedStatus(ctx, assignment),
     disposition: attempt?.disposition, dispositionReason: attempt?.dispositionReason,

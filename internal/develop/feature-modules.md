@@ -30,8 +30,9 @@ Primary rail items come from `DEFAULT_OVERLAY_NAVIGATION` in `@overlay/app-core/
 runtime capability (`requiredCapabilities`), which hides it from the rail, the mobile drawer, and the Alt+1 to Alt+6
 shortcuts (they index the visible items). **Work** is the first item, above Agents, and requires the `work`
 capability (`OVERLAY_FEATURE_WORK`); Alt+1 is Work when it is on, and the other sections move down one. Its secondary
-panel is navigation only (`SecondaryPanelKind` `work`, not a resource list): Personal and Workspace, each with
-List, Board, and Timeline beneath, kept in the URL as `?scope=` and `?view=`.
+panel is navigation only (`SecondaryPanelKind` `work`, not a resource list): List, Board, and Timeline for the
+current mode (Workspace or Personal, chosen with the one mode switch in the primary sidebar), kept in the URL as
+`?scope=` and `?view=`.
 
 The default brand `homeHref`, authenticated root/app entry and ordinary web auth returns point to `/app/work`. Explicit white-label `homeHref` overrides and explicit Account/desktop auth returns remain intact. The destination stays static for the prerendered shell: `OVERLAY_FEATURE_WORK=0` shows the Work-unavailable notice with an Agents link, and missing `work.use` permission retains the existing access-denied boundary.
 

@@ -94,9 +94,12 @@ export const get = query({
   },
 })
 
-/** Provisions the viewer's chief agents. Idempotent; the directory query reflects the result. */
+/**
+ * Provisions the workspace chief and, with `includePersonal` (the viewer opened Personal), the viewer's own personal
+ * chief. Never anyone else's. Idempotent; the directory query reflects the result.
+ */
 export const ensureChiefs = mutation({
-  args: { workspaceId: v.string() },
+  args: { workspaceId: v.string(), includePersonal: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     if (viewer.membership.role === 'guest') return null
@@ -104,6 +107,7 @@ export const ensureChiefs = mutation({
       workspaceId: args.workspaceId,
       actorUserId: viewer.userId,
       actorPrincipalId: viewer.principal.principalId,
+      includePersonal: args.includePersonal === true,
       now: Date.now(),
     })
     return null
