@@ -482,6 +482,20 @@ No restore prefix may substitute a different tree. Misses run
 hit. GitHub prevents PR cache writes from replacing main's trees. Docs uses the
 same root install; admin keeps its isolated workspace installation.
 
+The repository's Actions cache is capped at 10 GB and was full, so writes are
+limited to the ones another run can read. The composite action pins exact Node
+patch versions (bump them together in `ci-dependencies/action.yml`): a floating
+major resolved to different patches on different runner images, so PRs missed
+main's tree and saved ~800 MB copies that evicted it. Merge-queue runs never save
+dependencies, and only pushes to main save `.next/cache`; every run still
+restores. Each dependency step leaves a `CI dependency cache` hit/miss notice;
+`node scripts/ci/ci-timing-audit.mjs --cache-hits` counts them and splits recent
+jobs into waiting, setup and running time.
+
+Lint, typecheck, compilation and test jobs check out the tree without
+`internal/plans/**/*.html` (generated mockup pages, ~176 MB of the 202 MB tree),
+which no check reads. Secret scanning and the public-env guard keep the full tree.
+
 Namespace local installed-tree reuse is **opt-in** through the composite action's
 `local-volume-experiment` input. Real runner placements produced cold generations
 instead of reliable warm reuse, so it must demonstrate a benefit before becoming

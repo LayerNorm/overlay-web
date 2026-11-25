@@ -123,6 +123,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
         with:
           persist-credentials: false
+          # Generated mockup pages (~176 MB of HTML) are never linted, typechecked,
+          # built or tested. Secret scanning and the env guard keep the full tree.
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
 
       - name: Prepare dependencies
         uses: ./.github/actions/ci-dependencies
@@ -166,6 +172,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
+          # Generated mockup pages (~176 MB of HTML) are never linted, typechecked,
+          # built or tested. Secret scanning and the env guard keep the full tree.
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
       - name: Check out desktop transcript contract
         run: git submodule update --init --depth 1 overlay-desktop
       - name: Prepare dependencies
@@ -196,6 +208,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
         with:
           persist-credentials: false
+          # Generated mockup pages (~176 MB of HTML) are never linted, typechecked,
+          # built or tested. Secret scanning and the env guard keep the full tree.
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
 
       - name: Check out desktop transcript contract
         run: git submodule update --init --depth 1 overlay-desktop
@@ -206,7 +224,7 @@ jobs:
           node-version: 22
 
       - name: Restore Next.js compiler cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .next/cache
           key: next-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.*', 'tsconfig.json') }}-${{ github.sha }}
@@ -214,6 +232,14 @@ jobs:
             next-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.*', 'tsconfig.json') }}-
       - name: Build
         run: npm run build
+      # Only main seeds the compiler cache. PR and merge-queue saves are scoped to
+      # their own refs, cannot help other PRs and evicted main's caches.
+      - name: Save Next.js compiler cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          key: next-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.*', 'tsconfig.json') }}-${{ github.sha }}
       # Keep this after build: Workflow generates routes checked by this guard.
       - name: Verify configuration and migration safety
         run: npm run check:config && npm run test:release-safety
@@ -238,6 +264,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
         with:
           persist-credentials: false
+          # Generated mockup pages (~176 MB of HTML) are never linted, typechecked,
+          # built or tested. Secret scanning and the env guard keep the full tree.
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
 
       - name: Check out desktop transcript contract
         run: git submodule update --init --depth 1 overlay-desktop
