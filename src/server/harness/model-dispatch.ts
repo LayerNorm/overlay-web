@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { HARNESS_MEMBER_SPEND_LIMIT_MESSAGE } from './harness-diagnostics'
 import { createHash } from 'node:crypto'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
@@ -7,7 +8,7 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { workspaceBudgetLow, workspaceBudgetStopLineCents } from '@/shared/billing/execution-access'
-import { ensurePayerBudgetAvailable } from '@/server/billing/billing-runtime'
+import { ensurePayerBudgetAvailable, spendLimitRefusal } from '@/server/billing/billing-runtime'
 import { getBudgetTotals } from '@/server/billing/billing-runtime-details'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
@@ -87,6 +88,12 @@ async function validateCurrentDispatch(
 // The only spending check: the real balance, never an estimate of this call.
 async function assertWorkspaceBudgetNotLow(input: HarnessModelDispatch, refreshed: DispatchAuthority): Promise<void> {
   if (!(await getOverlayCapabilities()).billing) return
+  // An admin's cap on this person (or on the program paying) stops the call, whatever the workspace has left.
+  const capped = await spendLimitRefusal({
+    userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
+    programmaticSubjectId: refreshed.billingProgrammaticSubjectId ?? input.billingProgrammaticSubjectId,
+  })
+  if (capped) throw new FatalError(HARNESS_MEMBER_SPEND_LIMIT_MESSAGE)
   const totals = getBudgetTotals(refreshed.entitlements)
   if (!workspaceBudgetLow(totals)) return
   const topUp = await ensurePayerBudgetAvailable({

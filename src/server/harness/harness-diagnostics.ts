@@ -255,6 +255,9 @@ function harnessProviderFailureCode(error: unknown): HarnessDiagnosticCode {
   return 'UNKNOWN'
 }
 
+/** Thrown at the model boundary when an admin's cap on this person (or the paying program) is used up. */
+export const HARNESS_MEMBER_SPEND_LIMIT_MESSAGE = 'An admin spend limit for this person or program is used up.'
+
 export function harnessDiagnosticForFailure(
   runId: string,
   snapshot: HarnessSnapshot,
@@ -278,6 +281,8 @@ export function harnessDiagnosticForFailure(
   } else if (stage === 'model' && (message === 'The workspace budget is under 2%.'
     || /^Model budget reservation declined: (?:insufficient_credits|insufficient_budget)$/.test(message))) {
     code = 'WORKSPACE_FUNDS'
+  } else if (stage === 'model' && message === HARNESS_MEMBER_SPEND_LIMIT_MESSAGE) {
+    code = 'MEMBER_SPEND_LIMIT'
   } else if (error instanceof HarnessPersistenceError || value.code === 'HARNESS_PERSISTENCE_FAILED') {
     code = 'PERSISTENCE_FAILED'
     stage = 'persistence'

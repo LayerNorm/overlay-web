@@ -3,11 +3,11 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { authorizeNativeHarnessModelDispatch } from './native-model-dispatch'
 import type { HarnessModelReference } from './secure-model'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), ensure: vi.fn(), capabilities: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), ensure: vi.fn(), capabilities: vi.fn(), spendLimit: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./native-access', () => ({ refreshNativeHarnessAccess: mocks.refresh }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.read; apply = mocks.apply } }))
-vi.mock('@/server/billing/billing-runtime', () => ({ ensurePayerBudgetAvailable: mocks.ensure }))
+vi.mock('@/server/billing/billing-runtime', () => ({ ensurePayerBudgetAvailable: mocks.ensure, spendLimitRefusal: mocks.spendLimit }))
 vi.mock('@/server/capabilities', () => ({ getOverlayCapabilities: mocks.capabilities }))
 
 const access = { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow',
