@@ -9,6 +9,15 @@
       "repository": "LayerNorm/overlay-web",
       "pullRequest": 131,
       "commentUrl": "https://github.com/LayerNorm/overlay-web/pull/131#issuecomment-5809221904"
+    },
+    {
+      "githubUser": "shehraan",
+      "githubUserId": 72216883,
+      "signedAt": "2026-11-25T09:58:46.862Z",
+      "claVersion": "2026-08-28-draft",
+      "repository": "LayerNorm/overlay-web",
+      "pullRequest": 624,
+      "commentUrl": "https://github.com/LayerNorm/overlay-web/pull/624#issuecomment-7159052311"
     }
   ]
 }
