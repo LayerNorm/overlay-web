@@ -1,4 +1,6 @@
-import { computerActionRequiresApproval, computerToolRequiresApproval } from '@layernorm/overlay-agent-bridge-protocol'
+// The source file, not the package: Convex's bundler and the admin app resolve workspace packages through their
+// entry points, and the protocol's entry point is its build output, which exists only when the package is published.
+import { computerActionRequiresApproval, computerToolRequiresApproval } from '../../overlay-agent-bridge-protocol/src/computer-tools'
 
 /** Max model tool rounds - ToolLoopAgent (act) uses this. */
 export const MAX_TOOL_STEPS_ACT = 12
