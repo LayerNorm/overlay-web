@@ -19,6 +19,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useMemories } from '@/hooks/use-memories'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { moveAgentToWorkspace } from './use-agent-editor-actions'
 import { AgentComputerRecoveryNotice } from './AgentComputerRecoveryNotice'
 import { FieldLabel } from './InfoTip'
 import { useEditorLoad } from './EditorLoadGate'
@@ -301,9 +302,9 @@ function SavedAgentAccess({ agent, onMovedToWorkspace }: {
     if (!activeWorkspaceId) return
     setMoving(true)
     try {
-      const saved = await overlayAppClient.agents.update(activeWorkspaceId, agent.id, { visibility: 'workspace' })
+      const moved = await moveAgentToWorkspace(activeWorkspaceId, agent.id)
       setConfirming(false)
-      onMovedToWorkspace?.(saved.agent)
+      onMovedToWorkspace?.(moved)
       toast.success(`${agent.name} moved to the workspace`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not move this agent.')
