@@ -205,9 +205,10 @@ async function assertCurrentModelPolicy(
   userId: string,
   workspaceId: string,
   entitlements: PersonalHarnessExecutionContext['entitlements'],
+  workspaceOnly: boolean,
 ): Promise<void> {
   if (isByokModelId(modelId)) {
-    await assertUserCanUseByokModel(modelId, userId, workspaceId)
+    await assertUserCanUseByokModel(modelId, userId, workspaceId, { workspaceOnly })
   } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
     throw new FatalError('The model is no longer allowed by server policy.')
   }
@@ -277,6 +278,9 @@ function buildExecutionContext(
       ? { automationExecution: true, automationId: access.authentication.automationId,
         automationRunId: access.authentication.automationRunId,
         approvalMode: sourceGrant?.approvalMode ?? 'ask',
+        // A workspace automation runs with workspace reach only (P6), decided from the automation every step.
+        ...(sourceGrant?.workspaceReach ? { sharedRoom: true } : {}),
+        ...(sourceGrant?.memoryOwnerId ? { memoryOwnerId: sourceGrant.memoryOwnerId } : {}),
         // An agent-bound automation acts as its agent: the agent's memory,
         // identity and computer, read fresh from the automation every step.
         ...(sourceGrant?.agent ?? {}) }
@@ -357,6 +361,7 @@ export async function refreshPersonalHarnessAccess(
     access.actorUserId,
     access.workspaceId,
     grants.gate.runtimeEntitlements,
+    sourceGrant?.workspaceReach === true,
   )
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
     const renewal = await repository.renewOwnedLease({

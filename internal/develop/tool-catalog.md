@@ -93,17 +93,26 @@ the server's name and tools, never the secret. Moving a server to the workspace 
 off until connected for the workspace (older shared servers keep theirs, see `mcp-access.md`). A personal connector never
 moves to the workspace; the workspace connects its own account. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
 
-## Rooms others can read
+## Rooms others can read, and workspace automations
 
 An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
 than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
-and a private channel with one person, are not. The server decides this from the conversation
-(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared). In a shared room:
+and a private channel with one person, are not. A workspace automation's thread counts the same way: the automation runs
+for the whole workspace, so it gets workspace reach only, whoever created it (`workspaceAutomationForThread` in
+`convex/lib/roomAudience.ts`; an archived one keeps the scope it was archived from). The server decides this from the
+conversation (`conversationAudienceIsShared`, read through `src/server/agents/shared-room.ts`, fail-closed: if it cannot
+read the room it treats it as shared); agentless automation runs re-read the automation's scope on every step
+(`resolveAutomationSourceGrant`). In a shared room or workspace automation:
 
-- **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
-  notes and memories, and their personal skills are not loaded; what the workspace shares still is.
+- **Loaded automatically** (`buildAgentTurnContext`, `ActContextService.loadTurnContext`): the person's memories and memory
+  profile and their personal skills are not loaded; retrieval reads only what the workspace shares (`workspaceOnly`).
 - **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
-  not even the person's own, and files are not searched (`chunkVisibleToSearch`).
+  not even the person's own. Files in Workspace are searched; personal and archived files are not (`chunkVisibleToSearch`,
+  `fileChunkVisibility`).
+- **Models**: only workspace provider connections and hosted models; a personal key or subscription is refused
+  (`assertUserCanUseByokModel` with `workspaceOnly`).
+- **Memory saves**: what an agent learns there is workspace knowledge (`memoryOwnerForPlace`); an agentless workspace
+  automation saves under the workspace chief (`workspaceChiefMemoryOwnerId`).
 - **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`, `list_tasks`) read the Workspace scope whatever `scope` was asked.
 - **Not offered**: `list_chats`, `read_chat`, `search_in_files`.
 - **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.

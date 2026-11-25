@@ -288,7 +288,7 @@ test('BYOK ownership is checked again for the selected agent model', async () =>
   const modelId = 'byok/connection/model'
   mocks.room.mockResolvedValue({ ...room(), directory: { agents: [{ ...room().directory.agents[0], modelId }] } })
   await refreshNativeHarnessAccess(access, { ...context, modelId })
-  expect(mocks.byok).toHaveBeenCalledExactlyOnceWith(modelId, access.actorUserId, access.workspaceId)
+  expect(mocks.byok).toHaveBeenCalledExactlyOnceWith(modelId, access.actorUserId, access.workspaceId, { workspaceOnly: false })
   mocks.byok.mockRejectedValueOnce(new Error('Connection revoked'))
   await expect(refreshNativeHarnessAccess(access, { ...context, modelId })).rejects.toThrow(/revoked/)
 })

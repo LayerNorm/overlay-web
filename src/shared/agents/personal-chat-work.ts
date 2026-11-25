@@ -61,4 +61,9 @@ export type PersonalChatWorkToolingContext = {
   approvalMode?: 'ask' | 'auto'
   /** The Notebook note this chat turn is about; its editing tools stay available on tool reconstruction. */
   notebookNoteId?: string
+  /**
+   * Workspace reach only (a workspace automation, P6): workspace connectors and MCP servers, no personal tools, and
+   * workspace-scoped lists and search. Derived from the automation on every step, never taken from a supplied context.
+   */
+  sharedRoom?: boolean
 }

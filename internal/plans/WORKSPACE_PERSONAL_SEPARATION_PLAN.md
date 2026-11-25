@@ -9,7 +9,8 @@ Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24,
 | P3 The Personal Chief | Merged (PR 617), deployed, migrated in production; reruns clean. Preview-tested: chief created on first Personal visit, kept out of channel mentions. Slack DM routing to the Personal Chief covered by Convex tests only. The `hasPersonalOverlayByServer` shim was deleted on 2026-11-24 |
 | P4 One-way moves | Merged (PR 620) and deployed. Preview-tested: notes, agents (editor move, reverse refused), automations moving with their agent, member view, dark and phone. An open note's header now offers Move and Archive too (it lost the note's creator and scope before) |
 | P5 Credentials move honestly | Merged (PR 620) and deployed. Preview-tested: MCP move strips the sign-in and turns the server off. "Connect for workspace" for connectors and reconnecting a moved OAuth MCP server are covered by Convex tests only (need a live third-party sign-in) |
-| P6–P7 | Not started |
+| P6 Workspace runs use workspace reach | Built on branch `codex/workspace-personal-p6-p7`, not merged. Unit and Convex tests only so far |
+| P7 Workspace files searchable by everyone | Built on the same branch, not merged. Needs `knowledge/knowledge:backfillFileChunkVisibilityByServer` in production after deploy. Unit and Convex tests only so far |
 
 ## The model
 
@@ -61,7 +62,26 @@ As built (P5): connectors refuse every move (`connector_reconnect_for_workspace`
 
 **P6 — Workspace runs use workspace reach.** Workspace automations and turns in shared rooms use workspace connectors and the workspace's provider keys, not the creator's or asker's personal ones. Workspace automations stop reading the owner's private memories, and then save what they learn as workspace knowledge.
 
+As built (P6): a workspace automation's thread is a workspace context in the one place the server decides shared rooms
+(`conversationAudienceIsShared` → `workspaceAutomationForThread`), so agent-thread automations, their per-step checks, asked
+agents and memory extraction all follow it. Agentless (chat-thread) automations read the automation's scope on every step
+(`resolveAutomationSourceGrant` → `workspaceReach`) and at admission (`resolveSharedRoom` in the act route). Such a run gets
+the shared-room tooling (workspace connectors and MCP servers, workspace-scoped lists and search, no `list_chats`/
+`read_chat`/`search_in_files`), loads only workspace memories, skills and retrieval, never the memory profile, and may use
+only workspace provider connections (`assertUserCanUseByokModel` `workspaceOnly`; the same check now applies to shared rooms).
+What it learns is workspace knowledge: its agent's (`memoryOwnerForPlace`) or, without an agent, the workspace chief's.
+Workspace MCP servers shared before P5 still run with their creator's credentials.
+
 **P7 — Workspace knowledge is searchable by everyone.** Workspace files are indexed once for the workspace, so any member's chats, and their Personal Chief, can search them. This is what makes "Personal reads Workspace" real.
+
+As built (P7): file chunks stay keyed to their uploader and carry a visibility (`fileChunkVisibility`): `workspace` for a live
+file in Workspace, `owner` otherwise; a file chunk without one is private. Indexing reads the file's scope inside the write
+(`replaceKnowledgeSource`), and moves, archives and restores re-stamp the file and its folder's contents
+(`restampFileChunks`, scheduled from the files `afterApply`). `hybridSearch` now searches other members' file chunks
+alongside their memories and keeps only workspace ones; workspace-only searches (shared rooms, workspace automations) include
+workspace files, and room agents' automatic retrieval runs over them instead of being skipped. `search_in_files` reads files
+in Workspace as well as the caller's own. Not covered: a workspace file that is a byte-identical copy of its uploader's
+personal file has no chunks of its own (duplicates are indexed once per person), so it stays findable only by its uploader.
 
 ## Order and risk
 

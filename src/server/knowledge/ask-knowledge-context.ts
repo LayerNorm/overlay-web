@@ -28,6 +28,8 @@ export async function buildAutoRetrievalBundle(args: {
   accessToken?: string
   includeMemories?: boolean
   workspaceId?: string
+  /** A workspace context (shared room, workspace automation): only what the workspace shares, nothing private. */
+  workspaceOnly?: boolean
 }): Promise<AutoRetrievalBundle> {
   const q = args.userMessage.trim()
   if (q.length < MIN_USER_CHARS) {
@@ -40,6 +42,7 @@ export async function buildAutoRetrievalBundle(args: {
       userId: args.userId,
       query: q.slice(0, MAX_QUERY_CHARS),
       workspaceId: args.workspaceId,
+      ...(args.workspaceOnly ? { workspaceOnly: true } : {}),
       ...(args.accessToken ? { accessToken: args.accessToken } : {}),
       ...(args.includeMemories === false ? { sourceKind: 'file' as const } : {}),
       m: 10,
