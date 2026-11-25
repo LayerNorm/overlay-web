@@ -27,7 +27,7 @@ import {
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 import { canRecallMessageChunk, messageChunkVisibility } from '../../src/shared/knowledge/message-visibility'
 import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
-import { chunkVisibleToSearch, fileChunkOwner, workspaceFilesOwnerId } from '../../src/shared/knowledge/chunk-visibility'
+import { chunkScope, chunkVisibleToSearch, fileChunkOwner, workspaceFilesOwnerId } from '../../src/shared/knowledge/chunk-visibility'
 
 export type HybridSearchChunk = {
   text: string
@@ -38,6 +38,8 @@ export type HybridSearchChunk = {
   score: number
   /** Raw vector similarity when ranked via vector search (absent for lexical-only hits). `score` is the fused RRF value. */
   vecScore?: number
+  /** Personal (only its owner sees it) or Workspace (every member does). */
+  scope: 'personal' | 'workspace'
 }
 
 const KNOWLEDGE_SOURCE_KINDS = v.union(
@@ -1471,6 +1473,7 @@ function packChunksForContext(
       chunkIndex: row.chunkIndex,
       score: scores.get(row._id) ?? 0,
       vecScore: vecScores.get(row._id),
+      scope: chunkScope(row),
     })
   }
   return out
@@ -1781,6 +1784,7 @@ export const hybridSearch = action({
               sourceId: row.sourceId,
               chunkIndex: row.chunkIndex,
               score: hit.score * 0.9,
+              scope: chunkScope(row),
             })
           }
         }

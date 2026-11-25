@@ -58,7 +58,8 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
           actorPrincipalId: context.workspace.principal.id,
           ...(input.callerAgentId
             ? { caller: { agentId: input.callerAgentId, conversationId: input.callerConversationId!, turnId: input.callerTurnId! } }
-            : {}),
+            // An agentless turn (a workspace automation without an agent) still asks from a conversation.
+            : input.callerConversationId ? { roomConversationId: input.callerConversationId } : {}),
           target: input.agent,
           message: input.message,
           assignmentId: input.assignmentId,

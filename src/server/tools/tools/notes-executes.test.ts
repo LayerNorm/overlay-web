@@ -52,6 +52,7 @@ test('get_note returns Markdown, a revision, and the outline-solid', async () =>
       title: 'Doc',
       content: '# Doc\n\n## Tasks\n\n- a\n',
       tags: [],
+      scope: 'personal',
       revision: '10',
       outline: [{ level: 1, text: 'Doc' }, { level: 2, text: 'Tasks' }],
       updatedAt: 10,

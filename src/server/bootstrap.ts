@@ -316,6 +316,10 @@ export function createOverlayServerContext(
       agentId,
     }),
     directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
+    roomIsShared: async (args) => {
+      const { resolveSharedRoom } = await import('@/server/agents/shared-room')
+      return await resolveSharedRoom(args)
+    },
     claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }>(
       'agents/agentAsks:claimAgentAskByServer',
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
