@@ -11,6 +11,7 @@
  *   node scripts/ci/ci-timing-audit.mjs --runs 50 --workflow codeql.yml
  *   node scripts/ci/ci-timing-audit.mjs --branch codex/foo    # one branch only
  *   node scripts/ci/ci-timing-audit.mjs --cache-hits          # also count dependency cache notices
+ *   node scripts/ci/ci-timing-audit.mjs --created 2026-10-01..2026-10-27  # a date range
  *
  * Wall time is first job queued -> last job finished, for successful runs.
  */
@@ -27,6 +28,7 @@ const repo = option('--repo', 'LayerNorm/overlay-web')
 const workflow = option('--workflow', 'security.yml')
 const wanted = Number(option('--runs', '150'))
 const branch = option('--branch', '')
+const created = option('--created', '')
 const cacheHits = args.includes('--cache-hits')
 if (!Number.isInteger(wanted) || wanted < 1) throw new Error('--runs must be a positive integer')
 
@@ -52,7 +54,7 @@ async function pool(items, limit, worker) {
 
 const runs = []
 for (let page = 1; runs.length < wanted; page++) {
-  const query = `per_page=100&page=${page}&status=completed${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`
+  const query = `per_page=100&page=${page}&status=completed${branch ? `&branch=${encodeURIComponent(branch)}` : ''}${created ? `&created=${encodeURIComponent(created)}` : ''}`
   const body = await gh(`repos/${repo}/actions/workflows/${workflow}/runs?${query}`)
   if (!body.workflow_runs.length) break
   runs.push(...body.workflow_runs)
