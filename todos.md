@@ -23,7 +23,6 @@ Rules and where they're enforced: `internal/develop/workspace-and-personal.md`. 
 
 - [ ] **Decide what guests get** (added 2026-11-25). Today guests see nothing Workspace-scoped and have no Personal mode. Decide whether either should change.
 
-- [ ] **Per-person tracking and caps in Personal** (added 2026-11-24). Personal mode spends the workspace's budget. Later: show each person's Personal spend to admins and let them set a per-person cap.
 
 ## Chief of Staff harness
 

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { spendLimitReachedNow } from '@/shared/billing/spend-limit-period'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { UsageRepository } from '@/server/usage'
 import {
@@ -58,8 +59,22 @@ const BUDGET_LOW_MESSAGE = 'Your workspace has less than 2% of its budget left. 
 const SPEND_LIMIT_MESSAGE = 'Your spending limit in this workspace is used up. Ask a workspace admin to raise it.'
 
 function spendLimitReached(limit: BillingAccountSpendLimitRecord, now = Date.now()): boolean {
-  if (now < limit.periodStart || now >= limit.periodEnd) return true
-  return limit.usedCents + limit.reservedCents >= limit.limitCents
+  return spendLimitReachedNow({
+    periodStart: limit.periodStart, periodEnd: limit.periodEnd, used: limit.usedCents, reserved: limit.reservedCents, limit: limit.limitCents,
+  }, now)
+}
+
+/** The limits a paid call spends under: the person's own cap always, and the paying program's when one pays. */
+async function firstReachedSpendLimit(billingAccountId: string, userId: string, subject: { kind: 'member' | 'programmatic'; id: string }) {
+  const repository = await billingRepository()
+  const subjects = subject.kind === 'member' && subject.id === userId
+    ? [subject]
+    : [{ kind: 'member' as const, id: userId }, subject]
+  for (const candidate of subjects) {
+    const limit = await repository.getBillingAccountSpendLimitByServer({ billingAccountId, subject: candidate })
+    if (limit && spendLimitReached(limit)) return limit
+  }
+  return null
 }
 
 /**
@@ -131,11 +146,8 @@ export async function ensureProviderBudgetNotLow(params: {
   }
 
   if (payer.scope === 'workspace') {
-    const limit = await (await billingRepository()).getBillingAccountSpendLimitByServer({
-      billingAccountId: payer.billingAccountId,
-      subject: payer.subject,
-    })
-    if (limit && spendLimitReached(limit)) {
+    const limit = await firstReachedSpendLimit(payer.billingAccountId, params.userId, payer.subject)
+    if (limit) {
       logBudgetSecurityEvent('owner_funded_budget_declined', params, { reason: 'spend_limit_exceeded' })
       return {
         ok: false,
@@ -145,7 +157,7 @@ export async function ensureProviderBudgetNotLow(params: {
           ...buildInsufficientCreditsPayload(budget.entitlements, SPEND_LIMIT_MESSAGE),
           resourceStatus: {
             reason: 'spend_limit_exceeded',
-            remainingCents: Math.max(0, limit.limitCents - limit.usedCents - limit.reservedCents),
+            remainingCents: 0,
           },
         },
       }
