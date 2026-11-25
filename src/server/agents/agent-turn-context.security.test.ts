@@ -57,5 +57,6 @@ test('a single-human assignment child cannot regain personal resources from a sh
   expect(mocks.skills).toHaveBeenCalledWith({
     userId: 'human', workspaceId: 'workspace', workspaceOnly: true,
   })
-  expect(mocks.retrieval).not.toHaveBeenCalled()
+  // Retrieval still runs, but only over what the workspace shares (its files and knowledge, P7).
+  expect(mocks.retrieval).toHaveBeenCalledWith(expect.objectContaining({ userId: 'human', workspaceOnly: true }))
 })

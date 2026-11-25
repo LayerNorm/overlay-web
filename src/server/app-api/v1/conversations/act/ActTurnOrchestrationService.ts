@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { resolveSharedRoom } from '@/server/agents/shared-room'
+import { workspaceChiefMemoryOwnerId } from '@/server/harness/automation-access'
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -271,6 +273,14 @@ export async function executeActTurn(
     if (readiness.kind !== 'admit') {
       return actRoutePolicyResponse(readiness.kind, requestId)
     }
+    // A workspace automation's thread is a workspace context (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P6):
+    // it runs with workspace reach only. Decided by the same rule as shared rooms; each step re-reads the automation.
+    const workspaceReach = automationRun && conversationId
+      ? await resolveSharedRoom({ actorUserId: userId, conversationId, workspaceId: billingWorkspaceId })
+      : false
+    const workspaceMemoryOwnerId = workspaceReach
+      ? await workspaceChiefMemoryOwnerId(overlayContext.workspaceAgentService, { actorUserId: userId, workspaceId: billingWorkspaceId })
+      : undefined
     const resolvedBillingPayer = await resolveBillingPayer({
       programmaticSubjectId: billingProgrammaticSubjectId,
       userId,
@@ -278,7 +288,7 @@ export async function executeActTurn(
     })
     const byokRequest = isByokModelId(effectiveModelId)
     if (byokRequest) {
-      await assertUserCanUseByokModel(effectiveModelId, userId, billingWorkspaceId)
+      await assertUserCanUseByokModel(effectiveModelId, userId, billingWorkspaceId, { workspaceOnly: workspaceReach })
     }
     const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: runtimeEntitlements })
     if (!byokRequest && !authorizedModelIds.chat.has(effectiveModelId)) {
@@ -437,6 +447,7 @@ export async function executeActTurn(
       userId: conversationUserId,
       externalContextEnabled: true,
       workspaceId: billingWorkspaceId,
+      workspaceOnly: workspaceReach,
     })
 
     const structuredMediaToolIntent = normalizeStructuredMediaToolIntent(mediaToolIntent)
@@ -538,6 +549,8 @@ export async function executeActTurn(
 	        userId,
 	        workspaceId: billingWorkspaceId,
 	        billingProgrammaticSubjectId,
+	        sharedRoom: workspaceReach,
+	        ...(workspaceMemoryOwnerId ? { memoryOwnerId: workspaceMemoryOwnerId } : {}),
 	      }),
 	    ])
     recordActPhase('tools', requestId, toolsStartedAt)

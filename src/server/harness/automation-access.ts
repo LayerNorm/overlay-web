@@ -3,7 +3,7 @@ import 'server-only'
 import { FatalError, RetryableError } from 'workflow'
 import { agentWithheldToolIds, resolveAgentGrant } from '@/server/agents/agent-tooling'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { memoryOwnerForPlace } from '@/shared/agents/agent-memory'
+import { agentMemoryOwnerId, memoryOwnerForPlace } from '@/shared/agents/agent-memory'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { automationRunTurnId } from '@/shared/automations/run-identity'
 import type { PersonalHarnessAccess } from './personal-access'
@@ -39,6 +39,13 @@ export type AutomationSourceGrant = {
   withheldToolIds: string[]
   /** The bound agent, re-read from the automation on every step; absent without one. */
   agent?: AutomationAgentIdentity
+  /**
+   * A workspace automation runs with workspace reach only (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P6):
+   * workspace connectors, MCP servers and provider connections, and no private memories, skills or files.
+   */
+  workspaceReach: boolean
+  /** Who keeps what an agentless workspace automation learns: the workspace chief, so it is workspace knowledge. */
+  memoryOwnerId?: string
 }
 
 function isDeleted(automation: AutomationRecord): boolean {
@@ -165,11 +172,14 @@ async function resolveAutomationSourceGrant(
   // refreshed grant must name them the same way, or every such run reads as revoked
   // before its first model call. Revocation stays enforced: the caller drops them
   // when the connector grant changes, and capability checks still apply.
+  const workspaceReach = automation.scope === 'workspace'
   if (!automation.agentId) {
+    const memoryOwnerId = workspaceReach ? await workspaceChiefMemoryOwnerId(agentService, access) : undefined
     return { approvalMode: 'ask', allowedToolIds: [
       ...(context.accountAllowedToolIds ?? []),
       ...(context.integrationToolIds ?? []),
-    ], allowedConnectorIds: context.accountAllowedConnectorIds ?? [], withheldToolIds: [] }
+    ], allowedConnectorIds: context.accountAllowedConnectorIds ?? [], withheldToolIds: [], workspaceReach,
+    ...(memoryOwnerId ? { memoryOwnerId } : {}) }
   }
   const agent = await agentService.get({
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: automation.agentId,
@@ -187,9 +197,9 @@ async function resolveAutomationSourceGrant(
     agent: {
       agentId: automation.agentId,
       agentPrincipalId: agent.principalId,
-      // An automation still reads its owner's private memories, so what it learns stays private until P5.
+      // A workspace automation is a workspace context: what it learns is workspace knowledge (P6).
       memoryOwnerId: memoryOwnerForPlace({
-        actorUserId: access.actorUserId, agent: { ...agent, id: automation.agentId }, workspaceContext: false,
+        actorUserId: access.actorUserId, agent: { ...agent, id: automation.agentId }, workspaceContext: workspaceReach,
       }),
     },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask',
@@ -201,7 +211,22 @@ async function resolveAutomationSourceGrant(
     withheldToolIds: [...agentWithheldToolIds({
       capabilities: grant.capabilities, integrationToolIds: context.integrationToolIds ?? [],
     })],
+    workspaceReach,
   }
+}
+
+/**
+ * The memory owner for what an agentless workspace automation learns: the workspace chief, the agent everyone in the
+ * workspace talks to, so it is workspace knowledge. Every organization workspace has one; a personal workspace (one
+ * person, where nothing is shared) may not, and its automations keep what they learn as the owner's memory.
+ */
+export async function workspaceChiefMemoryOwnerId(
+  agentService: ServerContext['workspaceAgentService'],
+  access: Pick<PersonalHarnessAccess, 'actorUserId' | 'workspaceId'>,
+): Promise<string | undefined> {
+  const { agents } = await agentService.list({ actorUserId: access.actorUserId, workspaceId: access.workspaceId })
+  const chief = agents.find(agent => agent.agentRole === 'workspace_chief' && !agent.archivedAt)
+  return chief ? agentMemoryOwnerId(chief.id) : undefined
 }
 
 type AutomationAdmissionInput = {

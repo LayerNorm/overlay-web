@@ -686,7 +686,8 @@ export class FileService {
         accessToken: args.accessToken,
       })
 
-      if (!fileRow || fileRow.userId !== args.userId) {
+      // The caller's own files, and files in Workspace (readable by every member; `getFile` checks membership).
+      if (!fileRow || (fileRow.userId !== args.userId && fileRow.scope !== 'workspace')) {
         serviceError({ error: 'Invalid or inaccessible file id', fileId }, 403)
       }
 
