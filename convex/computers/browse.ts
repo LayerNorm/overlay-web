@@ -52,8 +52,22 @@ async function canSee(ctx: Parameters<typeof requireNativeWorkspace>[0], viewer:
   const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', row.ownerId)).unique()
   const owner = viewer.membership.role === 'owner'
   if (!agent || agent.workspaceId !== row.workspaceId || agent.deletedAt !== undefined) return owner
-  // A personal chief's computer is its person's only, not the workspace owner's.
-  if (agent.agentRole === 'personal_chief') return agent.chiefOwnerUserId === viewer.userId
+  // A personal chief's computer is its person's only, not the workspace owner's, unless that person has left: then the
+  // owner may see it to clean it up, as the server's computer rules allow.
+  if (agent.agentRole === 'personal_chief') {
+    if (agent.chiefOwnerUserId === viewer.userId) return true
+    return owner && !await isActiveMember(ctx, row.workspaceId, agent.chiefOwnerUserId)
+  }
   if ((agent.visibility ?? 'workspace') === 'workspace') return true
   return agent.createdByPrincipalId === viewer.principal.principalId || owner
+}
+
+async function isActiveMember(ctx: Parameters<typeof requireNativeWorkspace>[0], workspaceId: string, userId: string | undefined) {
+  if (!userId) return false
+  const principals = await ctx.db.query('workspacePrincipals').withIndex('by_userId', q => q.eq('userId', userId)).collect()
+  const principal = principals.find(entry => entry.workspaceId === workspaceId && entry.type === 'human')
+  if (!principal) return false
+  const membership = await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId)).unique()
+  return membership?.status === 'active'
 }

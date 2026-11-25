@@ -160,6 +160,7 @@ async function agentItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer): Promise<Wo
       ...(agent.avatarColor ? { avatarColor: agent.avatarColor } : {}),
       ...(agent.avatarShape ? { avatarShape: agent.avatarShape } : {}),
       isDefault: agent.isDefault,
+      ...(agent.visibility === 'creator' ? { personal: true } : {}),
       role: membership.role,
       status: membership.status,
     }]

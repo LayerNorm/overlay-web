@@ -26,7 +26,8 @@ export function NewChannelDialog({
   // Live: the private-channel picker follows people joining, leaving or being renamed.
   const principals = useLiveWorkspacePrincipals(open && visibility === 'private' ? workspaceId : null)
   const members = useMemo<WorkspaceManagementItem[]>(
-    () => (principals?.items ?? []).filter((item) => item.principalId !== principals?.currentPrincipalId),
+    // A channel is a shared room: creator-only agents can't join one, so they aren't offered.
+    () => (principals?.items ?? []).filter((item) => item.principalId !== principals?.currentPrincipalId && !item.personal),
     [principals],
   )
   const [selected, setSelected] = useState<string[]>([])

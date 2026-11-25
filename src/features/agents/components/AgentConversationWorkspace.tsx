@@ -38,7 +38,7 @@ import { usePanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
-import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useAgentDirectory, useEnsurePersonalChief } from '@/hooks/use-agent-directory'
 import { isPrivateThreadId } from '@/shared/agents/private-threads'
 import { PrivateThreadExperience } from '@/features/chat/components/private-threads/PrivateThreadExperience'
 import { useMutation } from 'convex/react'
@@ -342,6 +342,7 @@ function AgentConversationWorkspaceContent() {
 
   const closeEditor = useCallback(() => setEditorMode(null), [])
   const scope = usePanelScope()
+  useEnsurePersonalChief(scope === 'personal')
 
   const workspaceActions = useAgentWorkspaceActions({
     activeWorkspaceId,

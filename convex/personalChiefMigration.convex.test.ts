@@ -162,3 +162,48 @@ test('takes private personal chiefs out of channels and leaves their own threads
   const again = await t.mutation(leaveChannels, { serverSecret: secret, dryRun: false } as never) as Left
   expect(again).toMatchObject({ agents: 0, removed: 0 })
 })
+
+test('hands the shared copy’s threads and automations to its owner’s private chief', async () => {
+  const { t } = await fixture()
+  const ids = await t.run(async (ctx) => {
+    const thread = await ctx.db.insert('conversations', {
+      userId: 'ada', workspaceId: 'ws', conversationType: 'dm', agentId: 'personal-chief-workspace-ws-ada', title: 'Old thread',
+      lastModified: now, updatedAt: now, createdAt: now, lastMode: 'act', askModelIds: [], actModelId: 'model',
+    })
+    await ctx.db.insert('conversationParticipants', {
+      conversationId: thread, workspaceId: 'ws', principalId: 'personal-chief-principal-workspace-ws-ada', principalType: 'agent',
+      role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,
+    })
+    const personal = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
+    const shared = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', scope: 'workspace', agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
+    return { thread, personal, shared }
+  })
+  const dry = await t.mutation(retire, { serverSecret: secret, dryRun: true } as never) as Retired & { threadsMoved: number; automationsMoved: number }
+  expect(dry).toMatchObject({ threadsMoved: 1, automationsMoved: 2 })
+  await t.mutation(retire, { serverSecret: secret, dryRun: false } as never)
+  const after = await t.run(async (ctx) => {
+    const own = (await ctx.db.query('workspaceAgentDefinitions').withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', 'ada')).collect())
+      .find((row) => row.chiefScope === 'personal')!
+    const chief = (await ctx.db.query('workspaceAgentDefinitions').withIndex('by_workspaceId', (q) => q.eq('workspaceId', 'ws')).collect())
+      .find((row) => row.agentRole === 'workspace_chief')!
+    const seats = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', ids.thread)).collect()
+    return {
+      own, chief, thread: await ctx.db.get(ids.thread), seats: seats.map((seat) => seat.principalId),
+      personal: await ctx.db.get(ids.personal), shared: await ctx.db.get(ids.shared),
+    }
+  })
+  expect(after.thread?.agentId).toBe(after.own.agentId)
+  expect(after.seats).toContain(after.own.principalId)
+  expect(after.personal?.agentId).toBe(after.own.agentId)
+  expect(after.shared?.agentId).toBe(after.chief.agentId)
+})
+
+test('keeps a chosen name that only looks generated', async () => {
+  const { t } = await fixture()
+  await t.run(async (ctx) => {
+    const bob = (await ctx.db.query('personalChiefIdentities').collect()).find((identity) => identity.userId === 'bob')!
+    await ctx.db.patch(bob._id, { name: 'Bob’s Overlay' })
+  })
+  const renamed = await t.mutation(rename, { serverSecret: secret, dryRun: true } as never) as Renamed
+  expect(renamed.renamed.map((entry) => entry.userId)).toEqual(['ada'])
+})

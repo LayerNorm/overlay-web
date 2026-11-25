@@ -49,7 +49,7 @@ import { useFlipReorder } from './sidebar/useFlipReorder'
 import { AgentThreadActivityProvider, useAgentActivityMap, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
 import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
 import { hasThreadActivity } from '@/shared/agents/thread-activity'
-import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useAgentDirectory, useEnsurePersonalChief } from '@/hooks/use-agent-directory'
 import { useMutation, useQueries } from 'convex/react'
 import { useLocalThreadList } from '@/components/desktop/useLocalThreads'
 import { api } from '../../../convex/_generated/api'
@@ -374,7 +374,7 @@ function AgentListRow({
   if (pinned && !activityOnly) {
     return (
       <>
-        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className={`row-start-1 min-w-0 ${pinnedAlone ? 'mx-auto w-1/2' : ''}`}>
+        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className={`row-start-1 min-w-0 ${pinnedAlone ? 'mx-auto w-fit min-w-1/2 max-w-full' : ''}`}>
           <div className="group/tile relative">
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
@@ -519,6 +519,7 @@ export function AgentsInlinePanel({
   const solo = useIsSoloWorkspace()
   const buildWorkspaceHref = useWorkspaceHref()
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
+  useEnsurePersonalChief(view === 'personal')
 
   const [activityCollapsed, setActivityCollapsed] = useState<Set<string>>(new Set())
   const {

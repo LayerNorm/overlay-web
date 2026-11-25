@@ -44,6 +44,32 @@ export function useAgentDirectory(options: { includeArchived?: boolean; enabled?
       .catch(() => chiefsEnsured.delete(key))
   }, [canQuery, ensureChiefs, includePersonal, workspaceId])
 
+  return directoryResult(workspaceId, canQuery, result)
+}
+
+/**
+ * Creates the viewer's Personal Chief on their first visit to Personal. Pages that know the mode on screen call this
+ * with it, so a Personal URL works even when the remembered mode can't be saved (blocked browser storage).
+ */
+export function useEnsurePersonalChief(personal: boolean): void {
+  const { activeWorkspaceId, status: workspaceStatus } = useWorkspace()
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const workspaceId = workspaceStatus === 'ready' ? activeWorkspaceId : null
+  const ensureChiefs = useMutation(api.agents.directory.ensureChiefs)
+  useEffect(() => {
+    if (!personal || !workspaceId || !isAuthenticated || isLoading) return
+    const key = `${workspaceId}:personal`
+    if (chiefsEnsured.has(key)) return
+    chiefsEnsured.add(key)
+    void ensureChiefs({ workspaceId, includePersonal: true }).catch(() => chiefsEnsured.delete(key))
+  }, [ensureChiefs, isAuthenticated, isLoading, personal, workspaceId])
+}
+
+function directoryResult(
+  workspaceId: string | null,
+  canQuery: boolean,
+  result: { agents: unknown[]; canCreate: boolean; viewerPrincipalId: string | null } | null | undefined,
+): AgentDirectory {
   if (!canQuery || result === undefined) {
     return { workspaceId, agents: null, canCreate: false, viewerPrincipalId: null, status: 'loading' }
   }

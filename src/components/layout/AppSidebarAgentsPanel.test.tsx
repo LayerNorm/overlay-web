@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { afterEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ directory: vi.fn(), mutate: vi.fn(), push: vi.fn(), replace: vi.fn() }))
-vi.mock('@/hooks/use-agent-directory', () => ({ useAgentDirectory: mocks.directory }))
+vi.mock('@/hooks/use-agent-directory', () => ({ useAgentDirectory: mocks.directory, useEnsurePersonalChief: () => {} }))
 vi.mock('@/hooks/use-solo-workspace', () => ({ useIsSoloWorkspace: () => true }))
 vi.mock('@/hooks/use-workspace-href', () => ({ useWorkspaceHref: () => (_id: string | null, path: string) => path }))
 vi.mock('@/contexts/WorkspaceContext', () => ({ useOptionalWorkspace: () => null }))

@@ -1,9 +1,12 @@
 import { v } from 'convex/values'
 import { mutation } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import type { MutationCtx } from '../_generated/server'
+import type { Doc } from '../_generated/dataModel'
 import {
   applyChiefIdentityPatch,
   archiveAgentRow,
+  ensureWorkspaceChiefs,
   defaultChiefNameForUser,
   isRetiredSharedPersonalChief,
 } from '../collaboration/agents'
@@ -36,6 +39,8 @@ export const retireSharedPersonalChiefsByServer = mutation({
     let retired = 0
     let alreadyRetired = 0
     let roomsLeft = 0
+    let threadsMoved = 0
+    let automationsMoved = 0
     for (const row of page.page) {
       if (row.deletedAt || !isRetiredSharedPersonalChief(row)) continue
       if (row.archivedAt && row.visibility === 'creator') {
@@ -52,21 +57,78 @@ export const retireSharedPersonalChiefsByServer = mutation({
           if (conversation?.agentId !== row.agentId) roomsLeft++
         }
       }
+      const moved = await moveToOwnChief(ctx, row, dryRun, now)
+      threadsMoved += moved.threads
+      automationsMoved += moved.automations
       if (dryRun) continue
       if (!row.archivedAt) await archiveAgentRow(ctx, row, now)
       await ctx.db.patch(row._id, { visibility: 'creator', updatedAt: now })
     }
     return {
-      scanned: page.page.length, retired, alreadyRetired, roomsLeft,
+      scanned: page.page.length, retired, alreadyRetired, roomsLeft, threadsMoved, automationsMoved,
       isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
     }
   },
 })
 
-/** Names earlier versions gave personal chiefs: "Overlay" (copied from an old default agent) or "<Name>’s Overlay". */
-export function isOldPersonalChiefName(name: string) {
+/**
+ * Hands the shared copy's own threads and automations to its owner's private Personal Chief (created if needed), so
+ * history stays readable and automations keep running. A workspace automation goes to the workspace chief instead.
+ * Owners who are no longer active members are skipped: their threads were already closed to everyone.
+ */
+async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefinitions'>, dryRun: boolean, now: number) {
+  const threads = await ctx.db.query('conversations')
+    .withIndex('by_workspaceId_agentId', (q) => q.eq('workspaceId', shared.workspaceId).eq('agentId', shared.agentId)).collect()
+  const automations = (await ctx.db.query('automations')
+    .withIndex('by_agentId', (q) => q.eq('agentId', shared.agentId)).collect())
+    .filter((automation) => automation.workspaceId === shared.workspaceId)
+  if (dryRun || (threads.length === 0 && automations.length === 0) || !shared.chiefOwnerUserId) {
+    return { threads: threads.length, automations: automations.length }
+  }
+  const owner = (await ctx.db.query('workspacePrincipals')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', shared.workspaceId)).take(5_000))
+    .find((principal) => principal.type === 'human' && principal.userId === shared.chiefOwnerUserId)
+  const membership = owner ? await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', shared.workspaceId).eq('principalId', owner.principalId))
+    .unique() : null
+  if (!owner || membership?.status !== 'active') return { threads: 0, automations: 0 }
+  const chiefs = await ensureWorkspaceChiefs(ctx, {
+    workspaceId: shared.workspaceId, actorUserId: shared.chiefOwnerUserId, actorPrincipalId: owner.principalId, includePersonal: true, now,
+  })
+  const workspaceChief = chiefs.find((chief) => chief.agentRole === 'workspace_chief')
+  const own = chiefs.find((chief) => chief.agentRole === 'personal_chief')
+  if (!own || !workspaceChief) return { threads: 0, automations: 0 }
+  for (const thread of threads) {
+    await ctx.db.patch(thread._id, { agentId: own.agentId, updatedAt: now })
+    const seat = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', thread._id).eq('principalId', shared.principalId)).unique()
+    if (seat) await ctx.db.patch(seat._id, { principalId: own.principalId, updatedAt: now })
+  }
+  for (const automation of automations) {
+    await ctx.db.patch(automation._id, { agentId: automation.scope === 'workspace' ? workspaceChief.agentId : own.agentId, updatedAt: now })
+  }
+  return { threads: threads.length, automations: automations.length }
+}
+
+/**
+ * Whether `name` is one earlier versions generated for this person: "Overlay" (copied from an old default agent) or
+ * "<owner name>’s Overlay" built from their account name, a display name, their email or their user ID. A name the
+ * person typed, even one ending in "’s Overlay", is not.
+ */
+export async function isOldPersonalChiefName(ctx: MutationCtx, userId: string, name: string) {
   const value = name.trim()
-  return /^overlay$/i.test(value) || /[’']s Overlay$/i.test(value)
+  if (/^overlay$/i.test(value)) return true
+  if (!/[’']s Overlay$/.test(value)) return false
+  const account = await ctx.db.query('subscriptions').withIndex('by_userId', (q) => q.eq('userId', userId)).first()
+  const principals = await ctx.db.query('workspacePrincipals').withIndex('by_userId', (q) => q.eq('userId', userId)).collect()
+  const owners = [
+    [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim(),
+    account?.name?.trim(),
+    account?.email?.trim(),
+    userId,
+    ...principals.filter((principal) => principal.type === 'human').map((principal) => principal.displayName.trim()),
+  ].filter((owner): owner is string => Boolean(owner))
+  return owners.some((owner) => value === `${owner}’s Overlay` || value === `${owner}'s Overlay`)
 }
 
 /**
@@ -84,7 +146,7 @@ export const renamePersonalChiefsByServer = mutation({
     const renamed: Array<{ userId: string; from: string; to: string }> = []
     let resynced = 0
     for (const identity of page.page) {
-      const to = isOldPersonalChiefName(identity.name) ? await defaultChiefNameForUser(ctx, identity.userId) : identity.name
+      const to = await isOldPersonalChiefName(ctx, identity.userId, identity.name) ? await defaultChiefNameForUser(ctx, identity.userId) : identity.name
       if (to !== identity.name) {
         renamed.push({ userId: identity.userId, from: identity.name, to })
         if (!dryRun) await applyChiefIdentityPatch(ctx, { ownerUserId: identity.userId, name: to, now })

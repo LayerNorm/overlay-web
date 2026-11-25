@@ -182,6 +182,26 @@ describe('chief identity provisioning', () => {
     for (const chief of chiefs) expect(joined).not.toContain((chief as { principalId?: string }).principalId)
   })
 
+  test('personal chiefs and creator-only agents cannot be added to channels or group DMs', async () => {
+    const convex = testBackend()
+    await seedWorkspace(convex, {
+      workspaceId: 'chief-shared-rooms',
+      kind: 'organization',
+      members: [{ userId: 'owner', principalId: 'principal-owner', role: 'owner' }, { userId: 'member', principalId: 'principal-member' }],
+    })
+    await ensure(convex, 'chief-shared-rooms', 'owner', 'principal-owner')
+    const chief = (await list(convex, 'chief-shared-rooms')).find((agent) => agent.agentRole === 'personal_chief') as { principalId: string }
+    const { conversationId } = await convex.mutation(makeFunctionReference<'mutation'>('collaboration/channels:createChannel'), {
+      serverSecret: secret, workspaceId: 'chief-shared-rooms', actorUserId: 'owner', name: 'ops', visibility: 'public',
+    } as never) as { conversationId: string }
+    await expect(convex.mutation(makeFunctionReference<'mutation'>('collaboration/directMessages:addParticipant'), {
+      serverSecret: secret, workspaceId: 'chief-shared-rooms', actorUserId: 'owner', conversationId, principalId: chief.principalId,
+    } as never)).rejects.toThrow('PERSONAL_AGENT_NOT_IN_SHARED_ROOMS')
+    await expect(convex.mutation(makeFunctionReference<'mutation'>('collaboration/directMessages:createDirectMessage'), {
+      serverSecret: secret, workspaceId: 'chief-shared-rooms', actorUserId: 'owner', principalIds: ['principal-member', chief.principalId],
+    } as never)).rejects.toThrow('PERSONAL_AGENT_NOT_IN_SHARED_ROOMS')
+  })
+
   test('without includePersonal only the workspace chief is ensured', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
@@ -221,6 +241,22 @@ describe('chief identity provisioning', () => {
       ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', (q) => q.eq('agentId', 'legacy-default-id')).unique())
     expect(stored?.instructions).toBe('Keep this execution history intact.')
     expect(stored?.description).toBe('Legacy appearance')
+  })
+
+  test('a personal workspace adopts its old default as the Personal Chief even on a Workspace-only visit', async () => {
+    const convex = testBackend()
+    await seedWorkspace(convex, {
+      workspaceId: 'chief-personal-legacy',
+      kind: 'personal',
+      personalOwnerUserId: 'owner',
+      members: [{ userId: 'owner', principalId: 'principal-owner', role: 'owner' }],
+      defaultAgent: { agentId: 'legacy-personal-default', name: 'Overlay', explicit: true },
+    })
+    await ensure(convex, 'chief-personal-legacy', 'owner', 'principal-owner', false)
+    const agents = await list(convex, 'chief-personal-legacy')
+    expect(agents.find((row) => row.agentId === 'legacy-personal-default'))
+      .toMatchObject({ agentRole: 'personal_chief', chiefScope: 'personal', visibility: 'creator' })
+    expect(agents.filter((row) => row.visibility === 'workspace').map((row) => row.agentRole)).toEqual(['workspace_chief'])
   })
 
   test('does not adopt an arbitrary agent named Overlay', async () => {
