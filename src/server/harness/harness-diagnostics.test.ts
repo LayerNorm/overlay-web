@@ -50,6 +50,13 @@ test('an unrecognized failure is an internal error, never UNKNOWN, and keeps its
   expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain('budget was rejected')
 })
 
+test('a workspace run refused a personal model says so, even when the step wrapped the error', () => {
+  const error = new Error('Step "authorizeNativeHarnessExecution" failed after 3 retries: Workspace runs use workspace accounts: this model is connected with a personal key or subscription. Pick a workspace model.')
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot(), error, 'tool')
+  expect(diagnostic).toMatchObject({ code: 'WORKSPACE_PERSONAL_MODEL', stage: 'model', retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(diagnostic).message).toContain('personal provider')
+})
+
 const openDispatch = {
   modelReservation: { id: 'model:7', maxCostMicros: 0, dispatch: { modelId: 'fixture/model', billingReservationId: null } },
 } satisfies Partial<HarnessSnapshot>

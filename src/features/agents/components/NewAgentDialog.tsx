@@ -1,5 +1,6 @@
 'use client'
 
+import { modelsForAgentVisibility } from '@/shared/ai/gateway/byok-model-conversion'
 import { unstyledButton } from '@overlay/ui/control-reset'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -247,7 +248,7 @@ export function NewAgentFields({ draft, onChange, modelField, computersAvailable
 }
 
 /** Same model access as the agent editor, so the dialog offers exactly the models the agent can run. */
-function useNewAgentModelField(workspaceId: string | null, draftModelId: string): { modelField: AgentModelFieldProps; modelId: string } {
+function useNewAgentModelField(workspaceId: string | null, draftModelId: string, visibility: WorkspaceAgentVisibility): { modelField: AgentModelFieldProps; modelId: string } {
   const { capabilities } = useOverlayCapabilities()
   const { settings } = useAppSettings()
   const { user: authUser } = useAuth()
@@ -267,7 +268,8 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
     void getGatewayCatalogRevision()
     return getModelsByIntelligence()
   }, [revision])
-  const selectableTextModels = modelAccess.pickerTextModels
+  // A workspace agent may only run on hosted models and the workspace's own providers.
+  const selectableTextModels = modelsForAgentVisibility(modelAccess.pickerTextModels, visibility)
   const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
   const modelField = {
     favoriteScope: authUser?.id ?? null,
@@ -335,7 +337,7 @@ export function NewAgentDialog({ open, workspaceId, mode, onClose, onReopen, onC
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
-  const { modelField, modelId } = useNewAgentModelField(workspaceId, rawDraft.modelId)
+  const { modelField, modelId } = useNewAgentModelField(workspaceId, rawDraft.modelId, agentVisibilityForMode(mode))
   const draft = { ...rawDraft, modelId }
   const [busy, setBusy] = useState(false)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])

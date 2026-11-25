@@ -183,6 +183,7 @@ import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkd
 import type * as migrations_personalChiefs from "../migrations/personalChiefs.js";
 import type * as migrations_purgeConnectedAgents from "../migrations/purgeConnectedAgents.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
+import type * as migrations_workspaceAgentModels from "../migrations/workspaceAgentModels.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
 import type * as platform_growth from "../platform/growth.js";
@@ -390,6 +391,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/personalChiefs": typeof migrations_personalChiefs;
   "migrations/purgeConnectedAgents": typeof migrations_purgeConnectedAgents;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
+  "migrations/workspaceAgentModels": typeof migrations_workspaceAgentModels;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
   "platform/growth": typeof platform_growth;

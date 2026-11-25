@@ -63,5 +63,10 @@ restores re-file chunks (`restampFileChunks`). A file chunk with no visibility i
 workspace file that is a byte-identical copy of its uploader's personal file has no chunks of its own (duplicates are
 indexed once per person), so only its uploader finds it.
 
+**Providers follow the mode.** Settings → Providers lists and adds personal connections in Personal mode and the
+workspace's in Workspace mode; any member can use a workspace connection. Workspace agents may only run on hosted models
+and workspace connections, checked when an agent is saved or moved to Workspace and in its model picker; a run that still
+meets a personal model ends with `WORKSPACE_PERSONAL_MODEL` (see `internal/develop/unified-subscription-connections.md`).
+
 **Roles at sign-in.** Every sign-in gives the baseline member role (`createSignedInSession`); automation runs enforce its
 capabilities.

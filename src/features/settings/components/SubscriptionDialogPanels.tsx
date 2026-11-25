@@ -12,21 +12,14 @@ type Flow = ReturnType<typeof useSubscriptionConnection>
 type Provider = NonNullable<Flow['availability']>['providers'][number]
 type Authorization = NonNullable<Flow['login']>['authorization']
 
-export function SubscriptionScopeSelector({ scope, onScopeChange, workspaceName, workspaceAvailable, disabled }: {
-  scope: SubscriptionScope
-  onScopeChange(scope: SubscriptionScope): void
-  workspaceName?: string
-  workspaceAvailable: boolean
-  disabled: boolean
-}) {
-  return <fieldset className="space-y-2" disabled={disabled}>
-    <legend className="mb-2 text-xs font-medium">Available to</legend>
-    <div className="flex gap-1 rounded-lg bg-(--surface-muted) p-1">
-      <Button type="button" variant={scope === 'personal' ? 'secondary' : 'ghost'} size="sm" className="flex-1" aria-pressed={scope === 'personal'} disabled={disabled} onClick={() => onScopeChange('personal')}><UserRound size={14} />Personal</Button>
-      <Button type="button" variant={scope === 'workspace' ? 'secondary' : 'ghost'} size="sm" className="flex-1" aria-pressed={scope === 'workspace'} disabled={disabled || !workspaceAvailable} onClick={() => onScopeChange('workspace')}><UsersRound size={14} />Workspace</Button>
-    </div>
-    <p className="text-xs leading-relaxed text-muted-foreground">{scope === 'personal' ? 'Only you can use this connection.' : `Members of ${workspaceName ? `the ${workspaceName} workspace` : 'this workspace'} can use this connection.`}</p>
-  </fieldset>
+/** Where a new connection lands: the mode the person is adding it in (Settings → Providers follows Personal | Workspace). */
+export function SubscriptionScopeNote({ scope, workspaceName }: { scope: SubscriptionScope; workspaceName?: string }) {
+  return <p className="flex items-center gap-1.5 text-xs leading-relaxed text-muted-foreground">
+    {scope === 'personal' ? <UserRound size={13} /> : <UsersRound size={13} />}
+    {scope === 'personal'
+      ? 'Only you can use this connection.'
+      : `Members of ${workspaceName ? `the ${workspaceName} workspace` : 'this workspace'} can use this connection, including workspace agents and automations.`}
+  </p>
 }
 
 export function SubscriptionFooter({
