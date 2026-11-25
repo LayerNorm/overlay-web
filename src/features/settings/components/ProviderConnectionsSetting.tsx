@@ -35,11 +35,11 @@ export function ProviderConnectionsSetting() {
     updateConnection,
   } = useByokModels()
   // Providers follow the mode: Personal lists your own connections; Workspace lists the ones the workspace holds,
-  // which every member can use (those a teammate added are read-only here).
+  // which every member can use (those a teammate added are read-only here). Overlay's built-in models show in both.
   const scope = usePanelScope()
-  const connections = allConnections.filter((connection) => scope === 'workspace'
+  const connections = allConnections.filter((connection) => connection.isDefault || (scope === 'workspace'
     ? connection.scope === 'workspace'
-    : connection.scope !== 'workspace' && connection.canManage !== false)
+    : connection.scope !== 'workspace' && connection.canManage !== false))
   const { models: gatewayModels, isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
   const { settings, isSaving, updateSettings } = useAppSettings()
   const [openedDialog, setDialog] = useState<DialogState>(null)
