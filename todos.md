@@ -35,7 +35,7 @@ Plan: `internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md`.
 
 ## Observability
 
-- [ ] **Measure first-reply time in production** (added 2026-11-06). Nothing reports how long a user waits for a reply's first text; `NEXT_PUBLIC_TTFT_DEBUG` and `TTFT_DEBUG` are off-by-default debug tools, and the server flag collects phases it never logs. Once the Convex-native chat work settles, send one PostHog event per reply with the time to first text, the model and whether it was a new chat, and no message content. Then compare typical and worst-case times over time.
+- [x] **Measure first-reply time in production** (added 2026-11-06, done 2026-11-25). Nothing reports how long a user waits for a reply's first text; `NEXT_PUBLIC_TTFT_DEBUG` and `TTFT_DEBUG` are off-by-default debug tools, and the server flag collects phases it never logs. Once the Convex-native chat work settles, send one PostHog event per reply with the time to first text, the model and whether it was a new chat, and no message content. Then compare typical and worst-case times over time. The `chat_first_text_visible` event now carries it; the comparison over time is a PostHog chart on `ttft_ms`.
 
 ## UI performance
 

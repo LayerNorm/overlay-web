@@ -287,6 +287,12 @@ PostHog keeps a small role:
   `user.signed_up`, from the `user.created` lifecycle event, so signups can be
   tied to the pages that brought them in. The same client serves feature flags
   (`src/server/releases/feature-flags.ts`).
+- `src/features/chat/components/chat/useFirstReplyMetric.ts` —
+  `chat_first_text_visible`, one per chat turn the sending tab measures, from
+  send to the first render showing reply text (`src/shared/chat/first-reply-timing.ts`
+  has the rules). It carries `ttft_ms`, `model_id`, `is_new_chat`, `was_hidden`
+  and `transport`; `withoutPageContext` in `posthog-client.ts` sends it without
+  URLs, referrers or session entry pages.
 
 Errors and traces go to Sentry. `src/app/api/v1/_utils/bff.ts` logs one
 `[BFF_METRIC]` line per request to the server logs.
@@ -294,9 +300,10 @@ Errors and traces go to Sentry. `src/app/api/v1/_utils/bff.ts` logs one
 ### Privacy
 
 Analytics events contain only redacted page URLs, route names, opaque user
-IDs and the sign-in provider. No conversation content, message bodies,
-authorization tokens, private workspace JSON, or raw user data is sent to
-analytics.
+IDs and the sign-in provider. The chat reply timing adds a model ID, a
+duration, two flags and the delivery transport, and carries no URL at all.
+No conversation content, message bodies, authorization tokens, private
+workspace JSON, or raw user data is sent to analytics.
 
 ## Convex
 
