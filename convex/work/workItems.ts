@@ -26,7 +26,6 @@ import {
   normalizeDoneWhen,
   normalizePriority,
   normalizeTitle,
-  principalIdForUser,
   rebalanceColumn,
   workEventActorPrincipalId,
   type WorkItemDoc,
@@ -98,11 +97,11 @@ async function descendantIds(db: unknown, id: string): Promise<string[]> {
 }
 
 /**
- * After tasks change scope, drops what no longer fits (the rules `create` and `update` enforce): an owner or reviewer
- * who cannot read a Personal task, a parent in the other scope, and blockers in the other scope. Tasks left behind that
- * pointed at a moved task lose that parent or blocker too.
+ * After tasks move to Workspace (moves are one-way), drops what no longer fits (the rules `create` and `update`
+ * enforce): a creator-only agent as owner, a parent still in Personal, and blockers still in Personal. Personal tasks
+ * that pointed at a moved task lose that parent or blocker too.
  */
-async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; to: 'personal' | 'workspace'; workspaceId: string; actorPrincipalId: string }) {
+async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; to: 'workspace'; workspaceId: string; actorPrincipalId: string }) {
   const moved = new Set(args.movedIds)
   const scopeOf = async (id: string | Id<'workItems'>) => {
     const other = await ctx.db.get(id as Id<'workItems'>)
@@ -112,25 +111,7 @@ async function tidyLinksAfterMove(ctx: MutationCtx, args: { movedIds: string[]; 
     const task = await ctx.db.get(id as Id<'workItems'>)
     if (!task) continue
     const patch: Partial<WorkItemDoc> = {}
-    if (args.to === 'personal') {
-      const ownPrincipalId = await principalIdForUser(ctx, task.workspaceId, task.userId)
-      if (task.assigneePrincipalId !== undefined && task.assigneePrincipalId !== ownPrincipalId) {
-        const principal = await ctx.db.query('workspacePrincipals')
-          .withIndex('by_principalId', (q) => q.eq('principalId', task.assigneePrincipalId as string))
-          .unique()
-        const agent = principal ? await agentAssignability(ctx, { workspaceId: task.workspaceId, principal }) : null
-        const canKeep = agent !== null && (agent.visibility === 'workspace' || agent.createdByPrincipalId === ownPrincipalId)
-        if (!canKeep) {
-          patch.assigneePrincipalId = undefined
-          patch.assignmentExecution = undefined
-          await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'assignee', data: { from: task.assigneePrincipalId, to: null } })
-        }
-      }
-      if (task.reviewerUserId !== undefined && task.reviewerUserId !== task.userId) {
-        patch.reviewerUserId = undefined
-        await logWorkEvent(ctx, { workItemId: task._id, workspaceId: task.workspaceId, actorPrincipalId: args.actorPrincipalId, kind: 'reviewer', data: { from: task.reviewerUserId, to: null } })
-      }
-    } else if (task.assigneePrincipalId !== undefined) {
+    if (task.assigneePrincipalId !== undefined) {
       const principal = await ctx.db.query('workspacePrincipals')
         .withIndex('by_principalId', (q) => q.eq('principalId', task.assigneePrincipalId as string))
         .unique()
@@ -178,7 +159,7 @@ const workScopeMutations = scopeMutations('workItems', 'content', {
       principalId: (await loadWorkViewer(ctx as MutationCtx, row.workspaceId, change.userId)).principalId,
       actingAgentPrincipalId: change.actingAgentPrincipalId,
     })
-    if (change.action === 'scope' && change.to) {
+    if (change.action === 'scope' && change.to === 'workspace') {
       await tidyLinksAfterMove(ctx, {
         movedIds: change.affectedIds,
         to: change.to,

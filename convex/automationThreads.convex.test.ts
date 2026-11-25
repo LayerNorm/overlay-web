@@ -198,3 +198,66 @@ test('an automation runs only as an agent its creator can open a thread with', a
   const shared = await create('bob', 'shared', 'workspace') as Id<'automations'>
   expect((await convex.run(ctx => ctx.db.get(shared)))?.agentId).toBe('shared')
 })
+
+test('moving an automation to the workspace re-checks its agent and can take a private agent along', async () => {
+  const convex = convexTest(schema, modules)
+  const now = Date.now()
+  const ids = await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId: 'workspace', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: now, updatedAt: now })
+    for (const userId of ['alice', 'bob']) {
+      await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId: 'workspace', type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId: 'workspace', principalId: `p-${userId}`, role: 'member', status: 'active', joinedAt: now, updatedAt: now })
+    }
+    const agent = async (agentId: string, fields: Record<string, unknown>) => {
+      await ctx.db.insert('workspacePrincipals', { principalId: `ap-${agentId}`, workspaceId: 'workspace', type: 'agent', agentId, displayName: agentId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceAgentDefinitions', {
+        agentId, workspaceId: 'workspace', principalId: `ap-${agentId}`, name: agentId, instructions: 'Help.', harness: 'overlay',
+        modelId: 'model', allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'p-alice',
+        createdAt: now, updatedAt: now, ...fields,
+      } as never)
+    }
+    await agent('shared', { visibility: 'workspace' })
+    await agent('private', { visibility: 'creator' })
+    await agent('chief', { visibility: 'creator', agentRole: 'personal_chief', chiefScope: 'personal', chiefOwnerUserId: 'alice' })
+    const channel = await ctx.db.insert('conversations', {
+      userId: 'alice', workspaceId: 'workspace', conversationType: 'channel', channelVisibility: 'public', title: 'general',
+      lastModified: now, createdAt: now, lastMode: 'ask', askModelIds: [], actModelId: 'model',
+    } as never)
+    const automation = (userId: string, agentId: string) => ctx.db.insert('automations', {
+      userId, workspaceId: 'workspace', scope: 'personal', name: `${userId} ${agentId}`, instructions: 'Check in.', enabled: false,
+      schedule: { kind: 'daily', hour: 9, minute: 0 }, agentId, createdAt: now, updatedAt: now,
+    } as never)
+    return {
+      channel,
+      withShared: await automation('alice', 'shared'),
+      withPrivate: await automation('alice', 'private'),
+      withChief: await automation('alice', 'chief'),
+      bobsWithAlicesAgent: await automation('bob', 'private'),
+    }
+  })
+  const move = (userId: string, id: string, withAgent?: boolean) => convex.mutation(makeFunctionReference<'mutation'>('automations/automations:setScope'), {
+    serverSecret: secret, workspaceId: 'workspace', userId, id, to: 'workspace', ...(withAgent === undefined ? {} : { withAgent }),
+  })
+  const scopeOf = async (id: string) => ((await convex.run(ctx => ctx.db.get(id as Id<'automations'>))) as { scope?: string }).scope
+  const privateAgent = () => convex.run(async ctx => await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'private')).unique())
+
+  expect(await move('alice', ids.withShared)).toEqual({ ok: true })
+  // A private agent blocks the move unless its creator takes it along; nothing is written on a refusal.
+  expect(await move('alice', ids.withPrivate)).toEqual({ ok: false, reason: 'automation_agent_personal' })
+  expect(await scopeOf(ids.withPrivate)).toBe('personal')
+  expect((await privateAgent())?.visibility).toBe('creator')
+  // Someone else's private agent, or a personal chief, can't come along.
+  expect(await move('bob', ids.bobsWithAlicesAgent, true)).toEqual({ ok: false, reason: 'automation_agent_not_yours' })
+  expect(await move('alice', ids.withChief, true)).toEqual({ ok: false, reason: 'automation_agent_chief' })
+  expect(await scopeOf(ids.withChief)).toBe('personal')
+
+  // Both move together, and the agent joins the public channels like a new workspace agent.
+  expect(await move('alice', ids.withPrivate, true)).toEqual({ ok: true })
+  expect(await scopeOf(ids.withPrivate)).toBe('workspace')
+  expect((await privateAgent())?.visibility).toBe('workspace')
+  const joined = await convex.run(async ctx => await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', ids.channel).eq('principalId', 'ap-private')).collect())
+  expect(joined).toHaveLength(1)
+  // Now that the agent is shared, bob's automation may move too.
+  expect(await move('bob', ids.bobsWithAlicesAgent)).toEqual({ ok: true })
+})

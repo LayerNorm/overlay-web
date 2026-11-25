@@ -36,6 +36,8 @@ interface DialogState {
 
 /** One-line state for a server that needs attention; healthy servers show none. */
 function serverStatus(server: McpServerSummary): ExtensionCatalogEntry['status'] {
+  // A server moved to the workspace is off and not connected until someone connects an account for the workspace.
+  if (server.authType === 'oauth' && server.oauthStatus === 'pending') return { label: 'Not connected' }
   if (!server.enabled) return { label: 'Off' }
   if (server.toolCatalogError || server.oauthStatus === 'needs_reauth') return { label: 'Connection error', tone: 'error' }
   if (server.authType === 'oauth' && server.oauthStatus !== 'connected') return { label: 'Not connected' }

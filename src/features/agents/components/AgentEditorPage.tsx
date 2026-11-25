@@ -181,6 +181,12 @@ export function useAgentEditorController({
     keepOpenOnSave,
   })
 
+  // Moving an agent to the workspace saves at once (it is confirmed and one-way), apart from the form's other edits.
+  const movedToWorkspace = useCallback((saved: WorkspaceAgentDirectoryItem) => {
+    setAgent(saved)
+    form.setVisibility(saved.visibility)
+  }, [form, setAgent])
+
   const title = useMemo(() => {
     if (mode === 'new') return 'New agent'
     if (loading) return 'Agent'
@@ -220,6 +226,7 @@ export function useAgentEditorController({
     saveEdit,
     cancelEdit,
     archiveAgent,
+    movedToWorkspace,
   }
 
   return {
@@ -238,5 +245,6 @@ export function useAgentEditorController({
     computer,
     saveEdit,
     archiveAgent,
+    movedToWorkspace,
   }
 }
