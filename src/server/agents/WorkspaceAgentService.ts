@@ -227,6 +227,7 @@ export class WorkspaceAgentService {
   }) {
     const { access, agent } = await this.requireEditor(args)
     assertChiefBindingUpdateAllowed(agent, args.input)
+    assertVisibilityMoveAllowed(agent, args.input, access.principal.id)
     // Changing the model also writes the Overlay harness, which moves an agent saved for a removed third-party
     // harness onto Overlay's own.
     const nextHarness = args.input.harness ?? (args.input.modelId === undefined ? undefined : 'overlay')
@@ -274,6 +275,11 @@ export class WorkspaceAgentService {
       ...(teamIds === undefined ? {} : { teamIds }),
       updatedByPrincipalId: access.principal.id,
       now: this.now(),
+    }).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes('WORKSPACE_AGENT_MOVE_DISABLED')) {
+        throw new WorkspaceAgentServiceError('forbidden', 'This workspace does not let members move items to Workspace.')
+      }
+      throw error
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     const creator = await this.workspaces.resolvePrincipal(updated.createdByPrincipalId)
@@ -541,5 +547,24 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can archive this agent')
     }
     return { access, agent }
+  }
+}
+
+/**
+ * Agent visibility is one-way, like every Personal → Workspace move: a creator-only agent may be moved to the workspace
+ * by its creator, and a workspace agent never goes back to creator-only.
+ */
+function assertVisibilityMoveAllowed(
+  agent: { visibility?: 'creator' | 'workspace'; createdByPrincipalId: string },
+  input: { visibility?: 'creator' | 'workspace' },
+  actorPrincipalId: string,
+) {
+  const current = agent.visibility ?? 'workspace'
+  if (input.visibility === undefined || input.visibility === current) return
+  if (input.visibility === 'creator') {
+    throw new WorkspaceAgentServiceError('validation', "A workspace agent can't be made private again.")
+  }
+  if (agent.createdByPrincipalId !== actorPrincipalId) {
+    throw new WorkspaceAgentServiceError('forbidden', 'Only the person who created this agent can move it to the workspace.')
   }
 }

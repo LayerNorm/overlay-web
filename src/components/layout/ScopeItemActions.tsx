@@ -2,14 +2,15 @@
 import { Button, toast } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
-import { Archive, RotateCcw, User, Users } from 'lucide-react'
+import { Archive, RotateCcw, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
 import { useScopeItemActions, type ScopedItem } from '@/hooks/use-scope-item-actions'
-import type { ResourceKind, ResourceScope } from '@/shared/workspaces/resource-scope'
+import type { ResourceKind } from '@/shared/workspaces/resource-scope'
 import { announceArchived } from '@/shared/app/archive-toast'
+import { MoveToWorkspaceDialog } from './MoveToWorkspaceDialog'
 
 export type ScopeChange =
-  | { action: 'move'; to: ResourceScope }
+  | { action: 'move'; to: 'workspace' }
   | { action: 'archive' }
   | { action: 'restore' }
 
@@ -19,7 +20,7 @@ const TEXT_BUTTON =
   'inline-flex items-center gap-1.5 rounded-md border border-(--border) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:opacity-50'
 
 /**
- * Move to Workspace/Personal, Archive, and Restore for one item. Only what the person may do is shown (the server
+ * Move to Workspace (one-way, after a confirmation), Archive, and Restore for one item. Only what the person may do is shown (the server
  * enforces the same rules), so it renders nothing when there is nothing to offer.
  *
  * `icons` is for hover rows; `header` is for side-panel headers; `buttons` is for dialogs and detail panes.
@@ -42,6 +43,7 @@ export function ScopeItemActions({
 }) {
   const actions = useScopeItemActions(kind, resource)
   const [busy, setBusy] = useState(false)
+  const [confirmingMove, setConfirmingMove] = useState(false)
   const options = actions.optionsFor(item)
   if (!options.moveTo && !options.canArchive && !options.canRestore) return null
 
@@ -49,6 +51,7 @@ export function ScopeItemActions({
     setBusy(true)
     try {
       await request()
+      if (change.action === 'move') setConfirmingMove(false)
       onChanged?.(change)
       if (change.action === 'archive') {
         const named = item as ScopedItem & { name?: string; title?: string }
@@ -66,13 +69,7 @@ export function ScopeItemActions({
 
   const items: Array<{ key: string; label: string; icon: typeof Users; onClick: () => void }> = []
   if (options.moveTo) {
-    const to = options.moveTo
-    items.push({
-      key: 'move',
-      label: to === 'workspace' ? 'Move to Workspace' : 'Move to Personal',
-      icon: to === 'workspace' ? Users : User,
-      onClick: () => void run({ action: 'move', to }, () => actions.move(item._id, to)),
-    })
+    items.push({ key: 'move', label: 'Move to Workspace', icon: Users, onClick: () => setConfirmingMove(true) })
   }
   if (options.canArchive) {
     items.push({ key: 'archive', label: 'Archive', icon: Archive, onClick: () => void run({ action: 'archive' }, () => actions.archive(item._id)) })
@@ -80,6 +77,17 @@ export function ScopeItemActions({
   if (options.canRestore) {
     items.push({ key: 'restore', label: 'Restore', icon: RotateCcw, onClick: () => void run({ action: 'restore' }, () => actions.restore(item._id)) })
   }
+
+  const confirm = options.moveTo ? (
+    <MoveToWorkspaceDialog
+      open={confirmingMove}
+      resource={resource}
+      items={[item]}
+      busy={busy}
+      onCancel={() => setConfirmingMove(false)}
+      onConfirm={({ withAgent }) => void run({ action: 'move', to: 'workspace' }, () => actions.move(item._id, { withAgent }))}
+    />
+  ) : null
 
   if (variant === 'buttons') {
     return (
@@ -90,6 +98,7 @@ export function ScopeItemActions({
             {label}
           </Button>
         ))}
+        {confirm}
       </div>
     )
   }
@@ -101,6 +110,7 @@ export function ScopeItemActions({
             <Icon size={16} aria-hidden />
           </Button>
         ))}
+        {confirm}
       </>
     )
   }
@@ -122,6 +132,7 @@ export function ScopeItemActions({
           <Icon size={12} />
         </Button>
       ))}
+      {confirm}
     </>
   )
 }

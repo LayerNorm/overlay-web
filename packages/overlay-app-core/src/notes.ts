@@ -5,13 +5,16 @@ import type {
   NotebookAgentStreamEvent,
   UpdateFileRequest,
 } from './contracts'
+import type { ScopedResourceFields } from './contracts/resource-scope'
 
 
 export const NOTEBOOK_INLINE_MATH_MIGRATION_REGEX =
   /(?<!\$)\$(?![\d\s$])([^$\n]*(?:\\[a-zA-Z@]+|[=^_{}]|[a-zA-Z]\s*[+\-*/=^_]|[+\-*/=^_]\s*[a-zA-Z]|[a-zA-Z])[^$\n]*)\$(?![\d$])/g
 
-export interface NotebookNote {
+/** Carries the creator and scope so the editor header can offer Move to Workspace and Archive. */
+export interface NotebookNote extends ScopedResourceFields {
   _id: string
+  userId?: string
   title: string
   content: string
   tags: string[]
@@ -23,7 +26,7 @@ export interface NotebookNote {
 
 export interface CanonicalNoteFile extends Pick<
   KnowledgeFile,
-  '_id' | 'name' | 'content' | 'textContent' | 'createdAt' | 'updatedAt'
+  '_id' | 'userId' | 'name' | 'content' | 'textContent' | 'createdAt' | 'updatedAt' | 'scope' | 'archivedAt' | 'archivedFromScope'
 > {
   shareVisibility?: 'private' | 'public'
   shareToken?: string | null
@@ -65,6 +68,17 @@ export function canonicalFileToNotebookNote(file: CanonicalNoteFile, now = Date.
     updatedAt: file.updatedAt ?? now,
     shareVisibility: file.shareVisibility,
     shareToken: file.shareToken,
+    ...scopeFieldsOf(file),
+  }
+}
+
+/** The creator and scope fields a note row carries, without writing `undefined` keys. */
+export function scopeFieldsOf(row: Pick<NotebookNote, 'userId' | 'scope' | 'archivedAt' | 'archivedFromScope'>) {
+  return {
+    ...(row.userId !== undefined ? { userId: row.userId } : {}),
+    ...(row.scope !== undefined ? { scope: row.scope } : {}),
+    ...(row.archivedAt !== undefined ? { archivedAt: row.archivedAt } : {}),
+    ...(row.archivedFromScope !== undefined ? { archivedFromScope: row.archivedFromScope } : {}),
   }
 }
 

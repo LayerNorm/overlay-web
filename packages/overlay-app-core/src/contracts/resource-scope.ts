@@ -20,6 +20,8 @@ export interface ScopeActionRequest {
   resource: ScopedResourceKind
   id: string
   action: ScopedResourceAction
-  /** Required for `move`. */
-  to?: ResourceScope
+  /** Required for `move`. Moves are one-way: only `workspace` (the server refuses `personal` with `one_way`). */
+  to?: 'workspace'
+  /** `move` of an automation: also move its creator-only agent to the workspace, in the same transaction. */
+  withAgent?: boolean
 }
