@@ -9,7 +9,7 @@ Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24,
 | P3 The Personal Chief | Merged (PR 617), deployed, migrated in production; reruns clean. Preview-tested: chief created on first Personal visit, kept out of channel mentions. Slack DM routing to the Personal Chief covered by Convex tests only. The `hasPersonalOverlayByServer` shim was deleted on 2026-11-24 |
 | P4 One-way moves | Merged (PR 620) and deployed. Preview-tested: notes, agents (editor move, reverse refused), automations moving with their agent, member view, dark and phone. An open note's header now offers Move and Archive too (it lost the note's creator and scope before) |
 | P5 Credentials move honestly | Merged (PR 620) and deployed. Preview-tested: MCP move strips the sign-in and turns the server off. "Connect for workspace" for connectors and reconnecting a moved OAuth MCP server are covered by Convex tests only (need a live third-party sign-in) |
-| P6 Workspace runs use workspace reach | Merged (PR 621) and deployed. Covered by unit and Convex tests; a live automation run could not be tried on the preview (its fresh backend has no model catalog grants, which automation turns enforce) |
+| P6 Workspace runs use workspace reach | Merged (PR 621) and deployed. Live-tested on the PR 622 preview: a workspace automation did not know its owner's private memory and had no `list_chats`/`read_chat`/`search_in_files`; the same automation in Personal had all of them |
 | P7 Workspace files searchable by everyone | Merged (PR 621), deployed, backfilled in production. Preview-tested with two members: workspace note found by the other member, personal note not, found after a move, gone for others after archive |
 
 ## The model
