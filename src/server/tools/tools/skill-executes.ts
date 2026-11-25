@@ -129,6 +129,12 @@ export async function executeSaveSkill(
   },
 ) {
   try {
+    // Agent-written skills are Personal until a person reviews and shares them. A workspace context (a room others can
+    // read, a workspace automation) has no person's Personal to save into, and an unreviewed workspace skill would steer
+    // every agent, so it saves none.
+    if (options.sharedRoom) {
+      return { success: false, error: 'Skills can\'t be saved from a shared room or a workspace automation. Save it from a personal chat, where its owner can review it before sharing it with the workspace.' }
+    }
     const res = await callInternalApi(
       '/api/v1/skills',
       {

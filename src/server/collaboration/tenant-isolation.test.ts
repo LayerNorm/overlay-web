@@ -252,22 +252,14 @@ test('an agent is not a deputy for the human who mentioned it', () => {
   }), [], 'an unaddressed channel message must not wake an agent')
 })
 
-test('guests are limited on their own buckets and forbidden from privileged actions', () => {
-  const guestShare = resolveCollaborationLimits('share.grant', {
-    workspaceId: ACME,
-    principalId: 'principal_guest',
-    guest: true,
-  })
-  const guestBucket = guestShare.find((entry) => entry.key.includes(':guest:'))
-  assert.ok(guestBucket, 'guests must use a guest bucket, not the member bucket')
-  assert.equal(isForbiddenByLimit(guestBucket.limits), true)
-
+test('members use their own principal bucket and are not forbidden from sharing', () => {
   const memberShare = resolveCollaborationLimits('share.grant', {
     workspaceId: ACME,
     principalId: ACME_PRINCIPAL,
   })
   const memberBucket = memberShare.find((entry) => entry.key.includes(':principal:'))
-  assert.equal(isForbiddenByLimit(memberBucket!.limits), false)
+  assert.ok(memberBucket)
+  assert.equal(isForbiddenByLimit(memberBucket.limits), false)
 })
 
 test('every limit key is prefixed by its workspace so tenants cannot drain each other', () => {

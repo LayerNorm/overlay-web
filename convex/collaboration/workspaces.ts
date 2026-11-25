@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
+import { withoutLegacyGuest } from '../lib/legacyGuestRole'
 import { resolveIdentityDisplayName, resolveIdentityPhotoUrl, versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { claimWorkspaceHandle, getWorkspaceHandle, isWorkspaceHandleAvailable } from '../lib/workspaceHandles'
@@ -25,12 +26,10 @@ const membershipRole = v.union(
   v.literal('owner'),
   v.literal('admin'),
   v.literal('member'),
-  v.literal('guest'),
 )
 const invitationRole = v.union(
   v.literal('admin'),
   v.literal('member'),
-  v.literal('guest'),
 )
 const membershipStatus = v.union(v.literal('active'), v.literal('suspended'))
 const invitationStatus = v.union(
@@ -40,13 +39,6 @@ const invitationStatus = v.union(
   v.literal('cancelled'),
   v.literal('replaced'),
 )
-const guestStatus = v.union(
-  v.literal('pending'),
-  v.literal('active'),
-  v.literal('expired'),
-  v.literal('revoked'),
-)
-const guestAccessRole = v.union(v.literal('viewer'), v.literal('editor'))
 
 const workspaceValidator = v.object({
   workspaceId: v.string(),
@@ -130,21 +122,6 @@ const teamMembershipValidator = v.object({
   principalType: v.union(v.literal('human'), v.literal('agent')),
   addedByPrincipalId: v.optional(v.string()),
   createdAt: v.number(),
-})
-
-const resourceGuestValidator = v.object({
-  resourceGuestId: v.string(),
-  workspaceId: v.string(),
-  resourceType: v.string(),
-  resourceId: v.string(),
-  principalId: v.string(),
-  accessRole: guestAccessRole,
-  status: guestStatus,
-  grantedByPrincipalId: v.string(),
-  expiresAt: v.optional(v.number()),
-  revokedAt: v.optional(v.number()),
-  createdAt: v.number(),
-  updatedAt: v.number(),
 })
 
 const resourceScopeValidator = v.object({
@@ -1125,13 +1102,13 @@ export const acceptInvitationByServer = mutation({
         await requireAnotherActiveOwner(ctx, workspace.workspaceId, membership.principalId)
       }
       await ctx.db.patch(membership._id, {
-        role: invitation.role,
+        role: withoutLegacyGuest(invitation.role),
         status: 'active',
         updatedAt: now,
       })
       membership = {
         ...membership,
-        role: invitation.role,
+        role: withoutLegacyGuest(invitation.role),
         status: 'active',
         updatedAt: now,
       }
@@ -1141,7 +1118,7 @@ export const acceptInvitationByServer = mutation({
         membershipId: args.membershipId,
         workspaceId: workspace.workspaceId,
         principalId: principal.principalId,
-        role: invitation.role,
+        role: withoutLegacyGuest(invitation.role),
         status: 'active',
         invitedByPrincipalId: invitation.invitedByPrincipalId,
         joinedAt: now,
@@ -1233,7 +1210,7 @@ export const replaceInvitationByServer = mutation({
       invitationId: args.replacementInvitationId,
       workspaceId: existing.workspaceId,
       email: existing.email,
-      role: existing.role,
+      role: withoutLegacyGuest(existing.role),
       status: 'pending',
       invitedByPrincipalId: args.invitedByPrincipalId,
       expiresAt: args.expiresAt,
@@ -1459,7 +1436,7 @@ export const updateMemberByServer = mutation({
     const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const membership = await getMembershipForPrincipal(ctx, args.workspaceId, args.principalId)
     if (!membership) throw new Error('WORKSPACE_MEMBERSHIP_NOT_FOUND')
-    const nextRole = args.role ?? membership.role
+    const nextRole = args.role ?? withoutLegacyGuest(membership.role)
     const nextStatus = args.status ?? membership.status
     if (
       workspace.kind === 'personal'
@@ -1661,6 +1638,7 @@ export const purgeArchivedWorkspaceByServer = mutation({
       return reactions.length + pins.length + savedMessages.length + convoMessages.length + 1
     }))
     deletedRows += perConversationCounts.reduce((total, count) => total + count, 0)
+    // Legacy resource-guest rows (feature removed; see migrations/removeGuestRole.ts) until the table is dropped.
     await deleteRows(await ctx.db.query('workspaceResourceGuests')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .collect())
@@ -1986,47 +1964,6 @@ export const removeTeamPrincipalByServer = mutation({
   },
 })
 
-export const createResourceGuestByServer = mutation({
-  args: {
-    serverSecret: v.string(),
-    resourceGuestId: v.string(),
-    workspaceId: v.string(),
-    resourceType: v.string(),
-    resourceId: v.string(),
-    principalId: v.string(),
-    accessRole: guestAccessRole,
-    status: v.union(v.literal('pending'), v.literal('active')),
-    expiresAt: v.optional(v.number()),
-    grantedByPrincipalId: v.string(),
-    now: v.number(),
-  },
-  returns: resourceGuestValidator,
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    await requireActiveWorkspace(ctx, args.workspaceId)
-    await requirePrincipal(ctx, args.workspaceId, args.principalId)
-    await requirePrincipal(ctx, args.workspaceId, args.grantedByPrincipalId)
-    await requireUnusedId(ctx, 'resourceGuest', args.resourceGuestId)
-    if (args.expiresAt !== undefined && args.expiresAt <= args.now) {
-      throw new Error('WORKSPACE_RESOURCE_GUEST_EXPIRY_INVALID')
-    }
-    const now = args.now
-    return resourceGuestValue(await insertAndRead(ctx, 'workspaceResourceGuests', {
-      resourceGuestId: args.resourceGuestId,
-      workspaceId: args.workspaceId,
-      resourceType: requiredName(args.resourceType, 'Resource type'),
-      resourceId: requiredName(args.resourceId, 'Resource'),
-      principalId: args.principalId,
-      accessRole: args.accessRole,
-      status: args.status,
-      expiresAt: args.expiresAt,
-      grantedByPrincipalId: args.grantedByPrincipalId,
-      createdAt: now,
-      updatedAt: now,
-    }))
-  },
-})
-
 export const bindResourceByServer = mutation({
   args: {
     serverSecret: v.string(),
@@ -2130,7 +2067,6 @@ const sharingPolicyValidator = v.object({
   workspaceContentEditors: scopeEditors,
   memberCanMoveScope: v.boolean(),
   usageTopUpBy: scopeEditors,
-  guestExpirationDays: v.optional(v.number()),
   allowedAgentHarnesses: v.optional(v.array(v.string())),
   agentRunBudgetCents: v.optional(v.number()),
   channelRetentionDays: v.optional(v.number()),
@@ -2173,7 +2109,6 @@ export function sharingPolicyValue(row: {
   workspaceContentEditors?: 'members' | 'admins'
   memberCanMoveScope?: boolean
   usageTopUpBy?: 'members' | 'admins'
-  guestExpirationDays?: number
   allowedAgentHarnesses?: string[]
   agentRunBudgetCents?: number
   channelRetentionDays?: number
@@ -2193,7 +2128,6 @@ export function sharingPolicyValue(row: {
     workspaceContentEditors: row.workspaceContentEditors ?? 'members',
     memberCanMoveScope: row.memberCanMoveScope ?? true,
     usageTopUpBy: row.usageTopUpBy ?? 'admins',
-    guestExpirationDays: row.guestExpirationDays,
     allowedAgentHarnesses: row.allowedAgentHarnesses?.length ? row.allowedAgentHarnesses : undefined,
     agentRunBudgetCents: row.agentRunBudgetCents,
     channelRetentionDays: row.channelRetentionDays,
@@ -2232,7 +2166,6 @@ export const setSharingPolicyByServer = mutation({
       workspaceContentEditors: v.optional(scopeEditors),
       memberCanMoveScope: v.optional(v.boolean()),
       usageTopUpBy: v.optional(scopeEditors),
-      guestExpirationDays: v.optional(v.union(v.number(), v.null())),
       allowedAgentHarnesses: v.optional(v.union(v.array(v.string()), v.null())),
       agentRunBudgetCents: v.optional(v.union(v.number(), v.null())),
       channelRetentionDays: v.optional(v.union(v.number(), v.null())),
@@ -2281,7 +2214,6 @@ export const setSharingPolicyByServer = mutation({
       workspaceContentEditors: args.patch.workspaceContentEditors ?? ('members' as const),
       memberCanMoveScope: args.patch.memberCanMoveScope ?? true,
       usageTopUpBy: args.patch.usageTopUpBy ?? ('admins' as const),
-      guestExpirationDays: args.patch.guestExpirationDays ?? undefined,
       allowedAgentHarnesses: args.patch.allowedAgentHarnesses ?? undefined,
       agentRunBudgetCents: args.patch.agentRunBudgetCents ?? undefined,
       channelRetentionDays: args.patch.channelRetentionDays ?? undefined,
@@ -2635,89 +2567,6 @@ function identityMappingValue(row: {
   }
 }
 
-export const revokeResourceGuestByServer = mutation({
-  args: {
-    serverSecret: v.string(),
-    resourceGuestId: v.string(),
-    workspaceId: v.string(),
-    revokedByPrincipalId: v.string(),
-    now: v.number(),
-  },
-  returns: resourceGuestValidator,
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const guest = await ctx.db
-      .query('workspaceResourceGuests')
-      .withIndex('by_resourceGuestId', (q) =>
-        q.eq('resourceGuestId', args.resourceGuestId),
-      )
-      .unique()
-    if (!guest || guest.workspaceId !== args.workspaceId) {
-      throw new Error('WORKSPACE_RESOURCE_GUEST_NOT_FOUND')
-    }
-    await requirePrincipal(ctx, guest.workspaceId, args.revokedByPrincipalId)
-    if (guest.status === 'revoked') return resourceGuestValue(guest)
-    const now = args.now
-    await ctx.db.patch(guest._id, { status: 'revoked', revokedAt: now, updatedAt: now })
-    return resourceGuestValue({
-      ...guest,
-      status: 'revoked',
-      revokedAt: now,
-      updatedAt: now,
-    })
-  },
-})
-
-export const listResourceGuestsByServer = query({
-  args: {
-    serverSecret: v.string(),
-    workspaceId: v.string(),
-    resourceType: v.optional(v.string()),
-    resourceId: v.optional(v.string()),
-  },
-  returns: v.array(resourceGuestValidator),
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    await requireWorkspace(ctx, args.workspaceId)
-    const rows =
-      args.resourceType && args.resourceId
-        ? await ctx.db
-            .query('workspaceResourceGuests')
-        .withIndex('by_workspaceId_resource', (q) =>
-              q
-                .eq('workspaceId', args.workspaceId)
-            .eq('resourceType', args.resourceType!)
-            .eq('resourceId', args.resourceId!))
-        .take(MAX_DIRECTORY_ROWS)
-        : await ctx.db
-            .query('workspaceResourceGuests')
-            .withIndex('by_workspaceId', (q) =>
-              q.eq('workspaceId', args.workspaceId),
-            )
-        .take(MAX_DIRECTORY_ROWS)
-    return rows
-      .filter((row) =>
-        (!args.resourceType || row.resourceType === args.resourceType)
-        && (!args.resourceId || row.resourceId === args.resourceId))
-      .map(resourceGuestValueWithExpiry)
-  },
-})
-
-export const getResourceGuestByServer = query({
-  args: { serverSecret: v.string(), resourceGuestId: v.string() },
-  returns: v.union(resourceGuestValidator, v.null()),
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const guest = await ctx.db
-      .query('workspaceResourceGuests')
-      .withIndex('by_resourceGuestId', (q) =>
-        q.eq('resourceGuestId', args.resourceGuestId),
-      )
-      .unique()
-    return guest ? resourceGuestValueWithExpiry(guest) : null
-  },
-})
-
 type DatabaseReader = QueryCtx['db'] | MutationCtx['db']
 
 async function getWorkspace(ctx: { db: DatabaseReader }, workspaceId: string) {
@@ -2883,7 +2732,6 @@ type IdKind =
   | 'invitation'
   | 'team'
   | 'teamMembership'
-  | 'resourceGuest'
 
 async function requireUnusedId(ctx: Pick<MutationCtx, 'db'>, kind: IdKind, id: string) {
   const existing = kind === 'workspace'
@@ -2902,19 +2750,12 @@ async function requireUnusedId(ctx: Pick<MutationCtx, 'db'>, kind: IdKind, id: s
                   .query('workspaceTeams')
                   .withIndex('by_teamId', (q) => q.eq('teamId', id))
                   .unique()
-            : kind === 'teamMembership'
-                ? await ctx.db
-                    .query('workspaceTeamMemberships')
-                    .withIndex('by_teamMembershipId', (q) =>
-                      q.eq('teamMembershipId', id),
-                    )
-                    .unique()
-                : await ctx.db
-                    .query('workspaceResourceGuests')
-                    .withIndex('by_resourceGuestId', (q) =>
-                      q.eq('resourceGuestId', id),
-                    )
-                    .unique()
+            : await ctx.db
+                .query('workspaceTeamMemberships')
+                .withIndex('by_teamMembershipId', (q) =>
+                  q.eq('teamMembershipId', id),
+                )
+                .unique()
   if (existing)
     throw new Error(
       `WORKSPACE_${kind.replace(/[A-Z]/g, (part) => `_${part}`).toUpperCase()}_ID_EXISTS`,
@@ -2929,7 +2770,6 @@ async function insertAndRead<
     | 'workspaceInvitations'
     | 'workspaceTeams'
     | 'workspaceTeamMemberships'
-    | 'workspaceResourceGuests'
     | 'workspaceResourceScopes',
 >(
   ctx: Pick<MutationCtx, 'db'>,
@@ -3043,7 +2883,7 @@ function membershipValue(row: Doc<'workspaceMemberships'>) {
   return {
     workspaceId: row.workspaceId,
     principalId: row.principalId,
-    role: row.role,
+    role: withoutLegacyGuest(row.role),
     status: row.status,
     invitedByPrincipalId: row.invitedByPrincipalId,
     joinedAt: row.joinedAt,
@@ -3056,7 +2896,7 @@ function invitationValue(row: Doc<'workspaceInvitations'>) {
     invitationId: row.invitationId,
     workspaceId: row.workspaceId,
     email: row.email,
-    role: row.role,
+    role: withoutLegacyGuest(row.role),
     status: row.status,
     invitedByPrincipalId: row.invitedByPrincipalId,
     expiresAt: row.expiresAt,
@@ -3075,6 +2915,16 @@ export function invitationValueWithExpiry(row: Doc<'workspaceInvitations'>) {
   return value.status === 'pending' && value.expiresAt <= Date.now()
     ? { ...value, status: 'expired' as const }
     : value
+}
+
+function resourceScopeValue(row: Doc<'workspaceResourceScopes'>) {
+  return {
+    workspaceId: row.workspaceId,
+    resourceType: row.resourceType,
+    resourceId: row.resourceId,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt ?? row.createdAt,
+  }
 }
 
 function teamValue(row: Doc<'workspaceTeams'>) {
@@ -3099,42 +2949,6 @@ function teamMembershipValue(row: Doc<'workspaceTeamMemberships'>) {
     addedByPrincipalId: row.addedByPrincipalId,
     createdAt: row.createdAt,
   }
-}
-
-function resourceGuestValue(row: Doc<'workspaceResourceGuests'>) {
-  return {
-    resourceGuestId: row.resourceGuestId,
-    workspaceId: row.workspaceId,
-    resourceType: row.resourceType,
-    resourceId: row.resourceId,
-    principalId: row.principalId,
-    accessRole: row.accessRole,
-    status: row.status,
-    grantedByPrincipalId: row.grantedByPrincipalId,
-    expiresAt: row.expiresAt,
-    revokedAt: row.revokedAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }
-}
-
-function resourceScopeValue(row: Doc<'workspaceResourceScopes'>) {
-  return {
-    workspaceId: row.workspaceId,
-    resourceType: row.resourceType,
-    resourceId: row.resourceId,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt ?? row.createdAt,
-  }
-}
-
-export function resourceGuestValueWithExpiry(row: Doc<'workspaceResourceGuests'>) {
-  const value = resourceGuestValue(row)
-  return value.status !== 'revoked'
-    && value.expiresAt !== undefined
-    && value.expiresAt <= Date.now()
-    ? { ...value, status: 'expired' as const }
-    : value
 }
 
 function requiredName(value: string, label: string): string {

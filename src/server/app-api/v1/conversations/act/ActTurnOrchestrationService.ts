@@ -273,7 +273,7 @@ export async function executeActTurn(
     if (readiness.kind !== 'admit') {
       return actRoutePolicyResponse(readiness.kind, requestId)
     }
-    // A workspace automation's thread is a workspace context (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P6):
+    // A workspace automation's thread is a workspace context (internal/develop/workspace-and-personal.md):
     // it runs with workspace reach only. Decided by the same rule as shared rooms; each step re-reads the automation.
     const workspaceReach = automationRun && conversationId
       ? await resolveSharedRoom({ actorUserId: userId, conversationId, workspaceId: billingWorkspaceId })

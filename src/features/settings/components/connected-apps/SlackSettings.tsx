@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useConvexAuth, useMutation, useQuery } from 'convex/react'
-import { Building2, ShieldCheck, UserRound, UserRoundPlus, UsersRound } from 'lucide-react'
+import { Building2, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
 import { Button, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { SettingsGroup, SettingsToggle } from '@overlay/modules-react/settings'
@@ -120,9 +120,6 @@ export function SlackSettings() {
             { value: 'everyone', label: 'Everyone except blocked' },
             { value: 'specific', label: 'Only allowed people' },
           ]} />
-        </SettingsAppRow>
-        <SettingsAppRow icon={<UserRoundPlus size={15} />} title="Guests" description="Let workspace guests ask Overlay from Slack.">
-          <SettingsToggle checked={settings.guests} disabled={!canManage || busy} onChange={() => save({ guests: !settings.guests })} aria-label="Guests" />
         </SettingsAppRow>
         <SettingsAppRow icon={<Building2 size={15} />} title="Slack Connect" description="Answer linked members in channels shared with other companies. People from those companies can read the answers, which may draw on workspace memories and files.">
           <SettingsToggle

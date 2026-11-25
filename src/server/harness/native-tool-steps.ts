@@ -327,7 +327,7 @@ export async function dispatchNativeHarnessAgentRequest(
 ): Promise<unknown> {
   'use step'
   assertNativeAgentRequest(toolCallId, toolName)
-  await refreshNativeHarnessAccess(access, context, toolName)
+  const { sharedRoom } = await refreshNativeHarnessAccess(access, context, toolName)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
@@ -453,7 +453,7 @@ export async function dispatchNativeHarnessAgentRequest(
   }
 
   const caller = { agentId: access.agentId, conversationId: access.conversationId, turnId: access.turnId }
-  const actor = { actorUserId: access.actorUserId, actorPrincipalId: access.principalId, workspaceId: access.workspaceId, caller, startTurns }
+  const actor = { actorUserId: access.actorUserId, actorPrincipalId: access.principalId, workspaceId: access.workspaceId, caller, startTurns, sharedRoom }
   const progressCall: NativeToolCall = {
     access,
     context,

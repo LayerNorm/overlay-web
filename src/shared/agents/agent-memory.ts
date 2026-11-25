@@ -1,5 +1,5 @@
 /**
- * Memories follow the place, not the agent (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1).
+ * Memories follow the place, not the agent (internal/develop/workspace-and-personal.md).
  *
  * What an agent learns in a workspace context (a room others can read, a workspace automation) is workspace knowledge.
  * A workspace agent is a principal, not a user, so it keeps that knowledge under a synthetic owner id derived from its

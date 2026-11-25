@@ -6,9 +6,9 @@ import {
 
 process.env.NEXT_PUBLIC_APP_URL ??= 'https://overlay.test'
 
-const defaults = { whoCanAsk: 'linked', unlinkedPeople: 'link', guests: false, slackConnect: false, actionsInChannels: 'ask' }
+const defaults = { whoCanAsk: 'linked', unlinkedPeople: 'link', slackConnect: false, actionsInChannels: 'ask' }
 const inbound = { teamId: 'T1', channelId: 'C1', threadTs: '1.2', kind: 'channel' as const, external: false, outsider: false, slackUserId: 'U1', text: 'what changed?' }
-const member: SlackRequester = { workspaceId: 'w1', settings: defaults, userId: 'user_1', principalId: 'p1', guest: false, allowed: true }
+const member: SlackRequester = { workspaceId: 'w1', settings: defaults, userId: 'user_1', principalId: 'p1', allowed: true }
 
 function deps(requester: SlackRequester | null) {
   const calls: string[] = []
@@ -53,11 +53,10 @@ test('a linked member starts a turn and its delivery', async () => {
   assert.deepEqual(calls, ['thread:C1', 'turn:what changed?', 'deliver:agent_turn_1'])
 })
 
-test('unlinked people, guests, Slack Connect and unknown teams start nothing', async () => {
+test('unlinked people, Slack Connect and unknown teams start nothing', async () => {
   for (const [requester, input, status] of [
     [null, inbound, 'not_installed'],
     [{ ...member, userId: null, principalId: null }, inbound, 'link_required'],
-    [{ ...member, guest: true }, inbound, 'not_allowed'],
     [member, { ...inbound, external: true }, 'not_allowed'],
     [{ ...member, settings: { ...defaults, slackConnect: true } }, { ...inbound, external: true, outsider: true }, 'not_allowed'],
     [{ ...member, allowed: false }, inbound, 'not_allowed'],

@@ -325,7 +325,7 @@ export const update = mutation({
 /**
  * Moves one of a person's private memories to the workspace, by their own action (Settings → Memories). One-way:
  * nothing makes a workspace memory private again, because once others may rely on it one person shouldn't be able to
- * take it away (WORKSPACE_PERSONAL_SEPARATION_PLAN.md).
+ * take it away (internal/develop/workspace-and-personal.md).
  */
 export const moveToWorkspace = mutation({
   args: { workspaceId: v.string(), memoryId: v.id('memories') },

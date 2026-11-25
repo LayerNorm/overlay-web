@@ -56,9 +56,10 @@ test('membership revocation and archived principals/workspaces invalidate subseq
   await t.run(ctx => ctx.db.patch(ids.memberships[0]!, { status: 'suspended' }))
   await expect(user.query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
   await t.run(async ctx => {
+    // A legacy guest row (before migrations/removeGuestRole.ts runs) reads as a member.
     await ctx.db.patch(ids.memberships[0]!, { status: 'active', role: 'guest' })
   })
-  expect(await user.query(workspace, { workspaceId: args.workspaceId })).toMatchObject({ role: 'guest' })
+  expect(await user.query(workspace, { workspaceId: args.workspaceId })).toMatchObject({ role: 'member' })
   await t.run(ctx => ctx.db.patch(ids.principals[0]!, { archivedAt: 0 }))
   await expect(user.query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
   await t.run(async ctx => {

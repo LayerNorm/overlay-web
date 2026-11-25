@@ -19,7 +19,7 @@ Plan: `internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`. Setup and status: `inter
 
 ## Workspace and Personal
 
-Plan: `internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md`.
+Rules and where they're enforced: `internal/develop/workspace-and-personal.md`. The plan shipped in full (P1–P7, PRs 616, 617, 620, 621).
 
 - [ ] **Per-person tracking and caps in Personal** (added 2026-11-24). Personal mode spends the workspace's budget. Later: show each person's Personal spend to admins and let them set a per-person cap.
 

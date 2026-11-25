@@ -1,5 +1,5 @@
 import 'server-only'
-import { roomListScope } from './room-scope'
+import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
 import {
   computerRecordingChapters,
   computerRecordingFileName,
@@ -249,6 +249,7 @@ export async function executeSearchMemory(
       content: chunk.text,
       memoryId: chunk.sourceId,
       title: chunk.title,
+      scope: chunk.scope,
     }))
     return {
       success: true,
@@ -301,6 +302,7 @@ export async function executeSearchMessages(
       content: chunk.text,
       messageId: chunk.sourceId,
       title: chunk.title,
+      scope: chunk.scope,
     }))
     return {
       success: true,
@@ -590,6 +592,18 @@ async function savedAutomation(
   }
 }
 
+/** Changing an automation by id in a workspace context reaches only Workspace automations. */
+async function roomAutomationRefusal(options: OverlayToolsOptions, automationId: string): Promise<{ success: false; error: string } | null> {
+  if (!options.sharedRoom) return null
+  const res = await callInternalApiGet(
+    `/api/v1/automations?${new URLSearchParams({ automationId: automationId.trim() })}`,
+    options.accessToken, options.baseUrl, options.forwardCookie, options.serverSecret, options.userId, options.workspaceId,
+  )
+  if (!res.ok) return { success: false, error: 'Automation not found' }
+  const automation = await res.json().catch((_error) => null) as { scope?: string } | null
+  return !automation || refusesRoomItem(options, automation) ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
+}
+
 export async function executeCreateAutomation(
   options: OverlayToolsOptions,
   input: {
@@ -602,6 +616,7 @@ export async function executeCreateAutomation(
     modelId?: string
     graphSource?: string
     sourceConversationId?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   try {
@@ -617,7 +632,7 @@ export async function executeCreateAutomation(
         ...(automationId ? { automationId } : {}),
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
-        ...(automationId ? {} : { byAgent: true }),
+        ...(automationId ? {} : { byAgent: true, scope: roomCreateScope(options, input.scope) }),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -663,6 +678,8 @@ export async function executeUpdateAutomation(
   },
 ) {
   try {
+    const refused = await roomAutomationRefusal(options, input.automationId)
+    if (refused) return refused
     const schedule = input.schedule ? normalizeScheduleInput(input.schedule) : input.schedule
     const res = await callInternalApi(
       '/api/v1/automations',
@@ -695,6 +712,8 @@ export async function executeUpdateAutomation(
 
 export async function executePauseAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
+    const refused = await roomAutomationRefusal(options, input.automationId)
+    if (refused) return refused
     const res = await callInternalApi(
       '/api/v1/automations',
       { ...toolAuthBody(options), automationId: input.automationId, action: 'pause' },
@@ -784,6 +803,8 @@ export async function executeUpdateAgent(
 
 export async function executeDeleteAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
+    const refused = await roomAutomationRefusal(options, input.automationId)
+    if (refused) return refused
     const res = await callInternalApi(
       '/api/v1/automations',
       { ...toolAuthBody(options), automationId: input.automationId },
@@ -1063,6 +1084,10 @@ export function localComputerUnavailableMessage(reason: LocalComputerUnavailable
   }
 }
 
+const ROOM_PERSONAL_COMPUTER_ERROR =
+  'In a room others can read, or a workspace automation, agents can only use their own cloud computer, never a person\'s '
+  + 'own computer. Do not retry with target "local". Ask the person to run this from a personal chat instead.'
+
 const PINNED_MAC_UNAVAILABLE =
   'This thread runs on a computer that is offline, or that belongs to someone else. Do not retry computer tools. '
   + 'Tell the user: open Overlay on that computer, or start a new thread in the cloud. '
@@ -1109,6 +1134,12 @@ export async function computerInstanceFor(
 ): ReturnType<typeof cloudComputerInstanceFor> {
   const target = selection.target ?? options.computerTarget
   const toolName = selection.toolName ?? 'computer'
+  // A person's own computers (their Mac, their personal cloud computer) hold their private files and signed-in
+  // accounts. In a workspace context only an agent's own cloud computer may be used, and never a fallback to a Mac.
+  if (options.sharedRoom) {
+    if (!options.agentId || target === 'local') return { ok: false as const, error: ROOM_PERSONAL_COMPUTER_ERROR }
+    return await cloudComputerInstanceFor(options)
+  }
   if (target === 'local') return await localComputerFor(options, toolName)
   const cloud = await cloudComputerInstanceFor(options)
   if (cloud.ok || target === 'cloud' || !cloud.unbound) return cloud

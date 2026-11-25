@@ -2397,6 +2397,7 @@ export default defineSchema({
     membershipId: v.string(),
     workspaceId: v.string(),
     principalId: v.string(),
+    // 'guest' is legacy: the role was removed. Drop the literal once migrations/removeGuestRole.ts has run everywhere.
     role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member'), v.literal('guest')),
     status: v.union(v.literal('active'), v.literal('suspended')),
     invitedByPrincipalId: v.optional(v.string()),
@@ -2468,6 +2469,8 @@ export default defineSchema({
     .index('by_grantId', ['grantId'])
     .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
 
+  // Legacy, to delete: resource guests were removed with the guest role. migrations/removeGuestRole.ts empties this
+  // table; drop it from the schema after that has run everywhere.
   workspaceResourceGuests: defineTable({
     resourceGuestId: v.string(),
     workspaceId: v.string(),
@@ -2490,6 +2493,7 @@ export default defineSchema({
     invitationId: v.string(),
     workspaceId: v.string(),
     email: v.string(),
+    // 'guest' is legacy: the role was removed. Drop the literal once migrations/removeGuestRole.ts has run everywhere.
     role: v.union(v.literal('admin'), v.literal('member'), v.literal('guest')),
     status: v.union(v.literal('pending'), v.literal('accepted'), v.literal('expired'), v.literal('cancelled'), v.literal('replaced')),
     invitedByPrincipalId: v.string(),
@@ -2520,6 +2524,7 @@ export default defineSchema({
     workspaceContentEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
     memberCanMoveScope: v.optional(v.boolean()),
     usageTopUpBy: v.optional(v.union(v.literal('members'), v.literal('admins'))),
+    // Legacy (guest expiry, removed with the guest role); migrations/removeGuestRole.ts clears it. Drop afterwards.
     guestExpirationDays: v.optional(v.number()),
     allowedAgentHarnesses: v.optional(v.array(v.string())),
     agentRunBudgetCents: v.optional(v.number()),

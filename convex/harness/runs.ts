@@ -1827,7 +1827,7 @@ export const resolveConversationRoomRestrictions = mutation({
         .eq('principalId', principal.principalId)).unique() : null
     if (!workspace || workspace.status !== 'active' || workspace.archivedAt !== undefined
       || !principal || principal.type !== 'human' || principal.archivedAt !== undefined
-      || !membership || membership.status !== 'active' || membership.role === 'guest') {
+      || !membership || membership.status !== 'active') {
       throw new Error('WORKSPACE_ACCESS_DENIED')
     }
     await requireConversationAccess(ctx, {

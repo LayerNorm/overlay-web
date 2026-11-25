@@ -9,7 +9,7 @@ export type ChunkVisibility = 'owner' | 'workspace'
  * because the result will be shown to everyone there.
  *
  * A file chunk without a visibility is private: files are their uploader's until they are in Workspace
- * (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P7). Memory and message chunks from before visibility existed
+ * (internal/develop/workspace-and-personal.md). Memory and message chunks from before visibility existed
  * keep the old rule (shared).
  */
 export function chunkVisibleToSearch(args: {
@@ -50,4 +50,13 @@ export function fileChunkOwner(file: { userId: string; scope?: ResourceScope; ar
   return visibility === 'workspace'
     ? { userId: workspaceFilesOwnerId(file.workspaceId!), visibility }
     : { userId: file.userId, visibility }
+}
+
+/**
+ * Which side of the workspace a search hit belongs to, for the model and the person: `personal` is visible only to the
+ * person it belongs to, `workspace` to every member. Uses the same defaults as `chunkVisibleToSearch`.
+ */
+export function chunkScope(chunk: { visibility?: ChunkVisibility; sourceKind?: string }): 'personal' | 'workspace' {
+  const visibility = chunk.visibility ?? (chunk.sourceKind === 'file' ? 'owner' : 'workspace')
+  return visibility === 'owner' ? 'personal' : 'workspace'
 }
