@@ -185,14 +185,18 @@ Built: `overlay-agent-host private` (IPC only), `ToolLoopAgent` with the
 computer tools (exec, read/write/list files, terminal) through
 `LocalToolExecutor`, approvals for exec and terminal start, Stop, per-step
 saves in `node:sqlite`, own keys for Anthropic, OpenAI, Google and OpenRouter.
-Not built: shared-package extraction (tool names and approval rules are copied
-and point at their source), compaction, screenshots/input/browser tools.
+Later (PR 618, with Agent Host 0.7.0): the computer tool inputs, approval rules,
+browser result text and context compaction moved into the bridge protocol package
+(`computer-tools.ts`, `agent-context.ts`), which the cloud and the host both import;
+private threads gained screenshots and input (macOS), the browser and open URL
+(macOS and Linux), and compaction with the cloud's prompt, its summary saved with
+the thread. Screenshot images are dropped from finished turns.
 
 Acceptance: a private thread completes a multi-step coding task in a real folder
 with approvals and Stop, survives an app restart with its transcript intact, and
 a network capture shows no request to Overlay during the run (no Overlay tools
 yet in this phase). Mock-model tests cover tools, approvals, Stop and saving;
-a desktop dev build against the PR preview ran a real turn (write file, approval, command, reply), reloaded it from disk, kept it out of the browser and deleted it. Restart survival and the network capture are not checked yet.
+a desktop dev build against the PR preview ran a real turn (write file, approval, command, reply), reloaded it from disk, kept it out of the browser and deleted it. Quitting mid-turn and reopening is covered by a host test; the desktop restart and network capture are checked in Phase 3's QA.
 
 ### Phase 2: Bridge and UI
 

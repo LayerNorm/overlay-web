@@ -14,8 +14,15 @@ import {
 } from 'ai'
 import { LocalToolExecutor } from './local-tools.js'
 import { listProviderModels } from './private-threads-models.js'
+import {
+  contextWindowFor,
+  createContextCompaction,
+  instructionsWithSummary,
+  messagesAfterSummary,
+  summaryBoundary,
+} from './private-threads-context.js'
 import { connectOverlayTools, withOverlayTools, type OverlayToolsConnection } from './private-threads-overlay-tools.js'
-import { privateComputerTools } from './private-threads-tools.js'
+import { privateComputerTools, SCREENSHOT_NOT_KEPT } from './private-threads-tools.js'
 import { PrivateThreadStore } from './private-threads-store.js'
 import {
   privateRequestSchema,
@@ -43,6 +50,8 @@ export type PrivateThreadServiceOptions = {
   listModels?: typeof listProviderModels
   /** Tests replace the connection to Overlay's MCP server. */
   connectOverlayTools?: typeof connectOverlayTools
+  /** Tests shrink the context window to exercise compaction. */
+  contextWindow?: number
   log?: (message: string) => void
 }
 
@@ -119,7 +128,7 @@ export class PrivateThreadService {
     const thread = store.get(request.owner, request.threadId)
     if (!thread) throw new Error('This private thread is not on this computer.')
     if (this.runs.has(thread.id)) throw new Error('This thread is already running. Stop it first.')
-    const messages = request.messages as PrivateUIMessage[]
+    const messages = withoutScreenshotImages(request.messages as PrivateUIMessage[], { keepLast: true })
     store.saveMessages(thread.id, messages)
     const model = `${request.model.provider}/${request.model.modelId}`
     const title = thread.title === DEFAULT_TITLE ? titleFrom(messages) : null
@@ -152,15 +161,28 @@ export class PrivateThreadService {
         signal,
         onUnavailable: (reason) => this.options.log?.(`Overlay tools unavailable for this turn: ${publicError(reason)}`),
       })
+      const model = (this.options.createModel ?? createModel)(request.model.provider, request.model.modelId, request.model.apiKey)
+      const instructions = instructionsFor(request, overlay)
+      const tools = withOverlayTools(privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }), overlay)
+      const saved = this.options.store.summary(threadId)
       const agent = new ToolLoopAgent({
-        model: (this.options.createModel ?? createModel)(request.model.provider, request.model.modelId, request.model.apiKey),
-        instructions: instructionsFor(request, overlay),
-        tools: withOverlayTools(privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }), overlay),
+        model,
+        instructions: instructionsWithSummary(instructions, saved?.summary),
+        tools,
         stopWhen: isStepCount(MAX_STEPS),
+        prepareStep: createContextCompaction({
+          model,
+          contextWindow: this.options.contextWindow ?? contextWindowFor(request.model.provider, request.model.modelId),
+          instructions,
+          tools,
+          previousSummary: saved?.summary,
+          abortSignal: signal,
+          onCompacted: (summary) => this.options.store.saveSummary(threadId, { summary, throughMessageId: summaryBoundary(messages) }),
+        }),
       })
       const stream = await createAgentUIStream({
         agent,
-        uiMessages: messages,
+        uiMessages: messagesAfterSummary(messages, saved),
         abortSignal: signal,
         originalMessages: messages as never,
         onError: (error) => { failure = publicError(error); return failure },
@@ -204,7 +226,8 @@ export class PrivateThreadService {
       if (stepsSinceSave > 0) { stepsSinceSave = 0; save() }
     }
     await counting
-    save()
+    // The turn is over: its screenshots have been seen, and keeping them would resend every image on each turn.
+    if (latest) this.options.store.saveMessages(threadId, withoutScreenshotImages([...base, latest], { keepLast: false }))
   }
 
   /** Stops every run; their transcripts are already saved up to the last step. */
@@ -237,6 +260,26 @@ function instructionsFor(request: SendRequest, overlay: OverlayToolsConnection |
     ].join('\n'),
     overlay && Object.keys(overlay.tools).length > 0 ? overlay.instructions : '',
   ].filter(Boolean).join('\n\n')
+}
+
+/**
+ * Drops screenshot images from finished turns; the tool row keeps its size and the model is told to take a new one.
+ * `keepLast` keeps the images of a turn that is continuing (an approval answered mid-turn).
+ */
+export function withoutScreenshotImages(messages: PrivateUIMessage[], options: { keepLast: boolean }): PrivateUIMessage[] {
+  return messages.map((message, index) => {
+    if (message.role !== 'assistant' || (options.keepLast && index === messages.length - 1)) return message
+    let changed = false
+    const parts = message.parts.map((part) => {
+      const output = (part as { type: string; output?: unknown }).output
+      if (part.type !== 'tool-computer_screenshot' || !output || typeof output !== 'object' || !('imageBase64' in output)) return part
+      changed = true
+      const { imageBase64: _image, ...rest } = output as Record<string, unknown>
+      void _image
+      return { ...part, output: { ...rest, message: SCREENSHOT_NOT_KEPT } }
+    })
+    return changed ? { ...message, parts } as PrivateUIMessage : message
+  })
 }
 
 function titleFrom(messages: PrivateUIMessage[]): string | null {
