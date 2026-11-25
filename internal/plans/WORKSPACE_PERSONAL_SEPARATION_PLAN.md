@@ -1,14 +1,14 @@
 # Workspace and Personal separation
 
-Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24, and its one-time move ran in production (192 agent memories moved to their person; a rerun moved none). The model below was revised on 2026-11-24 (one mode switch, a Personal Chief that lives only in Personal); P2–P5 implemented on branches, not merged; P6–P7 proposed.
+Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24, and its one-time move ran in production (192 agent memories moved to their person; a rerun moved none). The model below was revised on 2026-11-24 (one mode switch, a Personal Chief that lives only in Personal); P2–P3 merged (PR 617), deployed to production web and Convex on 2026-11-24, and their three one-time moves ran in production (37 shared chief copies retired, 13 threads handed to a chief their owner can open, 45 personal-agent seats removed from channels, 33 chiefs renamed; reruns found nothing left). P4–P5 open in PR 620, not merged; P6–P7 proposed.
 
 | Phase | State |
 |---|---|
 | P1 Memories follow the place | Merged, deployed, migrated. Preview-tested for 1:1, channel and the Settings move; automations covered by unit tests only |
-| P2 One mode switch | Implemented on `codex/workspace-personal-mockup`; not yet merged or preview-tested |
-| P3 The Personal Chief | Implemented on the same branch; migrations not yet run anywhere |
-| P4 One-way moves | Implemented on `codex/workspace-personal-p4-p5`; not merged or preview-tested (unit and Convex tests only) |
-| P5 Credentials move honestly | Implemented on the same branch; not merged or preview-tested (unit and Convex tests only) |
+| P2 One mode switch | Merged (PR 617) and deployed. Preview-tested as owner and member: mode switch, Workspace default, light/dark, phone width |
+| P3 The Personal Chief | Merged (PR 617), deployed, migrated in production; reruns clean. Preview-tested: chief created on first Personal visit, kept out of channel mentions. Slack DM routing to the Personal Chief covered by Convex tests only. Remaining: delete the `hasPersonalOverlayByServer` shim |
+| P4 One-way moves | Open in PR 620; preview QA in progress (unit and Convex tests pass) |
+| P5 Credentials move honestly | Open in PR 620; preview QA in progress (unit and Convex tests pass) |
 | P6–P7 | Not started |
 
 ## The model
