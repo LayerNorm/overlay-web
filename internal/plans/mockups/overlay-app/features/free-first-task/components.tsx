@@ -37,7 +37,7 @@ export function FreeFirstTask({ title, disabled, workspaceName, personal, onStar
       <Button variant="primary" size="sm" disabled={locked} onClick={() => void start()}><Play size={13} />Start task</Button>
       <Button variant="ghost" size="sm" disabled={locked} onClick={onEdit}>Edit task</Button>
     </div>
-    <p className="text-xs text-muted-foreground">Free. You'll choose a plan after you see the result.</p>
+    <p className="text-xs text-muted-foreground">Free. You{"'"}ll choose a plan after you see the result.</p>
   </div>
 }
 
