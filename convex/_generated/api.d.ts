@@ -47,6 +47,7 @@ import type * as billing_autoTopUpReconcile from "../billing/autoTopUpReconcile.
 import type * as billing_autoTopUpSettlement from "../billing/autoTopUpSettlement.js";
 import type * as billing_browse from "../billing/browse.js";
 import type * as billing_lib_stripeOverlaySubscription from "../billing/lib/stripeOverlaySubscription.js";
+import type * as billing_memberSpend from "../billing/memberSpend.js";
 import type * as billing_paidFirstMigration from "../billing/paidFirstMigration.js";
 import type * as billing_paidFirstMigrationNode from "../billing/paidFirstMigrationNode.js";
 import type * as billing_previewTestPlan from "../billing/previewTestPlan.js";
@@ -135,7 +136,6 @@ import type * as lib_growthFileEdits from "../lib/growthFileEdits.js";
 import type * as lib_growthSchema from "../lib/growthSchema.js";
 import type * as lib_harnessDiagnosticValidator from "../lib/harnessDiagnosticValidator.js";
 import type * as lib_harnessFailureTranscript from "../lib/harnessFailureTranscript.js";
-import type * as lib_legacyGuestRole from "../lib/legacyGuestRole.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_memoryChunks from "../lib/memoryChunks.js";
 import type * as lib_nativeAgentErrorPart from "../lib/nativeAgentErrorPart.js";
@@ -160,6 +160,7 @@ import type * as lib_roomAudience from "../lib/roomAudience.js";
 import type * as lib_sandboxSpendLimits from "../lib/sandboxSpendLimits.js";
 import type * as lib_scopeMutations from "../lib/scopeMutations.js";
 import type * as lib_slackSchema from "../lib/slackSchema.js";
+import type * as lib_spendLimitCharges from "../lib/spendLimitCharges.js";
 import type * as lib_staging from "../lib/staging.js";
 import type * as lib_threadPullRequests from "../lib/threadPullRequests.js";
 import type * as lib_threadWork from "../lib/threadWork.js";
@@ -181,7 +182,6 @@ import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
 import type * as migrations_personalChiefs from "../migrations/personalChiefs.js";
 import type * as migrations_purgeConnectedAgents from "../migrations/purgeConnectedAgents.js";
-import type * as migrations_removeGuestRole from "../migrations/removeGuestRole.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
@@ -254,6 +254,7 @@ declare const fullApi: ApiFromModules<{
   "billing/autoTopUpSettlement": typeof billing_autoTopUpSettlement;
   "billing/browse": typeof billing_browse;
   "billing/lib/stripeOverlaySubscription": typeof billing_lib_stripeOverlaySubscription;
+  "billing/memberSpend": typeof billing_memberSpend;
   "billing/paidFirstMigration": typeof billing_paidFirstMigration;
   "billing/paidFirstMigrationNode": typeof billing_paidFirstMigrationNode;
   "billing/previewTestPlan": typeof billing_previewTestPlan;
@@ -342,7 +343,6 @@ declare const fullApi: ApiFromModules<{
   "lib/growthSchema": typeof lib_growthSchema;
   "lib/harnessDiagnosticValidator": typeof lib_harnessDiagnosticValidator;
   "lib/harnessFailureTranscript": typeof lib_harnessFailureTranscript;
-  "lib/legacyGuestRole": typeof lib_legacyGuestRole;
   "lib/logging": typeof lib_logging;
   "lib/memoryChunks": typeof lib_memoryChunks;
   "lib/nativeAgentErrorPart": typeof lib_nativeAgentErrorPart;
@@ -367,6 +367,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sandboxSpendLimits": typeof lib_sandboxSpendLimits;
   "lib/scopeMutations": typeof lib_scopeMutations;
   "lib/slackSchema": typeof lib_slackSchema;
+  "lib/spendLimitCharges": typeof lib_spendLimitCharges;
   "lib/staging": typeof lib_staging;
   "lib/threadPullRequests": typeof lib_threadPullRequests;
   "lib/threadWork": typeof lib_threadWork;
@@ -388,7 +389,6 @@ declare const fullApi: ApiFromModules<{
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
   "migrations/personalChiefs": typeof migrations_personalChiefs;
   "migrations/purgeConnectedAgents": typeof migrations_purgeConnectedAgents;
-  "migrations/removeGuestRole": typeof migrations_removeGuestRole;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;

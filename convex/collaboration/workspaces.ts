@@ -4,7 +4,6 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { mutation, query } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
-import { withoutLegacyGuest } from '../lib/legacyGuestRole'
 import { resolveIdentityDisplayName, resolveIdentityPhotoUrl, versionedIdentityUrl } from '@/shared/workspaces/identity-resolution'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { claimWorkspaceHandle, getWorkspaceHandle, isWorkspaceHandleAvailable } from '../lib/workspaceHandles'
@@ -1102,13 +1101,13 @@ export const acceptInvitationByServer = mutation({
         await requireAnotherActiveOwner(ctx, workspace.workspaceId, membership.principalId)
       }
       await ctx.db.patch(membership._id, {
-        role: withoutLegacyGuest(invitation.role),
+        role: invitation.role,
         status: 'active',
         updatedAt: now,
       })
       membership = {
         ...membership,
-        role: withoutLegacyGuest(invitation.role),
+        role: invitation.role,
         status: 'active',
         updatedAt: now,
       }
@@ -1118,7 +1117,7 @@ export const acceptInvitationByServer = mutation({
         membershipId: args.membershipId,
         workspaceId: workspace.workspaceId,
         principalId: principal.principalId,
-        role: withoutLegacyGuest(invitation.role),
+        role: invitation.role,
         status: 'active',
         invitedByPrincipalId: invitation.invitedByPrincipalId,
         joinedAt: now,
@@ -1210,7 +1209,7 @@ export const replaceInvitationByServer = mutation({
       invitationId: args.replacementInvitationId,
       workspaceId: existing.workspaceId,
       email: existing.email,
-      role: withoutLegacyGuest(existing.role),
+      role: existing.role,
       status: 'pending',
       invitedByPrincipalId: args.invitedByPrincipalId,
       expiresAt: args.expiresAt,
@@ -1436,7 +1435,7 @@ export const updateMemberByServer = mutation({
     const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const membership = await getMembershipForPrincipal(ctx, args.workspaceId, args.principalId)
     if (!membership) throw new Error('WORKSPACE_MEMBERSHIP_NOT_FOUND')
-    const nextRole = args.role ?? withoutLegacyGuest(membership.role)
+    const nextRole = args.role ?? membership.role
     const nextStatus = args.status ?? membership.status
     if (
       workspace.kind === 'personal'
@@ -1638,10 +1637,6 @@ export const purgeArchivedWorkspaceByServer = mutation({
       return reactions.length + pins.length + savedMessages.length + convoMessages.length + 1
     }))
     deletedRows += perConversationCounts.reduce((total, count) => total + count, 0)
-    // Legacy resource-guest rows (feature removed; see migrations/removeGuestRole.ts) until the table is dropped.
-    await deleteRows(await ctx.db.query('workspaceResourceGuests')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
-      .collect())
     await deleteRows(await ctx.db.query('workspaceResourceGrants')
       .withIndex('by_workspaceId_resource', (q) => q.eq('workspaceId', args.workspaceId))
       .collect())
@@ -2883,7 +2878,7 @@ function membershipValue(row: Doc<'workspaceMemberships'>) {
   return {
     workspaceId: row.workspaceId,
     principalId: row.principalId,
-    role: withoutLegacyGuest(row.role),
+    role: row.role,
     status: row.status,
     invitedByPrincipalId: row.invitedByPrincipalId,
     joinedAt: row.joinedAt,
@@ -2896,7 +2891,7 @@ function invitationValue(row: Doc<'workspaceInvitations'>) {
     invitationId: row.invitationId,
     workspaceId: row.workspaceId,
     email: row.email,
-    role: withoutLegacyGuest(row.role),
+    role: row.role,
     status: row.status,
     invitedByPrincipalId: row.invitedByPrincipalId,
     expiresAt: row.expiresAt,
