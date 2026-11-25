@@ -5,6 +5,7 @@ import type { PersonalPendingTurn, PersonalTranscriptMessage } from './personal-
 import { createConversationUiState } from '@overlay/chat-core'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import { toast } from '@overlay/ui/primitives'
+import { firstReplyTracker } from '@/shared/chat/first-reply-timing'
 import { markTtftClientMilestone, setTtftClientTurnId } from '@/shared/chat/ttft-client-debug'
 import type {
   ConversationRuntime,
@@ -61,6 +62,7 @@ export async function sendTextTurn({
   isCurrentScope,
   isStreamChatActive,
   loadSubscription,
+  measureFirstReply = false,
   nativePersonalEnabled = false,
   nativePersonalRoute = false,
   nativeOwnerId,
@@ -94,6 +96,8 @@ export async function sendTextTurn({
   isCurrentScope: () => boolean
   isStreamChatActive: (chatId: string, temporaryChatSnapshot: boolean) => boolean
   loadSubscription: () => Promise<unknown>
+  /** Time this turn's first visible reply text for the production metric. */
+  measureFirstReply?: boolean
   nativePersonalEnabled?: boolean
   nativePersonalRoute?: boolean
   nativeOwnerId?: string | null
@@ -141,6 +145,16 @@ export async function sendTextTurn({
   })
 
   const effectiveTextModelsForTurn = [snapshot.textModelsForTurn[0] ?? selectedActModelSnapshot]
+  if (measureFirstReply && snapshot.requestMode === 'chat') {
+    firstReplyTracker.begin(textTurnId, {
+      startedAt: performance.now(),
+      modelId: effectiveTextModelsForTurn[0]!,
+      isNewChat: isFirstMessage,
+      native: nativeSubmitEnabled,
+      conversationId: existingChatId,
+      hidden: document.visibilityState === 'hidden',
+    })
+  }
   let msgCountBeforeSend = 0
   let preparedFirstSendRuntime = false
   const prepareTextRuntime = (runtime: ConversationRuntime) => {
@@ -328,6 +342,7 @@ export async function sendTextTurn({
       const submitted = await submitNativePersonalTurn(nativeArgs)
       if (!isCurrentSend()) return
       nativeSubmittedConversationId = submitted.conversationId
+      firstReplyTracker.persisted(textTurnId, submitted.conversationId)
       if (!existingChatId) {
         const realChatId = await createNewChat({
           clientId: typeof nativeArgs.clientId === 'string' ? nativeArgs.clientId : conversationClientId,
@@ -432,5 +447,5 @@ export async function sendTextTurn({
       reportTextStreamError(error, fallbackMessage, onUsageExhaustedError)
     },
     logPrefix: 'Act',
-  })
+  }).finally(() => firstReplyTracker.settle(textTurnId, performance.now()))
 }

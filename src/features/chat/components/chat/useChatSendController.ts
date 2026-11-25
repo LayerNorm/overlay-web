@@ -569,6 +569,7 @@ export function useChatSendController({
         isCurrentScope: isCurrentSendScope,
         isStreamChatActive,
         loadSubscription,
+        measureFirstReply: !queued,
         nativePersonalEnabled,
         nativePersonalRoute,
         nativeOwnerId,
