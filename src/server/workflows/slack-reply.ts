@@ -22,7 +22,7 @@ export type SlackReplyInput = {
   /** The Overlay agent's turn, not the asker's message turn. */
   turnId: string
   threadUrl: string
-  /** Offer the asker, once, to continue privately with their personal Overlay. */
+  /** Offer the asker, once, to continue privately with their personal chief. */
   offerPrivate?: boolean
 }
 
@@ -112,10 +112,10 @@ async function postSlackApprovalStep(input: SlackReplyInput, approval: { agentRu
 
 async function offerPrivateStep(input: SlackReplyInput): Promise<void> {
   'use step'
-  const hasPersonal = await convex.query<boolean>('integrations/slack:hasPersonalOverlayByServer', {
+  const chief = await convex.query<{ name: string | null } | null>('integrations/slack:personalChiefByServer', {
     serverSecret: getInternalApiSecret(), workspaceId: input.workspaceId, userId: input.userId,
   }, { throwOnError: true })
-  if (!hasPersonal) return
+  if (!chief) return
   const claimed = await convex.mutation<boolean>('integrations/slack:stateSetIfNotExists', {
     serverSecret: getInternalApiSecret(), key: 'private-offer:' + input.conversationId, value: 'true', ttlMs: SLACK_MARKER_TTL_MS,
   }, { throwOnError: true })
@@ -123,7 +123,7 @@ async function offerPrivateStep(input: SlackReplyInput): Promise<void> {
   const { postSlackPrivateOffer } = await import(/* workflow-vm-exclusion */ '@/server/integrations/slack/slack-bot')
   await postSlackPrivateOffer({
     teamId: input.teamId, channelId: input.channelId, threadTs: input.threadTs, slackUserId: input.slackUserId,
-    conversationId: input.conversationId,
+    conversationId: input.conversationId, chiefName: chief.name,
   })
 }
 

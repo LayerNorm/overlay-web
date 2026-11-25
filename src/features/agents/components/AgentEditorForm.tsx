@@ -5,16 +5,21 @@ import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Fragment, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Loader2, Lock, Monitor, Trash2, Users } from 'lucide-react'
-import { Button, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
+import {
+  Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, ListboxSelect,
+  SegmentedControl, Textarea, Toggle, toast,
+} from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
-import type { Computer, ComputerSize, WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
+import type { Computer, ComputerSize, WorkspaceAgentCreatureShape, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { ChatModelPicker, type ChatModelPickerProps } from '@overlay/chat-react'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useMemories } from '@/hooks/use-memories'
+import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { moveAgentToWorkspace } from './use-agent-editor-actions'
 import { AgentComputerRecoveryNotice } from './AgentComputerRecoveryNotice'
 import { FieldLabel } from './InfoTip'
 import { useEditorLoad } from './EditorLoadGate'
@@ -238,7 +243,18 @@ export function DangerZone({ mode, hasAgent, isDefaultMaster, busy, agentName, o
   )
 }
 
-export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisibility; onChange(value: WorkspaceAgentVisibility): void }) {
+/**
+ * Who can use an agent. A new agent picks freely; a saved one only moves one way, from "Only me" to the workspace (by
+ * its creator, after a confirmation), like every Personal → Workspace move.
+ */
+export function AccessSelector({ value, onChange, agent, onMovedToWorkspace }: {
+  value: WorkspaceAgentVisibility
+  onChange(value: WorkspaceAgentVisibility): void
+  /** The saved agent; omitted while creating one. */
+  agent?: WorkspaceAgentDirectoryItem | null
+  onMovedToWorkspace?(agent: WorkspaceAgentDirectoryItem): void
+}) {
+  if (agent) return <SavedAgentAccess agent={agent} onMovedToWorkspace={onMovedToWorkspace} />
   return (
     <div>
       <p className="text-xs font-medium">Access</p>
@@ -264,9 +280,78 @@ export function AccessSelector({ value, onChange }: { value: WorkspaceAgentVisib
       </div>
       <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
         {value === 'creator'
-          ? 'Hidden from everyone else, reported as not found.'
+          ? 'Hidden from everyone else. You can move it to the workspace later, but not back.'
           : 'Everyone in this workspace can see, chat with, or @-mention this agent.'}
       </p>
+    </div>
+  )
+}
+
+function SavedAgentAccess({ agent, onMovedToWorkspace }: {
+  agent: WorkspaceAgentDirectoryItem
+  onMovedToWorkspace?(agent: WorkspaceAgentDirectoryItem): void
+}) {
+  const workspaceContext = useOptionalWorkspace()
+  const activeWorkspaceId = workspaceContext?.activeWorkspaceId
+  const [confirming, setConfirming] = useState(false)
+  const [moving, setMoving] = useState(false)
+  const shared = (agent.visibility ?? 'workspace') === 'workspace'
+  const workspace = workspaceContext?.activeWorkspace?.name || 'this workspace'
+
+  async function move() {
+    if (!activeWorkspaceId) return
+    setMoving(true)
+    try {
+      const moved = await moveAgentToWorkspace(activeWorkspaceId, agent.id)
+      setConfirming(false)
+      onMovedToWorkspace?.(moved)
+      toast.success(`${agent.name} moved to the workspace`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move this agent.')
+    } finally {
+      setMoving(false)
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-medium">Access</p>
+      <div className="mt-1.5 flex items-start gap-2.5 rounded-xl border border-(--border) p-3">
+        <span className="mt-0.5 shrink-0 text-(--muted)">{shared ? <Users size={15} /> : <Lock size={15} />}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm text-(--foreground)">{shared ? 'Everyone in this workspace' : 'Only me'}</span>
+          <span className="mt-0.5 block text-xs leading-5 text-(--muted)">
+            {shared
+              ? 'Anyone can see, chat with, or @-mention this agent.'
+              : 'Only you can see, chat with, or @-mention this agent.'}
+          </span>
+        </span>
+        {shared ? null : (
+          <Button type="button" variant="outline" size="xs" className="h-7 shrink-0 px-2.5 text-xs font-normal" onClick={() => setConfirming(true)}>
+            Move to workspace
+          </Button>
+        )}
+      </div>
+      <Dialog open={confirming} onOpenChange={(open) => { if (!open && !moving) setConfirming(false) }}>
+        {confirming ? (
+          <DialogContent>
+            <DialogHeader className="flex-col items-start gap-1 pr-6">
+              <DialogTitle>Move to workspace?</DialogTitle>
+              <DialogDescription>
+                Everyone in {workspace} will be able to see, chat with, and @-mention {agent.name}, and it joins the
+                workspace’s public channels. If it has a computer, everyone can use that too, including anything
+                signed in on it. You can’t move it back to Personal.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="ghost" disabled={moving} onClick={() => setConfirming(false)}>Cancel</Button>
+              <Button type="button" variant="secondary" disabled={moving} onClick={() => void move()}>
+                {moving ? 'Moving…' : 'Move to workspace'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
     </div>
   )
 }

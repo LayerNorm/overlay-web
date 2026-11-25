@@ -37,15 +37,28 @@ async function getUserByokConnection(
   })
 }
 
+/** Thrown when a workspace run would spend someone's personal key or subscription. */
+export const WORKSPACE_RUN_PERSONAL_MODEL_ERROR =
+  'Workspace runs use workspace accounts: this model is connected with a personal key or subscription. Pick a workspace model.'
+
+/**
+ * `workspaceOnly` is for workspace runs (shared rooms and workspace automations, internal/plans/
+ * internal/develop/workspace-and-personal.md): they may spend only a connection the workspace holds, never the
+ * summoner's or automation owner's personal one.
+ */
 export async function assertUserCanUseByokModel(
   modelId: string,
   userId: string,
   workspaceId?: string,
+  options: { workspaceOnly?: boolean } = {},
 ): Promise<{ connection: ProviderConnectionRecord; rawModelId: string }> {
   const parsed = parseByokModelId(modelId)
   if (!parsed) throw new Error('Invalid BYOK model id.')
   const connection = await getUserByokConnection(userId, parsed.connectionId, workspaceId)
   if (!connection) throw new Error('BYOK connection not found.')
+  if (options.workspaceOnly && (connection.scope ?? 'personal') !== 'workspace') {
+    throw new Error(WORKSPACE_RUN_PERSONAL_MODEL_ERROR)
+  }
   if (connection.authKind === 'subscription' || connection.providerId.startsWith('subscription:')) {
     if (!isSubscriptionConnection(connection) ||
         !isSubscriptionProviderId(connection.subscriptionProvider) ||

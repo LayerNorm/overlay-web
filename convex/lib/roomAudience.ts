@@ -1,9 +1,27 @@
+import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { isSharedRoom } from '../../src/shared/agents/room-access'
 
 /**
- * Whether people other than the asker can read this conversation (`isSharedRoom`): an external surface (Slack), a
- * channel, or a room with more than one active person. What an agent learns there is workspace context.
+ * The workspace automation this conversation is the thread of, if any (internal/develop/workspace-and-personal.md). An archived automation keeps the scope it was archived from, so its thread stays a workspace context.
+ */
+export async function workspaceAutomationForThread(
+  ctx: MutationCtx | QueryCtx,
+  conversationId: Id<'conversations'>,
+): Promise<Doc<'automations'> | null> {
+  const automations = await ctx.db.query('automations')
+    .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversationId).eq('deletedAt', undefined))
+    .take(20)
+  return automations.find(automation => automation.sourceConversationId !== conversationId
+    && (automation.archivedAt !== undefined ? automation.archivedFromScope ?? automation.scope : automation.scope) === 'workspace')
+    ?? null
+}
+
+/**
+ * Whether this conversation is a workspace context: people other than the asker can read it (`isSharedRoom`: an
+ * external surface such as Slack, a channel, or a room with more than one active person), or it is a workspace
+ * automation's thread. Either way the turn uses only workspace reach (connectors, MCP servers, provider keys, memories,
+ * skills and files), and what an agent learns there is workspace knowledge.
  */
 export async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, conversationId: string): Promise<boolean> {
   const id = ctx.db.normalizeId('conversations', conversationId)
@@ -11,6 +29,7 @@ export async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, 
   if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
   if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
   if (conversation.origin?.kind === 'channel') return true
+  if (await workspaceAutomationForThread(ctx, conversation._id)) return true
   const participants = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
     .collect()

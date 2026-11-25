@@ -1,6 +1,7 @@
 /**
- * The scope a person is looking at in the secondary panel (Personal / Workspace). It is one setting shared by every page:
- * the URL carries it as `?scope=`, and the last choice is remembered so the next page opens on it. Archived items are not a
+ * The mode a person is in (Workspace / Personal), chosen with the one switch in the primary sidebar. It is one setting
+ * shared by every page: the URL carries it as `?scope=`, and the last choice is remembered so the next page opens on it.
+ * Workspace is the default. Archived items are not a
  * scope: they all live in Settings → Archived (older links with `?scope=archived` are sent there).
  */
 import type { PanelScope } from '@overlay/shell-react'
@@ -17,7 +18,7 @@ export function isLegacyArchivedScope(value: unknown): boolean {
   return value === 'archived'
 }
 
-export const DEFAULT_PANEL_SCOPE: PanelScope = 'personal'
+export const DEFAULT_PANEL_SCOPE: PanelScope = 'workspace'
 
 export const PANEL_SCOPE_PARAM = 'scope'
 
@@ -30,7 +31,7 @@ export function parsePanelScope(value: unknown): PanelScope | null {
 
 /**
  * The scope to show: the URL's `?scope=` wins (so a shared link opens where it was made), then the remembered choice,
- * then Personal.
+ * then Workspace.
  */
 export function resolvePanelScope(args: {
   pathScope?: string | null
@@ -64,14 +65,14 @@ export function scopeForNewItem(scope: PanelScope): 'personal' | 'workspace' {
 }
 
 /**
- * The `scope` to send when creating: only `workspace` is sent, since Personal is what an absent scope means. (It also keeps
- * a new web build working against a backend that has not learned `scope` on that call yet.)
+ * The `scope` to send when creating: only `workspace` is sent, since the server reads an absent scope as Personal. (This is
+ * the server's default, not the mode default, which is Workspace.)
  */
 export function newItemScope(scope: PanelScope): 'workspace' | undefined {
   return scope === 'workspace' ? 'workspace' : undefined
 }
 
-/** Sets or clears `scope` on a copy of `params`. Personal is the default, so it stays out of the URL. */
+/** Sets or clears `scope` on a copy of `params`. Workspace is the default, so it stays out of the URL. */
 export function withPanelScope(params: URLSearchParams, scope: PanelScope): URLSearchParams {
   const next = new URLSearchParams(params.toString())
   if (scope === DEFAULT_PANEL_SCOPE) next.delete(PANEL_SCOPE_PARAM)

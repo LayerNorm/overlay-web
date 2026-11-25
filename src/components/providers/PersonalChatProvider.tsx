@@ -28,6 +28,8 @@ import { createPersonalChatArchiveOptimisticUpdate } from './personal-chat-optim
 import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePanelScopeState } from '@/hooks/use-panel-scope'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { TranscriptCacheScopeProvider } from './transcript-cache-client'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
 import { usePersonalChatCommands, type PersonalChatCommands } from './usePersonalChatCommands'
@@ -246,14 +248,20 @@ function isAutomationConsumerPath(pathname: string | null): boolean {
   return segments[0] === 'app' && segments.includes('automations')
 }
 
-function personalChatQueryDemand(pathname: string | null, routeParams: URLSearchParams) {
+function personalChatQueryDemand(
+  pathname: string | null,
+  routeParams: URLSearchParams,
+  mode: { scope: PanelScope; known: boolean },
+) {
   const isChatSurface = isChatConsumerPath(pathname)
   const routeScope = readWorkspacePathScope(pathname ?? '')
     ?? legacyWorkspaceScopeForRoute('chat', routeParams)
   const view = routeParams.get('view')
   const isRoomView = ['dms', 'channels', 'room', 'rooms'].includes(view ?? '')
   const isNativePersonalChatSurface = (isChatSurface && !isRoomView) || isAutomationConsumerPath(pathname)
-  const activeScope = routeScope === 'workspace' ? 'workspace' as const : 'personal' as const
+  // The route's own scope wins; otherwise the chat list follows the current mode (Workspace by default).
+  const activeScope: PanelScope = routeScope ?? mode.scope
+  const activeScopeKnown = routeScope !== null || mode.known
   const handleRoute = pathname ? parseWorkspaceHandleRoute(pathname) : null
   const isArchivedRoute = handleRoute?.surface === 'archived'
     || pathname === '/app/archived'
@@ -265,7 +273,7 @@ function personalChatQueryDemand(pathname: string | null, routeParams: URLSearch
   const needsArchivedList = isArchivedRoute || isArchivedSettings
   const canReadSelectedSummary = isNativePersonalChatSurface || isArchivedRoute
   const routeId = canReadSelectedSummary ? routeParams.get('id') : null
-  return { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId, activeScope, isNativePersonalChatSurface }
+  return { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId, activeScope, activeScopeKnown, isNativePersonalChatSurface }
 }
 
 function NativePersonalChatProvider({
@@ -290,11 +298,12 @@ function NativePersonalChatProvider({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
+  const mode = usePanelScopeState()
   const {
-    needsActiveList, needsArchivedList, canReadSelectedSummary, routeId, activeScope, isNativePersonalChatSurface,
-  } = personalChatQueryDemand(pathname, routeParams)
+    needsActiveList, needsArchivedList, canReadSelectedSummary, routeId, activeScope, activeScopeKnown, isNativePersonalChatSurface,
+  } = personalChatQueryDemand(pathname, routeParams, mode)
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
-  const canQueryActive = canQuery && needsActiveList && !temporaryActive
+  const canQueryActive = canQuery && needsActiveList && activeScopeKnown && !temporaryActive
   const canQueryArchived = canQuery && needsArchivedList
   const canReadNativeSummary = canReadSelectedSummary && !temporaryActive
   const canQuerySummary = canQuery && canReadNativeSummary

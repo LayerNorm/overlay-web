@@ -16,6 +16,21 @@ import {
   upsertNotebookNote,
 } from './notes'
 
+test('notebook notes keep the creator and scope so the editor can offer Move to Workspace', () => {
+  const note = canonicalFileToNotebookNote({
+    _id: 'note_1',
+    userId: 'user_1',
+    name: 'Plan',
+    textContent: 'Body',
+    createdAt: 1,
+    updatedAt: 2,
+    scope: 'personal',
+  })
+  assert.equal(note.userId, 'user_1')
+  assert.equal(note.scope, 'personal')
+  assert.equal('archivedAt' in note, false)
+})
+
 test('canonical note files map to notebook notes', () => {
   assert.deepEqual(canonicalFileToNotebookNote({
     _id: 'note_1',

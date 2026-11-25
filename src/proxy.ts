@@ -470,7 +470,7 @@ function rewriteWorkspaceRoute(
     requestHeaders.delete('x-overlay-workspace-handle')
     requestHeaders.set('x-overlay-workspace-id', workspaceRewrite.searchParams.get('workspaceId') ?? '')
     const routeScope = request.nextUrl.searchParams.get('scope')
-    requestHeaders.set(ROUTE_WORKSPACE_SCOPE_HEADER, routeScope === 'workspace' ? 'workspace' : 'personal')
+    requestHeaders.set(ROUTE_WORKSPACE_SCOPE_HEADER, routeScope === 'personal' ? 'personal' : 'workspace')
   }
 
   return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(

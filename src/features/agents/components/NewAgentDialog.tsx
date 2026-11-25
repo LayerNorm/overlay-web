@@ -11,6 +11,7 @@ import type {
   WorkspaceAgentReasoningLevel,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
+import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
@@ -41,7 +42,6 @@ export type NewAgentDraft = {
   avatarColor: string
   computer: boolean
   computerSize: ComputerSize
-  visibility: WorkspaceAgentVisibility
   modelId: string
   reasoningByModel: Readonly<Record<string, WorkspaceAgentReasoningLevel | undefined>>
   toolGroups: ReadonlySet<string>
@@ -55,7 +55,6 @@ export function initialNewAgentDraft(): NewAgentDraft {
     avatarColor: '#14b8a6',
     computer: true,
     computerSize: 'default',
-    visibility: 'creator',
     modelId: NEW_AGENT_DEFAULT_MODEL_ID,
     reasoningByModel: {},
     toolGroups: new Set(AGENT_TOOL_PRESETS.everything),
@@ -73,10 +72,10 @@ const COMPUTER_SIZE_OPTIONS = [
   { value: 'large', label: 'Large · 8 vCPU, 16 GB' },
 ] as const
 
-const ACCESS_OPTIONS = [
-  { value: 'creator', label: 'Only me' },
-  { value: 'workspace', label: 'Everyone in this workspace' },
-] as const
+/** A new agent belongs to the mode it is created in: Personal agents are creator-only, Workspace agents shared. */
+export function agentVisibilityForMode(mode: PanelScope): WorkspaceAgentVisibility {
+  return mode === 'personal' ? 'creator' : 'workspace'
+}
 
 const PRESET_OPTIONS = [
   { value: 'everything', label: 'Everything' },
@@ -242,16 +241,6 @@ export function NewAgentFields({ draft, onChange, modelField, computersAvailable
         />
       </div>
       {computersAvailable ? <ComputerSection draft={draft} onChange={onChange} /> : null}
-      <div>
-        <FieldLabel info="Who can see, chat with, or @-mention this agent.">Access</FieldLabel>
-        <SegmentedControl
-          ariaLabel="Access"
-          layout="stretch"
-          value={draft.visibility}
-          options={ACCESS_OPTIONS}
-          onChange={(visibility) => onChange({ visibility })}
-        />
-      </div>
       <AdvancedSection draft={draft} onChange={onChange} modelField={modelField} />
     </div>
   )
@@ -293,6 +282,7 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
 async function createAgentFromDraft(
   workspaceId: string,
   draft: NewAgentDraft,
+  mode: PanelScope,
   computersAvailable: boolean,
   reasoningModels: AgentModelFieldProps['selectableTextModels'],
 ) {
@@ -313,7 +303,7 @@ async function createAgentFromDraft(
       avatarColor: draft.avatarColor,
       avatarShape: draft.avatarShape,
       enabledToolGroups: toolGroups,
-      visibility: draft.visibility,
+      visibility: agentVisibilityForMode(mode),
     }),
     teamIds: [],
   })
@@ -333,9 +323,11 @@ async function createAgentFromDraft(
 }
 
 /** New-agent dialog for native Overlay agents. */
-export function NewAgentDialog({ open, workspaceId, onClose, onReopen, onCreated }: {
+export function NewAgentDialog({ open, workspaceId, mode, onClose, onReopen, onCreated }: {
   open: boolean
   workspaceId: string | null
+  /** The mode the agent is created in; it decides who can see the agent. */
+  mode: PanelScope
   onClose(): void
   onReopen(): void
   onCreated(agent: WorkspaceAgentDirectoryItem): void
@@ -366,6 +358,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onReopen, onCreated
       const agent = await createAgentFromDraft(
         workspaceId,
         draft,
+        mode,
         computersAvailable,
         modelField.selectableTextModels,
       )

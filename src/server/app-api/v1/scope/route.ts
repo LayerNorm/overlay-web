@@ -37,8 +37,10 @@ function statusFor(reason: string): number {
 }
 
 /**
- * POST /api/v1/scope: move a resource between Personal and Workspace, archive it, or restore it.
- * Body: `{ resource, id, action: 'move' | 'archive' | 'restore', to?: 'personal' | 'workspace' }`.
+ * POST /api/v1/scope: move a resource from Personal to Workspace, archive it, or restore it.
+ * Body: `{ resource, id, action: 'move' | 'archive' | 'restore', to?: 'workspace', withAgent?: boolean }`.
+ * Moves are one-way: `to: 'personal'` is refused (`one_way`). `withAgent` (automations) moves the automation's
+ * creator-only agent to the workspace in the same transaction. Connectors never move (`connector_reconnect_for_workspace`).
  * The rules (who may do what) are enforced in Convex; this only translates the outcome to HTTP.
  */
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     const to = parseResourceScope(body.to)
     if (action === 'move' && !to) {
-      return NextResponse.json({ error: "move needs `to`: 'personal' or 'workspace'" }, { status: 400 })
+      return NextResponse.json({ error: "move needs `to`: 'workspace'" }, { status: 400 })
     }
     // `/api/v1/work` is gated by `work.use` and the Work kill switch; this shared route must hold Work to the same bar.
     if (resource === 'work') {
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         ? { actingAgentPrincipalId: body.actingAgentPrincipalId }
         : {}),
       ...(action === 'move' ? { to } : {}),
+      ...(action === 'move' && resource === 'automations' && body.withAgent === true ? { withAgent: true } : {}),
     }, { throwOnError: true })
     if (!outcome) return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
     await recordScopeAudit({ context, resource, id, action, to, outcome })

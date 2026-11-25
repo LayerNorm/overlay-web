@@ -5,15 +5,17 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 
 ## Extensions catalog and dialogs
 
-Connectors, Skills, MCPs and Apps share `ExtensionCatalogPage` from `@overlay/modules-react/extensions` (approved mockup: `internal/plans/mockups/extensions-catalog.html`). The page has a title, one-line subtitle, search (leading Search icon, clear button) and an Add dropdown of type-specific create flows, then pill tabs Browse and Yours (Workspace in the Workspace scope). Browse lists curated sections from `@overlay/app-core/extensions` (`CONNECTOR_CATEGORIES`, `MCP_CATEGORIES`, `SKILL_CATEGORIES`, grouped by `groupExtensionCatalog`, with everything else under All); each section previews six rows and its title opens the full list, kept in the URL as `?category=` so back and the breadcrumb return to the overview. Rows are two columns (one below 768px): a 40px bordered logo tile (initial fallback), name, one truncated description line, an optional attention state (Off, Not connected, Connection error) and one trailing ghost icon button, + to add or ⋯ for Settings/Disconnect or Edit/Delete. The whole row opens the details: `ConnectorDetailsDialog`, `SkillDialog` or `McpServerDialog`. Catalog skills and MCP servers open the normal editor pre-filled (`state.preset`); added entries are matched by skill name or normalized server URL. Search covers every entry on the page; connectors also query the provider. Deleting from a row confirms first. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact Configuration/Tools tabs and spacing instead of internal dividers; preserve OAuth status, tool policy, scope actions and the existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.
+Connectors, Skills, MCPs and Apps share `ExtensionCatalogPage` from `@overlay/modules-react/extensions` (approved mockup: `internal/plans/mockups/extensions-catalog.html`). The page has a title, one-line subtitle, search (leading Search icon, clear button) and an Add dropdown of type-specific create flows, then pill tabs Browse and Yours (Workspace in the Workspace scope). Browse lists curated sections from `@overlay/app-core/extensions` (`CONNECTOR_CATEGORIES`, `MCP_CATEGORIES`, `SKILL_CATEGORIES`, grouped by `groupExtensionCatalog`, with everything else under All); each section previews six rows and its title opens the full list, kept in the URL as `?category=` so back and the breadcrumb return to the overview. Rows are two columns (one below 768px): a 40px bordered logo tile (initial fallback), name, one truncated description line, an optional attention state (Off, Not connected, Connection error) and one trailing ghost icon button, + to add or ⋯ for Settings/Disconnect or Edit/Delete. The whole row opens the details: `ConnectorDetailsDialog`, `SkillDialog` or `McpServerDialog`. Catalog skills and MCP servers open the normal editor pre-filled (`state.preset`); added entries are matched by skill name or normalized server URL. Search covers every entry on the page; connectors also query the provider. Deleting from a row confirms first. In Personal, a connected connector's ⋯ menu offers Connect for workspace (the workspace-account flow); connectors have no move. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact Configuration/Tools tabs and spacing instead of internal dividers; preserve OAuth status, tool policy, scope actions and the existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.
 
 ## Chief identity and Organization
 
-Workspace Agents pins the workspace chief first and the viewer's workspace-scoped
-personal chief second; Personal pins the private personal chief first. Keep thread
+Workspace mode pins the workspace chief (Overlay) first; Personal mode pins the
+viewer's own personal chief first. Personal chiefs are never listed in Workspace,
+and a legacy personal chief bound to the workspace (`chiefScope: 'workspace'`) is
+listed nowhere (`agentModeForViewer`). Keep thread
 expansion and per-agent new-thread controls; manual collapse survives rerenders.
 Work → Organization sits directly below Timeline in both scoped desktop/mobile
-lists, retains the selected subpage when switching scopes and closes the mobile drawer.
+lists, retains the selected subpage when switching modes and closes the mobile drawer.
 
 The Organization chart is fill-only, with no resting borders: the chief sits in a centred
 `--surface-subtle` card, a single 1px stem leads to one grouped `--surface-subtle` grid of
@@ -31,7 +33,7 @@ explicit role/flags, never the agent name. See Bring Your Own Agents for isolati
 
 An optional run questionnaire skipped without an answer sends an explicit `(skipped)` reply, including a single-question panel, so the waiting run can resume. Required empty answers remain blocked.
 
-The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating, except Chats, which starts a fresh draft in the scope already on screen (Personal or Workspace) and keeps the panel open. Arriving at Chats from another page keeps that page's scope too. Another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.
+The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The Workspace | Personal mode switch (`RailModeSwitch`) sits in the rail directly under the brand, on every page including Settings; the contextual panel has no scope toggle. The active rail destination toggles only its panel without navigating, except Chats, which starts a fresh draft in the current mode and keeps the panel open. Another destination opens its panel and keeps the mode. Files, Extensions, and Automations stay in More when their existing gates allow them.
 
 `src/app/double-sidebar.css` scopes the rounded content frame, default light/dark chrome, compact chat presentation, and curved agent-thread guides to this layout at desktop widths. Custom theme presets retain semantic colors. The mobile drawer, onboarding, and compact native desktop panel retain their existing layouts; macOS keeps a dedicated drag region above the shell.
 
@@ -39,7 +41,7 @@ The contextual sidebar and right detail panels use the same 1px border and 12px 
 
 While onboarding hides navigation, the desktop double-sidebar shell uses equal 8px left and right gutters, including its loading and error states. `OnboardingShell` exposes its existing locked state through `data-onboarding-locked`; unlocking restores the rail's normal zero left padding. Mobile spacing and macOS top drag-region clearance are unchanged.
 
-Chats primary navigation opens the existing unsaved Personal chat surface, not the most recent conversation in the current scope. Onboarding payment controls stay mounted across task-save revisions and pending actions so checkout consent is preserved. Only the intentional checkout redirect suppresses unload guards, after task preparation succeeds. Completion stores the completed response, deactivates setup and navigates to the canonical Personal Work URL with the task query already included; personal scope lives in the path, not a redundant query parameter. `OnboardingWorkHandoff` lays out route content behind an opaque retained onboarding surface, rather than using `display: none`. Only the loaded selected-task peek (or a settled unavailable state), not its entry in the Work list, can finish the handoff. It waits for the panel's presence, opacity and layout to settle, then retains onboarding through that paint before revealing Work. If navigation loses the task query, it restores the intended URL first. It does not launch a navigation tour, and later navigation cannot reactivate the retained session.
+Chats primary navigation opens an unsaved chat in the current mode, not the most recent conversation. Onboarding payment controls stay mounted across task-save revisions and pending actions so checkout consent is preserved. Only the intentional checkout redirect suppresses unload guards, after task preparation succeeds. Completion stores the completed response, deactivates setup and navigates to the canonical Personal Work URL with the task query already included; personal scope lives in the path, not a redundant query parameter. `OnboardingWorkHandoff` lays out route content behind an opaque retained onboarding surface, rather than using `display: none`. Only the loaded selected-task peek (or a settled unavailable state), not its entry in the Work list, can finish the handoff. It waits for the panel's presence, opacity and layout to settle, then retains onboarding through that paint before revealing Work. If navigation loses the task query, it restores the intended URL first. It does not launch a navigation tour, and later navigation cannot reactivate the retained session.
 
 The guided onboarding conversation shares live room read markers with Chats. Room query arguments and the optimistic notification-read mutation retain their identities across live updates, so acknowledging a read cannot restart its own effect or repeatedly reload the sidebar conversation directory.
 
@@ -74,13 +76,13 @@ agents retain their creature avatars.
 
 `AppScreenHeader` and custom module headers use the shared `AppBreadcrumbs` component,
 composed from the shadcn Radix Breadcrumb primitives in `@overlay/ui/primitives`.
-`AppBreadcrumbContext` supplies the active Personal/Workspace scope and page; callers add
+`AppBreadcrumbContext` supplies the active Workspace/Personal mode and page; callers add
 subpages or selected records through `breadcrumbs` and the final title. Preserve scope in
 breadcrumb destinations and expose only the final item as the current page. Current-page
 labels have no disabled-link semantics, so embedded note-title inputs remain accessible
 and editable.
-Resolve scope with `usePanelScope` and destinations with `useWorkspaceHref` so
-handle routes, legacy links and solo workspaces retain the same scope as navigation.
+Resolve the mode with `usePanelScope` and destinations with `useWorkspaceHref` so
+handle routes and legacy links retain the same mode as navigation.
 Settings is unscoped: its header starts with Settings and links to `/app/settings`
 without a Personal/Workspace prefix or scope query. The legacy Archived and Memories
 surfaces use the same Settings root because they redirect into Settings.
@@ -376,7 +378,7 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
   state (Working, Finished, Stopped). Only the member who assigned the task owns that thread, so others see no link.
 - **Scope is settled before anything acts on it.** The remembered Personal/Workspace choice is shared by every caller in
   the tab. Until it is read (only the hydration render of a URL without a scope), the content boundary waits instead of
-  redirecting and Work queries stay skipped, so a Personal guess never flashes, redirects or opens the wrong list.
+  redirecting and Work queries stay skipped, so a default guess never flashes, redirects or opens the wrong list.
 - **Loading never waits silently.** Work's live queries wait for Convex auth. `ConvexAuthProvider` retries a failed
   token request with backoff (1s doubling to 30s), because Convex asks a fetcher once and otherwise stays signed
   out. A signed-out session shows a sign-in empty state, not skeletons.
@@ -508,7 +510,8 @@ never remounts form state.
 ## The single sidebar (default)
 
 The default shell is one shadcn sidebar (`packages/overlay-shell-react/src/sidebar/UnifiedSidebar.tsx`): the brand, search and
-collapse controls, the Personal/Workspace toggle (hidden for a solo workspace), the main pages with Files and
+collapse controls, the Workspace | Personal mode switch (`ScopeToggle`, Workspace first; it is the only switch in this
+layout), the main pages with Files and
 Extensions under an Explore menu that opens on hover (click, Enter and touch also open it), then the current page's own
 rows and items, then the account. It reuses `useAppSidebarState`, so routes, scope persistence, badges and pending states
 match the classic layout. Subviews that are different views of one page (Work's List/Board/Timeline, Files categories,
@@ -517,33 +520,37 @@ Extensions' Skills/MCPs/Connectors/Apps) are published through `pageSubviewStore
 sidebar, header and body: `AppScreenHeader` defaults to `border={false}`. The classic primary rail plus secondary panel
 below is the Settings > Customization "Rail and panel" option (`useSecondarySidebar`).
 
-## The secondary panel: Personal, Workspace
+## Modes: Workspace and Personal
 
-Chats, Files, Extensions, Automations, and Agents share one panel anatomy:
-page title, then the scope rows, then
-New + search, then the list. New is never above the scope rows.
+Every page shows one mode at a time, chosen with one switch in the primary sidebar
+(`RailModeSwitch` in the rail, `ScopeToggle` in the single sidebar; both from
+`@overlay/shell-react`, Workspace first). Chats, Files, Extensions, Automations,
+Work and Agents list only the current mode's items; their panels have page title,
+sub-rows, then New + search, then the list.
 
-- **Scope rows** are Personal (mine within this workspace) and Workspace
-  (shared with its members). There is no Archived row: everything archived
-  lives in Settings → Archived (see below). Built by `buildScopedPanelNav`
-  (`src/components/layout/sidebar/scopedPanelNav.ts`); the selected scope opens
-  its page's sub-rows beneath it (Files: All/Notes/Files/Outputs; Chats →
-  Workspace: Direct Messages/Channels/Activity; Extensions: Connectors/Skills/
-  MCPs/Apps).
-- **One scope across pages.** The URL carries `?scope=` (Personal is the
-  default and stays out of the URL); the last choice is remembered
-  (`overlay:panel-scope` in local storage) so the next page opens on it. Read it
-  with `usePanelScope()`; never keep a second copy. Chats derive their scope from
-  the subview route instead (DMs, channels, activity are Workspace).
-- **New follows the scope.** `scopePanelAction` hides New, in
-  Workspace, when the person may not create there (the workspace's admin
-  settings; owners and admins always may). In Workspace it reads "… in
-  workspace". Create flows send `scope: 'workspace'` only for Workspace
-  (`newItemScope`); Personal is what an absent scope means.
+- **Workspace is the default.** The URL carries `?scope=` (or the `/w/<handle>/<scope>/`
+  path); Workspace is the default and stays out of query strings
+  (`withPanelScope`). The last choice is remembered (`overlay:panel-scope` in local
+  storage) so the next page opens on it. Read it with `usePanelScope()`; never keep
+  a second copy. Chats derive their mode from the subview route (DMs, channels and
+  Activity exist only in Workspace; Personal lists Recents).
+- **Switching** calls the page's scoped nav (`scopedNav.onSelect`) so open records
+  of the other mode are dropped; Settings only remembers the choice.
+- **New follows the mode.** `scopePanelAction` hides New in Workspace when the
+  person may not create there (owners and admins always may) and reads "… in
+  workspace". Create flows send `scope: 'workspace'` explicitly (`newItemScope`):
+  the server reads a missing scope as Personal. New agents get `visibility:
+  'workspace'` in Workspace and `'creator'` in Personal (`agentVisibilityForMode`).
+- **Agents follow visibility, not creator** (`agentModeForViewer`): Overlay and
+  workspace-visible agents are Workspace; the viewer's own Personal Chief and
+  creator-only agents are Personal.
+- **Personal is lazy.** The Agents directory asks `ensureChiefs` for the viewer's
+  Personal Chief only once the remembered mode is Personal.
+- **One-person workspaces** show the same switch and lists as any other workspace.
 - **Archived is one page, Settings → Archived** (`ArchivedSettings`), not a row
   in each sidebar. A dropdown (All, Chats, Files & notes, Agents, Extensions,
   Automations) and a search filter one list; each row carries a Personal/
-  Workspace tag (hidden in a solo workspace), a Restore button, and a Delete
+  Workspace tag, a Restore button, and a Delete
   forever button; rows can be multi-selected (checkbox, shift-click for a
   range) for bulk Restore and Delete forever, always behind a confirmation.
   Restore returns an item to where it came from; the server decides who may
@@ -559,20 +566,6 @@ New + search, then the list. New is never above the scope rows.
   thread; the agent is untouched. Archived agents are separate rows
   (archive/restore/delete forever of the agent itself; deleting an agent also
   deletes its threads). Bulk delete removes threads before their agent.
-- **A workspace of one person has no scope rows.** The interface follows the
-  number of *people* in the workspace (`humanMemberCount`; agents do not count,
-  and every workspace holds the default Overlay agent), not a setting.
-  `isSoloWorkspace` / `useIsSoloWorkspace()` decide: the page's own rows stand
-  alone (`buildScopedPanelNav({ solo })`), the Workspace
-  scope turns into Personal (`soloPanelScope`, `usePanelScope()`), lists ask for
-  everything active (`usePanelListView()`: no `view`, so a shared item such as
-  the default agent still shows), Chats shows Chats and Channels only (no
-  person-to-person DMs, no Activity), Move to Workspace/Personal and the
-  Personal/Workspace tag are hidden, and Agents lists every live agent. An
-  unknown count counts as not solo. New items stay `personal` (never send
-  `scope: 'workspace'` from a solo workspace): hiding the tabs must not expose
-  anything to the next person invited. The full interface returns when a second
-  person joins; the owner sees it on the next workspace refresh.
 
 
 ## Secondary sidebar: shadcn Sidebar parts
@@ -844,3 +837,7 @@ submitted draft only if the same conversation/thread scope still has the untouch
 empty draft. An editor value-sync that refreshes an empty mentions list is not
 a user edit; typing, adding attachments or leaving/reopening the scope protects
 the newer draft. Late acknowledgements never clear edits made after submission.
+
+## Moving to Workspace
+
+Moves are one-way (Personal → Workspace), so `ScopeItemActions` and `ScopeBulkActions` offer only Move to Workspace, and only on personal items, and always confirm with `MoveToWorkspaceDialog` (`src/components/layout/`): "Move to workspace?", one sentence on what changes, "You can't move it back to Personal.", then requirement rows (bordered, icon, title, detail, optional action, check when resolved). An automation with a creator-only agent shows the agent's creature and a checked "Move {agent} to the workspace too"; unticking it disables the move. An MCP server with credentials says it moves without your sign-in. Saved agents show Access read-only; a creator-only agent offers Move to workspace with the same confirmation, and saves at once rather than through the form.

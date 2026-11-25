@@ -15,7 +15,7 @@ Overlay in Slack is a first-class integration, like the GitHub App. One Overlay 
 | Slack mark on threads, channel and Open in Slack in the header | Built |
 | Phase 2: a web reply in a Slack-started thread is posted to Slack as "<name> replied in Overlay" by the Overlay bot, and the answer follows it | Built, unit tested; asker only |
 | Phase 2: approvals as a Slack card (Approve, Deny, Open in Overlay); only the asker can answer, through the same path as the web | Built, unit tested |
-| Phase 2: in a channel, a "Continue privately" button (once per thread, only for people with a personal Overlay) moves the question to a DM thread with their personal Overlay | Built, unit tested |
+| Phase 2: in a channel, an "Ask privately" button (once per thread, for members who may have a personal chief; not guests) moves the question to a DM thread with their own personal chief, "{Name}’s Chief", creating it if they have none yet | Built, unit tested |
 | Phase 3: Who can ask (All linked members, Everyone except blocked, Only allowed people) with a per-member list for owners and admins (`slackPeopleAccess`) | Built, unit tested |
 | Phase 3: a question from someone who still has to link is kept for an hour and runs once they link (`overlay:pending:<team>:<user>` in Slack state) | Built, unit tested |
 | Phase 3: Guests toggle (workspace guests), Slack Connect toggle; people from another organization get a one-line reason instead of silence | Built, unit tested |
@@ -38,7 +38,8 @@ Each person asking in a Slack thread gets their own Overlay thread, so nobody's 
 ## Access
 
 - Slack channel threads count as shared rooms (`conversationAudienceIsShared` in `convex/harness/runs.ts`): the agent does not load the asker's personal memories, files or skills there. DMs behave like a private web thread.
-- Memories follow the place (`memoryOwnerForPlace` in `src/shared/agents/agent-memory.ts`): what an agent learns in a Slack channel is workspace knowledge; what it learns in a DM is the person's private memory, which a channel answer never recalls. A personal Overlay's and a creator-only agent's memories are always private to their person.
+- Memories follow the place (`memoryOwnerForPlace` in `src/shared/agents/agent-memory.ts`): what an agent learns in a Slack channel is workspace knowledge; what it learns in a DM is the person's private memory, which a channel answer never recalls. A personal chief's and a creator-only agent's memories are always private to their person.
+- Personal chiefs never answer in a channel. `resolveThreadByServer` accepts `agentRole: 'personal_chief'` only for a DM origin (`SLACK_PERSONAL_CHIEF_DM_ONLY`) and resolves only the asker's own private chief, ensuring it with `includePersonal` (`SLACK_PERSONAL_CHIEF_MISSING` if that fails). `personalChiefByServer` tells the offer and the button whether the asker may have one and its name.
 - Installing needs an owner or admin. One Slack team binds to one Overlay workspace and vice versa.
 - Disconnecting deletes the bot token; uninstalling in Slack (`app_uninstalled`) or revoking the bot token (`tokens_revoked` with bot tokens; the SDK doesn't surface it, so the events route handles the verified body with `handleSlackTokensRevoked`) does the same.
 - Org-wide Enterprise Grid installs are refused at the OAuth callback (`slackError=enterprise_install`); install into a single workspace.

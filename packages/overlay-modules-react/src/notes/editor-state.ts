@@ -29,6 +29,7 @@ import {
   NOTEBOOK_INLINE_MATH_MIGRATION_REGEX,
   NotebookEditorController,
   createLocalNotebookNote,
+  scopeFieldsOf,
   createNotebookAgentMentions,
   createNotebookDraftState,
   createRenamedNotebookNote,
@@ -75,6 +76,7 @@ function noteDocToNotebookNote(note: NoteDoc, now = Date.now()): NotebookNote {
     tags: note.tags ?? [],
     createdAt: note.createdAt ?? now,
     updatedAt: note.updatedAt ?? now,
+    ...scopeFieldsOf(note),
   }
 }
 

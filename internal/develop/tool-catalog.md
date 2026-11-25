@@ -88,20 +88,31 @@ With `archived` omitted, `list_tasks` returns active tasks. Other list tools ret
 (and `archived` is omitted for `list_tasks`), the list tools return everything active the caller can read, which includes
 what other members shared with the workspace but never their personal items. Skills the workspace shares are also
 in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
-the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
-server's name and tools, never the secret. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
+the workspace: the server runs with the credentials connected for it on Overlay's servers, so a member's agent sees only
+the server's name and tools, never the secret. Moving a server to the workspace leaves the mover's sign-in behind; it is
+off until connected for the workspace (older shared servers keep theirs, see `mcp-access.md`). A personal connector never
+moves to the workspace; the workspace connects its own account. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
 
-## Rooms others can read
+## Rooms others can read, and workspace automations
 
 An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
 than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
-and a private channel with one person, are not. The server decides this from the conversation
-(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared). In a shared room:
+and a private channel with one person, are not. A workspace automation's thread counts the same way: the automation runs
+for the whole workspace, so it gets workspace reach only, whoever created it (`workspaceAutomationForThread` in
+`convex/lib/roomAudience.ts`; an archived one keeps the scope it was archived from). The server decides this from the
+conversation (`conversationAudienceIsShared`, read through `src/server/agents/shared-room.ts`, fail-closed: if it cannot
+read the room it treats it as shared); agentless automation runs re-read the automation's scope on every step
+(`resolveAutomationSourceGrant`). In a shared room or workspace automation:
 
-- **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
-  notes and memories, and their personal skills are not loaded; what the workspace shares still is.
+- **Loaded automatically** (`buildAgentTurnContext`, `ActContextService.loadTurnContext`): the person's memories and memory
+  profile and their personal skills are not loaded; retrieval reads only what the workspace shares (`workspaceOnly`).
 - **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
-  not even the person's own, and files are not searched (`chunkVisibleToSearch`).
+  not even the person's own. Files in Workspace are searched (indexed once for the workspace, `fileChunkOwner`); personal
+  and archived files are not (`chunkVisibleToSearch`).
+- **Models**: only workspace provider connections and hosted models; a personal key or subscription is refused
+  (`assertUserCanUseByokModel` with `workspaceOnly`).
+- **Memory saves**: what an agent learns there is workspace knowledge (`memoryOwnerForPlace`); an agentless workspace
+  automation saves under the workspace chief (`workspaceChiefMemoryOwnerId`).
 - **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`, `list_tasks`) read the Workspace scope whatever `scope` was asked.
 - **Not offered**: `list_chats`, `read_chat`, `search_in_files`.
 - **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.
@@ -146,8 +157,9 @@ request is pending, declined, removed, or paused, `join_status` is its only tool
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
-Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
-transaction; its optional revision is checked by Convex before any write. Conflicts return the current task,
+Task tools use the Work API and its existing permissions. `update_task` sends fields and status in one
+transaction (it cannot move a task between Personal and Workspace: that one-way move needs a person's
+confirmation in the app); its optional revision is checked by Convex before any write. Conflicts return the current task,
 revision and instructions to review newer edits before retrying, or to call `get_task` if the read failed.
 Comments also advance the task revision monotonically, so a same-tick comment cannot revive a stale write.
 `comment_on_task` reads back the task and returns its new revision for the next update. A failed readback

@@ -1,12 +1,12 @@
 /**
- * Memories follow the place, not the agent (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1).
+ * Memories follow the place, not the agent (internal/develop/workspace-and-personal.md).
  *
  * What an agent learns in a workspace context (a room others can read, a workspace automation) is workspace knowledge.
  * A workspace agent is a principal, not a user, so it keeps that knowledge under a synthetic owner id derived from its
  * agent id; the rows carry the workspace, which makes them visible to every member during recall.
  *
  * What an agent learns in a personal context (a 1:1 chat, a personal automation) is the person's private memory,
- * whichever agent saves it. An agent only one person can see (creator-only, or a personal Overlay) never makes
+ * whichever agent saves it. An agent only one person can see (creator-only, or a personal chief) never makes
  * workspace knowledge.
  *
  * The prefix is deliberately not a legal user id in any backend, so an agent memory owner can never collide with a real
@@ -26,13 +26,13 @@ export type MemoryPlaceAgent = { id: string; agentRole?: string; chiefOwnerUserI
 
 /**
  * Who keeps what an agent remembers in this place: the agent itself (workspace knowledge) only in a workspace context
- * and only for an agent the whole workspace can see. Everything else is private to the person — a personal Overlay's
+ * and only for an agent the whole workspace can see. Everything else is private to the person — a personal chief's
  * owner, otherwise the person the agent is working for.
  */
 export function memoryOwnerForPlace(args: { actorUserId: string; agent: MemoryPlaceAgent; workspaceContext: boolean }): string {
   const { agent } = args
   if (agent.agentRole === 'personal_chief') {
-    if (!agent.chiefOwnerUserId) throw new Error('A personal Overlay must have an owner')
+    if (!agent.chiefOwnerUserId) throw new Error('A personal chief must have an owner')
     return agent.chiefOwnerUserId
   }
   return args.workspaceContext && agent.visibility !== 'creator' ? agentMemoryOwnerId(agent.id) : args.actorUserId

@@ -49,14 +49,16 @@ describe('skills (an extension resource)', () => {
     expect(await names('bob', 'workspace')).toEqual(['Brief'])
     expect(await names('alice', 'personal')).toEqual([])
     expect(await names('gus')).toEqual([])
-    expect(await move('admin', 'personal')).toEqual({ ok: false, reason: 'not_creator' })
+    expect(await move('admin', 'workspace')).toEqual({ ok: false, reason: 'not_creator' })
+    // Moves are one-way: not even its creator can take it back to Personal.
+    expect(await move('alice', 'personal')).toEqual({ ok: false, reason: 'one_way' })
     expect(await move('alice', 'workspace')).toEqual({ ok: false, reason: 'same_scope' })
 
     // An admin may archive someone else's workspace item; it leaves the workspace view and shows under Archived to members.
     expect(await convex.mutation(m('integrations/skills:archive'), { ...auth, userId: 'admin', id: skillId })).toEqual({ ok: true })
     expect(await names('bob')).toEqual([])
     expect(await names('bob', 'archived')).toEqual(['Brief'])
-    expect(await move('alice', 'personal')).toEqual({ ok: false, reason: 'archived' })
+    expect(await move('alice', 'workspace')).toEqual({ ok: false, reason: 'archived' })
     expect(await convex.mutation(m('integrations/skills:restore'), { ...auth, userId: 'alice', id: skillId })).toEqual({ ok: true })
     expect(await names('bob', 'workspace')).toEqual(['Brief'])
   })
@@ -127,6 +129,91 @@ describe('automations', () => {
 })
 
 describe('files (notes, uploads, outputs, folders)', () => {
+  test('a file’s search chunks follow it: private until it is in Workspace, private again when archived (P7)', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const create = (userId: string, args: Record<string, unknown>) => convex.mutation(m('files/files:create'), { ...auth, userId, ...args }) as Promise<string>
+    const folder = await create('alice', { name: 'Plans', type: 'folder', kind: 'folder' })
+    const note = await create('alice', { name: 'Roadmap', kind: 'note', content: '# Roadmap', parentId: folder })
+    const replace = (fileId: string, visibility?: 'owner' | 'workspace') => convex.mutation(m('knowledge/knowledge:replaceKnowledgeSource'), {
+      userId: 'alice', workspaceId, sourceKind: 'file', sourceId: fileId, title: 'Roadmap',
+      segments: [{ text: 'roadmap', chunkIndex: 0, startOffset: 0, embedding: new Array(1536).fill(0) }],
+      ...(visibility ? { visibility } : {}),
+    })
+    const visibilities = () => convex.run(async (ctx) => {
+      const chunks = (await ctx.db.query('knowledgeChunks').collect()).filter((chunk) => chunk.sourceId === note)
+      const embeddings = await ctx.db.query('knowledgeChunkEmbeddings').collect()
+      return chunks.map((chunk) => `${chunk.visibility}@${chunk.userId}/${embeddings.find((e) => e.chunkId === chunk._id)?.userId}`)
+    })
+    const shared = `workspace@workspace-files:${workspaceId}/workspace-files:${workspaceId}`
+    const restampScheduled = () => convex.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect())
+      .filter((job) => job.name.includes('restampFileChunks') && job.state.kind === 'pending').map((job) => job.args[0] as { fileIds: string[] }))
+    const runRestamps = async () => {
+      for (let round = 0; round < 10; round++) {
+        const jobs = await convex.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect())
+          .filter((job) => job.name.includes('restampFileChunks') && job.state.kind === 'pending'))
+        if (jobs.length === 0) return
+        await convex.run(async (ctx) => { for (const job of jobs) await ctx.scheduler.cancel(job._id) })
+        for (const job of jobs) await convex.mutation(m('knowledge/knowledge:restampFileChunks'), job.args[0] as never)
+      }
+    }
+
+    // Indexing decides from the file itself, whatever the caller passes.
+    await replace(note, 'workspace')
+    expect(await visibilities()).toEqual(['owner@alice/alice'])
+
+    // Moving the folder to Workspace makes its note searchable by every member.
+    expect(await convex.mutation(m('files/files:setScope'), { ...auth, userId: 'alice', id: folder, to: 'workspace' })).toEqual({ ok: true })
+    expect((await restampScheduled()).flatMap((job) => job.fileIds)).toEqual(expect.arrayContaining([folder, note]))
+    await runRestamps()
+    expect(await visibilities()).toEqual([shared])
+    await replace(note)
+    expect(await visibilities()).toEqual([shared])
+
+    // Archived: only its uploader finds it again; restored: everyone does.
+    expect(await convex.mutation(m('files/files:archive'), { ...auth, userId: 'alice', id: folder })).toEqual({ ok: true })
+    await runRestamps()
+    expect(await visibilities()).toEqual(['owner@alice/alice'])
+    expect(await convex.mutation(m('files/files:restore'), { ...auth, userId: 'alice', id: folder })).toEqual({ ok: true })
+    await runRestamps()
+    expect(await visibilities()).toEqual([shared])
+
+    // Deleting the file removes its chunks wherever they are indexed.
+    await convex.mutation(m('knowledge/knowledge:purgeKnowledgeSource'), { sourceKind: 'file', sourceId: note, userId: 'alice' })
+    expect(await visibilities()).toEqual([])
+
+    // Who may search the workspace's files: members, not guests or outsiders.
+    const may = (userId: string) => convex.query(q('knowledge/knowledge:canSearchWorkspaceFiles'), { requestingUserId: userId, workspaceId })
+    expect([await may('bob'), await may('gus'), await may('stranger')]).toEqual([true, false, false])
+  })
+
+  test('the file chunk backfill marks workspace files shared and everything else private, then finds nothing left', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const create = (userId: string, args: Record<string, unknown>) => convex.mutation(m('files/files:create'), { ...auth, userId, ...args }) as Promise<string>
+    const personal = await create('alice', { name: 'Mine', kind: 'note', content: 'mine' })
+    const shared = await create('alice', { name: 'Ours', kind: 'note', content: 'ours' })
+    await convex.run(async (ctx) => {
+      await ctx.db.patch(shared as never, { scope: 'workspace' })
+      for (const fileId of [personal, shared, personal]) {
+        const chunkId = await ctx.db.insert('knowledgeChunks', {
+          userId: 'alice', workspaceId, sourceKind: 'file', sourceId: fileId, chunkIndex: 0, startOffset: 0, text: 't',
+        })
+        await ctx.db.insert('knowledgeChunkEmbeddings', { chunkId, userId: 'alice', sourceKind: 'file', embedding: new Array(1536).fill(0) })
+      }
+    })
+    const backfill = (dryRun: boolean) => convex.mutation(m('knowledge/knowledge:backfillFileChunkVisibilityByServer'), { serverSecret: secret, dryRun })
+    expect(await backfill(true)).toMatchObject({ scanned: 3, madeWorkspace: 1, madePrivate: 2, unchanged: 0, isDone: true })
+    expect(await backfill(false)).toMatchObject({ madeWorkspace: 1, madePrivate: 2 })
+    expect(await backfill(true)).toMatchObject({ scanned: 3, madeWorkspace: 0, madePrivate: 0, unchanged: 3 })
+    const owners = await convex.run(async (ctx) => {
+      const embeddings = await ctx.db.query('knowledgeChunkEmbeddings').collect()
+      return (await ctx.db.query('knowledgeChunks').collect()).map((chunk) =>
+        `${chunk.sourceId === shared ? 'shared' : 'personal'}:${chunk.userId}:${embeddings.find((e) => e.chunkId === chunk._id)?.userId}`).sort()
+    })
+    expect(owners).toEqual(['personal:alice:alice', 'personal:alice:alice', `shared:workspace-files:${workspaceId}:workspace-files:${workspaceId}`])
+  })
+
   test('a note is private until moved; a folder takes its contents with it; archived items stay out of the default list', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
@@ -193,6 +280,75 @@ describe('MCP servers and connectors', () => {
     expect(seenByBob[0]).not.toHaveProperty('connectedAccountId')
     const seenByAlice = await convex.query(q('integrations/workspaceConnectors:listScopedByWorkspace'), { workspaceId, userId: 'alice', serverSecret: secret }) as Array<Record<string, unknown>>
     expect(seenByAlice[0]).toHaveProperty('connectedAccountId', 'acct-secret')
+  })
+})
+
+describe('one-way moves (P4) and credentials that stay behind (P5)', () => {
+  test('nothing moves back to Personal, for any scoped resource', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const ids = await convex.run(async (ctx) => {
+      const base = { userId: 'alice', workspaceId, scope: 'workspace' as const, createdAt: now, updatedAt: now }
+      return {
+        'files/files': await ctx.db.insert('files', { ...base, name: 'Shared note', type: 'file', kind: 'note', content: 'x' } as never),
+        'integrations/skills': await ctx.db.insert('skills', { ...base, name: 'Shared skill', description: 'd', instructions: 'i' } as never),
+        'integrations/mcpServers': await ctx.db.insert('mcpServers', { ...base, name: 'Shared server', transport: 'streamable-http', url: 'https://example.com/mcp', enabled: true, authType: 'none' } as never),
+        'integrations/workspaceConnectors': await ctx.db.insert('workspaceConnectors', { ...base, providerKey: 'gmail', connectedAccountId: 'acct' } as never),
+        'automations/automations': await ctx.db.insert('automations', { ...base, name: 'Shared run', instructions: 'go', enabled: false, schedule: { kind: 'daily', hourUTC: 9, minuteUTC: 0 } } as never),
+      }
+    })
+    for (const [module, id] of Object.entries(ids)) {
+      expect(await convex.mutation(m(`${module}:setScope`), { ...auth, userId: 'alice', id, to: 'personal' }), module).toEqual({ ok: false, reason: 'one_way' })
+      const row = await convex.run(async (ctx) => await ctx.db.get(id as never)) as { scope?: string }
+      expect(row.scope, module).toBe('workspace')
+    }
+  })
+
+  test('a connector never moves to the workspace: the workspace connects an account of its own', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const id = await convex.mutation(m('integrations/workspaceConnectors:insert'), { workspaceId, userId: 'alice', providerKey: 'gmail', connectedAccountId: 'acct-personal', serverSecret: secret }) as string
+    expect(await convex.mutation(m('integrations/workspaceConnectors:setScope'), { ...auth, userId: 'alice', id, to: 'workspace' }))
+      .toEqual({ ok: false, reason: 'connector_reconnect_for_workspace' })
+    const row = await convex.run(async (ctx) => await ctx.db.get(id as never)) as { scope?: string; connectedAccountId: string }
+    expect(row.scope ?? 'personal').toBe('personal')
+    expect(row.connectedAccountId).toBe('acct-personal')
+  })
+
+  test('moving an MCP server to the workspace leaves the mover\'s sign-in behind and turns it off; connecting does not turn it back on by itself', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const [oauth, bearer, open] = await convex.run(async (ctx) => {
+      const base = { userId: 'alice', workspaceId, transport: 'streamable-http' as const, url: 'https://example.com/mcp', enabled: true, createdAt: now, updatedAt: now }
+      return [
+        await ctx.db.insert('mcpServers', { ...base, name: 'OAuth', authType: 'oauth', oauthStatus: 'connected', encryptedOAuthTokens: 'sealed-tokens', encryptedOAuthClient: 'sealed-client', oauthClientId: 'client', oauthTokenVersion: 3, oauthConnectedAt: now }),
+        await ctx.db.insert('mcpServers', { ...base, name: 'Bearer', authType: 'bearer', authConfig: { bearerToken: 'sekrit' }, encryptedAuthConfig: 'sealed-config' }),
+        await ctx.db.insert('mcpServers', { ...base, name: 'Open', authType: 'none' }),
+      ]
+    })
+    for (const id of [oauth, bearer, open]) {
+      expect(await convex.mutation(m('integrations/mcpServers:setScope'), { ...auth, userId: 'alice', id, to: 'workspace' })).toEqual({ ok: true })
+    }
+    const read = (id: unknown) => convex.run(async (ctx) => await ctx.db.get(id as never)) as Promise<Record<string, unknown>>
+    const movedOAuth = await read(oauth)
+    expect(movedOAuth).toMatchObject({ scope: 'workspace', enabled: false, oauthStatus: 'pending', oauthTokenVersion: 4, encryptedOAuthClient: 'sealed-client', oauthClientId: 'client' })
+    expect(movedOAuth.encryptedOAuthTokens).toBeUndefined()
+    expect(movedOAuth.oauthConnectedAt).toBeUndefined()
+    const movedBearer = await read(bearer)
+    expect(movedBearer).toMatchObject({ scope: 'workspace', enabled: false })
+    expect(movedBearer.authConfig).toBeUndefined()
+    expect(movedBearer.encryptedAuthConfig).toBeUndefined()
+    // A server with no credentials keeps running.
+    expect(await read(open)).toMatchObject({ scope: 'workspace', enabled: true })
+    // Nobody is offered the moved servers' tools with the mover's account; listings say they need connecting.
+    const listed = await convex.query(q('integrations/mcpServers:list'), { ...auth, userId: 'bob' }) as Array<Record<string, unknown>>
+    expect(listed.find((s) => s.name === 'OAuth')).toMatchObject({ hasAuth: false, oauthStatus: 'pending', enabled: false })
+    expect(JSON.stringify(listed)).not.toContain('sekrit')
+    // Connecting stores the new account; it stays off until someone turns it on (it may have been off on purpose).
+    expect(await convex.mutation(m('integrations/mcpServers:updateOAuthState'), {
+      serverSecret: secret, userId: 'alice', mcpServerId: oauth, encryptedOAuthTokens: 'workspace-tokens', oauthStatus: 'connected',
+    })).toBe(true)
+    expect(await read(oauth)).toMatchObject({ enabled: false, oauthStatus: 'connected', encryptedOAuthTokens: 'workspace-tokens' })
   })
 })
 

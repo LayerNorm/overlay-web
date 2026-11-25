@@ -60,3 +60,28 @@ test('the shared scope route holds Work to the Work kill switch', async (t) => {
   assert.ok(calls.includes('files/files:archive'))
   assert.equal(calls.some((path) => path.startsWith('work/')), false)
 })
+
+test('moves are one-way, and only an automation move can take its agent along', async (t) => {
+  const calls: Array<{ path: string; args: Record<string, unknown> }> = []
+  const outcomes: Record<string, unknown> = { 'skills:personal': { ok: false, reason: 'one_way' } }
+  t.mock.method(convex, 'mutation', async (path: string, args: Record<string, unknown>) => {
+    if (path.endsWith(':setScope')) calls.push({ path, args })
+    return outcomes[`${path.split('/').at(-1)?.split(':')[0]}:${args.to}`] ?? { ok: true }
+  })
+  const route = await import('./route')
+
+  const back = { resource: 'skills', id: 'skill_1', action: 'move', to: 'personal' }
+  const refused = await route.POST(post(back), context(back, true))
+  assert.equal(refused.status, 403)
+  assert.deepEqual(await refused.json(), { error: "Items can't move back to Personal.", code: 'resource_scope_denied', reason: 'one_way' })
+
+  const automation = { resource: 'automations', id: 'auto_1', action: 'move', to: 'workspace', withAgent: true }
+  assert.equal((await route.POST(post(automation), context(automation, true))).status, 200)
+  assert.equal(calls.at(-1)?.path, 'automations/automations:setScope')
+  assert.equal(calls.at(-1)?.args.withAgent, true)
+
+  // Other resources never pass it on.
+  const file = { resource: 'files', id: 'file_1', action: 'move', to: 'workspace', withAgent: true }
+  assert.equal((await route.POST(post(file), context(file, true))).status, 200)
+  assert.equal('withAgent' in (calls.at(-1)?.args ?? {}), false)
+})

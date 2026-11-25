@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isLegacyArchivedScope, isResourceInPanelScope, listViewForScope, newItemScope, parsePanelScope, resolvePanelScope, scopeForNewItem, withPanelScope } from './panel-scope'
+import { DEFAULT_PANEL_SCOPE, isLegacyArchivedScope, isResourceInPanelScope, listViewForScope, newItemScope, parsePanelScope, resolvePanelScope, scopeForNewItem, withPanelScope } from './panel-scope'
 
-test('the URL wins over the remembered scope, which wins over Personal', () => {
+test('the URL wins over the remembered scope, which wins over Workspace', () => {
+  assert.equal(DEFAULT_PANEL_SCOPE, 'workspace')
   assert.equal(resolvePanelScope({ param: 'workspace', saved: 'personal' }), 'workspace')
+  assert.equal(resolvePanelScope({ param: 'personal', saved: 'workspace' }), 'personal')
+  assert.equal(resolvePanelScope({ param: null, saved: 'personal' }), 'personal')
   // Archived is no longer a scope: it is ignored, and the remembered one applies.
   assert.equal(resolvePanelScope({ param: 'archived', saved: 'workspace' }), 'workspace')
   assert.equal(resolvePanelScope({ param: null, saved: 'workspace' }), 'workspace')
   assert.equal(resolvePanelScope({ param: 'nonsense', saved: 'workspace' }), 'workspace')
-  assert.equal(resolvePanelScope({ param: undefined, saved: 'nonsense' }), 'personal')
-  assert.equal(resolvePanelScope({ param: null }), 'personal')
+  assert.equal(resolvePanelScope({ param: undefined, saved: 'nonsense' }), 'workspace')
+  assert.equal(resolvePanelScope({ param: null }), 'workspace')
 })
 
 test('a route scope wins over conflicting query and saved scope even for a solo workspace', () => {
@@ -35,15 +38,15 @@ test('a new item defaults to the scope being viewed', () => {
   assert.equal(scopeForNewItem('personal'), 'personal')
 })
 
-test('creation keeps the selected scope in a one-person workspace', () => {
+test('creation sends workspace explicitly, since the server reads a missing scope as Personal', () => {
   assert.equal(newItemScope('workspace'), 'workspace')
   assert.equal(newItemScope('personal'), undefined)
 })
 
 test('the scope parameter keeps other parameters and omits the default', () => {
   const base = new URLSearchParams('view=notes&file=abc')
-  assert.equal(withPanelScope(base, 'workspace').toString(), 'view=notes&file=abc&scope=workspace')
-  assert.equal(withPanelScope(new URLSearchParams('scope=workspace&view=notes'), 'personal').toString(), 'view=notes')
+  assert.equal(withPanelScope(base, 'personal').toString(), 'view=notes&file=abc&scope=personal')
+  assert.equal(withPanelScope(new URLSearchParams('scope=personal&view=notes'), 'workspace').toString(), 'view=notes')
   assert.equal(base.toString(), 'view=notes&file=abc', 'the input is not changed')
 })
 

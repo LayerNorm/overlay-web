@@ -277,7 +277,6 @@ export async function executeCreateTask(options: OverlayToolsOptions, input: {
 export async function executeUpdateTask(options: OverlayToolsOptions, input: {
   taskId: string
   revision?: string
-  scope?: 'personal' | 'workspace'
   title?: string
   description?: string | null
   status?: string
@@ -307,7 +306,7 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
       startDate: dateValue(input.startDate),
       dueDate: dateValue(input.dueDate),
     }, contextResult.data)
-    if (input.scope !== undefined) fields.scope = input.scope
+    // Moving a task to Workspace is one-way and needs a person's confirmation in the app; agents can't do it.
     if (expectedUpdatedAt !== undefined) fields.expectedUpdatedAt = expectedUpdatedAt
     const result = Object.keys(fields).length > 0
       ? await sendJson<{ item?: WorkItem }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}`, fields, 'PATCH')

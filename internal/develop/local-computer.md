@@ -79,6 +79,13 @@ revokes its credentials. Connecting a machine follows the Computers feature
 - **Folders are a scope, not a sandbox.** Use a restricted account, container or
   VM when strict isolation is needed.
 
+## Who sees which Computer
+
+The same rule holds for every Computer row, in `ComputerService.canAccess` and the live `computers/browse:list`: a
+person's own Computer is theirs only; a workspace-visible agent's is open to members; a personal chief's is its
+person's only, never the workspace owner's; another creator-only agent's is its creator's and the workspace owner's;
+a Computer whose agent is gone falls to the workspace owner so it can still be stopped.
+
 ## Host package
 
 `overlay-agent-host connect <code> --server <origin> --local-tools --run`

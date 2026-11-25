@@ -123,6 +123,7 @@ import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js
 import type * as knowledge_memoryExtractorNode from "../knowledge/memoryExtractorNode.js";
 import type * as knowledge_memoryProfileStore from "../knowledge/memoryProfileStore.js";
 import type * as knowledge_memoryProfiles from "../knowledge/memoryProfiles.js";
+import type * as lib_agentVisibility from "../lib/agentVisibility.js";
 import type * as lib_appCallback from "../lib/appCallback.js";
 import type * as lib_auditWorkspace from "../lib/auditWorkspace.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -177,6 +178,7 @@ import type * as migrations_doubleSidebar from "../migrations/doubleSidebar.js";
 import type * as migrations_grantLocalComputer from "../migrations/grantLocalComputer.js";
 import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.js";
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
+import type * as migrations_personalChiefs from "../migrations/personalChiefs.js";
 import type * as migrations_purgeConnectedAgents from "../migrations/purgeConnectedAgents.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
@@ -327,6 +329,7 @@ declare const fullApi: ApiFromModules<{
   "knowledge/memoryExtractorNode": typeof knowledge_memoryExtractorNode;
   "knowledge/memoryProfileStore": typeof knowledge_memoryProfileStore;
   "knowledge/memoryProfiles": typeof knowledge_memoryProfiles;
+  "lib/agentVisibility": typeof lib_agentVisibility;
   "lib/appCallback": typeof lib_appCallback;
   "lib/auditWorkspace": typeof lib_auditWorkspace;
   "lib/auth": typeof lib_auth;
@@ -381,6 +384,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/grantLocalComputer": typeof migrations_grantLocalComputer;
   "migrations/notesToMarkdown": typeof migrations_notesToMarkdown;
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
+  "migrations/personalChiefs": typeof migrations_personalChiefs;
   "migrations/purgeConnectedAgents": typeof migrations_purgeConnectedAgents;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;

@@ -11,7 +11,9 @@ import { PageSections } from './PageSections'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { publishPageSubviews } from './pageSubviewStore'
 import { orderSidebarItems } from './CustomizeSidebarDialog'
-import { groupMoreItems, MoreMenu, NavRow, ScopeToggle, scopeChildren, useCollapseShortcut, type UnifiedSidebarProps } from './UnifiedSidebar'
+import { RailModeSwitch } from './ModeSwitch'
+import type { PanelScope } from '../types'
+import { groupMoreItems, MoreMenu, NavRow, scopeChildren, useCollapseShortcut, type UnifiedSidebarProps } from './UnifiedSidebar'
 
 const MORE_GROUPS = [{ ids: ['files', 'extensions', 'automations'] }]
 
@@ -73,6 +75,12 @@ export function DoubleSidebar({
   const panelHadFocusRef = useRef(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const scopedNav = settingsNav ? undefined : panelNav
+  // The mode applies to every section; Settings has no scoped nav, so it only remembers the choice.
+  const changeScope = (next: PanelScope) => {
+    if (next === scope) return
+    if (scopedNav) scopedNav.onSelect(next)
+    else rememberScope(next)
+  }
   const setCollapsed = (next: boolean) => {
     if (next && panelRef.current?.contains(document.activeElement)) panelHadFocusRef.current = true
     onCollapsedChange(next)
@@ -112,6 +120,7 @@ export function DoubleSidebar({
     <div data-double-sidebar data-shell-preset={themePreset} className={cn('double-sidebar flex h-full shrink-0', className)}>
       <Sidebar ref={railRef} aria-label="Primary navigation" className="double-sidebar-rail w-[60px] overflow-visible border-0 bg-transparent px-2.5 py-1.5">
         <div className="-mb-px flex size-10 shrink-0 items-center justify-center">{railBrand}</div>
+        <RailModeSwitch scope={scope} onChange={changeScope} />
         <SidebarContent className="overflow-visible">
           <nav aria-label="Primary">
             <SidebarMenu className="gap-1">
@@ -144,7 +153,6 @@ export function DoubleSidebar({
             {onSearch ? <DelayedTooltip label="Search" side="bottom"><Button variant="ghost" size="icon" aria-label={`Search ${title.toLowerCase()}`} onClick={onSearch} className="size-8 text-(--muted)"><Search size={16} aria-hidden /></Button></DelayedTooltip> : null}
             {panelAction ? <DelayedTooltip label={panelAction.label} side="bottom"><Button variant="ghost" size="icon" aria-label={panelAction.label} onClick={panelAction.onClick} className="size-8 text-(--muted)"><Plus size={16} aria-hidden /></Button></DelayedTooltip> : null}
           </div>
-          {!settingsNav ? <ScopeToggle scope={scope} workspaceLocked={false} onChange={(next) => { if (next !== scope) { if (scopedNav) scopedNav.onSelect(next); else rememberScope(next) } }} /> : null}
           <SidebarContent className="pb-3">
             {settingsNav ? <SettingsSidebarNav nav={settingsNav} collapsed={false} onBack={items.find((item) => item.id === 'settings-close')?.onSelect} settingsGroups={settingsGroups} /> : (
               <>

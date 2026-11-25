@@ -153,27 +153,31 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
     }
 
     if (view === 'chats-agents') {
-      // Each agent's own avatar, so pickers show it rather than a generic icon.
+      // Only agents this person may see, never a personal chief (it lives in its owner's Personal mode).
       const agentList = await server.workspaceAgentService.list({ actorUserId: context.auth.userId, workspaceId }).catch((_error) => null)
-      const avatarByPrincipal = new Map((agentList?.agents ?? []).map((agent) => [agent.principalId, agent]))
+      const agentByPrincipal = new Map((agentList?.agents ?? [])
+        .filter((agent) => agent.agentRole !== 'personal_chief')
+        .map((agent) => [agent.principalId, agent]))
       return NextResponse.json(response(
-        members
-          .filter(({ principal }) => principal.type === 'agent')
-          .map(({ principal, membership }) => ({
+        members.flatMap(({ principal, membership }) => {
+          const agent = principal.type === 'agent' ? agentByPrincipal.get(principal.id) : undefined
+          if (!agent) return []
+          return [{
             id: principal.id,
             kind: 'member' as const,
             name: principal.displayName,
-            description: avatarByPrincipal.get(principal.id)?.description?.trim() || 'Named workspace agent',
+            description: agent.description?.trim() || 'Named workspace agent',
             detail: membership.role,
             badge: principal.type,
             principalId: principal.id,
             principalType: principal.type,
-            ...(avatarByPrincipal.get(principal.id)?.avatarColor ? { avatarColor: avatarByPrincipal.get(principal.id)!.avatarColor } : {}),
-            ...(avatarByPrincipal.get(principal.id)?.avatarShape ? { avatarShape: avatarByPrincipal.get(principal.id)!.avatarShape } : {}),
-            isDefault: avatarByPrincipal.get(principal.id)?.isDefault,
+            ...(agent.avatarColor ? { avatarColor: agent.avatarColor } : {}),
+            ...(agent.avatarShape ? { avatarShape: agent.avatarShape } : {}),
+            isDefault: agent.isDefault,
             role: membership.role,
             status: membership.status,
-          })),
+          }]
+        }),
       ))
     }
 

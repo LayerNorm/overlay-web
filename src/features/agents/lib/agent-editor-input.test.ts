@@ -61,6 +61,14 @@ test('overlay input trims fields and maps tool groups', () => {
   assert.ok(Array.isArray(input.allowedToolIds))
 })
 
+test('editing a saved agent sends no access, so a stale form cannot undo a move', () => {
+  const input = buildWorkspaceAgentInput({
+    name: 'Scout', description: '', instructions: '', modelId: 'test-model',
+    avatarColor: '#2563eb', avatarShape: 'droplet', enabledToolGroups: new Set(),
+  })
+  assert.equal('visibility' in input, false)
+})
+
 test('editor validity mirrors the save gate', () => {
   const base = {
     name: 'Scout',

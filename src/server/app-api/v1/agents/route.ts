@@ -10,12 +10,13 @@ import { agentErrorResponse } from './shared'
 
 export async function GET(request: Request, context: AppApiRouteContext) {
   try {
-    const includeArchived = new URL(request.url).searchParams.get('includeArchived') === 'true'
-      || new URL(request.url).searchParams.get('includeArchived') === '1'
+    const params = new URL(request.url).searchParams
+    const flag = (name: string) => params.get(name) === 'true' || params.get(name) === '1'
     return NextResponse.json(await getOverlayServerContext().workspaceAgentService.list({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
-      includeArchived,
+      includeArchived: flag('includeArchived'),
+      includePersonal: flag('includePersonal'),
     }))
   } catch (error) {
     return agentErrorResponse(error)

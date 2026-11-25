@@ -11,7 +11,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
+import { agentsForMode } from '@/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { OrganizationAgentDetails } from './OrganizationAgentDetails'
@@ -48,7 +48,7 @@ export function OrganizationPage() {
   const data = directory.workspaceId === activeWorkspaceId && directory.agents
     ? { agents: directory.agents, viewerPrincipalId: directory.viewerPrincipalId ?? undefined }
     : undefined
-  const agents = pinChiefs(agentsForCreatorScope((data?.agents ?? []).filter(a => !a.archivedAt), data?.viewerPrincipalId, scope), data?.viewerPrincipalId)
+  const agents = pinChiefs(agentsForMode((data?.agents ?? []).filter(a => !a.archivedAt), data?.viewerPrincipalId, scope), data?.viewerPrincipalId)
   const root = agents.find(a => scope === 'workspace' ? a.agentRole === 'workspace_chief' : a.agentRole === 'personal_chief')
   const children = agents.filter(a => a.id !== root?.id)
   const selected = selection?.key === key ? agents.find(a => a.id === selection.id) : undefined

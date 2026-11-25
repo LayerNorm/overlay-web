@@ -211,7 +211,7 @@ describe('moving a private memory to the workspace', () => {
 })
 
 describe('where an agent’s memory belongs', () => {
-  test('an automation’s thread is not a workspace context yet: it reads its owner’s private memories', async () => {
+  test('a workspace automation’s thread is a workspace context; a personal one’s is not (P6)', async () => {
     const { conversationIsWorkspaceContext } = await import('./harness/runs')
     const convex = convexTest(schema, modules)
     const result = await convex.run(async (ctx) => {
@@ -227,8 +227,25 @@ describe('where an agent’s memory belongs', () => {
       const check = (conversationId: string) => conversationIsWorkspaceContext(ctx as never, {
         workspaceId: 'ws-1', actorUserId: 'alice', conversationId, serverSecret: secret,
       })
-      return { workspace: await check(await thread('workspace')), personal: await check(await thread('personal')), unscoped: await check(await thread()) }
+      const archivedFromWorkspace = await ctx.db.insert('conversations', {
+        userId: 'alice', workspaceId: 'ws-1', title: 'automation', lastModified: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'model',
+      } as never)
+      await ctx.db.insert('automations', {
+        userId: 'alice', workspaceId: 'ws-1', name: 'a', instructions: 'x', enabled: false, conversationId: archivedFromWorkspace,
+        createdAt: 1, updatedAt: 1, archivedAt: 2, archivedFromScope: 'workspace',
+      } as never)
+      const deletedWorkspace = await ctx.db.insert('conversations', {
+        userId: 'alice', workspaceId: 'ws-1', title: 'automation', lastModified: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'model',
+      } as never)
+      await ctx.db.insert('automations', {
+        userId: 'alice', workspaceId: 'ws-1', name: 'a', instructions: 'x', enabled: false, conversationId: deletedWorkspace,
+        createdAt: 1, updatedAt: 1, scope: 'workspace', deletedAt: 3,
+      } as never)
+      return {
+        workspace: await check(await thread('workspace')), personal: await check(await thread('personal')), unscoped: await check(await thread()),
+        archivedFromWorkspace: await check(archivedFromWorkspace), deletedWorkspace: await check(deletedWorkspace),
+      }
     })
-    expect(result).toEqual({ workspace: false, personal: false, unscoped: false })
+    expect(result).toEqual({ workspace: true, personal: false, unscoped: false, archivedFromWorkspace: true, deletedWorkspace: false })
   })
 })

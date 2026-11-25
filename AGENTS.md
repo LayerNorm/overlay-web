@@ -119,6 +119,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/retire-overlay-cloud-agents.md` | Any change to hosted-runtime retirement, production inventory/drain gates, retained disks, cleanup or rollback. |
 | `internal/develop/workspace-billing.md` | Any change to workspace billing accounts, reservations and subject limits, the billing activation gate, or reservation reconciliation. |
 | `internal/develop/billing-holds-and-machine-metering.md` | Any change to budget reservations and holds, the stale-hold sweep, machine metering or its credit floor, `OVERLAY_AGENT_PUBLIC_URL`, or the production environment for Overlay Cloud agents. |
+| `internal/develop/workspace-and-personal.md` | Any change to Workspace and Personal modes, resource scopes and moves, the Personal Chief, workspace contexts (shared rooms, workspace automations), memory ownership, or who may search which files. |
 | `internal/develop/tool-catalog.md` | Any change to Overlay's tool ids, tool groups, who gets which tools (chat, native agents, connected agents, outside apps), or the outside-app access levels. |
 | `internal/develop/agent-to-agent.md` | Any change to agents asking agents: the `agent_chat` tools, `/api/v1/agent-asks`, lineage and limits, the budget counters, or how an asked agent's turn is started. |
 | `internal/develop/agent-machine-idle.md` | Any change to when an agent machine goes idle: the idle window, the Convex idle timer and token, the `idleCheck` BFF path, the meter sweep fallback, or the "a run is going" check. |

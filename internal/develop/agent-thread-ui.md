@@ -139,9 +139,11 @@ its own right panel, as agent threads do; there People is in the ⋯ menu. Threa
 
 ## Sidebar agent rows
 
-- The pinned chief of staff (Overlay) is a tile above the other agents in
-  Personal and Workspace: its avatar and name, with a new-thread button on
-  hover. Like other rows, clicking it only shows or hides its threads. The
+- Each mode pins its chief of staff as a tile above the other agents: Overlay in
+  Workspace, the viewer's own Personal Chief in Personal (a personal chief is
+  never listed in Workspace). The tile shows its avatar and name, with a
+  new-thread button on hover. Agents are listed by visibility: workspace-visible
+  agents in Workspace, the viewer's creator-only agents in Personal. Like other rows, clicking it only shows or hides its threads. The
   activity view keeps it as an ordinary row.
 - Clicking an agent row only expands or collapses its threads; it never
   navigates or selects a thread. Opening happens from a thread row.
