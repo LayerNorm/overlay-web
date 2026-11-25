@@ -5,6 +5,7 @@ import {
   createFirstReplyTracker,
   firstReplyProgress,
   SETTLED_REPLY_GRACE_MS,
+  telemetryModelId,
   type FirstReplyStart,
 } from './first-reply-timing'
 
@@ -155,4 +156,13 @@ test('tracking stays bounded to the most recent turns', () => {
   assert.equal(tracker.pendingCount(), 8)
   const native = [user('turn-0'), reply('turn-0', 'Hi'), user('turn-19'), reply('turn-19', 'Hi')]
   assert.equal(tracker.observe('chat-a', { native, sdk: [] }, 1_500).length, 1, 'the oldest turn was evicted')
+})
+
+test('a bring-your-own-key model reports the model, never the connection ID', () => {
+  const tracker = createFirstReplyTracker()
+  tracker.begin('turn-1', start({ modelId: 'byok/conn_k7x2PqA9/openai/gpt-4.1' }))
+  const [event] = tracker.observe('chat-a', { native: [user('turn-1'), reply('turn-1', 'Hi')], sdk: [] }, 1_200)
+  assert.equal(event!.model_id, 'byok/openai/gpt-4.1')
+  assert.equal(telemetryModelId('byok/not valid!/model'), 'byok')
+  assert.equal(telemetryModelId('openai/gpt-6-luna'), 'openai/gpt-6-luna')
 })

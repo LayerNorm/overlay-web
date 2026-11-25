@@ -5,6 +5,7 @@
  * tool in `ttft-client-debug.ts`, and holds only a few recent turns.
  */
 
+import { BYOK_MODEL_PREFIX, parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { INTERRUPTED_RESPONSE_NOTICE } from './agent-assistant-text'
 
 export const FIRST_REPLY_EVENT = 'chat_first_text_visible'
@@ -66,6 +67,13 @@ function showsReplyText(message: ReplyMessage): boolean {
     const text = part.text.trim()
     return text.length > 0 && text !== INTERRUPTED_RESPONSE_NOTICE
   }) ?? false
+}
+
+/** A bring-your-own-key model ID names the user's own connection; report only the model behind it. */
+export function telemetryModelId(modelId: string): string {
+  if (!modelId.startsWith(BYOK_MODEL_PREFIX)) return modelId
+  const byok = parseByokModelId(modelId)
+  return byok ? `${BYOK_MODEL_PREFIX}${byok.rawModelId}` : 'byok'
 }
 
 function readsLiveReplyFromConvex(message: ReplyMessage): boolean {
@@ -161,7 +169,7 @@ export function createFirstReplyTracker() {
         report(turnId)
         ready.push({
           ttft_ms: Math.max(0, Math.round(now - turn.startedAt)),
-          model_id: turn.modelId,
+          model_id: telemetryModelId(turn.modelId),
           is_new_chat: turn.isNewChat,
           was_hidden: turn.hidden,
           transport: progress.transport,
