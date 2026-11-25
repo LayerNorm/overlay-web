@@ -18,7 +18,7 @@ Overlay in Slack is a first-class integration, like the GitHub App. One Overlay 
 | Phase 2: in a channel, an "Ask privately" button (once per thread, for active members, who may have a personal chief) moves the question to a DM thread with their own personal chief, "{Name}’s Chief", creating it if they have none yet | Built, unit tested |
 | Phase 3: Who can ask (All linked members, Everyone except blocked, Only allowed people) with a per-member list for owners and admins (`slackPeopleAccess`) | Built, unit tested |
 | Phase 3: a question from someone who still has to link is kept for an hour and runs once they link (`overlay:pending:<team>:<user>` in Slack state) | Built, unit tested |
-| Phase 3: Slack Connect toggle; people from another organization get a one-line reason instead of silence | Built, unit tested. The former Guests toggle was removed with the Overlay guest role; `migrations/removeGuestRole.ts` clears the legacy `slackSettings.guests` field |
+| Phase 3: Slack Connect toggle; people from another organization get a one-line reason instead of silence | Built, unit tested. The former Guests toggle was removed with the Overlay guest role |
 | Phase 3: Channel access only for people without an Overlay account | Not built: needs a decision on who pays for those answers (todos.md) |
 | Web visibility for other linked channel members, Slack participants without accounts | Not built: each asker has their own thread, visible to them |
 

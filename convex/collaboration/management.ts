@@ -8,7 +8,6 @@ import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
-import { withoutLegacyGuest } from '../lib/legacyGuestRole'
 import { canSee } from '../agents/directory'
 import { invitationValueWithExpiry, resolvedPrincipalValues } from './workspaces'
 
@@ -16,7 +15,7 @@ const MAX_ROWS = 500
 type Viewer = Awaited<ReturnType<typeof requireNativeWorkspace>>
 type Member = {
   principal: Awaited<ReturnType<typeof resolvedPrincipalValues>>[number]
-  membership: Omit<Doc<'workspaceMemberships'>, 'role'> & { role: ReturnType<typeof withoutLegacyGuest<Doc<'workspaceMemberships'>['role']>> }
+  membership: Doc<'workspaceMemberships'>
 }
 
 const ROLE_DESCRIPTIONS = {
@@ -37,7 +36,7 @@ async function activeMembers(ctx: Pick<QueryCtx, 'db'>, workspaceId: string): Pr
   const byId = new Map(resolved.map(principal => [principal.principalId, principal]))
   return memberships.flatMap(membership => {
     const principal = membership.status === 'active' ? byId.get(membership.principalId) : undefined
-    return principal ? [{ principal, membership: { ...membership, role: withoutLegacyGuest(membership.role) } }] : []
+    return principal ? [{ principal, membership: { ...membership, role: membership.role } }] : []
   })
 }
 

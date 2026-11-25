@@ -1,6 +1,5 @@
 import type { Doc, Id } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
-import { withoutLegacyGuest } from './legacyGuestRole'
 
 type NativeContext = Pick<QueryCtx, 'auth' | 'db'>
 
@@ -25,7 +24,7 @@ export async function requireNativeWorkspace(ctx: NativeContext, workspaceId: st
   const membership = await ctx.db.query('workspaceMemberships')
     .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId)).unique()
   if (!membership || membership.status !== 'active') throw new Error('WORKSPACE_ACCESS_DENIED')
-  return { ...viewer, workspaceId, principal, membership: { ...membership, role: withoutLegacyGuest(membership.role) } }
+  return { ...viewer, workspaceId, principal, membership: { ...membership, role: membership.role } }
 }
 
 export type NativeChatKind = 'personal' | 'workspace' | 'automation'

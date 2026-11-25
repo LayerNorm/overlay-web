@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Finish removing the workspace Guest role: the production migration ran (no guest memberships, 2 guest invitations turned into member invitations, nothing else to clear), so the schema no longer accepts `guest`, the `workspaceResourceGuests` table and the retired `guestExpirationDays` and Slack `guests` fields are gone, and the one-time migration and the helper that read old guest rows as members are deleted.
 - Remove the workspace Guest role. No customer has asked for it, and it complicated every permission check. Everyone in a workspace is now an owner, admin or member.
   - Existing guests become ordinary members, and guest invitations become member invitations. Until the migration below has run, a stored guest already reads as a member.
   - Item-level guest sharing is gone with it: Settings → Workspace → Guests, "Invite a guest", the Share dialog's "Invite as guest", the guest role in the role picker and role list, the guest expiry policy, and the Slack "Guests" toggle (it only covered Overlay guests; Slack Connect is unchanged). Server routes, services and Convex functions for resource guests are deleted, and the Share dialog's unused `canInvite` flag is dropped from the sharing response.

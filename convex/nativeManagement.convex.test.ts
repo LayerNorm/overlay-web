@@ -14,7 +14,7 @@ async function fixture() {
   const t = convexTest(schema, modules)
   await t.run(async ctx => {
     await ctx.db.insert('workspaces', { workspaceId: 'ws', kind: 'organization', name: 'Acme', slug: 'acme', status: 'active', createdAt: 1, updatedAt: 1 })
-    const member = async (userId: string, role: 'owner' | 'admin' | 'member' | 'guest', options: { status?: 'active' | 'suspended'; type?: 'human' | 'agent'; email?: string } = {}) => {
+    const member = async (userId: string, role: 'owner' | 'admin' | 'member', options: { status?: 'active' | 'suspended'; type?: 'human' | 'agent'; email?: string } = {}) => {
       const type = options.type ?? 'human'
       await ctx.db.insert('workspacePrincipals', {
         workspaceId: 'ws', principalId: `p-${userId}`, type, displayName: `legacy ${userId}`,
@@ -24,8 +24,7 @@ async function fixture() {
     }
     await member('olivia', 'owner', { email: 'olivia@acme.test' })
     await member('mark', 'member')
-    // A legacy guest row (before migrations/removeGuestRole.ts runs) reads as a member.
-    await member('gina', 'guest', { email: 'gina@guest.test' })
+    await member('gina', 'member', { email: 'gina@guest.test' })
     await member('sam', 'member', { status: 'suspended' })
     await member('helper', 'member', { type: 'agent' })
     await ctx.db.insert('subscriptions', { userId: 'mark', firstName: 'Mark', lastName: 'Lee' } as never)
@@ -34,10 +33,10 @@ async function fixture() {
       instructions: '', harness: 'overlay', modelId: 'm', allowedToolIds: [], invocationPolicy: 'mention',
       visibility: 'workspace', createdByPrincipalId: 'p-olivia', createdAt: 1, updatedAt: 1,
     } as never)
-    const invite = (invitationId: string, role: 'member' | 'guest', status: 'pending' | 'accepted', expiresAt: number) =>
+    const invite = (invitationId: string, role: 'member' | 'admin', status: 'pending' | 'accepted', expiresAt: number) =>
       ctx.db.insert('workspaceInvitations', { invitationId, workspaceId: 'ws', email: `${invitationId}@x.test`, role, status, invitedByPrincipalId: 'p-olivia', expiresAt, createdAt: 1, updatedAt: 1 })
     await invite('pending-member', 'member', 'pending', now + 60_000)
-    await invite('pending-guest', 'guest', 'pending', now + 60_000)
+    await invite('pending-guest', 'member', 'pending', now + 60_000)
     await invite('expired', 'member', 'pending', now - 1)
     await invite('accepted', 'member', 'accepted', now + 60_000)
     await ctx.db.insert('workspaceTeams', { teamId: 'team-1', workspaceId: 'ws', name: 'Design', createdByPrincipalId: 'p-olivia', createdAt: 1, updatedAt: 1 } as never)
