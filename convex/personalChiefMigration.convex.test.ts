@@ -182,11 +182,12 @@ test('hands each shared-copy thread and automation to a chief its people can sti
     const sharedRunThread = await thread('ada', 'Workspace automation runs')
     const personal = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
     const shared = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', scope: 'workspace', conversationId: sharedRunThread, agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
-    return { adaThread, bobThread, sharedRunThread, personal, shared }
+    const bobs = await ctx.db.insert('automations', { userId: 'bob', workspaceId: 'ws', agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
+    return { adaThread, bobThread, sharedRunThread, personal, shared, bobs }
   })
   type Moved = Retired & { threadsMoved: number; automationsMoved: number; leftBehind: number }
   const dry = await t.mutation(retire, { serverSecret: secret, dryRun: true } as never) as Moved
-  expect(dry).toMatchObject({ threadsMoved: 3, automationsMoved: 2, leftBehind: 0 })
+  expect(dry).toMatchObject({ threadsMoved: 3, automationsMoved: 3, leftBehind: 0 })
   await t.mutation(retire, { serverSecret: secret, dryRun: false } as never)
   const after = await t.run(async (ctx) => {
     const own = (await ctx.db.query('workspaceAgentDefinitions').withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', 'ada')).collect())
@@ -200,6 +201,7 @@ test('hands each shared-copy thread and automation to a chief its people can sti
       ada: await agentOf(ids.adaThread), bob: await agentOf(ids.bobThread), sharedRun: await agentOf(ids.sharedRunThread),
       seats: seats.map((seat) => seat.principalId),
       personal: (await ctx.db.get(ids.personal))?.agentId, shared: (await ctx.db.get(ids.shared))?.agentId,
+      bobs: (await ctx.db.get(ids.bobs))?.agentId,
     }
   })
   expect(after.ada).toBe(after.own)
@@ -208,6 +210,7 @@ test('hands each shared-copy thread and automation to a chief its people can sti
   expect(after.personal).toBe(after.own)
   expect(after.shared).toBe(after.chief)
   expect(after.sharedRun).toBe(after.chief)
+  expect(after.bobs).toBe(after.chief)
 })
 
 test('leaves an archived workspace’s shared-copy threads in place instead of failing', async () => {

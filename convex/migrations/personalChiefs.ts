@@ -76,9 +76,10 @@ export const retireSharedPersonalChiefsByServer = mutation({
 /**
  * Hands the shared copy's threads and automations to chiefs their people can still open, so history stays readable and
  * automations keep running with their saved thread. The owner's own threads and personal automations go to the owner's
- * private Personal Chief (created if needed); everything else (other members' threads, workspace automations) goes to
- * the workspace chief. An automation's thread always follows the automation. Archived workspaces, owners who left and
- * owners who are now guests keep nothing to hand over to: those rows are left on the archived copy and counted.
+ * private Personal Chief (created if needed); everything else (other members' threads and automations, workspace
+ * automations) goes to the workspace chief. An automation's thread always follows the automation. In an archived
+ * workspace nothing moves, and an owner who left or is now a guest keeps their own threads and personal automations on
+ * the archived copy; both are counted.
  */
 async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefinitions'>, dryRun: boolean, now: number) {
   const threads = await ctx.db.query('conversations')
@@ -104,8 +105,12 @@ async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefin
   const ownerEligible = Boolean(owner && membership?.status === 'active' && membership.role !== 'guest')
 
   // Where each thread and automation goes: 'own' (owner's private chief), 'workspace', or null (left behind).
-  const automationTarget = (automation: Doc<'automations'>): 'own' | 'workspace' | null =>
-    automation.scope === 'workspace' ? 'workspace' : automation.userId === shared.chiefOwnerUserId && ownerEligible ? 'own' : null
+  // Another member's personal automation used the copy because it was workspace-visible; the workspace chief is the
+  // chief they can still use.
+  const automationTarget = (automation: Doc<'automations'>): 'own' | 'workspace' | null => {
+    if (automation.scope === 'workspace' || automation.userId !== shared.chiefOwnerUserId) return 'workspace'
+    return ownerEligible ? 'own' : null
+  }
   const byThread = new Map(automations.flatMap((automation) => automation.conversationId ? [[automation.conversationId, automation] as const] : []))
   const threadTarget = (thread: Doc<'conversations'>): 'own' | 'workspace' | null => {
     const automation = byThread.get(thread._id)
