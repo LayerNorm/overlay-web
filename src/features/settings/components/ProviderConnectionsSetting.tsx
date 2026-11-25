@@ -14,6 +14,7 @@ import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversio
 import { byokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useByokModels } from '@/components/providers/useByokModels'
+import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { ProviderConnectionRow } from './ProviderConnectionRow'
 import { ProviderDialog } from './ProviderDialog'
@@ -33,7 +34,12 @@ export function ProviderConnectionsSetting() {
     refresh,
     updateConnection,
   } = useByokModels()
-  const connections = allConnections.filter((connection) => connection.canManage !== false)
+  // Providers follow the mode: Personal lists your own connections; Workspace lists the ones the workspace holds,
+  // which every member can use (those a teammate added are read-only here).
+  const scope = usePanelScope()
+  const connections = allConnections.filter((connection) => scope === 'workspace'
+    ? connection.scope === 'workspace'
+    : connection.scope !== 'workspace' && connection.canManage !== false)
   const { models: gatewayModels, isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
   const { settings, isSaving, updateSettings } = useAppSettings()
   const [openedDialog, setDialog] = useState<DialogState>(null)
@@ -86,12 +92,14 @@ export function ProviderConnectionsSetting() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm text-(--muted)">
-            Connect your subscriptions or API keys. Choose their models anywhere in Overlay.
+            {scope === 'workspace'
+              ? 'Subscriptions and API keys the workspace holds. Everyone in the workspace can use their models, including workspace agents and automations.'
+              : 'Your own subscriptions and API keys. Only you can use them, in your own chats and personal agents.'}
           </p>
         </div>
         <Button variant="secondary" size="sm" className="shrink-0"
           type="button"
-          onClick={() => setDialog({ mode: 'add' })}
+          onClick={() => setDialog({ mode: 'add', scope })}
           disabled={isLoading}
         >
           <Plus size={14} strokeWidth={2} />
@@ -119,7 +127,7 @@ export function ProviderConnectionsSetting() {
       {!isLoading && connections.length === 0 && !error ? (
         <div className="rounded-xl border border-(--border) bg-(--surface-elevated) py-12 text-center">
           <KeyRound size={24} className="mx-auto mb-3 text-(--muted-light)" strokeWidth={1.5} />
-          <p className="text-sm text-(--muted)">No provider connections yet.</p>
+          <p className="text-sm text-(--muted)">{scope === 'workspace' ? 'The workspace has no providers yet.' : 'No personal providers yet.'}</p>
           <p className="mt-1 text-xs text-(--muted-light)">
             Bring a subscription or API key to get started.
           </p>
@@ -152,6 +160,7 @@ export function ProviderConnectionsSetting() {
       {dialog?.mode === 'add' || (dialog?.mode === 'edit' && dialog.connection.providerId.startsWith('subscription:')) ? (
         <ConnectProviderDialog
           connection={dialog.mode === 'edit' ? dialog.connection : undefined}
+          scope={scope}
           onClose={closeDialog}
           onConnected={refresh}
         />

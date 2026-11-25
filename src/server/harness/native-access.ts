@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { finalWorkspaceModelRefusal } from './workspace-model-refusal'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
@@ -47,7 +48,11 @@ async function assertNativeModelAllowed(
 ): Promise<void> {
   if (isByokModelId(modelId)) {
     // A shared room or workspace automation spends only workspace connections (P6).
-    await assertUserCanUseByokModel(modelId, actorUserId, workspaceId, { workspaceOnly: sharedRoom })
+    try {
+      await assertUserCanUseByokModel(modelId, actorUserId, workspaceId, { workspaceOnly: sharedRoom })
+    } catch (error) {
+      finalWorkspaceModelRefusal(error)
+    }
   } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
     throw new FatalError('The native model is no longer allowed by server policy.')
   }

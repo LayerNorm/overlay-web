@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { finalWorkspaceModelRefusal } from './workspace-model-refusal'
 import { FatalError } from 'workflow'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { hasRequiredApiKeyScopes } from '@/shared/auth/api-key-scopes'
@@ -208,7 +209,11 @@ async function assertCurrentModelPolicy(
   workspaceOnly: boolean,
 ): Promise<void> {
   if (isByokModelId(modelId)) {
-    await assertUserCanUseByokModel(modelId, userId, workspaceId, { workspaceOnly })
+    try {
+      await assertUserCanUseByokModel(modelId, userId, workspaceId, { workspaceOnly })
+    } catch (error) {
+      finalWorkspaceModelRefusal(error)
+    }
   } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
     throw new FatalError('The model is no longer allowed by server policy.')
   }

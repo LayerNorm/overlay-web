@@ -204,7 +204,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       displayName,
       apiKey,
       enabledModelIds,
+      scope: rawScope,
     } = body as Record<string, unknown>
+    // Personal (yours alone, the default) or Workspace (held by the workspace; every member can use its models).
+    if (rawScope !== undefined && rawScope !== 'personal' && rawScope !== 'workspace') {
+      return NextResponse.json({ error: 'scope must be personal or workspace' }, { status: 400 })
+    }
+    const scope = rawScope ?? 'personal'
 
     if (!providerId || typeof providerId !== 'string') {
       return NextResponse.json({ error: 'providerId is required' }, { status: 400 })
@@ -273,6 +279,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       enabledModelIds: safeEnabledModelIds ?? [],
       isDefault: preset.isDefault,
       isDeletable: preset.isDeletable,
+      scope,
+      ...(scope === 'workspace' ? { workspaceId: context.workspace.workspace.id } : {}),
     })
 
     if (!connectionId) {

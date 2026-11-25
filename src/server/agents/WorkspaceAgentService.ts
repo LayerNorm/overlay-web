@@ -34,7 +34,7 @@ export class WorkspaceAgentService {
     private readonly workspaces: WorkspaceService,
     private readonly id: () => string = randomUUID,
     private readonly now: () => number = Date.now,
-    private readonly assertModelSelectable: (modelId: string, actorUserId: string, workspaceId: string) => Promise<void> = async () => {},
+    private readonly assertModelSelectable: (modelId: string, actorUserId: string, workspaceId: string, visibility: 'workspace' | 'creator') => Promise<void> = async () => {},
   ) {}
 
   /**
@@ -166,7 +166,7 @@ export class WorkspaceAgentService {
     const harness = args.input.harness ?? 'overlay'
     assertSupportedWorkspaceAgentHarness(harness)
     assertSupportedAgentConfiguration(modelId, harness)
-    await this.assertModelSelectable(modelId, args.actorUserId, access.workspace.id)
+    await this.assertModelSelectable(modelId, args.actorUserId, access.workspace.id, normalizeVisibility(args.input.visibility))
     assertValidOverlayPermissionMode(harness, args.input.permissionMode)
     await this.workspaces.assertAgentHarnessAllowed({
       actorUserId: args.actorUserId,
@@ -230,9 +230,12 @@ export class WorkspaceAgentService {
         nextHarness,
       )
     }
-    // An unchanged model is left alone so an agent whose model was withdrawn can still be edited.
-    if (args.input.modelId !== undefined && args.input.modelId.trim() !== agent.modelId) {
-      await this.assertModelSelectable(args.input.modelId.trim(), args.actorUserId, access.workspace.id)
+    // An unchanged model is left alone so an agent whose model was withdrawn can still be edited, except when the agent
+    // moves to the workspace: then its model must be one a workspace agent may use (never a personal provider).
+    const nextVisibility = args.input.visibility ?? agent.visibility ?? 'workspace'
+    const movesToWorkspace = (agent.visibility ?? 'workspace') === 'creator' && nextVisibility === 'workspace'
+    if ((args.input.modelId !== undefined && args.input.modelId.trim() !== agent.modelId) || movesToWorkspace) {
+      await this.assertModelSelectable((args.input.modelId ?? agent.modelId).trim(), args.actorUserId, access.workspace.id, nextVisibility)
     }
     if (args.input.harness !== undefined) {
       await this.workspaces.assertAgentHarnessAllowed({

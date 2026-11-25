@@ -1,4 +1,5 @@
 import { describeAISDKFailure, readErrorField, PROVIDER_CONTENT_FILTER_REASON } from './ai-sdk-failure'
+import { WORKSPACE_RUN_PERSONAL_MODEL_ERROR } from '@/shared/ai/workspace-run-model'
 import { redactSecrets } from '@/shared/security/sentry-sanitize'
 import {
   createHarnessDiagnostic,
@@ -281,6 +282,9 @@ export function harnessDiagnosticForFailure(
   } else if (stage === 'model' && (message === 'The workspace budget is under 2%.'
     || /^Model budget reservation declined: (?:insufficient_credits|insufficient_budget)$/.test(message))) {
     code = 'WORKSPACE_FUNDS'
+  } else if (message.includes(WORKSPACE_RUN_PERSONAL_MODEL_ERROR)) {
+    code = 'WORKSPACE_PERSONAL_MODEL'
+    stage = 'model'
   } else if (stage === 'model' && message === HARNESS_MEMBER_SPEND_LIMIT_MESSAGE) {
     code = 'MEMBER_SPEND_LIMIT'
   } else if (error instanceof HarnessPersistenceError || value.code === 'HARNESS_PERSISTENCE_FAILED') {

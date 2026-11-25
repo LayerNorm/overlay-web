@@ -1,5 +1,6 @@
 'use client'
 
+import { modelsForAgentVisibility } from '@/shared/ai/gateway/byok-model-conversion'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ComponentProps } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -109,7 +110,8 @@ export function useAgentEditorController({
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   }, [revision])
   const modelField = useMemo(() => {
-    const selectableTextModels = modelAccess.pickerTextModels
+    // A workspace agent may only run on hosted models and the workspace's own providers.
+    const selectableTextModels = modelsForAgentVisibility(modelAccess.pickerTextModels, agent?.visibility ?? form.visibility)
     return {
       favoriteScope: authUser?.id ?? null,
       modelPickerLabel: selectableTextModels.find((model) => model.id === form.modelId)?.name ?? allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
@@ -123,6 +125,8 @@ export function useAgentEditorController({
     authUser?.id,
     form.modelId,
     modelAccess.pickerTextModels,
+    agent?.visibility,
+    form.visibility,
     modelAccess.connectionsLoading,
     form.reasoningByModel,
     form.onModelReasoningChange,

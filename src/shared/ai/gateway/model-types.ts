@@ -21,6 +21,8 @@ export interface ChatModel {
   description?: string
   sourceLabel?: string
   connectionName?: string
+  /** For a model on a provider connection: whose it is. Workspace agents may only use `workspace` ones. */
+  connectionScope?: 'personal' | 'workspace'
   subscription?: {
     connectionId: string
     scopeLabel: string
