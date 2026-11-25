@@ -5,11 +5,11 @@ import { harnessDiagnosticForFailure } from './harness-diagnostics'
 import { authorizePersonalHarnessModelDispatch } from './personal-model-dispatch'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), ensure: vi.fn(), capabilities: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), read: vi.fn(), apply: vi.fn(), ensure: vi.fn(), capabilities: vi.fn(), spendLimit: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.read; apply = mocks.apply } }))
-vi.mock('@/server/billing/billing-runtime', () => ({ ensurePayerBudgetAvailable: mocks.ensure }))
+vi.mock('@/server/billing/billing-runtime', () => ({ ensurePayerBudgetAvailable: mocks.ensure, spendLimitRefusal: mocks.spendLimit }))
 vi.mock('@/server/capabilities', () => ({ getOverlayCapabilities: mocks.capabilities }))
 
 const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
@@ -57,6 +57,15 @@ test('under 2% after a failed top-up the dispatch refuses before binding and the
   expect(mocks.apply).not.toHaveBeenCalled()
   const diagnostic = harnessDiagnosticForFailure('run', state as never, error, 'model')
   expect(diagnostic).toMatchObject({ code: 'WORKSPACE_FUNDS', stage: 'model' })
+})
+
+test('an admin’s cap on the person stops the call before binding, whatever the workspace has left', async () => {
+  mocks.refresh.mockResolvedValue({ entitlements: funded })
+  mocks.spendLimit.mockResolvedValue('Your spending limit in this workspace is used up. Ask a workspace admin to raise it.')
+  const error = await authorizePersonalHarnessModelDispatch(reference, options).catch((caught: unknown) => caught)
+  expect(error).toMatchObject({ name: 'FatalError', message: expect.stringContaining('spending limit') })
+  expect(mocks.spendLimit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', workspaceId: 'workspace' }))
+  expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('a successful auto top-up lets the call proceed', async () => {

@@ -64,6 +64,21 @@ function spendLimitReached(limit: BillingAccountSpendLimitRecord, now = Date.now
   }, now)
 }
 
+/**
+ * Whether an admin's spend limit stops this person's (or program's) paid call. For callers that check the workspace
+ * balance themselves (the Harness model boundary). Returns the message to show, or null.
+ */
+export async function spendLimitRefusal(params: {
+  userId: string
+  workspaceId?: string
+  programmaticSubjectId?: string
+}): Promise<string | null> {
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const payer = await getOverlayServerContext().billingPayerResolver.resolve(params)
+  if (payer.scope !== 'workspace') return null
+  return await firstReachedSpendLimit(payer.billingAccountId, params.userId, payer.subject) ? SPEND_LIMIT_MESSAGE : null
+}
+
 /** The limits a paid call spends under: the person's own cap always, and the paying program's when one pays. */
 async function firstReachedSpendLimit(billingAccountId: string, userId: string, subject: { kind: 'member' | 'programmatic'; id: string }) {
   const repository = await billingRepository()
