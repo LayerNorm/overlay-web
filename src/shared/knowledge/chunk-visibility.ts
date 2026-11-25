@@ -26,6 +26,28 @@ export function chunkVisibleToSearch(args: {
  * The visibility a file's chunks carry: a file in Workspace is searchable by every member; a personal or archived one
  * only by its uploader.
  */
-export function fileChunkVisibility(file: { scope?: ResourceScope; archivedAt?: number }): ChunkVisibility {
-  return file.scope === 'workspace' && file.archivedAt === undefined ? 'workspace' : 'owner'
+export function fileChunkVisibility(file: { scope?: ResourceScope; archivedAt?: number; workspaceId?: string }): ChunkVisibility {
+  return file.scope === 'workspace' && file.archivedAt === undefined && Boolean(file.workspaceId) ? 'workspace' : 'owner'
+}
+
+const WORKSPACE_FILES_OWNER_PREFIX = 'workspace-files:'
+
+/**
+ * The owner id a workspace's files are indexed under (P7): once for the workspace rather than per uploader, so one search
+ * finds them for every member, a teammate's private chunks can't crowd them out, and they stay searchable after their
+ * uploader leaves. Not a legal user id, like `agent-memory:` owners.
+ */
+export function workspaceFilesOwnerId(workspaceId: string): string {
+  return `${WORKSPACE_FILES_OWNER_PREFIX}${workspaceId}`
+}
+
+/** Who a file's chunks are indexed under, and who may find them. */
+export function fileChunkOwner(file: { userId: string; scope?: ResourceScope; archivedAt?: number; workspaceId?: string }): {
+  userId: string
+  visibility: ChunkVisibility
+} {
+  const visibility = fileChunkVisibility(file)
+  return visibility === 'workspace'
+    ? { userId: workspaceFilesOwnerId(file.workspaceId!), visibility }
+    : { userId: file.userId, visibility }
 }

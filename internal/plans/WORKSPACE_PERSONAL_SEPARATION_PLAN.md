@@ -69,19 +69,23 @@ agents and memory extraction all follow it. Agentless (chat-thread) automations 
 the shared-room tooling (workspace connectors and MCP servers, workspace-scoped lists and search, no `list_chats`/
 `read_chat`/`search_in_files`), loads only workspace memories, skills and retrieval, never the memory profile, and may use
 only workspace provider connections (`assertUserCanUseByokModel` `workspaceOnly`; the same check now applies to shared rooms).
-What it learns is workspace knowledge: its agent's (`memoryOwnerForPlace`) or, without an agent, the workspace chief's.
+What it learns is workspace knowledge: its agent's (`memoryOwnerForPlace`) or, without an agent, the workspace chief's; its
+own messages (the instructions) are never extracted as the creator's memory.
 Workspace MCP servers shared before P5 still run with their creator's credentials.
 
 **P7 — Workspace knowledge is searchable by everyone.** Workspace files are indexed once for the workspace, so any member's chats, and their Personal Chief, can search them. This is what makes "Personal reads Workspace" real.
 
-As built (P7): file chunks stay keyed to their uploader and carry a visibility (`fileChunkVisibility`): `workspace` for a live
-file in Workspace, `owner` otherwise; a file chunk without one is private. Indexing reads the file's scope inside the write
-(`replaceKnowledgeSource`), and moves, archives and restores re-stamp the file and its folder's contents
-(`restampFileChunks`, scheduled from the files `afterApply`). `hybridSearch` now searches other members' file chunks
-alongside their memories and keeps only workspace ones; workspace-only searches (shared rooms, workspace automations) include
-workspace files, and room agents' automatic retrieval runs over them instead of being skipped. `search_in_files` reads files
-in Workspace as well as the caller's own. Not covered: a workspace file that is a byte-identical copy of its uploader's
-personal file has no chunks of its own (duplicates are indexed once per person), so it stays findable only by its uploader.
+As built (P7): a live file in Workspace is indexed once for the workspace, under `workspaceFilesOwnerId` with visibility
+`workspace` (`fileChunkOwner`); any other file under its uploader with visibility `owner`, and a file chunk without one is
+private. Indexing reads the file's owner inside the write (`replaceKnowledgeSource`); moves, archives and restores re-stamp
+the file and its folder's contents one page per run until done (`restampFileChunks`, scheduled from the files
+`afterApply`), moving chunk and embedding owners together; deleting a file purges its chunks wherever they are indexed.
+`hybridSearch` adds one search of the workspace's files for members who aren't guests (`canSearchWorkspaceFiles`), so a
+teammate's private chunks can't crowd them out and they stay searchable after their uploader leaves. Workspace-only
+searches (shared rooms, workspace automations) include them, and room agents' automatic retrieval runs over them instead of
+being skipped. `search_in_files` reads files in Workspace as well as the caller's own (it stays withheld in shared rooms).
+Not covered: a workspace file that is a byte-identical copy of its uploader's personal file has no chunks of its own
+(duplicates are indexed once per person), so it stays findable only by its uploader.
 
 ## Order and risk
 

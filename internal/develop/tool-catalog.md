@@ -107,8 +107,8 @@ read the room it treats it as shared); agentless automation runs re-read the aut
 - **Loaded automatically** (`buildAgentTurnContext`, `ActContextService.loadTurnContext`): the person's memories and memory
   profile and their personal skills are not loaded; retrieval reads only what the workspace shares (`workspaceOnly`).
 - **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
-  not even the person's own. Files in Workspace are searched; personal and archived files are not (`chunkVisibleToSearch`,
-  `fileChunkVisibility`).
+  not even the person's own. Files in Workspace are searched (indexed once for the workspace, `fileChunkOwner`); personal
+  and archived files are not (`chunkVisibleToSearch`).
 - **Models**: only workspace provider connections and hosted models; a personal key or subscription is refused
   (`assertUserCanUseByokModel` with `workspaceOnly`).
 - **Memory saves**: what an agent learns there is workspace knowledge (`memoryOwnerForPlace`); an agentless workspace

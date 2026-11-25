@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { chunkVisibleToSearch, fileChunkVisibility } from './chunk-visibility'
+import { chunkVisibleToSearch, fileChunkOwner, fileChunkVisibility } from './chunk-visibility'
 
 const mine = { userId: 'alice', visibility: 'owner' as const }
 const theirs = { userId: 'bob', visibility: 'owner' as const }
@@ -33,8 +33,14 @@ test('a file chunk is private unless it is marked workspace', () => {
 })
 
 test('only a live workspace file is searchable by everyone', () => {
-  assert.equal(fileChunkVisibility({ scope: 'workspace' }), 'workspace')
-  assert.equal(fileChunkVisibility({ scope: 'workspace', archivedAt: 1 }), 'owner')
-  assert.equal(fileChunkVisibility({ scope: 'personal' }), 'owner')
+  assert.equal(fileChunkVisibility({ scope: 'workspace', workspaceId: 'ws' }), 'workspace')
+  assert.equal(fileChunkVisibility({ scope: 'workspace', workspaceId: 'ws', archivedAt: 1 }), 'owner')
+  assert.equal(fileChunkVisibility({ scope: 'workspace' }), 'owner')
+  assert.equal(fileChunkVisibility({ scope: 'personal', workspaceId: 'ws' }), 'owner')
   assert.equal(fileChunkVisibility({}), 'owner')
+})
+
+test('a workspace file is indexed once for the workspace; any other file under its uploader', () => {
+  assert.deepEqual(fileChunkOwner({ userId: 'bob', scope: 'workspace', workspaceId: 'ws' }), { userId: 'workspace-files:ws', visibility: 'workspace' })
+  assert.deepEqual(fileChunkOwner({ userId: 'bob', scope: 'personal', workspaceId: 'ws' }), { userId: 'bob', visibility: 'owner' })
 })
