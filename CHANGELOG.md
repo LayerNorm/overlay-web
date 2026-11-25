@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record in the tool-scoping plan that the room-rule work (PR 625) is merged and deployed.
 - Finish removing the workspace Guest role: the production migration ran (no guest memberships, 2 guest invitations turned into member invitations, nothing else to clear), so the schema no longer accepts `guest`, the `workspaceResourceGuests` table and the retired `guestExpirationDays` and Slack `guests` fields are gone, and the one-time migration and the helper that read old guest rows as members are deleted.
 - Show owners and admins what each person spends, and let them cap it (Workspace → Billing → Spend per person). Personal mode spends the workspace's budget, and until now nobody could see or limit one person's share. The card lists every member's spend this billing period, their automations and agents included, live. A cap counts what the person already spent this period, stops their paid work once reached with "Your spending limit in this workspace is used up", and renews every period.
   - Every charge now counts against the person who started it as well as the paying program, and every check before a paid call reads both. Before, a call paid for by an automation or agent skipped its owner's own limit.
