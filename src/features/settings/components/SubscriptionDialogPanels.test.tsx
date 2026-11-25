@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ProviderChoicePanel, SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeSelector } from './SubscriptionDialogPanels'
+import { ProviderChoicePanel, SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeNote } from './SubscriptionDialogPanels'
 import { subscriptionAuthorizationBody, subscriptionRequest } from './subscription-connection-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { ProviderConnectionRow } from './ProviderConnectionRow'
@@ -35,15 +35,10 @@ test('connection rows display persisted scope and treat legacy subscriptions as 
   assert.match(render(), /Subscription · Personal/)
 })
 
-test('scope selector explains personal isolation and explicit workspace sharing', () => {
-  const render = (scope: 'personal' | 'workspace', disabled = false, workspaceAvailable = true) => renderToStaticMarkup(
-    <SubscriptionScopeSelector scope={scope} onScopeChange={() => {}} workspaceName="Acme" workspaceAvailable={workspaceAvailable} disabled={disabled} />,
-  )
+test('the scope note says who can use the new connection', () => {
+  const render = (scope: 'personal' | 'workspace') => renderToStaticMarkup(<SubscriptionScopeNote scope={scope} workspaceName="Acme" />)
   assert.match(render('personal'), /Only you can use this connection/)
-  assert.match(render('personal'), /aria-pressed="true"[^>]*>.*?Personal/)
   assert.match(render('workspace'), /Members of the Acme workspace can use this connection/)
-  assert.match(render('workspace', true), /<fieldset[^>]*disabled/)
-  assert.match(render('personal', false, false), /<button[^>]*disabled=""[^>]*>.*?Workspace/)
   const privacy = renderToStaticMarkup(<SubscriptionPrivacyNote />)
   assert.doesNotMatch(privacy, /stays personal|border-t/)
   assert.match(privacy, /will not switch to paid inference/)

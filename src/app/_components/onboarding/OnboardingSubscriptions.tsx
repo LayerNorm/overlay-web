@@ -23,11 +23,12 @@ export function OnboardingSubscriptions({ disabled }: { disabled: boolean }) {
       </div>)}
       <Button variant="ghost" className="h-auto w-full justify-start gap-3 rounded-none px-3.5 py-3" disabled={disabled} onClick={() => setOpen(true)}>
         <Link2 size={18} />
-        <span className="flex-1 text-left"><span className="block text-[13px]">Connect a provider</span><span className="block text-xs font-normal text-muted-foreground">Use your connected models in Overlay.</span></span>
+        <span className="flex-1 text-left"><span className="block text-[13px]">Connect a provider</span><span className="block text-xs font-normal text-muted-foreground">Shared with the workspace, so Overlay and your teammates can use it.</span></span>
         <Plus size={15} />
       </Button>
     </div>
     <p className="mt-2 text-xs text-muted-foreground">Optional. You can use Overlay models instead.</p>
-    {open ? <ConnectProviderDialog onClose={() => setOpen(false)} onConnected={refresh} /> : null}
+    {/* Overlay is a workspace agent, so the provider it runs on is the workspace's. */}
+    {open ? <ConnectProviderDialog scope="workspace" onClose={() => setOpen(false)} onConnected={refresh} /> : null}
   </div>
 }
