@@ -1,14 +1,14 @@
 # Workspace and Personal separation
 
-Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24, and its one-time move ran in production (192 agent memories moved to their person; a rerun moved none). The model below was revised on 2026-11-24 (one mode switch, a Personal Chief that lives only in Personal); P2–P3 merged (PR 617), deployed to production web and Convex on 2026-11-24, and their three one-time moves ran in production (37 shared chief copies retired, 13 threads handed to a chief their owner can open, 45 personal-agent seats removed from channels, 33 chiefs renamed; reruns found nothing left). P4–P5 open in PR 620, not merged; P6–P7 proposed.
+Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24, and its one-time move ran in production (192 agent memories moved to their person; a rerun moved none). The model below was revised on 2026-11-24 (one mode switch, a Personal Chief that lives only in Personal); P2–P3 merged (PR 617), deployed to production web and Convex on 2026-11-24, and their three one-time moves ran in production (37 shared chief copies retired, 13 threads handed to a chief their owner can open, 45 personal-agent seats removed from channels, 33 chiefs renamed; reruns found nothing left). P4–P5 merged (PR 620) and deployed to production web and Convex on 2026-11-25 (no data migration); P6–P7 proposed.
 
 | Phase | State |
 |---|---|
 | P1 Memories follow the place | Merged, deployed, migrated. Preview-tested for 1:1, channel and the Settings move; automations covered by unit tests only |
 | P2 One mode switch | Merged (PR 617) and deployed. Preview-tested as owner and member: mode switch, Workspace default, light/dark, phone width |
 | P3 The Personal Chief | Merged (PR 617), deployed, migrated in production; reruns clean. Preview-tested: chief created on first Personal visit, kept out of channel mentions. Slack DM routing to the Personal Chief covered by Convex tests only. Remaining: delete the `hasPersonalOverlayByServer` shim |
-| P4 One-way moves | Open in PR 620; preview QA in progress (unit and Convex tests pass) |
-| P5 Credentials move honestly | Open in PR 620; preview QA in progress (unit and Convex tests pass) |
+| P4 One-way moves | Merged (PR 620) and deployed. Preview-tested: notes, agents (editor move, reverse refused), automations moving with their agent, member view, dark and phone. Not yet used in production |
+| P5 Credentials move honestly | Merged (PR 620) and deployed. Preview-tested: MCP move strips the sign-in and turns the server off. "Connect for workspace" for connectors and reconnecting a moved OAuth MCP server are covered by Convex tests only (need a live third-party sign-in) |
 | P6–P7 | Not started |
 
 ## The model
