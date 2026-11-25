@@ -21,6 +21,8 @@ import {
   SESSION_TRANSFER_DEEP_LINK_PREFIX,
 } from '@/shared/auth/auth-constants'
 import { getBaseUrl } from '@/server/web/app-url'
+import { ensureDefaultUserRole } from '@/server/authorization/ensure-default-user-role'
+import { logger } from '@/server/observability/logger'
 import type { AuthUser, AuthSession } from '@/shared/auth/session-types'
 import {
   COOKIE_REFRESH_WITHIN_MS,
@@ -451,7 +453,7 @@ export async function authenticateWithPassword(
     const user = toAuthUser(response.user)
 
     // Create session
-    await createSession({
+    await createSignedInSession({
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user,
@@ -568,7 +570,7 @@ export async function handleCallback(
     })
 
     // Create session
-    await createSession({
+    await createSignedInSession({
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user,
@@ -655,6 +657,18 @@ export async function resendVerificationEmail(
     const err = error as { message?: string }
     return { success: false, error: err.message || 'Failed to send verification email' }
   }
+}
+
+/**
+ * A fresh sign-in: saves the session and gives the person the baseline member role. Opening the app shell also does
+ * this, but a person who only uses the API (or a preview test login) never does, and automation runs enforce the role's
+ * capabilities (`models.use` and others). A failure here does not block sign-in: the shell retries on first load.
+ */
+export async function createSignedInSession(session: AuthSession): Promise<void> {
+  await createSession(session)
+  await ensureDefaultUserRole(session.user.id).catch((error: unknown) => {
+    logger.warn('[auth] could not ensure the default member role at sign-in', { error })
+  })
 }
 
 export async function createSession(session: AuthSession): Promise<void> {
