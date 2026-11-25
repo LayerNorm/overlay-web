@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { spendLimitsReached, spendSubjectsFor } from '../lib/spendLimitCharges'
 import { internalQuery } from '../_generated/server'
 import { workspaceExecutionAccess } from '../../src/shared/billing/execution-access'
 import { paidWorkspaceAccountFor } from './workspacePayer'
@@ -45,14 +46,11 @@ export const providerBudgetGate = internalQuery({
     })
     if (!access.canExecute) return { allowed: false, alreadyCharged }
     const programmatic = args.programmaticSubjectId?.trim()
-    const limit = await ctx.db.query('billingAccountSpendLimits')
-      .withIndex('by_account_subject', (q) => q
-        .eq('billingAccountId', paid.billingAccountId)
-        .eq('subjectKind', programmatic ? 'programmatic' : 'member')
-        .eq('subjectId', programmatic ?? args.userId))
-      .unique()
-    if (limit && (now < limit.periodStart || now >= limit.periodEnd
-      || limit.usedMicros + limit.reservedMicros >= limit.limitMicros)) {
+    if (await spendLimitsReached(ctx, {
+      billingAccountId: paid.billingAccountId,
+      subjects: spendSubjectsFor(args.userId, programmatic ? { kind: 'programmatic', id: programmatic } : undefined),
+      now,
+    })) {
       return { allowed: false, alreadyCharged }
     }
     return { allowed: true, alreadyCharged }

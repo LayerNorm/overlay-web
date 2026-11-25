@@ -21,7 +21,7 @@ to modes, scopes, moves, the Personal Chief, workspace contexts, or who may sear
 6. **Personal is optional.** It and its chief are created the first time someone switches to it.
 7. **Moves are one-way and deliberate.** Personal → Workspace only, by the person's own "Move to workspace", after a
    confirmation. Nothing moves back.
-8. **The workspace pays.** Personal mode spends the workspace's budget (per-person caps: `todos.md`).
+8. **The workspace pays.** Personal mode spends the workspace's budget. Owners and admins see each person's spend and can cap it (Workspace → Billing → Spend per person; `internal/develop/workspace-billing.md`).
 
 Settings stay grouped into Personal and Workspace sections regardless of mode. There is no guest role: everyone in a
 workspace is an owner, admin or member.
