@@ -3,8 +3,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { isSharedRoom } from '../../src/shared/agents/room-access'
 
 /**
- * The workspace automation this conversation is the thread of, if any (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md,
- * P6). An archived automation keeps the scope it was archived from, so its thread stays a workspace context.
+ * The workspace automation this conversation is the thread of, if any (internal/develop/workspace-and-personal.md). An archived automation keeps the scope it was archived from, so its thread stays a workspace context.
  */
 export async function workspaceAutomationForThread(
   ctx: MutationCtx | QueryCtx,

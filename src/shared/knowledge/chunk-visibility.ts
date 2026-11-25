@@ -9,7 +9,7 @@ export type ChunkVisibility = 'owner' | 'workspace'
  * because the result will be shown to everyone there.
  *
  * A file chunk without a visibility is private: files are their uploader's until they are in Workspace
- * (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P7). Memory and message chunks from before visibility existed
+ * (internal/develop/workspace-and-personal.md). Memory and message chunks from before visibility existed
  * keep the old rule (shared).
  */
 export function chunkVisibleToSearch(args: {

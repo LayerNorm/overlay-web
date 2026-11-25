@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Retire the finished Workspace and Personal plan: its rules and where each is enforced now live in the living doc `internal/develop/workspace-and-personal.md` (added to the AGENTS.md doc table), code comments point there, and the open guest question moved to `todos.md`.
 - Record the live preview test of Workspace and Personal P6 in the plan (workspace automation without its owner's private memory or personal-only tools).
 - Give people their baseline member role when they sign in (password, sign-in callback and the preview test login), not only when they first open the app. Automation runs enforce that role's capabilities, so someone who had only used the API, and every fresh PR preview driven by scripts, had every automation refused with `authorization_denied models.use`. Opening the app still does the same thing, and a failure at sign-in is logged without blocking it.
 - Record Workspace and Personal P6 and P7 as merged, deployed and backfilled in the plan (PR 621; 1,665 production file chunks marked private, none in Workspace yet).

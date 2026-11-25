@@ -12,7 +12,7 @@ import {
 } from '../collaboration/agents'
 
 /**
- * One-time moves for "The Personal Chief" (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P3). Both are
+ * One-time moves for "The Personal Chief" (internal/develop/workspace-and-personal.md). Both are
  * idempotent; run each with `dryRun: true` first (it only counts), then until `isDone`, passing `continueCursor` back.
  */
 

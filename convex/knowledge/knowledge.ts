@@ -225,7 +225,7 @@ export const purgeKnowledgeSource = internalMutation({
 })
 
 /**
- * Who a file's chunks are indexed under and who may find them (internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P7):
+ * Who a file's chunks are indexed under and who may find them (internal/develop/workspace-and-personal.md):
  * a live file in Workspace under its workspace (`workspaceFilesOwnerId`), searchable by every member; anything else under
  * its uploader, private. A missing or deleted file is private to no one in particular: its chunks are left as they are.
  */
@@ -644,7 +644,7 @@ export const backfillMemoryVisibilityByServer = mutation({
 })
 
 /**
- * Who should keep an agent-owned memory under "memories follow the place" (WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1),
+ * Who should keep an agent-owned memory under "memories follow the place" (internal/develop/workspace-and-personal.md),
  * or null to keep it as the agent's workspace knowledge: a personal chief's go to its owner, a creator-only agent's
  * to its creator, and a workspace agent's to the one person in the 1:1 chat it was learned in.
  */
