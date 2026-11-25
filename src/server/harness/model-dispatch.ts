@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { HARNESS_MEMBER_SPEND_LIMIT_MESSAGE } from './harness-diagnostics'
 import { createHash } from 'node:crypto'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
@@ -92,7 +93,7 @@ async function assertWorkspaceBudgetNotLow(input: HarnessModelDispatch, refreshe
     userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
     programmaticSubjectId: refreshed.billingProgrammaticSubjectId ?? input.billingProgrammaticSubjectId,
   })
-  if (capped) throw new FatalError(capped)
+  if (capped) throw new FatalError(HARNESS_MEMBER_SPEND_LIMIT_MESSAGE)
   const totals = getBudgetTotals(refreshed.entitlements)
   if (!workspaceBudgetLow(totals)) return
   const topUp = await ensurePayerBudgetAvailable({

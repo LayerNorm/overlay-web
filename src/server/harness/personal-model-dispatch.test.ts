@@ -63,9 +63,11 @@ test('an admin’s cap on the person stops the call before binding, whatever the
   mocks.refresh.mockResolvedValue({ entitlements: funded })
   mocks.spendLimit.mockResolvedValue('Your spending limit in this workspace is used up. Ask a workspace admin to raise it.')
   const error = await authorizePersonalHarnessModelDispatch(reference, options).catch((caught: unknown) => caught)
-  expect(error).toMatchObject({ name: 'FatalError', message: expect.stringContaining('spending limit') })
+  expect(error).toMatchObject({ name: 'FatalError', message: 'An admin spend limit for this person or program is used up.' })
   expect(mocks.spendLimit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', workspaceId: 'workspace' }))
   expect(mocks.apply).not.toHaveBeenCalled()
+  // The person is told their cap is reached, not that something broke.
+  expect(harnessDiagnosticForFailure('run', state as never, error, 'model')).toMatchObject({ code: 'MEMBER_SPEND_LIMIT', stage: 'model' })
 })
 
 test('a successful auto top-up lets the call proceed', async () => {
