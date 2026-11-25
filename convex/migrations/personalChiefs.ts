@@ -107,3 +107,36 @@ export const renamePersonalChiefsByServer = mutation({
     }
   },
 })
+
+/**
+ * Takes personal chiefs and creator-only agents out of channels they were added to when the channel was created
+ * (`createChannel` used to add every active agent). They stay in their own threads and in DMs.
+ */
+export const removePersonalAgentsFromChannelsByServer = mutation({
+  args: pageArgs,
+  handler: async (ctx, { serverSecret, dryRun, cursor, numItems }) => {
+    requireServerSecret(serverSecret)
+    const page = await ctx.db.query('workspaceAgentDefinitions')
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 100 })
+    const now = Date.now()
+    let agents = 0
+    let removed = 0
+    for (const row of page.page) {
+      if (row.deletedAt || (row.agentRole !== 'personal_chief' && row.visibility !== 'creator')) continue
+      const participants = await ctx.db.query('conversationParticipants')
+        .withIndex('by_workspaceId_principalId_status', (q) =>
+          q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active')).collect()
+      const conversations = await Promise.all(participants.map((participant) => ctx.db.get(participant.conversationId)))
+      const inChannels = participants.filter((_, i) => conversations[i]?.conversationType === 'channel')
+      if (inChannels.length === 0) continue
+      agents++
+      removed += inChannels.length
+      if (dryRun) continue
+      await Promise.all(inChannels.map((participant) => ctx.db.patch(participant._id, { status: 'removed', removedAt: now, updatedAt: now })))
+    }
+    return {
+      scanned: page.page.length, agents, removed,
+      isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})

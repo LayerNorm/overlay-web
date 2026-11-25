@@ -9,6 +9,7 @@ const now = 1_900_000_000_000
 const ensureChiefs = makeFunctionReference<'mutation'>('collaboration/agents:ensureChiefsByServer')
 const retire = makeFunctionReference<'mutation'>('migrations/personalChiefs:retireSharedPersonalChiefsByServer')
 const rename = makeFunctionReference<'mutation'>('migrations/personalChiefs:renamePersonalChiefsByServer')
+const leaveChannels = makeFunctionReference<'mutation'>('migrations/personalChiefs:removePersonalAgentsFromChannelsByServer')
 const unarchive = makeFunctionReference<'mutation'>('collaboration/agents:unarchiveByServer')
 const view = makeFunctionReference<'query'>('collaboration/management:view')
 
@@ -134,4 +135,30 @@ test('retires the shared copy, renames old names everywhere, keeps chosen names,
     const agents = await t.withIdentity({ subject }).query(view, { workspaceId: 'ws', view: 'chats-agents' }) as { items: Array<{ name: string }> }
     expect(agents.items.map((item) => item.name)).toEqual(['Overlay'])
   }
+})
+
+test('takes private personal chiefs out of channels and leaves their own threads alone', async () => {
+  const { t, channelId } = await fixture()
+  const bobChief = await t.run(async (ctx) => (await ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', 'bob')).collect())
+    .find((row) => row.agentRole === 'personal_chief' && row.chiefScope === 'personal'))
+  // As the old createChannel did: Bob's private chief joined #general.
+  await t.run(async (ctx) => {
+    await ctx.db.insert('conversationParticipants', {
+      conversationId: channelId, workspaceId: 'ws', principalId: bobChief!.principalId, principalType: 'agent',
+      role: 'member', status: 'active', notificationLevel: 'mentions', joinedAt: now, updatedAt: now,
+    })
+  })
+  type Left = { agents: number; removed: number; isDone: boolean }
+  // Production order: retire the shared copies first, then clear channels of the rest.
+  await t.mutation(retire, { serverSecret: secret, dryRun: false } as never)
+  const dry = await t.mutation(leaveChannels, { serverSecret: secret, dryRun: true } as never) as Left
+  expect(dry).toMatchObject({ agents: 1, removed: 1, isDone: true })
+  const status = () => t.run(async (ctx) => (await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', channelId).eq('principalId', bobChief!.principalId)).unique())?.status)
+  expect(await status()).toBe('active')
+  await t.mutation(leaveChannels, { serverSecret: secret, dryRun: false } as never)
+  expect(await status()).toBe('removed')
+  const again = await t.mutation(leaveChannels, { serverSecret: secret, dryRun: false } as never) as Left
+  expect(again).toMatchObject({ agents: 0, removed: 0 })
 })

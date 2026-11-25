@@ -152,6 +152,36 @@ describe('chief identity provisioning', () => {
       .rejects.toThrow('WORKSPACE_AGENT_EDIT_FORBIDDEN')
   })
 
+  test('a new public channel never adds personal chiefs or creator-only agents', async () => {
+    const convex = testBackend()
+    await seedWorkspace(convex, {
+      workspaceId: 'chief-channel',
+      kind: 'organization',
+      members: [{ userId: 'owner', principalId: 'principal-owner', role: 'owner' }, { userId: 'member', principalId: 'principal-member' }],
+      defaultAgent: { agentId: 'shared-agent', name: 'Shared agent' },
+    })
+    await ensure(convex, 'chief-channel', 'owner', 'principal-owner')
+    await ensure(convex, 'chief-channel', 'member', 'principal-member')
+    await convex.run(async (ctx) => {
+      const shared = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', (q) => q.eq('agentId', 'shared-agent')).unique()
+      await ctx.db.insert('workspacePrincipals', { principalId: 'principal-private-agent', workspaceId: 'chief-channel', type: 'agent', agentId: 'private-agent', displayName: 'Private agent', createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: 'membership-private-agent', workspaceId: 'chief-channel', principalId: 'principal-private-agent', role: 'member', status: 'active', joinedAt: now, updatedAt: now })
+      const { _id: _ignored, _creationTime: _time, ...rest } = shared!
+      await ctx.db.insert('workspaceAgentDefinitions', { ...rest, agentId: 'private-agent', principalId: 'principal-private-agent', name: 'Private agent', visibility: 'creator' })
+    })
+    const { conversationId } = await convex.mutation(makeFunctionReference<'mutation'>('collaboration/channels:createChannel'), {
+      serverSecret: secret, workspaceId: 'chief-channel', actorUserId: 'owner', name: 'launch', visibility: 'public',
+    } as never) as { conversationId: string }
+    const joined = await convex.run(async (ctx) => (await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', conversationId as never)).collect())
+      .map((row) => row.principalId))
+    const chiefs = (await list(convex, 'chief-channel')).filter((agent) => agent.agentRole === 'personal_chief')
+    expect(chiefs).toHaveLength(2)
+    expect(joined).toEqual(expect.arrayContaining(['principal-owner', 'principal-member', 'principal-shared-agent']))
+    expect(joined).not.toContain('principal-private-agent')
+    for (const chief of chiefs) expect(joined).not.toContain((chief as { principalId?: string }).principalId)
+  })
+
   test('without includePersonal only the workspace chief is ensured', async () => {
     const convex = testBackend()
     await seedWorkspace(convex, {
