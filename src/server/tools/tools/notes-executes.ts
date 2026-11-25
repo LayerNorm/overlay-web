@@ -1,5 +1,5 @@
 import 'server-only'
-import { roomListScope } from './room-scope'
+import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
 
 import {
   appendToNote,
@@ -58,7 +58,17 @@ async function fetchNote(options: OverlayToolsOptions, noteId: string): Promise<
     options.workspaceId,
   )
   if (!res.ok) return { success: false, error: await errorMessage(res, 'Note not found') }
-  return await res.json() as NoteDoc
+  const note = await res.json() as NoteDoc
+  // Every read and edit by id goes through here: a workspace context reaches only Workspace notes.
+  if (refusesRoomItem(options, note)) return { success: false, error: ROOM_PERSONAL_ITEM_ERROR }
+  return note
+}
+
+/** update_note and delete_note write without reading first; in a workspace context, check the note's scope. */
+async function roomNoteRefusal(options: OverlayToolsOptions, noteId: string): Promise<ToolFailure | null> {
+  if (!options.sharedRoom) return null
+  const note = await fetchNote(options, noteId)
+  return 'success' in note ? note : null
 }
 
 type WriteResult =
@@ -188,6 +198,7 @@ export async function executeListNotes(
           title: note.title || 'Untitled',
           tags: note.tags ?? [],
           updatedAt: note.updatedAt,
+          scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
         })),
       ...(truncated || notes.length > LIST_NOTES_LIMIT ? { truncated: true } : {}),
     }
@@ -208,6 +219,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
         title: note.title || 'Untitled',
         content: note.content,
         tags: note.tags ?? [],
+        scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
         revision: revisionOf(note),
         outline: noteOutline(note.content),
         updatedAt: note.updatedAt,
@@ -220,7 +232,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
 
 export async function executeCreateNote(
   options: OverlayToolsOptions,
-  input: { title?: string; content: string; tags?: string[] },
+  input: { title?: string; content: string; tags?: string[]; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const title = input.title?.trim() || 'Untitled'
@@ -231,6 +243,7 @@ export async function executeCreateNote(
         title,
         byAgent: true,
         content: input.content,
+        scope: roomCreateScope(options, input.scope),
         ...(input.tags ? { tags: input.tags } : {}),
         ...(options.conversationId ? { conversationId: options.conversationId } : {}),
         ...toolAuthBody(options),
@@ -265,6 +278,8 @@ export async function executeUpdateNote(
     if (input.expectedRevision && !Number.isFinite(expectedUpdatedAt)) {
       return { success: false, error: 'expectedRevision must be the revision returned by get_note.' }
     }
+    const refused = await roomNoteRefusal(options, input.noteId)
+    if (refused) return refused
     const written = await writeNote(options, {
       noteId: input.noteId.trim(),
       ...(input.title !== undefined ? { title: input.title } : {}),
@@ -330,6 +345,8 @@ export async function executeEditNote(
 
 export async function executeDeleteNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
+    const refused = await roomNoteRefusal(options, input.noteId)
+    if (refused) return refused
     const params = new URLSearchParams({ noteId: input.noteId.trim() })
     const res = await callInternalApi(
       `${NOTES_PATH}?${params}`,

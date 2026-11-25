@@ -14,7 +14,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { assignmentResult?: AssignmentResultView; assignmentReadError?: Error; agents?: WorkspaceAgentDirectoryItem[]; directoryResponses?: WorkspaceAgentDirectoryItem[][]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]>; startAgentId?: string } = {}) {
+function setup(options: { assignmentResult?: AssignmentResultView; assignmentReadError?: Error; agents?: WorkspaceAgentDirectoryItem[]; directoryResponses?: WorkspaceAgentDirectoryItem[][]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]>; startAgentId?: string; roomShared?: boolean } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -35,6 +35,7 @@ function setup(options: { assignmentResult?: AssignmentResultView; assignmentRea
   let directoryReads = 0
   let clock = 0
   const service = new AgentAskService({
+    roomIsShared: async () => options.roomShared ?? false,
     getCallerRun: async (args) => { callerLookups.push(args); return (options.callerRun ?? null) as never },
     directory: async () => options.directoryResponses?.[directoryReads++] ?? agents,
     collaboration: {
@@ -203,6 +204,17 @@ test('an agent asks another by name; the question is posted by the asking agent 
   assert.deepEqual(lineage, { rootTurnId: 'human-turn-1', hop: 1, chain: ['scout', 'planner'], askedByAgentId: 'scout', askedByName: 'Scout', parentConversationId: 'c1' })
   assert.deepEqual(started[0]!.mentionedPrincipalIds, ['p-planner'])
   assert.equal(started[0]!.initiatorPrincipalId, 'human-1', 'the asked agent acts for the person, not for the asking agent')
+})
+
+test('from a shared room or workspace automation, a person’s private agents and Personal Chief cannot be asked', async () => {
+  for (const extra of [{ visibility: 'creator' as const }, { agentRole: 'personal_chief' as const }]) {
+    const agents = [agent('scout', 'Scout'), agent('planner', 'Planner', extra as never), agent('writer', 'Writer')]
+    const refused = await setup({ agents, roomShared: true }).ask().catch((error: unknown) => error)
+    assert.ok(refused instanceof AgentAskError)
+    assert.equal(refused.code, 'ask_private_agent')
+    assert.equal((await setup({ agents, roomShared: false }).ask()).status, 'completed', 'a personal chat may still ask them')
+  }
+  assert.equal((await setup({ roomShared: true }).ask()).status, 'completed', 'workspace agents can be asked from a shared room')
 })
 
 test('the same question asked twice is the same message', async () => {

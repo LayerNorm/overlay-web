@@ -406,6 +406,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.string().optional(),
         graphSource: z.string().optional(),
         sourceConversationId: z.string().optional(),
+        scope: z.enum(['personal', 'workspace']).optional().describe('Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('create_automation')
@@ -661,6 +662,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         folderId: z.string().optional().describe('Folder to create the file in'),
         content: z.string().describe('The full text of the file'),
         expectedRevision: z.string().optional(),
+        scope: z.enum(['personal', 'workspace']).optional().describe('When creating: Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('write_file')
@@ -675,6 +677,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         name: z.string(),
         parentId: z.string().optional().describe('Parent folder id; omit for the top level'),
+        scope: z.enum(['personal', 'workspace']).optional().describe('Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('create_folder')
@@ -1174,6 +1177,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         title: z.string().trim().min(1).describe('Note title'),
         content: z.string().describe('Markdown body'),
         tags: z.array(z.string()).optional(),
+        scope: z.enum(['personal', 'workspace']).optional().describe('Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('create_note')

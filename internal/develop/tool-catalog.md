@@ -118,9 +118,23 @@ read the room it treats it as shared); agentless automation runs re-read the aut
 - **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.
 - **MCP servers**: only the ones shared with the workspace.
 
-Not covered: reading a specific item by id (`read_file`, `get_note`, `get_task`), the write tools (which default to the person's personal
-items), computer tools, and agents asking agents. Naming an item in the message is how a person includes it on
-purpose, but there is no per-message opt-in yet.
+- **By id** (`read_file`, `write_file`/`move_file` on an existing file, `get_note` and every note edit, `delete_note`,
+  `get_task`, `update_task`, `comment_on_task`, `update_automation`, `pause_automation`, `delete_automation`): only
+  Workspace items; a Personal one is refused with a message the model can relay (`refusesRoomItem`).
+- **Creates** (`write_file`, `create_folder`, `create_note`, `create_task`, `create_automation`): always Workspace
+  (`roomCreateScope`). Elsewhere they take an optional `scope`, Personal by default. `save_skill` saves nothing: an
+  unreviewed agent-written skill would steer every agent.
+- **Computers**: only the agent's own cloud computer, never a person's Mac or personal cloud computer, and no fallback
+  to a Mac (`computerInstanceFor`); the Local computer tools are not added.
+- **Asking agents**: a person's creator-only agents and their Personal Chief can't be asked (`ask_private_agent`),
+  decided on the server from the asking conversation. An asked workspace agent's run inherits the restriction through
+  its assignment.
+
+Every search hit (`search_knowledge`, `search_memory`, `search_messages`) and every file, note and task in a list or
+read carries `scope: personal | workspace`, so the model can say whether something is private or shared.
+
+Not covered: a per-message opt-in to include a Personal item on purpose, and generated images and videos, which are
+always saved to the person's Personal outputs.
 
 ## Who gets what
 
