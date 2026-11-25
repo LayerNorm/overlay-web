@@ -1,6 +1,6 @@
 # Monid as native tools
 
-Status: Built and unit-tested on `codex/monid-native-tools`. Not merged, not deployed. Live runs against Monid and preview QA wait on a Monid key and a funded wallet.
+Status: Built, unit-tested and accepted on the PR 630 preview with a real Monid key. Not merged, not deployed; Production needs `MONID_API_KEY`.
 
 How it works now lives in the living doc `internal/develop/monid.md`. This plan tracks what is left.
 
@@ -22,13 +22,13 @@ People can ask Overlay for things that need a paid API (finding leads, enriching
 | --- | --- | --- |
 | 0. Verify | API shapes checked against Monid's OpenAPI spec and public catalog (`input` uses `{ body, queryParams, pathParams }`; ~4% of endpoints are not read-only). Live run with a key, timeouts and file expiry not yet checked. Reseller and data-licensing terms not yet confirmed in writing. | Partly done |
 | 1. Client | `src/server/integrations/monid/client.ts` with typed errors, one short 429 retry, idempotency keys, side-effect catalog paging. | Built, unit-tested |
-| 2. Tools and billing | Three tools, budget check, `maxCost` from remaining budget, charge of `reportedCost` per run id, polling with stop on timeout or cancel, files saved to Files, large output saved whole. | Built, unit-tested |
+| 2. Tools and billing | Four tools (`save_api_file` added after QA), budget check, `maxCost` from remaining budget, charge of the run's reported cost per run id, polling with stop on timeout or cancel, files saved to Files, large output saved whole. | Built, unit-tested |
 | 3. Access | Tool group, paid-plan and key gating, personal exposure, MCP Everything level, run modes, chat rows and file cards, instructions, self-verticalize skill. | Built, unit-tested |
 | 4. Operations | Error logs for account problems; auto top-up must be turned on in the Monid dashboard. | Built; dashboard setting pending |
-| 5. QA and launch | Preview QA with the Preview key: side-effect endpoint refused, lead search with a provider error the agent corrected, 3D generation. QA found two bugs, both fixed with tests: asynchronous runs were not charged (`GET /v1/runs` reports `cost`, not `billing.reportedCost`), and linked files (Meshy `model_urls`) were not saved, now handled by `save_api_file`. Re-test of both, plus large output, in progress. | In progress |
+| 5. QA and launch | Preview QA with the Preview key: side-effect endpoint refused, lead search with a provider error the agent corrected, 3D generation. QA found two bugs, both fixed with tests: asynchronous runs were not charged (`GET /v1/runs` reports `cost`, not `billing.reportedCost`), and linked files (Meshy `model_urls`) were not saved, now handled by `save_api_file`. Re-test passed: a Meshy run charged exactly $0.1875 ($0.15 with the 25% fee) once, and the model was saved to Files as a 2.3 MB `.glb`. Large output saved whole was not reached live (Monid's Hacker News providers time out above 100 items, unbilled); it is unit-tested. | Done on preview |
 
 ## Remaining
 
-1. Create the Monid account, fund the wallet, turn on auto top-up, create a key, and add it as `MONID_API_KEY` to Vercel Preview and Production (or WorkOS Vault).
-2. Preview QA as in phase 5, then merge and verify in production.
+1. Add `MONID_API_KEY` to Vercel Production (or WorkOS Vault) and turn on auto top-up in the Monid dashboard.
+2. Merge, then verify a run in production.
 3. Confirm Monid's reseller and data-licensing terms.
