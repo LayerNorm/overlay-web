@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import vm from 'node:vm'
 import test from 'node:test'
@@ -85,21 +85,17 @@ test('new PR revisions cancel obsolete checks without canceling main releases or
   assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
 })
 
-test('main and merge-queue work cannot be overtaken by a new dependency PR', () => {
-  for (const name of ['security', 'docs', 'codeql', 'semgrep', 'admin']) {
-    for (const [id, job] of Object.entries(workflow(name).jobs)) {
+test('Linux jobs run on pinned GitHub-hosted runners, never a third-party runner pool', () => {
+  const files = readdirSync(new URL('../../.github/workflows/', import.meta.url)).filter(name => name.endsWith('.yml'))
+  assert.ok(files.length > 0)
+  for (const file of files) {
+    for (const [id, job] of Object.entries(workflow(file.replace(/\.yml$/, '')).jobs)) {
       if (!job['runs-on']) continue
-      const labels = Array.isArray(job['runs-on']) ? job['runs-on'] : [job['runs-on']]
-      const expression = labels.find(label => label.includes('job.priority='))
-        ?.match(/job\.priority=\$\{\{ (.+) \}\}/)?.[1]
-      assert.ok(expression, `${name}/${id} needs an event-aware priority`)
-      const priority = (ref, event_name, actor) => vm.runInNewContext(expression, { github: { ref, event_name, actor } })
-      const main = priority('refs/heads/main', 'push', 'DevelopedByDev')
-      assert.equal(priority('refs/heads/gh-readonly-queue/main', 'merge_group', 'github-merge-queue[bot]'), main)
-      const pull = priority('refs/pull/123/merge', 'pull_request', 'Contributor')
-      const bot = priority('refs/pull/124/merge', 'pull_request', 'dependabot[bot]')
-      assert.ok(main < pull && pull < bot && bot < 10, `${name}/${id}: ${main}, ${pull}, ${bot}`)
-      assert.equal(main, name === 'security' && id === 'build' ? 1 : 2)
+      if (job['runs-on'] === '${{ matrix.os }}') {
+        for (const os of job.strategy.matrix.os) assert.match(os, /^(ubuntu|macos|windows)-[\d.]+$/, `${file}/${id}`)
+        continue
+      }
+      assert.equal(job['runs-on'], 'ubuntu-24.04', `${file}/${id}`)
     }
   }
 })
@@ -260,21 +256,29 @@ test('parallel lanes preserve complete test discovery, runtime-specific contract
 
 test('dependency caches require exact install inputs and misses retain locked script-free installation', () => {
   const action = parse(readFileSync(new URL('../../.github/actions/ci-dependencies/action.yml', import.meta.url), 'utf8'))
-  assert.equal(action.inputs['local-volume-experiment'].default, 'false')
   const cache = action.runs.steps.find(step => step.id === 'dependencies')
+  assert.match(cache.uses, /^actions\/cache\/restore@[0-9a-f]{40}$/)
   assert.equal(cache.with['restore-keys'], undefined)
-  assert.equal(cache.if, "inputs.local-volume-experiment != 'true'")
   for (const input of ['runner.os', 'runner.arch', 'steps.node.outputs.node-version', 'package-lock.json', 'package.json', '.npmrc']) assert.ok(cache.with.key.includes(input), input)
   const install = action.runs.steps.find(step => step.name === 'Install from lockfile')
-  assert.equal(install.if, "inputs.local-volume-experiment != 'true' && steps.dependencies.outputs.cache-hit != 'true'")
+  assert.equal(install.if, "steps.dependencies.outputs.cache-hit != 'true'")
   assert.equal(install.run, 'npm ci --ignore-scripts --no-audit --no-fund')
-  for (const name of ['Mount local dependency cache', 'Restore or install exact dependencies']) assert.equal(action.runs.steps.find(step => step.name === name).if, "inputs.local-volume-experiment == 'true'")
+  const save = action.runs.steps.find(step => step.name === 'Save installed dependencies')
+  assert.equal(save.with.key, '${{ steps.dependencies.outputs.cache-primary-key }}', 'save exactly the tree that was installed')
+  assert.match(save.if, /merge_group/, 'merge-queue saves would only evict main')
+  assert.equal(action.runs.steps.find(step => step.name === 'Set up Node.js').with['node-version'], '${{ steps.pinned.outputs.version }}')
   const { jobs } = workflow('security')
   for (const name of ['static', 'typecheck', 'build', 'tests']) {
     assert.ok(jobs[name].steps.some(step => step.uses === './.github/actions/ci-dependencies'))
   }
   const buildCache = jobs.build.steps.find(step => step.name === 'Restore Next.js compiler cache')
   assert.equal(buildCache.with.path, '.next/cache', 'cache compiler state, never deploy artifacts or env files')
+  const buildSave = jobs.build.steps.find(step => step.name === 'Save Next.js compiler cache')
+  assert.equal(buildSave.with.path, '.next/cache')
+  assert.equal(buildSave.if, "github.event_name == 'push' && github.ref == 'refs/heads/main'", 'only main seeds the shared compiler cache')
+  for (const name of ['secret-scan', 'public-env-guard']) {
+    assert.equal(jobs[name].steps[0].with['sparse-checkout'], undefined, `${name} scans the full tree`)
+  }
   const lint = jobs.static.steps.find(step => step.name === 'Lint')
   assert.match(lint.run, /--cache-strategy content/)
 })

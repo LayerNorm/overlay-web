@@ -1,6 +1,6 @@
 # CI speed plan
 
-Status: phases 0, 3 and 5 (repo-only) in review; other phases not started.
+Status: phases 0, 1, 3 and 5 in review (PR 628); other phases not started.
 
 Goal: faster PR feedback from `Security Checks` without checking less. The merge
 queue keeps running the full suite; no retries, wider timeouts or skipped tests;
@@ -100,16 +100,34 @@ privacy, migration or concurrency tests.
 | 0 Audit script | In review: `scripts/ci/ci-timing-audit.mjs` |
 | 3 Sparse checkout | In review: lint, typecheck, compilation and tests skip `internal/plans/**/*.html` |
 | 5 Cache seeding | In review: exact Node pins, no merge-queue dependency saves, main-only `.next/cache` saves, hit/miss notices. ESLint cache unchanged (it is ~0 MB) |
-| 1, 2, 4, 6–10 | Not started |
+| 1 Waiting | In review: all jobs moved from Namespace to GitHub's free `ubuntu-24.04` runners (decision below) |
+| 2, 4, 6–10 | Not started |
 
 Untested until merged: whether main reseeds caches as expected and the PR hit
 rate after the 10 GB cache stops thrashing. Measure after a day of main pushes.
 
+## Phase 1 decision: back to GitHub-hosted runners (2026-11-25)
+
+The Namespace trial capped Linux concurrency at 32 vCPU (the account sat at the
+cap most of the week; one PR needs ~50 vCPU) and was ending. Options compared at
+our ~276k vCPU-minutes/month:
+
+| Option | Concurrency | Measured or expected PR p50 / p95 | Monthly cost |
+| --- | --- | --- | --- |
+| GitHub, Free org (Oct 24–27 runs, before the Namespace move) | 20 jobs, 4 vCPU each | 5.6 / 6.4 min | $0 (public repo) |
+| GitHub, Team plan | 60 jobs | ~4.5–5 / ~5.5 min expected | ~$4 (1 seat) |
+| Namespace Business | 160 vCPU, 8 vCPU jobs | ~3–3.5 min expected | ~$290 |
+| Depot Startup | unlimited | similar to Namespace Business | ~$740–910 |
+
+Chosen: GitHub, ideally on the Team plan. Jobs run about twice as long on 4 vCPU,
+so compilation (~4–5 min) is now the critical path; phase 6 should measure a paid
+larger runner for that one job. Phase 4 (custom runner image) needs GitHub
+larger runners, so it waits on the same measurement.
+
 ## Owner list (accounts, secrets, bill)
 
-1. Namespace: confirm concurrency/vCPU limit and whether warm capacity exists;
-   approve the higher tier if that is the cause. Cost: unknown until checked.
-2. Namespace custom base image for CI profiles.
+1. GitHub Team plan for LayerNorm ($4/seat/month) to raise concurrency from 20 to 60 jobs.
+2. Let the Namespace trial lapse once main runs on GitHub; nothing references it after PR 628.
 3. Branch protection: replace the three small-check contexts with the folded one.
 4. Larger compilation profile (16 vCPU) if phase 6 shows it pays.
 5. Bundler decision if Turbopack is faster for both CI and Vercel.

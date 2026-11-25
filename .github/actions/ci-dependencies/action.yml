@@ -1,12 +1,9 @@
 name: CI dependencies
-description: Restore an exact dependency tree; Namespace volumes are an opt-in transport experiment.
+description: Restore an exact installed dependency tree from the Actions cache, or install it from the lockfile.
 inputs:
   node-version:
     description: Node.js major version
     required: true
-  local-volume-experiment:
-    description: Opt in only when measuring Namespace generation reuse against the default cache.
-    default: 'false'
 runs:
   using: composite
   steps:
@@ -30,17 +27,10 @@ runs:
       with:
         node-version: ${{ steps.pinned.outputs.version }}
         package-manager-cache: false
-    - name: Mount local dependency cache
-      if: inputs.local-volume-experiment == 'true'
-      uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1
-      with:
-        cache: npm
-        path: ~/.cache/overlay-ci-dependencies
     - name: Pin npm
       shell: bash
       run: npm install -g npm@11.11.0 --no-audit --no-fund
     - name: Restore installed dependencies
-      if: inputs.local-volume-experiment != 'true'
       id: dependencies
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
@@ -50,12 +40,12 @@ runs:
           apps/*/node_modules
         key: ci-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ steps.node.outputs.node-version }}-npm11.11.0-${{ hashFiles('package-lock.json', 'package.json', 'packages/*/package.json', 'apps/*/package.json', '.npmrc', '.github/actions/ci-dependencies/action.yml') }}
     - name: Install from lockfile
-      if: inputs.local-volume-experiment != 'true' && steps.dependencies.outputs.cache-hit != 'true'
+      if: steps.dependencies.outputs.cache-hit != 'true'
       shell: bash
       run: npm ci --ignore-scripts --no-audit --no-fund
     # Merge-queue refs are deleted after merging, so their saves only evict main's.
     - name: Save installed dependencies
-      if: inputs.local-volume-experiment != 'true' && steps.dependencies.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
+      if: steps.dependencies.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: |
@@ -64,10 +54,5 @@ runs:
           apps/*/node_modules
         key: ${{ steps.dependencies.outputs.cache-primary-key }}
     - name: Report dependency cache result
-      if: inputs.local-volume-experiment != 'true'
       shell: bash
       run: echo "::notice title=CI dependency cache::${{ steps.dependencies.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
-    - name: Restore or install exact dependencies
-      if: inputs.local-volume-experiment == 'true'
-      shell: bash
-      run: node scripts/ci/dependency-cache.mjs
