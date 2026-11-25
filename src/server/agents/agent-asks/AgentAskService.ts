@@ -144,6 +144,19 @@ export class AgentAskService {
     roomIsShared?: (args: { actorUserId: string; workspaceId: string; conversationId: string }) => Promise<boolean>
   }) {}
 
+  /**
+   * A person's private agents and their Personal Chief work for them alone: a workspace context may not ask them, since
+   * their answer (and what they can reach) would land where others can read it.
+   */
+  private async refusePrivateTargetFromWorkspace(
+    args: { actorUserId: string; workspaceId: string; sharedRoom?: boolean; caller?: Caller; roomConversationId?: string },
+    target: WorkspaceAgentDirectoryItem,
+  ) {
+    if (target.visibility !== 'creator' && target.agentRole !== 'personal_chief') return
+    if (!await this.asksFromWorkspaceContext(args)) return
+    throw new AgentAskError(`${target.name} is a private agent. From a room others can read, or a workspace automation, only workspace agents can be asked.`, 403, 'ask_private_agent')
+  }
+
   /** Decided on the server from the asking conversation, never from the request. */
   private async asksFromWorkspaceContext(args: { actorUserId: string; workspaceId: string; sharedRoom?: boolean; caller?: Caller; roomConversationId?: string }) {
     if (args.sharedRoom) return true
@@ -190,11 +203,7 @@ export class AgentAskService {
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
     if (!target) throw new AgentAskError(`No agent called "${args.target.trim()}" that you can ask. Use list_agents to see who is available.`, 404, 'agent_not_found')
-    // A person's private agents and their Personal Chief work for them alone: a workspace context may not ask them,
-    // since their answer (and what they can reach) would land where others can read it.
-    if ((target.visibility === 'creator' || target.agentRole === 'personal_chief') && await this.asksFromWorkspaceContext(args)) {
-      throw new AgentAskError(`${target.name} is a private agent. From a room others can read, or a workspace automation, only workspace agents can be asked.`, 403, 'ask_private_agent')
-    }
+    await this.refusePrivateTargetFromWorkspace(args, target)
     assertAssignmentContext(args, target)
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 
