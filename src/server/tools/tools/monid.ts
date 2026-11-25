@@ -4,7 +4,7 @@ import {
   MONID_TERMINAL_STATUSES,
   MonidApiError,
   monidEndpointKey,
-  reportedCostUsd,
+  runCostUsd,
   type MonidClient,
   type MonidEndpointCard,
   type MonidInspectResult,
@@ -18,9 +18,12 @@ import {
   MAX_INLINE_OUTPUT_CHARS,
   artifactFileName,
   describePrice,
+  fileLinksIn,
+  stringValuesIn,
   fileUrl,
   previewOutput,
   replaceArtifacts,
+  withExtension,
   type SavedApiFile,
 } from './monid-output'
 import type { OverlayToolsOptions, ToolBillingContext } from './types'
@@ -31,7 +34,7 @@ import type { OverlayToolsOptions, ToolBillingContext } from './types'
  * Monid's reported cost plus Overlay's usage markup after it ends (workspace budget only, no reservation).
  */
 
-export const MONID_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api'] as const
+export const MONID_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api', 'save_api_file'] as const
 
 /** How long run_api waits for an asynchronous run before stopping it. */
 const RUN_WAIT_MS = 10 * 60_000
@@ -190,7 +193,7 @@ export async function executeRunApi(
       endpoint: input.endpoint,
       input: input.input,
       maxCost,
-      tag: (context.workspaceId ?? context.userId).slice(0, 128),
+      tag: runTag(context),
       idempotencyKey,
     }, deps)
   } catch (error) {
@@ -229,6 +232,54 @@ export async function executeRunApi(
   return await settle(context, billing, run, modelId, deps)
 }
 
+// ── save_api_file ────────────────────────────────────────────────────────────
+
+/**
+ * Saves a file a run linked to (for example Meshy's `model_urls.glb`) into Files. Only a run started for this workspace,
+ * and only a link that appears in that run's output: Overlay's Monid account is shared, so a run id alone proves nothing.
+ */
+export async function executeSaveApiFile(
+  context: ToolContext,
+  input: { runId: string; url: string; name?: string },
+  deps: MonidToolDeps = defaultMonidToolDeps(),
+) {
+  const client = await deps.client()
+  if (!client) return unavailable()
+  let run: MonidRun
+  try {
+    run = await client.getRun(input.runId)
+  } catch (error) {
+    return monidFailure(error, 'save_api_file')
+  }
+  if (run.tag !== runTag(context)) return failure('not_found', 'No such run in this workspace.')
+  if (!/^https:\/\//i.test(input.url) || !stringValuesIn(run.output).has(input.url)) {
+    return failure('not_in_output', 'That link is not in the run\'s output. Pass a URL exactly as run_api returned it.')
+  }
+  try {
+    const downloaded = await deps.download(input.url)
+    const mimeType = (downloaded.mimeType || 'application/octet-stream').split(';')[0]!.trim()
+    const fallback = `${run.provider}${run.endpoint}`.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'api-file'
+    const derived = artifactFileName(input.url, mimeType, fallback)
+    const name = input.name?.trim() ? withExtension(input.name.trim(), derived) : derived
+    const fileId = await deps.saveBytes({
+      userId: context.userId,
+      workspaceId: context.workspaceId,
+      scope: context.sharedRoom ? 'workspace' : 'personal',
+      byAgent: Boolean(context.agentId),
+      bytes: downloaded.bytes,
+      name,
+      mimeType,
+    })
+    return { success: true as const, fileId, url: fileUrl(fileId), name, mimeType, sizeBytes: downloaded.bytes.byteLength }
+  } catch (error) {
+    return failure('save_failed', `The file could not be saved: ${errorMessage(error)}`)
+  }
+}
+
+function runTag(context: ToolContext): string {
+  return (context.workspaceId ?? context.userId).slice(0, 128)
+}
+
 async function startRun(
   client: MonidClient,
   args: Parameters<MonidClient['run']>[0],
@@ -263,11 +314,11 @@ async function settle(
   modelId: string,
   deps: MonidToolDeps,
 ) {
-  const costUsd = reportedCostUsd(run.billing?.reportedCost)
+  const costUsd = runCostUsd(run)
   let chargedUsd = 0
   if (costUsd === null && run.status === 'COMPLETED') {
     // A finished run must say what it cost; charging nothing would be silent under-billing.
-    logger.error('[monid] completed run has no reportedCost', { runId: run.runId, modelId })
+    logger.error('[monid] completed run reports no cost', { runId: run.runId, modelId })
   }
   if (costUsd !== null && costUsd > 0) {
     await deps.charge({
@@ -330,6 +381,7 @@ async function settle(
     }
   })
 
+  const fileLinks = fileLinksIn(output)
   const outputText = JSON.stringify(output ?? null)
   let shapedOutput: unknown = output
   let fullOutput: { fileId: string; url: string; name: string } | undefined
@@ -355,6 +407,10 @@ async function settle(
     outputTruncated: fullOutput || outputText.length > MAX_INLINE_OUTPUT_CHARS ? true : undefined,
     fullOutputFile: fullOutput,
     files: files.length ? files : undefined,
+    fileLinks: fileLinks.length ? fileLinks : undefined,
+    saveHint: fileLinks.length
+      ? 'The output links to files that are not saved yet. Save the ones the user wants (one format is usually enough) with save_api_file and this runId.'
+      : undefined,
     fileErrors: fileErrors.length ? fileErrors : undefined,
     note: fullOutput
       ? `The whole output is saved in Files as ${fullOutput.name}; read it with read_file. Only a preview is shown here.`

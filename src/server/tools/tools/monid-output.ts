@@ -138,3 +138,46 @@ function formatDollars(value: number): string {
   const [whole, fraction = ''] = value.toFixed(4).replace(/0+$/, '').split('.')
   return `$${whole}.${fraction.padEnd(2, '0')}`
 }
+
+/** At most this many file links are listed back for save_api_file. */
+const MAX_FILE_LINKS = 12
+
+const FILE_LINK = /^https:\/\/[^\s"']+\.(glb|gltf|fbx|obj|stl|usdz|3mf|blend|ply|mp3|wav|m4a|ogg|mp4|mov|webm|pdf|zip|csv|xlsx|docx|png|jpe?g|webp|gif|svg)(\?[^\s"']*)?$/i
+
+/** Links in the output that point at files (by extension), with where they sit, for save_api_file. */
+export function fileLinksIn(output: unknown): Array<{ path: string; url: string }> {
+  const links: Array<{ path: string; url: string }> = []
+  const visit = (node: unknown, path: string, depth: number) => {
+    if (links.length >= MAX_FILE_LINKS || depth > 10) return
+    if (typeof node === 'string') {
+      if (FILE_LINK.test(node)) links.push({ path: path || '.', url: node })
+      return
+    }
+    if (Array.isArray(node)) node.forEach((item, i) => visit(item, `${path}[${i}]`, depth + 1))
+    else if (node && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) visit(value, path ? `${path}.${key}` : key, depth + 1)
+    }
+  }
+  visit(output, '', 0)
+  return links
+}
+
+/** A name the agent chose, with the file's real extension added when it left it off. */
+export function withExtension(name: string, derived: string): string {
+  const extension = /\.[A-Za-z0-9]{2,5}$/.exec(derived)?.[0]
+  const safe = name.replace(/[/\\]/g, '-').slice(0, 120)
+  return extension && !safe.toLowerCase().endsWith(extension.toLowerCase()) ? `${safe}${extension}` : safe
+}
+
+/** Every string value in the output, so a link is accepted only exactly as the run returned it. */
+export function stringValuesIn(output: unknown): Set<string> {
+  const values = new Set<string>()
+  const visit = (node: unknown, depth: number) => {
+    if (depth > 12) return
+    if (typeof node === 'string') values.add(node)
+    else if (Array.isArray(node)) node.forEach(item => visit(item, depth + 1))
+    else if (node && typeof node === 'object') Object.values(node).forEach(value => visit(value, depth + 1))
+  }
+  visit(output, 0)
+  return values
+}

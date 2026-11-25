@@ -11,7 +11,7 @@ export const GENERATION_TOOL_IDS = [
 ] as const
 
 /** Data and APIs: find, inspect and run paid third-party endpoints through Monid (internal/develop/monid.md). */
-export const API_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api'] as const
+export const API_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api', 'save_api_file'] as const
 
 /**
  * Persistent-computer tool ids, also listed in src/shared/agents/tool-groups.ts

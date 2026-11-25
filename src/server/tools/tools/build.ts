@@ -78,7 +78,7 @@ import {
   executeWriteFile,
 } from './files-executes'
 import { runInToolCallScope } from './internal-api'
-import { executeInspectApi, executeRunApi, executeSearchApis } from './monid'
+import { executeInspectApi, executeRunApi, executeSaveApiFile, executeSearchApis } from './monid'
 import type { OverlayToolsOptions } from './types'
 
 const computerPointSchema = z.object({
@@ -1723,6 +1723,24 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           toolCallId: callOptions?.toolCallId,
           abortSignal: callOptions?.abortSignal,
         })
+      },
+    })
+  }
+
+  if (shouldExposeTool('save_api_file')) {
+    tools.save_api_file = tool({
+      description:
+        'Save a file that a run_api result links to (for example a 3D model in model_urls, or a PDF or audio link) into ' +
+        'Files. Pass the runId and the URL exactly as run_api returned them; the result has the Overlay file link. ' +
+        'Save only the formats the user needs.',
+      inputSchema: z.object({
+        runId: z.string().trim().min(1).max(100).describe('The runId from run_api'),
+        url: z.string().trim().url().max(4000).describe('A file URL from that run\'s output, exactly as returned'),
+        name: z.string().trim().min(1).max(120).optional().describe('File name to save as; the extension is added if missing'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('save_api_file')
+        return await executeSaveApiFile(options, input)
       },
     })
   }

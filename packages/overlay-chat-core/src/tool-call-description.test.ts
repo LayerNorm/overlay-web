@@ -96,3 +96,9 @@ test('API rows name the search, the endpoint and what a run cost', () => {
   assert.equal(describeToolCall('run_api', { provider: 'x', endpoint: '/y' }, { success: false }, 'error')?.verb, 'Running failed')
   assert.equal(done('inspect_api', { provider: 'x' }), null)
 })
+
+test('saving an API file reads as a save to Files', () => {
+  assert.deepEqual(done('save_api_file', { runId: 'r', url: 'https://x/model.glb' }, { success: true, fileId: 'f1', name: 'mug.glb' }),
+    { verb: 'Saved', target: 'mug.glb', detail: 'to Files', fileId: 'f1' })
+  assert.equal(done('save_api_file', { runId: 'r', url: 'https://x/model.glb' }, { success: false, error: 'not_in_output' })?.fileId, undefined)
+})

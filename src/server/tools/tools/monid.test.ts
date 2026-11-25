@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { MonidApiError, type MonidClient, type MonidRun } from '@/server/integrations/monid/client'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import { describePrice, executeInspectApi, executeRunApi, executeSearchApis, replaceArtifacts, type MonidToolDeps } from './monid'
+import { describePrice, executeInspectApi, executeRunApi, executeSaveApiFile, executeSearchApis, replaceArtifacts, type MonidToolDeps } from './monid'
+import { fileLinksIn, withExtension } from './monid-output'
 
 const billing = { entitlements: { planKind: 'paid' } as unknown as Entitlements, programmaticSubjectId: undefined }
 const context = { userId: 'user_1', workspaceId: 'ws_1', billing }
@@ -500,4 +501,99 @@ test('describePrice reads every price shape', () => {
     'from $0.30 (varies by texture_resolution)',
   )
   assert.equal(describePrice({ type: 'TIERED' }), 'TIERED')
+})
+
+// ── asynchronous cost and save_api_file (found in live preview QA) ──────────
+
+test('an asynchronous run is charged from the cost its fetched run reports', async () => {
+  const h = harness({
+    run: async () => completed({ status: 'READY', billing: undefined }),
+    getRun: async () => completed({ billing: undefined, cost: { value: 0.15, currency: 'USD' } }),
+  })
+  const result = await executeRunApi(context, runInput, { toolCallId: 'c' }, h.deps)
+  assert.equal(result.success, true)
+  assert.equal(h.calls.charge.length, 1)
+  assert.equal(h.calls.charge[0]!.providerCostUsd, 0.15)
+  assert.equal((result as { chargedUsd: number }).chargedUsd, 0.19)
+})
+
+const meshyOutput = {
+  status: 'SUCCEEDED',
+  model_urls: {
+    glb: 'https://assets.meshy.ai/t/output/model.glb?Expires=1&Signature=a~b',
+    fbx: 'https://assets.meshy.ai/t/output/model.fbx?Expires=1&Signature=c',
+  },
+  thumbnail_url: 'https://assets.meshy.ai/t/output/preview.png?Expires=1',
+  prompt: 'a mug',
+}
+
+test('a run that links to files lists them for save_api_file', async () => {
+  const h = harness({ run: async () => completed({ provider: 'meshy', endpoint: '/text-to-3d/preview', output: meshyOutput }) })
+  const result = await executeRunApi(context, { provider: 'meshy', endpoint: '/text-to-3d/preview' }, {}, h.deps) as {
+    fileLinks: Array<{ path: string; url: string }>; saveHint: string
+  }
+  assert.deepEqual(result.fileLinks.map(link => link.path), ['model_urls.glb', 'model_urls.fbx', 'thumbnail_url'])
+  assert.match(result.saveHint, /save_api_file/)
+  assert.equal(h.calls.saveBytes.length, 0, 'links are not downloaded until asked')
+})
+
+test('fileLinksIn ignores pages and caps the list', () => {
+  assert.deepEqual(fileLinksIn({ a: 'https://example.com/page', b: 'http://x/a.pdf', c: 'not a url.pdf' }), [])
+  const many = Array.from({ length: 30 }, (_, i) => `https://x/${i}.png`)
+  assert.equal(fileLinksIn(many).length, 12)
+})
+
+const owned = () => completed({ provider: 'meshy', endpoint: '/text-to-3d/preview', tag: 'ws_1', output: meshyOutput })
+
+test('save_api_file saves a link from this workspace\'s run', async () => {
+  const h = harness({ getRun: async () => owned() })
+  const url = meshyOutput.model_urls.glb
+  const result = await executeSaveApiFile({ ...context, agentId: 'a1' }, { runId: 'run_1', url, name: 'coffee mug' }, h.deps) as {
+    success: boolean; fileId: string; url: string; name: string
+  }
+  assert.equal(result.success, true)
+  assert.deepEqual(h.calls.download, [url])
+  assert.equal(result.name, 'coffee mug.glb')
+  assert.equal(result.url, '/api/v1/files/file_1/content')
+  assert.equal(h.calls.saveBytes[0]!.scope, 'personal')
+  assert.equal(h.calls.saveBytes[0]!.byAgent, true)
+  assert.equal(h.calls.charge.length, 0)
+
+  const unnamed = harness({ getRun: async () => owned() })
+  const plain = await executeSaveApiFile(context, { runId: 'run_1', url }, unnamed.deps) as { name: string }
+  assert.equal(plain.name, 'model.glb')
+})
+
+test('save_api_file refuses another workspace\'s run and links not in the output', async () => {
+  const other = harness({ getRun: async () => ({ ...owned(), tag: 'ws_other' }) })
+  assert.equal((await executeSaveApiFile(context, { runId: 'run_1', url: meshyOutput.model_urls.glb }, other.deps) as { error: string }).error, 'not_found')
+  assert.equal(other.calls.download.length, 0)
+
+  const untagged = harness({ getRun: async () => ({ ...owned(), tag: undefined }) })
+  assert.equal((await executeSaveApiFile(context, { runId: 'run_1', url: meshyOutput.model_urls.glb }, untagged.deps) as { error: string }).error, 'not_found')
+
+  const h = harness({ getRun: async () => owned() })
+  for (const url of ['https://evil.example/model.glb', 'http://assets.meshy.ai/t/output/model.glb', 'https://assets.meshy.ai/t/output/model.glb']) {
+    assert.equal((await executeSaveApiFile(context, { runId: 'run_1', url }, h.deps) as { error: string }).error, 'not_in_output', url)
+  }
+  assert.equal(h.calls.download.length, 0)
+})
+
+test('save_api_file reports a failed download without saving', async () => {
+  const h = harness({ getRun: async () => owned(), download: async () => { throw new Error('URL is not allowed') } })
+  const result = await executeSaveApiFile(context, { runId: 'run_1', url: meshyOutput.model_urls.glb }, h.deps) as { error: string; message: string }
+  assert.equal(result.error, 'save_failed')
+  assert.match(result.message, /not allowed/)
+  assert.equal(h.calls.saveBytes.length, 0)
+})
+
+test('save_api_file maps Monid errors', async () => {
+  const h = harness({ getRun: async () => { throw new MonidApiError(404, 'NOT_FOUND', 'no run') } })
+  assert.equal((await executeSaveApiFile(context, { runId: 'x', url: 'https://a/b.glb' }, h.deps) as { error: string }).error, 'not_found')
+})
+
+test('withExtension keeps or adds the real extension', () => {
+  assert.equal(withExtension('mug', 'model.glb'), 'mug.glb')
+  assert.equal(withExtension('mug.GLB', 'model.glb'), 'mug.GLB')
+  assert.equal(withExtension('a/b', 'x'), 'a-b')
 })

@@ -115,7 +115,7 @@ test('personal Computers enable Computer tools only in eligible Work chats', asy
 })
 
 test('Data and APIs tools need both Overlay\'s Monid key and a paid plan', () => {
-  const ids = ['search_knowledge', 'search_apis', 'inspect_api', 'run_api']
+  const ids = ['search_knowledge', 'search_apis', 'inspect_api', 'run_api', 'save_api_file']
   assert.deepEqual(withoutUnavailableApiTools(ids, { paid: true, configured: true }), ids)
   assert.deepEqual(withoutUnavailableApiTools(ids, { paid: false, configured: true }), ['search_knowledge'])
   assert.deepEqual(withoutUnavailableApiTools(ids, { paid: true, configured: false }), ['search_knowledge'])

@@ -14,7 +14,7 @@ One toggle per thing a person would recognise. Reading and writing the same kind
 | Skills | `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `save_skill`, `draft_skill_from_chat` |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Media generation | `generate_image`, `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
-| Data and APIs (paid; see `monid.md`) | `search_apis`, `inspect_api`, `run_api`: find and run read-only third-party endpoints through Monid, billed to the workspace per run |
+| Data and APIs (paid; see `monid.md`) | `search_apis`, `inspect_api`, `run_api`, `save_api_file`: find and run read-only third-party endpoints through Monid, billed to the workspace per run |
 | Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal`, `computer_publish_file`, `computer_recording` |
 | Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps), `resolve_assignment` (only in the Chief's native Harness run; withheld from connected agents and outside apps) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |

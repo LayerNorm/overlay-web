@@ -9,8 +9,9 @@ Agents and chats can find and run thousands of paid third-party endpoints (lead 
 | `search_apis` | `POST /v1/discover/endpoints` with `readonly: true` | Ranked matches for a plain-language need, with price, health and typical run time. |
 | `inspect_api` | `POST /v1/inspect` | Input JSON Schemas (`body`, `queryParams`, `pathParams`), price, notes, alternatives, and `canRun`. |
 | `run_api` | `POST /v1/run`, then `GET /v1/runs/{id}` | Runs the endpoint, waits up to 10 minutes for asynchronous ones, saves files, charges the workspace. |
+| `save_api_file` | `GET /v1/runs/{id}` | Saves a file the run's output links to (for example Meshy's `model_urls.glb`) into Files. |
 
-Code: `src/server/integrations/monid/client.ts` (HTTP client), `src/server/tools/tools/monid.ts` (tools, billing, files), definitions in `src/server/tools/tools/build.ts`. Tool ids are `API_TOOL_IDS` in `@overlay/tools-core/policy`; the agent group is `apis` ("Data and APIs") in `src/shared/agents/tool-groups.ts`.
+Code: `src/server/integrations/monid/client.ts` (HTTP client), `src/server/tools/tools/monid.ts` (tools, billing, files), definitions in `src/server/tools/tools/build.ts`. The tools are split across `monid.ts`, `monid-output.ts` (output shaping, links, prices) and `monid-deps.ts` (production dependencies). Tool ids are `API_TOOL_IDS` in `@overlay/tools-core/policy`; the agent group is `apis` ("Data and APIs") in `src/shared/agents/tool-groups.ts`.
 
 ## Who gets them
 
@@ -36,13 +37,14 @@ Workspace budget only, like `web_search`:
 
 1. Before: `generationUsagePolicy.ensureBudgetNotLow` (refuses under 2%, a spending limit used up, or a free plan).
 2. `maxCost` on the run is the workspace's remaining budget with the usage markup taken back out (`remainingCents / 100 / (1 + markup)`). It is a hard cap, not an estimate: Monid refuses (400 `MAX_COST_EXCEEDED`, nothing charged) a run the workspace could not pay for. Not sent when billing is disabled.
-3. After: `generationUsagePolicy.charge` with `billing.reportedCost` as `providerCostUsd`, so `OVERLAY_USAGE_MARKUP_BPS` applies. The usage label is `monid/<provider><endpoint>`. The operation id is `monid.run:<runId>`, so a charge is never counted twice.
+3. After: `generationUsagePolicy.charge` with the run's cost as `providerCostUsd`: `billing.reportedCost` on a synchronous run's response, or `cost` (dollars) on a run read back with `GET /v1/runs/{id}`, which is how every asynchronous run finishes. Preview QA found asynchronous runs going uncharged before this fallback, so `OVERLAY_USAGE_MARKUP_BPS` applies. The usage label is `monid/<provider><endpoint>`. The operation id is `monid.run:<runId>`, so a charge is never counted twice.
 
 Runs Monid does not charge (failed, timed out, blocked, stopped, provider 402) report zero and cost the workspace nothing. The idempotency key is `overlay-<toolCallId>`, so a retried tool call returns the original run instead of paying twice. Each run carries `tag: <workspaceId>` to match Monid's records to ours.
 
 ## Results
 
 - Files in the output (objects with `download_link`) are downloaded through the SSRF guard (`createGuardedFetch`, 100 MB, at most 10 per run) and saved with `FileService.createFileFromBytes`: personal Files normally, workspace Files in a shared room, marked as by an agent when one ran it. The output carries `{ file: { fileId, url, name } }` in their place, and the signed Monid link is dropped. Chat shows a card for each.
+- Many providers return plain links instead (Meshy's `model_urls`, PDF or audio URLs). `run_api` lists up to 12 links that end in a file extension as `fileLinks`; the agent saves the ones the person wants with `save_api_file`. That tool reads the run back and saves only when the run's `tag` is this workspace (the Monid account is shared, so a run id proves nothing) and the URL is exactly a string in the run's output. Downloads use the same SSRF guard.
 - Output over 40,000 characters of JSON is saved whole to Files as `<provider-endpoint>-<runId>.json` and only a preview is returned; the agent reads the rest with `read_file`.
 - Everything a run returns is untrusted data; the instructions say so.
 

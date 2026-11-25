@@ -25,7 +25,7 @@ People can ask Overlay for things that need a paid API (finding leads, enriching
 | 2. Tools and billing | Three tools, budget check, `maxCost` from remaining budget, charge of `reportedCost` per run id, polling with stop on timeout or cancel, files saved to Files, large output saved whole. | Built, unit-tested |
 | 3. Access | Tool group, paid-plan and key gating, personal exposure, MCP Everything level, run modes, chat rows and file cards, instructions, self-verticalize skill. | Built, unit-tested |
 | 4. Operations | Error logs for account problems; auto top-up must be turned on in the Monid dashboard. | Built; dashboard setting pending |
-| 5. QA and launch | Needs `MONID_API_KEY` in Vercel Preview (and Production at release) and a funded Monid wallet, then preview QA: lead search, 3D generation, an asynchronous run, a failed run (no charge), a low budget (refused by `maxCost`), a side-effect endpoint (refused), large output saved to Files. | Not started |
+| 5. QA and launch | Preview QA with the Preview key: side-effect endpoint refused, lead search with a provider error the agent corrected, 3D generation. QA found two bugs, both fixed with tests: asynchronous runs were not charged (`GET /v1/runs` reports `cost`, not `billing.reportedCost`), and linked files (Meshy `model_urls`) were not saved, now handled by `save_api_file`. Re-test of both, plus large output, in progress. | In progress |
 
 ## Remaining
 

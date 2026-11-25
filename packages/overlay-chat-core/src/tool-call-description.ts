@@ -266,6 +266,10 @@ const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription
     return endpoint ? call.make(VERBS.read, { target: target(endpoint), detail: 'API details', title: endpoint }) : null
   },
   run_api: describeApiRun,
+  save_api_file: (call) => {
+    const name = typeof call.output?.name === 'string' ? call.output.name : inputString(call, 'name')
+    return call.make(VERBS.saved, { target: name ? target(basename(name)) : 'a file', detail: 'to Files', ...(call.succeeded ? { fileId: fileIdFrom(call.output) } : {}) })
+  },
   computer_exec: call => describeCommandCall(call, inputString(call, 'command')),
   remote_terminal: call => describeCommandCall(call, inputString(call, 'title', 'summary')),
   computer_read_file: (call) => {

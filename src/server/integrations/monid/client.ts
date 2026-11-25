@@ -76,6 +76,9 @@ export type MonidRun = {
   providerResponse?: { httpStatus?: number; error?: unknown }
   price?: MonidPrice
   billing?: { reportedCost?: MonidReportedCost }
+  /** What the run cost in dollars. `GET /v1/runs/{id}` reports this instead of `billing.reportedCost`. */
+  cost?: MonidMoney
+  tag?: string
   resultCount?: number
   billedUnits?: number
   createdAt?: string
@@ -212,6 +215,18 @@ export function reportedCostUsd(cost: MonidReportedCost | undefined | null): num
   if (cost.unit === 'CENT') return cost.value / 100
   if (cost.unit === 'DOLLAR') return cost.value
   return null
+}
+
+/**
+ * What a finished run costs Overlay, in dollars: `billing.reportedCost` on a synchronous run's response, `cost` on a run
+ * read back with `GET /v1/runs/{id}` (asynchronous runs). Null when neither is present.
+ */
+export function runCostUsd(run: Pick<MonidRun, 'billing' | 'cost'>): number | null {
+  const reported = reportedCostUsd(run.billing?.reportedCost)
+  if (reported !== null) return reported
+  const cost = run.cost
+  if (!cost || cost.currency !== 'USD' || !Number.isFinite(cost.value) || cost.value < 0) return null
+  return cost.value
 }
 
 function retryAfterMs(value: string | null): number | null {

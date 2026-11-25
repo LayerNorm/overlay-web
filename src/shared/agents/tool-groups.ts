@@ -141,7 +141,7 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
     label: 'Data and APIs',
     description:
       'Find and run thousands of paid data and AI APIs without connecting an account: lead search, company and people enrichment, social and review data, scraping, 3D models and more. Each run is billed to the workspace.',
-    toolIds: ['search_apis', 'inspect_api', 'run_api'],
+    toolIds: ['search_apis', 'inspect_api', 'run_api', 'save_api_file'],
   },
   {
     id: 'computer',

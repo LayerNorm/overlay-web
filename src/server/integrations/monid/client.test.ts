@@ -2,7 +2,7 @@ import 'server-only'
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { MonidApiError, createMonidClient, monidEndpointKey, reportedCostUsd } from './client'
+import { MonidApiError, createMonidClient, monidEndpointKey, reportedCostUsd, runCostUsd } from './client'
 
 type Call = { url: string; init?: RequestInit }
 
@@ -120,4 +120,13 @@ test('reportedCostUsd converts each unit and rejects anything else', () => {
 test('endpoint keys join provider and path', () => {
   assert.equal(monidEndpointKey('apollo', '/people/match'), 'apollo/people/match')
   assert.equal(monidEndpointKey('apollo', 'people/match'), 'apollo/people/match')
+})
+
+test('runCostUsd reads reportedCost, then the cost a fetched run carries', () => {
+  assert.equal(runCostUsd({ billing: { reportedCost: { currency: 'USD', value: 15, unit: 'CENT' } }, cost: { value: 9, currency: 'USD' } }), 0.15)
+  // GET /v1/runs/{id} (every asynchronous run) reports `cost` in dollars and no billing block.
+  assert.equal(runCostUsd({ cost: { value: 0.15, currency: 'USD' } }), 0.15)
+  assert.equal(runCostUsd({ cost: { value: -1, currency: 'USD' } }), null)
+  assert.equal(runCostUsd({ cost: { value: 1, currency: 'EUR' } }), null)
+  assert.equal(runCostUsd({}), null)
 })
