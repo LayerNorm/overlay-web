@@ -76,6 +76,7 @@ import { useComposerTools } from './useComposerTools'
 import { useChatModelDefaults } from './useChatModelDefaults'
 import { useConversationBottomVisibility, usePendingTurnScroll } from './useConversationScroll'
 import { useAutomationDetail } from './useAutomationDetail'
+import { useFirstReplyMetric } from './useFirstReplyMetric'
 import { useChatTurnActions } from './useChatTurnActions'
 import { useWorkApproval } from './useWorkApproval'
 import { useComposerActions } from './useComposerActions'
@@ -818,6 +819,11 @@ export function useChatExperienceController({
     if (!hasText) return
     tryLogTtftClientFirstText()
   }, [isActiveLoading, actChat.messages, selectedActModel])
+  useFirstReplyMetric({
+    shownConversationId: isTemporaryChat ? TEMPORARY_CHAT_ID : displayActiveChatId,
+    native: nativeTranscriptState.projection.messages,
+    sdk: actChat.messages,
+  })
 
   const { isConversationBottomVisible, scrollToConversationBottom, messagesScrollRefCallback } = useConversationBottomVisibility({
     messagesScrollRef,

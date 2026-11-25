@@ -1,6 +1,23 @@
-import type { PostHog } from 'posthog-js'
+import type { CaptureResult, PostHog } from 'posthog-js'
+import { FIRST_REPLY_EVENT } from '@/shared/chat/first-reply-timing'
 
 let client: Promise<PostHog | null> | null = null
+
+/** Timing events need no page: these leave without URLs, referrers, session entry pages or person updates. */
+const PAGE_FREE_EVENTS = new Set<string>([FIRST_REPLY_EVENT])
+// posthog-js merges `$session_entry_*` over per-event properties, so only a send hook can remove them.
+const PAGE_CONTEXT_PROPERTY = /url|host|pathname|referr|^\$session_entry_|^\$set|^\$unset|^utm_|^route$/i
+
+export function withoutPageContext(result: CaptureResult | null): CaptureResult | null {
+  if (!result || !PAGE_FREE_EVENTS.has(result.event)) return result
+  return {
+    uuid: result.uuid,
+    event: result.event,
+    timestamp: result.timestamp,
+    properties: Object.fromEntries(Object.entries(result.properties ?? {})
+      .filter(([key]) => !PAGE_CONTEXT_PROPERTY.test(key))),
+  }
+}
 
 function envFeatureEnabled(name: string): boolean {
   const value = process.env[`NEXT_PUBLIC_${name}`] ?? process.env[name]
@@ -52,6 +69,7 @@ export function loadPosthog(): Promise<PostHog | null> {
         capture_pageview: false,
         capture_pageleave: true,
         persistence: resolvePersistence(),
+        before_send: withoutPageContext,
       })
       posthog.register(clientObservabilityContext())
       return posthog
