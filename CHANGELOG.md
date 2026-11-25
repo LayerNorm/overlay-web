@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record Workspace and Personal P6 and P7 as merged, deployed and backfilled in the plan (PR 621; 1,665 production file chunks marked private, none in Workspace yet).
 - Run workspace automations with the workspace's reach, and make workspace files searchable by every member (Workspace and Personal plan, P6 and P7). Before, a workspace automation ran with its creator's personal connectors, MCP servers, model keys, private memories and skills, so anyone who could edit or trigger it acted through someone else's accounts, and what it learned became the creator's private memory. Workspace files were indexed for their uploader only, so nobody else's chats or Personal Chief could search them.
   - A workspace automation's thread now counts as a workspace context, decided in the same place as shared rooms: only workspace connectors (`workspace_…` tools) and workspace MCP servers, workspace-scoped lists and searches, workspace memories, skills and retrieval, and no memory profile. Runs without an agent re-check the automation's scope on every step. What it learns is workspace knowledge, kept by its agent or, without one, by the workspace chief.
   - Shared rooms and workspace automations may only use workspace model connections. A personal key or subscription is refused with "Workspace runs use workspace accounts", instead of being spent on everyone's behalf.
