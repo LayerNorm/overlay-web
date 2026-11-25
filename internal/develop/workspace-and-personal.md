@@ -23,8 +23,8 @@ to modes, scopes, moves, the Personal Chief, workspace contexts, or who may sear
    confirmation. Nothing moves back.
 8. **The workspace pays.** Personal mode spends the workspace's budget. Owners and admins see each person's spend and can cap it (Workspace → Billing → Spend per person; `internal/develop/workspace-billing.md`).
 
-Settings stay grouped into Personal and Workspace sections regardless of mode. Not decided: whether guests see anything
-Workspace-scoped (today they don't), and whether they get a Personal mode.
+Settings stay grouped into Personal and Workspace sections regardless of mode. There is no guest role: everyone in a
+workspace is an owner, admin or member.
 
 ## Where each rule is enforced
 
@@ -57,8 +57,8 @@ or a Personal Chief learns, is the person's. A workspace automation's own messag
 memory. Memories move only through `knowledge/memories:moveToWorkspace`.
 
 **Who may search what.** A live file in Workspace is indexed once for the workspace (`workspaceFilesOwnerId`, visibility
-`workspace`, `fileChunkOwner` in `src/shared/knowledge/chunk-visibility.ts`) and searched for every member who isn't a
-guest (`canSearchWorkspaceFiles`); personal and archived files stay under their uploader, private. Moves, archives and
+`workspace`, `fileChunkOwner` in `src/shared/knowledge/chunk-visibility.ts`) and searched for every active
+member (`canSearchWorkspaceFiles`); personal and archived files stay under their uploader, private. Moves, archives and
 restores re-file chunks (`restampFileChunks`). A file chunk with no visibility is private (`chunkVisibleToSearch`). A
 workspace file that is a byte-identical copy of its uploader's personal file has no chunks of its own (duplicates are
 indexed once per person), so only its uploader finds it.

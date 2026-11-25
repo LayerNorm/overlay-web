@@ -13,7 +13,7 @@ const threadsFn = (name: string) => makeFunctionReference<'mutation'>(`agents/ag
 type Member = {
   userId: string
   principalId: string
-  role?: 'owner' | 'admin' | 'member' | 'guest'
+  role?: 'owner' | 'admin' | 'member'
   status?: 'active' | 'suspended'
   displayName?: string
 }
@@ -135,7 +135,6 @@ describe('chief identity provisioning', () => {
       members: [
         { userId: 'owner', principalId: 'principal-owner', role: 'owner' },
         { userId: 'member', principalId: 'principal-member', role: 'member' },
-        { userId: 'guest', principalId: 'principal-guest', role: 'guest' },
       ],
     })
     await Promise.all([
@@ -148,8 +147,6 @@ describe('chief identity provisioning', () => {
     const personal = agents.filter((row) => row.agentRole === 'personal_chief')
     expect(personal.map((row) => [row.chiefOwnerUserId, row.chiefScope, row.visibility]))
       .toEqual([['owner', 'personal', 'creator']])
-    await expect(ensure(convex, 'chief-concurrent', 'guest', 'principal-guest'))
-      .rejects.toThrow('WORKSPACE_AGENT_EDIT_FORBIDDEN')
   })
 
   test('a new public channel never adds personal chiefs or creator-only agents', async () => {

@@ -59,8 +59,8 @@ async function ownerFor(
     teamId: args.teamId, slackUserId: args.slackUserId,
   })
   if (!requester?.userId || !requester.principalId) return { outcome: 'link_required' }
-  // Buttons follow the same rules as asking: a blocked member, or a guest while guests are off, can't use them.
-  if (!requester.allowed || (requester.guest && !requester.settings.guests)) return { outcome: 'not_allowed' }
+  // Buttons follow the same rules as asking: a blocked member can't use them.
+  if (!requester.allowed) return { outcome: 'not_allowed' }
   const owner = await (dependencies.threadOwner ?? ((conversationId) => serverQuery<ThreadOwner | null>('originByServer', { conversationId })))(args.conversationId)
   if (!owner || owner.userId !== requester.userId || owner.workspaceId !== requester.workspaceId || owner.origin.teamId !== args.teamId) {
     return { outcome: 'not_owner' }

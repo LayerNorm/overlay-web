@@ -42,14 +42,14 @@ export const SLACK_MARKER_TTL_MS = 30 * 24 * 60 * 60_000
 
 async function readSlackReplyStep(input: SlackReplyInput): Promise<ReplyState> {
   'use step'
-  const requester = await convex.query<{ workspaceId: string; userId: string | null; allowed: boolean; guest: boolean; settings: { guests: boolean } } | null>(
+  const requester = await convex.query<{ workspaceId: string; userId: string | null; allowed: boolean } | null>(
     'integrations/slack:resolveRequesterByServer',
     { serverSecret: getInternalApiSecret(), teamId: input.teamId, slackUserId: input.slackUserId },
     { throwOnError: true },
   )
   if (!requester || requester.workspaceId !== input.workspaceId || requester.userId !== input.userId) return { status: 'revoked' }
-  // Blocking a member, or turning guests off, stops replies already under way, like unlinking does.
-  if (!requester.allowed || (requester.guest && !requester.settings.guests)) return { status: 'revoked' }
+  // Blocking a member stops replies already under way, like unlinking does.
+  if (!requester.allowed) return { status: 'revoked' }
   const conversations = getOverlayServerContext().appData.repositories.conversations
   const run = await conversations.getLatestAgentRun({
     conversationId: input.conversationId as never, userId: input.userId, turnId: input.turnId,

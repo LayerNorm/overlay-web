@@ -223,10 +223,10 @@ export const context = query({
   },
 })
 
-/** The people and agents a task can be given to, and who is asking; null for guests and non-members. */
+/** The people and agents a task can be given to, and who is asking; null for non-members. */
 export async function workContextFor(ctx: QueryCtx, { userId, workspaceId }: { userId: string; workspaceId: string }) {
   const viewer = await loadWorkViewer(ctx, workspaceId, userId)
-  if (viewer.viewer.role === null || viewer.viewer.role === 'guest') return null
+  if (viewer.viewer.role === null) return null
   const principals = await ctx.db.query('workspacePrincipals').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
   const memberships = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
   const roleByPrincipal = new Map(memberships.filter((m) => m.status === 'active').map((m) => [m.principalId, m.role]))
@@ -252,7 +252,7 @@ export async function workContextFor(ctx: QueryCtx, { userId, workspaceId }: { u
         ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
       }
     }
-    if (p.type !== 'human' || !roleByPrincipal.has(p.principalId) || roleByPrincipal.get(p.principalId) === 'guest') return null
+    if (p.type !== 'human' || !roleByPrincipal.has(p.principalId)) return null
     const account = p.userId ? accountByUserId.get(p.userId) : undefined
     const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
       || account?.name
@@ -472,7 +472,7 @@ export const create = mutation({
 export async function createWorkFor(ctx: MutationCtx, args: Omit<ObjectType<typeof createArgs>, 'accessToken' | 'serverSecret'>) {
   const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
   const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
-  if (viewer.viewer.role === null || viewer.viewer.role === 'guest') throw new Error('Unauthorized')
+  if (viewer.viewer.role === null) throw new Error('Unauthorized')
   const actorPrincipalId = await workEventActorPrincipalId(ctx, {
     workspaceId: args.workspaceId,
     principalId: viewer.principalId,

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { answerSlackApproval, continueSlackRequestPrivately } from './slack-actions'
 
 const owner = { origin: { teamId: 'T1', kind: 'channel' as const }, workspaceId: 'w1', agentId: 'a1', userId: 'user_1' }
-const requester = { workspaceId: 'w1', settings: { whoCanAsk: 'linked', unlinkedPeople: 'link', guests: false, slackConnect: false, actionsInChannels: 'ask' }, userId: 'user_1', principalId: 'p1', guest: false, allowed: true }
+const requester = { workspaceId: 'w1', settings: { whoCanAsk: 'linked', unlinkedPeople: 'link', slackConnect: false, actionsInChannels: 'ask' }, userId: 'user_1', principalId: 'p1', allowed: true }
 const run = { id: 'run_1', approval: { token: 'tok', requestedAt: 1, requests: [] } }
 const value = JSON.stringify({ c: 'conv_1', r: 'run_1' })
 
@@ -33,13 +33,10 @@ test('someone else in the channel cannot answer, and unlinked people are asked t
   assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value: 'not json', approved: true }, { submitApproval }), 'inactive')
 })
 
-test('a blocked member, or a guest while guests are off, cannot use the buttons', async () => {
+test('a blocked member cannot use the buttons', async () => {
   const submitApproval = (async () => assert.fail('must not submit')) as never
   assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value, approved: true }, {
     resolveRequester: async () => ({ ...requester, allowed: false }), threadOwner: async () => owner, submitApproval,
-  }), 'not_allowed')
-  assert.equal(await answerSlackApproval({ teamId: 'T1', slackUserId: 'U1', value, approved: true }, {
-    resolveRequester: async () => ({ ...requester, guest: true }), threadOwner: async () => owner, submitApproval,
   }), 'not_allowed')
 })
 
