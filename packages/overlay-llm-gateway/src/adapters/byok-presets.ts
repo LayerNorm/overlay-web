@@ -263,13 +263,29 @@ export function getByokPreset(providerId: string): ByokProviderPreset | undefine
   return PRESET_BY_ID.get(providerId)
 }
 
+/**
+ * OpenAI's own API, reached through a custom endpoint. Its reasoning models reject
+ * Chat Completions' `max_tokens` with a 400, so every model there uses the Responses API.
+ */
+function isOpenAIApiEndpoint(endpoint: string | undefined): boolean {
+  if (!endpoint) return false
+  try {
+    const { hostname } = new URL(endpoint)
+    return hostname === 'api.openai.com' || hostname.endsWith('.api.openai.com')
+  } catch {
+    return false
+  }
+}
+
 export function getByokModelProtocol(
   presetOrProviderId: ByokProviderPreset | string,
   modelId: string,
+  endpoint?: string,
 ): ByokModelProtocol {
   const preset = typeof presetOrProviderId === 'string'
     ? getByokPreset(presetOrProviderId)
     : presetOrProviderId
+  if (preset?.allowsCustomEndpoint && isOpenAIApiEndpoint(endpoint)) return 'responses'
   const rule = preset?.modelProtocols?.find(({ prefix }) => modelId.startsWith(prefix))
   return rule?.protocol ?? 'chat'
 }

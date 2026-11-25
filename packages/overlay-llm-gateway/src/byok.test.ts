@@ -228,3 +228,31 @@ test('existing custom OpenAI-compatible providers do not receive session headers
   assert.equal(requests[0].headers.has('x-opencode-session'), false)
   assert.equal(requests[0].headers.get('authorization'), 'Bearer secret')
 })
+
+test('OpenAI\'s own API through the custom preset uses the Responses API', async () => {
+  const { getByokModelProtocol } = await import('./adapters/byok-presets')
+  assert.equal(getByokModelProtocol('custom-openai-compatible', 'gpt-5.6-luna', 'https://api.openai.com/v1'), 'responses')
+  assert.equal(getByokModelProtocol('custom-openai-compatible', 'gpt-4.1-mini', 'https://eu.api.openai.com/v1'), 'responses')
+  assert.equal(getByokModelProtocol('custom-openai-compatible', 'gpt-5.6-luna', 'https://llm.example.com/v1'), 'chat')
+  assert.equal(getByokModelProtocol('custom-openai-compatible', 'gpt-5.6-luna', 'https://api.openai.com.example.com/v1'), 'chat')
+  assert.equal(getByokModelProtocol('custom-openai-compatible', 'gpt-5.6-luna', 'not a url'), 'chat')
+  assert.equal(getByokModelProtocol('openrouter', 'gpt-5.6-luna', 'https://api.openai.com/v1'), 'chat')
+
+  const requests: Request[] = []
+  const gateway = new ByokGateway({
+    connection: { providerId: 'custom-openai-compatible', endpoint: 'https://api.openai.com/v1' },
+    apiKey: 'secret',
+    fetch: async (input, init) => {
+      const request = new Request(input, init)
+      requests.push(request.clone())
+      return fixtureResponse(request.url)
+    },
+  })
+  const model = await gateway.createLanguageModel('gpt-5.6-luna')
+  await generateText({ model: model.implementation as never, prompt: 'Hello', maxOutputTokens: 64, maxRetries: 0 })
+  assert.equal(new URL(requests[0]!.url).pathname, '/v1/responses')
+  const body = await requests[0]!.json() as Record<string, unknown>
+  assert.equal(body.max_output_tokens, 64)
+  assert.equal('max_tokens' in body, false, 'reasoning models reject max_tokens')
+  assert.equal(requests[0]!.headers.get('authorization'), 'Bearer secret')
+})
