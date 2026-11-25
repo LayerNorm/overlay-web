@@ -3,7 +3,6 @@ import 'server-only'
 import {
   MONID_TERMINAL_STATUSES,
   MonidApiError,
-  createMonidClient,
   monidEndpointKey,
   reportedCostUsd,
   type MonidClient,
@@ -13,15 +12,17 @@ import {
   type MonidRun,
   type MonidRunInput,
 } from '@/server/integrations/monid/client'
-import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
-import { billableBudgetCentsFromProviderUsd } from '@/server/billing/billing-runtime'
-import { getBudgetTotals } from '@/server/billing/billing-runtime-details'
-import { getOverlayServerContext } from '@/server/bootstrap'
-import { getOverlayCapabilities } from '@/server/capabilities'
-import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
-import { fileService } from '@/server/files/http'
 import { logger } from '@/server/observability/logger'
-import { createGuardedFetch } from '@/server/security/guarded-fetch'
+import { defaultMonidToolDeps, type MonidToolDeps } from './monid-deps'
+import {
+  MAX_INLINE_OUTPUT_CHARS,
+  artifactFileName,
+  describePrice,
+  fileUrl,
+  previewOutput,
+  replaceArtifacts,
+  type SavedApiFile,
+} from './monid-output'
 import type { OverlayToolsOptions, ToolBillingContext } from './types'
 
 /**
@@ -36,44 +37,11 @@ export const MONID_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api'] as const
 const RUN_WAIT_MS = 10 * 60_000
 const POLL_START_MS = 2_000
 const POLL_MAX_MS = 10_000
-const SIDE_EFFECT_CACHE_MS = 10 * 60_000
-/** Output larger than this (as JSON) is saved to Files whole, and a preview is returned. */
-const MAX_INLINE_OUTPUT_CHARS = 40_000
 const MAX_SCHEMA_CHARS = 30_000
 const MAX_OUTPUT_FILES = 10
-const MAX_OUTPUT_FILE_BYTES = 100 * 1024 * 1024
 
 type Failure = { success: false; error: string; message: string }
 
-export type SavedApiFile = { fileId: string; url: string; name: string; mimeType: string; sizeBytes: number }
-
-export interface MonidToolDeps {
-  client(): Promise<MonidClient | null>
-  sideEffectEndpoints(client: MonidClient): Promise<Set<string>>
-  billingEnabled(): Promise<boolean>
-  markupBasisPoints(): number
-  ensureBudgetNotLow(args: {
-    billing: ToolBillingContext
-    userId: string
-    workspaceId?: string
-    modelId: string
-  }): Promise<{ ok: true; remainingCents: number } | { ok: false }>
-  charge(args: {
-    billing: ToolBillingContext
-    userId: string
-    workspaceId?: string
-    operationId: string
-    providerCostUsd: number
-    modelId: string
-  }): Promise<{ budgetLow: boolean }>
-  /** The workspace price of a provider cost: markup applied, in cents. */
-  billableCents(providerCostUsd: number): number
-  download(url: string): Promise<{ bytes: Uint8Array; mimeType: string }>
-  saveBytes(args: { bytes: Uint8Array; name: string; mimeType: string; userId: string; workspaceId?: string; scope: 'personal' | 'workspace'; byAgent: boolean }): Promise<string>
-  saveText(args: { text: string; name: string; mimeType: string; userId: string; workspaceId?: string; scope: 'personal' | 'workspace'; byAgent: boolean }): Promise<string>
-  sleep(ms: number, signal?: AbortSignal): Promise<void>
-  now(): number
-}
 
 type ToolContext = Pick<OverlayToolsOptions, 'userId' | 'workspaceId' | 'agentId' | 'sharedRoom' | 'billing'>
 
@@ -402,138 +370,6 @@ async function maxCostUsd(remainingCents: number, deps: MonidToolDeps): Promise<
   return Math.floor(providerDollars * 1_000_000) / 1_000_000
 }
 
-// ── Output handling ──────────────────────────────────────────────────────────
-
-type Artifact = { download_link: string; content_type?: string; link_expires_at?: string }
-
-function isArtifact(value: unknown): value is Artifact {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  return typeof record.download_link === 'string'
-    && (typeof record.content_type === 'string' || typeof record.link_expires_at === 'string')
-}
-
-/** Replaces each file Monid returned with the Overlay file it was saved as, walking the output depth-first. */
-export async function replaceArtifacts(
-  value: unknown,
-  save: (artifact: Artifact, index: number) => Promise<SavedApiFile | null>,
-): Promise<unknown> {
-  let index = 0
-  const visit = async (node: unknown, depth: number): Promise<unknown> => {
-    if (depth > 12) return node
-    if (isArtifact(node)) {
-      const saved = await save(node, index++)
-      if (!saved) return { ...node, savedToFiles: false }
-      return { file: saved }
-    }
-    if (Array.isArray(node)) {
-      const out: unknown[] = []
-      for (const item of node) out.push(await visit(item, depth + 1))
-      return out
-    }
-    if (node && typeof node === 'object') {
-      const out: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(node)) out[k] = await visit(v, depth + 1)
-      return out
-    }
-    return node
-  }
-  return await visit(value, 0)
-}
-
-function previewOutput(output: unknown): unknown {
-  if (Array.isArray(output)) {
-    const items: unknown[] = []
-    let size = 2
-    for (const item of output) {
-      const text = JSON.stringify(item)
-      if (size + text.length > MAX_INLINE_OUTPUT_CHARS) break
-      items.push(item)
-      size += text.length + 1
-    }
-    return { firstItems: items, totalItems: output.length }
-  }
-  if (output && typeof output === 'object') {
-    // A single big array inside an object (results, items, data…) is the usual shape.
-    const entries = Object.entries(output)
-    const arrayEntry = entries.find(([, v]) => Array.isArray(v) && JSON.stringify(v).length > MAX_INLINE_OUTPUT_CHARS / 2)
-    if (arrayEntry) {
-      const rest = Object.fromEntries(entries.filter(([k]) => k !== arrayEntry[0]))
-      const restText = JSON.stringify(rest)
-      if (restText.length < MAX_INLINE_OUTPUT_CHARS / 4) {
-        return { ...rest, [arrayEntry[0]]: previewOutput(arrayEntry[1]) }
-      }
-    }
-  }
-  return { truncatedJson: JSON.stringify(output).slice(0, MAX_INLINE_OUTPUT_CHARS) }
-}
-
-const EXTENSIONS: Record<string, string> = {
-  'model/gltf-binary': 'glb',
-  'model/gltf+json': 'gltf',
-  'model/obj': 'obj',
-  'model/stl': 'stl',
-  'model/vnd.usdz+zip': 'usdz',
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'video/mp4': 'mp4',
-  'audio/mpeg': 'mp3',
-  'audio/wav': 'wav',
-  'application/pdf': 'pdf',
-  'application/json': 'json',
-  'text/csv': 'csv',
-  'text/plain': 'txt',
-  'application/zip': 'zip',
-}
-
-function artifactFileName(link: string, mimeType: string, fallback: string): string {
-  let base = ''
-  try {
-    base = decodeURIComponent(new URL(link).pathname.split('/').pop() ?? '')
-  } catch (_error) {
-    base = ''
-  }
-  base = base.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 120)
-  if (base && /\.[A-Za-z0-9]{2,5}$/.test(base)) return base
-  const extension = EXTENSIONS[mimeType]
-  return extension ? `${fallback}.${extension}` : fallback
-}
-
-function fileUrl(fileId: string): string {
-  return `/api/v1/files/${encodeURIComponent(fileId)}/content`
-}
-
-// ── Pricing text ─────────────────────────────────────────────────────────────
-
-const UNIT_WORDS: Record<string, string> = {
-  PER_CALL: 'per call',
-  PER_RESULT: 'per result',
-}
-
-/** A one-line price for the model, e.g. "$0.03 per call" or "from $0.30 (varies by texture_resolution)". */
-export function describePrice(price: MonidPrice | undefined): string | undefined {
-  if (!price) return undefined
-  const amount = price.amount?.value
-  if (typeof amount !== 'number') return price.type
-  const dollars = formatDollars(amount)
-  if (amount === 0) return 'free'
-  const varies = price.selectors?.length
-    ? ` (varies by ${price.selectors.map((selector) => selector.key ?? selector.label).filter(Boolean).join(', ')})`
-    : ''
-  if (UNIT_WORDS[price.type]) return `${dollars} ${UNIT_WORDS[price.type]}${varies}`
-  if (price.unit) return `${dollars} per ${price.unit}${varies}`
-  return `from ${dollars}${varies}`
-}
-
-/** Two decimals, more only when the price needs them: $1.50, $0.30, $0.015, $0.0004. */
-function formatDollars(value: number): string {
-  if (value < 0.01) return `$${Number(value.toPrecision(2))}`
-  const [whole, fraction = ''] = value.toFixed(4).replace(/0+$/, '').split('.')
-  return `$${whole}.${fraction.padEnd(2, '0')}`
-}
-
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 function failure(error: string, message: string): Failure {
@@ -582,82 +418,5 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-// ── Production dependencies ──────────────────────────────────────────────────
-
-let sideEffectCache: { keys: Set<string>; fetchedAt: number } | null = null
-let sideEffectLoad: Promise<Set<string>> | null = null
-
-export function defaultMonidToolDeps(): MonidToolDeps {
-  return {
-    async client() {
-      const apiKey = await getServerProviderKey('monid')
-      return apiKey ? createMonidClient({ apiKey }) : null
-    },
-    async sideEffectEndpoints(client) {
-      if (sideEffectCache && Date.now() - sideEffectCache.fetchedAt < SIDE_EFFECT_CACHE_MS) return sideEffectCache.keys
-      sideEffectLoad ??= client.listSideEffectEndpoints()
-        .then((keys) => {
-          sideEffectCache = { keys, fetchedAt: Date.now() }
-          return keys
-        })
-        .finally(() => { sideEffectLoad = null })
-      return await sideEffectLoad
-    },
-    async billingEnabled() {
-      return (await getOverlayCapabilities()).billing
-    },
-    markupBasisPoints: configuredUsageMarkupBasisPoints,
-    async ensureBudgetNotLow(args) {
-      const check = await getOverlayServerContext().generationUsagePolicy.ensureBudgetNotLow({
-        entitlements: args.billing.entitlements,
-        kind: 'generation',
-        modelId: args.modelId,
-        operationId: 'monid.run',
-        programmaticSubjectId: args.billing.programmaticSubjectId,
-        userId: args.userId,
-        workspaceId: args.workspaceId,
-      })
-      if (!check.ok) return { ok: false }
-      return { ok: true, remainingCents: getBudgetTotals(check.entitlements).remainingCents }
-    },
-    async charge(args) {
-      return await getOverlayServerContext().generationUsagePolicy.charge({
-        operationId: args.operationId,
-        programmaticSubjectId: args.billing.programmaticSubjectId,
-        providerCostUsd: args.providerCostUsd,
-        usage: { kind: 'generation', modelId: args.modelId, inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
-        userId: args.userId,
-        workspaceId: args.workspaceId,
-      })
-    },
-    billableCents: billableBudgetCentsFromProviderUsd,
-    async download(url) {
-      const guardedFetch = createGuardedFetch({ maxResponseBytes: MAX_OUTPUT_FILE_BYTES, timeoutMs: 120_000 })
-      const response = await guardedFetch(url)
-      if (!response.ok) throw new Error(`Downloading the result file failed (HTTP ${response.status}).`)
-      const bytes = new Uint8Array(await response.arrayBuffer())
-      return { bytes, mimeType: response.headers.get('content-type') ?? 'application/octet-stream' }
-    },
-    async saveBytes(args) {
-      const created = await fileService.createFileFromBytes(args)
-      return created.id
-    },
-    async saveText(args) {
-      const created = await fileService.createFile({
-        body: { name: args.name, type: 'file', kind: 'upload', textContent: args.text, mimeType: args.mimeType, scope: args.scope, byAgent: args.byAgent },
-        userId: args.userId,
-        workspaceId: args.workspaceId,
-      })
-      return String(created.id)
-    },
-    sleep(ms, signal) {
-      return new Promise<void>((resolve, reject) => {
-        if (signal?.aborted) return reject(new Error('aborted'))
-        const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve() }, ms)
-        const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')) }
-        signal?.addEventListener('abort', onAbort, { once: true })
-      })
-    },
-    now: () => Date.now(),
-  }
-}
+export { describePrice, replaceArtifacts }
+export type { MonidToolDeps }
