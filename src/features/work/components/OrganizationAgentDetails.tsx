@@ -44,7 +44,7 @@ export function OrganizationAgentDetails({ agent, owner, onClose }: {
         <Button type="submit" size="sm" disabled={status === 'saving' || !name.trim()}>{status === 'saving' ? 'Saving...' : 'Save appearance'}</Button>
         {status === 'saved' ? <p role="status" className="text-xs text-(--muted)">Appearance saved.</p> : null}
         {status === 'error' ? <p role="alert" className="text-xs text-red-600">Could not save. Your changes are still here. Try again.</p> : null}
-      </form> : <><p className="text-xs leading-5 text-(--muted)">{agent.description}</p>{agent.agentRole === 'personal_chief' ? <p className="text-xs text-(--muted)">Only the owner can customize this personal Overlay.</p> : null}</>}
+      </form> : <><p className="text-xs leading-5 text-(--muted)">{agent.description}</p>{agent.agentRole === 'personal_chief' ? <p className="text-xs text-(--muted)">Only its owner can customize this Chief.</p> : null}</>}
       <Button variant="outline" size="sm" asChild><Link href={href(agent.workspaceId, `/app/agents?agent=${encodeURIComponent(agent.id)}`, scope)}>Open agent</Link></Button>
     </div> }]} />
 }

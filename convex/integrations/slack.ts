@@ -5,7 +5,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { createAgentThread } from '../agents/agentThreads'
-import { ensureWorkspaceChiefs } from '../collaboration/agents'
+import { ensureWorkspaceChiefs, isActiveNonGuestHumanOwner } from '../collaboration/agents'
 import {
   conversationOriginValidator, slackActionsValidator, slackPersonAccessValidator, slackUnlinkedPeopleValidator,
   slackWhoCanAskValidator,
@@ -357,7 +357,7 @@ export const resolveThreadByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), userId: v.string(), principalId: v.string(), title: v.string(),
     origin: conversationOriginValidator,
-    /** The asker's own personal Overlay instead of the Workspace Overlay, for a private handoff. */
+    /** The asker's own personal chief instead of the Workspace Overlay, for a private handoff in their DM. */
     agentRole: v.optional(v.union(v.literal('workspace_chief'), v.literal('personal_chief'))),
   },
   handler: async (ctx, args) => {
@@ -374,17 +374,23 @@ export const resolveThreadByServer = mutation({
       await ctx.db.delete(existing._id)
     }
     const role = args.agentRole ?? 'workspace_chief'
+    // A personal chief here is only ever the asker's own private one (never anyone else's), and only in their DM.
+    if (role === 'personal_chief' && args.origin.kind !== 'dm') throw new ConvexError('SLACK_PERSONAL_CHIEF_DM_ONLY')
     const findChief = async () => (await ctx.db.query('workspaceAgentDefinitions')
       .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect())
       .find(row => row.agentRole === role && !row.deletedAt && !row.archivedAt
-        && (role === 'workspace_chief' || row.chiefOwnerUserId === args.userId))
-    // Chiefs are otherwise created when a member first opens Overlay; a workspace can ask from Slack before that.
+        && (role === 'workspace_chief' || (row.chiefOwnerUserId === args.userId && row.chiefScope === 'personal')))
+    // Chiefs are otherwise created when a member opens Overlay (the personal one when they open Personal); a
+    // workspace can ask from Slack before that, and asking privately creates the asker's personal chief.
     let chief = await findChief()
     if (!chief) {
-      await ensureWorkspaceChiefs(ctx, { workspaceId: args.workspaceId, actorUserId: args.userId, actorPrincipalId: args.principalId, now: Date.now() })
+      await ensureWorkspaceChiefs(ctx, {
+        workspaceId: args.workspaceId, actorUserId: args.userId, actorPrincipalId: args.principalId,
+        includePersonal: role === 'personal_chief', now: Date.now(),
+      })
       chief = await findChief()
     }
-    if (!chief) throw new ConvexError(role === 'workspace_chief' ? 'SLACK_WORKSPACE_OVERLAY_MISSING' : 'SLACK_PERSONAL_OVERLAY_MISSING')
+    if (!chief) throw new ConvexError(role === 'workspace_chief' ? 'SLACK_WORKSPACE_OVERLAY_MISSING' : 'SLACK_PERSONAL_CHIEF_MISSING')
     const thread = await createAgentThread(ctx, {
       workspaceId: args.workspaceId, agentId: chief.agentId, userId: args.userId, title: args.title,
     })
@@ -411,14 +417,30 @@ export const originByServer = query({
   },
 })
 
-/** Whether a member has a personal Overlay to hand a request to. */
+/**
+ * Whether a member may hand a channel request to their own personal chief, and its name when they already have one.
+ * Null for anyone who can't have one (a guest, or not an active member). Asking privately creates the chief.
+ */
+export const personalChiefByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
+  handler: async (ctx, args): Promise<{ name: string | null } | null> => {
+    requireServerSecret(args.serverSecret)
+    if (!await isActiveNonGuestHumanOwner(ctx, args.workspaceId, args.userId)) return null
+    const identity = await ctx.db.query('personalChiefIdentities')
+      .withIndex('by_userId', q => q.eq('userId', args.userId)).unique()
+    return { name: identity?.name ?? null }
+  },
+})
+
+/**
+ * Kept only for the web release before the Personal Chief change, which still calls it while Convex deploys first.
+ * Delete once production web serves `personalChiefByServer` callers (after PR 617 ships).
+ */
 export const hasPersonalOverlayByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const definitions = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).collect()
-    return definitions.some(row => row.agentRole === 'personal_chief' && row.chiefOwnerUserId === args.userId && !row.deletedAt && !row.archivedAt)
+    return await isActiveNonGuestHumanOwner(ctx, args.workspaceId, args.userId)
   },
 })
 

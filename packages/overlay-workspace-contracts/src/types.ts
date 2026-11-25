@@ -344,6 +344,8 @@ export type WorkspaceManagementItem = {
   avatarColor?: string
   avatarShape?: string
   isDefault?: boolean
+  /** A creator-only agent shown to its creator: it can't join channels or other shared rooms. */
+  personal?: boolean
   role?: WorkspaceMembershipRole
   status?: WorkspaceMembershipStatus | WorkspaceInvitationStatus
   invitationId?: string

@@ -29,6 +29,8 @@ export class ConvexWorkspaceAgentRepository implements WorkspaceAgentRepository 
     workspaceId: string
     actorUserId: string
     actorPrincipalId: string
+    /** Also the actor's own personal chief; without it only the workspace chief. */
+    includePersonal?: boolean
     now: number
   }) {
     await requiredMutation<ConvexAgent[]>('ensureChiefsByServer', args)
