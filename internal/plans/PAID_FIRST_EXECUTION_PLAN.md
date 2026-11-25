@@ -43,7 +43,8 @@ calls on the person's own computer with their own keys or local subscriptions,
 so Overlay runs no inference for them. In a personal workspace with no paid plan
 they may use the agent's Overlay tools through `/api/mcp` within a capped free
 allowance counted per person on the server: notes, tasks, memory and knowledge
-within 100 MB of Overlay Files storage, and 50 web searches a month. Overlay
+within 100 MB of Overlay Files storage (searched by words only; embeddings stay
+paid), and 50 web searches a month. Overlay
 Cloud computers, media generation, transcription, automations, browser tasks,
 Overlay-billed models and synced threads stay paid. Team workspaces are
 paid-only. This is not a revival of the removed free router or its

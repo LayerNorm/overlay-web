@@ -46,7 +46,8 @@ bumped.
 - **Which Overlay tools.** The agent's own tool grant, minus what `/api/mcp` withholds from outside apps (computers,
   generated UI, agent editing, posting). Paid workspace: the whole grant, charged to the workspace like any agent
   turn. Unpaid workspace with only this person: the free tier (`src/shared/billing/private-thread-allowance.ts`),
-  memory, files and notes, tasks, skills and web search; storage is the person's free amount
+  memory, files and notes, tasks, skills and web search; memory and file search match words only, because without
+  budget for embeddings `convex/knowledge/knowledge.ts` stores chunks without them and searches by text; storage is the person's free amount
   (`FREE_PLAN_STORAGE_BYTES`, 100 MB); web searches (each query of a batch, each deep search or page fetch) count
   against 50 a month per person in `privateThreadAllowances`, counted before they run, and the tool says so plainly
   at the limit. Unpaid workspace with other people: no Overlay tools.

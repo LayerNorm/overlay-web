@@ -101,7 +101,7 @@ Non-goals: replacing the cloud harness, durable or scheduled local runs
    | --- | --- |
    | Local agent loop and computer tools | Unlimited |
    | Own API keys and local subscriptions | Unlimited |
-   | Notes, tasks, memory and knowledge reads and search | Unlimited within the storage cap |
+   | Notes, tasks, memory and knowledge reads and search | Unlimited within the storage cap; search matches words only, since embeddings are a paid resource |
    | Saving a memory when the agent explicitly does so | Unlimited; nothing is extracted from private conversations automatically |
    | Overlay Files storage | 100 MB |
    | Web search | 50 a month |

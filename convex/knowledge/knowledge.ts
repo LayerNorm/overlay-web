@@ -234,7 +234,8 @@ export const replaceKnowledgeSource = internalMutation({
         text: v.string(),
         chunkIndex: v.number(),
         startOffset: v.number(),
-        embedding: v.array(v.float64()),
+        /** Absent when the workspace has no budget for embeddings: the chunk is still found by word search. */
+        embedding: v.optional(v.array(v.float64())),
       }),
     ),
     // Denormalized memory-lifecycle fields so search filters need no join.
@@ -284,6 +285,7 @@ export const replaceKnowledgeSource = internalMutation({
         eventAt: args.eventAt,
         sourceCount: args.sourceCount,
       })
+      if (!seg.embedding) return
       await ctx.db.insert('knowledgeChunkEmbeddings', {
         chunkId,
         userId: args.userId,
@@ -702,7 +704,19 @@ export const reindexFileInternal = internalAction({
       userId, 'knowledge.reindex-file', `file:${fileId}`, await sha256Hex(`file:${fileId}:${content}`), EMBEDDING_MODEL,
     ])
     const budget = await checkProviderBudget(ctx, { userId, workspaceId: meta.workspaceId, programmaticSubjectId, operationId })
-    if (!budget.allowed || budget.alreadyCharged) return
+    if (budget.alreadyCharged) return
+    if (!budget.allowed) {
+      // No budget for embeddings (e.g. a workspace without a plan): store the text so word search still finds it.
+      await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
+        userId,
+        workspaceId: meta.workspaceId,
+        sourceKind: 'file',
+        sourceId: fileId,
+        title: name,
+        segments: segments.map((s) => ({ text: s.text, chunkIndex: s.chunkIndex, startOffset: s.startOffset })),
+      })
+      return
+    }
 
     const BATCH = 32
     const allEmb: number[][] = []
@@ -801,13 +815,17 @@ async function indexSourceTextBilled(
   const budget = await checkProviderBudget(ctx, {
     userId: args.userId, workspaceId: args.workspaceId, programmaticSubjectId, operationId,
   })
-  if (!budget.allowed || budget.alreadyCharged) return 'skipped'
+  if (budget.alreadyCharged) return 'skipped'
 
-  const embedded = await embedViaGateway(segments.map((s) => s.text))
-  await chargeEmbedding(ctx, {
-    operationId, programmaticSubjectId, serverSecret, tokens: embedded.promptTokens,
-    userId: args.userId, workspaceId: args.workspaceId,
-  })
+  // No budget for embeddings (e.g. a workspace without a plan): the text is stored without them, so word search
+  // still finds it. Meaning-based search needs a plan.
+  const embedded = budget.allowed ? await embedViaGateway(segments.map((s) => s.text)) : null
+  if (embedded) {
+    await chargeEmbedding(ctx, {
+      operationId, programmaticSubjectId, serverSecret, tokens: embedded.promptTokens,
+      userId: args.userId, workspaceId: args.workspaceId,
+    })
+  }
   await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
     userId: args.userId,
     workspaceId: args.workspaceId,
@@ -826,7 +844,7 @@ async function indexSourceTextBilled(
       text: s.text,
       chunkIndex: s.chunkIndex,
       startOffset: s.startOffset,
-      embedding: embedded.vectors[i]!,
+      ...(embedded ? { embedding: embedded.vectors[i]! } : {}),
     })),
   })
   return 'indexed'
@@ -1438,19 +1456,22 @@ export const hybridSearch = action({
       programmaticSubjectId: args.programmaticSubjectId,
       operationId,
     })
-    if (!budget.allowed) throw new Error('background_budget_exhausted')
     if (budget.alreadyCharged) throw new Error('provider_operation_already_charged')
 
-    const { vectors, promptTokens } = await embedViaGateway([q])
-    await chargeEmbedding(ctx, {
-      operationId,
-      programmaticSubjectId: args.programmaticSubjectId,
-      serverSecret,
-      tokens: promptTokens,
-      userId: args.billingUserId,
-      workspaceId: billingWorkspaceId,
-    }).catch((err) => console.error('[knowledge] Failed to charge search embedding', err))
-    const vector = vectors[0]!
+    // Without budget for the query embedding (e.g. a workspace without a plan) the search is word-only.
+    let vector: number[] | null = null
+    if (budget.allowed) {
+      const { vectors, promptTokens } = await embedViaGateway([q])
+      await chargeEmbedding(ctx, {
+        operationId,
+        programmaticSubjectId: args.programmaticSubjectId,
+        serverSecret,
+        tokens: promptTokens,
+        userId: args.billingUserId,
+        workspaceId: billingWorkspaceId,
+      }).catch((err) => console.error('[knowledge] Failed to charge search embedding', err))
+      vector = vectors[0]!
+    }
 
     const callerKinds = searchKinds
     const wantsMemory = callerKinds === undefined || callerKinds.includes('memory')
@@ -1469,19 +1490,14 @@ export const hybridSearch = action({
 
     // The current member keeps access to their indexed files. Additional workspace members
     // contribute memory chunks only, preserving file ownership while sharing memory context.
-    const currentVectorSearch = ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
-      vector,
-      limit: kVec,
-      filter: (fq) => fq.eq('userId', args.userId),
-    })
-    const additionalMemorySearches = additionalMemoryUserIds.map((userId) => (
+    const vectorUserIds = vector ? [args.userId, ...additionalMemoryUserIds] : []
+    const vectorGroups = (await Promise.all(vectorUserIds.map((userId) => (
       ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
-        vector,
+        vector: vector!,
         limit: kVec,
         filter: (fq) => fq.eq('userId', userId),
       })
-    ))
-    const vectorGroups = (await Promise.all([currentVectorSearch, ...additionalMemorySearches]))
+    ))))
       .map((group) => args.minVecScore === undefined
         ? group
         : group.filter((row) => row._score >= args.minVecScore!))
