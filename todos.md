@@ -21,7 +21,6 @@ Plan: `internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`. Setup and status: `inter
 
 Plan: `internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md`.
 
-- [ ] **Delete `integrations/slack:hasPersonalOverlayByServer`** (added 2026-11-24). A shim for the web release before PR 617; remove it once production web runs PR 617, then deploy Convex.
 - [ ] **Per-person tracking and caps in Personal** (added 2026-11-24). Personal mode spends the workspace's budget. Later: show each person's Personal spend to admins and let them set a per-person cap.
 
 ## Chief of Staff harness

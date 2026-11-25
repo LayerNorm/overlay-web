@@ -8,7 +8,6 @@ import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import {
   scopeItemOptions,
   type ResourceKind,
-  type ResourceScope,
   type ScopeItemOptions,
   type ScopedRow,
 } from '@/shared/workspaces/resource-scope'
@@ -17,9 +16,10 @@ import {
 export type ScopedItem = Omit<ScopedRow, 'userId'> & { _id: string; userId?: string }
 
 /**
- * Move, archive, and restore for one kind of resource, with the same rules the server enforces (so the buttons only
- * appear for what will work): only the creator moves an item, and only if the workspace lets members move or they are an
- * owner/admin; creators and, for workspace items, owners and admins archive and restore.
+ * Move to Workspace, archive, and restore for one kind of resource, with the same rules the server enforces (so the
+ * buttons only appear for what will work): moves are one-way, Personal → Workspace; only the creator moves an item, and
+ * only if the workspace lets members move or they are an owner/admin; creators and, for workspace items, owners and
+ * admins archive and restore. Connectors never move: the workspace connects an account of its own.
  */
 export function useScopeItemActions(kind: ResourceKind, resource: ScopedResourceKind) {
   const { user } = useAuth()
@@ -30,14 +30,15 @@ export function useScopeItemActions(kind: ResourceKind, resource: ScopedResource
   const optionsFor = (item: ScopedItem): ScopeItemOptions => {
     if (!viewerWithUser || !item.userId) return { moveTo: null, canArchive: false, canRestore: false }
     const options = scopeItemOptions(kind, { ...item, userId: item.userId }, viewerWithUser, access.scope)
-    // Nobody to share with: moving between Personal and Workspace means nothing here, and a move into Workspace would
-    // be exposed to whoever is invited next. Archive and restore stay.
-    return solo ? { ...options, moveTo: null } : options
+    // Nobody to share with: a move into Workspace means nothing here, and would be exposed to whoever is invited next.
+    // A connector is a signed-in account, which never moves. Archive and restore stay.
+    return solo || resource === 'connectors' ? { ...options, moveTo: null } : options
   }
 
   return {
     optionsFor,
-    move: (id: string, to: ResourceScope) => overlayAppClient.scope.move(resource, id, to),
+    /** Moves are one-way, to Workspace; `withAgent` takes an automation's creator-only agent along. */
+    move: (id: string, options?: { withAgent?: boolean }) => overlayAppClient.scope.move(resource, id, 'workspace', options),
     archive: (id: string) => overlayAppClient.scope.archive(resource, id),
     restore: (id: string) => overlayAppClient.scope.restore(resource, id),
   }

@@ -123,6 +123,7 @@ import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js
 import type * as knowledge_memoryExtractorNode from "../knowledge/memoryExtractorNode.js";
 import type * as knowledge_memoryProfileStore from "../knowledge/memoryProfileStore.js";
 import type * as knowledge_memoryProfiles from "../knowledge/memoryProfiles.js";
+import type * as lib_agentVisibility from "../lib/agentVisibility.js";
 import type * as lib_appCallback from "../lib/appCallback.js";
 import type * as lib_auditWorkspace from "../lib/auditWorkspace.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -327,6 +328,7 @@ declare const fullApi: ApiFromModules<{
   "knowledge/memoryExtractorNode": typeof knowledge_memoryExtractorNode;
   "knowledge/memoryProfileStore": typeof knowledge_memoryProfileStore;
   "knowledge/memoryProfiles": typeof knowledge_memoryProfiles;
+  "lib/agentVisibility": typeof lib_agentVisibility;
   "lib/appCallback": typeof lib_appCallback;
   "lib/auditWorkspace": typeof lib_auditWorkspace;
   "lib/auth": typeof lib_auth;

@@ -3,6 +3,8 @@ import type { Doc } from '../_generated/dataModel'
 import { mutation, query } from '../_generated/server'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { joinPublicChannels } from '../lib/agentVisibility'
+import { loadScopeContext } from '../lib/resourceScope'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { WORKSPACE_AGENT_CREATURE_SHAPES } from '@overlay/workspace-contracts'
@@ -149,21 +151,7 @@ export const createByServer = mutation({
     // Creator-only agents join no channels implicitly: only their creator can
     // place them anywhere, and only the creator can invoke them.
     if ((args.visibility ?? 'workspace') !== 'creator') {
-      const channels = await ctx.db
-        .query('conversations')
-        .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
-          q
-            .eq('workspaceId', args.workspaceId)
-            .eq('conversationType', 'channel'),
-        )
-        .collect()
-      await Promise.all(channels
-        .filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
-        .map((channel) => ctx.db.insert('conversationParticipants', {
-          conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
-          principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
-          joinedAt: args.now, updatedAt: args.now,
-        })))
+      await joinPublicChannels(ctx, { workspaceId: args.workspaceId, principalId: args.principalId, now: args.now })
     }
     await ctx.db.insert('workspaceResourceScopes', {
       workspaceId: args.workspaceId, resourceType: 'agent', resourceId: args.agentId,
@@ -454,6 +442,14 @@ async function syncChiefIdentityRow(
   }
 }
 
+/** The workspace's "members may move items to Workspace" setting covers agents too; owners and admins always may. */
+async function assertMemberMayMoveToWorkspace(ctx: MutationCtx, workspaceId: string, principalId: string) {
+  const principal = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', (q) => q.eq('principalId', principalId)).unique()
+  if (!principal?.userId) throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
+  const { viewer, policy } = await loadScopeContext(ctx, workspaceId, principal.userId)
+  if (!policy.memberCanMoveScope && viewer.role !== 'owner' && viewer.role !== 'admin') throw new Error('WORKSPACE_AGENT_MOVE_DISABLED')
+}
+
 export const updateByServer = mutation({
   args: {
     serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(),
@@ -512,6 +508,14 @@ export const updateByServer = mutation({
         })
       }
     }
+    // Visibility is one-way: a creator-only agent may be moved to the workspace by its creator, never back.
+    const currentVisibility = row.visibility ?? 'workspace'
+    const movingToWorkspace = args.visibility === 'workspace' && currentVisibility === 'creator'
+    if (args.visibility === 'creator' && currentVisibility === 'workspace') throw new Error('WORKSPACE_AGENT_VISIBILITY_ONE_WAY')
+    if (movingToWorkspace && (!args.updatedByPrincipalId || args.updatedByPrincipalId !== row.createdByPrincipalId)) {
+      throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
+    }
+    if (movingToWorkspace) await assertMemberMayMoveToWorkspace(ctx, row.workspaceId, args.updatedByPrincipalId!)
     if (
       row.agentRole !== 'personal_chief' &&
       args.name &&
@@ -590,6 +594,7 @@ export const updateByServer = mutation({
           updatedAt: args.now,
         })
     }
+    if (movingToWorkspace) await joinPublicChannels(ctx, { workspaceId: row.workspaceId, principalId: row.principalId, now: args.now })
     if (args.teamIds) {
       const existing = await ctx.db.query('workspaceTeamMemberships')
         .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()

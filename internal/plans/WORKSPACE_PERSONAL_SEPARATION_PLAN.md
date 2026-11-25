@@ -1,13 +1,15 @@
 # Workspace and Personal separation
 
-Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24, and its one-time move ran in production (192 agent memories moved to their person; a rerun moved none). The model below was revised on 2026-11-24 (one mode switch, a Personal Chief that lives only in Personal); P2–P7 proposed.
+Status: P1 merged (PR 616), deployed to production web and Convex on 2026-11-24, and its one-time move ran in production (192 agent memories moved to their person; a rerun moved none). The model below was revised on 2026-11-24 (one mode switch, a Personal Chief that lives only in Personal); P2–P3 merged (PR 617), deployed to production web and Convex on 2026-11-24, and their three one-time moves ran in production (37 shared chief copies retired, 13 threads handed to a chief their owner can open, 45 personal-agent seats removed from channels, 33 chiefs renamed; reruns found nothing left). P4–P5 merged (PR 620) and deployed to production web and Convex on 2026-11-25 (no data migration); P6–P7 proposed.
 
 | Phase | State |
 |---|---|
 | P1 Memories follow the place | Merged, deployed, migrated. Preview-tested for 1:1, channel and the Settings move; automations covered by unit tests only |
-| P2 One mode switch | Implemented on `codex/workspace-personal-mockup`; not yet merged or preview-tested |
-| P3 The Personal Chief | Implemented on the same branch; migrations not yet run anywhere |
-| P4–P7 | Not started |
+| P2 One mode switch | Merged (PR 617) and deployed. Preview-tested as owner and member: mode switch, Workspace default, light/dark, phone width |
+| P3 The Personal Chief | Merged (PR 617), deployed, migrated in production; reruns clean. Preview-tested: chief created on first Personal visit, kept out of channel mentions. Slack DM routing to the Personal Chief covered by Convex tests only. The `hasPersonalOverlayByServer` shim was deleted on 2026-11-24 |
+| P4 One-way moves | Merged (PR 620) and deployed. Preview-tested: notes, agents (editor move, reverse refused), automations moving with their agent, member view, dark and phone. An open note's header now offers Move and Archive too (it lost the note's creator and scope before) |
+| P5 Credentials move honestly | Merged (PR 620) and deployed. Preview-tested: MCP move strips the sign-in and turns the server off. "Connect for workspace" for connectors and reconnecting a moved OAuth MCP server are covered by Convex tests only (need a live third-party sign-in) |
+| P6–P7 | Not started |
 
 ## The model
 
@@ -52,6 +54,10 @@ As built: `memoryOwnerForPlace` decides for tool saves (by shared room) and repl
 **P4 — One-way moves.** The scope engine allows Personal → Workspace only. Agents' `visibility` joins the same rule. Moving an automation re-checks that its agent and connectors are workspace-visible and offers to move a creator-only agent along.
 
 **P5 — Credentials move honestly.** Moving a connector or MCP server to Workspace asks the person to connect it as a workspace account (held by the workspace), never silently sharing their own token. Until then it stays Personal.
+
+As built (P4): `checkMoveResource` refuses `to: 'personal'` (`one_way`) for every resource, so `POST /api/v1/scope`, every `setScope` and Work's `update` scope change refuse it; the UI offers only Move to Workspace, on personal items, always through `MoveToWorkspaceDialog`. Agent `visibility` is one-way in `WorkspaceAgentService` and `collaboration/agents:updateByServer` (`WORKSPACE_AGENT_VISIBILITY_ONE_WAY`); only the creator moves a creator-only agent to the workspace, and it then joins every public channel (`convex/lib/agentVisibility.ts`, shared with create). Moving an automation re-checks its agent in a `beforeMove` hook of `scopeMutations`; `withAgent: true` moves the creator's private agent in the same mutation (`automation_agent_personal` / `_not_yours` / `_chief` otherwise). Automations have no connector fields, so connectors are not re-checked; the dialog says runs use workspace accounts and budget, which P6 makes true. Work's move-to-Personal link cleanup was deleted.
+
+As built (P5): connectors refuse every move (`connector_reconnect_for_workspace`); in Personal a connected connector offers Connect for workspace (the existing `scope: 'workspace'` account flow). Moving an MCP server strips its credentials in the move's own mutation (`workspaceMoveCredentialPatch`: tokens, `authConfig`, `encryptedAuthConfig`; keeps the OAuth client registration; bumps `oauthTokenVersion`; OAuth servers become `pending`; servers that had credentials are turned off). Connecting a `pending` server turns it back on. Workspace MCP servers shared before P5 were left as they are.
 
 **P6 — Workspace runs use workspace reach.** Workspace automations and turns in shared rooms use workspace connectors and the workspace's provider keys, not the creator's or asker's personal ones. Workspace automations stop reading the owner's private memories, and then save what they learn as workspace knowledge.
 

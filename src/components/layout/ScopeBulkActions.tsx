@@ -3,17 +3,18 @@ import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { useState } from 'react'
 import { toast } from '@overlay/ui/primitives'
-import { Archive, RotateCcw, User, Users } from 'lucide-react'
+import { Archive, RotateCcw, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
 import { useScopeItemActions, type ScopedItem } from '@/hooks/use-scope-item-actions'
-import type { ResourceKind, ResourceScope } from '@/shared/workspaces/resource-scope'
+import type { ResourceKind } from '@/shared/workspaces/resource-scope'
 import { announceArchived } from '@/shared/app/archive-toast'
+import { MoveToWorkspaceDialog } from './MoveToWorkspaceDialog'
 
 const BUTTON =
   'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-2.5 py-0 text-xs leading-none text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:cursor-not-allowed disabled:opacity-40'
 
 /**
- * Move or archive several selected items at once. A button appears only when it would work for every selected item
+ * Move to Workspace (one-way, after a confirmation) or archive several selected items at once. A button appears only when it would work for every selected item
  * (the same rules as one item: only their creator moves them, and so on); items that fail are reported, not hidden.
  */
 export function ScopeBulkActions({
@@ -30,13 +31,14 @@ export function ScopeBulkActions({
 }) {
   const actions = useScopeItemActions(kind, resource)
   const [busy, setBusy] = useState(false)
+  const [confirmingMove, setConfirmingMove] = useState(false)
   if (items.length === 0) return null
 
   const options = items.map((item) => actions.optionsFor(item))
-  const moveTo = options.every((option) => option.moveTo !== null && option.moveTo === options[0]!.moveTo) ? options[0]!.moveTo : null
+  const canMove = options.every((option) => option.moveTo === 'workspace')
   const canArchive = options.every((option) => option.canArchive)
   const canRestore = options.every((option) => option.canRestore)
-  if (!moveTo && !canArchive && !canRestore) return null
+  if (!canMove && !canArchive && !canRestore) return null
 
   async function run(
     request: (id: string) => Promise<unknown>,
@@ -68,18 +70,31 @@ export function ScopeBulkActions({
   }
 
   const count = items.length
-  const move = (to: ResourceScope) => run(
-    (id) => actions.move(id, to),
-    'move',
-    `Moved ${count} ${count === 1 ? 'item' : 'items'} to ${to === 'workspace' ? 'Workspace' : 'Personal'}.`,
-  )
+  const move = async (withAgent: boolean) => {
+    await run(
+      (id) => actions.move(id, { withAgent }),
+      'move',
+      `Moved ${count} ${count === 1 ? 'item' : 'items'} to Workspace.`,
+    )
+    setConfirmingMove(false)
+  }
   return (
     <>
-      {moveTo ? (
-        <Button variant="ghost" type="button" disabled={busy} onClick={() => void move(moveTo)} className={unstyledButton(BUTTON)}>
-          {moveTo === 'workspace' ? <Users size={13} /> : <User size={13} />}
-          {moveTo === 'workspace' ? 'Move to Workspace' : 'Move to Personal'} ({count})
-        </Button>
+      {canMove ? (
+        <>
+          <Button variant="ghost" type="button" disabled={busy} onClick={() => setConfirmingMove(true)} className={unstyledButton(BUTTON)}>
+            <Users size={13} />
+            Move to Workspace ({count})
+          </Button>
+          <MoveToWorkspaceDialog
+            open={confirmingMove}
+            resource={resource}
+            items={items}
+            busy={busy}
+            onCancel={() => setConfirmingMove(false)}
+            onConfirm={({ withAgent }) => void move(withAgent)}
+          />
+        </>
       ) : null}
       {canArchive ? (
         <Button variant="ghost" type="button" disabled={busy} onClick={() => void run(actions.archive, 'archive')} className={unstyledButton(BUTTON)}>
