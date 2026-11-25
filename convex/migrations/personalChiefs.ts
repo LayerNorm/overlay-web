@@ -41,6 +41,7 @@ export const retireSharedPersonalChiefsByServer = mutation({
     let roomsLeft = 0
     let threadsMoved = 0
     let automationsMoved = 0
+    let leftBehind = 0
     for (const row of page.page) {
       if (row.deletedAt || !isRetiredSharedPersonalChief(row)) continue
       if (row.archivedAt && row.visibility === 'creator') {
@@ -60,21 +61,24 @@ export const retireSharedPersonalChiefsByServer = mutation({
       const moved = await moveToOwnChief(ctx, row, dryRun, now)
       threadsMoved += moved.threads
       automationsMoved += moved.automations
+      leftBehind += moved.skipped
       if (dryRun) continue
       if (!row.archivedAt) await archiveAgentRow(ctx, row, now)
       await ctx.db.patch(row._id, { visibility: 'creator', updatedAt: now })
     }
     return {
-      scanned: page.page.length, retired, alreadyRetired, roomsLeft, threadsMoved, automationsMoved,
+      scanned: page.page.length, retired, alreadyRetired, roomsLeft, threadsMoved, automationsMoved, leftBehind,
       isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
     }
   },
 })
 
 /**
- * Hands the shared copy's own threads and automations to its owner's private Personal Chief (created if needed), so
- * history stays readable and automations keep running. A workspace automation goes to the workspace chief instead.
- * Owners who are no longer active members are skipped: their threads were already closed to everyone.
+ * Hands the shared copy's threads and automations to chiefs their people can still open, so history stays readable and
+ * automations keep running with their saved thread. The owner's own threads and personal automations go to the owner's
+ * private Personal Chief (created if needed); everything else (other members' threads, workspace automations) goes to
+ * the workspace chief. An automation's thread always follows the automation. Archived workspaces, owners who left and
+ * owners who are now guests keep nothing to hand over to: those rows are left on the archived copy and counted.
  */
 async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefinitions'>, dryRun: boolean, now: number) {
   const threads = await ctx.db.query('conversations')
@@ -82,32 +86,65 @@ async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefin
   const automations = (await ctx.db.query('automations')
     .withIndex('by_agentId', (q) => q.eq('agentId', shared.agentId)).collect())
     .filter((automation) => automation.workspaceId === shared.workspaceId)
-  if (dryRun || (threads.length === 0 && automations.length === 0) || !shared.chiefOwnerUserId) {
-    return { threads: threads.length, automations: automations.length }
-  }
-  const owner = (await ctx.db.query('workspacePrincipals')
+  const none = { threads: 0, automations: 0, skipped: 0 }
+  if (threads.length === 0 && automations.length === 0) return none
+  const skipAll = { threads: 0, automations: 0, skipped: threads.length + automations.length }
+  const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', (q) => q.eq('workspaceId', shared.workspaceId)).unique()
+  const workspaceChief = (await ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', shared.workspaceId)).collect())
+    .find((row) => row.agentRole === 'workspace_chief' && !row.deletedAt && !row.archivedAt)
+  if (workspace?.status !== 'active' || !workspaceChief) return skipAll
+
+  const owner = shared.chiefOwnerUserId ? (await ctx.db.query('workspacePrincipals')
     .withIndex('by_workspaceId', (q) => q.eq('workspaceId', shared.workspaceId)).take(5_000))
-    .find((principal) => principal.type === 'human' && principal.userId === shared.chiefOwnerUserId)
+    .find((principal) => principal.type === 'human' && principal.userId === shared.chiefOwnerUserId) : undefined
   const membership = owner ? await ctx.db.query('workspaceMemberships')
     .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', shared.workspaceId).eq('principalId', owner.principalId))
     .unique() : null
-  if (!owner || membership?.status !== 'active') return { threads: 0, automations: 0 }
-  const chiefs = await ensureWorkspaceChiefs(ctx, {
-    workspaceId: shared.workspaceId, actorUserId: shared.chiefOwnerUserId, actorPrincipalId: owner.principalId, includePersonal: true, now,
-  })
-  const workspaceChief = chiefs.find((chief) => chief.agentRole === 'workspace_chief')
-  const own = chiefs.find((chief) => chief.agentRole === 'personal_chief')
-  if (!own || !workspaceChief) return { threads: 0, automations: 0 }
-  for (const thread of threads) {
-    await ctx.db.patch(thread._id, { agentId: own.agentId, updatedAt: now })
+  const ownerEligible = Boolean(owner && membership?.status === 'active' && membership.role !== 'guest')
+
+  // Where each thread and automation goes: 'own' (owner's private chief), 'workspace', or null (left behind).
+  const automationTarget = (automation: Doc<'automations'>): 'own' | 'workspace' | null =>
+    automation.scope === 'workspace' ? 'workspace' : automation.userId === shared.chiefOwnerUserId && ownerEligible ? 'own' : null
+  const byThread = new Map(automations.flatMap((automation) => automation.conversationId ? [[automation.conversationId, automation] as const] : []))
+  const threadTarget = (thread: Doc<'conversations'>): 'own' | 'workspace' | null => {
+    const automation = byThread.get(thread._id)
+    if (automation) return automationTarget(automation)
+    if (thread.userId === shared.chiefOwnerUserId) return ownerEligible ? 'own' : null
+    return 'workspace'
+  }
+  const plan = {
+    threads: threads.map((thread) => [thread, threadTarget(thread)] as const),
+    automations: automations.map((automation) => [automation, automationTarget(automation)] as const),
+  }
+  const moved = plan.threads.filter(([, target]) => target).length
+  const movedAutomations = plan.automations.filter(([, target]) => target).length
+  const counts = { threads: moved, automations: movedAutomations, skipped: threads.length + automations.length - moved - movedAutomations }
+  if (dryRun) return counts
+
+  const needsOwn = [...plan.threads, ...plan.automations].some(([, target]) => target === 'own')
+  const own = needsOwn && owner && shared.chiefOwnerUserId
+    ? (await ensureWorkspaceChiefs(ctx, {
+        workspaceId: shared.workspaceId, actorUserId: shared.chiefOwnerUserId, actorPrincipalId: owner.principalId, includePersonal: true, now,
+      })).find((chief) => chief.agentRole === 'personal_chief')
+    : undefined
+  const chiefFor = (target: 'own' | 'workspace' | null) =>
+    target === 'own' ? own : target === 'workspace' ? workspaceChief : undefined
+  for (const [thread, target] of plan.threads) {
+    const chief = chiefFor(target)
+    if (!chief) continue
+    await ctx.db.patch(thread._id, { agentId: chief.agentId, updatedAt: now })
     const seat = await ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', thread._id).eq('principalId', shared.principalId)).unique()
-    if (seat) await ctx.db.patch(seat._id, { principalId: own.principalId, updatedAt: now })
+    const existing = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', thread._id).eq('principalId', chief.principalId)).unique()
+    if (seat && !existing) await ctx.db.patch(seat._id, { principalId: chief.principalId, updatedAt: now })
   }
-  for (const automation of automations) {
-    await ctx.db.patch(automation._id, { agentId: automation.scope === 'workspace' ? workspaceChief.agentId : own.agentId, updatedAt: now })
+  for (const [automation, target] of plan.automations) {
+    const chief = chiefFor(target)
+    if (chief) await ctx.db.patch(automation._id, { agentId: chief.agentId, updatedAt: now })
   }
-  return { threads: threads.length, automations: automations.length }
+  return counts
 }
 
 /**

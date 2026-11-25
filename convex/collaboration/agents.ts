@@ -294,7 +294,8 @@ export async function ensureWorkspaceChiefs(
     // An old default agent in a personal workspace becomes its owner's Personal Chief on any visit, not only in
     // Personal mode; otherwise it would stay a second, workspace-visible "Overlay" next to the workspace chief.
     const legacyAwaitingAdoption = workspace.kind === 'personal'
-      && legacy?.agentRole === undefined
+      && legacy !== undefined
+      && legacy.agentRole === undefined
       && args.actorUserId === workspace.personalOwnerUserId
     const owner = args.includePersonal || legacyAwaitingAdoption
       ? eligiblePersonalOwner(workspace, actor.principal)

@@ -163,39 +163,67 @@ test('takes private personal chiefs out of channels and leaves their own threads
   expect(again).toMatchObject({ agents: 0, removed: 0 })
 })
 
-test('hands the shared copy’s threads and automations to its owner’s private chief', async () => {
+test('hands each shared-copy thread and automation to a chief its people can still open', async () => {
   const { t } = await fixture()
   const ids = await t.run(async (ctx) => {
-    const thread = await ctx.db.insert('conversations', {
-      userId: 'ada', workspaceId: 'ws', conversationType: 'dm', agentId: 'personal-chief-workspace-ws-ada', title: 'Old thread',
-      lastModified: now, updatedAt: now, createdAt: now, lastMode: 'act', askModelIds: [], actModelId: 'model',
-    })
-    await ctx.db.insert('conversationParticipants', {
-      conversationId: thread, workspaceId: 'ws', principalId: 'personal-chief-principal-workspace-ws-ada', principalType: 'agent',
-      role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,
-    })
+    const thread = async (userId: string, title: string) => {
+      const id = await ctx.db.insert('conversations', {
+        userId, workspaceId: 'ws', conversationType: 'dm', agentId: 'personal-chief-workspace-ws-ada', title,
+        lastModified: now, updatedAt: now, createdAt: now, lastMode: 'act', askModelIds: [], actModelId: 'model',
+      })
+      await ctx.db.insert('conversationParticipants', {
+        conversationId: id, workspaceId: 'ws', principalId: 'personal-chief-principal-workspace-ws-ada', principalType: 'agent',
+        role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,
+      })
+      return id
+    }
+    const adaThread = await thread('ada', 'Ada’s thread')
+    const bobThread = await thread('bob', 'Bob asked Ada’s chief')
+    const sharedRunThread = await thread('ada', 'Workspace automation runs')
     const personal = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
-    const shared = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', scope: 'workspace', agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
-    return { thread, personal, shared }
+    const shared = await ctx.db.insert('automations', { userId: 'ada', workspaceId: 'ws', scope: 'workspace', conversationId: sharedRunThread, agentId: 'personal-chief-workspace-ws-ada', createdAt: now, updatedAt: now } as never)
+    return { adaThread, bobThread, sharedRunThread, personal, shared }
   })
-  const dry = await t.mutation(retire, { serverSecret: secret, dryRun: true } as never) as Retired & { threadsMoved: number; automationsMoved: number }
-  expect(dry).toMatchObject({ threadsMoved: 1, automationsMoved: 2 })
+  type Moved = Retired & { threadsMoved: number; automationsMoved: number; leftBehind: number }
+  const dry = await t.mutation(retire, { serverSecret: secret, dryRun: true } as never) as Moved
+  expect(dry).toMatchObject({ threadsMoved: 3, automationsMoved: 2, leftBehind: 0 })
   await t.mutation(retire, { serverSecret: secret, dryRun: false } as never)
   const after = await t.run(async (ctx) => {
     const own = (await ctx.db.query('workspaceAgentDefinitions').withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', 'ada')).collect())
       .find((row) => row.chiefScope === 'personal')!
     const chief = (await ctx.db.query('workspaceAgentDefinitions').withIndex('by_workspaceId', (q) => q.eq('workspaceId', 'ws')).collect())
       .find((row) => row.agentRole === 'workspace_chief')!
-    const seats = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', ids.thread)).collect()
+    const agentOf = async (id: typeof ids.adaThread) => (await ctx.db.get(id))?.agentId
+    const seats = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', (q) => q.eq('conversationId', ids.adaThread)).collect()
     return {
-      own, chief, thread: await ctx.db.get(ids.thread), seats: seats.map((seat) => seat.principalId),
-      personal: await ctx.db.get(ids.personal), shared: await ctx.db.get(ids.shared),
+      own: own.agentId, ownPrincipal: own.principalId, chief: chief.agentId,
+      ada: await agentOf(ids.adaThread), bob: await agentOf(ids.bobThread), sharedRun: await agentOf(ids.sharedRunThread),
+      seats: seats.map((seat) => seat.principalId),
+      personal: (await ctx.db.get(ids.personal))?.agentId, shared: (await ctx.db.get(ids.shared))?.agentId,
     }
   })
-  expect(after.thread?.agentId).toBe(after.own.agentId)
-  expect(after.seats).toContain(after.own.principalId)
-  expect(after.personal?.agentId).toBe(after.own.agentId)
-  expect(after.shared?.agentId).toBe(after.chief.agentId)
+  expect(after.ada).toBe(after.own)
+  expect(after.seats).toContain(after.ownPrincipal)
+  expect(after.bob).toBe(after.chief)
+  expect(after.personal).toBe(after.own)
+  expect(after.shared).toBe(after.chief)
+  expect(after.sharedRun).toBe(after.chief)
+})
+
+test('leaves an archived workspace’s shared-copy threads in place instead of failing', async () => {
+  const { t } = await fixture()
+  await t.run(async (ctx) => {
+    await ctx.db.insert('conversations', {
+      userId: 'ada', workspaceId: 'ws', conversationType: 'dm', agentId: 'personal-chief-workspace-ws-ada', title: 'Old',
+      lastModified: now, updatedAt: now, createdAt: now, lastMode: 'act', askModelIds: [], actModelId: 'model',
+    })
+    const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', (q) => q.eq('workspaceId', 'ws')).unique()
+    await ctx.db.patch(workspace!._id, { status: 'archived' } as never)
+  })
+  type Moved = Retired & { threadsMoved: number; leftBehind: number }
+  const dry = await t.mutation(retire, { serverSecret: secret, dryRun: true } as never) as Moved
+  expect(dry).toMatchObject({ threadsMoved: 0, leftBehind: 1 })
+  await expect(t.mutation(retire, { serverSecret: secret, dryRun: false } as never)).resolves.toMatchObject({ isDone: true })
 })
 
 test('keeps a chosen name that only looks generated', async () => {
