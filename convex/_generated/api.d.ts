@@ -135,7 +135,6 @@ import type * as lib_growthFileEdits from "../lib/growthFileEdits.js";
 import type * as lib_growthSchema from "../lib/growthSchema.js";
 import type * as lib_harnessDiagnosticValidator from "../lib/harnessDiagnosticValidator.js";
 import type * as lib_harnessFailureTranscript from "../lib/harnessFailureTranscript.js";
-import type * as lib_legacyGuestRole from "../lib/legacyGuestRole.js";
 import type * as lib_logging from "../lib/logging.js";
 import type * as lib_memoryChunks from "../lib/memoryChunks.js";
 import type * as lib_nativeAgentErrorPart from "../lib/nativeAgentErrorPart.js";
@@ -181,7 +180,6 @@ import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
 import type * as migrations_personalChiefs from "../migrations/personalChiefs.js";
 import type * as migrations_purgeConnectedAgents from "../migrations/purgeConnectedAgents.js";
-import type * as migrations_removeGuestRole from "../migrations/removeGuestRole.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
@@ -342,7 +340,6 @@ declare const fullApi: ApiFromModules<{
   "lib/growthSchema": typeof lib_growthSchema;
   "lib/harnessDiagnosticValidator": typeof lib_harnessDiagnosticValidator;
   "lib/harnessFailureTranscript": typeof lib_harnessFailureTranscript;
-  "lib/legacyGuestRole": typeof lib_legacyGuestRole;
   "lib/logging": typeof lib_logging;
   "lib/memoryChunks": typeof lib_memoryChunks;
   "lib/nativeAgentErrorPart": typeof lib_nativeAgentErrorPart;
@@ -388,7 +385,6 @@ declare const fullApi: ApiFromModules<{
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
   "migrations/personalChiefs": typeof migrations_personalChiefs;
   "migrations/purgeConnectedAgents": typeof migrations_purgeConnectedAgents;
-  "migrations/removeGuestRole": typeof migrations_removeGuestRole;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
