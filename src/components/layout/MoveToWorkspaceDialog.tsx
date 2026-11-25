@@ -117,7 +117,7 @@ function MoveToWorkspaceContent({ resource, items, busy, onCancel, onConfirm }: 
         key: agent.id,
         icon: <AgentCreature agent={agent} isDefault={agent.isDefault} size={18} />,
         title: `${agent.name} is a Personal agent`,
-        detail: 'A workspace automation needs an agent everyone can see.',
+        detail: 'A workspace automation needs an agent everyone can see. If it has a computer, everyone can use that too, including anything signed in on it.',
         resolved: moveAgent,
         action: (
           <Label className="flex items-center gap-2 text-xs font-normal text-(--foreground)">
@@ -133,7 +133,7 @@ function MoveToWorkspaceContent({ resource, items, busy, onCancel, onConfirm }: 
       key: 'credentials',
       icon: <KeyRound size={15} strokeWidth={1.75} aria-hidden className="text-(--muted)" />,
       title: 'Moves without your sign-in',
-      detail: `Your account stays yours. Connect it with an account for ${workspace} after the move; until then it is off.`,
+      detail: `Your sign-in stays with you. After the move it is off until you connect it again, with an account meant for ${workspace}, and turn it on.`,
     })
   }
   const ready = requirements.every((entry) => entry.resolved !== false)

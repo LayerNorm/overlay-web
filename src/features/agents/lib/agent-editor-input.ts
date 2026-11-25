@@ -41,7 +41,8 @@ export function buildWorkspaceAgentInput(args: {
   avatarColor: string
   avatarShape: WorkspaceAgentCreatureShape
   enabledToolGroups: ReadonlySet<string>
-  visibility: WorkspaceAgentVisibility
+  /** Set only when creating: a saved agent's access changes only through the confirmed, one-way move. */
+  visibility?: WorkspaceAgentVisibility
   permissionMode?: 'ask' | 'auto'
   reasoning?: WorkspaceAgentReasoningLevel
 }): WorkspaceAgentCreateInput {
@@ -54,7 +55,7 @@ export function buildWorkspaceAgentInput(args: {
     avatarColor: args.avatarColor,
     avatarShape: args.avatarShape,
     allowedToolIds: toolIdsForEnabledGroups(args.enabledToolGroups),
-    visibility: args.visibility,
+    ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
     permissionMode: args.permissionMode ?? 'ask',
     ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
   }

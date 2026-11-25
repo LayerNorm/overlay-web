@@ -63,3 +63,18 @@ test('only its creator moves a creator-only agent to the workspace, and it joins
   expect(await membershipsOf('ap-private')).toEqual([channels.general])
   await expect(set('private', 'creator', 'p-alice')).rejects.toThrow(/WORKSPACE_AGENT_VISIBILITY_ONE_WAY/)
 })
+
+test('when members may not move items, a member cannot move their agent to the workspace either', async () => {
+  const { convex, set, visibilityOf } = await fixture()
+  await convex.run(async (ctx) => {
+    await ctx.db.insert('workspaceSharingPolicies', { workspaceId, publicLinksEnabled: false, memberCanMoveScope: false, createdAt: now, updatedAt: now } as never)
+  })
+  await expect(set('private', 'workspace', 'p-alice')).rejects.toThrow(/WORKSPACE_AGENT_MOVE_DISABLED/)
+  expect(await visibilityOf('private')).toBe('creator')
+  // Allowed again once the workspace lets members move.
+  await convex.run(async (ctx) => {
+    const row = await ctx.db.query('workspaceSharingPolicies').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).unique()
+    await ctx.db.patch(row!._id, { memberCanMoveScope: true })
+  })
+  await expect(set('private', 'workspace', 'p-alice')).resolves.toMatchObject({ visibility: 'workspace' })
+})

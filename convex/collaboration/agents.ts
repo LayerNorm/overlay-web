@@ -4,6 +4,7 @@ import { mutation, query } from '../_generated/server'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { joinPublicChannels } from '../lib/agentVisibility'
+import { loadScopeContext } from '../lib/resourceScope'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { WORKSPACE_AGENT_CREATURE_SHAPES } from '@overlay/workspace-contracts'
@@ -441,6 +442,14 @@ async function syncChiefIdentityRow(
   }
 }
 
+/** The workspace's "members may move items to Workspace" setting covers agents too; owners and admins always may. */
+async function assertMemberMayMoveToWorkspace(ctx: MutationCtx, workspaceId: string, principalId: string) {
+  const principal = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', (q) => q.eq('principalId', principalId)).unique()
+  if (!principal?.userId) throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
+  const { viewer, policy } = await loadScopeContext(ctx, workspaceId, principal.userId)
+  if (!policy.memberCanMoveScope && viewer.role !== 'owner' && viewer.role !== 'admin') throw new Error('WORKSPACE_AGENT_MOVE_DISABLED')
+}
+
 export const updateByServer = mutation({
   args: {
     serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(),
@@ -506,6 +515,7 @@ export const updateByServer = mutation({
     if (movingToWorkspace && (!args.updatedByPrincipalId || args.updatedByPrincipalId !== row.createdByPrincipalId)) {
       throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
     }
+    if (movingToWorkspace) await assertMemberMayMoveToWorkspace(ctx, row.workspaceId, args.updatedByPrincipalId!)
     if (
       row.agentRole !== 'personal_chief' &&
       args.name &&

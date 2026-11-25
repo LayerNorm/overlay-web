@@ -230,7 +230,7 @@ describe('one-way moves (P4) and credentials that stay behind (P5)', () => {
     expect(row.connectedAccountId).toBe('acct-personal')
   })
 
-  test('moving an MCP server to the workspace leaves the mover\'s sign-in behind and turns it off until connected', async () => {
+  test('moving an MCP server to the workspace leaves the mover\'s sign-in behind and turns it off; connecting does not turn it back on by itself', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const [oauth, bearer, open] = await convex.run(async (ctx) => {
@@ -259,11 +259,11 @@ describe('one-way moves (P4) and credentials that stay behind (P5)', () => {
     const listed = await convex.query(q('integrations/mcpServers:list'), { ...auth, userId: 'bob' }) as Array<Record<string, unknown>>
     expect(listed.find((s) => s.name === 'OAuth')).toMatchObject({ hasAuth: false, oauthStatus: 'pending', enabled: false })
     expect(JSON.stringify(listed)).not.toContain('sekrit')
-    // Connecting an account for the workspace turns it back on.
+    // Connecting stores the new account; it stays off until someone turns it on (it may have been off on purpose).
     expect(await convex.mutation(m('integrations/mcpServers:updateOAuthState'), {
       serverSecret: secret, userId: 'alice', mcpServerId: oauth, encryptedOAuthTokens: 'workspace-tokens', oauthStatus: 'connected',
     })).toBe(true)
-    expect(await read(oauth)).toMatchObject({ enabled: true, oauthStatus: 'connected', encryptedOAuthTokens: 'workspace-tokens' })
+    expect(await read(oauth)).toMatchObject({ enabled: false, oauthStatus: 'connected', encryptedOAuthTokens: 'workspace-tokens' })
   })
 })
 

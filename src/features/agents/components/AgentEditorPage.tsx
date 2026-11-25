@@ -147,7 +147,7 @@ export function useAgentEditorController({
       avatarColor: form.avatarColor,
       avatarShape: form.avatarShape,
       enabledToolGroups: form.enabledToolGroups,
-      visibility: form.visibility,
+      visibility: mode === 'new' ? form.visibility : undefined,
       permissionMode: form.permissionMode,
       reasoning: workspaceAgentReasoningForSave({
         modelId: form.modelId,
@@ -159,7 +159,7 @@ export function useAgentEditorController({
     }),
     teamIds: agent?.teamIds ?? [],
   }), [form.name, form.description, form.instructions,
-    form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
+    form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility, mode,
     form.permissionMode, form.reasoning, modelAccess.pickerTextModels,
     agent])
 

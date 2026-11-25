@@ -275,6 +275,11 @@ export class WorkspaceAgentService {
       ...(teamIds === undefined ? {} : { teamIds }),
       updatedByPrincipalId: access.principal.id,
       now: this.now(),
+    }).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes('WORKSPACE_AGENT_MOVE_DISABLED')) {
+        throw new WorkspaceAgentServiceError('forbidden', 'This workspace does not let members move items to Workspace.')
+      }
+      throw error
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     const creator = await this.workspaces.resolvePrincipal(updated.createdByPrincipalId)

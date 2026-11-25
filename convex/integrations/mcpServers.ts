@@ -445,8 +445,6 @@ export const updateOAuthState = mutation({
     }
     if (args.oauthClientId !== undefined) patch.oauthClientId = args.oauthClientId ?? undefined
     if (args.oauthStatus !== undefined) patch.oauthStatus = args.oauthStatus
-    // A server moved to the workspace was turned off until connected (`pending`): connecting turns it back on.
-    if (args.oauthStatus === 'connected' && server.oauthStatus === 'pending' && !server.enabled) patch.enabled = true
     if (args.oauthIssuer !== undefined) patch.oauthIssuer = args.oauthIssuer
     if (args.oauthScope !== undefined) patch.oauthScope = args.oauthScope
     if (args.oauthResource !== undefined) patch.oauthResource = args.oauthResource

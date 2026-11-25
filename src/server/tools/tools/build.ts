@@ -1481,7 +1481,6 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         taskId: taskIdSchema,
         revision: z.string().optional(),
-        scope: z.enum(['personal', 'workspace']).optional(),
         title: z.string().optional(),
         description: z.string().nullable().optional(),
         status: taskStatusSchema.optional(),

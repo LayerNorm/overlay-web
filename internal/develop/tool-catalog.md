@@ -148,8 +148,9 @@ request is pending, declined, removed, or paused, `join_status` is its only tool
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
-Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
-transaction; its optional revision is checked by Convex before any write. Conflicts return the current task,
+Task tools use the Work API and its existing permissions. `update_task` sends fields and status in one
+transaction (it cannot move a task between Personal and Workspace: that one-way move needs a person's
+confirmation in the app); its optional revision is checked by Convex before any write. Conflicts return the current task,
 revision and instructions to review newer edits before retrying, or to call `get_task` if the read failed.
 Comments also advance the task revision monotonically, so a same-tick comment cannot revive a stale write.
 `comment_on_task` reads back the task and returns its new revision for the next update. A failed readback

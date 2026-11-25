@@ -339,7 +339,8 @@ function SavedAgentAccess({ agent, onMovedToWorkspace }: {
               <DialogTitle>Move to workspace?</DialogTitle>
               <DialogDescription>
                 Everyone in {workspace} will be able to see, chat with, and @-mention {agent.name}, and it joins the
-                workspace’s public channels. You can’t move it back to Personal.
+                workspace’s public channels. If it has a computer, everyone can use that too, including anything
+                signed in on it. You can’t move it back to Personal.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
