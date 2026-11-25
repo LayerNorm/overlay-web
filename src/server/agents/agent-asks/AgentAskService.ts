@@ -140,7 +140,17 @@ export class AgentAskService {
     sleep?: (ms: number) => Promise<void>
     now?: () => number
     waitMs?: number
+    /** Whether the asking conversation is a workspace context (`resolveSharedRoom`); without it nothing is refused. */
+    roomIsShared?: (args: { actorUserId: string; workspaceId: string; conversationId: string }) => Promise<boolean>
   }) {}
+
+  /** Decided on the server from the asking conversation, never from the request. */
+  private async asksFromWorkspaceContext(args: { actorUserId: string; workspaceId: string; sharedRoom?: boolean; caller?: Caller; roomConversationId?: string }) {
+    if (args.sharedRoom) return true
+    const conversationId = args.caller?.conversationId ?? args.roomConversationId
+    if (!conversationId || !this.dependencies.roomIsShared) return false
+    return await this.dependencies.roomIsShared({ actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId })
+  }
 
   async list(args: { actorUserId: string; workspaceId: string; callerAgentId?: string }) {
     const directory = (await this.dependencies.directory(args.actorUserId, args.workspaceId))
@@ -170,12 +180,21 @@ export class AgentAskService {
     wait: boolean
     startTurns?: StartTurns
     outsideAgent?: OutsideAgentCall
+    /** The asking turn is a workspace context (a room others can read, a workspace automation), when already known. */
+    sharedRoom?: boolean
+    /** The conversation an agentless turn asks from (a workspace automation without an agent). */
+    roomConversationId?: string
   }): Promise<AgentAskResult> {
     if (args.caller && !args.startTurns && !args.outsideAgent) await this.refuseHarnessCaller(args, args.caller)
     const message = this.cleanMessage(args.message)
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
     if (!target) throw new AgentAskError(`No agent called "${args.target.trim()}" that you can ask. Use list_agents to see who is available.`, 404, 'agent_not_found')
+    // A person's private agents and their Personal Chief work for them alone: a workspace context may not ask them,
+    // since their answer (and what they can reach) would land where others can read it.
+    if ((target.visibility === 'creator' || target.agentRole === 'personal_chief') && await this.asksFromWorkspaceContext(args)) {
+      throw new AgentAskError(`${target.name} is a private agent. From a room others can read, or a workspace automation, only workspace agents can be asked.`, 403, 'ask_private_agent')
+    }
     assertAssignmentContext(args, target)
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 

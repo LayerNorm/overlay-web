@@ -4,6 +4,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Close the remaining gaps in the room rule, so agents in a room others can read, and workspace automations, can no longer reach anyone's Personal items through their tools. Before, only lists and searches were limited: an agent could still read or edit a Personal file, note, task or automation by id, its new notes, files, tasks and automations landed in the summoner's or automation owner's Personal, computer tools could fall back to the summoner's own Mac, and it could ask their private agents or Personal Chief.
+  - Reading or changing an item by id (`read_file`, `write_file`, `move_file`, `get_note` and the note edits, `delete_note`, `get_task`, `update_task`, `comment_on_task`, `update_automation`, `pause_automation`, `delete_automation`) refuses a Personal item there, with a message the agent can pass on.
+  - Notes, files, folders, tasks and automations an agent creates there go to Workspace. Elsewhere the create tools take an optional `scope`, Personal by default. `save_skill` saves nothing there, since an unreviewed skill would steer every agent.
+  - Computer tools there use only the agent's own cloud computer, never a person's Mac or personal cloud computer.
+  - A person's creator-only agents and Personal Chief can't be asked from there (`ask_private_agent`), decided on the server from the asking conversation.
+  - Every search hit, and every file, note and task an agent lists or reads, now says whether it is Personal or Workspace.
 - Retire the finished Workspace and Personal plan: its rules and where each is enforced now live in the living doc `internal/develop/workspace-and-personal.md` (added to the AGENTS.md doc table), code comments point there, and the open guest question moved to `todos.md`.
 - Record the live preview test of Workspace and Personal P6 in the plan (workspace automation without its owner's private memory or personal-only tools).
 - Give people their baseline member role when they sign in (password, sign-in callback and the preview test login), not only when they first open the app. Automation runs enforce that role's capabilities, so someone who had only used the API, and every fresh PR preview driven by scripts, had every automation refused with `authorization_denied models.use`. Opening the app still does the same thing, and a failure at sign-in is logged without blocking it.
