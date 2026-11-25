@@ -10,6 +10,9 @@ export const GENERATION_TOOL_IDS = [
   'edit_video',
 ] as const
 
+/** Data and APIs: find, inspect and run paid third-party endpoints through Monid (internal/develop/monid.md). */
+export const API_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api'] as const
+
 /**
  * Persistent-computer tool ids, also listed in src/shared/agents/tool-groups.ts
  * for the agent Computer group — this package cannot import app code, so the
@@ -81,6 +84,7 @@ export const OVERLAY_TOOL_IDS = [
   'post_message',
   ...COMPUTER_TOOL_IDS,
   ...GENERATION_TOOL_IDS,
+  ...API_TOOL_IDS,
 ] as const
 
 const OVERLAY_TOOL_ID_SET = new Set<string>(OVERLAY_TOOL_IDS)

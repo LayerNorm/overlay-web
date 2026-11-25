@@ -41,6 +41,8 @@ import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
+import { API_TOOL_IDS } from '@overlay/tools-core/policy'
+import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '@/server/tools/shared-room-policy'
 import { withPersonalComputerToolIds } from './personal-computer-tooling'
 export { withPersonalComputerToolIds }
@@ -220,10 +222,10 @@ export async function prepareActTooling(params: {
       }),
     },
   )
-  const policyToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
+  const policyToolIds = applyAccountToolPolicy(withoutUnavailableApiTools(applyRuntimeToolGates(
     baseToolIds,
     capabilities,
-  ), params.accountAllowedToolIds)
+  ), { paid: params.paid, configured: await apiToolsConfigured() }), params.accountAllowedToolIds)
   const allowedOverlayToolIds = params.sharedRoom
     ? withoutSharedRoomWithheldTools(policyToolIds)
     : policyToolIds
@@ -269,6 +271,10 @@ export async function prepareActTooling(params: {
         workspaceId: params.workspaceId,
         idempotencyKey: params.idempotencyKey,
         artifactPublicationAuthority: params.artifactPublicationAuthority,
+        billing: {
+          entitlements: params.entitlements,
+          programmaticSubjectId: params.billingProgrammaticSubjectId,
+        },
       }),
     ),
     capabilities.webSearch
@@ -470,6 +476,25 @@ function withRequestedOverlayToolIds(
   }
 
   return Array.from(allowed)
+}
+
+/**
+ * Data and APIs (internal/develop/monid.md) need Overlay's Monid key and a paid plan, since every run is charged to the
+ * workspace. Without either, the tools are not offered at all.
+ */
+export function withoutUnavailableApiTools(toolIds: string[], state: { paid: boolean; configured: boolean }): string[] {
+  if (state.paid && state.configured) return toolIds
+  const apiToolIds = new Set<string>(API_TOOL_IDS)
+  return toolIds.filter((toolId) => !apiToolIds.has(toolId))
+}
+
+async function apiToolsConfigured(): Promise<boolean> {
+  try {
+    return Boolean(await getServerProviderKey('monid'))
+  } catch (_error) {
+    // The hosted-provider kill switch is on: no paid third-party calls.
+    return false
+  }
 }
 
 export function applyRuntimeToolGates(

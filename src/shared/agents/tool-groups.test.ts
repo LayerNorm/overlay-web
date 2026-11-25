@@ -208,3 +208,17 @@ test('related tools share one group: files with notes, images with video, asking
   const everyTool = AGENT_TOOL_GROUPS.flatMap((group) => group.toolIds)
   assert.equal(new Set(everyTool).size, everyTool.length, 'no tool belongs to two groups')
 })
+
+test('Data and APIs is its own group, granted to new agents and offered at the Everything MCP level', async () => {
+  const groups = await import('./tool-groups')
+  const apis = groups.AGENT_TOOL_GROUPS.find(group => group.id === 'apis')
+  assert.deepEqual(apis?.toolIds, ['search_apis', 'inspect_api', 'run_api'])
+  assert.ok(groups.DEFAULT_AGENT_TOOL_GROUP_IDS.includes('apis'))
+  assert.ok(!groups.AGENT_TOOL_PRESETS.standard.includes('apis'))
+  const { mcpToolGrantFor } = await import('@/shared/mcp/access')
+  for (const id of ['search_apis', 'inspect_api', 'run_api']) {
+    assert.ok(mcpToolGrantFor('full').includes(id), id)
+    assert.ok(!mcpToolGrantFor('write').includes(id), id)
+    assert.ok(!mcpToolGrantFor('read').includes(id), id)
+  }
+})

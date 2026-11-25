@@ -44,17 +44,22 @@ export function resolveToolResourceHref(href: string, canonicalHrefs?: readonly 
   }
 }
 
-const CREATING_TOOLS = new Set(['write_file', 'create_note', 'generate_image', 'generate_video', 'animate_image', 'computer_publish_file', 'computer_recording'])
+const CREATING_TOOLS = new Set(['write_file', 'create_note', 'generate_image', 'generate_video', 'animate_image', 'computer_publish_file', 'computer_recording', 'run_api'])
 const FILE_CONTENT_URL = /\/api\/v1\/files\/([^/?#)\s"']+)\/content/g
 const MARKDOWN_EMBED = /!\[[^\]]*\]\(\s*<?([^)\s>]+)/g
 
-function createdFileId(block: Extract<AssistantVisualBlock, { kind: 'tool' }>): string | undefined {
+function createdFileIds(block: Extract<AssistantVisualBlock, { kind: 'tool' }>): string[] {
   const output = record(block.toolOutput)
-  if (output?.success !== true || output.status === 'pending') return undefined
+  if (output?.success !== true || output.status === 'pending') return []
   // A rewrite of an existing file is an edit, not a new file to show.
-  if (block.name === 'write_file' && typeof record(block.toolInput)?.fileId === 'string') return undefined
+  if (block.name === 'write_file' && typeof record(block.toolInput)?.fileId === 'string') return []
+  // An API run can save several files (3D models, audio, documents) and its whole output when it is large.
+  if (block.name === 'run_api') {
+    const saved = [...(Array.isArray(output.files) ? output.files : []), output.fullOutputFile]
+    return saved.map(file => record(file)?.fileId).filter((id): id is string => typeof id === 'string' && id.length > 0)
+  }
   const id = output.fileId ?? output.noteId ?? output.outputId ?? record(output.artifact)?.fileId
-  return typeof id === 'string' && id ? id : undefined
+  return typeof id === 'string' && id ? [id] : []
 }
 
 function decodedId(raw: string): string | null {
@@ -86,8 +91,9 @@ export function collectCreatedFileIds(blocks: AssistantVisualBlock[]): string[] 
   const created: string[] = []
   for (const block of blocks) {
     if (block.kind !== 'tool' || !CREATING_TOOLS.has(block.name) || block.state !== 'output-available') continue
-    const id = createdFileId(block)
-    if (id && !shown.has(id) && !created.includes(id)) created.push(id)
+    for (const id of createdFileIds(block)) {
+      if (!shown.has(id) && !created.includes(id)) created.push(id)
+    }
   }
   return created
 }

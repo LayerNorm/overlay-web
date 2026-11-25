@@ -14,6 +14,7 @@ const PROVIDER_VAULT_NAMES: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   elo: 'ELO_API_KEY',
   tinyfish: 'TINYFISH_API_KEY',
+  monid: 'MONID_API_KEY',
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000

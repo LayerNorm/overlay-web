@@ -14,6 +14,7 @@ One toggle per thing a person would recognise. Reading and writing the same kind
 | Skills | `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `save_skill`, `draft_skill_from_chat` |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Media generation | `generate_image`, `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
+| Data and APIs (paid; see `monid.md`) | `search_apis`, `inspect_api`, `run_api`: find and run read-only third-party endpoints through Monid, billed to the workspace per run |
 | Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal`, `computer_publish_file`, `computer_recording` |
 | Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps), `resolve_assignment` (only in the Chief's native Harness run; withheld from connected agents and outside apps) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
@@ -140,7 +141,7 @@ always saved to the person's Personal outputs.
 
 | Surface | What it gets |
 | --- | --- |
-| **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
+| **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills, and Data and APIs on paid plans when Overlay has a Monid key) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Cloud computer. The Local computer group (`capability:local_computer`) holds no tool ids of its own: it gives the computer tools to a thread its owner set to run on their own computer (`localThreadComputerToolIds`, `internal/develop/thread-folders.md`). It is never exposed over MCP. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, `post_message`, and `resolve_assignment`. |
 
@@ -169,7 +170,7 @@ request is pending, declined, removed, or paused, `join_status` is its only tool
 
 - **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `list_automations`, `list_tasks`, `get_task`.
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
-- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
+- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, Data and APIs, asking agents. Never agent editing or computers.
 
 Task tools use the Work API and its existing permissions. `update_task` sends fields and status in one
 transaction (it cannot move a task between Personal and Workspace: that one-way move needs a person's

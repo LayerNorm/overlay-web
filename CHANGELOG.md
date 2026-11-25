@@ -4,6 +4,13 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add Data and APIs: agents and chats can now find and run thousands of paid third-party APIs through Monid (lead and contact search, company and people enrichment, social and review data, scraping, SEO, 3D models, speech and more) without the person connecting an account or buying a subscription.
+  - Three new tools: `search_apis` finds endpoints in plain words with their prices, `inspect_api` shows an endpoint's input schema, price and notes, and `run_api` runs it, waits for slow ones up to 10 minutes, and saves the files it returns (3D models, audio, documents) to Files. Very large results are saved whole to Files with a preview.
+  - Each run is checked against the workspace budget first and charged afterwards at Monid's reported cost plus the usual usage fee; its cap at Monid is what the workspace has left, so a run cannot overspend it. Retries never charge twice.
+  - Only read-only endpoints run. Endpoints that create or change accounts, phone numbers, inboxes or other stored resources, or that send messages, place calls or make bookings, are refused, because Overlay's one Monid account is shared by every customer.
+  - Offered on paid plans when the deployment has `MONID_API_KEY`: always in personal chat, to new agents as the "Data and APIs" group (existing agents turn it on), and to outside apps at the Everything level. Chat rows read "Searched APIs for …", "Read … API details" and "Ran … · $0.12".
+  - The self-verticalize skill now looks for the domain's APIs and records which endpoint to use for each step. New living doc `internal/develop/monid.md`.
+
 - Record in the tool-scoping plan that the room-rule work (PR 625) is merged and deployed.
 - Finish removing the workspace Guest role: the production migration ran (no guest memberships, 2 guest invitations turned into member invitations, nothing else to clear), so the schema no longer accepts `guest`, the `workspaceResourceGuests` table and the retired `guestExpirationDays` and Slack `guests` fields are gone, and the one-time migration and the helper that read old guest rows as members are deleted.
 - Show owners and admins what each person spends, and let them cap it (Workspace → Billing → Spend per person). Personal mode spends the workspace's budget, and until now nobody could see or limit one person's share. The card lists every member's spend this billing period, their automations and agents included, live. A cap counts what the person already spent this period, stops their paid work once reached with "Your spending limit in this workspace is used up", and renews every period.

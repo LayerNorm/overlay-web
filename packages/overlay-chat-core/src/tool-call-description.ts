@@ -234,7 +234,38 @@ function describeGenerated(call: CallContext): ToolCallDescription {
   return call.make(VERBS.generated, { target: call.toolName === 'generate_image' ? 'an image' : 'a video', ...(fileId ? { fileId } : {}) })
 }
 
+function apiEndpoint(call: CallContext): string | null {
+  const provider = inputString(call, 'provider')
+  const endpoint = inputString(call, 'endpoint')
+  if (!provider || !endpoint) return null
+  return `${provider}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
+}
+
+/** "Ran apollo/mixed_people/api_search · $0.12", opening the first file it saved. */
+function describeApiRun(call: CallContext): ToolCallDescription | null {
+  const endpoint = apiEndpoint(call)
+  if (!endpoint) return null
+  const charged = call.output?.chargedUsd
+  const files = Array.isArray(call.output?.files) ? call.output.files : []
+  const fileId = call.succeeded ? fileIdFrom(record(files[0])) ?? fileIdFrom(record(call.output?.fullOutputFile)) : undefined
+  return call.make(VERBS.ran, {
+    target: target(endpoint),
+    title: endpoint,
+    ...(typeof charged === 'number' && charged > 0 ? { detail: `$${charged < 0.01 ? charged.toPrecision(1) : charged.toFixed(2)}` } : {}),
+    ...(fileId ? { fileId } : {}),
+  })
+}
+
 const TOOL_DESCRIBERS: Record<string, (call: CallContext) => ToolCallDescription | null> = {
+  search_apis: (call) => {
+    const query = inputString(call, 'query')
+    return call.make(VERBS.searched, { target: 'APIs', ...(query ? { detail: `for “${clip(query, 60)}”`, title: query } : {}) })
+  },
+  inspect_api: (call) => {
+    const endpoint = apiEndpoint(call)
+    return endpoint ? call.make(VERBS.read, { target: target(endpoint), detail: 'API details', title: endpoint }) : null
+  },
+  run_api: describeApiRun,
   computer_exec: call => describeCommandCall(call, inputString(call, 'command')),
   remote_terminal: call => describeCommandCall(call, inputString(call, 'title', 'summary')),
   computer_read_file: (call) => {

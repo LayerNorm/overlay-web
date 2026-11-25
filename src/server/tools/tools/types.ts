@@ -1,7 +1,14 @@
 import 'server-only'
 
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
+import type { Entitlements } from '@/shared/app/app-contracts'
 export type { ToolCategory } from '@overlay/tools-core'
+
+/** Who pays for a paid tool call: checked before it runs and charged after (workspace budget only). */
+export type ToolBillingContext = {
+  entitlements: Entitlements
+  programmaticSubjectId?: string
+}
 
 /**
  * Unified overlay-native tools (Act agent). See build.ts for composition.
@@ -62,4 +69,6 @@ export interface OverlayToolsOptions {
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
   idempotencyKey?: string
   artifactPublicationAuthority?: ArtifactPublicationAuthority
+  /** Required by paid tools that charge the workspace directly (`run_api`). */
+  billing?: ToolBillingContext
 }
