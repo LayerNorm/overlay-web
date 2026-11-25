@@ -24,6 +24,11 @@ import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, asser
 export { WorkspaceAgentServiceError } from './workspace-agent-validation'
 export { canCreateAgent, canSeeAgent } from './WorkspaceAgentService.helpers'
 
+/** The ID a personal chief is created with (adopted older defaults keep their own). */
+export function personalChiefAgentId(workspaceId: string, userId: string) {
+  return `personal-chief-${workspaceId}-${userId}`
+}
+
 export class WorkspaceAgentService {
   constructor(
     private readonly repository: WorkspaceAgentRepository,
@@ -33,13 +38,19 @@ export class WorkspaceAgentService {
     private readonly assertModelSelectable: (modelId: string, actorUserId: string, workspaceId: string) => Promise<void> = async () => {},
   ) {}
 
-  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
+  /**
+   * The agents the actor may see. Always ensures the workspace chief; `includePersonal` (the actor is in Personal mode)
+   * also ensures their own personal chief, which is otherwise created only when they first open Personal.
+   */
+  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean; includePersonal?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     if (access.membership.role !== 'guest') {
       await this.repository.ensureChiefs({
         workspaceId: access.workspace.id,
         actorUserId: args.actorUserId,
         actorPrincipalId: access.principal.id,
+        // Sent only when set, so a backend that predates the argument keeps serving the workspace-only call.
+        ...(args.includePersonal ? { includePersonal: true } : {}),
         now: this.now(),
       })
     }
@@ -82,6 +93,8 @@ export class WorkspaceAgentService {
         workspaceId: access.workspace.id,
         actorUserId: args.actorUserId,
         actorPrincipalId: access.principal.id,
+        // Opening one's own personal chief by its ID (a link, or the first visit) creates it.
+        ...(args.agentId === personalChiefAgentId(access.workspace.id, args.actorUserId) ? { includePersonal: true } : {}),
         now: this.now(),
       })
     }

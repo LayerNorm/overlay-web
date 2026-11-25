@@ -177,6 +177,7 @@ import type * as migrations_doubleSidebar from "../migrations/doubleSidebar.js";
 import type * as migrations_grantLocalComputer from "../migrations/grantLocalComputer.js";
 import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.js";
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
+import type * as migrations_personalChiefs from "../migrations/personalChiefs.js";
 import type * as migrations_purgeConnectedAgents from "../migrations/purgeConnectedAgents.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
@@ -380,6 +381,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/grantLocalComputer": typeof migrations_grantLocalComputer;
   "migrations/notesToMarkdown": typeof migrations_notesToMarkdown;
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
+  "migrations/personalChiefs": typeof migrations_personalChiefs;
   "migrations/purgeConnectedAgents": typeof migrations_purgeConnectedAgents;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;

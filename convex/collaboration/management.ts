@@ -139,27 +139,31 @@ async function agentItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer): Promise<Wo
     activeMembers(ctx, viewer.workspaceId),
     ctx.db.query('workspaceAgentDefinitions').withIndex('by_workspaceId', q => q.eq('workspaceId', viewer.workspaceId)).take(MAX_ROWS),
   ])
-  // Each agent's own avatar, for agents this person may see, so pickers show it rather than a generic icon.
+  // Only agents this person may see, never a personal chief: it lives in its owner's Personal mode, so it is not
+  // mentioned, listed with the people or shown in Settings → Agents.
   const byPrincipal = new Map(agents
-    .filter(agent => agent.archivedAt === undefined && agent.deletedAt === undefined && canSee(agent, viewer))
+    .filter(agent => agent.archivedAt === undefined && agent.deletedAt === undefined
+      && agent.agentRole !== 'personal_chief' && canSee(agent, viewer))
     .map(agent => [agent.principalId, agent]))
-  return members.filter(({ principal }) => principal.type === 'agent').map(({ principal, membership }) => {
-    const agent = byPrincipal.get(principal.principalId)
-    return {
+  return members.flatMap(({ principal, membership }) => {
+    const agent = principal.type === 'agent' ? byPrincipal.get(principal.principalId) : undefined
+    if (!agent) return []
+    return [{
       id: principal.principalId,
       kind: 'member' as const,
       name: principal.displayName,
-      description: agent?.description?.trim() || 'Named workspace agent',
+      description: agent.description?.trim() || 'Named workspace agent',
       detail: membership.role,
       badge: principal.type,
       principalId: principal.principalId,
       principalType: principal.type,
-      ...(agent?.avatarColor ? { avatarColor: agent.avatarColor } : {}),
-      ...(agent?.avatarShape ? { avatarShape: agent.avatarShape } : {}),
-      isDefault: agent?.isDefault,
+      ...(agent.avatarColor ? { avatarColor: agent.avatarColor } : {}),
+      ...(agent.avatarShape ? { avatarShape: agent.avatarShape } : {}),
+      isDefault: agent.isDefault,
+      ...(agent.visibility === 'creator' ? { personal: true } : {}),
       role: membership.role,
       status: membership.status,
-    }
+    }]
   })
 }
 

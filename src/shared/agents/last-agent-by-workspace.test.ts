@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  agentBelongsToCreatorScope,
-  agentsForCreatorScope,
+  agentBelongsToMode,
+  agentModeForViewer,
+  agentsForMode,
   clearAgentOpened,
   getAgentOpenedAt,
   getLastOpenedAgentId,
@@ -107,14 +108,25 @@ test('picks the requested agent, else the most recent, else the roster head', ()
   assert.equal(pickAgentToOpen(agents, 'ws-a', 'c')?.id, 'c')
 })
 
-test('creator-relative agent selection uses only the requested scope bucket', () => {
+test('agents follow visibility, not who created them', () => {
   const directory = [
-    { id: 'mine', createdByPrincipalId: 'viewer' },
-    { id: 'theirs', createdByPrincipalId: 'other' },
+    { id: 'overlay', createdByPrincipalId: 'other', agentRole: 'workspace_chief', visibility: 'workspace' },
+    { id: 'my-chief', createdByPrincipalId: 'viewer', agentRole: 'personal_chief', visibility: 'creator' },
+    { id: 'their-chief', createdByPrincipalId: 'other', agentRole: 'personal_chief', visibility: 'creator' },
+    // A legacy personal chief bound to the workspace is listed nowhere.
+    { id: 'bound-chief', createdByPrincipalId: 'viewer', agentRole: 'personal_chief', visibility: 'workspace', chiefScope: 'workspace' },
+    { id: 'my-private', createdByPrincipalId: 'viewer', visibility: 'creator' },
+    { id: 'my-shared', createdByPrincipalId: 'viewer', visibility: 'workspace' },
+    { id: 'their-shared', createdByPrincipalId: 'other', visibility: 'workspace' },
+    { id: 'their-private', createdByPrincipalId: 'other', visibility: 'creator' },
   ]
-  assert.deepEqual(agentsForCreatorScope(directory, 'viewer', 'personal').map((agent) => agent.id), ['mine'])
-  assert.deepEqual(agentsForCreatorScope(directory, 'viewer', 'workspace').map((agent) => agent.id), ['theirs'])
-  assert.equal(agentBelongsToCreatorScope(directory[0]!, null, 'personal'), false)
-  assert.equal(agentBelongsToCreatorScope(directory[0]!, 'viewer', 'personal'), true)
-  assert.equal(agentBelongsToCreatorScope(directory[0]!, 'viewer', 'workspace'), false)
+  assert.deepEqual(agentsForMode(directory, 'viewer', 'personal').map((agent) => agent.id), ['my-chief', 'my-private'])
+  assert.deepEqual(agentsForMode(directory, 'viewer', 'workspace').map((agent) => agent.id), ['overlay', 'my-shared', 'their-shared'])
+  assert.equal(agentModeForViewer(directory[3]!, 'viewer'), null)
+  assert.equal(agentModeForViewer(directory[2]!, 'viewer'), null)
+  assert.equal(agentBelongsToMode(directory[4]!, null, 'personal'), false)
+  assert.equal(agentBelongsToMode(directory[4]!, 'viewer', 'personal'), true)
+  assert.equal(agentBelongsToMode(directory[5]!, 'viewer', 'personal'), false)
+  // Rows without a visibility are workspace-visible, as the server treats them.
+  assert.equal(agentModeForViewer({ createdByPrincipalId: 'viewer' }, 'viewer'), 'workspace')
 })

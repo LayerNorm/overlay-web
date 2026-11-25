@@ -107,9 +107,17 @@ export const createChannel = mutation({
     const principals = await ctx.db.query('workspacePrincipals')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
       .take(5_000)
+    // Channels are shared rooms: personal chiefs and creator-only agents never join one, like `insertAgent` and
+    // `insertChief` already keep them out of channels made before them.
+    const definitions = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+      .take(5_000)
+    const personalAgentPrincipals = new Set(definitions
+      .filter((definition) => definition.agentRole === 'personal_chief' || definition.visibility === 'creator')
+      .map((definition) => definition.principalId))
     const eligiblePrincipals = principals.filter((principal) =>
       !principal.archivedAt
-      && (principal.type === 'human' || principal.type === 'agent')
+      && (principal.type === 'human' || (principal.type === 'agent' && !personalAgentPrincipals.has(principal.principalId)))
       && (args.visibility !== 'private' || requested.has(principal.principalId)))
     const memberships = await Promise.all(eligiblePrincipals.map((principal) =>
       ctx.db.query('workspaceMemberships')

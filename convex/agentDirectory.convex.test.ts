@@ -66,7 +66,7 @@ test('non-members and signed-out callers read nothing and cannot provision chief
   await expect(as('stranger').mutation(ensureChiefs, { workspaceId: 'ws' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
 
-test('ensureChiefs provisions the chiefs once and the guest call is a no-op', async () => {
+test('ensureChiefs provisions the workspace chief once and the guest call is a no-op', async () => {
   const { as } = await fixture()
   await as('guest').mutation(ensureChiefs, { workspaceId: 'ws' })
   expect(ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)).toEqual(['private', 'shared'])
@@ -75,5 +75,18 @@ test('ensureChiefs provisions the chiefs once and the guest call is a no-op', as
   await as('alice').mutation(ensureChiefs, { workspaceId: 'ws' })
   expect(ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)).toEqual(first)
   expect(first).toContain('workspace-chief-ws')
-  expect(first.length).toBeGreaterThan(2)
+  expect(first).toEqual(['workspace-chief-ws', 'private', 'shared'])
+})
+
+test('includePersonal creates only the caller’s own personal chief, visible only to them', async () => {
+  const { as } = await fixture()
+  await as('alice').mutation(ensureChiefs, { workspaceId: 'ws' })
+  expect(ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)).not.toContain('personal-chief-ws-alice')
+  await as('alice').mutation(ensureChiefs, { workspaceId: 'ws', includePersonal: true })
+  await as('alice').mutation(ensureChiefs, { workspaceId: 'ws', includePersonal: true })
+  const alice = ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)
+  expect(alice.filter(id => id.startsWith('personal-chief-'))).toEqual(['personal-chief-ws-alice'])
+  const bob = ids(await as('bob').query(list, { workspaceId: 'ws' }) as Listed)
+  expect(bob.some(id => id.startsWith('personal-chief-'))).toBe(false)
+  expect(await as('owner').query(get, { workspaceId: 'ws', agentId: 'personal-chief-ws-alice' })).toBeNull()
 })

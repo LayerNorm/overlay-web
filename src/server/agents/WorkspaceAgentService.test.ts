@@ -18,6 +18,7 @@ import type {
 import {
   WorkspaceAgentService,
   WorkspaceAgentServiceError,
+  personalChiefAgentId,
 } from './WorkspaceAgentService'
 
 const NOW = 1_800_000_000_000
@@ -99,7 +100,7 @@ function serviceFor(
   const store = new Map(seed.map((agent) => [agent.id, agent]))
   const created: CreateWorkspaceAgentRecord[] = []
   const updated: UpdateWorkspaceAgentRecord[] = []
-  const ensured: Array<{ workspaceId: string; actorUserId: string; actorPrincipalId: string }> = []
+  const ensured: Array<{ workspaceId: string; actorUserId: string; actorPrincipalId: string; includePersonal?: boolean }> = []
   const identityUpdates: Parameters<WorkspaceAgentRepository['updateChiefIdentity']>[0][] = []
   const archived: Array<{ agentId: string; workspaceId: string }> = []
   const unarchived: Array<{ agentId: string; workspaceId: string }> = []
@@ -111,7 +112,7 @@ function serviceFor(
   let idCounter = 0
   const service = new WorkspaceAgentService(
     {
-      async ensureChiefs(input: { workspaceId: string; actorUserId: string; actorPrincipalId: string }) {
+      async ensureChiefs(input: { workspaceId: string; actorUserId: string; actorPrincipalId: string; includePersonal?: boolean }) {
         ensured.push(input)
       },
       async list({ includeArchived }: { includeArchived?: boolean } = {}) {
@@ -661,15 +662,34 @@ test('update passes a visibility flip through to the repository', async () => {
   assert.equal(updated[0]?.visibility, 'creator')
 })
 
-test('the default master agent is workspace-visible', async () => {
+test('listing ensures only the workspace chief unless the actor is in Personal', async () => {
   const { service, ensured } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [])
   await service.list({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID })
+  await service.list({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, includePersonal: true })
   assert.deepEqual(ensured, [{
     workspaceId: WORKSPACE_ID,
     actorUserId: 'user-creator',
     actorPrincipalId: CREATOR_PRINCIPAL_ID,
     now: NOW,
+  }, {
+    workspaceId: WORKSPACE_ID,
+    actorUserId: 'user-creator',
+    actorPrincipalId: CREATOR_PRINCIPAL_ID,
+    includePersonal: true,
+    now: NOW,
   }])
+})
+
+test('opening one’s own personal chief by its ID creates it; other agents do not', async () => {
+  const { service, ensured } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [])
+  await serviceError(service.get({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-other' }))
+  await serviceError(service.get({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: personalChiefAgentId(WORKSPACE_ID, 'user-creator'),
+  }))
+  await serviceError(service.get({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: personalChiefAgentId(WORKSPACE_ID, 'user-peer'),
+  }))
+  assert.deepEqual(ensured.map((input) => input.includePersonal), [undefined, true, undefined])
 })
 
 test('renamed workspace chiefs remain protected from archive', async () => {

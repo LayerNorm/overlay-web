@@ -55,7 +55,7 @@ class MemoryRepository implements ComputerRepository {
 
 function service(overrides: {
   repository?: MemoryRepository
-  agents?: Record<string, { visibility: 'workspace' | 'creator'; createdByPrincipalId: string }>
+  agents?: Record<string, { visibility: 'workspace' | 'creator'; createdByPrincipalId: string; personalChiefOwnerUserId?: string }>
   assertCanRun?: () => Promise<void>
   requireExecution?: typeof requireWorkspaceExecution
 } = {}) {
@@ -215,6 +215,27 @@ test('creator-only agent access remains restricted to its creator principal', as
     (error) => error instanceof ComputerServiceError && error.code === 'forbidden')
   assert.equal((await svc.getForActor({ actor: member, computerId: 'private-computer' })).id, 'private-computer')
   assert.deepEqual(calls, [])
+})
+
+test('a personal chief computer is its person’s only, while the owner keeps other creator-only computers', async () => {
+  const { svc, repository } = service({
+    agents: {
+      'chief-1': { visibility: 'creator', createdByPrincipalId: 'principal-1', personalChiefOwnerUserId: 'user-1' },
+      'agent-private': { visibility: 'creator', createdByPrincipalId: 'principal-1' },
+    },
+  })
+  for (const [id, ownerId] of [['chief-computer', 'chief-1'], ['private-computer', 'agent-private']] as const) {
+    await repository.create({
+      id, workspaceId: 'ws-1', ownerType: 'agent', ownerId, provider: 'box', providerRef: 'provider-ref',
+      size: 'default', status: 'ready', name: null, createdBy: 'user-1', createdAt: 1, updatedAt: 1, lastActiveAt: 1,
+    })
+  }
+  assert.equal((await svc.getForActor({ actor: member, computerId: 'chief-computer' })).id, 'chief-computer')
+  for (const actor of [owner, otherMember]) {
+    await assert.rejects(svc.getForActor({ actor, computerId: 'chief-computer' }),
+      (error) => error instanceof ComputerServiceError && error.code === 'forbidden')
+  }
+  assert.equal((await svc.getForActor({ actor: owner, computerId: 'private-computer' })).id, 'private-computer')
 })
 
 test('workspace and owner checks remain ahead of lifecycle actions', async () => {

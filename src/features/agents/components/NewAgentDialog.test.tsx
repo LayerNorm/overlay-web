@@ -4,6 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   NewAgentFields,
+  agentVisibilityForMode,
   initialNewAgentDraft,
   isNewAgentDraftValid,
   resolveDraftModelId,
@@ -23,14 +24,18 @@ const modelField = {
   textModelsLoading: false,
 }
 
-test('new agents default to every tool, private, with a computer', () => {
+test('new agents default to every tool, with a computer', () => {
   const draft = initialNewAgentDraft()
   assert.equal(draft.modelId, 'z-ai/glm-5.3-flash')
-  assert.equal(draft.visibility, 'creator')
   assert.equal(draft.computer, true)
   // The computer tool group is added when the agent is created with its computer.
   assert.equal(draft.toolGroups.has('computer'), false)
   assert.equal(draft.toolGroups.has('web_search'), true)
+})
+
+test('a new agent is visible to whoever its mode is for', () => {
+  assert.equal(agentVisibilityForMode('personal'), 'creator')
+  assert.equal(agentVisibilityForMode('workspace'), 'workspace')
 })
 
 test('a draft needs a name and a description', () => {
@@ -52,11 +57,12 @@ test('fields render native agent setup without hosted-runtime fields', () => {
   const markup = renderToStaticMarkup(
     <NewAgentFields draft={{ ...initialNewAgentDraft(), modelId: 'test-model' }} onChange={() => undefined} modelField={modelField} computersAvailable />,
   )
-  const order = ['Edit avatar', '>Name<', '>Description<', '>Computer<', '>Access<', '>Advanced<']
+  const order = ['Edit avatar', '>Name<', '>Description<', '>Computer<', '>Advanced<']
   const positions = order.map((needle) => markup.indexOf(needle))
   assert.ok(positions.every((position) => position >= 0), `missing field: ${order[positions.indexOf(-1)]}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
-  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account<|Connect your agent/)
+  // Who can see the agent follows the mode it is created in, so there is no Access choice.
+  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account<|>Access<|Connect your agent/)
 })
 
 test('the computer row is hidden when the deployment has no computers', () => {

@@ -154,6 +154,14 @@ them. Besides the canonical app mockup, this folder holds only:
   in-page fake of the onboarding API. Open `free-first-task.html` to walk the whole flow, or
   `free-first-task.html?at=result#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convwelcome000000000000000000`
   to start at the subscription question. Delete it when the design ships or is rejected.
+- `workspace-personal.html` (feature `workspace-personal`): P2–P7 of `internal/plans/WORKSPACE_PERSONAL_SEPARATION_PLAN.md`.
+  One Workspace | Personal switch at the top of the primary rail (Workspace by default) replaces the toggle in every
+  section's panel. "Overlay" is the workspace chief only; the personal chief is "Mercedes's Chief", listed only in
+  Personal next to creator-only agents (Scout). Moves go one way and are confirmed; moving an automation checks its agent
+  (and can move a Personal agent along) and its accounts (a personal Gmail is replaced by connecting one for Northwind).
+  The bar switches section and Today/Proposed (`?mode=today`). Open
+  `workspace-personal.html#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convpricing000000000000000000`.
+  Delete it when the phases ship or the design is rejected.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.

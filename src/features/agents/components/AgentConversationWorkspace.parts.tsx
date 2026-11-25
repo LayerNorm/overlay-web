@@ -6,7 +6,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { Button } from '@overlay/ui/primitives'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { AgentEditorPage } from './AgentEditorPage'
-import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
+import { agentsForMode } from '@/shared/agents/last-agent-by-workspace'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 export function AgentEditorPanel({
@@ -71,7 +71,7 @@ export function AgentDirectoryScreen({
   onCreate(): void
 }) {
   const displayError = error ?? loadError
-  const scopedDirectory = directory === null ? null : agentsForCreatorScope(directory, viewerPrincipalId, scope)
+  const scopedDirectory = directory === null ? null : agentsForMode(directory, viewerPrincipalId, scope)
   const resolvingConversation = scopedDirectory !== null && scopedDirectory.length > 0 && !displayError
   const loading = activeWorkspaceId !== null && (directory === null || resolving || resolvingConversation)
   const empty = scopedDirectory !== null && scopedDirectory.length === 0 && !displayError

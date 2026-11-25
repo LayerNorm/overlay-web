@@ -25,6 +25,14 @@ test('name, gray color and legacy near-black never select the brand mark', () =>
   assert.equal(legacy, gray)
 })
 
+test('a personal chief stays a creature even when it is an adopted default', () => {
+  const html = renderToStaticMarkup(<AgentCreature agent={{ name: 'Ada’s Chief', avatarColor: '#8b5cf6', avatarShape: 'squircle', agentRole: 'personal_chief' }} isDefault />)
+  assert.doesNotMatch(html, /overlay-mark/)
+  assert.match(html, /#8b5cf6/)
+  const workspaceChief = renderToStaticMarkup(<AgentCreature agent={{ name: 'Overlay', agentRole: 'workspace_chief' }} />)
+  assert.match(workspaceChief, /overlay-mark/)
+})
+
 test('unknown creature shapes retain the circle fallback and explicit false stays a creature', () => {
   const html = renderToStaticMarkup(<AgentCreature agent={{ name: 'Custom', avatarShape: 'unknown' }} isDefault={false} animated size={20} />)
   assert.match(html, /<circle cx="50" cy="53" r="40"/)
