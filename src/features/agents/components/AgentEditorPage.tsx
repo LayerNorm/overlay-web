@@ -133,7 +133,9 @@ export function useAgentEditorController({
     name: form.name, instructions: form.instructions, modelId: form.modelId,
   })
 
-  const directoryHref = buildWorkspaceHref(activeWorkspaceId, '/app/agents', 'personal')
+  // Back to the list the agent lives in: "Only me" agents are Personal, shared ones Workspace (a new agent: the current mode).
+  const agentScope = agent ? (agent.visibility === 'creator' ? 'personal' : 'workspace') : undefined
+  const directoryHref = buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentScope)
   const closeEditor = () => onClose ? onClose() : router.push(directoryHref)
 
   const buildInput = useCallback((): WorkspaceAgentCreateInput => ({
@@ -185,7 +187,9 @@ export function useAgentEditorController({
   const movedToWorkspace = useCallback((saved: WorkspaceAgentDirectoryItem) => {
     setAgent(saved)
     form.setVisibility(saved.visibility)
-  }, [form, setAgent])
+    // The agent now lives in Workspace; a full-page editor follows it there.
+    if (presentation === 'page') router.replace(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.id)}`, 'workspace'))
+  }, [activeWorkspaceId, buildWorkspaceHref, form, presentation, router, setAgent])
 
   const title = useMemo(() => {
     if (mode === 'new') return 'New agent'
