@@ -151,6 +151,8 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
           <AccessSelector
             value={form.visibility}
             onChange={(value) => { form.setVisibility(value); form.markDirty() }}
+            agent={agent}
+            onMovedToWorkspace={editor.movedToWorkspace}
           />
         </div>
       </section> : null}

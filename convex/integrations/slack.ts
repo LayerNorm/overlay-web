@@ -432,18 +432,6 @@ export const personalChiefByServer = query({
   },
 })
 
-/**
- * Kept only for the web release before the Personal Chief change, which still calls it while Convex deploys first.
- * Delete once production web serves `personalChiefByServer` callers (after PR 617 ships).
- */
-export const hasPersonalOverlayByServer = query({
-  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    return await isActiveNonGuestHumanOwner(ctx, args.workspaceId, args.userId)
-  },
-})
-
 /** A member's active Slack link in the Slack workspace installed for their Overlay workspace. */
 export const linkForUserByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },

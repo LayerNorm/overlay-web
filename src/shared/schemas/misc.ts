@@ -26,6 +26,8 @@ export const ScopeActionRequest = z.object({
   action: z.enum(['move', 'archive', 'restore']),
   actingAgentPrincipalId: z.string().min(1).optional(),
   to: z.enum(['personal', 'workspace']).optional(),
+  /** Automations: also move the automation's creator-only agent to the workspace. */
+  withAgent: z.boolean().optional(),
 })
 
 export const EntityMutationRequest = z.object({

@@ -27,7 +27,7 @@ import {
 import { groupExtensionCatalog } from '@overlay/app-core/extensions'
 import { ConnectorDetailsDialog, ExtensionCatalogPage, type ExtensionCatalogEntry } from '@overlay/modules-react/extensions'
 import { toast } from '@overlay/ui/primitives'
-import { Plug, Server, Settings, Unplug } from 'lucide-react'
+import { Plug, Server, Settings, Unplug, Users } from 'lucide-react'
 import { notifyIntegrationsChanged, rememberIntegrationAttempt, subscribeIntegrationsChanged } from '@/shared/integrations/integrations-events'
 import { usePendingConnection } from '@/features/integrations/hooks/use-pending-connection'
 import { setIntegrationLogoUrl } from '@/shared/integrations/integration-logo-cache'
@@ -35,6 +35,8 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { safeHttpUrl } from '@/shared/security/safe-url'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
+import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { ExtensionsScreen } from '@/components/layout/extensions/ExtensionsScreen'
 import { useExtensionsRoute } from '@/hooks/use-extensions-route'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -108,6 +110,11 @@ export default function IntegrationsView({
   // In Workspace, the same connectors link to the workspace's own accounts (shared by every member), not the person's.
   const workspaceScope = usePanelScope() === 'workspace'
   const accountScope = workspaceScope ? ('workspace' as const) : undefined
+  // A personal connector never moves to the workspace (it is your signed-in account); from Personal, the workspace
+  // connects an account of its own instead.
+  const { canCreate } = useWorkspaceCreateAccess()
+  const solo = useIsSoloWorkspace()
+  const canConnectForWorkspace = !workspaceScope && !solo && canCreate('extension', 'workspace')
 
   const rememberLogos = useCallback((items: readonly ConnectorCatalogItem[]) => {
     setLogos((prev) => {
@@ -233,19 +240,22 @@ export default function IntegrationsView({
 
   const isConnected = useCallback((item: ConnectorCatalogItem) => connected.has(item.providerKey) || connected.has(item.slug), [connected])
 
-  async function connect(integration: ConnectorCatalogItem) {
+  async function connect(integration: ConnectorCatalogItem, scope: 'workspace' | undefined = accountScope) {
     if (connecting) return
+    // Connecting the workspace's account from Personal: this view lists your own accounts, so it can't watch for it.
+    const otherView = scope !== accountScope
     setConnecting(integration.providerKey)
     const attemptId = window.crypto.randomUUID()
     // Opened before any await so the browser treats the provider page as user-initiated, not a blocked popup.
     let oauthTab = window.open('about:blank', '_blank')
     rememberIntegrationAttempt(oauthTab, attemptId)
     try {
-      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(accountScope ? { scope: accountScope } : {}) })
+      const res = await overlayAppClient.integrations.connectResponse({ action: 'connect', providerKey: integration.providerKey, ...(scope ? { scope } : {}) })
       const data = await res.json().catch(() => ({}))
       const redirectUrl = res.ok ? safeHttpUrl(data.redirectUrl) : null
       if (redirectUrl) {
-        setPendingConnection({ providerKey: integration.providerKey, attemptId })
+        if (otherView) toast(`Finish connecting ${integration.name} for the workspace in the new tab.`)
+        else setPendingConnection({ providerKey: integration.providerKey, attemptId })
         if (!oauthTab) {
           oauthTab = window.open('about:blank', '_blank')
           rememberIntegrationAttempt(oauthTab, attemptId)
@@ -257,9 +267,9 @@ export default function IntegrationsView({
       oauthTab?.close()
       if (!res.ok) toast.error(readableError(data.error) ?? `Could not connect ${integration.name}`)
       else if (data.connectionId) {
-        setConnected((prev) => new Set([...prev, integration.providerKey]))
+        if (!otherView) setConnected((prev) => new Set([...prev, integration.providerKey]))
         notifyIntegrationsChanged()
-        toast.success(`${integration.name} connected`)
+        toast.success(otherView ? `${integration.name} connected for the workspace` : `${integration.name} connected`)
       } else toast.error('No connection setup URL was returned')
     } catch {
       oauthTab?.close()
@@ -310,6 +320,7 @@ export default function IntegrationsView({
       onAdd: linked ? undefined : () => void connect(item),
       menu: linked ? [
         { label: 'Settings', icon: Settings, onSelect: () => setDetails(item) },
+        ...(canConnectForWorkspace ? [{ label: 'Connect for workspace', icon: Users, onSelect: () => void connect(item, 'workspace') }] : []),
         { label: managed ? 'Managed externally' : 'Disconnect', icon: Unplug, disabled: managed, onSelect: () => void disconnect(item) },
       ] : undefined,
     }

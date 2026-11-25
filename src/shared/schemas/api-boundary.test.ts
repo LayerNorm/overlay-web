@@ -40,3 +40,10 @@ test('scope request parsing preserves native task activity attribution', () => {
     assert.deepEqual(schema.parse(body), body)
   }
 })
+
+test('scope request parsing keeps an automation move’s withAgent', () => {
+  const schema = getApiBoundarySchema('/api/v1/scope', 'POST')?.json
+  assert.ok(schema)
+  const body = { resource: 'automations', id: 'auto1', action: 'move', to: 'workspace', withAgent: true }
+  assert.deepEqual(schema.parse(body), body)
+})

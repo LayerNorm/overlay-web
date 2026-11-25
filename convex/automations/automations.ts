@@ -18,6 +18,7 @@ import { createAgentThread } from '../agents/agentThreads'
 import { recordConversationEvent } from '../collaboration/events'
 import { isWaitingForOwner, threadAgentRunFor } from '../lib/automationThreadRuns'
 import { principalIdForUser } from '../lib/workItems'
+import { moveAgentToWorkspace } from '../lib/agentVisibility'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 const automationSchedule = v.object({
@@ -44,7 +45,35 @@ const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
 
 // An archived automation stops running (the scheduler only picks up enabled ones); restoring leaves it paused.
-export const { setScope, archive, restore } = scopeMutations('automations', 'content', { onArchive: { enabled: false, nextRunAt: undefined } })
+export const { setScope, archive, restore } = scopeMutations('automations', 'content', {
+  onArchive: { enabled: false, nextRunAt: undefined },
+  beforeMove: async (ctx, { row, userId, withAgent, now }) => {
+    const automation = row as unknown as Doc<'automations'>
+    return await moveAutomationAgentAlong(ctx, { automation, userId, withAgent: withAgent === true, now })
+  },
+})
+
+/**
+ * A workspace automation needs an agent everyone can see. Moving one whose agent is creator-only takes the agent along
+ * when its creator asks (`withAgent`), in the same transaction; someone else's private agent, or a personal chief, blocks
+ * the move. Decides before writing, since a refusal is returned rather than thrown.
+ */
+async function moveAutomationAgentAlong(
+  ctx: MutationCtx,
+  args: { automation: Doc<'automations'>; userId: string; withAgent: boolean; now: number },
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { automation } = args
+  if (!automation.agentId) return { ok: true }
+  const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', (q) => q.eq('agentId', automation.agentId!)).unique()
+  if (!agent || agent.workspaceId !== automation.workspaceId || agent.archivedAt) return { ok: false, reason: 'automation_agent_missing' }
+  if ((agent.visibility ?? 'workspace') === 'workspace') return { ok: true }
+  const principalId = await principalIdForUser(ctx, agent.workspaceId, args.userId)
+  if (agent.createdByPrincipalId !== principalId) return { ok: false, reason: 'automation_agent_not_yours' }
+  if (agent.agentRole === 'personal_chief') return { ok: false, reason: 'automation_agent_chief' }
+  if (!args.withAgent) return { ok: false, reason: 'automation_agent_personal' }
+  await moveAgentToWorkspace(ctx, agent, args.now)
+  return { ok: true }
+}
 const automationRunDoc = v.any()
 
 async function authorizeUserAccess(params: {

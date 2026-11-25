@@ -32,6 +32,16 @@ async function authorize(params: { accessToken?: string; serverSecret?: string; 
 export type ScopeMutationResult = { ok: true } | { ok: false; reason: string }
 
 /**
+ * Checks a move to Workspace that the shared rules already allow, for what only this table knows (an automation's agent,
+ * a server's credentials). It may refuse, or return extra fields to write with the move. It must not write before it
+ * decides, since a refusal is returned, not thrown.
+ */
+export type BeforeMove = (
+  ctx: MutationCtx,
+  move: { id: string; row: ScopedDoc; userId: string; withAgent?: boolean; now: number },
+) => Promise<{ ok: true; patch?: Record<string, unknown> } | { ok: false; reason: string }>
+
+/**
  * `setScope`, `archive`, and `restore` for one scoped table. They return `{ ok: false, reason }` instead of throwing, so
  * the caller can answer with the right status. `onArchive` is extra fields written when archiving (an automation stops
  * running, for example).
@@ -43,6 +53,8 @@ export function scopeMutations(
     /** Keep resources whose policy lives in web routes behind the same server boundary. */
     requireServerAuthentication?: boolean
     onArchive?: Record<string, unknown>
+    /** Table-specific checks and fields for a move to Workspace (see `BeforeMove`). */
+    beforeMove?: BeforeMove
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
     /** Runs after a move, archive, or restore was written (an activity log, for example). */
@@ -68,23 +80,28 @@ export function scopeMutations(
     return { db, id, row: readable ? row : null }
   }
 
-  async function applyScope(ctx: MutationCtx, args: ScopeMutationArgs & { to: 'personal' | 'workspace' }): Promise<ScopeMutationResult> {
+  async function applyScope(ctx: MutationCtx, args: ScopeMutationArgs & { to: 'personal' | 'workspace'; withAgent?: boolean }): Promise<ScopeMutationResult> {
     await authorize(args, options?.requireServerAuthentication)
     const { db, id, row } = await readableRow(ctx, args)
     const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
-    if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
-    await db.patch(id, plan.patch)
+    if (!plan.ok || !id || !row) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
+    const extra = options?.beforeMove
+      ? await options.beforeMove(ctx, { id, row, userId: args.userId, withAgent: args.withAgent, now: Date.now() })
+      : { ok: true as const }
+    if (!extra.ok) return { ok: false, reason: extra.reason }
+    await db.patch(id, { ...plan.patch, ...(extra.patch ?? {}) })
     const moved = [id]
     // A folder's contents go with it: only the creator's own, not-archived rows.
     for (const childId of (await options?.descendants?.(db, id)) ?? []) {
       const child = await db.get(childId)
-      if (child && !child.archivedAt && child.userId === row?.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
+      if (child && !child.archivedAt && child.userId === row.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
     }
-    if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, to: args.to, affectedIds: moved })
+    await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, to: args.to, affectedIds: moved })
     return { ok: true }
   }
   const setScope = mutation({
-    args: { ...common, to: scopeValidator },
+    // `to: 'personal'` is accepted only to be refused with `one_way`. `withAgent` lets an automation take its agent along.
+    args: { ...common, to: scopeValidator, withAgent: v.optional(v.boolean()) },
     handler: applyScope,
   })
 
