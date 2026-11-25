@@ -171,7 +171,7 @@ export const getByServer = query({
       .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
       .unique()
     return row && row.workspaceId === args.workspaceId && !row.deletedAt
-      && (row.agentRole !== 'personal_chief' || !row.chiefOwnerUserId || await isActiveNonGuestHumanOwner(ctx, row.workspaceId, row.chiefOwnerUserId))
+      && (row.agentRole !== 'personal_chief' || !row.chiefOwnerUserId || await isActiveHumanMember(ctx, row.workspaceId, row.chiefOwnerUserId))
       ? await directoryValue(ctx, row)
       : null
   },
@@ -189,7 +189,7 @@ export const listByServer = query({
     const activeOwnerIds = new Set(
       (await ctx.db.query('workspaceMemberships')
         .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-        .filter((membership) => membership.status === 'active' && membership.role !== 'guest')
+        .filter((membership) => membership.status === 'active')
         .map((membership) => membership.principalId),
     )
     const activeHumanOwnerIds = new Set(
@@ -232,7 +232,7 @@ export const ensureChiefsByServer = mutation({
 })
 
 /**
- * Idempotently provisions a workspace's chief for an active, non-guest human member, and that member's own personal
+ * Idempotently provisions a workspace's chief for an active human member, and that member's own personal
  * chief when `includePersonal` is set. Personal chiefs are created lazily, only for the person who asks: someone who
  * never opens Personal (or only talks to Overlay in Slack) never gets one.
  */
@@ -242,7 +242,6 @@ export async function ensureWorkspaceChiefs(
 ) {
     const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const actor = await requireActiveHumanMembership(ctx, args.workspaceId, args.actorUserId, args.actorPrincipalId)
-    if (actor.membership.role === 'guest') throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
     const definitions = await ctx.db.query('workspaceAgentDefinitions')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect()
     const live = definitions.filter((row) => !row.deletedAt)
@@ -346,7 +345,7 @@ export const updateChiefIdentityByServer = mutation({
     const membership = await ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) =>
         q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)).unique()
-    if (!membership || membership.status !== 'active' || membership.role === 'guest') {
+    if (!membership || membership.status !== 'active') {
       throw new Error('CHIEF_IDENTITY_OWNER_REQUIRED')
     }
     return await applyChiefIdentityPatch(ctx, args)
@@ -482,11 +481,9 @@ export const updateByServer = mutation({
     if (row.agentRole === 'personal_chief' || row.agentRole === 'workspace_chief') {
       if (!args.updatedByPrincipalId) throw new Error('CHIEF_OWNER_REQUIRED')
       if (row.agentRole === 'personal_chief') {
-        const actor = await requireActiveHumanMembership(ctx, args.workspaceId, row.chiefOwnerUserId ?? '', args.updatedByPrincipalId)
-        if (actor.membership.role === 'guest') throw new Error('CHIEF_OWNER_REQUIRED')
+        await requireActiveHumanMembership(ctx, args.workspaceId, row.chiefOwnerUserId ?? '', args.updatedByPrincipalId)
       } else {
         const actor = await requireActiveHumanMembershipForPrincipal(ctx, args.workspaceId, args.updatedByPrincipalId)
-        if (actor.membership.role === 'guest') throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
         if (actor.membership.role !== 'owner' && actor.membership.role !== 'admin'
           && row.createdByPrincipalId !== args.updatedByPrincipalId) {
           throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
@@ -976,7 +973,7 @@ export async function defaultChiefNameForUser(ctx: QueryCtx | MutationCtx, userI
     const membership = await ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) =>
         q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)).unique()
-    if (membership?.status === 'active' && membership.role !== 'guest' && principal.displayName.trim()) {
+    if (membership?.status === 'active' && principal.displayName.trim()) {
       return defaultPersonalChiefName(principal.displayName)
     }
   }
@@ -996,7 +993,7 @@ async function findPersonalWorkspaceDefault(ctx: MutationCtx, userId: string) {
           q.eq('workspaceId', principal.workspaceId).eq('principalId', principal.principalId)).unique()
       return workspace?.status === 'active' && workspace.kind === 'personal'
         && workspace.personalOwnerUserId === userId
-        && membership?.status === 'active' && membership.role !== 'guest' ? workspace : null
+        && membership?.status === 'active' ? workspace : null
     }))
   for (const workspace of personalWorkspaces.filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => a.workspaceId.localeCompare(b.workspaceId))) {
@@ -1169,7 +1166,7 @@ function cleanOptional(value?: string) {
   return value?.trim() || undefined
 }
 
-export async function isActiveNonGuestHumanOwner(
+export async function isActiveHumanMember(
   ctx: QueryCtx | MutationCtx,
   workspaceId: string,
   userId: string,
@@ -1180,7 +1177,7 @@ export async function isActiveNonGuestHumanOwner(
     if (principal.type !== 'human' || principal.archivedAt) continue
     const membership = await ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId)).unique()
-    if (membership?.status === 'active' && membership.role !== 'guest') return true
+    if (membership?.status === 'active') return true
   }
   return false
 }

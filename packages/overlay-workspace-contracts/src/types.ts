@@ -7,7 +7,7 @@ export type WorkspaceStatus = (typeof WORKSPACE_STATUSES)[number]
 export const WORKSPACE_PRINCIPAL_TYPES = ['human', 'agent', 'service'] as const
 export type WorkspacePrincipalType = (typeof WORKSPACE_PRINCIPAL_TYPES)[number]
 
-export const WORKSPACE_MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'guest'] as const
+export const WORKSPACE_MEMBERSHIP_ROLES = ['owner', 'admin', 'member'] as const
 export type WorkspaceMembershipRole = (typeof WORKSPACE_MEMBERSHIP_ROLES)[number]
 
 export const WORKSPACE_MEMBERSHIP_STATUSES = ['active', 'suspended'] as const
@@ -113,21 +113,6 @@ export type WorkspaceInvitation = {
   acceptedAt?: number
   cancelledAt?: number
   replacedAt?: number
-}
-
-export type WorkspaceResourceGuest = {
-  id: string
-  workspaceId: string
-  resourceType: string
-  resourceId: string
-  principalId: string
-  accessRole: 'viewer' | 'editor'
-  status: 'pending' | 'active' | 'expired' | 'revoked'
-  grantedByPrincipalId: string
-  expiresAt?: number
-  createdAt: number
-  updatedAt: number
-  revokedAt?: number
 }
 
 /**
@@ -325,7 +310,6 @@ export type WorkspaceActivateResponse = {
 export type WorkspaceManagementView =
   | 'people'
   | 'teams'
-  | 'guests'
   | 'roles'
   | 'chats-agents'
   | 'sharing'
@@ -785,7 +769,6 @@ export type WorkspaceShareDirectory = {
   principals: WorkspaceShareDirectoryEntry[]
   teams: WorkspaceShareDirectoryEntry[]
   rooms: WorkspaceShareDirectoryEntry[]
-  canInvite: boolean
 }
 
 export type WorkspaceResourceShareResponse = {
@@ -798,7 +781,7 @@ export type WorkspaceResourceShareResponse = {
 
 /**
  * Workspace-level sharing policy. Phase 6 governs public links; later phases
- * extend this record with guest expiry, retention, and agent budget policy.
+ * extend this record with retention and agent budget policy.
  */
 export const WORKSPACE_ROLLOUT_STAGES = ['dogfood', 'invited', 'general'] as const
 export type WorkspaceRolloutStage = (typeof WORKSPACE_ROLLOUT_STAGES)[number]
@@ -823,8 +806,6 @@ export type WorkspaceSharingPolicy = {
   memberCanMoveScope: boolean
   /** Who may add usage (top up) to the workspace. */
   usageTopUpBy: WorkspaceScopeEditors
-  /** Resource guests expire after this many days when set. */
-  guestExpirationDays?: number
   /** When set, only these agent harnesses may run in this workspace. */
   allowedAgentHarnesses?: WorkspaceAgentHarness[]
   /** Per-agent spend ceiling in cents; absent means the deployment default. */

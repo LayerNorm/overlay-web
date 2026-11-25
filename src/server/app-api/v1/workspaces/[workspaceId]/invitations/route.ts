@@ -36,7 +36,6 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
       scope: {
         workspaceId: context.workspace.workspace.id,
         principalId: context.workspace.principal.id,
-        guest: context.workspace.membership.role === 'guest',
       },
     })
     const invitation = await serverContext.workspaceService.invite({

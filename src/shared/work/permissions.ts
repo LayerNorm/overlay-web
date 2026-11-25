@@ -17,7 +17,7 @@ export type WorkEditRow = ScopedRow & { assigneePrincipalId?: string | null }
 /**
  * Edit fields, change status, comment. The creator, and owners and admins of workspace tasks, as for any content.
  * Plus: members of a workspace task, when the workspace lets members edit workspace content, or when it is assigned to
- * them. Guests and people outside the workspace never.
+ * them. People outside the workspace never.
  */
 export function canWorkOnItem(
   row: WorkEditRow,

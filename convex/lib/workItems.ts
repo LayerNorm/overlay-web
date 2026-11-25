@@ -114,7 +114,7 @@ export async function assertAssignable(
       .query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId))
       .unique()
-    if (membership?.status !== 'active' || membership.role === 'guest') throw new Error('WORK_INVALID:assignee')
+    if (membership?.status !== 'active') throw new Error('WORK_INVALID:assignee')
     return
   }
   const agent = await agentAssignability(ctx, { workspaceId: args.workspaceId, principal })
@@ -122,7 +122,7 @@ export async function assertAssignable(
   if (args.scope === 'personal' && agent.visibility === 'creator' && agent.createdByPrincipalId !== args.creatorPrincipalId) throw new Error('WORK_INVALID:personal_assignee')
 }
 
-/** A reviewer is a person who can read the task: the creator for a personal one, any active non-guest member otherwise. */
+/** A reviewer is a person who can read the task: the creator for a personal one, any active member otherwise. */
 export async function assertReviewer(
   ctx: Ctx,
   args: { workspaceId: string; scope: 'personal' | 'workspace'; creatorUserId: string; reviewerUserId: string },
@@ -132,7 +132,7 @@ export async function assertReviewer(
     return
   }
   const { viewer } = await loadScopeContext(ctx, args.workspaceId, args.reviewerUserId)
-  if (viewer.role === null || viewer.role === 'guest') throw new Error('WORK_INVALID:reviewer')
+  if (viewer.role === null) throw new Error('WORK_INVALID:reviewer')
 }
 
 export function normalizeTitle(title: string): string {

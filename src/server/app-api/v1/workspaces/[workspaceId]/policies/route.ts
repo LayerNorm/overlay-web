@@ -41,7 +41,6 @@ const BOOLEAN_FIELDS = [
 const SCOPE_EDITOR_FIELDS = ['workspaceExtensionsEditors', 'workspaceContentEditors', 'usageTopUpBy'] as const
 
 const NUMBER_FIELDS = [
-  'guestExpirationDays',
   'channelRetentionDays',
   'agentRunBudgetCents',
 ] as const

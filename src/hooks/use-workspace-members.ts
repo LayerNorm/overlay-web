@@ -5,7 +5,7 @@ import { useConvexAuth, useQuery } from 'convex/react'
 import type { WorkspaceManagementItem, WorkspaceManagementResponse } from '@overlay/workspace-contracts'
 import { api } from '../../convex/_generated/api'
 
-export type WorkspaceManagementTab = 'people' | 'guests' | 'teams' | 'roles' | 'chats-agents'
+export type WorkspaceManagementTab = 'people' | 'teams' | 'roles' | 'chats-agents'
 
 /**
  * One workspace settings tab, live: role changes, removals, invitations, acceptances, renames and team edits appear
