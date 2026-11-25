@@ -211,6 +211,23 @@ export class WorkspaceAgentService {
     }
   }
 
+  /**
+   * An unchanged model is left alone so an agent whose model was withdrawn can still be edited, except when the agent
+   * moves to the workspace: then its model must be one a workspace agent may use (never a personal provider).
+   */
+  private async assertUpdatedModelSelectable(
+    agent: { modelId: string; visibility?: 'workspace' | 'creator' },
+    input: WorkspaceAgentUpdateInput,
+    actorUserId: string,
+    workspaceId: string,
+  ) {
+    const nextVisibility = input.visibility ?? agent.visibility ?? 'workspace'
+    const movesToWorkspace = (agent.visibility ?? 'workspace') === 'creator' && nextVisibility === 'workspace'
+    const modelChanges = input.modelId !== undefined && input.modelId.trim() !== agent.modelId
+    if (!modelChanges && !movesToWorkspace) return
+    await this.assertModelSelectable((input.modelId ?? agent.modelId).trim(), actorUserId, workspaceId, nextVisibility)
+  }
+
   async update(args: {
     actorUserId: string
     workspaceId: string
@@ -230,13 +247,7 @@ export class WorkspaceAgentService {
         nextHarness,
       )
     }
-    // An unchanged model is left alone so an agent whose model was withdrawn can still be edited, except when the agent
-    // moves to the workspace: then its model must be one a workspace agent may use (never a personal provider).
-    const nextVisibility = args.input.visibility ?? agent.visibility ?? 'workspace'
-    const movesToWorkspace = (agent.visibility ?? 'workspace') === 'creator' && nextVisibility === 'workspace'
-    if ((args.input.modelId !== undefined && args.input.modelId.trim() !== agent.modelId) || movesToWorkspace) {
-      await this.assertModelSelectable((args.input.modelId ?? agent.modelId).trim(), args.actorUserId, access.workspace.id, nextVisibility)
-    }
+    await this.assertUpdatedModelSelectable(agent, args.input, args.actorUserId, access.workspace.id)
     if (args.input.harness !== undefined) {
       await this.workspaces.assertAgentHarnessAllowed({
         actorUserId: args.actorUserId,
