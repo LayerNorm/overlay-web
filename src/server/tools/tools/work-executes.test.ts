@@ -191,7 +191,8 @@ test('conflicts remain recoverable when the current task cannot be read', async 
   }
 })
 
-test('fields, status, scope and agent attribution use one atomic update', async () => {
+// Moving to Workspace is one-way and confirmed by a person in the app: update_task never sends a scope.
+test('fields, status and agent attribution use one atomic update, without a scope move', async () => {
   const api = mockApi((url, init, body) => {
     if (url.pathname.endsWith('/context')) return contextBody
     if (url.pathname === '/api/v1/work/task1') return { item: { ...task, ...body, updatedAt: 11 } }
@@ -199,14 +200,14 @@ test('fields, status, scope and agent attribution use one atomic update', async 
   })
   try {
     const result = await executeUpdateTask({ ...baseOptions, agentPrincipalId: 'p-agent' }, {
-      taskId: 'task1', title: 'Changed', status: 'done', scope: 'workspace', revision: '10',
+      taskId: 'task1', title: 'Changed', status: 'done', revision: '10', ...({ scope: 'workspace' } as object),
     })
     assert.equal(result.success, true)
     const writes = api.requests.filter((request) => request.method !== 'GET')
     assert.deepEqual(writes.map((request) => request.path), ['/api/v1/work/task1'])
     assert.equal(writes[0]?.body?.actingAgentPrincipalId, 'p-agent')
     assert.equal(writes[0]?.body?.status, 'done')
-    assert.equal(writes[0]?.body?.scope, 'workspace')
+    assert.equal(writes[0]?.body?.scope, undefined)
     assert.equal(writes[0]?.body?.expectedUpdatedAt, 10)
     assert.ok(result.success)
     if (result.success) {

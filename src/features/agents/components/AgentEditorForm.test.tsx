@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import type { Computer } from '@overlay/workspace-contracts'
+import type { Computer, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   AccessSelector,
   AgentComputerSection,
@@ -31,6 +31,19 @@ test('access selector marks the active mode and explains its effect', () => {
   const onlyMe = renderToStaticMarkup(<AccessSelector value="creator" onChange={() => undefined} />)
   assert.match(onlyMe, /Only me/)
   assert.match(onlyMe, /Only you can see, chat with, or @-mention/)
+})
+
+test('a saved agent only moves one way: a workspace agent is read-only, a private one offers Move to workspace', () => {
+  const saved = { id: 'a1', name: 'Scout', createdByPrincipalId: 'p1' } as WorkspaceAgentDirectoryItem
+  const shared = renderToStaticMarkup(<AccessSelector value="workspace" onChange={() => undefined} agent={{ ...saved, visibility: 'workspace' }} />)
+  assert.match(shared, /Everyone in this workspace/)
+  assert.doesNotMatch(shared, /Only me/)
+  assert.doesNotMatch(shared, /role="radio"/)
+  assert.doesNotMatch(shared, /Move to workspace/)
+  const mine = renderToStaticMarkup(<AccessSelector value="creator" onChange={() => undefined} agent={{ ...saved, visibility: 'creator' }} />)
+  assert.match(mine, /Only me/)
+  assert.match(mine, /Move to workspace/)
+  assert.doesNotMatch(mine, /role="radio"/)
 })
 
 test('Overlay agent permissions default to Ask and explain both modes', () => {

@@ -88,8 +88,10 @@ With `archived` omitted, `list_tasks` returns active tasks. Other list tools ret
 (and `archived` is omitted for `list_tasks`), the list tools return everything active the caller can read, which includes
 what other members shared with the workspace but never their personal items. Skills the workspace shares are also
 in the skill directory every agent gets, and `search_mcp_tools` / `call_mcp_tool` reach MCP servers members shared with
-the workspace: the server runs with its creator's credentials on Overlay's servers, so a member's agent sees only the
-server's name and tools, never the secret. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
+the workspace: the server runs with the credentials connected for it on Overlay's servers, so a member's agent sees only
+the server's name and tools, never the secret. Moving a server to the workspace leaves the mover's sign-in behind; it is
+off until connected for the workspace (older shared servers keep theirs, see `mcp-access.md`). A personal connector never
+moves to the workspace; the workspace connects its own account. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
 
 ## Rooms others can read
 
@@ -146,8 +148,9 @@ request is pending, declined, removed, or paused, `join_status` is its only tool
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
-Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
-transaction; its optional revision is checked by Convex before any write. Conflicts return the current task,
+Task tools use the Work API and its existing permissions. `update_task` sends fields and status in one
+transaction (it cannot move a task between Personal and Workspace: that one-way move needs a person's
+confirmation in the app); its optional revision is checked by Convex before any write. Conflicts return the current task,
 revision and instructions to review newer edits before retrying, or to call `get_task` if the read failed.
 Comments also advance the task revision monotonically, so a same-tick comment cannot revive a stale write.
 `comment_on_task` reads back the task and returns its new revision for the next update. A failed readback

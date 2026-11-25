@@ -72,24 +72,30 @@ test('edit and archive: the creator always; owners and admins only for workspace
 
 test('move: only the creator, and not for archived rows or the scope they are already in', () => {
   assert.deepEqual(checkMoveResource('content', personalByMember, 'workspace', member), { ok: true })
-  assert.deepEqual(checkMoveResource('content', workspaceByMember, 'personal', member), { ok: true })
   for (const viewer of [owner, admin, other, guest, outsider]) {
     assert.deepEqual(checkMoveResource('content', personalByMember, 'workspace', viewer), { ok: false, reason: 'not_creator' }, `${viewer.userId} cannot move someone else's item`)
-    assert.deepEqual(checkMoveResource('content', workspaceByMember, 'personal', viewer), { ok: false, reason: 'not_creator' })
   }
   assert.deepEqual(checkMoveResource('content', { ...personalByMember, archivedAt: 1 }, 'workspace', member), { ok: false, reason: 'archived' })
-  assert.deepEqual(checkMoveResource('content', personalByMember, 'personal', member), { ok: false, reason: 'same_scope' })
+  assert.deepEqual(checkMoveResource('content', workspaceByMember, 'workspace', member), { ok: false, reason: 'same_scope' })
+})
+
+test('move: one-way, nothing moves back to Personal, for anyone or any kind', () => {
+  for (const viewer of everyone) {
+    for (const kind of ['content', 'extension'] as const) {
+      assert.deepEqual(checkMoveResource(kind, workspaceByMember, 'personal', viewer), { ok: false, reason: 'one_way' }, `${viewer.userId} ${kind}`)
+      assert.deepEqual(checkMoveResource(kind, personalByMember, 'personal', viewer), { ok: false, reason: 'one_way' })
+    }
+  }
+  assert.deepEqual(checkMoveResource('content', { ...workspaceByMember, archivedAt: 1, archivedFromScope: 'workspace' }, 'personal', member), { ok: false, reason: 'one_way' })
 })
 
 test('move: the admin switch stops members, never owners or admins moving their own items; moving to Workspace needs creation rights', () => {
   const off: ResourceScopePolicy = { ...DEFAULT_RESOURCE_SCOPE_POLICY, memberCanMoveScope: false }
   assert.deepEqual(checkMoveResource('content', personalByMember, 'workspace', member, off), { ok: false, reason: 'move_disabled' })
-  assert.deepEqual(checkMoveResource('content', workspaceByMember, 'personal', member, off), { ok: false, reason: 'move_disabled' })
   const adminsOwn: ScopedRow = { userId: 'admin', scope: 'personal' }
   assert.deepEqual(checkMoveResource('content', adminsOwn, 'workspace', admin, off), { ok: true })
   const strict: ResourceScopePolicy = { ...DEFAULT_RESOURCE_SCOPE_POLICY, workspaceExtensionsEditors: 'admins' }
   assert.deepEqual(checkMoveResource('extension', personalByMember, 'workspace', member, strict), { ok: false, reason: 'workspace_creation_restricted' })
-  assert.deepEqual(checkMoveResource('extension', workspaceByMember, 'personal', member, strict), { ok: true }, 'moving out of the workspace is always fine')
   assert.deepEqual(checkMoveResource('content', personalByMember, 'workspace', member, strict), { ok: true })
 })
 
@@ -114,8 +120,8 @@ test('item options offer only what the server would allow', async () => {
   const sharedByMember = { userId: 'member', scope: 'workspace' as const }
   // Own personal item: move to Workspace, archive.
   assert.deepEqual(scopeItemOptions('content', mine, owner), { moveTo: 'workspace', canArchive: true, canRestore: false })
-  // Own shared item: move back to Personal.
-  assert.equal(scopeItemOptions('content', sharedByMember, owner).moveTo, 'personal')
+  // Own shared item: no move back to Personal (moves are one-way).
+  assert.deepEqual(scopeItemOptions('content', sharedByMember, owner), { moveTo: null, canArchive: true, canRestore: false })
   // An admin may archive someone else's workspace item, never move it.
   assert.deepEqual(scopeItemOptions('content', sharedByMember, admin), { moveTo: null, canArchive: true, canRestore: false })
   // Nobody touches another member's personal item.

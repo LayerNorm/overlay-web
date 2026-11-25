@@ -8,8 +8,37 @@ import { scopeMutations } from '../lib/scopeMutations'
 const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
 
-// Archiving stops a server being offered to agents.
-export const { setScope, archive, restore } = scopeMutations('mcpServers', 'extension', { onArchive: { enabled: false } })
+// Archiving stops a server being offered to agents. Moving one to the workspace leaves the mover's sign-in behind.
+export const { setScope, archive, restore } = scopeMutations('mcpServers', 'extension', {
+  onArchive: { enabled: false },
+  beforeMove: async (_ctx, { row, now }) => ({ ok: true, patch: workspaceMoveCredentialPatch(row as unknown as Doc<'mcpServers'>, now) }),
+})
+
+/**
+ * What moving a personal server to the workspace writes besides its scope: the mover's credentials stay behind, so
+ * members never run tools with someone else's account. OAuth tokens, bearer tokens and custom headers are dropped (the
+ * OAuth client registration stays), and a server that had any is turned off and shows Connect
+ * until it is connected with an account for the workspace. The token version is bumped so a refresh already in flight
+ * cannot write the old account back.
+ */
+export function workspaceMoveCredentialPatch(server: Doc<'mcpServers'>, now: number): Record<string, unknown> {
+  const hadCredentials = Boolean(
+    server.encryptedOAuthTokens || server.encryptedAuthConfig
+      || server.authConfig || server.oauthStatus === 'connected',
+  )
+  if (!hadCredentials) return {}
+  return {
+    encryptedOAuthTokens: undefined,
+    encryptedAuthConfig: undefined,
+    authConfig: undefined,
+    ...(server.authType === 'oauth' ? { oauthStatus: 'pending' } : { oauthStatus: undefined }),
+    oauthConnectedAt: undefined,
+    oauthError: undefined,
+    oauthTokenVersion: (server.oauthTokenVersion ?? 0) + 1,
+    enabled: false,
+    updatedAt: now,
+  }
+}
 
 /** Basic URL format validation at creation time. Full SSRF validation
  *  (DNS resolution, private IP blocking) runs at connection time in mcp-tools.ts. */

@@ -5,8 +5,11 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { assertCanCreateInScope, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
 import { scopeMutations } from '../lib/scopeMutations'
 
-// Archived connectors are not used by agents (see listByWorkspace).
-export const { setScope, archive, restore } = scopeMutations('workspaceConnectors', 'extension')
+// Archived connectors are not used by agents (see listByWorkspace). A connector is someone's signed-in account, so it
+// never moves to the workspace: the workspace connects an account of its own instead (`accountScope: 'workspace'`).
+export const { setScope, archive, restore } = scopeMutations('workspaceConnectors', 'extension', {
+  beforeMove: async () => ({ ok: false, reason: 'connector_reconnect_for_workspace' }),
+})
 
 type ConnectorDatabaseContext = { db: QueryCtx['db'] | MutationCtx['db'] }
 

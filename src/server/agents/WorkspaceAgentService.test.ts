@@ -649,17 +649,34 @@ test('update passes a creature shape through to the repository', async () => {
   assert.equal(updated[0]?.avatarShape, 'cloud')
 })
 
-test('update passes a visibility flip through to the repository', async () => {
+test('agent visibility is one-way: a workspace agent never goes back to creator-only', async () => {
   const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-shared', visibility: 'workspace' })]
+  for (const [principalId, role] of [[CREATOR_PRINCIPAL_ID, 'member'], [OTHER_PRINCIPAL_ID, 'owner']] as const) {
+    const { service, updated } = serviceFor(principalId, role, seed)
+    const error = await serviceError(service.update({
+      actorUserId: 'user', workspaceId: WORKSPACE_ID, agentId: 'agent-shared', input: { visibility: 'creator' },
+    }))
+    assert.equal(error.code, 'validation')
+    assert.deepEqual(updated, [])
+  }
+  // Saving the editor with the same visibility is not a move.
+  const { service, updated } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
+  await service.update({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-shared', input: { visibility: 'workspace', name: 'Renamed' } })
+  assert.equal(updated[0]?.visibility, 'workspace')
+})
+
+test('the creator moves a creator-only agent to the workspace', async () => {
+  const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-private', visibility: 'creator' })]
   const { service, updated } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
   const agent = await service.update({
     actorUserId: 'user-creator',
     workspaceId: WORKSPACE_ID,
-    agentId: 'agent-shared',
-    input: { visibility: 'creator' },
+    agentId: 'agent-private',
+    input: { visibility: 'workspace' },
   })
-  assert.equal(agent.visibility, 'creator')
-  assert.equal(updated[0]?.visibility, 'creator')
+  assert.equal(agent.visibility, 'workspace')
+  assert.equal(updated[0]?.visibility, 'workspace')
+  assert.equal(updated[0]?.updatedByPrincipalId, CREATOR_PRINCIPAL_ID)
 })
 
 test('listing ensures only the workspace chief unless the actor is in Personal', async () => {
