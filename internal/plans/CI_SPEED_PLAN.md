@@ -54,7 +54,7 @@ exists in shadow mode; no retries.
 Applicable now: fix waiting (account side), fold the tiny jobs, sparse checkout,
 toolchain baked into the runner image, better dependency/lint cache seeding,
 faster compilation, timing-balanced shards, PR test selection with a negative
-control, local hooks, per-job time budgets.
+control, extending the existing pre-push hook, per-job time budgets.
 
 Not adopted without new evidence:
 
@@ -86,7 +86,7 @@ Not adopted without new evidence:
 | 6 | Compilation: measure 16 vCPU vs 8; separately measure Turbopack for CI **and** Vercel together (CI must keep compiling what production compiles) | Build 114 s → ~60 s | Larger profile cost; bundler decision |
 | 7 | Balance shards from per-file times recorded on main; buy cores before adding shards | Even shards, ~45 s each | — |
 | 8 | Turn on affected-test selection for PRs only; prove it by hiding a real change and confirming CI goes red; list the inputs that rerun everything | Typical PR tests ~60 s → ~15 s | — |
-| 9 | `hk` hooks: pre-commit lints staged files, pre-push runs the static checks | Fewer red CI runs (29 of 150 failed) | — |
+| 9 | A shared `.githooks/pre-push` already lints changed files and typechecks affected projects. Add a fast pre-commit (staged-file lint) and extend pre-push to the static guards; adopt `hk` only if it measurably beats the existing hook | Fewer red CI runs (29 of 150 failed) | — |
 | 10 | Fail any job over its budget once budgets are met | Keeps it fast | — |
 
 Ongoing: for two weeks, label each test failure fixed as a caught regression or
