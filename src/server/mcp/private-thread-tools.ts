@@ -2,7 +2,9 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import type { ToolSet } from '@/server/ai/sdk'
+import { createUnsubscribedEntitlements } from '@overlay/billing'
 import { buildExternalAppTooling } from '@/server/agents/agent-tooling'
+import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { workspaceExecutionPolicy } from '@/server/billing/WorkspaceExecutionPolicy'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
@@ -139,6 +141,12 @@ export async function buildPrivateThreadMcpTools(principal: McpPrincipal): Promi
     userId: principal.userId,
     workspaceId: principal.workspaceId,
     programmaticSubjectId,
+  }).catch((error: unknown) => {
+    // A workspace that never set up billing has no wallet; the free tier spends nothing from one.
+    if (tier === 'free' && error instanceof BillingPayerResolutionError && error.code === 'workspace_wallet_not_configured') {
+      return createUnsubscribedEntitlements()
+    }
+    throw error
   })
   if (!entitlements) return NO_TOOLS
   const requestId = randomUUID()
