@@ -177,6 +177,7 @@ import type * as migrations_backfillAuditWorkspaceIds from "../migrations/backfi
 import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as migrations_doubleSidebar from "../migrations/doubleSidebar.js";
+import type * as migrations_grantApiTools from "../migrations/grantApiTools.js";
 import type * as migrations_grantLocalComputer from "../migrations/grantLocalComputer.js";
 import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.js";
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
@@ -388,6 +389,7 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "migrations/doubleSidebar": typeof migrations_doubleSidebar;
+  "migrations/grantApiTools": typeof migrations_grantApiTools;
   "migrations/grantLocalComputer": typeof migrations_grantLocalComputer;
   "migrations/notesToMarkdown": typeof migrations_notesToMarkdown;
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;

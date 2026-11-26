@@ -1,6 +1,6 @@
 # Monid as native tools
 
-Status: Built, unit-tested and accepted on the PR 630 preview with a real Monid key. Not merged, not deployed; Production needs `MONID_API_KEY`.
+Status: Merged (PR 630) and deployed to production web; Production has `MONID_API_KEY`. Existing agents granted the group by a one-time Convex migration. No production run verified yet.
 
 How it works now lives in the living doc `internal/develop/monid.md`. This plan tracks what is left.
 
@@ -14,7 +14,7 @@ People can ask Overlay for things that need a paid API (finding leads, enriching
 - Read-only endpoints only. Overlay's one Monid workspace is shared by every customer, so endpoints that create, change or delete resources there, or that send messages, place calls or make bookings, are refused (fail closed when Monid's catalog cannot be read). This removed the need for an approval step. Running them later needs per-customer resource isolation.
 - Monid image, video and audio generation endpoints are among the refused ones (Monid stores their output as a resource). Overlay's own media tools cover those; 3D generation (Meshy) is read-only and runs.
 - No wallet webhook: account problems (401, 402, 403) log `[monid] account problem` and tell the agent the service is temporarily unavailable. The kill switch is the existing hosted-provider switch or removing the key, not a new flag.
-- Personal chat always offers the tools on paid plans, since such requests rarely name a tool. Agents saved before the group existed must turn it on.
+- Personal chat always offers the tools on paid plans, since such requests rarely name a tool. Agents saved before the group existed get it from the one-time `migrations/grantApiTools:run`.
 
 ## Progress
 
@@ -29,6 +29,6 @@ People can ask Overlay for things that need a paid API (finding leads, enriching
 
 ## Remaining
 
-1. Add `MONID_API_KEY` to Vercel Production (or WorkOS Vault) and turn on auto top-up in the Monid dashboard.
-2. Merge, then verify a run in production.
+1. Turn on auto top-up in the Monid dashboard.
+2. Verify a run in production.
 3. Confirm Monid's reseller and data-licensing terms.

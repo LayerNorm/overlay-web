@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Turn on Data and APIs for agents saved before it existed. Their saved tool lists did not name the new tools, so only new agents and the default agent could run paid APIs. A one-time data update (`migrations/grantApiTools:run`, run once per Convex deployment after it ships) adds the four tools to every agent with a saved tool list. Agents with an empty list are left alone, and turning the group off later sticks.
 - Record the private threads release in its plan: Phase 3 (Overlay tools and the free tier) and the Phase 1–2 gap fixes are merged and live on web, Convex production is deployed, Agent Host 0.7.0 is on npm, and Overlay Desktop 0.5.0 waits for its signed release.
 - Update the `overlay-mobile` submodule to the iOS app with the Workspace | Personal switch. It sits in the tab bar's bottom-right circle, and Search moves into each tab's header. Every tab follows the chosen mode, as the web does, and the app catches up with web production: one-way Move to workspace, no bring-your-own agents, Guest role or Slack importer, and Spend per person on Billing. Web and server code are unchanged.
 
