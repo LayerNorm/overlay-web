@@ -137,3 +137,34 @@ test('a video the route refuses to start is reported as failed, not pending', as
   const { result } = await recording(() => executeGenerateVideo(alone, { prompt: 'a cat' }), reply)
   assert.deepEqual(result, { success: false, status: 'failed', error: 'Could not create the output record.' })
 })
+
+test('archived skills and automations can be listed to restore, and a room sees only archived Workspace ones', async () => {
+  const { executeListSkills, executeListAutomations } = await import('./overlay-executes')
+  const rows = [
+    { _id: 'w', name: 'Shared', instructions: 'i', enabled: false, scope: 'workspace' },
+    { _id: 'p', name: 'Mine', instructions: 'i', enabled: true, scope: 'personal' },
+  ]
+  const reply = () => Response.json(rows)
+  for (const [run, key] of [[executeListSkills, 'skills'], [executeListAutomations, 'automations']] as const) {
+    const own = await recording(() => run(alone, { archived: true }), reply)
+    assert.equal(own.seen[0]?.url.searchParams.get('view'), 'archived')
+    assert.deepEqual((own.result as unknown as Record<string, Array<{ _id: string }>>)[key].map((r) => r._id), ['w', 'p'], key)
+    const room = await recording(() => run(inRoom, { archived: true }), reply)
+    assert.deepEqual((room.result as unknown as Record<string, Array<{ _id: string }>>)[key].map((r) => r._id), ['w'], key)
+  }
+})
+
+test('archived automations are paged so an older one can still be found', async () => {
+  const { executeListAutomations } = await import('./overlay-executes')
+  const page = (start: number, count: number) => Array.from({ length: count }, (_, i) => ({
+    _id: `a${start + i}`, name: start + i === 150 ? 'Morning Digest' : `Old ${start + i}`, instructions: 'i', enabled: false, scope: 'workspace', updatedAt: 10_000 - (start + i),
+  }))
+  let calls = 0
+  const { seen, result } = await recording(
+    () => executeListAutomations(alone, { archived: true, query: 'morning digest' }),
+    () => Response.json(calls++ === 0 ? page(0, 100) : page(100, 60)),
+  )
+  assert.equal(seen.length, 2)
+  assert.equal(seen[1]?.url.searchParams.get('beforeUpdatedAt'), String(10_000 - 99))
+  assert.deepEqual((result as unknown as { automations: Array<{ _id: string }> }).automations.map((a) => a._id), ['a150'])
+})
