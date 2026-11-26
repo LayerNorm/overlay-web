@@ -15,6 +15,8 @@ import {
   ScopesSection, SelfDrivingSection, SlackSection, SuperpowersSection,
 } from './LandingSections'
 
+import './landing-home.css'
+
 const lusitana = Lusitana({ subsets: ['latin'], weight: '400', variable: '--font-lusitana', display: 'swap' })
 
 /** The team row under the hero actions: Overlay in the middle, its agents on both sides. */

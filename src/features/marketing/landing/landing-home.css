@@ -1,0 +1,143 @@
+/* Home page sections (mockup: internal/plans/mockups/landing-chief-of-staff.html). Scoped under .sl like landing.css,
+   which StaticMarketingShell loads first. */
+/* Hero: the team, then the product */
+.sl .team { margin: 56px auto 0; display: flex; justify-content: center; align-items: flex-end; gap: 22px; }
+.sl .team .mate { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 12px; color: var(--sl-faint); }
+.sl .team .mate.lead-mate { color: var(--sl-text); margin: 0 10px; }
+.sl .team .mate.lead-mate .sub { color: var(--sl-faint); }
+.sl .team .mate span:last-child { line-height: 1.3; text-align: center; }
+
+/* Delegation rows (Slack card) */
+.sl .ask { display: flex; align-items: center; gap: 8px; height: 26px; color: var(--sl-muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+.sl .ask .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sl .ask b { color: var(--sl-text); font-weight: 500; }
+.sl .ask .r { margin-left: auto; font-size: 11.5px; color: var(--sl-faint); }
+.sl .ask .r.ok { color: var(--sl-ok); }
+.sl .asks { margin: 8px 0 8px; display: flex; flex-direction: column; }
+
+/* Orchestration steps */
+.sl .flow { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.sl .flow .art { height: 220px; }
+.sl .flow .mini { max-width: 290px; }
+.sl .bubble { margin: 12px; padding: 9px 12px; border-radius: 12px; background: var(--sl-panel-2); line-height: 1.5; color: var(--sl-text); }
+.sl .bubble .who { display: block; font-size: 11px; color: var(--sl-faint); margin-bottom: 2px; }
+
+/* Org chart */
+.sl .org-wrap { margin-top: 56px; border-radius: 16px; background: var(--sl-panel); border: 1px solid var(--sl-line); padding: 48px 28px 52px; overflow-x: auto; }
+.sl .org { --gap: 14px; min-width: 860px; display: flex; flex-direction: column; align-items: center; }
+.sl .node { display: inline-flex; align-items: center; gap: 10px; padding: 9px 14px 9px 10px; border-radius: 12px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: var(--sl-shadow); font-size: 13px; line-height: 1.3; white-space: nowrap; }
+.sl .node .role { display: block; font-size: 11.5px; color: var(--sl-faint); }
+.sl .node .human { width: 28px; height: 28px; font-size: 11px; }
+.sl .node.chief-node { padding: 12px 18px 12px 12px; border-color: var(--sl-text); }
+.sl .node.chief-node .role { color: var(--sl-muted); }
+.sl .vline { width: 1px; height: 28px; background: var(--sl-line-2); }
+.sl .tier { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; position: relative; }
+.sl .tier::before { content: ''; position: absolute; top: 0; left: 16.66%; right: 16.66%; height: 1px; background: var(--sl-line-2); }
+.sl .branch { display: flex; flex-direction: column; align-items: center; }
+.sl .reports { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.sl .reports .node { box-shadow: none; }
+.sl .org-legend { margin-top: 28px; display: flex; justify-content: center; gap: 20px; font-size: 12.5px; color: var(--sl-muted); }
+.sl .org-legend span { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Scopes */
+.sl .scopes { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sl .scope { border-radius: 16px; background: var(--sl-panel); border: 1px solid var(--sl-line); padding: 28px; display: flex; flex-direction: column; }
+.sl .scope .mini { max-width: none; }
+.sl .scope h3 { margin-top: 22px; display: flex; align-items: center; gap: 8px; }
+.sl .scope h3 .i { color: var(--sl-muted); }
+.sl .scope .body { margin-top: 6px; max-width: 420px; }
+.sl .seg-h { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sl-line); }
+.sl .seg-h .sb-seg { margin: 0; width: 170px; }
+.sl .seg-h .meta { margin-left: auto; font-size: 11px; color: var(--sl-faint); display: inline-flex; align-items: center; gap: 5px; }
+
+/* Self-driving */
+.sl .sd { display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
+.sl .sd .lead { margin-top: 18px; max-width: 440px; }
+.sl .points { margin-top: 28px; display: grid; gap: 14px; }
+.sl .points div { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; color: var(--sl-muted); line-height: 1.5; }
+.sl .points b { color: var(--sl-text); font-weight: 500; }
+.sl .points .i { margin-top: 3px; color: var(--sl-text); }
+.sl .feed .mini { max-width: 440px; }
+.sl .feed .mini-r { align-items: flex-start; padding: 10px 12px; line-height: 1.45; }
+.sl .feed .mini-r .tm { width: 38px; flex: none; color: var(--sl-faint); font-size: 11px; font-family: var(--sl-mono); padding-top: 3px; }
+.sl .feed .mini-r .k { flex: 1; min-width: 0; }
+.sl .feed .need { background: color-mix(in srgb, var(--sl-warn) 8%, transparent); }
+.sl .feed .need .k b { font-weight: 500; }
+.sl .feed .need .act { display: flex; gap: 6px; margin-top: 8px; }
+.sl .feed .need .act .btn { height: 26px; padding: 0 11px; font-size: 12px; }
+
+/* Slack */
+.sl .slack { width: 100%; max-width: 440px; background: var(--sl-card); border: 1px solid var(--sl-line-2); border-radius: 12px; box-shadow: var(--sl-shadow); font-size: 13px; overflow: hidden; text-align: left; }
+.sl .slack-h { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--sl-line); font-weight: 600; }
+.sl .slack-h .meta { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--sl-faint); }
+.sl .smsg { display: flex; gap: 10px; padding: 10px 14px 4px; line-height: 1.5; }
+.sl .smsg .sq { width: 32px; height: 32px; border-radius: 8px; flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 500; }
+.sl .smsg .sq.h { background: #e0e7ff; color: #3730a3; }
+.sl .smsg .sq.ov { background: var(--sl-text); color: var(--sl-bg); }
+.sl .smsg .nm { font-weight: 600; }
+.sl .smsg .nm .tag { margin-left: 6px; font-size: 10px; font-weight: 500; padding: 1px 4px; border-radius: 3px; background: var(--sl-panel-2); color: var(--sl-muted); vertical-align: 1px; }
+.sl .smsg .nm .t { margin-left: 6px; font-weight: 400; font-size: 11.5px; color: var(--sl-faint); }
+.sl .smsg .mention { color: var(--sl-link); background: color-mix(in srgb, var(--sl-link) 10%, transparent); border-radius: 3px; padding: 0 2px; }
+.sl .smsg .asks { margin: 6px 0 2px; }
+.sl .smsg .ask { height: 24px; }
+.sl .thread-foot { display: flex; align-items: center; gap: 6px; padding: 6px 14px 12px 56px; font-size: 12px; color: var(--sl-link); }
+.sl .thread-foot > span[role="img"] { margin-right: -4px; }
+
+/* Final CTA */
+.sl .final { text-align: center; padding: 40px 24px 24px; }
+.sl .final .lead { margin: 14px auto 0; max-width: 520px; }
+.sl .final .team { margin-top: 0; margin-bottom: 30px; gap: 12px; }
+
+/* Real people use photos */
+.sl .pic { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; background: var(--sl-panel-2); }
+.sl .node .pic { width: 28px; height: 28px; }
+/* Slack card */
+.sl .smsg { align-items: flex-start; }
+.sl .smsg .sq.photo { padding: 0; overflow: hidden; } .sl .smsg .sq.photo img { width: 100%; height: 100%; object-fit: cover; }
+/* Tree under Overlay */
+.sl .tree { position: relative; width: 252px; height: 168px; }
+.sl .tree svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--sl-line-2); }
+.sl .tree .n { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: var(--sl-shadow); }
+.sl .tree .n.c { width: 58px; height: 58px; border-radius: 16px; }
+/* Tools 3x3 */
+.sl .tools.grid9 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 320px; }
+.sl .tools.grid9 .tool { white-space: nowrap; padding: 0 10px; }
+.sl .tools.grid9 .tool { justify-content: flex-start; }
+.sl .tools.grid9 .tool.more { color: var(--sl-muted); border-style: dashed; justify-content: center; }
+
+.sl .step-art.feed, .sl .step-art.slack-art { height: auto; padding: 36px 28px; }
+.sl .smsg .sq.photo .person { width: 100% !important; height: 100% !important; border-radius: 0; border: 0; }
+.sl .smsg .sq.ov { color: var(--sl-bg); }
+
+/* Nav: Product menu */
+.sl .menu-col a > :first-child { margin-top: 2px; flex: none; color: var(--sl-text); }
+.sl .menu-col a > .i, .sl .menu-col a > .logo { width: 16px; height: 16px; }
+.sl .menu { position: relative; }
+.sl .menu-t { display: inline-flex; align-items: center; gap: 4px; }
+.sl .menu-t .i { transition: transform .15s; }
+.sl .menu:hover .menu-t, .sl .menu:focus-within .menu-t { color: var(--sl-text); }
+.sl .menu:hover .menu-t .i, .sl .menu:focus-within .menu-t .i { transform: rotate(180deg); }
+.sl .menu-p { position: absolute; top: 100%; left: -18px; margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 560px; padding: 10px; border-radius: 14px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: 0 12px 40px -12px rgba(0,0,0,.18); opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .15s, transform .15s, visibility .15s; }
+.sl .menu-p::before { content: ''; position: absolute; left: 0; right: 0; top: -16px; height: 16px; }
+.sl .menu:hover .menu-p, .sl .menu:focus-within .menu-p { opacity: 1; visibility: visible; transform: none; }
+.sl .menu-h { padding: 6px 10px 6px; font-size: 11.5px; color: var(--sl-faint); }
+.sl .menu-col a { display: flex; align-items: flex-start; gap: 11px; padding: 8px 10px; border-radius: 9px; color: var(--sl-muted); font-size: 12.5px; line-height: 1.35; }
+.sl .menu-col a:hover { background: var(--sl-panel); }
+.sl .menu-col a b { display: block; font-weight: 500; font-size: 13.5px; color: var(--sl-text); margin-bottom: 1px; }
+@media (max-width: 1040px) {
+  .sl .sd { grid-template-columns: 1fr; gap: 36px; }
+}
+@media (max-width: 860px) {
+  .sl .team { gap: 12px; }
+  .sl .team .mate:not(.lead-mate) span:last-child { display: none; }
+  .sl .flow, .sl .scopes { grid-template-columns: 1fr; }
+  .sl .org-wrap { padding: 32px 20px; }
+  .sl .org { min-width: 0; }
+  .sl .tier { grid-template-columns: 1fr; row-gap: 0; }
+  .sl .tier::before { display: none; }
+  .sl .branch + .branch { margin-top: 8px; }
+}
+@media (max-width: 520px) {
+  .sl .team .mate:first-child, .sl .team .mate:last-child { display: none; }
+  .sl .team .mate.lead-mate { margin: 0 4px; }
+}

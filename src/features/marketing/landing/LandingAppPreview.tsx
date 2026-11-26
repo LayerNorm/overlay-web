@@ -15,6 +15,8 @@ import {
   type FileKind, type Scope, type ThreadMessage, type Who, type WorkStatus,
 } from './landingAppData'
 
+import './landing-app-preview.css'
+
 type View = 'agents' | 'chats' | 'work' | 'files'
 type Tab = 'details' | 'library' | 'computer'
 type WorkFilter = 'mine' | 'needs' | 'all'
