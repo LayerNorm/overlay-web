@@ -3,68 +3,64 @@
 import Link from 'next/link'
 import { Lusitana } from 'next/font/google'
 import { ArrowRight } from 'lucide-react'
-import { AppleMark } from './AppleMark'
-import { GithubMark } from './GithubMark'
 import { useAuth } from '@/contexts/AuthContext'
 import { StaticMarketingShell } from '../components/StaticMarketingShell'
-import { getMarketingAppHref, MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
-import { DESKTOP_DOWNLOAD_START_PATH } from '@/shared/web/latest-release'
-import { useVisitorPlatform } from '../lib/visitor-platform'
+import { getMarketingAppHref } from '@/shared/marketing/marketing'
+import { LandingAgent, type LandingAgentId } from './LandingAgent'
+import { LandingAppPreview } from './LandingAppPreview'
 import { LandingFaq } from './LandingFaq'
 import { LandingHeadline } from './LandingHeadline'
-import { LandingLogo, type LogoName } from './LandingLogo'
-import { LandingProductShot } from './LandingProductShot'
-import { ControlSection, GetOverlaySection, OnePlaceSection, OverlayForMacSection, SuperpowersSection, TeamsSection } from './LandingSections'
+import {
+  AddToSlack, ChiefSection, CloudSection, ControlSection, FinalCtaSection, MultiplayerSection, OrgChartSection,
+  ScopesSection, SelfDrivingSection, SlackSection, SuperpowersSection,
+} from './LandingSections'
 
 const lusitana = Lusitana({ subsets: ['latin'], weight: '400', variable: '--font-lusitana', display: 'swap' })
 
-const BYOA: Array<{ name: string; logo: LogoName }> = [
-  { name: 'Claude Code', logo: 'claude' },
-  { name: 'Codex', logo: 'openai' },
-  { name: 'Cursor', logo: 'cursor' },
+/** The team row under the hero actions: Overlay in the middle, its agents on both sides. */
+const TEAM: Array<[LandingAgentId, number, string]> = [
+  ['growth', 40, 'Growth'], ['engineering', 44, 'Engineering'], ['support', 48, 'Support'],
+  ['operations', 48, 'Operations'], ['finance', 44, 'Finance'], ['docs', 40, 'Docs'],
 ]
 
 /**
- * The marketing home page: a static scroll in one framed column with hairline
- * sections.
+ * The marketing home page: Overlay as the AI Chief of Staff, its team of
+ * agents, and where it runs. A static scroll in one framed column with
+ * hairline sections; the two app previews are clickable.
  */
 export function StaticLanding() {
   const { isAuthenticated } = useAuth()
   const appHref = getMarketingAppHref(isAuthenticated)
-  // Mac visitors are offered the desktop app beside "Get started"; everyone else keeps the GitHub button.
-  const onMac = useVisitorPlatform() === 'mac'
+  const mate = ([id, size, name]: [LandingAgentId, number, string]) => (
+    <div className="mate" key={id}><LandingAgent id={id} size={size} /><span>{name}</span></div>
+  )
   return (
     <StaticMarketingShell>
       <section className="hero">
         <a className={`backed ${lusitana.variable}`} href="https://verdictcap.com" target="_blank" rel="noopener noreferrer">Backed by <span>verdict.</span></a>
         <LandingHeadline />
-        <p className="lead">Create, deploy and manage AI employees with memory, tools and their own computer. Accessible from anywhere.</p>
+        <p className="lead">Create, manage and deploy swarms of AI coworkers to solve your hardest problems.</p>
         <div className="actions">
           <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
-          {onMac ? (
-            <a className="btn ghost" href={DESKTOP_DOWNLOAD_START_PATH}><AppleMark /> Download for Mac</a>
-          ) : (
-            <a className="btn ghost" href={MARKETING_GITHUB_URL} target="_blank" rel="noopener noreferrer"><GithubMark /> Star on GitHub</a>
-          )}
+          <AddToSlack />
         </div>
-        <div className="byoa">
-          <span>Bring your own agents</span>
-          {BYOA.map((agent) => (
-            <span className="chip" key={agent.name}>
-              <LandingLogo name={agent.logo} className="logo" />
-              {agent.name}
-            </span>
-          ))}
-          <span className="more">+ more</span>
+        <div className="team" aria-label="Overlay and its team of agents">
+          {TEAM.slice(0, 3).map(mate)}
+          <div className="mate lead-mate"><LandingAgent id="overlay" size={72} /><span>Overlay<br /><span className="sub">Chief of Staff</span></span></div>
+          {TEAM.slice(3).map(mate)}
         </div>
-        <LandingProductShot />
+        <LandingAppPreview className="hero-app" label="Clickable preview of the Overlay app" />
       </section>
       <SuperpowersSection />
-      <OnePlaceSection appHref={appHref} />
-      <OverlayForMacSection />
-      <TeamsSection />
+      <ChiefSection />
+      <OrgChartSection />
+      <MultiplayerSection />
+      <ScopesSection />
+      <SelfDrivingSection />
+      <CloudSection />
+      <SlackSection />
       <ControlSection />
-      <GetOverlaySection appHref={appHref} />
+      <FinalCtaSection appHref={appHref} />
       <LandingFaq />
     </StaticMarketingShell>
   )

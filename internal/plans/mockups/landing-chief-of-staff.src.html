@@ -1,0 +1,1038 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Overlay: the AI Chief of Staff that works with your team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
+<!--
+  Messaging proposal for the marketing home page (2026-11-25).
+  Built from landing-chief-of-staff.src.html by build-landing-chief-of-staff.py, which
+  inlines the production landing stylesheet, brand SVGs and the Slack logo.
+  Agents are always their creatures; the default Overlay agent is the O with eyes.
+  ?theme=dark or the moon button switches to the dark landing palette.
+-->
+<style>
+/*LANDING_CSS*/
+</style>
+<style>
+/* ---------- Mockup-only additions (all under .sl, production tokens only) ---------- */
+.sl { --font-geist: 'Geist'; }
+body { margin: 0; }
+*, *::before, *::after { box-sizing: border-box; }
+.sl h1, .sl h2, .sl h3, .sl p, .sl ol { margin: 0; padding: 0; }
+.sl ol { padding-left: 0; }
+
+/* Creatures (mirrors Creature.module.css) */
+.cr { display: inline-flex; flex: none; }
+.cr svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.cr .eyes { transform-box: fill-box; transform-origin: center; }
+.cr.blink .eyes { animation: creature-blink 5.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.cr.look .eyes { animation: creature-look 3.5s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.chief { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--sl-text); }
+.chief svg { display: block; overflow: visible; }
+.chief .brand-eyes { transform-box: fill-box; transform-origin: center; animation: creature-blink 6s ease-in-out infinite; animation-delay: var(--d, 1.2s); }
+.chief.look .brand-eyes { animation: creature-look 3.5s ease-in-out infinite; }
+@keyframes creature-blink { 0%, 91% { transform: scaleY(1); } 93.5%, 95.5% { transform: scaleY(.1); } 98%, 100% { transform: scaleY(1); } }
+@keyframes creature-look { 0%, 100% { transform: translateX(0); } 30%, 45% { transform: translateX(-22%); } 65%, 80% { transform: translateX(22%); } }
+@media (prefers-reduced-motion: reduce) { .cr .eyes, .chief .brand-eyes { animation: none !important; } }
+
+.sl .nav-in > a:first-child svg { height: 22px; width: auto; display: block; }
+.sl .btn .logo { width: 15px; height: 15px; }
+.sl .human { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; font-size: 10px; font-weight: 500; background: var(--sl-panel-2); border: 1px solid var(--sl-line-2); color: var(--sl-muted); }
+
+/* Hero: the team, then the product */
+.sl .hero .h1 { max-width: 880px; }
+.sl .hero .lead { max-width: 700px; }
+.sl .team { margin: 56px auto 0; display: flex; justify-content: center; align-items: flex-end; gap: 22px; }
+.sl .team .mate { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 12px; color: var(--sl-faint); }
+.sl .team .mate.lead-mate { color: var(--sl-text); margin: 0 10px; }
+.sl .team .mate.lead-mate .sub { color: var(--sl-faint); }
+.sl .team .mate span:last-child { line-height: 1.3; text-align: center; }
+
+/* Product shot: sidebar agents + chief thread + assignments */
+.sl .shot { grid-template-columns: 224px minmax(0, 1fr) 320px; height: 500px; }
+.sl .sb-agent { display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 8px; border-radius: 7px; font-size: 12.5px; white-space: nowrap; color: var(--sl-text); }
+.sl .sb-agent.on { background: var(--sl-panel-2); }
+.sl .sb-agent.child { padding-left: 22px; color: var(--sl-muted); }
+.sl .sb-agent .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--sl-ok); }
+.sl .sb-agent .dot.warn { background: var(--sl-warn); }
+.sl .ask { display: flex; align-items: center; gap: 8px; height: 26px; color: var(--sl-muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+.sl .ask .tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sl .ask b { color: var(--sl-text); font-weight: 500; }
+.sl .ask .r { margin-left: auto; font-size: 11.5px; color: var(--sl-faint); }
+.sl .ask .r.ok { color: var(--sl-ok); }
+.sl .asks { margin: 8px 0 8px; display: flex; flex-direction: column; }
+.sl .side.board { padding: 0 12px 12px; }
+.sl .side-head .meta { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--sl-faint); }
+.sl .task { background: var(--sl-card); border: 1px solid var(--sl-line); border-radius: 10px; padding: 10px 11px; display: grid; gap: 8px; font-size: 12.5px; }
+.sl .task + .task { margin-top: 8px; }
+.sl .task .t { line-height: 1.4; }
+.sl .task .who { display: flex; align-items: center; gap: 7px; color: var(--sl-muted); font-size: 11.5px; }
+.sl .task .who .status { margin-left: auto; }
+.sl .bar { height: 3px; border-radius: 3px; background: var(--sl-panel-2); overflow: hidden; }
+.sl .bar i { display: block; height: 100%; border-radius: 3px; background: var(--sl-text); opacity: .7; }
+
+/* Orchestration steps */
+.sl .flow { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.sl .flow .art { height: 220px; }
+.sl .flow .mini { max-width: 290px; }
+.sl .bubble { margin: 12px; padding: 9px 12px; border-radius: 12px; background: var(--sl-panel-2); line-height: 1.5; color: var(--sl-text); }
+.sl .bubble .who { display: block; font-size: 11px; color: var(--sl-faint); margin-bottom: 2px; }
+.sl .hub { position: relative; width: 240px; height: 176px; }
+.sl .hub svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--sl-line-2); }
+.sl .hub .n { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: var(--sl-shadow); }
+.sl .hub .n.c { width: 58px; height: 58px; border-radius: 16px; }
+
+/* Org chart */
+.sl .org-wrap { margin-top: 56px; border-radius: 16px; background: var(--sl-panel); border: 1px solid var(--sl-line); padding: 48px 28px 52px; overflow-x: auto; }
+.sl .org { --gap: 14px; min-width: 860px; display: flex; flex-direction: column; align-items: center; }
+.sl .node { display: inline-flex; align-items: center; gap: 10px; padding: 9px 14px 9px 10px; border-radius: 12px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: var(--sl-shadow); font-size: 13px; line-height: 1.3; white-space: nowrap; }
+.sl .node .role { display: block; font-size: 11.5px; color: var(--sl-faint); }
+.sl .node .human { width: 28px; height: 28px; font-size: 11px; }
+.sl .node.chief-node { padding: 12px 18px 12px 12px; border-color: var(--sl-text); }
+.sl .node.chief-node .role { color: var(--sl-muted); }
+.sl .vline { width: 1px; height: 28px; background: var(--sl-line-2); }
+.sl .tier { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; position: relative; }
+.sl .tier::before { content: ''; position: absolute; top: 0; left: 16.66%; right: 16.66%; height: 1px; background: var(--sl-line-2); }
+.sl .branch { display: flex; flex-direction: column; align-items: center; }
+.sl .reports { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.sl .reports .node { box-shadow: none; }
+.sl .org-legend { margin-top: 28px; display: flex; justify-content: center; gap: 20px; font-size: 12.5px; color: var(--sl-muted); }
+.sl .org-legend span { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Scopes */
+.sl .scopes { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sl .scope { border-radius: 16px; background: var(--sl-panel); border: 1px solid var(--sl-line); padding: 28px; display: flex; flex-direction: column; }
+.sl .scope .mini { max-width: none; }
+.sl .scope h3 { margin-top: 22px; display: flex; align-items: center; gap: 8px; }
+.sl .scope h3 .i { color: var(--sl-muted); }
+.sl .scope .body { margin-top: 6px; max-width: 420px; }
+.sl .seg-h { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--sl-line); }
+.sl .seg-h .sb-seg { margin: 0; width: 170px; }
+.sl .seg-h .meta { margin-left: auto; font-size: 11px; color: var(--sl-faint); display: inline-flex; align-items: center; gap: 5px; }
+
+/* Self-driving */
+.sl .sd { display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
+.sl .sd .lead { margin-top: 18px; max-width: 440px; }
+.sl .points { margin-top: 28px; display: grid; gap: 14px; }
+.sl .points div { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; color: var(--sl-muted); line-height: 1.5; }
+.sl .points b { color: var(--sl-text); font-weight: 500; }
+.sl .points .i { margin-top: 3px; color: var(--sl-text); }
+.sl .feed .mini { max-width: 440px; }
+.sl .feed .mini-r { align-items: flex-start; padding: 10px 12px; line-height: 1.45; }
+.sl .feed .mini-r .tm { width: 38px; flex: none; color: var(--sl-faint); font-size: 11px; font-family: var(--sl-mono); padding-top: 3px; }
+.sl .feed .mini-r .k { flex: 1; min-width: 0; }
+.sl .feed .mini-r .cr, .sl .feed .mini-r .chief { margin-top: 1px; }
+.sl .feed .need { background: color-mix(in srgb, var(--sl-warn) 8%, transparent); }
+.sl .feed .need .k b { font-weight: 500; }
+.sl .feed .need .act { display: flex; gap: 6px; margin-top: 8px; }
+.sl .feed .need .act .btn { height: 26px; padding: 0 11px; font-size: 12px; }
+
+/* Slack */
+.sl .slack { width: 100%; max-width: 440px; background: var(--sl-card); border: 1px solid var(--sl-line-2); border-radius: 12px; box-shadow: var(--sl-shadow); font-size: 13px; overflow: hidden; text-align: left; }
+.sl .slack-h { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--sl-line); font-weight: 600; }
+.sl .slack-h .meta { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--sl-faint); }
+.sl .smsg { display: flex; gap: 10px; padding: 10px 14px 4px; line-height: 1.5; }
+.sl .smsg .sq { width: 32px; height: 32px; border-radius: 8px; flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 500; }
+.sl .smsg .sq.h { background: #e0e7ff; color: #3730a3; }
+.sl .smsg .sq.ov { background: var(--sl-text); color: var(--sl-bg); }
+.sl .smsg .nm { font-weight: 600; }
+.sl .smsg .nm .tag { margin-left: 6px; font-size: 10px; font-weight: 500; padding: 1px 4px; border-radius: 3px; background: var(--sl-panel-2); color: var(--sl-muted); vertical-align: 1px; }
+.sl .smsg .nm .t { margin-left: 6px; font-weight: 400; font-size: 11.5px; color: var(--sl-faint); }
+.sl .smsg .mention { color: var(--sl-link); background: color-mix(in srgb, var(--sl-link) 10%, transparent); border-radius: 3px; padding: 0 2px; }
+.sl .smsg .asks { margin: 6px 0 2px; }
+.sl .smsg .ask { height: 24px; }
+.sl .thread-foot { display: flex; align-items: center; gap: 6px; padding: 6px 14px 12px 56px; font-size: 12px; color: var(--sl-link); }
+.sl .thread-foot .cr { margin-right: -4px; }
+
+/* Final CTA */
+.sl .final { text-align: center; padding: 40px 24px 24px; }
+.sl .final .lead { margin: 14px auto 0; max-width: 520px; }
+.sl .final .team { margin-top: 0; margin-bottom: 30px; gap: 12px; }
+.sl .foot { border-top: 1px solid var(--sl-line); padding: 28px 56px; display: flex; align-items: center; gap: 24px; font-size: 13px; color: var(--sl-faint); }
+.sl .foot nav { margin-left: auto; display: flex; gap: 20px; }
+
+/* ---------- App shell (measured from the production app: overlay-app.html) ---------- */
+.sl .app {
+  --a-page: #f5f5f5; --a-panel: #fafafa; --a-line: #e4e4e7; --a-active: #f0f0f0; --a-seg: #f0f0f0; --a-seg-on: #ffffff;
+  --a-text: #0a0a0a; --a-muted: #71717a; --a-faint: #a1a1aa; --a-av: #ececec; --a-comp: #f5f5f5; --a-bubble: #efefef; --a-ok: #15803d;
+  margin-top: 64px; text-align: left; display: grid; grid-template-columns: 48px 236px minmax(0, 1fr) 268px; gap: 6px; padding: 6px 6px 6px 0;
+  height: 760px; border-radius: 16px; border: 1px solid var(--sl-line-2); background: var(--a-page); box-shadow: var(--sl-shadow);
+  font-family: -apple-system, system-ui, 'Segoe UI', sans-serif; color: var(--a-text); font-size: 13px; line-height: 1.45; overflow: hidden;
+}
+[data-landing-theme='dark'] .sl .app {
+  --a-page: #0c0c0e; --a-panel: #121214; --a-line: #26262a; --a-active: #1e1e22; --a-seg: #1c1c20; --a-seg-on: #2a2a2f;
+  --a-text: #f4f4f5; --a-muted: #a1a1aa; --a-faint: #6b6b73; --a-av: #232327; --a-comp: #18181b; --a-bubble: #232327; --a-ok: #4ade80;
+}
+.sl .app .i.xs { width: 12px; height: 12px; }
+.sl .app > * { min-height: 0; min-width: 0; }
+.sl .app .chief { color: var(--a-text); }
+.sl .a-panel { background: var(--a-panel); border: 1px solid var(--a-line); border-radius: 12px; overflow: hidden; }
+.sl .a-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 6px; color: var(--a-muted); }
+.sl .a-rail > .chief { margin-bottom: 10px; }
+.sl .a-ri { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; }
+.sl .a-ri .i { width: 17px; height: 17px; }
+.sl .a-ri.on { color: var(--a-text); background: var(--a-active); }
+.sl .a-rail-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sl .a-me { margin-top: 6px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--a-av); font-size: 11px; font-weight: 500; }
+.sl .a-side { padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+.sl .a-side-h { display: flex; align-items: center; padding: 2px 6px 10px; font-size: 14px; font-weight: 500; }
+.sl .a-icons { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; color: var(--a-muted); }
+.sl .a-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: 8px; background: var(--a-seg); margin-bottom: 10px; font-size: 12px; font-weight: 500; text-align: center; color: var(--a-muted); }
+.sl .a-seg span { height: 26px; line-height: 26px; border-radius: 6px; }
+.sl .a-seg .on { background: var(--a-seg-on); color: var(--a-text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.sl .a-agent { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; }
+.sl .a-agent + .a-agent { margin-top: 2px; }
+.sl .a-an { display: flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 500; line-height: 1.3; }
+.sl .a-as { font-size: 11px; color: var(--a-muted); line-height: 1.3; }
+.sl .a-as.ok { color: var(--a-ok); }
+.sl .a-ac { margin-left: auto; display: inline-flex; gap: 10px; color: var(--a-faint); }
+.sl .a-thread { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px 0 12px; border-radius: 8px; font-size: 13px; color: var(--a-text); white-space: nowrap; }
+.sl .a-thread.on { background: var(--a-active); }
+.sl .a-thread:last-of-type { margin-bottom: 6px; }
+.sl .a-ok { color: var(--a-ok); }
+.sl .a-blank { width: 14px; }
+.sl .a-spin { width: 12px; height: 12px; margin: 0 1px; border-radius: 50%; border: 1.5px solid var(--a-line); border-top-color: var(--a-muted); animation: a-spin 1s linear infinite; }
+@keyframes a-spin { to { transform: rotate(360deg); } }
+.sl .a-grp { display: flex; align-items: center; gap: 4px; padding: 10px 8px 4px; font-size: 12px; color: var(--a-muted); }
+.sl .a-item { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; }
+.sl .a-item b { font-weight: 500; }
+.sl .a-item .i { color: var(--a-muted); }
+.sl .a-item.on { background: var(--a-active); }
+.sl .a-n { margin-left: auto; font-size: 11px; color: var(--a-muted); }
+.sl .a-hav { width: 22px; height: 22px; flex: none; border-radius: 6px; display: inline-grid; place-items: center; background: var(--a-av); color: var(--a-muted); font-size: 10.5px; font-weight: 500; }
+.sl .a-hav.sm { width: 16px; height: 16px; border-radius: 50%; font-size: 8px; }
+.sl .a-main { display: flex; flex-direction: column; }
+.sl .a-head { height: 48px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 14px; color: var(--a-muted); }
+.sl .a-crumb { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; white-space: nowrap; }
+.sl .a-crumb b { display: inline-flex; align-items: center; gap: 7px; font-weight: 400; color: var(--a-text); }
+.sl .a-sub { color: var(--a-muted); font-size: 12.5px; }
+.sl .a-ppl { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.sl .a-stack { display: inline-flex; align-items: center; }
+.sl .a-stack { gap: 3px; }
+.sl .a-stack > * { margin-left: 0; box-shadow: 0 0 0 2px var(--a-panel); border-radius: 6px; }
+.sl .a-stack .cr, .sl .a-stack .chief { box-shadow: none; }
+.sl .a-scroll { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 8px; display: flex; flex-direction: column; justify-content: flex-end; gap: 20px; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 40px); mask-image: linear-gradient(to bottom, transparent 0, #000 40px); }
+.sl .a-scroll > * { width: min(600px, calc(100% - 40px)); margin: 0 auto; flex: none; }
+.sl .a-date { text-align: center; font-size: 10.5px; letter-spacing: .06em; color: var(--a-faint); }
+.sl .a-me-msg { width: auto !important; max-width: min(440px, 80%); margin: 0 max(20px, calc((100% - 600px) / 2)) 0 auto !important; padding: 9px 14px; border-radius: 18px; background: var(--a-bubble); font-size: 14px; line-height: 1.55; }
+.sl .a-msg { display: flex; gap: 12px; }
+.sl .a-msg > :first-child { margin-top: 1px; }
+.sl .a-body { min-width: 0; flex: 1; font-size: 14px; line-height: 1.65; }
+.sl .a-body p + p, .sl .a-body ol + p { margin-top: 10px; }
+.sl .a-body ol { margin: 8px 0 0 20px; list-style: decimal; }
+.sl .a-body ol li + li { margin-top: 4px; }
+.sl .a-body b { font-weight: 600; }
+.sl .a-who { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; line-height: 1.4; margin-bottom: 2px; }
+.sl .a-who time { font-size: 11px; font-weight: 400; color: var(--a-faint); }
+.sl .a-tools { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0 8px; font-size: 13px; color: var(--a-muted); }
+.sl .a-run { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--a-muted); }
+.sl .a-file { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; background: var(--a-active); font-size: 13px; }
+.sl .a-mention { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 5px; margin-right: 4px; border-radius: 999px; background: var(--a-panel); border: 1px solid var(--a-line); font-size: 12px; vertical-align: 1px; }
+.sl .a-mention .chief { color: var(--a-text); }
+.sl .a-comp { flex: none; width: min(640px, calc(100% - 32px)); margin: 10px auto 14px; padding: 12px 12px 10px; border-radius: 16px; background: var(--a-comp); border: 1px solid var(--a-line); }
+.sl .a-comp .ph { color: var(--a-faint); font-size: 14px; padding: 2px 2px 0; }
+.sl .a-comp .row { margin-top: 18px; display: flex; align-items: center; gap: 14px; color: var(--a-muted); }
+.sl .a-comp .model { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.sl .a-comp .send { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--a-active); color: var(--a-muted); }
+.sl .a-comp .row > .send:nth-child(3) { margin-left: auto; }
+.sl .a-right { padding: 10px 12px; display: flex; flex-direction: column; }
+.sl .a-right-x { display: flex; justify-content: flex-end; color: var(--a-muted); }
+.sl .a-id { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; padding: 4px 8px 14px; }
+.sl .a-id .chief { margin-bottom: 8px; }
+.sl .a-id b { font-size: 16px; font-weight: 600; }
+.sl .a-id span { font-size: 12px; color: var(--a-muted); }
+.sl .a-id p { margin-top: 6px; font-size: 12.5px; color: var(--a-muted); line-height: 1.5; }
+.sl .a-tabs { display: flex; justify-content: center; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--a-muted); }
+.sl .a-tabs span { padding: 5px 10px; border-radius: 8px; }
+.sl .a-tabs .on { background: var(--a-active); color: var(--a-text); font-weight: 500; }
+.sl .a-sec { padding: 12px 4px 6px; font-size: 11.5px; color: var(--a-faint); }
+.sl .a-row { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 4px; font-size: 13px; border-radius: 8px; }
+.sl .a-row .s { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--a-muted); }
+.sl .a-row .s.ok { color: var(--a-ok); }
+.sl .orb { width: 12px; height: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5px; flex: none; }
+.sl .orb i { border-radius: 50%; background: var(--a-text); animation: orb 1.6s ease-in-out infinite; }
+.sl .orb i:nth-child(2), .sl .orb i:nth-child(4) { animation-delay: .2s; } .sl .orb i:nth-child(3), .sl .orb i:nth-child(5), .sl .orb i:nth-child(7) { animation-delay: .4s; }
+.sl .orb i:nth-child(6), .sl .orb i:nth-child(8) { animation-delay: .6s; } .sl .orb i:nth-child(9) { animation-delay: .8s; }
+@keyframes orb { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sl .orb i, .sl .a-spin { animation: none; } }
+.sl .chan-app { grid-template-columns: 48px 252px minmax(0, 1fr); height: 720px; margin-top: 56px; }
+@media (max-width: 1100px) {
+  .sl .hero-app { grid-template-columns: 52px 240px minmax(0, 1fr); }
+  .sl .hero-app .a-right { display: none; }
+}
+@media (max-width: 860px) {
+  .sl .app { grid-template-columns: minmax(0, 1fr) !important; padding: 6px; height: 640px; }
+  .sl .app .a-rail, .sl .app .a-side { display: none; }
+  .sl .a-crumb { overflow: hidden; }
+}
+
+[data-landing-theme='dark'] .sl img.inv { filter: invert(1); }
+
+/* Clickable app mock */
+.sl .app [data-act] { cursor: pointer; }
+.sl .app.no-right { grid-template-columns: 48px 236px minmax(0, 1fr); }
+.sl .app .a-photo { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; display: block; background: var(--a-av); }
+.sl .app .a-item .a-photo, .sl .app .a-stack .a-photo { width: 18px; height: 18px; }
+.sl .app .a-crumb .a-photo { width: 18px; height: 18px; }
+.sl .app img.a-me { width: 26px; height: 26px; margin-top: 6px; }
+.sl .app .i.pin { width: 11px; height: 11px; color: var(--a-faint); }
+.sl .a-agent { cursor: pointer; }
+.sl .a-agent:hover, .sl .a-thread:hover, .sl .a-item:hover, .sl .a-li:hover, .sl .a-right .a-row[data-act]:hover { background: var(--a-active); }
+.sl .a-ri[data-act]:hover, .sl .a-btn:hover, .sl .a-tabs span:hover { color: var(--a-text); }
+.sl .a-btn { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; }
+.sl .a-main > * { animation: a-in .18s ease-out; }
+@keyframes a-in { from { opacity: 0; transform: translateY(3px); } }
+.sl .a-rbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sl .a-empty { padding: 24px 4px; color: var(--a-faint); font-size: 12.5px; text-align: center; }
+.sl .a-live { margin-left: 8px; color: var(--a-ok); font-size: 11px; }
+.sl .a-sec { display: flex; align-items: center; }
+.sl .a-desk { flex: 1; min-height: 0; margin-top: 4px; padding: 14px 12px 0; border-radius: 10px; }
+.sl .a-desk .win { font-size: 11px; }
+.sl .a-desk .hero-img { height: 52px; }
+.sl .a-term { flex: 1; align-self: stretch; margin-bottom: 12px; border-radius: 9px; background: #111; color: #d4d4d4; font-family: var(--sl-mono); font-size: 11px; line-height: 1.9; padding: 12px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.35); }
+.sl .a-term .p { color: #6b7280; } .sl .a-term .ok { color: #4ade80; } .sl .a-term .caret { background: #d4d4d4; }
+.sl .a-list { flex: 1; min-height: 0; overflow: hidden; padding: 4px 14px 14px; }
+.sl .a-lh { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--a-muted); }
+.sl .a-lh span { color: var(--a-faint); font-weight: 400; }
+.sl .a-li { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px; border-radius: 8px; font-size: 13.5px; }
+.sl .a-li .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl .a-li .who { display: inline-flex; align-items: center; gap: 7px; width: 132px; flex: none; color: var(--a-muted); font-size: 12.5px; }
+.sl .a-li .due { width: 70px; flex: none; color: var(--a-faint); font-size: 12px; text-align: right; }
+.sl .a-li.files .due { order: 3; }
+.sl .a-lh.files { margin-top: 0; padding-left: 36px; }
+.sl .a-lh.files .t { flex: 1; color: var(--a-muted); font-weight: 500; }
+.sl .a-lh.files span:not(.t) { width: 132px; flex: none; font-weight: 500; color: var(--a-muted); } .sl .a-lh.files span:last-child { width: 70px; text-align: right; }
+.sl .a-li > .i { color: var(--a-muted); }
+.sl .st-progress { color: #d97706 !important; } .sl .st-done { color: var(--a-ok) !important; }
+.sl .a-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, #f59e0b 14%, transparent); color: #b45309; }
+[data-landing-theme='dark'] .sl .a-tag { color: #fbbf24; }
+@media (max-width: 860px) { .sl .a-li .who { width: auto; } .sl .a-li .who { font-size: 0; gap: 0; } .sl .a-lh.files span:not(.t) { display: none; } }
+/* Real people use photos */
+.sl .pic { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex: none; background: var(--sl-panel-2); }
+.sl .node .pic { width: 28px; height: 28px; }
+/* Slack card */
+.sl .smsg { align-items: flex-start; }
+.sl .smsg .sq.photo { padding: 0; overflow: hidden; } .sl .smsg .sq.photo img { width: 100%; height: 100%; object-fit: cover; }
+.sl .smsg .sq.ov .chief { color: inherit; }
+/* Tree under Overlay */
+.sl .tree { position: relative; width: 252px; height: 168px; }
+.sl .tree svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--sl-line-2); }
+.sl .tree .n { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: var(--sl-shadow); }
+.sl .tree .n.c { width: 58px; height: 58px; border-radius: 16px; }
+/* Tools 3x3 */
+.sl .tools.grid9 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 320px; }
+.sl .tools.grid9 .tool { white-space: nowrap; padding: 0 10px; }
+.sl .tools.grid9 .tool { justify-content: flex-start; }
+.sl .tools.grid9 .tool.more { color: var(--sl-muted); border-style: dashed; justify-content: center; }
+
+/* Nav: Product menu, tighter hero top */
+.sl .hero { padding-top: 56px; }
+.sl .menu { position: relative; }
+.sl .menu-t { display: inline-flex; align-items: center; gap: 4px; }
+.sl .menu-t .i { transition: transform .15s; }
+.sl .menu:hover .menu-t, .sl .menu:focus-within .menu-t { color: var(--sl-text); }
+.sl .menu:hover .menu-t .i, .sl .menu:focus-within .menu-t .i { transform: rotate(180deg); }
+.sl .menu-p { position: absolute; top: 100%; left: -18px; margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 560px; padding: 10px; border-radius: 14px; background: var(--sl-card); border: 1px solid var(--sl-line-2); box-shadow: 0 12px 40px -12px rgba(0,0,0,.18); opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity .15s, transform .15s, visibility .15s; }
+.sl .menu-p::before { content: ''; position: absolute; left: 0; right: 0; top: -16px; height: 16px; }
+.sl .menu:hover .menu-p, .sl .menu:focus-within .menu-p { opacity: 1; visibility: visible; transform: none; }
+.sl .menu-h { padding: 6px 10px 6px; font-size: 11.5px; color: var(--sl-faint); }
+.sl .menu-col a { display: flex; align-items: flex-start; gap: 11px; padding: 8px 10px; border-radius: 9px; color: var(--sl-muted); font-size: 12.5px; line-height: 1.35; }
+.sl .menu-col a:hover { background: var(--sl-panel); }
+.sl .menu-col a b { display: block; font-weight: 500; font-size: 13.5px; color: var(--sl-text); margin-bottom: 1px; }
+.sl .menu-col a > .i, .sl .menu-col a > .logo, .sl .menu-col a > .chief { margin-top: 2px; width: 16px; height: 16px; color: var(--sl-text); }
+@media (max-width: 860px) { .sl .hero { padding-top: 40px; } }
+@media (max-width: 1040px) {
+  .sl .shot { grid-template-columns: 210px minmax(0, 1fr); }
+  .sl .sd { grid-template-columns: 1fr; gap: 36px; }
+}
+@media (max-width: 860px) {
+  .sl .team { gap: 12px; }
+  .sl .team .mate:not(.lead-mate) span:last-child { display: none; }
+  .sl .flow, .sl .scopes { grid-template-columns: 1fr; }
+  .sl .org-wrap { padding: 32px 20px; }
+  .sl .foot { padding: 24px; flex-wrap: wrap; }
+  .sl .foot nav { margin-left: 0; }
+  .sl .org { min-width: 0; }
+  .sl .tier { grid-template-columns: 1fr; row-gap: 0; }
+  .sl .tier::before { display: none; }
+  .sl .branch + .branch { margin-top: 8px; }
+}
+@media (max-width: 520px) {
+  .sl .team .mate:first-child, .sl .team .mate:last-child { display: none; }
+  .sl .team .mate.lead-mate { margin: 0 4px; }
+}
+</style>
+</head>
+<body>
+<template id="mark-svg"><!--MARK--></template>
+<template id="wordmark-svg"><!--WORDMARK--></template>
+
+<div class="sl">
+  <!-- Nav -->
+  <header class="nav">
+    <div class="nav-in">
+      <a href="#" aria-label="Overlay" data-wordmark></a>
+      <nav class="nav-links">
+        <div class="menu">
+          <a href="#ai-employees" class="menu-t">Product<i data-lucide="chevron-down" class="i xs"></i></a>
+          <div class="menu-p" role="menu">
+            <div class="menu-col">
+              <div class="menu-h">Product</div>
+              <a href="#ai-employees"><i data-lucide="bot" class="i sm"></i><span><b>AI employees</b>Agents with memory, tools and a computer</span></a>
+              <a href="#chief"><span data-chief data-size="16"></span><span><b>Chief of staff</b>Overlay runs the team for you</span></a>
+              <a href="#multiplayer"><i data-lucide="users" class="i sm"></i><span><b>Multiplayer</b>People and agents in one channel</span></a>
+              <a href="#self-driving"><i data-lucide="zap" class="i sm"></i><span><b>Automations</b>Schedules, triggers and approvals</span></a>
+            </div>
+            <div class="menu-col">
+              <div class="menu-h">Available on</div>
+              <a href="#"><i data-lucide="globe" class="i sm"></i><span><b>Web</b>app.overlay.works</span></a>
+              <a href="#"><img class="logo inv" src="{{LOGO:apple}}" alt="" /><span><b>Desktop</b>Overlay for Mac</span></a>
+              <a href="#"><i data-lucide="smartphone" class="i sm"></i><span><b>Mobile</b>iPhone and Android</span></a>
+              <a href="#slack"><img class="logo" src="{{LOGO:slack}}" alt="" /><span><b>Slack</b>Mention @Overlay anywhere</span></a>
+              <a href="#"><img class="logo inv" src="{{LOGO:mcp}}" alt="" /><span><b>MCP</b>ChatGPT, Claude and any MCP app</span></a>
+            </div>
+          </div>
+        </div>
+        <a href="#">Pricing</a>
+        <a href="#">Docs</a>
+        <a href="#">Blog</a>
+      </nav>
+      <div class="nav-right">
+        <span class="icon-btn" id="theme" title="Toggle theme"><i data-lucide="moon" class="i"></i></span>
+        <a class="icon-btn hide-sm" href="#" aria-label="Discord"><svg class="discord" viewBox="0 0 256 199" aria-hidden="true"><path d="M216.856 16.597A208.502 208.502 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046-19.692-2.961-39.203-2.961-58.533 0-1.832-4.4-4.55-9.933-6.846-14.046a207.809 207.809 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161.094 161.094 0 0 0 79.735 175.3a136.413 136.413 0 0 1-21.846-10.632 108.636 108.636 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a131.66 131.66 0 0 0 5.355 4.237 136.07 136.07 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848 21.142-6.58 42.646-16.637 64.815-33.213 5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2c12.867 0 23.236 11.804 23.015 26.2.02 14.375-10.148 26.18-23.015 26.18Zm85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2 0 14.375-10.148 26.18-23.015 26.18Z" /></svg></a>
+        <a class="icon-btn hide-sm" href="#" aria-label="GitHub"><svg class="discord" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-1.95c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg></a>
+        <a class="login" href="#">Sign in</a>
+        <a class="btn primary sm" href="#">Get started</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame">
+    <!-- 1. Hero -->
+    <section class="hero">
+      <a class="backed" href="#">Backed by <span style="font-family: Georgia, serif">verdict.</span></a>
+      <h1 class="h1">The AI Chief of Staff<span class="br-md"></span> that works with your team</h1>
+      <p class="lead">Create, manage and deploy swarms of AI coworkers to solve your hardest problems.</p>
+      <div class="actions">
+        <a class="btn primary" href="#">Get started <i data-lucide="arrow-right" class="i go"></i></a>
+        <a class="btn ghost" href="#slack"><img class="logo" src="{{SLACK}}" alt="" /> Add @Overlay to Slack</a>
+      </div>
+
+      <div class="team" aria-label="Your AI team">
+        <div class="mate"><span data-agent="growth" data-size="40"></span><span>Growth</span></div>
+        <div class="mate"><span data-agent="engineering" data-size="44"></span><span>Engineering</span></div>
+        <div class="mate"><span data-agent="support" data-size="48"></span><span>Support</span></div>
+        <div class="mate lead-mate"><span data-chief data-size="72"></span><span>Overlay<br /><span class="sub">Chief of Staff</span></span></div>
+        <div class="mate"><span data-agent="operations" data-size="48"></span><span>Operations</span></div>
+        <div class="mate"><span data-agent="finance" data-size="44"></span><span>Finance</span></div>
+        <div class="mate"><span data-agent="docs" data-size="40"></span><span>Docs</span></div>
+      </div>
+
+      <div class="app hero-app" data-app='{}' aria-label="Clickable preview of the Overlay app"></div>
+    </section>
+
+    <!-- 2. AI employees -->
+    <section class="sec" id="ai-employees">
+      <div class="head center">
+        <h2 class="h2">AI agents with superpowers</h2>
+        <p class="lead">Every agent gets a face, a memory, your tools and a computer of its own.</p>
+      </div>
+      <div class="cards3">
+        <article class="card">
+          <div class="art">
+            <div class="mini">
+              <div class="mini-h"><span data-agent="engineering" data-size="18"></span>Engineering remembers<span class="meta">Memory</span></div>
+              <div class="mini-r"><span class="k">Tests use a fake clock</span><span class="meta">today</span></div>
+              <div class="mini-r"><span class="k">Sam reviews billing/ and auth/</span><span class="meta">Tue</span></div>
+              <div class="mini-r"><span class="k">Ship behind a flag first</span><span class="meta">Mon</span></div>
+            </div>
+          </div>
+          <h3 class="h3">Memory that carries over</h3>
+          <p class="body">Decisions, preferences and context stay with each agent, so you never explain twice.</p>
+        </article>
+        <article class="card">
+          <div class="art">
+            <div class="tools grid9">
+              <span class="tool"><img class="logo inv" src="{{LOGO:github}}" alt="" />GitHub</span>
+              <span class="tool"><img class="logo" src="{{LOGO:slack}}" alt="" />Slack</span>
+              <span class="tool"><img class="logo" src="{{LOGO:linear}}" alt="" />Linear</span>
+              <span class="tool"><img class="logo" src="{{LOGO:gmail}}" alt="" />Gmail</span>
+              <span class="tool"><img class="logo" src="{{LOGO:google-calendar}}" alt="" />Calendar</span>
+              <span class="tool"><img class="logo" src="{{LOGO:notion}}" alt="" />Notion</span>
+              <span class="tool"><img class="logo" src="{{LOGO:sentry}}" alt="" />Sentry</span>
+              <span class="tool"><i data-lucide="globe" class="i sm"></i>Browser</span>
+              <span class="tool more"><i data-lucide="plus" class="i sm"></i>Many more</span>
+            </div>
+          </div>
+          <h3 class="h3">The tools your team uses</h3>
+          <p class="body">Open issues, draft email, update the calendar and drive a real browser, with your approval where it matters.</p>
+        </article>
+        <article class="card">
+          <div class="art">
+            <div class="mini">
+              <div class="mini-h"><span data-agent="engineering" data-size="18" data-motion="look"></span>Engineering’s computer<span class="meta" style="color:var(--sl-ok)">running</span></div>
+              <div class="mini-r"><i data-lucide="terminal" class="i sm"></i><span class="k">npm test</span><span class="meta" style="color:var(--sl-ok)">214 passed</span></div>
+              <div class="mini-r"><i data-lucide="globe" class="i sm"></i><span class="k">Browser session</span><span class="meta">2 tabs</span></div>
+              <div class="mini-r"><i data-lucide="file-text" class="i sm"></i><span class="k">release-notes.md</span><span class="meta">saved</span></div>
+            </div>
+          </div>
+          <h3 class="h3">A computer of its own</h3>
+          <p class="body">Agents run code, use a browser and keep files on a machine that stays on while your laptop is closed.</p>
+        </article>
+      </div>
+      <p class="tagline">Agents with superpowers are <b>AI employees.</b></p>
+    </section>
+    <!-- 2. Chief orchestrator -->
+    <section class="sec" id="chief">
+      <div class="head center wide">
+        <h2 class="h2">One chief of staff<br /><span class="dim">running a team of agents</span></h2>
+        <p class="lead">Tell Overlay what you need. It breaks the work down, hands each piece to the right agent and brings the results back to you.</p>
+      </div>
+      <div class="flow">
+        <article class="card">
+          <div class="art">
+            <div class="mini">
+              <div class="bubble"><span class="who">You</span>Close the books for November and flag anything odd.</div>
+            </div>
+          </div>
+          <h3 class="h3">You ask once</h3>
+          <p class="body">In the app, in Slack or by email. Overlay knows your company, so you never explain twice.</p>
+        </article>
+        <article class="card">
+          <div class="art">
+            <div class="tree">
+              <svg class="lines" viewBox="0 0 252 168" fill="none" stroke="currentColor" stroke-width="1"><path d="M126 58 V88 M33 88 H219 M33 88 V118 M95 88 V118 M157 88 V118 M219 88 V118" /></svg>
+              <div class="n c" style="left:126px;top:32px"><span data-chief data-size="38" data-motion="look"></span></div>
+              <div class="n" style="left:33px;top:138px"><span data-agent="finance" data-size="28" data-motion="look"></span></div>
+              <div class="n" style="left:95px;top:138px"><span data-agent="operations" data-size="28"></span></div>
+              <div class="n" style="left:157px;top:138px"><span data-agent="engineering" data-size="28"></span></div>
+              <div class="n" style="left:219px;top:138px"><span data-agent="support" data-size="28"></span></div>
+            </div>
+          </div>
+          <h3 class="h3">Overlay assigns the team</h3>
+          <p class="body">Each agent has its own tools, memory and computer. Overlay picks who does what and keeps them moving.</p>
+        </article>
+        <article class="card">
+          <div class="art">
+            <div class="mini">
+              <div class="mini-h"><span data-chief data-size="16"></span>November close<span class="meta">done</span></div>
+              <div class="mini-r"><span data-agent="finance" data-size="16"></span><span class="k">Reconciled 214 payouts</span><span class="meta" style="color:var(--sl-ok)">✓</span></div>
+              <div class="mini-r"><span data-agent="operations" data-size="16"></span><span class="k">3 vendor bills to approve</span><span class="meta"><span class="status" style="--c:var(--sl-warn)">You</span></span></div>
+              <div class="mini-r"><span data-agent="support" data-size="16"></span><span class="k">2 refunds explained</span><span class="meta" style="color:var(--sl-ok)">✓</span></div>
+            </div>
+          </div>
+          <h3 class="h3">Results come back to you</h3>
+          <p class="body">One summary, with only the decisions that need a human. Every step is in the run history.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- 3. Org chart -->
+    <section class="sec" id="org-chart">
+      <div class="head center wide">
+        <h2 class="h2">Your AI employees<br /><span class="dim">belong on your org chart</span></h2>
+        <p class="lead">Give every agent a role, a manager and a face. Assign them work like anyone else on the team.</p>
+      </div>
+      <div class="org-wrap">
+        <div class="org">
+          <div class="node"><img class="pic" src="https://randomuser.me/api/portraits/women/44.jpg" alt="" /><span>Maya Chen<span class="role">CEO</span></span></div>
+          <div class="vline"></div>
+          <div class="tier">
+            <div class="branch">
+              <div class="vline"></div>
+              <div class="node"><img class="pic" src="https://randomuser.me/api/portraits/men/32.jpg" alt="" /><span>Sam Reyes<span class="role">Head of Engineering</span></span></div>
+              <div class="vline" style="height:20px"></div>
+              <div class="reports">
+                <div class="node"><span data-agent="engineering" data-size="28"></span><span>Engineering<span class="role">Ships fixes and releases</span></span></div>
+                <div class="node"><span data-agent="docs" data-size="28"></span><span>Docs<span class="role">Keeps guides current</span></span></div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="vline"></div>
+              <div class="node chief-node"><span data-chief data-size="34"></span><span>Overlay<span class="role">Chief of Staff</span></span></div>
+              <div class="vline" style="height:20px"></div>
+              <div class="reports">
+                <div class="node"><span data-agent="operations" data-size="28"></span><span>Operations<span class="role">Vendors, travel, offsites</span></span></div>
+                <div class="node"><span data-agent="finance" data-size="28"></span><span>Finance<span class="role">Books and payouts</span></span></div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="vline"></div>
+              <div class="node"><img class="pic" src="https://randomuser.me/api/portraits/women/68.jpg" alt="" /><span>Lena Park<span class="role">Head of Growth</span></span></div>
+              <div class="vline" style="height:20px"></div>
+              <div class="reports">
+                <div class="node"><span data-agent="growth" data-size="28"></span><span>Growth<span class="role">Launches and campaigns</span></span></div>
+                <div class="node"><span data-agent="support" data-size="28"></span><span>Support<span class="role">Answers every ticket</span></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="org-legend">
+            <span><img class="pic" src="https://randomuser.me/api/portraits/women/68.jpg" alt="" />People</span>
+            <span><span data-agent="growth" data-size="20"></span>AI employees</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Multiplayer -->
+    <section class="sec" id="multiplayer">
+      <div class="head center wide">
+        <h2 class="h2">Multiplayer by default<br /><span class="dim">people and agents in one channel</span></h2>
+        <p class="lead">Your team and your agents share channels. Anyone can bring Overlay in, and everyone sees the work as it happens.</p>
+      </div>
+      <div class="app chan-app" data-app='{"view":"chats","right":false}' aria-label="Clickable preview of a team channel in Overlay"></div>
+    </section>
+    <!-- 4. Scopes -->
+    <section class="sec" id="scopes">
+      <div class="head center wide">
+        <h2 class="h2">Personal stays personal<br /><span class="dim">shared work stays shared</span></h2>
+        <p class="lead">Every member gets a private space next to the team's workspace. You choose what moves between them.</p>
+      </div>
+      <div class="scopes">
+        <div class="scope">
+          <div class="mini">
+            <div class="seg-h"><div class="sb-seg"><span class="on">Personal</span><span>Workspace</span></div><span class="meta"><i data-lucide="lock" class="i sm" style="width:12px;height:12px"></i>Only you</span></div>
+            <div class="mini-r"><span data-chief data-size="16"></span><span class="k">Prep notes for my 1:1 with Sam</span><span class="meta">today</span></div>
+            <div class="mini-r"><span data-agent="inbox" data-size="16"></span><span class="k">Inbox: reply to the Brightline intro</span><span class="meta">9:40</span></div>
+            <div class="mini-r"><i data-lucide="file-text" class="i sm"></i><span class="k">Board meeting draft</span><span class="meta">note</span></div>
+          </div>
+          <h3 class="h3"><i data-lucide="lock" class="i sm"></i>Personal</h3>
+          <p class="body">Your own Overlay, your own agents, notes and threads. Nobody else in the workspace can see them.</p>
+        </div>
+        <div class="scope">
+          <div class="mini">
+            <div class="seg-h"><div class="sb-seg"><span>Personal</span><span class="on">Workspace</span></div><span class="meta"><i data-lucide="users" class="i sm" style="width:12px;height:12px"></i>Acme · 14 members</span></div>
+            <div class="mini-r"><span data-chief data-size="16"></span><span class="k">Atlas launch</span><span class="meta">Maya, Sam +2</span></div>
+            <div class="mini-r"><span data-agent="support" data-size="16"></span><span class="k">Support: weekly ticket review</span><span class="meta">shared</span></div>
+            <div class="mini-r"><span data-agent="finance" data-size="16"></span><span class="k">Finance: November close</span><span class="meta">shared</span></div>
+          </div>
+          <h3 class="h3"><i data-lucide="users" class="i sm"></i>Workspace</h3>
+          <p class="body">Shared agents, threads and automations the whole team can see, use and steer, with permissions per member.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Self-driving -->
+    <section class="sec" id="self-driving">
+      <div class="sd">
+        <div>
+          <h2 class="h2">Make your company<br />self-driving</h2>
+          <p class="lead">Put agents on schedules and triggers. The routine work runs on its own, and you only hear about what needs a decision.</p>
+          <div class="points">
+            <div><i data-lucide="clock" class="i"></i><span><b>Schedules.</b> Daily reports, weekly reviews, month-end close.</span></div>
+            <div><i data-lucide="zap" class="i"></i><span><b>Triggers.</b> A new ticket, a merged PR, an email from a customer.</span></div>
+            <div><i data-lucide="circle-check" class="i"></i><span><b>Approvals.</b> Money, messages and anything sensitive wait for you.</span></div>
+          </div>
+        </div>
+        <div class="step-art feed" style="height:auto;padding:36px 28px">
+          <div class="mini">
+            <div class="mini-h"><i data-lucide="sunrise" class="i sm"></i>While you slept<span class="meta">Tue, Nov 25</span></div>
+            <div class="mini-r"><span class="tm">06:00</span><span data-agent="finance" data-size="18"></span><span class="k">Reconciled yesterday’s Stripe payouts</span></div>
+            <div class="mini-r"><span class="tm">07:15</span><span data-agent="support" data-size="18"></span><span class="k">Answered 38 tickets, escalated 2 to Lena</span></div>
+            <div class="mini-r"><span class="tm">08:00</span><span data-agent="growth" data-size="18"></span><span class="k">Posted competitor launches to #product-intel</span></div>
+            <div class="mini-r"><span class="tm">08:42</span><span data-agent="engineering" data-size="18" data-motion="look"></span><span class="k">Fixing a flaky checkout test</span><span class="meta"><span class="status" style="--c:var(--sl-ok)">Working</span></span></div>
+            <div class="mini-r need"><span class="tm">09:05</span><span data-agent="operations" data-size="18"></span>
+              <div class="k">Needs you: <b>approve the €1,200 venue deposit</b> for the Lisbon offsite
+                <div class="act"><span class="btn primary">Approve</span><span class="btn ghost">Review</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cloud -->
+    <section class="sec" id="cloud">
+      <div class="head center wide">
+        <h2 class="h2">In the cloud<br /><span class="dim">accessible from anywhere</span></h2>
+        <p class="lead">Your agents live in the cloud, not on one laptop. Reach them from wherever you are, and they keep working when you log off.</p>
+      </div>
+      <div class="grid3">
+        <div class="cell">
+          <div class="art">
+            <div class="plats">
+              <span class="tool"><i data-lucide="globe" class="i sm"></i>Web</span>
+              <span class="tool"><img class="logo inv" src="{{LOGO:apple}}" alt="" />Mac</span>
+              <span class="tool"><img class="logo" src="{{LOGO:slack}}" alt="" />Slack</span>
+              <span class="tool"><i data-lucide="smartphone" class="i sm"></i>Mobile</span>
+              <span class="tool"><img class="logo inv" src="{{LOGO:openai}}" alt="" />ChatGPT</span>
+              <span class="tool"><img class="logo" src="{{LOGO:claude}}" alt="" />Claude</span>
+              <span class="tool"><img class="logo inv" src="{{LOGO:mcp}}" alt="" />Any MCP app</span>
+            </div>
+          </div>
+          <h3 class="h3">Every surface, one team</h3>
+          <p class="body">The web, your Mac, Slack and the AI apps you already use. Same agents, same memory, same threads.</p>
+        </div>
+        <div class="cell">
+          <div class="art">
+            <div class="mini" style="max-width:260px">
+              <div class="mini-h"><i data-lucide="cloud" class="i sm"></i>Overnight<span class="meta">laptop closed</span></div>
+              <div class="mini-r"><span data-agent="engineering" data-size="16" data-motion="look"></span><span class="k">Running the test suite</span><span class="meta" style="color:var(--sl-ok)">3h 12m</span></div>
+              <div class="mini-r"><span data-agent="support" data-size="16"></span><span class="k">38 tickets answered</span><span class="meta">✓</span></div>
+              <div class="mini-r"><span data-agent="finance" data-size="16"></span><span class="k">Payouts reconciled</span><span class="meta">✓</span></div>
+            </div>
+          </div>
+          <h3 class="h3">Always on</h3>
+          <p class="body">Each agent’s computer runs in the cloud, so long jobs finish while you sleep and results wait in the thread.</p>
+        </div>
+        <div class="cell" id="open-source">
+          <div class="art">
+            <div class="code-card">
+              <span class="p">$</span> git clone overlay<br />
+              <span class="p">$</span> docker compose up<br />
+              <span class="p">#</span> AGPL-3.0 · self-hosted
+            </div>
+          </div>
+          <h3 class="h3">Hosted, or on your servers</h3>
+          <p class="body">Use our cloud, or self-host the open-source release on infrastructure you control.</p>
+        </div>
+      </div>
+    </section>
+    <!-- 6. Slack -->
+    <section class="sec" id="slack">
+      <div class="sd">
+        <div class="step-art" style="height:auto;padding:36px 28px">
+          <div class="slack">
+            <div class="slack-h"><img class="logo" src="{{SLACK}}" alt="" /># atlas-launch<span class="meta">8 members</span></div>
+            <div class="smsg"><span class="sq photo"><img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Sam Reyes" /></span><div><div class="nm">Sam Reyes<span class="t">10:12 AM</span></div><span class="mention">@Overlay</span> can we still ship Thursday? Checkout tests are red.</div></div>
+            <div class="smsg"><span class="sq ov"><span data-chief data-size="20" data-plain></span></span>
+              <div style="min-width:0;flex:1"><div class="nm">Overlay<span class="tag">APP</span><span class="t">10:12 AM</span></div>
+                Yes. One flaky test, not a real bug. I asked the team:
+                <div class="asks">
+                  <div class="ask"><span data-agent="engineering" data-size="16" data-motion="look"></span><span class="tx"><b>Engineering</b> is fixing the test</span><span class="r">Working</span></div>
+                  <div class="ask"><span data-agent="docs" data-size="16"></span><span class="tx"><b>Docs</b> added it to the changelog</span><span class="r ok">Done</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="thread-foot"><span data-agent="engineering" data-size="16"></span><span data-agent="docs" data-size="16"></span>&nbsp; 3 replies</div>
+          </div>
+        </div>
+        <div>
+          <h2 class="h2">Overlay in Slack<br /><span class="dim">your team’s newest coworker</span></h2>
+          <p class="lead">Mention @Overlay in any channel or DM it. It answers in the thread, brings in the right agents and posts the results where your team already talks.</p>
+          <div class="actions" style="justify-content:flex-start">
+            <a class="btn primary" href="#"><img class="logo" src="{{SLACK}}" alt="" /> Add @Overlay to Slack</a>
+          </div>
+          <p class="meta-line">Works in channels, threads and DMs · Each person’s Slack links to their Overlay account</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Control -->
+    <section class="sec tight">
+      <div class="split">
+        <h2 class="h2">Stay in control<br /><span class="dim">of every agent on the team</span></h2>
+        <div class="ctrl">
+          <div><i data-lucide="lock" class="i"></i>Permissions per agent and per tool</div>
+          <div><i data-lucide="circle-check" class="i"></i>Approvals before sensitive actions</div>
+          <div><i data-lucide="gauge" class="i"></i>Spend limits for the workspace</div>
+          <div><i data-lucide="history" class="i"></i>Complete run history</div>
+          <div><i data-lucide="shield-check" class="i"></i>Audit trails for every action</div>
+          <div><i data-lucide="github" class="i"></i>Open source, or self-hosted</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Final CTA -->
+    <section class="sec">
+      <div class="final">
+        <div class="team">
+          <span data-agent="growth" data-size="32"></span><span data-agent="engineering" data-size="32"></span><span data-chief data-size="44"></span><span data-agent="support" data-size="32"></span><span data-agent="finance" data-size="32"></span>
+        </div>
+        <h2 class="h2">Hire your AI Chief of Staff</h2>
+        <p class="lead">Set up your workspace in minutes, then let Overlay build the rest of the team.</p>
+        <div class="actions">
+          <a class="btn primary" href="#">Get started <i data-lucide="arrow-right" class="i go"></i></a>
+          <a class="btn ghost" href="#slack"><img class="logo" src="{{SLACK}}" alt="" /> Add @Overlay to Slack</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot"><span data-wordmark style="font-size:15px;display:inline-flex;color:var(--sl-text)"></span><span>© 2026 LayerNorm</span>
+      <nav><a href="#">Docs</a><a href="#">Pricing</a><a href="#">GitHub</a><a href="#">Privacy</a><a href="#">Terms</a></nav></footer>
+  </main>
+</div>
+
+<script>
+// Demo roster: agents are their creatures; Overlay is the O with eyes.
+const AGENTS = {
+  engineering: { shape: 'hexagon', color: '#16a34a' },
+  support: { shape: 'blob', color: '#db2777' },
+  growth: { shape: 'cloud', color: '#7c3aed' },
+  docs: { shape: 'droplet', color: '#2563eb' },
+  operations: { shape: 'squircle', color: '#ea580c' },
+  finance: { shape: 'triangle', color: '#0d9488' },
+  inbox: { shape: 'pill', color: '#ca8a04' },
+  research: { shape: 'circle', color: '#64748b' },
+}
+const BODY = {
+  blob: '<path d="M50 12 C70 12 90 28 89 55 C88 80 70 93 50 93 C30 93 11 80 12 54 C13 29 30 12 50 12 Z"/>',
+  squircle: '<rect x="12" y="14" width="76" height="78" rx="24"/>',
+  pill: '<rect x="8" y="30" width="84" height="48" rx="24"/>',
+  triangle: '<path d="M50 16 L86 82 Q89 90 81 90 L19 90 Q11 90 14 82 Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>',
+  hexagon: '<path d="M50 12 L84 31 L84 71 L50 90 L16 71 L16 31 Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>',
+  cloud: '<circle cx="34" cy="61" r="16"/><circle cx="50" cy="49" r="20"/><circle cx="67" cy="61" r="16"/><rect x="21" y="58" width="59" height="23" rx="11.5"/>',
+  droplet: '<path d="M50 10 C50 10 79 45 79 64 A29 29 0 1 1 21 64 C21 45 50 10 50 10 Z"/>',
+  circle: '<circle cx="50" cy="53" r="40"/>',
+}
+function eyeColor(hex) {
+  const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5 ? '#1c1917' : '#fafaf9'
+}
+let i = 0
+const mark = document.getElementById('mark-svg').innerHTML
+// Lucide icons, inlined from the app's lucide-react by the build script.
+const ICONS = /*ICONS*/
+function hydrate(scope) {
+scope.querySelectorAll('[data-agent]').forEach((el) => {
+  const a = AGENTS[el.dataset.agent], s = el.dataset.size
+  el.className = 'cr ' + (el.dataset.motion === 'look' ? 'look' : 'blink')
+  el.style.cssText += `width:${s}px;height:${s}px;--d:${(i++ * 0.83) % 5.4}s`
+  el.setAttribute('role', 'img'); el.setAttribute('aria-label', el.dataset.agent + ' agent')
+  el.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="currentColor" style="color:${a.color}">${BODY[a.shape]}</g>`
+    + `<g class="eyes" fill="${eyeColor(a.color)}"><rect x="36" y="45" width="9.5" height="17" rx="4.75"/><rect x="54.5" y="45" width="9.5" height="17" rx="4.75"/></g></svg>`
+})
+scope.querySelectorAll('[data-chief]').forEach((el) => {
+  const s = +el.dataset.size
+  el.className = 'chief' + (el.dataset.motion === 'look' ? ' look' : '')
+  el.style.cssText += `width:${s}px;height:${s}px;padding-top:${s * 0.06}px;--d:${(i++ * 0.71) % 6}s`
+  if (el.dataset.plain !== undefined) el.style.color = 'inherit'
+  el.innerHTML = mark
+  const svg = el.querySelector('svg'); svg.setAttribute('width', s * 0.84); svg.setAttribute('height', s * 0.84)
+})
+scope.querySelectorAll('i[data-lucide]').forEach((el) => {
+  el.outerHTML = `<svg class="${el.className}" style="${el.getAttribute('style') || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[el.dataset.lucide] || ''}</svg>`
+})
+}
+const wordmark = document.getElementById('wordmark-svg').innerHTML
+document.querySelectorAll('[data-wordmark]').forEach((el) => {
+  el.innerHTML = wordmark
+  if (el.style.fontSize) { const svg = el.querySelector('svg'); svg.style.height = el.style.fontSize; svg.style.width = 'auto' }
+})
+// ---------------- Clickable app mock ----------------
+// One renderer drives both app shots. Layout and tokens follow overlay-app.html;
+// content is fixture data. Click the rail, scope switch, agents, threads, chats,
+// work items, files and the right panel tabs.
+const PEOPLE = {
+  maya: { name: 'Maya Chen', img: 'https://randomuser.me/api/portraits/women/44.jpg' },
+  sam: { name: 'Sam Reyes', img: 'https://randomuser.me/api/portraits/men/32.jpg' },
+  lena: { name: 'Lena Park', img: 'https://randomuser.me/api/portraits/women/68.jpg' },
+}
+const ic = (n, c = 'sm') => `<i data-lucide="${n}" class="i ${c}"></i>`
+const photo = (id, cls = '') => `<img class="a-photo ${cls}" src="${PEOPLE[id].img}" alt="${PEOPLE[id].name}" />`
+const AG = {
+  overlay: { name: 'Overlay', chief: true, role: 'Workspace chief of staff', desc: 'Plans the work, delegates to your team and keeps everything moving.', status: '1 working · 1 ready', threads: [['Atlas launch', 'run'], ['November close', 'done'], ['Weekly metrics digest', '']], tools: '14 on' },
+  engineering: { name: 'Engineering', c: 'engineering', role: 'Ships fixes and releases', desc: 'Owns the codebase, CI and releases. Reports to Sam Reyes.', status: '1 working', threads: [['Fix flaky checkout test', 'run'], ['Release 2.4', 'done']], tools: '9 on', computer: 'term' },
+  growth: { name: 'Growth', c: 'growth', role: 'Launches and campaigns', desc: 'Writes launch posts, emails and ads. Reports to Lena Park.', status: '1 working', threads: [['Atlas launch post', 'run'], ['Competitor launches digest', 'done']], tools: '7 on', url: 'overlay.works/blog/atlas', page: 'Introducing Atlas' },
+  support: { name: 'Support', c: 'support', role: 'Answers every ticket', desc: 'Triages the inbox and answers customers. Reports to Lena Park.', status: '2 ready', threads: [['Launch-day replies', 'done'], ['Weekly ticket review', 'done']], tools: '6 on', url: 'help.acme.com/atlas', page: 'Atlas FAQ' },
+  docs: { name: 'Docs', c: 'docs', role: 'Keeps guides current', desc: 'Writes the changelog and keeps guides accurate. Reports to Sam Reyes.', status: '', threads: [['Changelog for 2.4', 'done']], tools: '5 on', url: 'docs.acme.com/changelog', page: 'Changelog 2.4' },
+  finance: { name: 'Finance', c: 'finance', role: 'Books and payouts', desc: 'Reconciles payouts and closes the books each month.', status: '', threads: [['November close', 'done']], tools: '6 on', url: 'dashboard.stripe.com/payouts', page: 'Payouts' },
+  operations: { name: 'Operations', c: 'operations', role: 'Vendors, travel, offsites', desc: 'Books travel, venues and vendors, with approval for spend.', status: '', threads: [['Lisbon offsite', 'run']], tools: '8 on', url: 'casadorio.pt/events', page: 'Plan a group event' },
+  poverlay: { name: 'Overlay', chief: true, role: 'Your personal chief of staff', desc: 'Private to you. Knows your calendar, inbox and notes.', status: '1 ready', threads: [['1:1 prep with Sam', 'done'], ['Board meeting draft', '']], tools: '11 on' },
+  inbox: { name: 'Inbox', c: 'inbox', role: 'Your email assistant', desc: 'Drafts replies and keeps your inbox at zero. Only you can see it.', status: '1 ready', threads: [['Brightline intro', 'done']], tools: '3 on', url: 'mail.google.com', page: 'Re: Intro to Brightline' },
+  research: { name: 'Research', c: 'research', role: 'Digs into anything', desc: 'Researches markets, people and companies for you.', status: '1 working', threads: [['Competitor pricing scan', 'run']], tools: '4 on', url: 'linear.app/pricing', page: 'Pricing' },
+}
+const SCOPE_AGENTS = { workspace: ['overlay', 'engineering', 'growth', 'support', 'docs', 'finance', 'operations'], personal: ['poverlay', 'inbox', 'research'] }
+const av = (id, size, look) => (AG[id] && AG[id].chief) || id === 'overlay'
+  ? `<span data-chief data-size="${size}"${look ? ' data-motion="look"' : ''}></span>`
+  : PEOPLE[id] ? photo(id) : `<span data-agent="${AG[id].c}" data-size="${size}"${look ? ' data-motion="look"' : ''}></span>`
+const nameOf = (id) => (PEOPLE[id] || AG[id]).name
+
+// Agent threads: [me, text] or [ag, time, tools, bodyHtml, runningStep]
+const THREADS = {
+  'overlay:0': [['me', 'Atlas ships Thursday. Get everything ready and tell me what needs me.'],
+    ['ag', '9:02 AM', 'Worked, asked 4 agents', '<p>I split the launch across the team and set the dependencies in Work.</p><ol><li><b>Engineering</b> cuts release 2.4 and fixes the blockers.</li><li><b>Docs</b> writes the changelog.</li><li><b>Growth</b> drafts the launch post and email.</li><li><b>Support</b> preps launch-day replies.</li></ol><p>One thing needs you: Growth wants a <b>$1,200 ad budget</b> for launch week.</p>'],
+    ['me', 'Approved. Can Engineering also check the mobile checkout before Thursday?'],
+    ['ag', '9:06 AM', 'Worked, called 2 tools', '', 'Asking Engineering: test mobile checkout']],
+  'overlay:1': [['me', 'Close the books for November and flag anything odd.'], ['ag', 'Nov 3', 'Worked, asked 3 agents', '<p>November is closed. <b>Finance</b> reconciled 214 payouts and <b>Support</b> explained two refunds.</p><p>Three vendor bills are over $2,000 and wait for your approval in Work.</p>']],
+  'overlay:2': [['ag', 'Mon 8:00 AM', 'Worked, called 6 tools', '<p>Weekly metrics: signups are up 14%, activation is steady at 41% and two Business accounts look at risk. Support is already in touch with both.</p>']],
+  'engineering:0': [['me', 'Fix the flaky checkout test before Thursday.'], ['ag', '9:40 AM', 'Worked, called 9 tools', '<p>Found it: the test waited on a real clock. I switched it to the fake clock, ran the suite 20 times and opened <b>PR #482</b>. All 214 tests pass.</p>'], ['ag', '9:58 AM', 'Worked, called 3 tools', '', 'Running mobile checkout on iOS and Android']],
+  'growth:0': [['me', 'Draft the Atlas launch post. Keep it under 300 words.'], ['ag', '10:21 AM', 'Worked, called 5 tools', '<p>The draft is in <span class="a-file">' + ic('file-text', 'xs') + 'Launch post v2</span>. It leads with the time saved per team and ends with the pricing change.</p><p>I also want to run ads in launch week. That needs a $1,200 budget, so I asked Overlay to get approval.</p>'], ['ag', '10:30 AM', 'Worked, called 2 tools', '', 'Writing the launch email']],
+  'support:0': [['me', 'Prepare replies for launch-day questions.'], ['ag', 'Yesterday', 'Worked, called 7 tools', '<p>I wrote 12 saved replies from last launch’s top questions and published an <b>Atlas FAQ</b> in the help center. Anything I can’t answer goes to Lena.</p>']],
+  'docs:0': [['me', 'Write the changelog for 2.4.'], ['ag', 'Yesterday', 'Worked, called 4 tools', '<p>The changelog is live with 9 changes, grouped as New, Improved and Fixed. I linked each entry to its pull request.</p>']],
+  'finance:0': [['me', 'Close November.'], ['ag', 'Dec 1', 'Worked, called 11 tools', '<p>Reconciled 214 Stripe payouts against the bank. Everything matches except one $48 refund, which I flagged for Maya.</p>']],
+  'operations:0': [['me', 'Find a venue in Lisbon for our offsite, May 14 to 16, 12 people, under €4,000.'], ['ag', '11:02 AM', 'Worked, called 9 tools', '<p>Three venues fit. <b>Casa do Rio</b> is €3,450 with a river view. I’m asking them about a vegetarian lunch now.</p>'], ['ag', '11:05 AM', '', '', 'Filling in the Casa do Rio events form']],
+  'poverlay:0': [['me', 'Prep notes for my 1:1 with Sam.'], ['ag', '8:30 AM', 'Worked, called 4 tools', '<p>Three things for Sam today:</p><ol><li>Thank him for unblocking the Atlas release.</li><li>Hiring: two engineering candidates are waiting on him.</li><li>His promo doc is due Friday.</li></ol><p>These notes are private. Sam can’t see them.</p>']],
+  'inbox:0': [['me', 'Reply to the Brightline intro.'], ['ag', '9:40 AM', 'Worked, called 3 tools', '<p>Drafted a reply that thanks Priya for the intro and offers Tuesday or Wednesday afternoon. It’s in your Gmail drafts. Want me to send it?</p>']],
+  'research:0': [['me', 'How do competitors price per seat?'], ['ag', '10:10 AM', '', '', 'Reading 6 pricing pages']],
+}
+const thread = (agent, idx) => THREADS[`${agent}:${idx}`] || [['me', `Where are we on ${AG[agent].threads[idx][0].toLowerCase()}?`], ['ag', 'Today', 'Worked, called 3 tools', `<p>${AG[agent].threads[idx][0]} is ${AG[agent].threads[idx][1] === 'done' ? 'done. Everything is in the Library.' : 'on track. I’ll post here when it’s ready.'}</p>`]]
+
+// Chats: [kind, who, time, html]; kind is p (person), a (agent), me
+const CHATS = {
+  'atlas-launch': { kind: 'channel', title: 'atlas-launch', members: ['maya', 'sam', 'lena', 'engineering', 'growth', 'overlay'], msgs: [
+    ['p', 'sam', '10:12 AM', 'Checkout tests are red on mobile. Can we still ship Thursday?'],
+    ['a', 'engineering', '10:14 AM', 'It’s one flaky test, not a real bug. The fix is in PR #482 and staging is green again.'],
+    ['p', 'lena', '10:20 AM', 'Great. Growth, is the launch post ready for review?'],
+    ['a', 'growth', '10:21 AM', 'Yes, it’s in <span class="a-file">' + ic('file-text', 'xs') + 'Launch post v2</span>. I kept it under 300 words and added the pricing change.'],
+    ['me', '', '', '<span class="a-mention"><span data-chief data-size="14" data-plain></span>Overlay</span> can you pull together everything still open for Thursday?'],
+    ['a', 'overlay', '10:24 AM', '<p>Three things are left before Thursday:</p><ol><li><b>Lena</b> reviews the launch post.</li><li><b>Engineering</b> merges PR #482 once Sam approves.</li><li><b>Support</b> publishes the launch FAQ, due Wednesday.</li></ol><p>Everything else is done. I’ll post a summary here every morning until launch.</p>']] },
+  general: { kind: 'channel', title: 'general', members: ['maya', 'sam', 'lena', 'overlay'], msgs: [
+    ['p', 'maya', 'Mon 9:00 AM', 'Welcome Finance and Operations to the team! They report to Overlay. Ask them for anything money or travel related.'],
+    ['p', 'lena', 'Mon 9:12 AM', 'Already asked Operations to book flights for the offsite. Took two minutes.'],
+    ['a', 'overlay', 'Mon 9:14 AM', 'Flights for 12 are on hold until Friday. Maya, the total is €2,860 and waits for your approval.']] },
+  engineering: { kind: 'channel', title: 'engineering', members: ['sam', 'engineering', 'docs'], msgs: [
+    ['a', 'engineering', '8:02 AM', 'Nightly build passed. 214 tests, 0 failures. Release 2.4 is ready to tag.'],
+    ['p', 'sam', '8:15 AM', 'Tag it. Docs, can you have the changelog ready by noon?'],
+    ['a', 'docs', '8:16 AM', 'On it. The changelog will be live by 11:30.']] },
+  sam: { kind: 'dm', title: 'Sam Reyes', who: 'sam', msgs: [['p', 'sam', '9:30 AM', 'Do we still have time for the 1:1 at 2?'], ['me', '', '', 'Yes, see you then.']] },
+  lena: { kind: 'dm', title: 'Lena Park', who: 'lena', msgs: [['p', 'lena', 'Yesterday', 'The launch post is great. Growth nailed the tone.']] },
+  growthdm: { kind: 'dm', title: 'Growth', who: 'growth', msgs: [['me', '', '', 'Can you shorten the email subject line?'], ['a', 'growth', '10:40 AM', 'Three options: “Atlas is here”, “Meet Atlas” and “Your team, on autopilot”. I’d go with the first.']] },
+  okrs: { kind: 'ai', title: 'Draft Q1 OKRs', msgs: [['me', '', '', 'Draft Q1 OKRs for the company based on the board deck.'], ['a', 'poverlay', '8:10 AM', '<p>Three objectives, each with two key results: grow revenue to $1.2M ARR, reach 45% activation and ship Atlas to all Business customers.</p>']] },
+  board: { kind: 'ai', title: 'Board deck outline', msgs: [['me', '', '', 'Outline the December board deck.'], ['a', 'poverlay', 'Mon', '<p>Ten slides: highlights, metrics, Atlas launch, hiring, cash and runway, and three asks for the board.</p>']] },
+  offsite: { kind: 'ai', title: 'Offsite agenda ideas', msgs: [['me', '', '', 'Ideas for the offsite agenda?'], ['a', 'poverlay', 'Sun', '<p>Day one on strategy, day two on Atlas retros and planning, and a dinner by the river on the last night.</p>']] },
+}
+const CHAT_GROUPS = {
+  workspace: [['Direct messages', [['sam', 'dm'], ['lena', 'dm'], ['growthdm', 'dm']]], ['Channels', [['atlas-launch', 'ch'], ['general', 'ch'], ['engineering', 'ch']]]],
+  personal: [['Recents', [['okrs', 'ai'], ['board', 'ai'], ['offsite', 'ai']]]],
+}
+const WORK = {
+  workspace: [
+    ['progress', 'Cut release 2.4 and fix blockers', 'engineering', 'Thu'], ['progress', 'Launch post and email', 'growth', 'Wed'], ['progress', 'Book the Lisbon offsite venue', 'operations', 'Fri'],
+    ['todo', 'Approve the $1,200 ad budget', 'maya', 'Today', true], ['todo', 'Review the launch post', 'lena', 'Wed'], ['todo', 'Approve PR #482', 'sam', 'Today'],
+    ['done', 'Changelog for 2.4', 'docs', 'Mon'], ['done', 'Launch-day support replies', 'support', 'Mon'], ['done', 'November close', 'finance', 'Dec 1']],
+  personal: [['progress', 'Board deck outline', 'maya', 'Fri'], ['progress', 'Competitor pricing scan', 'research', 'Thu'], ['todo', 'Send the Brightline reply', 'inbox', 'Today', true], ['done', '1:1 prep with Sam', 'poverlay', 'Today']],
+}
+const FILES = {
+  workspace: [['file-text', 'Launch post v2', 'growth', '10 min ago', 'Launch'], ['file-code', 'release-2.4-notes.md', 'engineering', '1 h ago', 'Launch'], ['file-text', 'Atlas FAQ', 'support', 'Yesterday', 'Launch'], ['sheet', 'November close.xlsx', 'finance', 'Dec 1', 'Finance'], ['file-text', 'Pricing benchmark', 'growth', 'Nov 20', 'Research'], ['image', 'Atlas hero.png', 'growth', 'Nov 19', 'Launch'], ['file-text', 'Offsite venues', 'operations', 'Today', 'Research'], ['file-text', 'Changelog 2.4', 'docs', 'Mon', 'Launch']],
+  personal: [['file-text', 'Board meeting draft', 'maya', 'Mon', 'Notes'], ['file-text', '1:1 notes: Sam', 'poverlay', 'Today', 'Notes'], ['sheet', 'Q4 revenue model.xlsx', 'maya', 'Nov 12', 'Finance'], ['file-text', 'Competitor pricing', 'research', 'Today', 'Notes']],
+}
+const fileIcon = (k) => ({ 'file-text': ic('file-text'), 'file-code': ic('file-code'), sheet: ic('file-spreadsheet'), image: ic('image') })[k]
+
+function msgHtml(m, agent) {
+  if (m[0] === 'me') return `<div class="a-me-msg">${m[1] === '' ? m[3] : m[1]}</div>`
+  const [, time, tools, body, run] = m
+  return `<div class="a-msg">${av(agent, 22, !!run)}<div class="a-body"><div class="a-who">${AG[agent].name}<time>${time}</time></div>`
+    + (tools ? `<div class="a-tools">${tools}${ic('chevron-right', 'xs')}</div>` : '') + body
+    + (run ? `<div class="a-run"><span class="orb">${'<i></i>'.repeat(9)}</span>${run}</div>` : '') + '</div></div>'
+}
+function chatMsgHtml(m) {
+  if (m[0] === 'me') return `<div class="a-me-msg">${m[3]}</div>`
+  const [k, who, time, html] = m
+  const body = html.startsWith('<p>') ? html : `<p>${html}</p>`
+  return `<div class="a-msg">${av(who, 22)}<div class="a-body"><div class="a-who">${nameOf(who)}<time>${time}</time></div>${body}</div></div>`
+}
+const crumb = (st, view, tail) => `<span class="a-crumb">${st.scope === 'personal' ? 'Personal' : 'Workspace'}${ic('chevron-right', 'xs')}${view}${tail ? ic('chevron-right', 'xs') + `<b>${tail}</b>` : ''}</span>`
+const seg = (st) => `<div class="a-seg"><span data-act="scope" data-v="personal" class="${st.scope === 'personal' ? 'on' : ''}">Personal</span><span data-act="scope" data-v="workspace" class="${st.scope === 'workspace' ? 'on' : ''}">Workspace</span></div>`
+const sideHead = (t) => `<div class="a-side-h">${t}<span class="a-icons">${ic('bell')}${ic('search')}${ic('plus')}</span></div>`
+
+function rail(st) {
+  const item = (v, icon) => `<span class="a-ri${st.view === v ? ' on' : ''}" data-act="view" data-v="${v}" title="${v[0].toUpperCase() + v.slice(1)}">${ic(icon, '')}</span>`
+  return `<nav class="a-rail"><span data-act="view" data-v="agents" style="cursor:pointer"><span data-chief data-size="22"></span></span>${item('work', 'list-checks')}${item('agents', 'bot')}${item('chats', 'message-square')}${item('files', 'folder')}<span class="a-ri">${ic('ellipsis', '')}</span>`
+    + `<span class="a-rail-foot"><span class="a-ri">${ic('moon', '')}</span><span class="a-ri">${ic('settings', '')}</span>${photo('maya', 'a-me')}</span></nav>`
+}
+
+function sideAgents(st) {
+  return sideHead('Agents') + seg(st) + SCOPE_AGENTS[st.scope].map((id) => {
+    const a = AG[id], open = id === st.agent
+    const row = `<div class="a-agent${open && st.thread == null ? ' on' : ''}" data-act="agent" data-v="${id}">${av(id, 20, a.status.includes('working'))}<div><div class="a-an">${a.name}${a.chief ? ' ' + ic('pin', 'pin') : ''}</div>${a.status ? `<div class="a-as ok">${a.status}</div>` : ''}</div><span class="a-ac">${ic('plus')}${ic(open ? 'chevron-down' : 'chevron-right')}</span></div>`
+    const threads = open ? a.threads.map(([t, s], i) => `<div class="a-thread${st.thread === i ? ' on' : ''}" data-act="thread" data-v="${i}">${s === 'run' ? '<span class="a-spin"></span>' : s === 'done' ? ic('check', 'sm a-ok') : '<span class="a-blank"></span>'}${t}</div>`).join('') : ''
+    return row + threads
+  }).join('')
+}
+function mainAgents(st) {
+  const a = AG[st.agent], msgs = thread(st.agent, st.thread ?? 0)
+  return `<header class="a-head">${ic('panel-left')}${crumb(st, 'Agents', av(st.agent, 18) + a.name)}<span class="a-icons">${ic('ellipsis')}${st.scope === 'workspace' ? `<span class="a-ppl">${ic('users')}3</span>` : ic('lock')}<span data-act="right" class="a-btn${st.right ? ' on' : ''}">${ic('panel-right')}</span></span></header>`
+    + `<div class="a-scroll"><div class="a-date">TUE, NOV 25, 2026</div>${msgs.map((m) => msgHtml(m, st.agent)).join('')}</div>`
+    + `<div class="a-comp"><div class="ph">What do you want to get done?</div><div class="row">${ic('plus')}${ic('at-sign')}<span class="model">Claude Opus 5.5${ic('chevron-down', 'xs')}</span><span class="send">${ic('arrow-up')}</span></div></div>`
+}
+function rightPanel(st) {
+  const a = AG[st.agent]
+  const tabs = `<div class="a-tabs">${['details', 'library', 'computer'].map((t) => `<span data-act="tab" data-v="${t}" class="${st.tab === t ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</span>`).join('')}</div>`
+  let body = ''
+  if (st.tab === 'details') {
+    const team = st.agent === 'overlay' ? '<div class="a-sec">Working on Atlas launch</div>' + [['engineering', 'Working'], ['growth', 'Working'], ['docs', 'Done'], ['support', 'Done']].map(([id, s]) => `<div class="a-row" data-act="agent" data-v="${id}">${av(id, 18, s === 'Working')}<span class="t">${AG[id].name}</span><span class="s${s === 'Working' ? ' ok' : ''}">${s}</span></div>`).join('') : ''
+    body = team + `<div class="a-sec">Agent</div><div class="a-row"><span class="t">Model</span><span class="s">Claude Opus 5.5${ic('chevron-right', 'xs')}</span></div><div class="a-row"><span class="t">Tools</span><span class="s">${a.tools}${ic('chevron-right', 'xs')}</span></div><div class="a-row"><span class="t">Approvals</span><span class="s">Ask${ic('chevron-right', 'xs')}</span></div><div class="a-row"><span class="t">Visible to</span><span class="s">${st.scope === 'personal' ? 'Only you' : 'Everyone in Acme'}${ic('chevron-right', 'xs')}</span></div>`
+  } else if (st.tab === 'library') {
+    const own = FILES[st.scope].filter((f) => f[2] === st.agent || a.chief)
+    body = '<div class="a-sec">Made by ' + a.name + '</div>' + (own.length ? own.map((f) => `<div class="a-row">${fileIcon(f[0])}<span class="t">${f[1]}</span><span class="s">${f[3]}</span></div>`).join('') : '<div class="a-empty">Nothing here yet</div>')
+  } else {
+    const page = a.computer === 'term'
+      ? `<div class="a-term"><span class="p">$</span> npm test -- checkout<br/><span class="ok">✓</span> cart totals (41 ms)<br/><span class="ok">✓</span> applies discount (12 ms)<br/><span class="ok">✓</span> mobile checkout · iOS (2.1 s)<br/><span class="p">…</span> mobile checkout · Android<span class="caret"></span></div>`
+      : `<div class="win"><div class="win-bar"><span class="lights"><i></i><i></i><i></i></span><span class="tab">${a.page || 'Overlay'}</span></div><div class="url">${ic('rotate-cw', 'xs')}<span>${ic('lock', 'xs')}${a.url || 'app.overlay.works'}</span></div><div class="page"><div class="hero-img"></div><div class="pg-title">${a.page || 'Weekly metrics'}</div><div class="pg-sub">${a.name} is working here now.</div><div class="ff"><label>Notes</label><span>Drafting…<i class="caret"></i></span></div></div></div>`
+    body = `<div class="a-sec">${a.name}’s computer<span class="a-live">Live</span></div><div class="desk a-desk">${page}</div>`
+  }
+  return `<div class="a-right-x"><span data-act="right" class="a-btn">${ic('x')}</span></div><div class="a-id">${av(st.agent, 52)}<b>${a.name}</b><span>${a.role}</span><p>${a.desc}</p></div>${tabs}<div class="a-rbody">${body}</div>`
+}
+function sideChats(st) {
+  return sideHead('Chats') + seg(st) + CHAT_GROUPS[st.scope].map(([g, items]) => `<div class="a-grp">${g}${ic('chevron-down', 'xs')}</div>` + items.map(([id, k]) => {
+    const c = CHATS[id], lead = k === 'ch' ? ic('hash') : k === 'ai' ? ic('message-square') : av(c.who, 16)
+    return `<div class="a-item${st.chat === id ? ' on' : ''}" data-act="chat" data-v="${id}">${lead}<span>${c.title}</span></div>`
+  }).join('')).join('')
+}
+function mainChats(st) {
+  const c = CHATS[st.chat]
+  const tail = c.kind === 'channel' ? `${ic('hash')}${c.title}<span class="a-sub">${c.members.length + 1} members</span>` : c.kind === 'dm' ? av(c.who, 18) + c.title : c.title
+  const stack = c.members ? `<span class="a-stack">${c.members.map((m) => av(m, 20)).join('')}</span>` : ''
+  return `<header class="a-head">${ic('panel-left')}${crumb(st, 'Chats', tail)}<span class="a-icons">${stack}${ic('ellipsis')}</span></header>`
+    + `<div class="a-scroll"><div class="a-date">TUE, NOV 25, 2026</div>${c.msgs.map(chatMsgHtml).join('')}</div>`
+    + `<div class="a-comp"><div class="ph">${c.kind === 'channel' ? 'Message #' + c.title : c.kind === 'dm' ? 'Message ' + c.title : 'What do you want to get done?'}</div><div class="row">${ic('plus')}${ic('at-sign')}<span class="send">${ic('arrow-up')}</span></div></div>`
+}
+function sideWork(st) {
+  const items = [['mine', 'user', 'Assigned to me'], ['needs', 'circle-alert', 'Needs you'], ['all', 'layers', 'Everything']]
+  const needs = WORK[st.scope].filter((w) => w[4]).length
+  return sideHead('Work') + seg(st) + items.map(([v, icon, t]) => `<div class="a-item${st.work === v ? ' on' : ''}" data-act="work" data-v="${v}">${ic(icon)}<span>${t}</span>${v === 'needs' && needs ? `<span class="a-n">${needs}</span>` : ''}</div>`).join('')
+    + (st.scope === 'workspace' ? `<div class="a-grp">Projects${ic('chevron-down', 'xs')}</div><div class="a-item">${ic('rocket')}<span>Atlas launch</span></div><div class="a-item">${ic('receipt')}<span>November close</span></div>` : '')
+}
+function mainWork(st) {
+  let rows = WORK[st.scope]
+  if (st.work === 'needs') rows = rows.filter((w) => w[4])
+  if (st.work === 'mine') rows = rows.filter((w) => w[2] === 'maya')
+  const groups = [['progress', 'In progress', 'circle-dot'], ['todo', 'To do', 'circle'], ['done', 'Done', 'circle-check']]
+  const title = { mine: 'Assigned to me', needs: 'Needs you', all: 'Everything' }[st.work]
+  return `<header class="a-head">${ic('panel-left')}${crumb(st, 'Work', title)}<span class="a-icons">${ic('list')}${ic('kanban')}${ic('plus')}</span></header><div class="a-list">`
+    + groups.map(([k, t, icon]) => { const g = rows.filter((w) => w[0] === k); return g.length ? `<div class="a-lh">${ic(icon, 'sm st-' + k)}${t}<span>${g.length}</span></div>` + g.map((w) => `<div class="a-li"${AG[w[2]] ? ` data-act="agent-open" data-v="${w[2]}"` : ''}>${ic(icon, 'sm st-' + k)}<span class="t">${w[1]}</span>${w[4] ? '<span class="a-tag">Needs you</span>' : ''}<span class="due">${w[3]}</span><span class="who">${av(w[2], 20, k === 'progress')}${nameOf(w[2])}</span></div>`).join('') : '' }).join('') + '</div>'
+}
+function sideFiles(st) {
+  const folders = [...new Set(FILES[st.scope].map((f) => f[4]))]
+  return sideHead('Files') + seg(st) + `<div class="a-item${!st.folder ? ' on' : ''}" data-act="folder" data-v="">${ic('files')}<span>All files</span></div><div class="a-grp">Folders${ic('chevron-down', 'xs')}</div>`
+    + folders.map((f) => `<div class="a-item${st.folder === f ? ' on' : ''}" data-act="folder" data-v="${f}">${ic('folder')}<span>${f}</span></div>`).join('')
+}
+function mainFiles(st) {
+  const rows = FILES[st.scope].filter((f) => !st.folder || f[4] === st.folder)
+  return `<header class="a-head">${ic('panel-left')}${crumb(st, 'Files', st.folder || 'All files')}<span class="a-icons">${ic('search')}${ic('upload')}</span></header><div class="a-list"><div class="a-lh files"><span class="t">Name</span><span>Made by</span><span>Updated</span></div>`
+    + rows.map((f) => `<div class="a-li files">${fileIcon(f[0])}<span class="t">${f[1]}</span><span class="who">${av(f[2], 18)}${nameOf(f[2])}</span><span class="due">${f[3]}</span></div>`).join('') + '</div>'
+}
+
+function renderApp(el) {
+  const st = el._st
+  const hasRight = st.view === 'agents' && st.right
+  el.classList.toggle('no-right', !hasRight)
+  const side = { agents: sideAgents, chats: sideChats, work: sideWork, files: sideFiles }[st.view](st)
+  const main = { agents: mainAgents, chats: mainChats, work: mainWork, files: mainFiles }[st.view](st)
+  el.innerHTML = rail(st) + `<aside class="a-panel a-side">${side}</aside><section class="a-panel a-main" data-key="${st.view}:${st.agent}:${st.thread}:${st.chat}:${st.work}:${st.folder}:${st.scope}">${main}</section>` + (hasRight ? `<aside class="a-panel a-right">${rightPanel(st)}</aside>` : '')
+  hydrate(el)
+}
+function mountApp(el) {
+  el._st = Object.assign({ view: 'agents', scope: 'workspace', agent: 'overlay', thread: 0, chat: 'atlas-launch', work: 'all', folder: '', right: true, tab: 'details' }, JSON.parse(el.dataset.app || '{}'))
+  el.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-act]'); if (!t || !el.contains(t)) return
+    const st = el._st, v = t.dataset.v
+    switch (t.dataset.act) {
+      case 'view': st.view = v; break
+      case 'scope': st.scope = v; st.agent = SCOPE_AGENTS[v][0]; st.thread = 0; st.chat = CHAT_GROUPS[v].flatMap((g) => g[1])[0][0]; st.folder = ''; break
+      case 'agent': if (!SCOPE_AGENTS[st.scope].includes(v)) break; st.view = 'agents'; st.agent = v; st.thread = 0; break
+      case 'agent-open': st.view = 'agents'; st.agent = v; st.thread = 0; break
+      case 'thread': st.thread = +v; break
+      case 'chat': st.chat = v; break
+      case 'work': st.work = v; break
+      case 'folder': st.folder = v; break
+      case 'right': st.right = !st.right; break
+      case 'tab': st.tab = v; break
+    }
+    renderApp(el)
+  })
+  renderApp(el)
+}
+
+hydrate(document)
+document.querySelectorAll('.app[data-app]').forEach(mountApp)
+const root = document.documentElement
+if (new URLSearchParams(location.search).get('theme') === 'dark') root.dataset.landingTheme = 'dark'
+document.getElementById('theme').onclick = () => { root.dataset.landingTheme = root.dataset.landingTheme === 'dark' ? 'light' : 'dark' }
+</script>
+</body>
+</html>
