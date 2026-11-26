@@ -568,6 +568,7 @@
     "src/server/storage/r2-budget.ts",
     "src/server/storage/r2-upload-intents.ts",
     "src/server/tools/tools/files-executes.ts",
+    "src/server/tools/tools/owner-names.ts",
     "src/server/tools/tools/record-tool-invocation.ts",
     "src/server/usage/ConvexUsageRepository.ts",
     "src/server/usage/index.ts",

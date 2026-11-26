@@ -67,6 +67,9 @@ export const AGENT_TOOL_GROUPS: readonly AgentToolGroup[] = [
       'write_file',
       'create_folder',
       'move_file',
+      'move_to_workspace',
+      'archive_item',
+      'restore_item',
       'list_notes',
       'get_note',
       'create_note',
@@ -210,6 +213,8 @@ const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: r
   // Reading chats joined the memory group.
   { grantedBy: ['search_messages'], adds: ['list_chats', 'read_chat'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },
+  // Move to Workspace, Archive and Restore joined the files group.
+  { grantedBy: ['write_file', 'update_note'], adds: ['move_to_workspace', 'archive_item', 'restore_item'] },
   // Skill discovery, loading, registry search and saving joined the skills group.
   { grantedBy: ['list_skills', 'draft_skill_from_chat'], adds: ['find_skills', 'load_skill', 'search_skill_registries', 'save_skill'] },
   {

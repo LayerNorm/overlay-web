@@ -34,6 +34,7 @@ const NOTE_MUTATION_TOOL_IDS = [
   'delete_note',
 ] as const
 const FILE_MUTATION_TOOL_IDS = ['write_file', 'create_folder', 'move_file'] as const
+const SCOPE_TOOL_IDS = ['move_to_workspace', 'archive_item', 'restore_item'] as const
 const IMAGE_TOOL_IDS = ['generate_image'] as const
 const VIDEO_TOOL_IDS = [
   'generate_video',
@@ -86,6 +87,14 @@ function isExplicitFileMutationRequest(text: string): boolean {
   return matchesAny(text, [
     /\b(create|write|make|save|add|edit|update|rename|move|organi[sz]e)\b.{0,40}\b(file|files|folder|folders|document|csv|markdown|txt)\b/i,
     /\b(file|files|folder|folders)\b.{0,40}\b(create|write|make|save|edit|update|rename|move|organi[sz]e)\b/i,
+  ])
+}
+
+/** Sharing to the workspace, archiving or restoring: only when the person asks for it in this message. */
+function isExplicitScopeRequest(text: string): boolean {
+  return matchesAny(text, [
+    /\b(move|share|publish|put)\b.{0,60}\b(workspace|team|everyone)\b/i,
+    /\b(archive|unarchive|restore)\b/i,
   ])
 }
 
@@ -146,6 +155,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (isExplicitFileMutationRequest(text)) {
     addAll(allowed, FILE_MUTATION_TOOL_IDS)
+  }
+  if (isExplicitScopeRequest(text)) {
+    addAll(allowed, SCOPE_TOOL_IDS)
   }
   if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)

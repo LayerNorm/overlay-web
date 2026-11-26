@@ -14,6 +14,7 @@ import type { NoteDoc } from '@overlay/app-core'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { ownerField, ownerNamesFor } from './owner-names'
 
 /**
  * Agent note tools. Notes are Markdown, and every write goes through
@@ -188,18 +189,18 @@ export async function executeListNotes(
       cursor = page.hasMore ? page.nextCursor : undefined
       truncated = Boolean(cursor)
     } while (cursor && notes.length < LIST_NOTES_LIMIT)
+    const listed = notes.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, LIST_NOTES_LIMIT)
+    const ownerOf = await ownerNamesFor(options, listed.map((note) => note.userId))
     return {
       success: true,
-      notes: notes
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, LIST_NOTES_LIMIT)
-        .map((note) => ({
-          noteId: note._id,
-          title: note.title || 'Untitled',
-          tags: note.tags ?? [],
-          updatedAt: note.updatedAt,
-          scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
-        })),
+      notes: listed.map((note) => ({
+        noteId: note._id,
+        title: note.title || 'Untitled',
+        tags: note.tags ?? [],
+        updatedAt: note.updatedAt,
+        scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+        ...ownerField(ownerOf(note.userId)),
+      })),
       ...(truncated || notes.length > LIST_NOTES_LIMIT ? { truncated: true } : {}),
     }
   } catch (err) {
@@ -211,6 +212,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
   try {
     const note = await fetchNote(options, input.noteId)
     if ('success' in note) return note
+    const ownerOf = await ownerNamesFor(options, [note.userId])
     return {
       success: true,
       note: {
@@ -220,6 +222,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
         content: note.content,
         tags: note.tags ?? [],
         scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+        ...ownerField(ownerOf(note.userId)),
         revision: revisionOf(note),
         outline: noteOutline(note.content),
         updatedAt: note.updatedAt,
