@@ -275,6 +275,15 @@ export default defineSchema({
     state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
   }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
 
+  // Free-tier uses of a private thread's Overlay tools, per person per calendar month (UTC). Only counts, never content.
+  privateThreadAllowances: defineTable({
+    userId: v.string(),
+    /** `2026-11` */
+    period: v.string(),
+    webSearches: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId_period', ['userId', 'period']),
+
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
   // them. No secret is stored here.
@@ -1622,6 +1631,15 @@ export default defineSchema({
       receiptId: v.string(),
       invocation: v.number(),
     })),
+    /**
+     * Personal items the human author @-mentioned to include on purpose: in a room others can read, the agent turn this
+     * message starts may open these (and no other Personal items). At most 10.
+     */
+    includedItems: v.optional(v.array(v.object({
+      type: v.union(v.literal('file'), v.literal('automation')),
+      id: v.string(),
+      name: v.string(),
+    }))),
     userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),

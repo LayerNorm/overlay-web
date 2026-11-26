@@ -978,6 +978,9 @@ export function terminateHarness(
   next.status = status
   next.terminalReason = reason
   if (diagnostic) next.diagnostic = { ...diagnostic }
+  // A reserved call that was never sent cost nothing and can never be sent now.
+  // Keeping its marker would block the parent from settling this child.
+  if (next.modelReservation && !next.modelReservation.dispatch) next.modelReservation = undefined
   next.children = next.children.map(child => child.status === 'running' ? { ...child, status: 'cancelled' } : child)
   return changed(next, now)
 }

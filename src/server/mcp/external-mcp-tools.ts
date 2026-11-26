@@ -13,6 +13,7 @@ import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { McpPrincipal } from './McpAccessService'
 import { joinedAgentTools, joinRequestTools, joinStatusText, joinStatusTools, withUnreadNotice } from './agent-network/mcp-agent-tools'
 import { isMcpAgentNetworkEnabled } from './agent-network/mcp-agent-network-flag'
+import { buildPrivateThreadMcpTools } from './private-thread-tools'
 
 export const EXTERNAL_MCP_APPROVAL_REFUSAL =
   'This tool needs the owner\'s approval inside Overlay, and apps connected over MCP cannot ask for it. ' +
@@ -55,6 +56,8 @@ function joinedInstructions(name: string): string {
  */
 export async function buildOverlayMcpTools(principal: McpPrincipal): Promise<{ tools: ToolSet; instructions: string }> {
   try {
+    // A private thread on Overlay Desktop gets its agent's grant (and the free tier when unpaid), not an access level.
+    if (principal.agentId) return await buildPrivateThreadMcpTools(principal)
     const server = getOverlayServerContext()
     const network = server.mcpAgentNetwork
     // If the join lookup itself fails (the backend is briefly behind the app during a release), the connection

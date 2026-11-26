@@ -1,3 +1,4 @@
+import { parseIncludedItems } from '@/shared/agents/included-items'
 import { logger } from '@/server/observability/logger'
 import { after, NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       accessToken?: string
       userId?: string
       mentionedPrincipalIds?: string[]
+      /** Personal items @-mentioned to include on purpose (rooms only). */
+      includedItems?: unknown
       memoryEnabled?: boolean
       threadRootMessageId?: string
       clientNonce?: string
@@ -82,6 +85,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
     const isCollaborationConversation = (conversation.conversationType ?? 'personal') !== 'personal'
+    const includedItems = parseIncludedItems(body.includedItems)
     const messageId = isCollaborationConversation
       ? await server.appData.repositories.conversationCollaboration.addMessage({
           actorUserId: auth.userId,
@@ -92,6 +96,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           parts: normalizedParts,
           clientNonce: body.clientNonce?.trim() || undefined,
           threadRootMessageId: body.threadRootMessageId?.trim() || undefined,
+          ...(includedItems.length ? { includedItems } : {}),
           ...(body.replyToTurnId?.trim()
             ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
             : {}),

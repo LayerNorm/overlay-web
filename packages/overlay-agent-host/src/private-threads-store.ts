@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import type { ThreadSummary } from './private-threads-context.js'
 import type { PrivateThread, PrivateThreadOwner, PrivateUIMessage } from './private-threads-protocol.js'
 
 /**
@@ -36,6 +37,20 @@ export class PrivateThreadStore {
         PRIMARY KEY (thread_id, position)
       );
     `)
+    // Added in 0.7.0: the summary of a thread's older messages (private-threads-context.ts).
+    const columns = new Set((this.db.prepare('PRAGMA table_info(threads)').all() as { name: string }[]).map(column => column.name))
+    if (!columns.has('summary')) this.db.exec('ALTER TABLE threads ADD COLUMN summary TEXT')
+    if (!columns.has('summary_through')) this.db.exec('ALTER TABLE threads ADD COLUMN summary_through TEXT')
+  }
+
+  summary(id: string): ThreadSummary | null {
+    const row = this.db.prepare('SELECT summary, summary_through FROM threads WHERE id = ?').get(id) as
+      { summary: string | null; summary_through: string | null } | undefined
+    return row?.summary ? { summary: row.summary, throughMessageId: row.summary_through } : null
+  }
+
+  saveSummary(id: string, summary: ThreadSummary): void {
+    this.db.prepare('UPDATE threads SET summary = ?, summary_through = ? WHERE id = ?').run(summary.summary, summary.throughMessageId, id)
   }
 
   list(owner: PrivateThreadOwner): PrivateThread[] {
