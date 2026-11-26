@@ -483,8 +483,12 @@ describe('personal harness delivery binding', () => {
       type: 'replace_plan',
       steps: [{ id: 'delegate', title: 'Delegate', dependsOn: [], acceptanceCriteria: ['Complete it.'], requiresVerification: false }],
     })
-    const reserved = await apply(convex, input, 'reserve', planned.snapshot.revision, {
+    const reservedOnly = await apply(convex, input, 'reserve', planned.snapshot.revision, {
       type: 'reserve_model', id: 'late-receipt', maxCostMicros: 0,
+    })
+    // The call was sent, so its outcome is still owed after the stop.
+    const reserved = await apply(convex, input, 'dispatch', reservedOnly.snapshot.revision, {
+      type: 'bind_model_dispatch', id: 'late-receipt', modelId: 'fixture/model', billingReservationId: null,
     })
     const childInput = { ...input, runId: 'cancel-child' }
     const childAdmission = await apply(convex, input, 'child-admission', reserved.snapshot.revision, {

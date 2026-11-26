@@ -231,6 +231,14 @@ test('model dispatch binds once to its zero-cost marker', () => {
   assert.equal(bindHarnessModelDispatch(reserved, 'receipt', { ...dispatch, billingReservationId: null }, now).modelReservation?.dispatch?.billingReservationId, null)
 })
 
+test('ending a run drops a call marker that was never sent', () => {
+  const reserved = reserveHarnessModel(make(), 'receipt', 0, now)
+  const ended = terminateHarness(reserved, 'failed', 'Stopped', now)
+  assert.equal(ended.modelReservation, undefined)
+  // A run that has ended can never bind, so the dropped call can never be sent.
+  assert.throws(() => bindHarnessModelDispatch(ended, 'receipt', { modelId: 'model', billingReservationId: null }, now))
+})
+
 test('external provider costs remain distinct from Overlay budget usage through child settlement', () => {
   let parent = admitHarnessChild(replaceHarnessPlan(make(), steps, now), child('first', 'read', 0), now)
   let worker = createHarnessSnapshot({ runId: 'first', rootRunId: 'root', parentRunId: 'root', depth: 1,
@@ -274,6 +282,7 @@ test('a cancelled child retains its unresolved model liability until the matchin
     goal: 'Read source', constraints: [], policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 60 },
   }, now)
   worker = reserveHarnessModel(worker, 'model:0', 0, now)
+  worker = bindHarnessModelDispatch(worker, 'model:0', { modelId: 'model', billingReservationId: null }, now)
   assert.throws(() => finishHarness(worker, now), /reconciliation/)
   worker = terminateHarness(worker, 'cancelled', 'User stopped', now)
   assert.throws(() => settleHarnessChild(parent, worker, now), /Reconcile/)

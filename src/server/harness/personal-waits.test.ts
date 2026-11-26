@@ -162,6 +162,34 @@ test('a failed child with unresolved usage fails closed without retrying settlem
   expect(mocks.apply).not.toHaveBeenCalled()
 })
 
+test('a join that fails after projecting the wait returns the delivery to running', async () => {
+  state.status = 'waiting_for_children'
+  mocks.child.mockResolvedValueOnce({ ...state, runId: 'child', status: 'running' })
+    .mockResolvedValueOnce({ ...state, runId: 'child', status: 'failed', modelReservation: { id: 'model:0', maxCostMicros: 0, dispatch: { modelId: 'byok/model', billingReservationId: 'hold' } } })
+  const next = vi.fn(async () => ({ done: false, value: { childRunId: 'child' } }))
+  const ports = createPersonalHarnessWaitPorts({ access, wake: { next } })
+  await expect(ports.waitForChildren(['child'])).rejects.toThrow('billing holds were preserved')
+  expect(mocks.project).toHaveBeenNthCalledWith(1, access, { status: 'waiting_for_children' })
+  expect(mocks.project).toHaveBeenLastCalledWith(access, { status: 'running' })
+})
+
+test('a join rollover keeps the delivery waiting for the successor', async () => {
+  const clock = vi.spyOn(Date, 'now')
+  let now = 1_000
+  clock.mockImplementation(() => now)
+  try {
+    state.status = 'waiting_for_children'
+    state.policy.executionPolicyVersion = 2
+    mocks.child.mockResolvedValue({ ...state, runId: 'child', status: 'running' })
+    const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}) })
+    now += 60 * 60_000
+    await expect(ports.waitForChildren(['child'])).rejects.toBeInstanceOf(HarnessWaitRollover)
+    expect(mocks.project).toHaveBeenCalledExactlyOnceWith(access, { status: 'waiting_for_children' })
+  } finally {
+    clock.mockRestore()
+  }
+})
+
 test('a successor consumes the original durable input reply without registering another hook', async () => {
   const previousToken = 'harness:wait:workflow:0'
   const wait = { kind: 'input' as const, token: previousToken, runId: 'run', rootRunId: 'run',

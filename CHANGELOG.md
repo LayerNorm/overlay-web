@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep an agent's task alive when an agent it asked fails. Asking another agent (for example the Chief asking the LinkedIn Agent) could stop both with "Overlay hit an internal error":
+  - A dropped connection while a model call was being claimed, before it was sent (an HTTP/2 GOAWAY reported as "fetch failed"), ended the asked agent at once. It now gets the same automatic retries, up to three, as a call that drops mid-response.
+  - A run that ends with a model call reserved but never sent now drops that marker. It cost nothing and can never be sent, but it blocked the asking agent from collecting the result.
+  - If waiting for an asked agent ends in an error, the asking agent's run is set back to running before the agent continues. It stayed "waiting for children", so the asking agent's next tool call failed its ownership check and stopped the whole task.
 - Add Data and APIs: agents and chats can now find and run thousands of paid third-party APIs through Monid (lead and contact search, company and people enrichment, social and review data, scraping, SEO, 3D models, speech and more) without the person connecting an account or buying a subscription.
   - Four new tools: `search_apis` finds endpoints in plain words with their prices, `inspect_api` shows an endpoint's input schema, price and notes, `run_api` runs it, waits for slow ones up to 10 minutes, and saves the files Monid returns to Files, and `save_api_file` saves a file a result links to (such as a 3D model) to Files, only for this workspace's runs. Very large results are saved whole to Files with a preview.
   - Each run is checked against the workspace budget first and charged afterwards at Monid's reported cost plus the usual usage fee (for slow runs, the cost Monid reports when the run is read back); its cap at Monid is what the workspace has left, so a run cannot overspend it. Retries never charge twice.
