@@ -91,6 +91,18 @@ Private threads (bridge capability `localThreads`, macOS only for now) run a thr
 the person's own model keys: the app starts the bundled host as `overlay-agent-host private` over Node.js IPC, keeps
 the keys in the keychain and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains a Model
 keys section. `internal/develop/private-threads.md` has the contract and rules.
+First-run setup (bridge capability `localSetup`, macOS only for now) runs before the onboarding conversation for a
+new account: the server sets `desktopSetup` on `GET /api/v1/onboarding/session` when setup has not started and the
+person's only workspace is their own personal one. `DesktopOnboarding` (`src/app/_components/onboarding/desktop/`)
+shows who the workspace is for, about you, what other AI tools bring, model keys, this computer and a plan, keeps its
+progress in this computer's local storage, and starts the conversation with `{ action: 'start', prefill }`.
+`localSetup.scan` lists Claude Code, Codex, Claude Desktop, Cursor and Gemini CLI instructions, skills, subagents and
+MCP servers by name, plus model keys in the login shell (variable and last four characters) and plan sign-ins.
+`localSetup.import` reads the ticked items again in the main process and adds them through Overlay's own API with the
+app's session (memories, personal skills, creator-only agents, personal MCP servers); contents, header tokens and keys
+never reach the page. `localSetup.useShellKey` checks a shell key and keeps it in the keychain. Local (command) MCP
+servers are listed but not imported. Desktop `src/main/services/local-setup*.ts`;
+`internal/plans/DESKTOP_ONBOARDING_PLAN.md` has the plan.
 Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
 press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
 The Agent host row shows its state and keeps the harness, connection code and Start controls in the

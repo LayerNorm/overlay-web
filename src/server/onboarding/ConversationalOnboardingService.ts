@@ -10,6 +10,7 @@ import {
   onboardingProfileSteps,
   onboardingSteps,
   type OnboardingAction,
+  type OnboardingPrefill,
   type OnboardingProfile,
   OnboardingWorkspaceContextSchema,
   type OnboardingReply,
@@ -97,7 +98,7 @@ export class ConversationalOnboardingService {
     return { completed: false, session: state.session }
   }
 
-  async start(userId: string, workspaceId: string, options: { member?: boolean } = {}): Promise<OnboardingSessionResponse> {
+  async start(userId: string, workspaceId: string, options: { member?: boolean; prefill?: OnboardingPrefill } = {}): Promise<OnboardingSessionResponse> {
     const record = await this.deps.repository.get(userId)
     if (!record) throw new OnboardingServiceError('Onboarding state is unavailable', 500, 'state_unavailable')
     if (record.hasSeenOnboarding) return { completed: true, session: null }
@@ -115,13 +116,19 @@ export class ConversationalOnboardingService {
     const intro = workspaceContext.invited
       ? `Welcome to ${workspaceContext.workspaceName}. ${workspaceContext.inviterName ? `${workspaceContext.inviterName} invited you to work here with Overlay.` : "I'll help you get set up here with Overlay."}`
       : ONBOARDING_INTRO
-    const profile = { name: '', about: '', daily: '' }
-    const reply = await this.makeReply('name', profile, false, {})
+    // Overlay Desktop's setup may already have asked the first questions; the conversation continues after them.
+    const prefill = options.prefill
+    const profile: OnboardingProfile = prefill
+      ? { name: prefill.name, about: prefill.about, daily: '', ...(prefill.team ? { team: prefill.team } : {}) }
+      : { name: '', about: '', daily: '' }
+    const firstStep = onboardingProfileSteps({ flowVersion: 3, member: options.member ?? false })
+      .find((candidate) => !profile[candidate as keyof OnboardingProfile]) ?? 'daily'
+    const reply = await this.makeReply(firstStep, profile, false, {})
     const runId = this.deps.createRunId?.() ?? randomUUID()
     if (!OnboardingRunIdSchema.safeParse(runId).success) throw new OnboardingServiceError('Onboarding run is invalid', 500, 'run_invalid')
     const session: OnboardingSession = {
       version: 1, flowVersion: 3, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
-      agentId: overlay.id, agentPrincipalId: overlay.principalId, step: 'name', profile,
+      agentId: overlay.id, agentPrincipalId: overlay.principalId, step: firstStep, profile,
       aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [], workspaceContext,
     }
     return await this.commit(userId, workspaceId, 0, {
