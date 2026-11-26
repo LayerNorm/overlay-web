@@ -50,7 +50,7 @@ function LinkedFileViewer({ file, name, content, url }: { file: KnowledgeFileNod
     <OutputViewer name={name} content={content} url={url} mimeType={file.mimeType}
       outputType={file.outputType} modelId={file.modelId} prompt={file.prompt} createdAt={file.createdAt}
       operations={browserViewerOperations} resolveFileHref={resolveFileHref} />
-  ) : <FileViewer name={name} content={content} url={url} operations={browserViewerOperations} resolveFileHref={resolveFileHref} />
+  ) : <FileViewer name={name} fileId={file._id} content={content} url={url} operations={browserViewerOperations} resolveFileHref={resolveFileHref} />
 }
 
 export default function KnowledgeViewHost(props: Omit<KnowledgeViewProps, 'renderFileViewer'>) {

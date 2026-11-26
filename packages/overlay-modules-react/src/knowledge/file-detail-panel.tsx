@@ -1,24 +1,44 @@
 'use client'
-import { Textarea } from '@overlay/ui/primitives'
+import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledTextarea } from '@overlay/ui/control-reset'
-import type { ReactNode } from 'react'
+import { getFileType } from '@overlay/app-core/file-viewer'
+import { Eye, Pencil } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 
 export function KnowledgeFileDetailPanel({
+  fileId,
   fileName,
   isEditable,
   fileContent,
   onContentChange,
   renderViewer,
 }: {
+  /** Which file is open: switching files returns to its rendered view. */
+  fileId?: string
   fileName: string
   isEditable: boolean
   fileContent: string
   onContentChange: (value: string) => void
   renderViewer: () => ReactNode
 }) {
+  // A page or a Markdown document opens rendered; its source is one click away. Plain text opens as text.
+  const type = getFileType(fileName)
+  const rendersFirst = type === 'html' || type === 'markdown'
+  const fileKey = fileId ?? fileName
+  const [sourceOpenFor, setSourceOpenFor] = useState<string | null>(null)
+  const editing = isEditable && (!rendersFirst || sourceOpenFor === fileKey)
+  const toggle = isEditable && rendersFirst ? (
+    <div className="flex shrink-0 justify-end pb-2">
+      <Button variant="ghost" size="xs" onClick={() => setSourceOpenFor(editing ? null : fileKey)}>
+        {editing ? <Eye className="size-3.5" aria-hidden /> : <Pencil className="size-3.5" aria-hidden />}
+        {editing ? 'Preview' : 'Edit'}
+      </Button>
+    </div>
+  ) : null
   return (
-    <div className={`mx-auto flex min-h-full w-full flex-col ${isEditable ? 'max-w-5xl' : ''}`}>
-      {isEditable ? (
+    <div className={`mx-auto flex min-h-full w-full flex-col ${editing ? 'max-w-5xl' : ''}`}>
+      {toggle}
+      {editing ? (
         <>
           <Textarea
             aria-label="File contents"
@@ -35,7 +55,7 @@ export function KnowledgeFileDetailPanel({
           </div>
         </>
       ) : (
-        <div className="flex h-[calc(100vh-9rem)] flex-col overflow-hidden">{renderViewer()}</div>
+        <div className={`flex flex-col overflow-hidden ${toggle ? 'h-[calc(100vh-11rem)]' : 'h-[calc(100vh-9rem)]'}`}>{renderViewer()}</div>
       )}
     </div>
   )
