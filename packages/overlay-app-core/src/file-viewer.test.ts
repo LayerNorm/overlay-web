@@ -4,7 +4,9 @@ import test from 'node:test'
 import {
   FILE_VIEWER_HTML_SANDBOX,
   getFileType,
+  htmlPageUrl,
   isEditableType,
+  isStoredFileContentPath,
   prefersUrlPreview,
   resolveSafeViewerUrl,
   shouldFetchTextContent,
@@ -37,4 +39,19 @@ test('sandbox policy cannot inherit the app origin or navigate Electron', () => 
   assert.equal(FILE_VIEWER_HTML_SANDBOX.includes('allow-top-navigation'), false)
   assert.equal(FILE_VIEWER_HTML_SANDBOX.includes('allow-popups'), false)
   assert.equal(FILE_VIEWER_HTML_SANDBOX.includes('allow-downloads'), false)
+})
+
+test('a file kept in object storage lists its download path, not its text', () => {
+  assert.equal(isStoredFileContentPath('/api/v1/files/ks73f36b5kf1ccpycv0y43qmfs8jzcw4/content'), true)
+  assert.equal(isStoredFileContentPath(' /api/v1/files/abc123/content\n'), true)
+  assert.equal(isStoredFileContentPath('<html><body>/api/v1/files/abc/content</body></html>'), false)
+  assert.equal(isStoredFileContentPath('# Notes'), false)
+  assert.equal(isStoredFileContentPath(undefined), false)
+})
+
+test('HTML pages open from their own sandboxed URL', () => {
+  assert.equal(htmlPageUrl({ fileId: 'abc123' }), '/api/v1/files/abc123/content?view=page')
+  assert.equal(htmlPageUrl({ content: '/api/v1/files/k7/content' }), '/api/v1/files/k7/content?view=page')
+  assert.equal(htmlPageUrl({ fileId: '../x', content: '<p>hi</p>' }), undefined)
+  assert.equal(htmlPageUrl({ url: 'https://evil.test/a' }), undefined)
 })

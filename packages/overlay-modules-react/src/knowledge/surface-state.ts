@@ -392,7 +392,9 @@ function useFileText({
       if (controller.signal.aborted) return
       if (!node) return onMissing()
       if (opensInDocumentEditor(node)) return await adapters.navigation.open(node, { replace: true })
-      setLoaded({ id: node._id, revision: node.updatedAt, node, text: node.textContent ?? node.content ?? '' })
+      // An upload kept in object storage has empty text and its download path as content: keep the path, so it
+      // previews from storage and is not offered as an empty editable text file.
+      setLoaded({ id: node._id, revision: node.updatedAt, node, text: node.textContent || node.content || '' })
     }).catch(() => undefined)
     return () => controller.abort()
   }, [adapters.navigation, adapters.repository, dirtyRef, loaded, onMissing, paused, revision, saves, selectedId])
