@@ -126,16 +126,24 @@ test('Markdown files keep bullet and number markers despite the list reset', () 
   assert.match(rule('.overlay-file-viewer--markdown ul.contains-task-list'), /list-style-type: none;/)
 })
 
-test('a page kept in object storage loads its text instead of showing its download path', () => {
-  const markup = renderToStaticMarkup(
+test('an HTML file opens as its own sandboxed page, so its scripts can run', () => {
+  const stored = renderToStaticMarkup(
     <FileViewer name="walkthrough.html" content="/api/v1/files/ks73f36b5kf1ccpycv0y43qmfs8jzcw4/content"
       url="/api/v1/files/ks73f36b5kf1ccpycv0y43qmfs8jzcw4/content" />,
   )
-  assert.match(markup, /Loading file/)
-  assert.doesNotMatch(markup, /srcdoc="\/api\/v1\/files/i)
+  assert.match(stored, /src="\/api\/v1\/files\/ks73f36b5kf1ccpycv0y43qmfs8jzcw4\/content\?view=page"/)
+  assert.match(stored, /sandbox="allow-scripts allow-forms allow-modals"/)
+  assert.doesNotMatch(stored, /srcdoc/i)
+  const inRow = renderToStaticMarkup(<FileViewer name="page.html" fileId="file123" content="<h1>Hi</h1>" />)
+  assert.match(inRow, /src="\/api\/v1\/files\/file123\/content\?view=page"/)
 })
 
-test('an HTML page renders its own text, never its URL', () => {
-  const markup = renderToStaticMarkup(<FileViewer name="empty.html" content="" url="/api/v1/files/abc/content" />)
-  assert.doesNotMatch(markup, /srcdoc="\/api/i)
+test('a stored Markdown file loads its text instead of showing its download path', () => {
+  const markup = renderToStaticMarkup(<FileViewer name="glossary.md" content="/api/v1/files/abc123/content" />)
+  assert.match(markup, /Loading file/)
+})
+
+test('an HTML page without a stored file renders its own text, never its URL', () => {
+  const markup = renderToStaticMarkup(<FileViewer name="empty.html" content="" url="https://example.com/x" />)
+  assert.doesNotMatch(markup, /srcdoc="https/i)
 })

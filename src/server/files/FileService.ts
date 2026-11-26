@@ -105,6 +105,8 @@ export type SearchTextMatchRow = {
   snippet: string
 }
 
+const MAX_HTML_PAGE_BYTES = 10 * 1024 * 1024
+
 export type ContentProxyResult =
   | { kind: 'json'; payload: Record<string, unknown>; status: number }
   | { kind: 'redirect'; url: string }
@@ -524,6 +526,26 @@ export class FileService {
   }
 
   /** The full text of a file kept in object storage, or null when the file keeps its text inline. */
+  /**
+   * The text of an HTML file the user may read, wherever it is kept (in its row, as text in object storage, or as an
+   * uploaded object), so it can be served as a page of its own under a script sandbox. Other files return null.
+   */
+  async getHtmlPage(args: { fileId: string; userId: string }): Promise<{ name: string; html: string } | null> {
+    const file = await this.deps.repository.getFile({ fileId: args.fileId, userId: args.userId }).catch((_error) => null)
+    if (!file || !/\.html?$/i.test(file.name)) return null
+    if (typeof file.sizeBytes === 'number' && file.sizeBytes > MAX_HTML_PAGE_BYTES) return null
+    const stored = await this.readObjectStoreText(file, file.userId)
+    if (stored !== null) return { name: file.name, html: stored }
+    const content = file.textContent ?? file.content ?? ''
+    if (!isBinaryProxyContent(content)) return { name: file.name, html: content }
+    if (typeof file.r2Key !== 'string' || !isOwnedStorageKey(file.userId, file.r2Key)) return null
+    const bytes = await this.storage.downloadBuffer(file.r2Key)
+    if (!bytes || bytes.byteLength > MAX_HTML_PAGE_BYTES) return null
+    await this.deps.repository.recordFileBandwidth({ userId: args.userId, bytes: bytes.byteLength })
+      .catch((error) => logger.warn('[files/content] bandwidth accounting failed', error))
+    return { name: file.name, html: new TextDecoder().decode(bytes) }
+  }
+
   async readObjectStoreText(file: { textInObjectStore?: unknown; r2Key?: unknown }, userId: string): Promise<string | null> {
     if (!file.textInObjectStore || typeof file.r2Key !== 'string' || !isOwnedStorageKey(userId, file.r2Key)) return null
     const bytes = await this.storage.downloadBuffer(file.r2Key)

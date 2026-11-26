@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   FILE_VIEWER_HTML_SANDBOX,
   getFileType,
+  htmlPageUrl,
   isEditableType,
   isStoredFileContentPath,
   prefersUrlPreview,
@@ -46,4 +47,11 @@ test('a file kept in object storage lists its download path, not its text', () =
   assert.equal(isStoredFileContentPath('<html><body>/api/v1/files/abc/content</body></html>'), false)
   assert.equal(isStoredFileContentPath('# Notes'), false)
   assert.equal(isStoredFileContentPath(undefined), false)
+})
+
+test('HTML pages open from their own sandboxed URL', () => {
+  assert.equal(htmlPageUrl({ fileId: 'abc123' }), '/api/v1/files/abc123/content?view=page')
+  assert.equal(htmlPageUrl({ content: '/api/v1/files/k7/content' }), '/api/v1/files/k7/content?view=page')
+  assert.equal(htmlPageUrl({ fileId: '../x', content: '<p>hi</p>' }), undefined)
+  assert.equal(htmlPageUrl({ url: 'https://evil.test/a' }), undefined)
 })

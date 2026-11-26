@@ -96,6 +96,7 @@ export function AttachmentViewer({
 }) {
   return (
     <FileViewerPanel
+      fileId={preview.fileId}
       name={preview.name}
       content={preview.content}
       url={preview.url}

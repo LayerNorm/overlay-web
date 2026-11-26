@@ -11,6 +11,7 @@ import { FileTypeIcon } from '../shared/file-type-icon'
 import {
   FILE_VIEWER_HTML_SANDBOX,
   getFileType,
+  htmlPageUrl,
   isEditableType,
   isPreviewableType,
   isStoredFileContentPath,
@@ -33,6 +34,8 @@ export interface FileViewerOperations {
 
 export interface FileViewerProps {
   name: string
+  /** The stored file, when there is one: an HTML file then opens as its own sandboxed page, where its scripts run. */
+  fileId?: string
   content: string
   url?: string
   operations?: FileViewerOperations
@@ -259,6 +262,8 @@ function ViewerOperationButtons({
 }
 
 export function FileViewer(props: FileViewerProps) {
+  const pageUrl = getFileType(props.name) === 'html' ? htmlPageUrl(props) : undefined
+  if (pageUrl) return <HtmlPageViewer name={props.name} pageUrl={pageUrl} revision={props.content} />
   // A text file kept in object storage carries its download path, not its text: fetch the text before rendering.
   if (shouldFetchTextContent(props.name) && isStoredFileContentPath(props.content)) {
     return <StoredTextViewer key={props.content.trim()} {...props} path={props.content.trim()} />
@@ -356,6 +361,28 @@ function HtmlViewer({ name, source }: { name: string; source: string }) {
       />
     </div>
   )
+}
+
+/** Reloads when the page's text changes (a save), so the frame never shows an older version. */
+function HtmlPageViewer({ name, pageUrl, revision }: { name: string; pageUrl: string; revision: string }) {
+  return (
+    <div className="overlay-file-viewer overlay-file-viewer--html flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+      <iframe
+        key={`${revision.length}:${textHash(revision)}`}
+        src={pageUrl}
+        sandbox={FILE_VIEWER_HTML_SANDBOX}
+        referrerPolicy="no-referrer"
+        className="min-h-0 flex-1 w-full border-none bg-white"
+        title={name}
+      />
+    </div>
+  )
+}
+
+function textHash(text: string): number {
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) | 0
+  return hash
 }
 
 function CsvViewer({ content }: { content: string }) {
@@ -592,6 +619,7 @@ function UnavailablePreview({ name }: { name: string }) {
 // ─── Standalone file viewer with header (for project/knowledge views) ─────────
 
 export function FileViewerPanel({
+  fileId,
   name,
   previewName,
   content,
@@ -603,6 +631,7 @@ export function FileViewerPanel({
   headerRight,
   operations,
 }: {
+  fileId?: string
   name: string
   /** Optional classification name when the displayed file name differs from its preview payload. */
   previewName?: string
@@ -661,6 +690,7 @@ export function FileViewerPanel({
           // A stored binary must be classified by its real filename even when
           // the backend also exposes an extracted-text classifier.
           name={url && prefersUrlPreview(name) ? name : (previewName ?? name)}
+          fileId={fileId}
           content={content}
           url={url}
           operations={operations}

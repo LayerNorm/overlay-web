@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyStoredContentSafetyHeaders } from './stored-content-headers'
+import { applyStoredContentSafetyHeaders, htmlPageHeaders } from './stored-content-headers'
 
 test('stored HTML is served under a script-free sandbox', () => {
   const headers = applyStoredContentSafetyHeaders(new Headers({ 'content-type': 'text/html; charset=utf-8' }))
@@ -18,4 +18,13 @@ test('media and documents are served as they are', () => {
 
 test('content without a type is sandboxed', () => {
   assert.equal(applyStoredContentSafetyHeaders(new Headers()).get('content-security-policy'), 'sandbox')
+})
+
+test('an HTML page runs its scripts only inside a sandbox with an opaque origin', () => {
+  const headers = htmlPageHeaders('walkthrough.html')
+  const policy = headers.get('content-security-policy') ?? ''
+  assert.match(policy, /^sandbox allow-scripts allow-forms allow-modals;/)
+  assert.doesNotMatch(policy, /allow-same-origin|allow-top-navigation|allow-popups/)
+  assert.match(policy, /frame-ancestors 'self'/)
+  assert.equal(headers.get('content-type'), 'text/html; charset=utf-8')
 })
