@@ -275,6 +275,15 @@ export default defineSchema({
     state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
   }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
 
+  // Free-tier uses of a private thread's Overlay tools, per person per calendar month (UTC). Only counts, never content.
+  privateThreadAllowances: defineTable({
+    userId: v.string(),
+    /** `2026-11` */
+    period: v.string(),
+    webSearches: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId_period', ['userId', 'period']),
+
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
   // them. No secret is stored here.

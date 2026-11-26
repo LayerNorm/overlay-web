@@ -57,6 +57,12 @@ export type WebSearchBillingContext = {
   programmaticSubjectId?: string
   userId: string
   workspaceId?: string
+  /**
+   * A private thread on the free tier: each search is counted against the person's monthly allowance before it runs,
+   * instead of being checked against and charged to the workspace budget. Throws with the message the agent sees when
+   * the allowance is used up.
+   */
+  allowance?: (toolName: WebSearchToolName, searches: number) => Promise<void>
 }
 
 export function buildTinyfishSearchParams(
@@ -277,11 +283,15 @@ async function postTinyfishFetch(body: Record<string, unknown>): Promise<unknown
   return fetchTinyfishPages(body, apiKey)
 }
 
-type WebSearchToolName = 'web_search' | 'deep_search' | 'web_fetch'
+export type WebSearchToolName = 'web_search' | 'deep_search' | 'web_fetch'
 
-/** Refuses only when the workspace has under 2% left; nothing is held for the search. */
-async function checkWebSearchBudget(billingContext: WebSearchBillingContext | undefined, toolName: WebSearchToolName) {
+/** Refuses only when the workspace has under 2% left; nothing is held for the search. A free-tier search uses its allowance instead. */
+async function checkWebSearchBudget(billingContext: WebSearchBillingContext | undefined, toolName: WebSearchToolName, searches = 1) {
   if (!billingContext) throw new Error('web_search_billing_context_required')
+  if (billingContext.allowance) {
+    await billingContext.allowance(toolName, searches)
+    return billingContext
+  }
   const check = await getOverlayServerContext().generationUsagePolicy.ensureBudgetNotLow({
     entitlements: billingContext.entitlements,
     kind: 'generation',
@@ -297,6 +307,7 @@ async function checkWebSearchBudget(billingContext: WebSearchBillingContext | un
 
 /** Charges the flat per-provider-call price after the search succeeds. A failed search charges nothing. */
 async function chargeWebSearch(billingContext: WebSearchBillingContext, providerCalls: number, toolName: WebSearchToolName) {
+  if (billingContext.allowance) return
   await getOverlayServerContext().generationUsagePolicy.charge({
     operationId: `websearch.${toolName}:${globalThis.crypto.randomUUID()}`,
     programmaticSubjectId: billingContext.programmaticSubjectId,
@@ -311,12 +322,14 @@ export async function executeDeepSearch(
   input: DeepSearchInput,
   billingContext?: WebSearchBillingContext,
   chatModelId?: string,
+  /** The exact-name follow-up of a web search the allowance already counted. */
+  countedByCaller = false,
 ): Promise<unknown> {
   let clientModelId: string | undefined
   if (chatModelId) {
     try { clientModelId = getGatewayModelId(chatModelId) } catch (_error) { clientModelId = undefined }
   }
-  const billing = await checkWebSearchBudget(billingContext, 'deep_search')
+  const billing = countedByCaller && billingContext?.allowance ? billingContext : await checkWebSearchBudget(billingContext, 'deep_search')
   const { output, providerCalls } = await searchDeepWithFallback(input, clientModelId)
   await chargeWebSearch(billing, providerCalls, 'deep_search')
   return output
@@ -328,7 +341,7 @@ async function executeWebSearch(
   chatModelId?: string,
 ): Promise<unknown> {
   const queries = Array.isArray(input.query) ? input.query.slice(0, 5) : [input.query]
-  const billing = await checkWebSearchBudget(billingContext, 'web_search')
+  const billing = await checkWebSearchBudget(billingContext, 'web_search', queries.length)
   const outputs = await Promise.all(
     queries.map((q) => searchWebWithFallback(q, input)),
   )
@@ -343,7 +356,7 @@ async function executeWebSearch(
         searchQueries: fallbackPlan.searchQueries,
         effort: 'standard',
         maxResults: input.maxResults ?? 10,
-      }, billingContext, chatModelId)
+      }, billingContext, chatModelId, true)
       output = mergeExactEntityFallbackResults(merged, fallbackOutput, fallbackPlan)
       if (output === merged) output = filtered
     } catch (error) {
@@ -358,11 +371,12 @@ async function executeWebSearch(
   return output
 }
 
-async function executeWebFetch(
+export async function executeWebFetch(
   input: WebFetchInput,
   billingContext?: WebSearchBillingContext,
 ): Promise<unknown> {
-  const billing = await checkWebSearchBudget(billingContext, 'web_fetch')
+  // Each fetched page counts against a free allowance, as each query does for a search.
+  const billing = await checkWebSearchBudget(billingContext, 'web_fetch', input.urls.length)
   const output = await postTinyfishFetch(buildTinyfishRequestBody(input))
   const capped = capFetchText(output, input.maxCharsPerPage ?? WEB_FETCH_DEFAULT_MAX_CHARS_PER_PAGE)
   await chargeWebSearch(billing, 1, 'web_fetch')

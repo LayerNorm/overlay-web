@@ -8,7 +8,7 @@ Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned No
 when the machine's default `node` is older:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.6.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
   overlay-agent-host connect <enrollment-code> \
   --server https://overlay.works \
   --kind vps \
@@ -78,7 +78,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.6.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
   overlay-agent-host connect <enrollment-code> \
   --server https://overlay.works \
   --kind vps \
@@ -102,9 +102,9 @@ Terminal closes and returns after login or process failure. Use the exact config
 `connect`:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.6.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
   overlay-agent-host service install --config "$HOME/.overlay/agent-host/config.json"
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.6.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
   overlay-agent-host service status --config "$HOME/.overlay/agent-host/config.json"
 ```
 

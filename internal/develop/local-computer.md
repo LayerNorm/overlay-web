@@ -31,6 +31,15 @@ heartbeat, capabilities, `commands:poll` (local tool long-poll),
 revokes its credentials. Connecting a machine follows the Computers feature
 (`features.computers`); there are no separate flags.
 
+The workspace's computer limit (one for free workspaces) counts pending, offline
+and online machines. At the limit, creating a code first revokes the requester's
+own offline local machines (judged by when they were last heard from, since a host
+that just disappears stays stored as `online`), longest unseen first, as many as
+needed: the product
+has no other place to remove an old machine, so a reinstall or new laptop would
+otherwise be stuck. Online machines and other members' machines are never
+revoked; if that isn't enough, the request fails with `environment_limit_reached`.
+
 ## Local tools
 
 - **Capability.** The host advertises `localTools` (`version: 1`, `os`,

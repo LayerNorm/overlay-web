@@ -7,6 +7,7 @@ import type { McpGrantRecord, McpGrantRepository } from './McpGrantRepository'
 import {
   MCP_ACCESS_TOKEN_TTL_MS,
   MCP_CODE_TTL_MS,
+  MCP_PRIVATE_THREAD_TOKEN_TTL_MS,
   MCP_REFRESH_TOKEN_TTL_MS,
   openMcpValue,
   pkceMatches,
@@ -34,7 +35,11 @@ export type McpPrincipal = {
   workspaceId: string
   access: McpAccessLevel
   clientName: string
+  /** Set for a private thread's token: the tools are this agent's grant, not an access level. */
+  agentId?: string
 }
+
+export const PRIVATE_THREAD_CLIENT_NAME = 'Private thread'
 
 export type McpTokenResponse = {
   access_token: string
@@ -148,8 +153,22 @@ export class McpAccessService {
     return { token, grant: grant! }
   }
 
+  /**
+   * A token for one private thread turn on Overlay Desktop (internal/develop/private-threads.md): this person, this
+   * workspace, this agent's tool grant. It is stateless and short-lived instead of a grant row, because the desktop
+   * asks for a new one every turn; the caller has already checked the person can use the agent.
+   */
+  async issuePrivateThreadToken(args: { userId: string; workspaceId: string; agentId: string }): Promise<{ token: string; expiresAt: number }> {
+    await this.requireMember(args.userId, args.workspaceId)
+    const token = sealMcpValue('private_thread', { uid: args.userId, ws: args.workspaceId, ag: args.agentId }, MCP_PRIVATE_THREAD_TOKEN_TTL_MS)
+    if (!token) throw new McpOAuthError('server_error', 'MCP access is not configured on this server.', 503)
+    return { token, expiresAt: this.now() + MCP_PRIVATE_THREAD_TOKEN_TTL_MS }
+  }
+
   /** Resolves a bearer credential to who may act and where, or null (revoked, expired, left the workspace). */
   async authenticate(bearer: string | null): Promise<McpPrincipal | null> {
+    const privateThread = openMcpValue('private_thread', bearer)
+    if (privateThread) return await this.authenticatePrivateThread(privateThread)
     const payload = openMcpValue('access', bearer) ?? openMcpValue('personal', bearer)
     const grantId = typeof payload?.g === 'string' ? payload.g : null
     if (!grantId) return null
@@ -174,6 +193,15 @@ export class McpAccessService {
       await this.dependencies.onRevoked?.(grantId).catch((_error) => undefined)
     }
     return revoked
+  }
+
+  private async authenticatePrivateThread(payload: Record<string, unknown>): Promise<McpPrincipal | null> {
+    const { uid, ws, ag } = payload
+    if (typeof uid !== 'string' || typeof ws !== 'string' || typeof ag !== 'string') return null
+    const member = await this.dependencies.workspaces.resolveActiveWorkspace(uid, ws).then(() => true, () => false)
+    if (!member) return null
+    // The grant id only keys the per-connection rate limit and logs; there is no row behind it.
+    return { grantId: `private:${uid}:${ag}`, userId: uid, workspaceId: ws, access: 'full', clientName: PRIVATE_THREAD_CLIENT_NAME, agentId: ag }
   }
 
   private async exchangeCode(params: URLSearchParams): Promise<McpTokenResponse> {
