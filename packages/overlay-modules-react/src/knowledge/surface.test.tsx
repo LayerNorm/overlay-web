@@ -111,3 +111,15 @@ test('HTML and Markdown files open rendered, with their source one click away', 
   )
   assert.match(text, /aria-label="File contents"/)
 })
+
+test('an upload kept in object storage is never offered as an empty editable text file', async () => {
+  const { KnowledgeFileDetailPanel } = await import('./file-detail-panel')
+  const { isStoredFileContentPath } = await import('@overlay/app-core/file-viewer')
+  const loadedText = '' || '/api/v1/files/stored1/content'
+  const markup = renderToStaticMarkup(
+    <KnowledgeFileDetailPanel fileId="stored1" fileName="walk.html" isEditable={!isStoredFileContentPath(loadedText)}
+      fileContent={loadedText} onContentChange={() => {}} renderViewer={() => <div data-testid="rendered" />} />,
+  )
+  assert.match(markup, /data-testid="rendered"/)
+  assert.doesNotMatch(markup, />Edit</)
+})
