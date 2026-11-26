@@ -97,13 +97,14 @@ test('work keeps view navigation plus separately rendered task groups', () => {
   for (const label of ['List', 'Board', 'Timeline', 'tasks-mine', 'tasks-all']) assert.match(html, new RegExp(label))
 })
 
-test('the one mode switch sits in the rail under the brand, Workspace first, and not in the panel', () => {
+test('the one mode switch sits at the bottom of the rail just above the account, Workspace first, and not in the panel', () => {
   const html = render({ scope: 'workspace' })
   const split = html.indexOf('id="context-panel"')
   const rail = html.slice(0, split)
   assert.equal((html.match(/aria-label="Mode"/g) ?? []).length, 1)
   assert.match(rail, /role="radiogroup" aria-label="Mode"/)
-  assert.ok(rail.indexOf('aria-label="Mode"') < rail.indexOf('href="/app/work"'))
+  assert.ok(rail.indexOf('href="/app/work"') < rail.indexOf('aria-label="Mode"'))
+  assert.ok(rail.indexOf('aria-label="Mode"') < rail.indexOf('Account'))
   assert.ok(rail.indexOf('aria-label="Workspace"') < rail.indexOf('aria-label="Personal"'))
   assert.match(rail, /role="radio" aria-checked="true"[^>]*aria-label="Workspace"/)
   assert.match(rail, /role="radio" aria-checked="false"[^>]*aria-label="Personal"/)

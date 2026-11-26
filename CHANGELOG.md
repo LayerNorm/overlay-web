@@ -4,6 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Tidy the primary rail and hide scrollbars. The rail's bottom held four look-alike icon buttons (theme, help, settings, and a Workspace | Personal switch whose two people icons were hard to tell apart).
+  - The Workspace | Personal switch moves to the bottom of the rail, right above your account button, and Workspace now uses a building icon, so the two modes no longer look alike. Both modes stay inside the current workspace.
+  - Dark/Light mode, Settings, Help and docs, and Submit a bug move into the account menu, above Sign out. The Help popover is replaced by those rows; the bug report dialog itself is unchanged.
+  - Scrollbars are no longer drawn anywhere in the app. Lists, transcripts and the right panel still scroll.
+  - The temporary chat button in the chat header loses its gray fill and only shows a background on hover, like the other header icon buttons.
 - Add Data and APIs: agents and chats can now find and run thousands of paid third-party APIs through Monid (lead and contact search, company and people enrichment, social and review data, scraping, SEO, 3D models, speech and more) without the person connecting an account or buying a subscription.
   - Four new tools: `search_apis` finds endpoints in plain words with their prices, `inspect_api` shows an endpoint's input schema, price and notes, `run_api` runs it, waits for slow ones up to 10 minutes, and saves the files Monid returns to Files, and `save_api_file` saves a file a result links to (such as a 3D model) to Files, only for this workspace's runs. Very large results are saved whole to Files with a preview.
   - Each run is checked against the workspace budget first and charged afterwards at Monid's reported cost plus the usual usage fee (for slow runs, the cost Monid reports when the run is read back); its cap at Monid is what the workspace has left, so a run cannot overspend it. Retries never charge twice.
