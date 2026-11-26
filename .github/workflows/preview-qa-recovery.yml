@@ -29,10 +29,7 @@ permissions:
 jobs:
   recover:
     if: github.ref == 'refs/heads/main'
-    runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
-      - nscloud-no-remote-builders
-      - namespace-features:github.run-id=${{ github.run_id }}
+    runs-on: ubuntu-24.04
     environment: release-control
     timeout-minutes: 5
     concurrency:
