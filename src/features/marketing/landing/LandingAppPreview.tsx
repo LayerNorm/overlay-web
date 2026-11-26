@@ -42,8 +42,8 @@ const STATUS: Array<[WorkStatus, string, LucideIcon]> = [['progress', 'In progre
 function Crumb({ scope, view, children }: { scope: Scope; view: string; children?: ReactNode }) {
   return (
     <span className="a-crumb">
-      {scope === 'personal' ? 'Personal' : 'Workspace'}<ChevronRight className="i xs" />{view}
-      {children ? <><ChevronRight className="i xs" /><b>{children}</b></> : null}
+      <span className="a-crumb-path">{scope === 'personal' ? 'Personal' : 'Workspace'}<ChevronRight className="i xs" />{view}{children ? <ChevronRight className="i xs" /> : null}</span>
+      {children ? <b>{children}</b> : <span className="a-crumb-view">{view}</span>}
     </span>
   )
 }

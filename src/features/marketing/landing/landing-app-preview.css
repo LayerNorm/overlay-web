@@ -155,3 +155,12 @@
 .sl .a-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, #f59e0b 14%, transparent); color: #b45309; }
 [data-landing-theme='dark'] .sl .a-tag { color: #fbbf24; }
 @media (max-width: 860px) { .sl .a-li .who { width: auto; } .sl .a-li .who { font-size: 0; gap: 0; } .sl .a-lh.files span:not(.t) { display: none; } }
+
+.sl .a-crumb-path { display: inline-flex; align-items: center; gap: 8px; }
+.sl .a-crumb-view { display: none; color: var(--a-text); }
+/* Phones: the breadcrumb keeps only the current page, so its name is never cut off. */
+@media (max-width: 860px) {
+  .sl .a-crumb-path { display: none; }
+  .sl .a-crumb-view { display: inline; }
+  .sl .a-crumb b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
