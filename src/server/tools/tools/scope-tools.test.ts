@@ -67,15 +67,6 @@ test('the scope API’s refusal is relayed as a plain message', async () => {
   assert.deepEqual(result, { success: false, error: 'That item is Personal.' })
 })
 
-test('an agent moves or archives only the kinds of item it may already change', async () => {
-  const notesOnly = { ...alone, allowedToolIds: ['update_note', 'archive_item'] }
-  const refused = await recording(() => executeArchiveItem(notesOnly, { resource: 'automation', id: 'a_1' }))
-  assert.equal(refused.result.success, false)
-  assert.equal(refused.seen.length, 0)
-  const allowed = await recording(() => executeArchiveItem(notesOnly, { resource: 'file', id: 'n_1' }))
-  assert.equal(allowed.result.success, true)
-})
-
 test('the scope tools are offered only when the person asks to share, archive or restore', () => {
   const offered = (text: string) => allowedOverlayToolIdsForTurn({ latestUserText: text })
   assert.ok(offered('move my launch note to the workspace').includes('move_to_workspace'))
@@ -103,4 +94,10 @@ test('owner labels call the caller "you" without a lookup', async () => {
   const ownerOf = await ownerNamesFor(alone, ['user_1', null])
   assert.equal(ownerOf('user_1'), 'you')
   assert.equal(ownerOf(null), undefined)
+})
+
+test('the scope route keeps the workspace-context flag the tools send', async () => {
+  const { ScopeActionRequest } = await import('@/shared/schemas/misc')
+  const parsed = ScopeActionRequest.parse({ resource: 'files', id: 'f', action: 'archive', workspaceItemsOnly: true })
+  assert.equal(parsed.workspaceItemsOnly, true)
 })

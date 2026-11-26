@@ -145,9 +145,8 @@ Not covered: a per-message opt-in to include a Personal item on purpose (rooms l
 
 `move_to_workspace`, `archive_item` and `restore_item` (`src/server/tools/tools/scope-executes.ts`) do what the item
 buttons do, through `POST /api/v1/scope` under the person's own rules: only the creator moves, moves are one-way, archive
-and restore need edit rights. `resource` is `file` (files, folders, notes, outputs), `skill`, `automation` or `task`;
-an agent may act on a kind only if its grant already changes that kind (`write_file`/`create_note`/`update_note`,
-`save_skill`, `update_automation`, `update_task`). They are offered only when the person's own message asks to share,
+and restore need edit rights. `resource` is `file` (files, folders, notes, outputs), `skill`, `automation` or `task`.
+Convex applies the person's own rights to every kind. They are offered only when the person's own message asks to share,
 archive or restore (`isExplicitScopeRequest`), and belong to the Files group (`LATER_GROUP_MEMBERS` keeps saved grants).
 Outside apps at Read and write get them with the Files group.
 

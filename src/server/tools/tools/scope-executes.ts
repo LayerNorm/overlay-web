@@ -5,7 +5,8 @@ import type { OverlayToolsOptions } from './types'
 
 /**
  * Agent tools for what the Move to Workspace, Archive and Restore buttons do (`POST /api/v1/scope`), under the person's
- * own rules: only the creator moves an item, moves are one-way, and archive/restore need edit rights. In a workspace
+ * own rules: only the creator moves an item, moves are one-way, and archive/restore need edit rights (enforced in
+ * Convex). They are offered only when the person's own message asks to share, archive or restore. In a workspace
  * context (a room others can read, a workspace automation) nothing moves, and only Workspace items archive or restore.
  */
 
@@ -20,24 +21,8 @@ const API_RESOURCE: Record<ScopeToolResource, string> = {
   task: 'work',
 }
 
-/** An agent may move or archive a kind of item only if it may already change that kind. */
-const GRANTING_TOOLS: Record<ScopeToolResource, readonly string[]> = {
-  file: ['write_file', 'create_note', 'update_note'],
-  skill: ['save_skill'],
-  automation: ['update_automation'],
-  task: ['update_task'],
-}
-
 export const ROOM_MOVE_ERROR =
   'Moving to Workspace shares a Personal item, so it is done by its owner outside a room others can read (in a personal chat, or with the Move to Workspace button), not here.'
-
-function grantRefusal(options: OverlayToolsOptions, resource: ScopeToolResource): string | null {
-  const allowed = options.allowedToolIds
-  if (!allowed) return null
-  return GRANTING_TOOLS[resource].some((id) => allowed.includes(id))
-    ? null
-    : `This agent can't change ${resource === 'task' ? 'tasks' : `${resource}s`}, so it can't move or archive them.`
-}
 
 async function changeScope(
   options: OverlayToolsOptions,
@@ -47,8 +32,6 @@ async function changeScope(
 ) {
   const id = input.id?.trim()
   if (!id) return { success: false, error: 'id is required.' }
-  const refused = grantRefusal(options, input.resource)
-  if (refused) return { success: false, error: refused }
   if (action === 'move' && options.sharedRoom) return { success: false, error: ROOM_MOVE_ERROR }
   try {
     const res = await callInternalApi(
