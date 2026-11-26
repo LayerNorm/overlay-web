@@ -124,8 +124,7 @@ Commands and guards are in [Staging and Production Promotion](./worktree-staging
 
 ### Verified workspace and queue protections
 
-Linux jobs use the shared `namespace-profile-overlay-ci-benchmark` runner
-profile; required checks and release credentials keep their existing scopes.
+Linux jobs use GitHub's standard `ubuntu-24.04` runners; required checks and release credentials keep their existing scopes.
 CI runs lint/boundaries, typechecking, production compilation and two exhaustive
 test shards independently, retaining all nine required contexts. Exact installed
 dependency caches and incremental compiler/lint/type caches reuse work without
