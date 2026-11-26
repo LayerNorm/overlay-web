@@ -88,7 +88,7 @@ export class ConnectedAgentControlPlaneService {
         this.dependencies.repository.getWorkspacePolicyUsage({ workspaceId: args.workspaceId }),
       ])
       if (usage.environments >= limits.maxEnvironments) {
-        throw controlPlaneError('This workspace has reached its connected-environment limit', 429, 'environment_limit_reached')
+        await this.replaceOwnOfflineComputers(args, usage.environments - limits.maxEnvironments + 1)
       }
       maxEnvironments = limits.maxEnvironments
     }
@@ -402,6 +402,39 @@ export class ConnectedAgentControlPlaneService {
     })
     if (!environment) throw controlPlaneError('Environment is unavailable', 401, 'environment_unavailable')
     return publicEnvironment(environment)
+  }
+
+  /**
+   * At the computer limit, connecting replaces this person's own offline computers (longest unseen first), so
+   * reinstalling the app or moving to a new laptop never strands them; there is no other place to remove one.
+   * Online computers and other members' computers are never touched.
+   */
+  private async replaceOwnOfflineComputers(args: { actorUserId: string; workspaceId: string }, needed: number) {
+    const replaceable = (await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId }))
+      .filter((environment) => environment.kind === 'local' && environment.status === 'offline'
+        && environment.approvedByUserId === args.actorUserId)
+      .sort((a, b) => (a.lastSeenAt ?? a.createdAt) - (b.lastSeenAt ?? b.createdAt))
+    if (replaceable.length < needed) {
+      throw controlPlaneError(
+        'This workspace has reached its limit of connected computers. Upgrade to connect more.',
+        429,
+        'environment_limit_reached',
+      )
+    }
+    for (const environment of replaceable.slice(0, needed)) {
+      const revoked = await this.dependencies.repository.revokeEnvironment({
+        workspaceId: args.workspaceId,
+        environmentId: environment.id,
+        now: this.now(),
+      })
+      if (revoked) {
+        await this.audit('agent_environment.revoked', 'user', args.actorUserId, {
+          workspaceId: args.workspaceId,
+          environmentId: environment.id,
+          reason: 'replaced_at_limit',
+        }, environment.id)
+      }
+    }
   }
 
   private async requireManager(userId: string, workspaceId: string) {

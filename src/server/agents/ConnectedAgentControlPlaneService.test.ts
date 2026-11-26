@@ -250,3 +250,28 @@ async function assertControlPlaneError(operation: () => Promise<unknown>, code: 
 function sha256(value: string | Uint8Array) {
   return createHash('sha256').update(value).digest('hex')
 }
+
+function atComputerLimit(overrides: Partial<AgentEnvironment>) {
+  const f = fixture(overrides, {}, { policyLimits: async () => ({ maxEnvironments: 1 }) as never })
+  const revoked: string[] = []
+  f.repository.getWorkspacePolicyUsage = async () => ({ environments: 1 - revoked.length }) as never
+  f.repository.revokeEnvironment = async ({ environmentId }) => { revoked.push(environmentId); return true }
+  f.repository.createEnrollmentSession = async (session) => session
+  return { ...f, revoked }
+}
+
+test('at the computer limit, connecting replaces the person’s own offline computer', async () => {
+  const f = atComputerLimit({ status: 'offline', approvedByUserId: 'user-1' })
+  const session = await f.service.createEnrollmentSession({ actorUserId: 'user-1', workspaceId: 'workspace-1' })
+  assert.ok(session.code)
+  assert.deepEqual(f.revoked, ['environment-1'])
+  assert.ok(f.audits.some((entry) => entry.action === 'agent_environment.revoked'))
+})
+
+test('at the computer limit, an online or another member’s computer is never replaced', async () => {
+  for (const overrides of [{ status: 'online' as const, approvedByUserId: 'user-1' }, { status: 'offline' as const, approvedByUserId: 'user-2' }]) {
+    const f = atComputerLimit(overrides)
+    await assertControlPlaneError(() => f.service.createEnrollmentSession({ actorUserId: 'user-1', workspaceId: 'workspace-1' }), 'environment_limit_reached')
+    assert.deepEqual(f.revoked, [])
+  }
+})
