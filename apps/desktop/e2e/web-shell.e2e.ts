@@ -67,26 +67,24 @@ test.afterAll(async () => {
 test('signed-out window shows web sign-in and the restricted desktop bridge', async () => {
   const page = await webShellWindow(app)
   await expect(page).toHaveURL(/\/app/)
-  const dialog = page.getByRole('dialog', { name: /sign in/i })
-  await expect(dialog.getByRole('button', { name: /continue with google/i })).toBeVisible()
+  // The desktop sign-in screen: one button that signs in through the browser.
+  await expect(page.getByRole('button', { name: /^sign in$/i })).toBeVisible({ timeout: 30_000 })
   expect(await page.evaluate(() => 'overlay' in window || 'electron' in window)).toBe(false)
   expect((await page.evaluate(() => window.overlayDesktop.handshake())).bridgeVersion).toBe(1)
 })
 
-test('Google sign-in opens the browser handoff, then the transfer link is redeemed in the window', async () => {
+test('Sign in opens the browser handoff, then the transfer link is redeemed in the window', async () => {
   const page = await webShellWindow(app)
   const origin = new URL(page.url()).origin
   const signInUrl = page.url()
 
   // The app cancels this navigation, so don't wait for it to finish.
-  await page
-    .getByRole('dialog', { name: /sign in/i })
-    .getByRole('button', { name: /continue with google/i })
-    .click({ noWaitAfter: true })
+  await page.getByRole('button', { name: /^sign in$/i }).click({ noWaitAfter: true })
 
   // The window stays put and the browser handoff opens instead.
+  // The app first reads the server's discovery document, then opens the browser.
   await expect
-    .poll(() => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened.length))
+    .poll(() => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened.length), { timeout: 20_000 })
     .toBe(1)
   expect(page.url()).toBe(signInUrl)
   const opened = await app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened[0])
