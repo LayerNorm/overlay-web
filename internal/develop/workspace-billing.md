@@ -210,3 +210,7 @@ Background memory extraction charges SDK-reported token usage on structured-outp
 validation failures using the same pricing as successful calls.
 Invalid output is never stored. A call with missing usage or unknown pricing charges
 nothing and logs the gap.
+
+## Data and APIs runs
+
+`run_api` follows the same direct-charge path as web search: the 2% check before, then a charge of Monid's `reportedCost` with the usage markup after, under the operation id `monid.run:<runId>`. Its Monid `maxCost` is the remaining budget without the markup, so a run cannot overspend the workspace. See `monid.md`.

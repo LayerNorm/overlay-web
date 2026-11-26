@@ -78,6 +78,7 @@ import {
   executeWriteFile,
 } from './files-executes'
 import { runInToolCallScope } from './internal-api'
+import { executeInspectApi, executeRunApi, executeSaveApiFile, executeSearchApis } from './monid'
 import type { OverlayToolsOptions } from './types'
 
 const computerPointSchema = z.object({
@@ -1657,6 +1658,89 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('edit_video')
         return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
+      },
+    })
+  }
+
+  // ── Data and APIs (Monid) ──────────────────────────────────────────────────
+
+  const apiParamsSchema = z.record(z.unknown())
+  if (shouldExposeTool('search_apis')) {
+    tools.search_apis = tool({
+      description:
+        'Find a paid API for data or results you cannot get otherwise: lead and contact search, company and people ' +
+        'enrichment, social media and review data, scraping specific sites, SEO data, travel and product prices, ' +
+        '3D models, speech and other generation. Searches thousands of read-only endpoints from many providers in ' +
+        'plain words and returns ranked matches with prices. No account or connection is needed; runs are billed to ' +
+        'the workspace. Prefer the user’s connected apps for their own accounts, and web_search for general web pages.',
+      inputSchema: z.object({
+        query: z.string().trim().min(1).max(500).describe('What you need, in plain words, e.g. "find VPs of sales at fintech companies in Berlin"'),
+        category: z.string().trim().min(1).max(80).optional().describe('Optional category id to narrow results, e.g. "lead-generation", "social-media", "3d-generation"'),
+        limit: z.number().int().min(1).max(20).optional().describe('How many matches to return (default 8)'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('search_apis')
+        return await executeSearchApis(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('inspect_api')) {
+    tools.inspect_api = tool({
+      description:
+        'Read one API endpoint found with search_apis before running it: its input JSON Schema (body, queryParams, ' +
+        'pathParams), price, provider notes, typical run time and cheaper alternatives such as free tiers.',
+      inputSchema: z.object({
+        provider: z.string().trim().min(1).max(120).describe('Provider slug from search_apis, e.g. "apollo"'),
+        endpoint: z.string().trim().min(1).max(300).describe('Endpoint path from search_apis, e.g. "/mixed_people/api_search"'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('inspect_api')
+        return await executeInspectApi(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('run_api')) {
+    tools.run_api = tool({
+      description:
+        'Run a read-only API endpoint found with search_apis, after inspect_api. Costs the workspace the endpoint’s ' +
+        'price plus Overlay’s usage fee, so request only what the user needs (set limits such as maxItems). Waits for ' +
+        'slow endpoints up to 10 minutes. Files it produces (3D models, audio, images, documents) are saved to Files; ' +
+        'very large results are saved to Files whole with a preview returned. The result says what was charged.',
+      inputSchema: z.object({
+        provider: z.string().trim().min(1).max(120).describe('Provider slug, e.g. "meshy"'),
+        endpoint: z.string().trim().min(1).max(300).describe('Endpoint path, e.g. "/text-to-3d/preview"'),
+        input: z.object({
+          body: apiParamsSchema.optional().describe('Request body fields, per the body schema from inspect_api'),
+          queryParams: apiParamsSchema.optional().describe('URL query parameters, per the queryParams schema'),
+          pathParams: apiParamsSchema.optional().describe('Values for {placeholders} in the endpoint path'),
+        }).strict().optional(),
+      }).strict(),
+      execute: async (input, callOptions) => {
+        assertToolAllowed('run_api')
+        return await executeRunApi(options, input, {
+          toolCallId: callOptions?.toolCallId,
+          abortSignal: callOptions?.abortSignal,
+        })
+      },
+    })
+  }
+
+  if (shouldExposeTool('save_api_file')) {
+    tools.save_api_file = tool({
+      description:
+        'Save a file that a run_api result links to (for example a 3D model in model_urls, or a PDF or audio link) into ' +
+        'Files. Pass the runId and the URL exactly as run_api returned them; the result has the Overlay file link. ' +
+        'Save only the formats the user needs.',
+      inputSchema: z.object({
+        runId: z.string().trim().min(1).max(100).describe('The runId from run_api'),
+        url: z.string().trim().url().max(4000).describe('A file URL from that run\'s output, exactly as returned'),
+        name: z.string().trim().min(1).max(120).optional().describe('File name to save as; the extension is added if missing'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('save_api_file')
+        return await executeSaveApiFile(options, input)
       },
     })
   }
