@@ -45,7 +45,7 @@ export function DesktopOnboarding({ userId, userName, personalWorkspaceId, onSta
   const index = steps.indexOf(step)
   const go = (offset: number) => update({ step: steps[Math.min(steps.length - 1, Math.max(0, index + offset))]! })
 
-  const finish = async (paid: boolean) => {
+  const finish = async (paid: boolean, billingInitialized: boolean) => {
     const prefill: OnboardingPrefill = {
       name: state.name.trim(), about: state.about.trim(),
       team: state.forTeam ? `A team: ${state.workspaceName.trim()}` : 'Just me',
@@ -53,8 +53,7 @@ export function DesktopOnboarding({ userId, userName, personalWorkspaceId, onSta
     const result = await requestOnboarding(state.workspaceId, { action: 'start', prefill })
     writeDesktopSetup(userId, null)
     if (paid) {
-      const billing = await overlayAppClient.workspaces.billing(state.workspaceId).catch(() => null)
-      if (!billing?.initialized) await overlayAppClient.workspaces.initializeBilling(state.workspaceId)
+      if (!billingInitialized) await overlayAppClient.workspaces.initializeBilling(state.workspaceId)
       const { url } = await overlayAppClient.workspaces.createBillingCheckout(state.workspaceId, {
         planAmountCents: 800, topUpAmountCents: 800, autoTopUpEnabled: false, returnTo: 'onboarding',
         ...currentLegalAcceptancePayload(),
@@ -410,7 +409,7 @@ function ComputerStep({ workspaceId, onBack, onNext }: { workspaceId: string; on
   </>
 }
 
-function PlanStep({ state, onBack, onFinish }: { state: DesktopSetupState; onBack(): void; onFinish(paid: boolean): Promise<void> }) {
+function PlanStep({ state, onBack, onFinish }: { state: DesktopSetupState; onBack(): void; onFinish(paid: boolean, billingInitialized: boolean): Promise<void> }) {
   const team = state.forTeam
   const billing = useLiveWorkspaceBilling(state.workspaceId)
   const [plan, setPlan] = useState<'free' | 'paid'>(team ? 'paid' : 'free')
@@ -421,7 +420,7 @@ function PlanStep({ state, onBack, onFinish }: { state: DesktopSetupState; onBac
   const paid = plan === 'paid' && !alreadyPaid
   const go = async () => {
     setBusy(true); setError(null)
-    try { await onFinish(paid && accepted) }
+    try { await onFinish(paid && accepted, billing?.initialized === true) }
     catch (failure) { setError(errorText(failure, 'Something went wrong. Try again.')); setBusy(false) }
   }
   const feature = (text: string) => <li key={text} className="flex items-start gap-2"><Check size={14} className="mt-0.5 shrink-0 text-(--muted)" /><span>{text}</span></li>
