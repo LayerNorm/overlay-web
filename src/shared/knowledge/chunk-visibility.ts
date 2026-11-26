@@ -5,7 +5,7 @@ export type ChunkVisibility = 'owner' | 'workspace'
 /**
  * Whether a searcher may see an indexed chunk, by the chunk's own visibility. A chunk marked `owner` is private to the
  * person it belongs to. `workspaceOnly` is a search made for a workspace context (a room others can read, a workspace
- * automation; internal/plans/TOOL_SCOPING_PLAN.md, T4): nothing private is returned, not even the searcher's own,
+ * automation; internal/develop/tool-catalog.md, "Rooms others can read"): nothing private is returned, not even the searcher's own,
  * because the result will be shown to everyone there.
  *
  * A file chunk without a visibility is private: files are their uploader's until they are in Workspace

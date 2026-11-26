@@ -96,6 +96,13 @@ test('mentions search own and workspace-shared items, never archived, deleted, d
   expect(alice.skills.map(s => s.name)).toContain('Release helper')
   expect(alice.mcpServers.map(s => s.name)).toEqual(['Roadmap server'])
   expect(JSON.stringify(alice)).not.toMatch(/secret-path|https:/)
+  // Each result says whether it is Personal or Workspace, so search can tag and filter it.
+  const scopeOf = (rows: Array<{ name?: string; title?: string; scope?: string }>) =>
+    Object.fromEntries(rows.map(row => [row.name ?? row.title, row.scope]))
+  expect(scopeOf(alice.files)).toEqual({ 'Roadmap note': 'workspace', 'Roadmap private.md': 'personal', 'Roadmap shared.md': 'workspace' })
+  expect(scopeOf(alice.chats)).toEqual({ 'Roadmap channel': 'workspace', 'Roadmap chat': 'personal' })
+  expect(scopeOf(alice.skills)['Roadmap skill private']).toBe('personal')
+  expect(scopeOf(alice.mcpServers)).toEqual({ 'Roadmap server': 'workspace' })
 
   // Bob sees what Alice shared, not her private items or her chats.
   const bob = await as('bob').query(fn.mentions, { workspaceId: 'ws', query: 'roadmap' }) as Mentions

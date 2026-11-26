@@ -53,7 +53,7 @@ async function rooms(ctx: Ctx, viewer: Viewer, q: string) {
       .take(SCAN)).map(row => ctx.db.get(row.conversationId))))
       .filter(row => row !== null)
       .sort((a, b) => b.lastModified - a.lastModified)
-  const out: Array<{ id: string; title: string }> = []
+  const out: Array<{ id: string; title: string; scope: 'personal' | 'workspace' }> = []
   for (const conversation of candidates) {
     if (out.length >= LIMIT) break
     const type = conversation.conversationType
@@ -62,7 +62,8 @@ async function rooms(ctx: Ctx, viewer: Viewer, q: string) {
       .withIndex('by_conversationId_principalId', i => i.eq('conversationId', conversation._id).eq('principalId', principalId))
       .first()
     if (!participant || participant.status !== 'active' || participant.archivedAt !== undefined) continue
-    out.push({ id: conversation._id, title: conversation.title })
+    // Channels and DMs live in Workspace mode.
+    out.push({ id: conversation._id, title: conversation.title, scope: 'workspace' })
   }
   return out
 }
@@ -73,13 +74,13 @@ async function chats(ctx: Ctx, viewer: Viewer, q: string) {
       .eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId).eq('deletedAt', undefined)).take(SCAN)
     : await ctx.db.query('conversations').withIndex('by_workspaceId_userId_lastModified', i =>
       i.eq('workspaceId', viewer.workspaceId).eq('userId', viewer.userId)).order('desc').take(SCAN)
-  const out: Array<{ id: string; title: string }> = []
+  const out: Array<{ id: string; title: string; scope: 'personal' | 'workspace' }> = []
   for (const conversation of rows) {
     if (out.length >= LIMIT) break
     // The same rule as the chat list: the viewer's own AI chats, not automation chats, not archived.
     const access = await nativePersonalChatScope(ctx, viewer, conversation)
     if (!access || access.kind === 'automation' || access.participant?.archivedAt !== undefined) continue
-    out.push({ id: conversation._id, title: conversation.title })
+    out.push({ id: conversation._id, title: conversation.title, scope: conversation.scope ?? 'personal' })
   }
   return out
 }
@@ -100,7 +101,7 @@ async function files(ctx: Ctx, viewer: Viewer, q: string) {
       ])
   const notFolder = (row: Doc<'files'>) => row.type !== 'folder' && row.kind !== 'folder'
   return (await readable(ctx, viewer, own.filter(notFolder), shared.filter(notFolder)))
-    .map(row => ({ id: row._id, name: row.name, kind: row.kind, mimeType: row.mimeType }))
+    .map(row => ({ id: row._id, name: row.name, kind: row.kind, mimeType: row.mimeType, scope: row.scope ?? 'personal' }))
 }
 
 async function automations(ctx: Ctx, viewer: Viewer, q: string) {
@@ -122,7 +123,7 @@ async function automations(ctx: Ctx, viewer: Viewer, q: string) {
         ctx.db.query('automations').withIndex('by_workspaceId_scope_archivedAt', i =>
           i.eq('workspaceId', viewer.workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined)).order('desc').take(SCAN),
       ])
-  return (await readable(ctx, viewer, own, shared)).map(row => ({ id: row._id, name: row.name, description: row.description }))
+  return (await readable(ctx, viewer, own, shared)).map(row => ({ id: row._id, name: row.name, description: row.description, scope: row.scope ?? 'personal' }))
 }
 
 async function skills(ctx: Ctx, viewer: Viewer, q: string) {
@@ -142,7 +143,7 @@ async function skills(ctx: Ctx, viewer: Viewer, q: string) {
       ])
   const enabled = (row: Doc<'skills'>) => row.enabled !== false
   return (await readable(ctx, viewer, own.filter(enabled), shared.filter(enabled)))
-    .map(row => ({ id: row._id, name: row.name, description: row.description }))
+    .map(row => ({ id: row._id, name: row.name, description: row.description, scope: row.scope ?? 'personal' }))
 }
 
 async function mcpServers(ctx: Ctx, viewer: Viewer, q: string) {
@@ -161,7 +162,7 @@ async function mcpServers(ctx: Ctx, viewer: Viewer, q: string) {
           i.eq('workspaceId', viewer.workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined)).order('desc').take(SCAN),
       ])
   // Only names and descriptions: a server's address and credentials never appear in mentions.
-  return (await readable(ctx, viewer, own, shared)).map(row => ({ id: row._id, name: row.name, description: row.description }))
+  return (await readable(ctx, viewer, own, shared)).map(row => ({ id: row._id, name: row.name, description: row.description, scope: row.scope ?? 'personal' }))
 }
 
 /**

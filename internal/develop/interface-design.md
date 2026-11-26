@@ -198,7 +198,7 @@ cmdk owns active-descendant selection, pointer activation, disabled-row skipping
 and list scrolling. `shouldFilter={false}` preserves application-ranked results
 and category order; `vimBindings={false}` leaves Ctrl+K to the shortcut owner.
 The input keeps focus while navigating results. Tab stays within the modal;
-the breadcrumb is its only other Tab stop. Enter on the breadcrumb goes back
+the breadcrumb and the filter (when shown) are its only other Tab stops. Enter on the breadcrumb goes back
 without also activating a result. Escape goes back once in a category, then
 closes at the root. Rows keep stable IDs, callbacks, icons and descriptions.
 `GlobalSearchDialog` still owns async queries, cancellation and real destinations.
@@ -208,6 +208,13 @@ The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
 70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
 Descriptions cap at 45% of their row so long agent instructions cannot hide
 the result title or overflow the mobile palette.
+The palette has no dividing lines: none under the search row (`CommandInput`) or
+the category breadcrumb, as no other header in the app has one. A `filter` sits
+at the right of the search row (`CommandInput` `trailing`), and an item row's
+`trailing` element follows its description. Global search uses them for scope
+(`SearchScopeFilter`, and a `ScopeTag` only on results from the other mode; see
+`internal/develop/workspace-and-personal.md`). The filter's buttons do not take
+focus on click, so typing and arrow keys keep working in the input.
 `CommandDialog` opens and closes with no animation (content and backdrop):
 it is opened by keyboard many times a day, so motion there only reads as lag.
 Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper
