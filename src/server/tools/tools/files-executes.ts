@@ -4,6 +4,7 @@ import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERR
 import { utf8ByteLength } from '@/shared/storage/convex-file-content'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { ownerField, ownerNamesFor, type OwnerLabel } from './owner-names'
 
 /**
  * Agent tools over the workspace file system (`/api/v1/files`): list, read,
@@ -30,6 +31,7 @@ type FileSummary = {
   isStorageBacked?: boolean
   scope?: 'personal' | 'workspace'
   archivedAt?: number
+  userId?: string
 }
 
 type FileDetail = FileSummary & { textContent?: string; textInObjectStore?: boolean }
@@ -86,7 +88,7 @@ function send(options: OverlayToolsOptions, method: 'POST' | 'PATCH', body: Reco
   )
 }
 
-function summarize(file: FileSummary) {
+function summarize(file: FileSummary, owner?: OwnerLabel) {
   return {
     fileId: file._id,
     name: file.name,
@@ -98,6 +100,7 @@ function summarize(file: FileSummary) {
     updatedAt: file.updatedAt,
     // Who can see it: Personal is the owner's alone; Workspace is every member's.
     scope: file.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+    ...ownerField(owner),
     ...(file.archivedAt !== undefined ? { archived: true } : {}),
   }
 }
@@ -159,7 +162,7 @@ async function savedFile(
 
 export async function executeListFiles(
   options: OverlayToolsOptions,
-  input: { folderId?: string; scope?: 'personal' | 'workspace' },
+  input: { folderId?: string; scope?: 'personal' | 'workspace'; archived?: boolean },
 ) {
   try {
     // The list endpoint returns at most 100 rows per page.
@@ -170,7 +173,8 @@ export async function executeListFiles(
       const params = new URLSearchParams({ summary: 'true', page: 'true', limit: '100' })
       if (input.folderId) params.set('parentId', input.folderId)
       const scope = roomListScope(options, input.scope)
-      if (scope) params.set('view', scope)
+      if (input.archived) params.set('view', 'archived')
+      else if (scope) params.set('view', scope)
       if (cursor) params.set('cursor', cursor)
       const res = await get(options, params)
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }
@@ -179,9 +183,15 @@ export async function executeListFiles(
       hasMore = page.hasMore
       cursor = page.nextCursor
     } while (hasMore && cursor && files.length < LIST_LIMIT)
+    // The archived view spans Personal and Workspace; a room (or a scope asked for) keeps to its own.
+    const archivedScope = input.archived ? roomListScope(options, input.scope) : undefined
+    const listed = files
+      .filter((file) => !archivedScope || (file.scope === 'workspace' ? 'workspace' : 'personal') === archivedScope)
+      .slice(0, LIST_LIMIT)
+    const ownerOf = await ownerNamesFor(options, listed.map((file) => file.userId))
     return {
       success: true,
-      files: files.slice(0, LIST_LIMIT).map(summarize),
+      files: listed.map((file) => summarize(file, ownerOf(file.userId))),
       ...(hasMore || files.length > LIST_LIMIT ? { truncated: true } : {}),
     }
   } catch (err) {
@@ -201,7 +211,8 @@ export async function executeReadFile(
     if (file.type === 'folder') return { success: false, error: 'That is a folder; use list_files with its id.' }
     if (file.kind === 'note') return { success: false, error: 'That is a note; use get_note to read it.' }
     const text = file.textContent ?? ''
-    const base = { ...summarize(file), revision: String(file.updatedAt) }
+    const ownerOf = await ownerNamesFor(options, [file.userId])
+    const base = { ...summarize(file, ownerOf(file.userId)), revision: String(file.updatedAt) }
     if (!text) {
       return {
         success: true,

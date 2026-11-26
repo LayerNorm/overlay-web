@@ -838,6 +838,7 @@ export async function executeGenerateImage(
     modelId?: string
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
     referenceImageUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, referenceImageUrl } = input
@@ -851,6 +852,7 @@ export async function executeGenerateImage(
         imageUrl: referenceImageUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -890,6 +892,7 @@ export async function executeGenerateVideo(
     videoSubMode?: string
     imageUrl?: string
     referenceVideoUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, duration, videoSubMode, imageUrl, referenceVideoUrl } = input
@@ -905,6 +908,7 @@ export async function executeGenerateVideo(
         imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -951,6 +955,13 @@ export async function executeGenerateVideo(
               status: 'failed',
               outputId: outputId ?? (event.outputId as string),
               error: event.error,
+            }
+          } else if (event.type === 'error') {
+            // Nothing was started (budget, policy, or the output could not be saved), so nothing is pending.
+            return {
+              success: false,
+              status: 'failed',
+              error: (event.message as string | undefined) ?? (event.error as string | undefined) ?? 'Video generation failed',
             }
           }
         } catch (_error) {

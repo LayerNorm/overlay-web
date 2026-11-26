@@ -647,7 +647,7 @@ export class FileService {
     }
 
     if (proxyTarget.r2Key) {
-      if (!isOwnedStorageKey(args.userId, proxyTarget.r2Key)) {
+      if (!isOwnedStorageKey(proxyTarget.ownerUserId ?? args.userId, proxyTarget.r2Key)) {
         return { kind: 'json', payload: { error: 'Not found' }, status: 404 }
       }
       await this.deps.repository.recordFileBandwidth({
