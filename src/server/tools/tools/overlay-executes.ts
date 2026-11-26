@@ -431,6 +431,9 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
   }
 }
 
+/** At most this many pages of 100 archived automations are searched. */
+const ARCHIVED_AUTOMATION_PAGES = 5
+
 type ListViewInput = { scope?: 'personal' | 'workspace'; archived?: boolean }
 
 /** `&view=…` for a scope-aware list: archived when asked, else the room's Workspace scope or the requested one. */
@@ -496,19 +499,7 @@ export async function executeListAutomations(
   input: { query?: string; scope?: 'personal' | 'workspace'; archived?: boolean },
 ) {
   try {
-    const res = await callInternalApiGet(
-      `/api/v1/automations?limit=100${listViewParam(options, input)}`,
-      options.accessToken,
-      options.baseUrl,
-      options.forwardCookie,
-      options.serverSecret,
-      options.userId,
-      options.workspaceId,
-    )
-    if (!res.ok) {
-      return { success: false, error: 'Failed to fetch automations' }
-    }
-    const listed = unwrapPaginatedData<{
+    type AutomationRow = {
       _id: string
       name: string
       description?: string
@@ -519,7 +510,29 @@ export async function executeListAutomations(
       lastRunAt?: number
       lastError?: string
       scope?: 'personal' | 'workspace'
-    }>(await res.json())
+      updatedAt?: number
+    }
+    // Archived automations can be many and old; page through them (100 a page) so an older one can still be found.
+    const listed: AutomationRow[] = []
+    let before: number | undefined
+    for (let page = 0; page < (input.archived ? ARCHIVED_AUTOMATION_PAGES : 1); page++) {
+      const res = await callInternalApiGet(
+        `/api/v1/automations?limit=100${listViewParam(options, input)}${before !== undefined ? `&beforeUpdatedAt=${before}` : ''}`,
+        options.accessToken,
+        options.baseUrl,
+        options.forwardCookie,
+        options.serverSecret,
+        options.userId,
+        options.workspaceId,
+      )
+      if (!res.ok) {
+        return { success: false, error: 'Failed to fetch automations' }
+      }
+      const rows = unwrapPaginatedData<AutomationRow>(await res.json())
+      listed.push(...rows)
+      before = rows.at(-1)?.updatedAt
+      if (rows.length < 100 || before === undefined) break
+    }
     const automations = inArchivedScope(options, input, listed)
     if (input.query) {
       const q = input.query.toLowerCase()

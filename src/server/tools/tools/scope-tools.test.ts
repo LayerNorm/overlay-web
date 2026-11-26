@@ -153,3 +153,18 @@ test('archived skills and automations can be listed to restore, and a room sees 
     assert.deepEqual((room.result as unknown as Record<string, Array<{ _id: string }>>)[key].map((r) => r._id), ['w'], key)
   }
 })
+
+test('archived automations are paged so an older one can still be found', async () => {
+  const { executeListAutomations } = await import('./overlay-executes')
+  const page = (start: number, count: number) => Array.from({ length: count }, (_, i) => ({
+    _id: `a${start + i}`, name: start + i === 150 ? 'Morning Digest' : `Old ${start + i}`, instructions: 'i', enabled: false, scope: 'workspace', updatedAt: 10_000 - (start + i),
+  }))
+  let calls = 0
+  const { seen, result } = await recording(
+    () => executeListAutomations(alone, { archived: true, query: 'morning digest' }),
+    () => Response.json(calls++ === 0 ? page(0, 100) : page(100, 60)),
+  )
+  assert.equal(seen.length, 2)
+  assert.equal(seen[1]?.url.searchParams.get('beforeUpdatedAt'), String(10_000 - 99))
+  assert.deepEqual((result as unknown as { automations: Array<{ _id: string }> }).automations.map((a) => a._id), ['a150'])
+})
