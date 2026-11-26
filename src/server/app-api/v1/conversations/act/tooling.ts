@@ -39,6 +39,7 @@ import {
 } from '@/shared/security/safe-log'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import { isPaidPlan } from '@/server/billing/billing-runtime-details'
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
 import { API_TOOL_IDS } from '@overlay/tools-core/policy'
@@ -178,6 +179,8 @@ export async function prepareActTooling(params: {
   preloadTasks: ActToolPreloadTasks
   requestFingerprint: string
   billingProgrammaticSubjectId?: string
+  /** How long run_api may wait for a Monid run (see OverlayToolsOptions.apiRunWaitMs). */
+  apiRunWaitMs?: number
   workspaceId?: string
   requestedToolIds?: readonly ChatToolRequestId[]
   /** A Notebook chat turn: the open note's read and edit tools are always offered. */
@@ -225,7 +228,8 @@ export async function prepareActTooling(params: {
   const policyToolIds = applyAccountToolPolicy(withoutUnavailableApiTools(applyRuntimeToolGates(
     baseToolIds,
     capabilities,
-  ), { paid: params.paid, configured: await apiToolsConfigured() }), params.accountAllowedToolIds)
+  // The plan, not today's balance: run_api's own budget check is where a low balance triggers auto top-up.
+  ), { paid: isPaidPlan(params.entitlements), configured: await apiToolsConfigured() }), params.accountAllowedToolIds)
   const allowedOverlayToolIds = params.sharedRoom
     ? withoutSharedRoomWithheldTools(policyToolIds)
     : policyToolIds
@@ -275,6 +279,7 @@ export async function prepareActTooling(params: {
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
         },
+        ...(params.apiRunWaitMs !== undefined ? { apiRunWaitMs: params.apiRunWaitMs } : {}),
       }),
     ),
     capabilities.webSearch
@@ -480,7 +485,8 @@ function withRequestedOverlayToolIds(
 
 /**
  * Data and APIs (internal/develop/monid.md) need Overlay's Monid key and a paid plan, since every run is charged to the
- * workspace. Without either, the tools are not offered at all.
+ * workspace. Without either, the tools are not offered at all. `paid` is the plan alone: a low balance is refused by
+ * run_api's budget check, which is also where auto top-up starts.
  */
 export function withoutUnavailableApiTools(toolIds: string[], state: { paid: boolean; configured: boolean }): string[] {
   if (state.paid && state.configured) return toolIds

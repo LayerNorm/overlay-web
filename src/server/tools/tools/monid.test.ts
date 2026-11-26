@@ -597,3 +597,72 @@ test('withExtension keeps or adds the real extension', () => {
   assert.equal(withExtension('mug.GLB', 'model.glb'), 'mug.GLB')
   assert.equal(withExtension('a/b', 'x'), 'a-b')
 })
+
+// ── review findings: status checks, wait limits ─────────────────────────────
+
+test('a status check that fails transiently is retried and the run still settles', async () => {
+  const h = harness({
+    run: async () => completed({ status: 'RUNNING', billing: undefined }),
+    getRun: async (_id, attempt) => {
+      if (attempt === 0) throw new Error('fetch failed')
+      if (attempt === 1) throw new MonidApiError(503, 'HTTP_503', 'unavailable')
+      return completed({ billing: undefined, cost: { value: 0.15, currency: 'USD' } })
+    },
+  })
+  const result = await executeRunApi(context, runInput, { toolCallId: 'c' }, h.deps)
+  assert.equal(result.success, true)
+  assert.equal(h.calls.getRun.length, 3)
+  assert.equal(h.calls.stopRun.length, 0)
+  assert.equal(h.calls.charge.length, 1)
+  assert.equal(h.calls.charge[0]!.operationId, 'monid.run:run_1')
+})
+
+test('a status check that keeps failing stops the run at the deadline', async () => {
+  const h = harness({
+    run: async () => completed({ status: 'RUNNING', billing: undefined }),
+    getRun: async () => { throw new MonidApiError(500, 'HTTP_500', 'down') },
+    stopRun: async () => completed({ status: 'STOPPING', billing: undefined }),
+  })
+  const result = await executeRunApi(context, runInput, {}, h.deps) as { error: string; message: string }
+  assert.equal(result.error, 'timed_out')
+  assert.match(result.message, /run_1/)
+  assert.equal(h.calls.stopRun.length, 1)
+  assert.equal(h.calls.charge.length, 0)
+})
+
+test('a status check that cannot succeed stops the run, and settles it if it ended', async () => {
+  const h = harness({
+    run: async () => completed({ status: 'RUNNING', billing: undefined }),
+    getRun: async (_id, attempt) => {
+      if (attempt === 0) throw new MonidApiError(403, 'FORBIDDEN', 'no')
+      return completed({ billing: undefined, cost: { value: 0.2, currency: 'USD' } })
+    },
+  })
+  const result = await executeRunApi(context, runInput, {}, h.deps)
+  assert.equal(result.success, true)
+  assert.equal(h.calls.stopRun.length, 1)
+  assert.equal(h.calls.charge[0]!.providerCostUsd, 0.2)
+
+  const stuck = harness({
+    run: async () => completed({ status: 'RUNNING', billing: undefined }),
+    getRun: async (_id, attempt) => {
+      if (attempt === 0) throw new MonidApiError(403, 'FORBIDDEN', 'no')
+      return completed({ status: 'STOPPING', billing: undefined })
+    },
+  })
+  const failed = await executeRunApi(context, runInput, {}, stuck.deps) as { error: string; runId: string }
+  assert.equal(failed.error, 'service_unavailable')
+  assert.equal(failed.runId, 'run_1')
+  assert.equal(stuck.calls.charge.length, 0)
+})
+
+test('a shorter wait (MCP) stops the run before the request limit', async () => {
+  const h = harness({
+    run: async () => completed({ status: 'RUNNING', billing: undefined }),
+    getRun: async () => completed({ status: 'RUNNING', billing: undefined }),
+  })
+  const result = await executeRunApi({ ...context, apiRunWaitMs: 4 * 60_000 }, runInput, {}, h.deps)
+  assert.equal((result as { error: string }).error, 'timed_out')
+  assert.equal(h.calls.sleep.reduce((a, b) => a + b, 0), 4 * 60_000)
+  assert.equal(h.calls.stopRun.length, 1)
+})

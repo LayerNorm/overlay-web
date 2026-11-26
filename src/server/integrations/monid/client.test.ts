@@ -130,3 +130,12 @@ test('runCostUsd reads reportedCost, then the cost a fetched run carries', () =>
   assert.equal(runCostUsd({ cost: { value: 1, currency: 'EUR' } }), null)
   assert.equal(runCostUsd({}), null)
 })
+
+test('a catalog page without a readable list fails instead of shortening the blocklist', async () => {
+  const { fetch } = fakeFetch([
+    { status: 200, body: { items: [{ provider: 'agentmail', endpoint: '/inboxes' }], cursor: 'c2' } },
+    { status: 200, body: { unexpected: true } },
+  ])
+  await assert.rejects(createMonidClient({ apiKey: 'k', fetch }).listSideEffectEndpoints(),
+    (error: unknown) => error instanceof MonidApiError && error.code === 'CATALOG_UNREADABLE')
+})

@@ -15,10 +15,10 @@ Code: `src/server/integrations/monid/client.ts` (HTTP client), `src/server/tools
 
 ## Who gets them
 
-- Offered only when Overlay has a Monid key (`MONID_API_KEY`, WorkOS Vault first, then env) and the turn's plan is paid (`withoutUnavailableApiTools` in `act/tooling.ts`). The hosted-provider kill switch also turns them off.
+- Offered only when Overlay has a Monid key (`MONID_API_KEY`, WorkOS Vault first, then env) and the workspace is on a paid plan (`withoutUnavailableApiTools` in `act/tooling.ts`). The gate is the plan, not today's balance: a low balance is refused by `run_api`'s budget check, which is also where auto top-up starts. The hosted-provider kill switch also turns them off.
 - Personal chat: always in the base set (`exposure-policy.ts`), because requests for them rarely name a tool.
 - Agents: the `apis` group. New agents get it; agents saved before it existed must turn it on.
-- Outside apps over MCP: the Everything level.
+- Outside apps over MCP: the Everything level. The MCP route stops at 300 seconds, so `run_api` there waits at most 4 minutes (`EXTERNAL_APP_API_RUN_WAIT_MS`, passed as `apiRunWaitMs`) and still has time to stop and settle the run.
 - Shared rooms: allowed. Runs touch no private data; files land in workspace Files there.
 
 ## Read-only only
@@ -39,7 +39,18 @@ Workspace budget only, like `web_search`:
 2. `maxCost` on the run is the workspace's remaining budget with the usage markup taken back out (`remainingCents / 100 / (1 + markup)`). It is a hard cap, not an estimate: Monid refuses (400 `MAX_COST_EXCEEDED`, nothing charged) a run the workspace could not pay for. Not sent when billing is disabled.
 3. After: `generationUsagePolicy.charge` with the run's cost as `providerCostUsd`: `billing.reportedCost` on a synchronous run's response, or `cost` (dollars) on a run read back with `GET /v1/runs/{id}`, which is how every asynchronous run finishes. Preview QA found asynchronous runs going uncharged before this fallback, so `OVERLAY_USAGE_MARKUP_BPS` applies. The usage label is `monid/<provider><endpoint>`. The operation id is `monid.run:<runId>`, so a charge is never counted twice.
 
+Within a harness step, `run_api` runs exclusively (not parallel), so two runs never both pass the same remaining-budget check. MCP JSON-RPC batches still run in parallel; each run is still capped by `maxCost`, and the charge is clipped to the remaining credit.
+
 Runs Monid does not charge (failed, timed out, blocked, stopped, provider 402) report zero and cost the workspace nothing. The idempotency key is `overlay-<toolCallId>`, so a retried tool call returns the original run instead of paying twice. Each run carries `tag: <workspaceId>` to match Monid's records to ours.
+
+## Waiting for a run
+
+`waitForRun` (`monid-wait.ts`) polls from 2 seconds, backing off to 10, for at most 10 minutes (4 over MCP). Once Monid accepts a run it goes on without Overlay, so every way out either sees it end (and settles it) or asks Monid to stop it:
+
+- A status check that fails with a network error, timeout, 429 or 5xx is retried until the deadline.
+- Any other status error, the deadline, or the tool call's abort signal stops the run; a run that ended meanwhile is still settled.
+- A run that could be neither seen to end nor confirmed stopped logs `[monid] run left unsettled` with the run id and payer, for reconciliation by hand. There is no automatic reconciliation yet.
+- Stopping a durable chat or agent turn does not abort an in-flight tool step: the step keeps waiting and settles the run normally, so the run is charged, not lost.
 
 ## Results
 
@@ -58,5 +69,6 @@ Runs Monid does not charge (failed, timed out, blocked, stopped, provider 402) r
 ## Open
 
 - Side-effecting endpoints (above).
+- Automatic reconciliation of `[monid] run left unsettled` runs, and stopping a Monid run when a durable turn is stopped.
 - Monid's reseller and data-licensing terms have not been confirmed in writing.
 - Monid publishes no numeric rate limits or synchronous timeout; a single 429 with `Retry-After` up to 5 seconds is retried.

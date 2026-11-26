@@ -71,4 +71,9 @@ export interface OverlayToolsOptions {
   artifactPublicationAuthority?: ArtifactPublicationAuthority
   /** Required by paid tools that charge the workspace directly (`run_api`). */
   billing?: ToolBillingContext
+  /**
+   * How long run_api waits for an asynchronous Monid run before stopping it. Defaults to ten minutes; callers on a
+   * shorter request limit (MCP, 300 s) pass less so the run is stopped and settled before the request is cut off.
+   */
+  apiRunWaitMs?: number
 }

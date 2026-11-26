@@ -1,19 +1,18 @@
 import 'server-only'
 
 import {
-  MONID_TERMINAL_STATUSES,
   MonidApiError,
   monidEndpointKey,
   runCostUsd,
   type MonidClient,
   type MonidEndpointCard,
   type MonidInspectResult,
-  type MonidPrice,
   type MonidRun,
   type MonidRunInput,
 } from '@/server/integrations/monid/client'
 import { logger } from '@/server/observability/logger'
 import { defaultMonidToolDeps, type MonidToolDeps } from './monid-deps'
+import { waitForRun } from './monid-wait'
 import {
   MAX_INLINE_OUTPUT_CHARS,
   artifactFileName,
@@ -38,15 +37,12 @@ export const MONID_TOOL_IDS = ['search_apis', 'inspect_api', 'run_api', 'save_ap
 
 /** How long run_api waits for an asynchronous run before stopping it. */
 const RUN_WAIT_MS = 10 * 60_000
-const POLL_START_MS = 2_000
-const POLL_MAX_MS = 10_000
 const MAX_SCHEMA_CHARS = 30_000
 const MAX_OUTPUT_FILES = 10
 
 type Failure = { success: false; error: string; message: string }
 
-
-type ToolContext = Pick<OverlayToolsOptions, 'userId' | 'workspaceId' | 'agentId' | 'sharedRoom' | 'billing'>
+type ToolContext = Pick<OverlayToolsOptions, 'userId' | 'workspaceId' | 'agentId' | 'sharedRoom' | 'billing' | 'apiRunWaitMs'>
 
 // ── search_apis ──────────────────────────────────────────────────────────────
 
@@ -206,30 +202,16 @@ export async function executeRunApi(
     return monidFailure(error, 'run_api')
   }
 
-  const deadline = deps.now() + RUN_WAIT_MS
-  let interval = POLL_START_MS
-  try {
-    while (!MONID_TERMINAL_STATUSES.has(run.status)) {
-      if (call.abortSignal?.aborted || deps.now() >= deadline) {
-        run = await stopRun(client, run)
-        if (!MONID_TERMINAL_STATUSES.has(run.status)) {
-          return failure('timed_out', `The run ${run.runId} did not finish in time and is stopping. A stopped run is not charged.`)
-        }
-        break
-      }
-      await deps.sleep(interval, call.abortSignal)
-      interval = Math.min(POLL_MAX_MS, Math.round(interval * 1.5))
-      run = await client.getRun(run.runId)
-    }
-  } catch (error) {
-    if (call.abortSignal?.aborted) {
-      run = await stopRun(client, run).catch((_error) => run)
-      if (!MONID_TERMINAL_STATUSES.has(run.status)) return failure('cancelled', 'The run was cancelled.')
-    } else {
-      return monidFailure(error, 'run_api')
-    }
+  const waited = await waitForRun(client, run, { waitMs: context.apiRunWaitMs ?? RUN_WAIT_MS, abortSignal: call.abortSignal }, deps)
+  if (!waited.ended) {
+    // Monid may still finish and bill this run: log the run id and payer so the charge can be reconciled by hand
+    // (`monid.run:<runId>` keeps a later charge single).
+    logger.error('[monid] run left unsettled', { runId: waited.run.runId, status: waited.run.status, reason: waited.reason, modelId, workspaceId: context.workspaceId, userId: context.userId })
+    if (waited.reason === 'status_unreadable') return { ...monidFailure(waited.error, 'run_api'), runId: waited.run.runId }
+    const what = waited.reason === 'cancelled' ? 'was cancelled' : 'did not finish in time'
+    return failure(waited.reason, `The run ${waited.run.runId} ${what} and is stopping. A stopped run is not charged.`)
   }
-  return await settle(context, billing, run, modelId, deps)
+  return await settle(context, billing, waited.run, modelId, deps)
 }
 
 // ── save_api_file ────────────────────────────────────────────────────────────
@@ -295,15 +277,6 @@ async function startRun(
     }
     throw error
   }
-}
-
-async function stopRun(client: MonidClient, run: MonidRun): Promise<MonidRun> {
-  try {
-    await client.stopRun(run.runId)
-  } catch (error) {
-    logger.warn('[monid] stop request failed', { runId: run.runId, error: errorMessage(error) })
-  }
-  return await client.getRun(run.runId).catch((_error) => run)
 }
 
 /** Charges what Monid reports for a finished run, then shapes its result for the model. */

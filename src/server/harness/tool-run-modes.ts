@@ -28,7 +28,8 @@ const PARALLEL_TOOL_IDS = new Set([
   'list_notes', 'list_skills', 'find_skills', 'load_skill', 'search_skill_registries',
   'list_automations', 'list_tasks', 'list_agents', 'read_agent_reply',
   'web_search', 'deep_search', 'web_fetch', 'search_mcp_tools',
-  'search_apis', 'inspect_api', 'run_api', 'save_api_file',
+  // run_api is not here: each run checks the remaining budget before it starts, so paid runs go one at a time.
+  'search_apis', 'inspect_api', 'save_api_file',
 ])
 
 /** Computer state shared by every command and file on that computer. */

@@ -195,7 +195,9 @@ export function createMonidClient(options: {
       for (let page = 0; page < 20; page++) {
         const query = new URLSearchParams({ readonly: 'false', limit: '100', ...(cursor ? { cursor } : {}) })
         const { data } = await request<{ items?: MonidEndpointCard[]; cursor?: string }>('GET', `/public/v1/endpoints?${query}`)
-        for (const item of data?.items ?? []) keys.add(monidEndpointKey(item.provider, item.endpoint))
+        // A page without a readable list would silently shorten the blocklist: refuse instead (fail closed).
+        if (!Array.isArray(data?.items)) throw new MonidApiError(502, 'CATALOG_UNREADABLE', 'The Monid side-effect catalog returned no list.')
+        for (const item of data.items) keys.add(monidEndpointKey(item.provider, item.endpoint))
         cursor = data?.cursor
         if (!cursor) return keys
       }
