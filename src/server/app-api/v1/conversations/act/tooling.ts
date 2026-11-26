@@ -168,6 +168,8 @@ export async function prepareActTooling(params: {
    * offered, connected accounts are the workspace's only, and MCP servers are the workspace's shared ones.
    */
   sharedRoom?: boolean
+  /** Personal items the asking message included on purpose: by-id reads and edits may reach them in a shared room. */
+  includedItemIds?: readonly string[]
   /**
    * The account tool allow-list is the caller's whole tool surface (an outside app
    * connected over MCP), as it is for a workspace agent, rather than a narrowing of
@@ -273,6 +275,7 @@ export async function prepareActTooling(params: {
         agentId: params.agentId,
         agentPrincipalId: params.agentPrincipalId,
         sharedRoom: params.sharedRoom,
+        ...(params.includedItemIds?.length ? { includedItemIds: params.includedItemIds } : {}),
         workspaceId: params.workspaceId,
         idempotencyKey: params.idempotencyKey,
         artifactPublicationAuthority: params.artifactPublicationAuthority,

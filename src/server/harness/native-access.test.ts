@@ -51,7 +51,7 @@ const delivery = () => ({
   runner: 'workflow', executionEngine: 'overlay_harness', mode: 'room', status: 'running',
 })
 const room = () => ({
-  conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question',
+  conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question', includedItems: [],
   directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask', visibility: 'workspace' }] },
   participants: [{ principalId: 'human-principal', principalType: 'human' }, { principalId: 'agent-principal', principalType: 'agent' }],
 })

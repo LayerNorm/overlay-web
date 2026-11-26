@@ -139,7 +139,11 @@ Every search hit (`search_knowledge`, `search_memory`, `search_messages`) and ev
 read carries `scope: personal | workspace`. Files and notes also carry `owner` (`you`, or the creator's name when they
 are a member; `ownerNamesFor`, one lookup per result list) and tasks `createdBy`, so the model can say "Maya's note".
 
-Not covered: a per-message opt-in to include a Personal item on purpose (rooms let you @-mention only people today).
+- **Including a Personal item on purpose**: a note, file or automation the person @-mentions in their room message is
+  stored on the message (`includedItems`, at most 10, human authors only) and named to the agent in an
+  `<included_personal_items>` block. For the turn that message starts, by-id reads and edits may reach those items
+  (`includedItemIds` on the tool options, checked in `refusesRoomItem`); lists and searches stay Workspace-only, and no
+  other Personal item is reachable. The harness re-reads the message on every tool step (`loadRoomTurnContext`).
 
 ## Move, archive and restore
 

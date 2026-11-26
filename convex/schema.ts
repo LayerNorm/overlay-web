@@ -1631,6 +1631,15 @@ export default defineSchema({
       receiptId: v.string(),
       invocation: v.number(),
     })),
+    /**
+     * Personal items the human author @-mentioned to include on purpose: in a room others can read, the agent turn this
+     * message starts may open these (and no other Personal items). At most 10.
+     */
+    includedItems: v.optional(v.array(v.object({
+      type: v.union(v.literal('file'), v.literal('automation')),
+      id: v.string(),
+      name: v.string(),
+    }))),
     userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),

@@ -329,7 +329,8 @@ export async function refreshNativeHarnessAccess(
       throw new FatalError('Native harness execution ownership changed during lease renewal.')
     }
   }
-  return { agent, sharedRoom, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
+  return { agent, sharedRoom, latestUserText: room.latestUserText, includedItemIds: room.includedItems.map(item => item.id),
+    entitlements: gate.runtimeEntitlements, paid: gate.paid,
     billingProgrammaticSubjectId,
     runStatus: state.status,
     requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true }

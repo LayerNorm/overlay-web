@@ -606,8 +606,10 @@ async function roomAutomationRefusal(options: OverlayToolsOptions, automationId:
     options.accessToken, options.baseUrl, options.forwardCookie, options.serverSecret, options.userId, options.workspaceId,
   )
   if (!res.ok) return { success: false, error: 'Automation not found' }
-  const automation = await res.json().catch((_error) => null) as { scope?: string } | null
-  return !automation || refusesRoomItem(options, automation) ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
+  const automation = await res.json().catch((_error) => null) as { scope?: string; _id?: string } | null
+  // The id asked for is the one the person may have included; the row's own id must match it.
+  return !automation || refusesRoomItem(options, { ...automation, _id: automation._id ?? automationId.trim() })
+    ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
 }
 
 export async function executeCreateAutomation(
