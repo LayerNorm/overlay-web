@@ -536,9 +536,12 @@ export class FileService {
     if (typeof file.sizeBytes === 'number' && file.sizeBytes > MAX_HTML_PAGE_BYTES) return null
     const stored = await this.readObjectStoreText(file, file.userId)
     if (stored !== null) return { name: file.name, html: stored }
-    const content = file.textContent ?? file.content ?? ''
-    if (!isBinaryProxyContent(content)) return { name: file.name, html: content }
-    if (typeof file.r2Key !== 'string' || !isOwnedStorageKey(file.userId, file.r2Key)) return null
+    // An upload's bytes are the page; its row may hold only a download path or an empty extracted-text field.
+    if (typeof file.r2Key !== 'string' || !file.r2Key) {
+      const content = file.content || file.textContent || ''
+      return isBinaryProxyContent(content) ? null : { name: file.name, html: content }
+    }
+    if (!isOwnedStorageKey(file.userId, file.r2Key)) return null
     const bytes = await this.storage.downloadBuffer(file.r2Key)
     if (!bytes || bytes.byteLength > MAX_HTML_PAGE_BYTES) return null
     await this.deps.repository.recordFileBandwidth({ userId: args.userId, bytes: bytes.byteLength })

@@ -536,7 +536,7 @@ test('FileService creates files in the caller\'s workspace so workspace listings
 test('FileService.getHtmlPage serves an HTML file from its row or its stored object, and nothing else', async () => {
   const rows: Record<string, Record<string, unknown>> = {
     inline: { _id: 'inline', userId: 'user_1', name: 'page.html', content: '<h1>Row</h1>' },
-    stored: { _id: 'stored', userId: 'user_1', name: 'walk.html', content: '/api/v1/files/stored/content', r2Key: 'users/user_1/files/stored/walk.html', sizeBytes: 12 },
+    stored: { _id: 'stored', userId: 'user_1', name: 'walk.html', textContent: '', content: '/api/v1/files/stored/content', r2Key: 'users/user_1/files/stored/walk.html', sizeBytes: 12 },
     foreign: { _id: 'foreign', userId: 'user_1', name: 'x.html', content: '/api/v1/files/foreign/content', r2Key: 'users/user_2/files/x/x.html' },
     text: { _id: 'text', userId: 'user_1', name: 'notes.txt', content: 'hello' },
   }
