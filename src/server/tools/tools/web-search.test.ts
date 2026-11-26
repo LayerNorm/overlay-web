@@ -14,6 +14,7 @@ import {
   buildTinyfishRequestBody,
   buildTinyfishSearchParams,
   executeDeepSearch,
+  executeWebFetch,
   fetchTinyfishPages,
   fetchTinyfishSearch,
   searchWebWithFallback,
@@ -454,4 +455,16 @@ test('a free-tier search uses its allowance before running, instead of the works
   // The allowance refuses, so neither the budget policy nor a provider is reached.
   await assert.rejects(executeDeepSearch({ objective: 'x', searchQueries: ['x'] } as never, context), refused)
   assert.deepEqual(counted, [['deep_search', 1]])
+})
+
+test('a free-tier fetch counts each page against the allowance', async () => {
+  const counted: Array<[string, number]> = []
+  const refused = new Error('You have used this month\'s free web searches.')
+  const context = {
+    entitlements: {} as never,
+    userId: 'user-1',
+    allowance: async (toolName: string, searches: number) => { counted.push([toolName, searches]); throw refused },
+  }
+  await assert.rejects(executeWebFetch({ urls: ['https://a.example', 'https://b.example', 'https://c.example'] } as never, context), refused)
+  assert.deepEqual(counted, [['web_fetch', 3]])
 })

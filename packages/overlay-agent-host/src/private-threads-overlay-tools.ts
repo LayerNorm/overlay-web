@@ -25,15 +25,20 @@ export async function connectOverlayTools(
 ): Promise<OverlayToolsConnection | null> {
   if (!access) return null
   let client: MCPClient | null = null
+  // One deadline and Stop cover connecting and listing the tools, so neither can hold the turn.
+  const signal = AbortSignal.any([options.signal, AbortSignal.timeout(CONNECT_TIMEOUT_MS)])
   try {
-    client = await (options.connect ?? createMCPClient)({
+    const connecting = (options.connect ?? createMCPClient)({
       transport: { type: 'http', url: access.url, headers: { Authorization: `Bearer ${access.token}` }, redirect: 'error' },
       // Overlay's server is stateless and answers `initialize` directly.
       protocolVersionDiscovery: false,
       clientName: 'overlay-private-thread',
-      initializationOptions: { signal: AbortSignal.any([options.signal, AbortSignal.timeout(CONNECT_TIMEOUT_MS)]) },
+      initializationOptions: { signal },
     })
-    const tools = await client.tools() as ToolSet
+    // A connection that finishes after Stop or the deadline is closed, not left open.
+    void connecting.then((late) => { if (signal.aborted) void late.close().catch(() => undefined) }, () => undefined)
+    client = await untilAborted(connecting, signal)
+    const tools = await untilAborted(client.tools() as Promise<ToolSet>, signal)
     const connected = client
     return {
       tools,
@@ -45,6 +50,15 @@ export async function connectOverlayTools(
     options.onUnavailable?.(error instanceof Error ? error.message : String(error))
     return null
   }
+}
+
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason)
+    signal.addEventListener('abort', abort, { once: true })
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
 }
 
 /** This computer's tools win a name clash: they are what the thread runs on. */

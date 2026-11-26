@@ -371,11 +371,12 @@ async function executeWebSearch(
   return output
 }
 
-async function executeWebFetch(
+export async function executeWebFetch(
   input: WebFetchInput,
   billingContext?: WebSearchBillingContext,
 ): Promise<unknown> {
-  const billing = await checkWebSearchBudget(billingContext, 'web_fetch')
+  // Each fetched page counts against a free allowance, as each query does for a search.
+  const billing = await checkWebSearchBudget(billingContext, 'web_fetch', input.urls.length)
   const output = await postTinyfishFetch(buildTinyfishRequestBody(input))
   const capped = capFetchText(output, input.maxCharsPerPage ?? WEB_FETCH_DEFAULT_MAX_CHARS_PER_PAGE)
   await chargeWebSearch(billing, 1, 'web_fetch')

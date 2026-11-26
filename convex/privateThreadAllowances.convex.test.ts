@@ -28,4 +28,16 @@ describe('private thread allowances', () => {
       serverSecret: 'wrong', userId: 'user-1', period: '2026-11', resource: 'web_search', amount: 1, limit: 50,
     })).rejects.toThrow()
   })
+
+  test('deleting the account removes the person\u2019s counts', async () => {
+    process.env.INTERNAL_API_SECRET = 'web-test-only'
+    const t = convexTest(schema, modules)
+    const base = { serverSecret: 'web-test-only', period: '2026-11', resource: 'web_search' as const, limit: 50, amount: 1 }
+    await t.mutation(consume, { ...base, userId: 'user-1' })
+    await t.mutation(consume, { ...base, userId: 'user-1', period: '2026-12' })
+    await t.mutation(consume, { ...base, userId: 'user-2' })
+    await t.mutation(makeFunctionReference<'mutation'>('auth/users:deleteUserAccountByServer'), { serverSecret: 'web-test-only', userId: 'user-1' })
+    const rows = await t.run(async (ctx) => await ctx.db.query('privateThreadAllowances').collect())
+    expect(rows.map((row) => row.userId)).toEqual(['user-2'])
+  })
 })
