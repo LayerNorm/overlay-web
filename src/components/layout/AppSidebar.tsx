@@ -3,7 +3,6 @@
 import NextLink from 'next/link'
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
-import { CircleHelp, Moon, Settings, Sun } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
 import { ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, type PrimaryRailItem, type ShellAdapter, type SidebarCustomization } from '@overlay/shell-react'
 import { DEFAULT_SIDEBAR_MORE_PAGE_IDS, moveSidebarPage, resolveSidebarLayout } from '@overlay/app-core'
@@ -25,7 +24,8 @@ import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSi
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from '@overlay/shell-react'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
-import { HelpMenu } from './sidebar/HelpMenu'
+import { AccountMenuActions } from './sidebar/AccountMenuActions'
+import { BugReportDialog } from './sidebar/BugReportDialog'
 
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
@@ -139,6 +139,7 @@ export default function AppSidebar({
   })
   const { activityOnly, onToggleActivity } = useSidebarActivityFilter(s.routeState.panelKind)
   const appSettings = useOptionalAppSettings()
+  const [bugReportOpen, setBugReportOpen] = useState(false)
   const classicLayout = appSettings?.settings.useSecondarySidebar !== false
   const railExpanded = !classicLayout && !s.sidebarCollapsed
   const { sidebarCustomization, brandHomeHref } = useSidebarCustomization(s.railItems, classicLayout, s.brandConfig.homeHref)
@@ -181,9 +182,26 @@ export default function AppSidebar({
   const userAvatar = s.user ? (
     <SidebarAccountAvatar name={s.displayName} photoUrl={s.user.profilePictureUrl} />
   ) : null
+  const theme = appSettings?.settings.theme
+  const accountActions = (close: () => void, itemPaddingClass?: string) => (
+    <AccountMenuActions
+      theme={theme === 'dark' ? 'dark' : theme ? 'light' : undefined}
+      onToggleTheme={() => { void appSettings?.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' }) }}
+      onOpenSettings={() => {
+        // Settings lives in the contextual panel, so a collapsed panel opens with it (as the old rail button did).
+        s.setSidebarCollapsed(false)
+        s.router.push(s.activeWorkspaceId ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings') : '/app/settings')
+      }}
+      docsUrl={`${MARKETING_DOCS_URL}/help`}
+      onReportBug={() => setBugReportOpen(true)}
+      onClose={close}
+      itemPaddingClass={itemPaddingClass}
+    />
+  )
   const accountMenuContent = (
     <SidebarAccountMenu
       {...accountMenuProps}
+      extraItems={accountActions(s.closeAccountMenus)}
       onSignOut={() => {
         s.closeAccountMenus()
         void signOutToLanding()
@@ -193,6 +211,7 @@ export default function AppSidebar({
   const mobileAccountMenu = (
     <SidebarAccountMenu
       {...accountMenuProps}
+      extraItems={accountActions(closeMobileAccountMenus, 'py-2.5')}
       itemPaddingClass="py-2.5"
       onSignOut={() => {
         closeMobileAccountMenus()
@@ -268,23 +287,10 @@ export default function AppSidebar({
     : renderChatSection
   const sectionRows = workSections ? WORK_SECTION_ROWS : undefined
   const sectionActions = workSections ? { all: s.panelAction } : s.panelSectionActions
-  const settingsHref = s.activeWorkspaceId
-    ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings')
-    : '/app/settings'
-  const railFooterItems: PrimaryRailItem[] = [
-    ...(appSettings ? [{
-      id: 'theme', label: appSettings.settings.theme === 'dark' ? 'Use light theme' : 'Use dark theme',
-      icon: appSettings.settings.theme === 'dark' ? Sun : Moon,
-      onSelect: () => { void appSettings.updateSettings({ theme: appSettings.settings.theme === 'dark' ? 'light' : 'dark' }) },
-    }] : []),
-    { id: 'help', label: 'Help', icon: CircleHelp, onSelect: () => {} },
-    { id: 'settings', label: 'Settings', icon: Settings, active: s.routeState.panelKind === 'settings', href: settingsHref, onSelect: () => s.router.push(settingsHref) },
-    ...s.railFooterItems,
-  ]
   const mobileSidebarProps = resolveMobileSidebarProps({
     classicLayout,
     railItems: s.railItems,
-    classicFooterItems: railFooterItems,
+    classicFooterItems: s.railFooterItems,
     unifiedFooterItems: s.railFooterItems,
     closeMobileDrawer: s.closeMobileDrawer,
   })
@@ -296,8 +302,7 @@ export default function AppSidebar({
     themePreset: appSettings?.settings.theme === 'dark' ? appSettings.settings.darkThemePreset : appSettings?.settings.lightThemePreset,
     items: s.railItems,
     customization: sidebarCustomization,
-    footerItems: railFooterItems,
-    helpMenu: <HelpMenu collapsed={classicLayout || s.sidebarCollapsed} docsUrl={`${MARKETING_DOCS_URL}/help`} />,
+    footerItems: s.railFooterItems,
     panelKind: s.routeState.panelKind,
     panelNav: s.panelNav,
     panelAction: s.panelAction,
@@ -379,6 +384,7 @@ export default function AppSidebar({
           </SelectedSidebar>
         </MobileDrawer>
 
+      <BugReportDialog open={bugReportOpen} onOpenChange={setBugReportOpen} />
       <GlobalSearchDialog
         open={s.globalSearchOpen}
         onClose={s.closeGlobalSearch}

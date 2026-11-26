@@ -33,7 +33,7 @@ explicit role/flags, never the agent name. See Bring Your Own Agents for isolati
 
 An optional run questionnaire skipped without an answer sends an explicit `(skipped)` reply, including a single-question panel, so the waiting run can resume. Required empty answers remain blocked.
 
-The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The Workspace | Personal mode switch (`RailModeSwitch`) sits in the rail directly under the brand, on every page including Settings; the contextual panel has no scope toggle. The active rail destination toggles only its panel without navigating, except Chats, which starts a fresh draft in the current mode and keeps the panel open. Another destination opens its panel and keeps the mode. Files, Extensions, and Automations stay in More when their existing gates allow them.
+The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The Workspace | Personal mode switch (`RailModeSwitch`, a building for Workspace and a person for Personal) sits at the bottom of the rail directly above the account button, on every page including Settings; the contextual panel has no scope toggle. The rail has no other footer buttons: theme, Settings, Help and docs, and Submit a bug live in the account menu (`AccountMenuActions` passed to `SidebarAccountMenu` as `extraItems`, above Sign out), and the bug report dialog (`BugReportDialog`) is hosted by `AppSidebar` so it outlives the menu. Scrollbars are hidden app-wide in `globals.css`; scroll containers still scroll. The active rail destination toggles only its panel without navigating, except Chats, which starts a fresh draft in the current mode and keeps the panel open. Another destination opens its panel and keeps the mode. Files, Extensions, and Automations stay in More when their existing gates allow them.
 
 `src/app/double-sidebar.css` scopes the rounded content frame, default light/dark chrome, compact chat presentation, and curved agent-thread guides to this layout at desktop widths. Custom theme presets retain semantic colors. The mobile drawer, onboarding, and compact native desktop panel retain their existing layouts; macOS keeps a dedicated drag region above the shell.
 
@@ -198,7 +198,7 @@ cmdk owns active-descendant selection, pointer activation, disabled-row skipping
 and list scrolling. `shouldFilter={false}` preserves application-ranked results
 and category order; `vimBindings={false}` leaves Ctrl+K to the shortcut owner.
 The input keeps focus while navigating results. Tab stays within the modal;
-the breadcrumb is its only other Tab stop. Enter on the breadcrumb goes back
+the breadcrumb and the filter (when shown) are its only other Tab stops. Enter on the breadcrumb goes back
 without also activating a result. Escape goes back once in a category, then
 closes at the root. Rows keep stable IDs, callbacks, icons and descriptions.
 `GlobalSearchDialog` still owns async queries, cancellation and real destinations.
@@ -208,6 +208,13 @@ The palette uses the same Overlay tokens, 576px maximum width, 12vh top offset,
 70vh maximum height, 16px mobile gutter and the shared z-10070 dialog layer.
 Descriptions cap at 45% of their row so long agent instructions cannot hide
 the result title or overflow the mobile palette.
+The palette has no dividing lines: none under the search row (`CommandInput`) or
+the category breadcrumb, as no other header in the app has one. A `filter` sits
+at the right of the search row (`CommandInput` `trailing`), and an item row's
+`trailing` element follows its description. Global search uses them for scope
+(`SearchScopeFilter`, and a `ScopeTag` only on results from the other mode; see
+`internal/develop/workspace-and-personal.md`). The filter's buttons do not take
+focus on click, so typing and arrow keys keep working in the input.
 `CommandDialog` opens and closes with no animation (content and backdrop):
 it is opened by keyboard many times a day, so motion there only reads as lag.
 Run `node scripts/qa/command-interactions.mjs` for real palette/search-wrapper

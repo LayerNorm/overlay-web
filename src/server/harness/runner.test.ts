@@ -414,9 +414,10 @@ test('a provider-ignored tool-free progress choice cannot execute or request app
   const write = vi.fn(async () => ({ success: true }))
   const waitForApproval = vi.fn(async () => [])
   f.ports.waitForApproval = waitForApproval
-  const provider = model(index => index === 0
-    ? [call('read', 'failed-read')]
-    : index === 1
+  // A failed read, then more silent work: the progress update comes after that batch.
+  const provider = model(index => index <= 1
+    ? [call('read', `failed-read-${index}`)]
+    : index === 2
       ? [call('write', 'ignored-progress-tool')]
       : 'The task is complete.')
 
@@ -429,10 +430,28 @@ test('a provider-ignored tool-free progress choice cannot execute or request app
   }, f.ports)
   expect(result.snapshot.status).toBe('completed')
 
-  expect(provider.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
+  expect(provider.doStreamCalls[2]?.toolChoice).toEqual({ type: 'none' })
   expect(write).not.toHaveBeenCalled()
   expect(waitForApproval).not.toHaveBeenCalled()
   expect((await f.ports.read()).status).toBe('completed')
+})
+
+test('a failed tool followed by the answer gets no separate progress update, so the answer is written once', async () => {
+  const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const read = vi.fn(async () => ({ success: false, error: 'That item is Personal.' }))
+  const provider = model(index => index === 0
+    ? [call('read', 'refused-read')]
+    : 'The note could not be read: it is Personal.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
+  }, f.ports)
+
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(provider.doStreamCalls[1]?.toolChoice).toEqual({ type: 'auto' })
+  expect(result.snapshot.resultSummary).toBe('The note could not be read: it is Personal.')
+  expect(result.steps.filter(step => step.text?.includes('could not be read'))).toHaveLength(1)
 })
 
 test('v2 commentary follows three silent tool batches and does not become the final answer', async () => {
@@ -1824,13 +1843,15 @@ test('an empty progress-only reply settles once and resumes work without abortin
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   let reads = 0
   const read = vi.fn(async () => ({ success: ++reads > 1 }))
-  const provider = model(index => index === 0 ? [call('read', 'failed-read')] : index === 1 ? '' : index === 2 ? [call('read', 'after-empty-progress')] : 'The record was read.')
+  // A failed read, then a silent retry, makes the update due; the update comes back empty.
+  const provider = model(index => index === 0 ? [call('read', 'failed-read')] : index === 1 ? [call('read', 'silent-retry')] : index === 2 ? '' : index === 3 ? [call('read', 'after-empty-progress')] : 'The record was read.')
   const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute: read }) } }, f.ports)
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe('The record was read.')
-  expect(read).toHaveBeenCalledTimes(2)
-  expect(provider.doStreamCalls).toHaveLength(4)
-  expect(f.receipts.size).toBe(4)
+  expect(read).toHaveBeenCalledTimes(3)
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(provider.doStreamCalls[2]?.toolChoice).toEqual({ type: 'none' })
+  expect(f.receipts.size).toBe(5)
 })
 
 test('read-only calls from one model step overlap and their results come back in call order', async () => {

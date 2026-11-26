@@ -35,6 +35,8 @@ import { hrefForTask } from '@/shared/work/context-links'
 import { WORK_STATUS_LABELS } from '@/shared/work/status'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { ScopeTag } from '@/components/layout/ScopeTag'
+import { SearchScopeFilter, type SearchScope } from '@/components/layout/SearchScopeFilter'
 
 /** Mention categories plus the search-only categories that have no mention type. */
 type SearchType = MentionType | 'agent' | 'work'
@@ -71,6 +73,10 @@ const CATEGORY_ORDER: Array<{ type: SearchType; label: string; icon: string }> =
   { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
   { type: 'connector', label: 'Connectors', icon: 'Plug' },
 ]
+
+function isScope(value: unknown): value is 'personal' | 'workspace' {
+  return value === 'personal' || value === 'workspace'
+}
 
 function CategoryIcon({ icon, className, size = 16 }: { icon: string; className?: string; size?: number }) {
   const Icon = ICON_MAP[icon]
@@ -127,6 +133,7 @@ export function GlobalSearchDialog({
   const currentScope = usePanelScope()
   const [query, setQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
+  const [scopeFilter, setScopeFilter] = useState<SearchScope>('all')
   const [categories, setCategories] = useState<MentionCategory[]>([])
   const directory = useAgentDirectory({ enabled: open })
   const agents = useMemo<SearchItem[]>(() => (
@@ -156,6 +163,7 @@ export function GlobalSearchDialog({
       name: task.title,
       description: [WORK_STATUS_LABELS[task.status], task.parentId ? titles.get(task.parentId) : null].filter(Boolean).join(' · '),
       icon: 'ListChecks',
+      meta: { scope: task.scope },
     }))
   }, [liveTasks])
   const searchMentions = useMentionSearch()
@@ -197,18 +205,23 @@ export function GlobalSearchDialog({
 
   const allCategories: SearchCategory[] = useMemo(() => {
     const needle = query.trim().toLowerCase()
+    // A scope filter keeps only items with that scope; agents and connectors have none, so they show under All only.
+    const inScope = (item: SearchItem) => scopeFilter === 'all' || item.meta?.scope === scopeFilter
     const matches = (item: SearchItem) =>
-      needle === '' ||
+      inScope(item) && (needle === '' ||
       item.name.toLowerCase().includes(needle) ||
-      (item.description || '').toLowerCase().includes(needle)
+      (item.description || '').toLowerCase().includes(needle))
 
     const extras: SearchCategory[] = [
       { type: 'agent' as const, label: 'Agents', icon: 'Bot', items: agents.filter(matches).slice(0, 10) },
       { type: 'work' as const, label: 'Tasks', icon: 'ListChecks', items: workEnabled ? tasks.filter(matches).slice(0, 10) : [] },
     ].filter((cat) => cat.items.length > 0)
 
-    return [...(categories as SearchCategory[]), ...extras]
-  }, [agents, categories, query, tasks, workEnabled])
+    const scoped = (categories as SearchCategory[])
+      .map((cat) => ({ ...cat, items: cat.items.filter(inScope) }))
+      .filter((cat) => cat.items.length > 0)
+    return [...scoped, ...extras]
+  }, [agents, categories, query, scopeFilter, tasks, workEnabled])
 
   const rowSources: RowSource[] = useMemo(() => {
     const list: RowSource[] = []
@@ -259,9 +272,14 @@ export function GlobalSearchDialog({
         icon: row.item.logoUrl ? undefined : (
           <CategoryIcon icon={row.item.icon || fallbackIcon} className="shrink-0 opacity-70" />
         ),
+        // Only an item from the other mode is tagged (Personal while in Workspace, and the reverse), and only under
+        // All: a filtered list already says what it holds.
+        trailing: scopeFilter === 'all' && isScope(row.item.meta?.scope) && row.item.meta.scope !== currentScope
+          ? <span className="ml-2 flex shrink-0"><ScopeTag scope={row.item.meta.scope} /></span>
+          : undefined,
       }
     })
-  }, [rowSources])
+  }, [currentScope, rowSources, scopeFilter])
 
   const selectedCategoryMeta = selectedCategory
     ? CATEGORY_ORDER.find((c) => c.type === selectedCategory)
@@ -296,9 +314,7 @@ export function GlobalSearchDialog({
         (candidate) => candidate.kind === 'item' && `${candidate.categoryType}-${candidate.item.id}` === row.id,
       )
       if (source?.kind === 'item') {
-        const itemScope = source.item.meta?.scope === 'workspace' || source.item.meta?.scope === 'personal'
-          ? source.item.meta.scope
-          : currentScope
+        const itemScope = isScope(source.item.meta?.scope) ? source.item.meta.scope : currentScope
         router.push(buildWorkspaceHref(workspaceId, hrefForItem(source.item), itemScope))
         onClose()
       }
@@ -331,6 +347,7 @@ export function GlobalSearchDialog({
       loading={loading}
       emptyState={emptyState}
       onActivateRow={handleActivateRow}
+      filter={<SearchScopeFilter value={scopeFilter} onChange={setScopeFilter} />}
     />
   )
 }

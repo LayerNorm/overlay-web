@@ -4,10 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { LandingHeadline } from './LandingHeadline'
 
-test('the hero headline is one static line whose keywords link to their sections', () => {
+test('the hero headline names Overlay as the AI Chief of Staff for teams', () => {
   const html = renderToStaticMarkup(<LandingHeadline />)
-  assert.match(html, /^<h1 class="h1">Enabling /)
-  assert.ok(html.includes('<a class="k" href="#control-plane" style="--k:#7c3aed">self-driving companies</a>'))
-  assert.ok(html.includes('<a class="k" href="#ai-employees" style="--k:#ea580c">AI employees</a>'))
-  assert.equal(html.match(/<a /g)?.length, 2)
+  assert.equal(html, '<h1 class="h1">The AI Chief of Staff<span class="br-md"></span> that works with your team</h1>')
 })

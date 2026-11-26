@@ -25,6 +25,8 @@ export class ConvexAutomationRepository implements AutomationRepository {
     userId: string
     view?: 'personal' | 'workspace' | 'archived'
     workspaceId?: string
+    /** Rows updated before this time: the next page after a full one. */
+    beforeUpdatedAt?: number
   }): Promise<AutomationRecord[]> {
     return await convex.query<AutomationRecord[]>('automations/automations:list', {
       ...args,

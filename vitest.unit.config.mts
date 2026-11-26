@@ -32,7 +32,7 @@ export default defineConfig({
       'src/components/providers/usePersonalConversationTranscript.test.tsx',
       'src/components/providers/transcript-cache-client.test.tsx',
       'src/shared/chat/transcript-cache.test.ts',
-      'src/components/layout/sidebar/HelpMenu.test.tsx',
+      'src/components/layout/sidebar/BugReportDialog.test.tsx',
       'src/contexts/WorkspaceContext.test.tsx',
       'src/hooks/use-panel-scope.test.tsx',
       'src/server/agents/workspace-agent-preparation.test.ts',
