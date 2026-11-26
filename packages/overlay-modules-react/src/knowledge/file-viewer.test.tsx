@@ -125,3 +125,17 @@ test('Markdown files keep bullet and number markers despite the list reset', () 
   assert.match(rule('.overlay-file-viewer--markdown :is(ul, ol)'), /padding-inline-start: 1\.5em;/)
   assert.match(rule('.overlay-file-viewer--markdown ul.contains-task-list'), /list-style-type: none;/)
 })
+
+test('a page kept in object storage loads its text instead of showing its download path', () => {
+  const markup = renderToStaticMarkup(
+    <FileViewer name="walkthrough.html" content="/api/v1/files/ks73f36b5kf1ccpycv0y43qmfs8jzcw4/content"
+      url="/api/v1/files/ks73f36b5kf1ccpycv0y43qmfs8jzcw4/content" />,
+  )
+  assert.match(markup, /Loading file/)
+  assert.doesNotMatch(markup, /srcdoc="\/api\/v1\/files/i)
+})
+
+test('an HTML page renders its own text, never its URL', () => {
+  const markup = renderToStaticMarkup(<FileViewer name="empty.html" content="" url="/api/v1/files/abc/content" />)
+  assert.doesNotMatch(markup, /srcdoc="\/api/i)
+})

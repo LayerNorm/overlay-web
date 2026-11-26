@@ -93,3 +93,21 @@ test('the list shows loading, then an error when the scope cannot be read', () =
   assert.match(renderSurface({ liveFiles: undefined }), /aria-busy="true"/)
   assert.match(renderSurface({ liveFiles: null }), /Could not load files/)
 })
+
+test('HTML and Markdown files open rendered, with their source one click away', async () => {
+  const { KnowledgeFileDetailPanel } = await import('./file-detail-panel')
+  for (const fileName of ['page.html', 'glossary.md']) {
+    const markup = renderToStaticMarkup(
+      <KnowledgeFileDetailPanel fileId="f1" fileName={fileName} isEditable fileContent="# Hi" onContentChange={() => {}}
+        renderViewer={() => <div data-testid="rendered" />} />,
+    )
+    assert.match(markup, /data-testid="rendered"/, fileName)
+    assert.match(markup, />Edit</, fileName)
+    assert.doesNotMatch(markup, /aria-label="File contents"/, fileName)
+  }
+  const text = renderToStaticMarkup(
+    <KnowledgeFileDetailPanel fileId="f2" fileName="notes.txt" isEditable fileContent="hi" onContentChange={() => {}}
+      renderViewer={() => <div data-testid="rendered" />} />,
+  )
+  assert.match(text, /aria-label="File contents"/)
+})

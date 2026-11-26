@@ -13,7 +13,9 @@ import {
   getFileType,
   isEditableType,
   isPreviewableType,
+  isStoredFileContentPath,
   prefersUrlPreview,
+  shouldFetchTextContent,
   resolveSafeViewerUrl,
   type FileViewerType,
 } from '@overlay/app-core/file-viewer'
@@ -256,13 +258,50 @@ function ViewerOperationButtons({
   )
 }
 
-export function FileViewer({ name, content, url, operations, fetchImpl, resolveFileHref, markdownLayout = 'page' }: FileViewerProps) {
+export function FileViewer(props: FileViewerProps) {
+  // A text file kept in object storage carries its download path, not its text: fetch the text before rendering.
+  if (shouldFetchTextContent(props.name) && isStoredFileContentPath(props.content)) {
+    return <StoredTextViewer key={props.content.trim()} {...props} path={props.content.trim()} />
+  }
+  return <FileViewerBody {...props} />
+}
+
+function StoredTextViewer({ path, fetchImpl = fetch, ...props }: FileViewerProps & { path: string }) {
+  const [state, setState] = useState<{ text: string } | { error: true } | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchImpl(path, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Failed to load (${response.status})`)
+        return await response.text()
+      })
+      .then((text) => setState({ text }))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setState({ error: true })
+      })
+    return () => controller.abort()
+  }, [fetchImpl, path])
+
+  if (!state) {
+    return (
+      <div className="overlay-file-viewer flex flex-1 items-center justify-center p-8 text-(--muted)">
+        <Loader2 size={20} className="animate-spin" aria-label="Loading file" />
+      </div>
+    )
+  }
+  if ('error' in state) return <UnavailablePreview name={props.name} />
+  return <FileViewerBody {...props} fetchImpl={fetchImpl} content={state.text} />
+}
+
+function FileViewerBody({ name, content, url, operations, fetchImpl, resolveFileHref, markdownLayout = 'page' }: FileViewerProps) {
   const type = getFileType(name)
   const source = previewSource(name, content, url)
 
   if (type === 'markdown') return <MarkdownViewer content={content} resolveFileHref={resolveFileHref} layout={markdownLayout} />
   if (type === 'text') return <TextViewer content={content} />
-  if (type === 'html') return <HtmlViewer name={name} source={source} />
+  // The page itself, never its download path: srcDoc renders whatever text it is given.
+  if (type === 'html') return <HtmlViewer name={name} source={content} />
   if (type === 'csv') return <CsvViewer content={content} />
   if (type === 'image') return <ImageViewer name={name} source={source} />
   if (type === 'audio') return <AudioViewer name={name} source={source} />

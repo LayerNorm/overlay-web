@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { fileService } from '@/server/files/http'
+import { applyStoredContentSafetyHeaders } from '@/server/files/stored-content-headers'
 export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,
@@ -44,5 +45,6 @@ export async function GET(
     upstreamDisposition || `inline; filename*=UTF-8''${encodeURIComponent(result.name)}`,
   )
   headers.set('cache-control', 'private, no-store')
+  applyStoredContentSafetyHeaders(headers)
   return new Response(upstream.body, { status: upstream.status, headers })
 }

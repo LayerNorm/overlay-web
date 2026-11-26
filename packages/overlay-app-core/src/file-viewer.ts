@@ -82,6 +82,16 @@ export function prefersUrlPreview(filename: string): boolean {
   return type === 'pdf' || type === 'image' || type === 'audio' || type === 'video' || type === 'document'
 }
 
+const STORED_FILE_CONTENT_PATH = /^\/api\/v1\/files\/[A-Za-z0-9_-]+\/content$/
+
+/**
+ * A file kept in object storage lists its content as its own download path rather than its text. Viewers fetch the
+ * text from that path, and editors must not treat the path as the file's text.
+ */
+export function isStoredFileContentPath(content: string | null | undefined): boolean {
+  return STORED_FILE_CONTENT_PATH.test(content?.trim() ?? '')
+}
+
 export function shouldFetchTextContent(filename: string): boolean {
   const type = getFileType(filename)
   return type === 'text' || type === 'html' || type === 'markdown' || type === 'csv'

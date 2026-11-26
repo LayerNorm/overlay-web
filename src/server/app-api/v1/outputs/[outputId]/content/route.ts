@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { outputService } from '@/server/outputs/http'
+import { applyStoredContentSafetyHeaders } from '@/server/files/stored-content-headers'
 export async function GET(
   request: NextRequest,
   context: AppApiRouteContext,
@@ -24,5 +25,6 @@ export async function GET(
   if (contentType) headers.set('content-type', contentType)
   const disposition = upstream.headers.get('content-disposition')
   if (disposition) headers.set('content-disposition', disposition)
+  applyStoredContentSafetyHeaders(headers)
   return new Response(upstream.body, { status: 200, headers })
 }
