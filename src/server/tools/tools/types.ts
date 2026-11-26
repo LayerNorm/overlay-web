@@ -61,7 +61,7 @@ export interface OverlayToolsOptions {
   agentId?: string
   agentPrincipalId?: string
   /**
-   * Set when the turn is in a room others can read (internal/plans/TOOL_SCOPING_PLAN.md, T4): searches return only what the
+   * Set when the turn is in a room others can read (internal/develop/tool-catalog.md, "Rooms others can read"): searches return only what the
    * workspace shares, and the list tools are limited to the Workspace scope, so the person's private items are not
    * brought into the room by default.
    */

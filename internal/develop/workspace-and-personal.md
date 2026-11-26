@@ -63,6 +63,17 @@ restores re-file chunks (`restampFileChunks`). A file chunk with no visibility i
 workspace file that is a byte-identical copy of its uploader's personal file has no chunks of its own (duplicates are
 indexed once per person), so only its uploader finds it.
 
+A person's memories are private to them by default (`owner`; `defaultMemoryVisibility`), and memories saved before that
+rule were made private by `migrations/personalMemoryVisibility`. Chat message chunks are `workspace` only in a public
+channel; personal chats, DMs and private channels stay `owner` (`src/shared/knowledge/message-visibility.ts`) because one
+workspace flag cannot say "these participants". A participant still opens the chat itself; widening search to
+participants needs participant-aware chunks first.
+
+**Global search shows scope.** Search results carry `scope` (`search/browse:mentions`; channels and DMs count as
+Workspace, AI chats use their own scope). A result from the other mode than the one the person is in gets a `ScopeTag`,
+and All | Personal | Workspace (`SearchScopeFilter`) sits at the right of the search input. Agents and connectors have no
+scope and show under All only. A one-person workspace shows neither, like `ScopeTag` everywhere.
+
 **Providers follow the mode.** Settings → Providers lists and adds personal connections in Personal mode and the
 workspace's in Workspace mode; any member can use a workspace connection. Workspace agents may only run on hosted models
 and workspace connections, checked when an agent is saved or moved to Workspace and in its model picker; a run that still

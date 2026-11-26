@@ -50,12 +50,16 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  trailing,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & {
+  /** Shown at the right of the search row, such as a filter. */
+  trailing?: React.ReactNode
+}) {
   return (
     <div
       data-slot="command-input-wrapper"
-      className="flex shrink-0 items-center gap-3 border-b border-(--border) px-4 py-3"
+      className="flex shrink-0 items-center gap-3 px-4 py-3"
     >
       <Search
         size={16}
@@ -71,6 +75,7 @@ function CommandInput({
         )}
         {...props}
       />
+      {trailing}
     </div>
   )
 }
