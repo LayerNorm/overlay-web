@@ -423,3 +423,47 @@ test('persisted tool error text stays within its size bound', () => {
   assert.equal(invocation.state, 'output-error')
   assert.equal(String(output.error).length <= MAX_PERSISTED_TOOL_ERROR_CHARS, true)
 })
+
+test('compacting a large tool output again leaves it unchanged, however many save stages run', () => {
+  const big = { success: true, rows: Array.from({ length: 400 }, (_, i) => ({ id: i, url: `https://x.test/${i}?sig=a/b"c` })) }
+  const part = (toolOutput: unknown, toolInput: unknown = { query: 'q'.repeat(9_000) }) => ({
+    type: 'tool-invocation',
+    toolInvocation: { toolCallId: 'call-1', toolName: 'run_api', state: 'output-available', toolInput, toolOutput },
+  })
+  const once = compactAssistantPersistenceForConvex({ content: 'done', parts: [part(big), { type: 'text', text: 'done' }] })
+  let current = once
+  for (let pass = 0; pass < 5; pass++) current = compactAssistantPersistenceForConvex(current)
+  assert.deepEqual(current, once)
+  const stored = (once.parts[0].toolInvocation as { toolOutput: { truncated: boolean; summary: string } }).toolOutput
+  assert.equal(stored.truncated, true)
+  assert.ok(stored.summary.startsWith('{"success":true,"rows":[{"id":0,'), 'the summary holds the real result, not another wrapper')
+  assert.equal(stored.summary.match(/chars for storage\]/g)?.length, 1)
+  const input = (once.parts[0].toolInvocation as { toolInput: { summary: string } }).toolInput
+  assert.equal(input.summary.match(/chars for storage\]/g)?.length, 1)
+})
+
+test('a long string tool output is cut once', () => {
+  const part = { type: 'tool-invocation', toolInvocation: { toolCallId: 'c', toolName: 'computer_exec', state: 'output-available', toolInput: {}, toolOutput: 'x'.repeat(10_000) } }
+  const once = compactAssistantPersistenceForConvex({ content: 'ok', parts: [part, { type: 'text', text: 'ok' }] })
+  const twice = compactAssistantPersistenceForConvex(once)
+  assert.deepEqual(twice, once)
+  assert.match((once.parts[0].toolInvocation as { toolOutput: string }).toolOutput, /\n\n\[truncated 6000 chars for storage\]$/)
+})
+
+test('a compacted web search output keeps its sources and stays put when compacted again', () => {
+  const results = Array.from({ length: 30 }, (_, i) => ({ url: `https://site${i}.test/page`, title: `Page ${i}`, content: 'c'.repeat(400) }))
+  const part = { type: 'tool-invocation', toolInvocation: { toolCallId: 'w', toolName: 'web_search', state: 'output-available', toolInput: { query: 'q' }, toolOutput: { query: 'q', results } } }
+  const once = compactAssistantPersistenceForConvex({ content: 'ok', parts: [part, { type: 'text', text: 'ok' }] })
+  const output = (once.parts[0].toolInvocation as { toolOutput: { truncated: boolean; sources: unknown[] } }).toolOutput
+  assert.equal(output.truncated, true)
+  assert.ok(output.sources.length > 0)
+  assert.deepEqual(compactAssistantPersistenceForConvex(once), once)
+})
+
+test('a tool output that merely looks compacted but is not is still capped', () => {
+  const lookalike = { truncated: true, summary: 'y'.repeat(9_000) }
+  const part = { type: 'tool-invocation', toolInvocation: { toolCallId: 'l', toolName: 'x', state: 'output-available', toolInput: {}, toolOutput: lookalike } }
+  const saved = compactAssistantPersistenceForConvex({ content: 'ok', parts: [part, { type: 'text', text: 'ok' }] })
+  const output = (saved.parts[0].toolInvocation as { toolOutput: { summary: string } }).toolOutput
+  assert.ok(JSON.stringify(output).length < 4_200)
+})

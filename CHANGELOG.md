@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix large tool results being wrapped over and over when a reply is saved. Each save stage (live progress, model stream, transcript, delivery, message save) shrank tool inputs and outputs over 4,000 characters again, including ones an earlier stage had already shrunk, so a result ended up three or four layers deep with its budget spent on escape characters and only about 150 characters of real data. Later turns, `read_chat` and trace views lost what earlier tools returned. Shrinking is now done once and left alone afterwards.
 - Rename the GitHub repository from `LayerNorm/overlay-web` to `LayerNorm/overlay`, since it now holds every surface. Links, clone instructions, package metadata and the preview, production and build scripts now identify the repository by its permanent numeric ID instead of its name, so this and any later rename cannot break deployments; the Docker image stays `ghcr.io/layernorm/overlay-web`.
 - Fix the mobile bundle picking up a web-only `@/` import: the shared API schemas imported the onboarding schema through the web alias, which the mobile app cannot resolve. They now use a relative import. The new mobile workflow caught this on its first run.
 - Record the tenant decision for the new `usageDays` billing table in the self-hosting tenancy guide, which the tenant-boundary CI check requires and which main was failing.
