@@ -1,3 +1,5 @@
+import { API_TOOL_IDS } from './policy'
+
 const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
@@ -17,6 +19,9 @@ const DEFAULT_BASE_TOOL_IDS = [
   'search_skill_registries',
   // Always personal and archivable, so the self-verticalize workflow can persist what it learned on any specialized turn.
   'save_skill',
+  // Data and APIs: what a person asks for (leads, enrichment, 3D models…) rarely names a tool, so they are always offered
+  // where the plan and deployment allow them (withoutUnavailableApiTools).
+  ...API_TOOL_IDS,
 ] as const
 
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const

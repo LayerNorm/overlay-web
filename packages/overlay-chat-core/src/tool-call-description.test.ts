@@ -79,3 +79,26 @@ test('plain text joins the parts for screen readers', () => {
   assert.equal(toolCallDescriptionText({ verb: 'Edited', target: 'a.ts', added: 20, removed: 6 }), 'Edited a.ts +20 −6')
   assert.equal(toolCallDescriptionText({ verb: 'Read', target: 'a.ts', range: ':1-5' }), 'Read a.ts:1-5')
 })
+
+test('API rows name the search, the endpoint and what a run cost', () => {
+  assert.deepEqual(done('search_apis', { query: 'VPs of sales in Berlin' }),
+    { verb: 'Searched', target: 'APIs', detail: 'for “VPs of sales in Berlin”', title: 'VPs of sales in Berlin' })
+  assert.deepEqual(done('inspect_api', { provider: 'apollo', endpoint: '/mixed_people/api_search' }),
+    { verb: 'Read', target: 'apollo/mixed_people/api_search', detail: 'API details', title: 'apollo/mixed_people/api_search' })
+  assert.deepEqual(done('run_api', { provider: 'meshy', endpoint: '/text-to-3d/preview' }, {
+    success: true, chargedUsd: 0.25, files: [{ fileId: 'glb1', name: 'chair.glb' }],
+  }), { verb: 'Ran', target: 'meshy/text-to-3d/preview', title: 'meshy/text-to-3d/preview', detail: '$0.25', fileId: 'glb1' })
+  assert.equal(done('run_api', { provider: 'x', endpoint: '/y' }, { success: true, chargedUsd: 0.004 })?.detail, '$0.004')
+  assert.equal(done('run_api', { provider: 'x', endpoint: '/y' }, { success: true, chargedUsd: 0 })?.detail, undefined)
+  assert.equal(done('run_api', { provider: 'x', endpoint: '/y' }, { success: true, fullOutputFile: { fileId: 'json1' } })?.fileId, 'json1')
+  assert.equal(describeToolCall('run_api', { provider: 'x', endpoint: '/y' }, undefined, 'running')?.verb, 'Running')
+  assert.equal(done('run_api', { provider: 'x', endpoint: '/y' }, { success: false, error: 'insufficient_budget' })?.verb, 'Ran')
+  assert.equal(describeToolCall('run_api', { provider: 'x', endpoint: '/y' }, { success: false }, 'error')?.verb, 'Running failed')
+  assert.equal(done('inspect_api', { provider: 'x' }), null)
+})
+
+test('saving an API file reads as a save to Files', () => {
+  assert.deepEqual(done('save_api_file', { runId: 'r', url: 'https://x/model.glb' }, { success: true, fileId: 'f1', name: 'mug.glb' }),
+    { verb: 'Saved', target: 'mug.glb', detail: 'to Files', fileId: 'f1' })
+  assert.equal(done('save_api_file', { runId: 'r', url: 'https://x/model.glb' }, { success: false, error: 'not_in_output' })?.fileId, undefined)
+})
