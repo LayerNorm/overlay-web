@@ -378,6 +378,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? false)
   let publicProgressActive = false
   let silentToolBatches = input.continuation?.publicProgress?.silentToolBatches ?? 0
+  // A tool failed and no text has explained it yet. The next silent tool batch posts a progress update; a step that
+  // answers explains the failure itself, so a separate update there would only repeat the answer.
+  let unexplainedToolFailure = false
   // Tools that began running since the last model boundary. An interrupted step is
   // only replayed when this is zero, so no tool can run twice.
   let toolsStartedSinceBoundary = 0
@@ -481,7 +484,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const currentStep = currentSteps.at(-1)
         if (publicProgressEnabled && !commentaryInvocation && currentStep?.toolCalls.length
           && !stripTextualToolCalls(currentStep.text ?? '', toolNames).trim()
-          && silentToolBatches + 1 >= HARNESS_SILENT_TOOL_BATCHES) publicProgressDue = true
+          && (unexplainedToolFailure || silentToolBatches + 1 >= HARNESS_SILENT_TOOL_BATCHES)) publicProgressDue = true
         const progress = harnessProgressFingerprint(observedState)
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
         previous = progress
@@ -539,12 +542,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           const publicText = stripTextualToolCalls(step.text ?? '', toolNames).trim()
           if (step.toolCalls.length) {
             silentToolBatches = publicText ? 0 : silentToolBatches + 1
-            if (!publicText && (failedToolResultObserved || silentToolBatches >= HARNESS_SILENT_TOOL_BATCHES)) {
+            if (!publicText && (unexplainedToolFailure || silentToolBatches >= HARNESS_SILENT_TOOL_BATCHES)) {
               publicProgressDue = true
             }
           } else if (publicText) {
             silentToolBatches = 0
           }
+          unexplainedToolFailure = failedToolResultObserved || (unexplainedToolFailure && !publicText)
+          failedToolResultObserved = false
         }
         await recordModelStep(step)
       },
@@ -561,7 +566,6 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           const output = event.output as { success?: unknown; isError?: unknown } | undefined
           if (!event.success || event.error !== undefined || output?.success === false || output?.isError === true) {
             failedToolResultObserved = true
-            if (publicProgressEnabled) publicProgressDue = true
           }
         }
         observedState = await ports.read()
@@ -636,6 +640,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         messages = recoveryMessages
       }
       silentToolBatches = 0
+      unexplainedToolFailure = false
       finalAnswerRequired = false
       truncatedResponse = false
       if (messages.at(-1)?.role === 'assistant') {

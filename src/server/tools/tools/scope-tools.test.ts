@@ -137,3 +137,19 @@ test('a video the route refuses to start is reported as failed, not pending', as
   const { result } = await recording(() => executeGenerateVideo(alone, { prompt: 'a cat' }), reply)
   assert.deepEqual(result, { success: false, status: 'failed', error: 'Could not create the output record.' })
 })
+
+test('archived skills and automations can be listed to restore, and a room sees only archived Workspace ones', async () => {
+  const { executeListSkills, executeListAutomations } = await import('./overlay-executes')
+  const rows = [
+    { _id: 'w', name: 'Shared', instructions: 'i', enabled: false, scope: 'workspace' },
+    { _id: 'p', name: 'Mine', instructions: 'i', enabled: true, scope: 'personal' },
+  ]
+  const reply = () => Response.json(rows)
+  for (const [run, key] of [[executeListSkills, 'skills'], [executeListAutomations, 'automations']] as const) {
+    const own = await recording(() => run(alone, { archived: true }), reply)
+    assert.equal(own.seen[0]?.url.searchParams.get('view'), 'archived')
+    assert.deepEqual((own.result as unknown as Record<string, Array<{ _id: string }>>)[key].map((r) => r._id), ['w', 'p'], key)
+    const room = await recording(() => run(inRoom, { archived: true }), reply)
+    assert.deepEqual((room.result as unknown as Record<string, Array<{ _id: string }>>)[key].map((r) => r._id), ['w'], key)
+  }
+})
