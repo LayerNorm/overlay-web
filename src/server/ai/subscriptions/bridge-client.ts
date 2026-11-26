@@ -1,5 +1,7 @@
 import 'server-only'
+import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici'
 import { logger } from '@/server/observability/logger'
+import { BYOK_STREAM_SILENCE_TIMEOUT_MS } from '@/server/ai/gateway/byok-provider-fetch'
 
 export type BridgeCredential = {
   backend: 'cliproxyapi'
@@ -97,11 +99,31 @@ export function isBridgePendingState(value: unknown): value is BridgePendingStat
     : candidate.callbackRequired !== true
 }
 
+// The bridge relays a subscription model's stream (Claude, Codex, …) and sends nothing while the model thinks or
+// builds a large tool call, which can take longer than five minutes. Node's default fetch ends a body that is silent
+// for 300 s, so those turns failed and every retry rebuilt the same call into the same wall (diagnostic
+// hd_1v7ll0rnb4zyk). Allow the same silence as BYOK endpoints, just under the 800-second workflow step limit.
+/** How long the bridge's stream may stay silent before the request ends (the BYOK limit). */
+export const SUBSCRIPTION_STREAM_SILENCE_TIMEOUT_MS = BYOK_STREAM_SILENCE_TIMEOUT_MS
+
+const bridgeDispatcher = new Agent({
+  connectTimeout: 10_000,
+  headersTimeout: 60_000,
+  bodyTimeout: SUBSCRIPTION_STREAM_SILENCE_TIMEOUT_MS,
+  keepAliveMaxTimeout: 30_000,
+})
+
+export const subscriptionBridgeFetch: typeof fetch = async (input, init) =>
+  await undiciFetch(input instanceof Request ? input.url : input, {
+    ...(init as UndiciRequestInit | undefined),
+    dispatcher: bridgeDispatcher,
+  }) as unknown as Response
+
 export class SubscriptionBridgeClient {
   constructor(
     private readonly serviceUrl = process.env.OVERLAY_CLIPROXYAPI_URL,
     private readonly secret = process.env.OVERLAY_CLIPROXYAPI_SECRET,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = subscriptionBridgeFetch,
   ) {}
 
   isConfigured(): boolean {

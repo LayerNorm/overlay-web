@@ -322,7 +322,7 @@ export function createSubscriptionLanguageModel(args: {
   if (!['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'].includes(args.providerId)) {
     throw new Error('Subscription request adapter is not available')
   }
-  const bridge = args.bridge ?? new SubscriptionBridgeClient(undefined, undefined, args.fetcher ?? fetch)
+  const bridge = args.bridge ?? new SubscriptionBridgeClient(undefined, undefined, args.fetcher)
   const provider = createOpenAI({
     apiKey: 'overlay-subscription-placeholder',
     baseURL: 'https://overlay-subscription.invalid',
