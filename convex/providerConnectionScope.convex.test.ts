@@ -331,21 +331,31 @@ test('workspace subscriptions are shared only with active members of the exact a
   })).toBeNull()
 })
 
-test('workspace scope cannot be applied to API-key connections', async () => {
+test('a workspace API key is the workspace\'s: every active member may use it, personal keys stay their owner\'s', async () => {
   const convex = convexTest(schema, modules)
   await addWorkspace(convex, 'workspace-one')
   await addMember(convex, 'workspace-one', 'owner', 'owner')
-  await expect(convex.mutation(create, {
+  await addMember(convex, 'workspace-one', 'member', 'member')
+  const key = (scope: 'personal' | 'workspace') => convex.mutation(create, {
     serverSecret: secret,
     userId: 'owner',
     providerId: 'openai',
-    scope: 'workspace',
-    workspaceId: 'workspace-one',
+    scope,
+    ...(scope === 'workspace' ? { workspaceId: 'workspace-one' } : {}),
     endpoint: 'https://api.openai.com/v1',
-    displayName: 'OpenAI',
+    displayName: `OpenAI ${scope}`,
     vaultKeyName: 'openai',
     enabledModelIds: [],
     isDefault: false,
     isDeletable: true,
-  })).rejects.toThrow(/Workspace scope is only supported/)
+  })
+  const shared = await key('workspace')
+  const own = await key('personal')
+  const use = (connectionId: string, actorUserId: string) =>
+    convex.query(getForUse, { serverSecret: secret, connectionId, actorUserId, workspaceId: 'workspace-one' })
+  expect(await use(shared, 'member')).toMatchObject({ scope: 'workspace', workspaceId: 'workspace-one' })
+  expect(await use(own, 'member')).toBeNull()
+  const memberList = await convex.query(listForUse, { serverSecret: secret, actorUserId: 'member', workspaceId: 'workspace-one' }) as Array<{ _id: string; canManage: boolean }>
+  expect(memberList.map((row) => [row._id, row.canManage])).toEqual([[shared, false]])
+  expect(await use(shared, 'stranger')).toBeNull()
 })

@@ -15,7 +15,7 @@ export interface DiscoveredModel {
   name?: string
 }
 export type DialogState =
-  | { mode: 'add' }
+  | { mode: 'add'; scope?: 'personal' | 'workspace' }
   | { mode: 'edit'; connection: ByokConnectionRow }
   | null
 

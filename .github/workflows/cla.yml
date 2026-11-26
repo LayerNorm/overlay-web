@@ -19,10 +19,7 @@ jobs:
   cla:
     name: CLA Signatures
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
-    runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-features-with-builders;job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
-      - nscloud-no-remote-builders
-      - namespace-features:github.run-id=${{ github.run_id }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Record and verify CLA signatures
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # actions/github-script v9.0.0
