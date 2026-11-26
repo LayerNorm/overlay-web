@@ -162,7 +162,7 @@ async function savedFile(
 
 export async function executeListFiles(
   options: OverlayToolsOptions,
-  input: { folderId?: string; scope?: 'personal' | 'workspace' },
+  input: { folderId?: string; scope?: 'personal' | 'workspace'; archived?: boolean },
 ) {
   try {
     // The list endpoint returns at most 100 rows per page.
@@ -173,7 +173,8 @@ export async function executeListFiles(
       const params = new URLSearchParams({ summary: 'true', page: 'true', limit: '100' })
       if (input.folderId) params.set('parentId', input.folderId)
       const scope = roomListScope(options, input.scope)
-      if (scope) params.set('view', scope)
+      if (input.archived) params.set('view', 'archived')
+      else if (scope) params.set('view', scope)
       if (cursor) params.set('cursor', cursor)
       const res = await get(options, params)
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }
@@ -182,7 +183,11 @@ export async function executeListFiles(
       hasMore = page.hasMore
       cursor = page.nextCursor
     } while (hasMore && cursor && files.length < LIST_LIMIT)
-    const listed = files.slice(0, LIST_LIMIT)
+    // The archived view spans Personal and Workspace; a room (or a scope asked for) keeps to its own.
+    const archivedScope = input.archived ? roomListScope(options, input.scope) : undefined
+    const listed = files
+      .filter((file) => !archivedScope || (file.scope === 'workspace' ? 'workspace' : 'personal') === archivedScope)
+      .slice(0, LIST_LIMIT)
     const ownerOf = await ownerNamesFor(options, listed.map((file) => file.userId))
     return {
       success: true,

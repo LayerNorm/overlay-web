@@ -48,6 +48,49 @@ describe('agent tools in a workspace context', () => {
     expect(await convex.mutation(m('integrations/skills:restore'), { ...auth, userId: 'alice', id: mine })).toEqual({ ok: true })
   })
 
+  test('archiving a folder leaves the contents the caller could not archive on their own', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const ids = await convex.run(async (ctx) => {
+      const bob = await ctx.db.query('workspaceMemberships').filter((q) => q.eq(q.field('principalId'), 'p-bob')).first()
+      await ctx.db.patch(bob!._id, { role: 'admin' })
+      const file = (name: string, scope: 'personal' | 'workspace', parentId?: string, type: 'file' | 'folder' = 'file') =>
+        ctx.db.insert('files', { userId: 'alice', workspaceId, name, type, scope, createdAt: now, updatedAt: now, ...(parentId ? { parentId } : {}) })
+      const folder = await file('Launch', 'workspace', undefined, 'folder')
+      const shared = await file('Plan', 'workspace', folder)
+      const personal = await file('Diary', 'personal', folder)
+      return { folder, shared, personal }
+    })
+    const archivedAt = (id: string) => convex.run(async (ctx) => (await ctx.db.get(id as never) as { archivedAt?: number } | null)?.archivedAt ?? null)
+
+    // From a room, Alice's own folder archives with its Workspace contents only.
+    expect(await convex.mutation(m('files/files:archive'), { ...auth, userId: 'alice', workspaceItemsOnly: true, id: ids.folder })).toEqual({ ok: true })
+    expect(await archivedAt(ids.shared)).not.toBeNull()
+    expect(await archivedAt(ids.personal)).toBeNull()
+    expect(await convex.mutation(m('files/files:restore'), { ...auth, userId: 'alice', workspaceItemsOnly: true, id: ids.folder })).toEqual({ ok: true })
+
+    // An admin archiving the Workspace folder does not archive Alice's Personal file inside it.
+    expect(await convex.mutation(m('files/files:archive'), { ...auth, userId: 'bob', id: ids.folder })).toEqual({ ok: true })
+    expect(await archivedAt(ids.shared)).not.toBeNull()
+    expect(await archivedAt(ids.personal)).toBeNull()
+  })
+
+  test('a teammate can open a Workspace file’s content, not a Personal one', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const ids = await convex.run(async (ctx) => {
+      const storageId = await ctx.storage.store(new Blob(['png']))
+      const output = (name: string, scope: 'personal' | 'workspace') =>
+        ctx.db.insert('files', { userId: 'alice', workspaceId, name, type: 'file', kind: 'output', scope, storageId, createdAt: now, updatedAt: now })
+      return { shared: await output('cat.png', 'workspace'), personal: await output('dog.png', 'personal') }
+    })
+    const open = (userId: string, fileId: string) =>
+      convex.query(q('files/files:getStorageUrlForProxy'), { serverSecret: secret, userId, fileId })
+    expect(await open('bob', ids.shared)).toMatchObject({ name: 'cat.png' })
+    expect(await open('bob', ids.personal)).toBeNull()
+    expect(await open('alice', ids.personal)).toMatchObject({ name: 'dog.png' })
+  })
+
   test('owner names are given only to a member, only for this workspace’s people', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)

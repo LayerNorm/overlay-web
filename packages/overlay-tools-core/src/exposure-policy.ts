@@ -35,6 +35,12 @@ const NOTE_MUTATION_TOOL_IDS = [
 ] as const
 const FILE_MUTATION_TOOL_IDS = ['write_file', 'create_folder', 'move_file'] as const
 const SCOPE_TOOL_IDS = ['move_to_workspace', 'archive_item', 'restore_item'] as const
+
+/**
+ * Tools an agent's grant does not offer by itself: the person's own message in this turn has to ask for them. Moving to
+ * Workspace is one-way and archiving hides an item from everyone, so an agent never does either on its own initiative.
+ */
+export const REQUEST_ONLY_TOOL_IDS: readonly string[] = SCOPE_TOOL_IDS
 const IMAGE_TOOL_IDS = ['generate_image'] as const
 const VIDEO_TOOL_IDS = [
   'generate_video',

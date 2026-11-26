@@ -101,3 +101,39 @@ test('the scope route keeps the workspace-context flag the tools send', async ()
   const parsed = ScopeActionRequest.parse({ resource: 'files', id: 'f', action: 'archive', workspaceItemsOnly: true })
   assert.equal(parsed.workspaceItemsOnly, true)
 })
+
+test('an agent’s grant does not offer moving or archiving unless the person asks in this turn', async () => {
+  const { withAgentGrantToolIds } = await import('@/server/app-api/v1/conversations/act/tooling')
+  const grant = ['list_files', 'move_to_workspace', 'archive_item', 'restore_item']
+  const quiet = withAgentGrantToolIds(allowedOverlayToolIdsForTurn({ latestUserText: 'summarize my notes' }), grant, true)
+  for (const id of ['move_to_workspace', 'archive_item', 'restore_item']) assert.equal(quiet.includes(id), false, id)
+  assert.ok(quiet.includes('list_files'))
+  const asked = withAgentGrantToolIds(allowedOverlayToolIdsForTurn({ latestUserText: 'archive the old onboarding doc' }), grant, true)
+  assert.ok(asked.includes('archive_item'))
+})
+
+test('outside apps never get the scope tools', async () => {
+  const { MCP_EXTERNAL_WITHHELD_TOOL_IDS } = await import('@/shared/mcp/access')
+  for (const id of ['move_to_workspace', 'archive_item', 'restore_item']) assert.ok(MCP_EXTERNAL_WITHHELD_TOOL_IDS.includes(id), id)
+})
+
+test('archived files can be listed to restore, and a room sees only archived Workspace ones', async () => {
+  const { executeListFiles } = await import('./files-executes')
+  const rows = [
+    { _id: 'f_w', name: 'Plan', type: 'file', updatedAt: 1, scope: 'workspace', archivedAt: 1, userId: 'user_1' },
+    { _id: 'f_p', name: 'Diary', type: 'file', updatedAt: 1, scope: 'personal', archivedAt: 1, userId: 'user_1' },
+  ]
+  const reply = () => Response.json({ data: rows, nextCursor: null, hasMore: false })
+  const own = await recording(() => executeListFiles(alone, { archived: true }), reply)
+  assert.equal(own.seen[0]?.url.searchParams.get('view'), 'archived')
+  assert.deepEqual((own.result as unknown as { files: Array<{ fileId: string }> }).files.map((f) => f.fileId), ['f_w', 'f_p'])
+  const room = await recording(() => executeListFiles(inRoom, { archived: true }), reply)
+  assert.deepEqual((room.result as unknown as { files: Array<{ fileId: string }> }).files.map((f) => f.fileId), ['f_w'])
+})
+
+test('a video the route refuses to start is reported as failed, not pending', async () => {
+  const { executeGenerateVideo } = await import('./overlay-executes')
+  const reply = () => new Response('data: {"type":"error","error":"save_failed","message":"Could not create the output record."}\n\n')
+  const { result } = await recording(() => executeGenerateVideo(alone, { prompt: 'a cat' }), reply)
+  assert.deepEqual(result, { success: false, status: 'failed', error: 'Could not create the output record.' })
+})

@@ -27,6 +27,16 @@ function outsideWorkspaceContext(args: { workspaceItemsOnly?: boolean }, row: Sc
   return (row.archivedAt !== undefined ? row.archivedFromScope ?? row.scope : row.scope) !== 'workspace'
 }
 
+/**
+ * May an archive or restore of a folder carry this child with it? Only what the caller could archive or restore on its
+ * own: a row they can edit and, in a workspace context, a Workspace row. A mixed tree (a teammate's Personal file in a
+ * Workspace folder) keeps the rows the caller has no right to.
+ */
+function childPermission(ctx: unknown, args: { userId: string; workspaceItemsOnly?: boolean }) {
+  const loader = scopeContextLoader(ctx as never, args.userId)
+  return async (child: ScopedDoc): Promise<boolean> => !outsideWorkspaceContext(args, child) && await loader.canEdit(child as never)
+}
+
 const scopeValidator = v.union(v.literal('personal'), v.literal('workspace'))
 
 async function authorize(params: { accessToken?: string; serverSecret?: string; userId: string }, requireServerAuthentication = false) {
@@ -125,9 +135,10 @@ export function scopeMutations(
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       await db.patch(id, { ...plan.patch, ...(options?.onArchive ?? {}) })
       const affectedIds = [id]
+      const mayChange = childPermission(ctx, args)
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
-        if (child && !child.archivedAt && child.userId === row?.userId) {
+        if (child && !child.archivedAt && child.userId === row?.userId && await mayChange(child)) {
           await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
           affectedIds.push(childId)
         }
@@ -148,10 +159,11 @@ export function scopeMutations(
       const archivedAt = row?.archivedAt
       await db.patch(id, { scope: plan.scope, archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
       const affectedIds = [id]
+      const mayChange = childPermission(ctx, args)
       // Only the contents that were archived together with it come back.
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
-        if (child && child.archivedAt !== undefined && child.archivedAt === archivedAt) {
+        if (child && child.archivedAt !== undefined && child.archivedAt === archivedAt && await mayChange(child)) {
           await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
           affectedIds.push(childId)
         }

@@ -630,10 +630,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.list_files = tool({
       description:
         'List files and folders in the Overlay workspace (id, name, type, parent folder, size, last edit). ' +
-        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
+        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree. ' +
+        'Set archived to true to list archived files, notes and outputs instead, for example to find the id for restore_item.',
       inputSchema: z.object({
         folderId: z.string().optional().describe('Folder id from a previous list_files result'),
         scope: toolScopeSchema,
+        archived: z.boolean().optional().describe('List archived items instead of active ones'),
       }),
       execute: async (input) => {
         assertToolAllowed('list_files')

@@ -956,6 +956,13 @@ export async function executeGenerateVideo(
               outputId: outputId ?? (event.outputId as string),
               error: event.error,
             }
+          } else if (event.type === 'error') {
+            // Nothing was started (budget, policy, or the output could not be saved), so nothing is pending.
+            return {
+              success: false,
+              status: 'failed',
+              error: (event.message as string | undefined) ?? (event.error as string | undefined) ?? 'Video generation failed',
+            }
           }
         } catch (_error) {
           // ignore malformed SSE lines

@@ -29,6 +29,7 @@ import {
 import { createMcpLazyMetaTools, type McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import {
   allowedOverlayToolIdsForTurn,
+  REQUEST_ONLY_TOOL_IDS,
 } from '@/server/tools/tools/exposure-policy'
 import { createWebTools } from '@/server/web/web-tools'
 import type { ComputerTarget } from '@/server/tools/tools/types'
@@ -357,7 +358,9 @@ export function withAgentGrantToolIds(
   isAgentTurn: boolean,
 ): string[] {
   if (!isAgentTurn || accountAllowedToolIds === undefined) return [...intentToolIds]
-  return [...new Set([...intentToolIds, ...accountAllowedToolIds])]
+  // Request-only tools (moving to Workspace, archiving) stay with the turn's own request, granted or not.
+  const requestOnly = new Set(REQUEST_ONLY_TOOL_IDS)
+  return [...new Set([...intentToolIds, ...accountAllowedToolIds.filter((id) => !requestOnly.has(id))])]
 }
 
 export function applyAccountToolPolicy(
