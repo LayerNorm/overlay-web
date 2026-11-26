@@ -55,6 +55,7 @@ import { whisperKitService } from './whisperkit-service'
 import { modelDownloadService } from './model-download-service'
 import { cancelPendingNativeAuth } from './security/native-auth-service'
 import { safeStorageService } from './security/safe-storage-service'
+import { localSetupService } from './local-setup-service'
 import { privateThreadsService, rememberChosenFolder } from './private-threads-service'
 import { systemUtils } from './system-utils'
 import { configureDiagnostics } from './sentry'
@@ -392,7 +393,8 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
       (capability) =>
         (capability !== 'diagnostics' || Boolean(process.env.SENTRY_DSN)) &&
         (capability !== 'localComputer' || process.platform === 'darwin') &&
-        (capability !== 'localThreads' || (process.platform === 'darwin' && privateThreadsService.isSupported()))
+        (capability !== 'localThreads' || (process.platform === 'darwin' && privateThreadsService.isSupported())) &&
+        (capability !== 'localSetup' || process.platform === 'darwin')
     )
   }),
   'window.openDataFolder': async () => {
@@ -585,6 +587,9 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
   'localThreads.keys': async () => { await authenticated(); return privateThreadsService.keys() },
   'localThreads.setKey': async (input) => { await authenticated(); return privateThreadsService.setKey(input) },
   'localThreads.models': async (input) => { await authenticated(); return privateThreadsService.models(input) },
+  'localSetup.scan': async () => { await authenticated(); return localSetupService.scan() },
+  'localSetup.import': async (input) => { await authenticated(); return localSetupService.import(input) },
+  'localSetup.useShellKey': async (input) => { await authenticated(); return localSetupService.useShellKey(input) },
   'agentHost.stop': () => embeddedHostService.stop(),
   'agentHost.logs': () => embeddedHostService.getStatus().logTail,
   'diagnostics.status': () => ({ enabled: settingsService.analyticsConsentEnabled }),

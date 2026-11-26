@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- First-run setup for new accounts (with overlay-web's desktop onboarding). A new `localSetup` bridge capability lists what Claude Code, Codex, Claude Desktop, Cursor and Gemini CLI keep on this computer (instructions, skills, subagents and MCP servers) by name only, and imports the ones the person ticks through Overlay's own API with the app's session, so file contents and header tokens never reach the page. It also finds model keys in the login shell (shown by name and last four characters) and, on *Use this key*, checks one with the provider and keeps it in the keychain, and it notices Claude Code and Codex plan sign-ins for later. Local (command) MCP servers are listed but not imported.
+
 ## [0.5.0] - 2026-11-26
 
 - Give private threads their agent's Overlay tools (memory, files, notes, tasks, web search…). Before each turn the app asks Overlay for a one-hour token for that person, workspace and agent with its own signed-in session, so the page never holds it, and hands it to the bundled Agent Host (now 0.7.0), which calls the tools over Overlay's MCP server at this app's own server address. The conversation still stays on this computer. Without a token (signed out, offline) the turn runs with this computer's tools only. Which tools a thread gets, and the free tier for workspaces without a plan, are decided by the server.
