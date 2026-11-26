@@ -1,3 +1,4 @@
+import { sleep } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
 import { admitHarnessRequestUsage } from './request-usage-step'
@@ -34,6 +35,7 @@ export function createHarnessExecutionPorts(input: {
       return snapshot
     },
     renewLease: () => input.authorize(),
+    pause: async milliseconds => { await sleep(new Date(Date.now() + milliseconds)) },
     continueExecution: input.surface.continueExecution ?? (async () => {
       throw new Error('HARNESS_CONTINUATION_NOT_CONFIGURED')
     }),

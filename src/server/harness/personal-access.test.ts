@@ -102,7 +102,7 @@ test('API key resumes check current revocation, expiration, owner and scopes wit
   expect(mocks.keys).toHaveBeenCalledWith({ userId: 'user' })
 })
 
-test('child execution may share a waiting root delivery run while roots still require running', async () => {
+test('a run shown as waiting never stops a harness that is still running', async () => {
   const child = { ...snapshot(), runId: 'child', rootRunId: 'harness', parentRunId: 'harness', workflowRunId: 'child-workflow' }
   mocks.state.mockResolvedValueOnce(child).mockResolvedValueOnce({ ...snapshot(), status: 'waiting_for_children' })
   mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status: 'waiting_for_children' })
@@ -113,8 +113,10 @@ test('child execution may share a waiting root delivery run while roots still re
 
   for (const status of ['waiting_for_input', 'waiting_for_children'] as const) {
     mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status })
-    await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/resource access/)
+    await refreshPersonalHarnessAccess(access, context, 'read_file')
   }
+  mocks.agentRun.mockResolvedValueOnce({ ...agentRun(), status: 'cancelled' })
+  await expect(refreshPersonalHarnessAccess(access, context, 'read_file')).rejects.toThrow(/resource access/)
 })
 
 test('a run joining a child inside a tool call survives the wait renewal', async () => {

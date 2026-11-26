@@ -150,7 +150,7 @@ export function createHarnessModelPorts(input: {
   })
 
   return {
-    recoverModelFailure: async (receiptId, error) => {
+    recoverModelFailure: async (receiptId, error, options) => {
       let state = await readHarnessState(reference)
       const reserved = state.modelReservation?.id === receiptId
       const dispatch = reserved ? state.modelReservation?.dispatch : undefined
@@ -173,8 +173,10 @@ export function createHarnessModelPorts(input: {
           return false
         }
         const cause = harnessDiagnosticForFailure(reference.runId, state, error, 'model').code
-        if (!RETRYABLE_INTERRUPTIONS.has(cause)
-          || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
+        // The runner asks for an Overlay fault to be retried only when no tool had
+        // started in the interrupted step, so nothing can run twice.
+        const retryable = RETRYABLE_INTERRUPTIONS.has(cause) || (options?.internalFault === true && cause === 'INTERNAL_ERROR')
+        if (!retryable || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
       }
       const receipt = state.latestReceipt
       if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId) return false

@@ -51,7 +51,7 @@ const delivery = () => ({
   runner: 'workflow', executionEngine: 'overlay_harness', mode: 'room', status: 'running',
 })
 const room = () => ({
-  conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question',
+  conversation: { workspaceId: 'workspace', conversationType: 'dm' }, conversationType: 'dm', latestUserText: 'Question', includedItems: [],
   directory: { agents: [{ id: 'agent', principalId: 'agent-principal', harness: 'overlay', modelId: 'fixture/model', permissionMode: 'ask', visibility: 'workspace' }] },
   participants: [{ principalId: 'human-principal', principalType: 'human' }, { principalId: 'agent-principal', principalType: 'agent' }],
 })
@@ -294,7 +294,7 @@ test('BYOK ownership is checked again for the selected agent model', async () =>
 })
 
 test.each(['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'])(
-  'renews an in-tool child join projected as %s without authorizing model dispatch', async status => {
+  'a delivery shown as %s never stops a harness that is still running', async status => {
     const state = snapshot()
     state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
       costMicros: 0, status: 'running', evidenceRefs: [] }]
@@ -303,6 +303,10 @@ test.each(['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'])
 
     await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
       .resolves.toMatchObject({ runStatus: 'running', paid: true })
+    // The shown status can lag (a join that rolled over or failed). The harness state
+    // and the workflow owner decide who may act, so the next tool call still runs.
+    await expect(refreshNativeHarnessAccess(access, context, 'read_file')).resolves.toMatchObject({ runStatus: 'running' })
+    mocks.run.mockResolvedValue({ ...delivery(), status: 'failed' })
     await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow('Native delivery execution changed.')
   },
 )

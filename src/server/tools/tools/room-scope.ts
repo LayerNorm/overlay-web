@@ -19,10 +19,16 @@ export const ROOM_PERSONAL_ITEM_ERROR =
 
 /**
  * Whether a by-id read or edit must refuse this item: in a workspace context (a room others can read, a workspace
- * automation) only Workspace items are reachable, whoever the caller is. A missing scope means Personal.
+ * automation) only Workspace items are reachable, whoever the caller is, except the Personal items the person included
+ * on purpose by @-mentioning them in the asking message. A missing scope means Personal.
  */
-export function refusesRoomItem(options: Pick<OverlayToolsOptions, 'sharedRoom'>, item: { scope?: string | null }): boolean {
-  return options.sharedRoom === true && item.scope !== 'workspace'
+export function refusesRoomItem(
+  options: Pick<OverlayToolsOptions, 'sharedRoom' | 'includedItemIds'>,
+  item: { scope?: string | null; _id?: string; id?: string },
+): boolean {
+  if (options.sharedRoom !== true || item.scope === 'workspace') return false
+  const id = item._id ?? item.id
+  return !(id && options.includedItemIds?.includes(id))
 }
 
 /**

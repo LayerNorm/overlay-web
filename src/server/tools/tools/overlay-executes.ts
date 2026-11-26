@@ -10,6 +10,12 @@ import {
 } from './computer-recording'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
+import {
+  computerInputDriverCommand,
+  type ComputerBrowserAction,
+  type ComputerInputAction,
+  type ComputerTerminalAction,
+} from '@layernorm/overlay-agent-bridge-protocol'
 import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
@@ -600,8 +606,10 @@ async function roomAutomationRefusal(options: OverlayToolsOptions, automationId:
     options.accessToken, options.baseUrl, options.forwardCookie, options.serverSecret, options.userId, options.workspaceId,
   )
   if (!res.ok) return { success: false, error: 'Automation not found' }
-  const automation = await res.json().catch((_error) => null) as { scope?: string } | null
-  return !automation || refusesRoomItem(options, automation) ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
+  const automation = await res.json().catch((_error) => null) as { scope?: string; _id?: string } | null
+  // The id asked for is the one the person may have included; the row's own id must match it.
+  return !automation || refusesRoomItem(options, { ...automation, _id: automation._id ?? automationId.trim() })
+    ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
 }
 
 export async function executeCreateAutomation(
@@ -832,6 +840,7 @@ export async function executeGenerateImage(
     modelId?: string
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
     referenceImageUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, referenceImageUrl } = input
@@ -845,6 +854,7 @@ export async function executeGenerateImage(
         imageUrl: referenceImageUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -884,6 +894,7 @@ export async function executeGenerateVideo(
     videoSubMode?: string
     imageUrl?: string
     referenceVideoUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, duration, videoSubMode, imageUrl, referenceVideoUrl } = input
@@ -899,6 +910,7 @@ export async function executeGenerateVideo(
         imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -945,6 +957,13 @@ export async function executeGenerateVideo(
               status: 'failed',
               outputId: outputId ?? (event.outputId as string),
               error: event.error,
+            }
+          } else if (event.type === 'error') {
+            // Nothing was started (budget, policy, or the output could not be saved), so nothing is pending.
+            return {
+              success: false,
+              status: 'failed',
+              error: (event.message as string | undefined) ?? (event.error as string | undefined) ?? 'Video generation failed',
             }
           }
         } catch (_error) {
@@ -1606,36 +1625,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export type ComputerInputAction =
-  | { action: 'click'; x: number; y: number; button?: 'left' | 'middle' | 'right'; count?: number; confirm?: boolean }
-  | { action: 'double_click'; x: number; y: number; confirm?: boolean }
-  | { action: 'right_click'; x: number; y: number; confirm?: boolean }
-  | { action: 'move'; x: number; y: number }
-  | { action: 'drag'; from: { x: number; y: number }; to: { x: number; y: number } }
-  | { action: 'type'; text: string }
-  | { action: 'key'; keys: string }
-  | { action: 'scroll'; x?: number; y?: number; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
-  | { action: 'wait'; ms: number }
-
-export type ComputerBrowserAction =
-  | { action: 'navigate'; url: string }
-  | { action: 'back' }
-  | { action: 'forward' }
-  | { action: 'reload' }
-  | { action: 'snapshot' }
-  | { action: 'click'; ref: string; confirm?: boolean }
-  | { action: 'type'; ref: string; text: string; submit?: boolean }
-  | { action: 'scroll'; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
-  | { action: 'press'; keys: 'Enter' | 'Tab' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'PageDown' }
-  | { action: 'tabs' }
-  | { action: 'switch_tab'; index: number }
-  | { action: 'new_tab'; url: string }
-
-export type ComputerTerminalAction =
-  | { action: 'start'; command: string; cwd?: string }
-  | { action: 'read'; id: string; offset?: number; maxBytes?: number }
-  | { action: 'cancel'; id: string; signal?: 'INT' | 'TERM' | 'KILL' }
-  | { action: 'list' }
+export type { ComputerBrowserAction, ComputerInputAction, ComputerTerminalAction }
 
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
   "This action needs approval. Review it in personal chat with a connected Computer, or set this agent's Permissions to Auto."
@@ -1737,12 +1727,9 @@ export async function executeComputerInput(
 ) {
   const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_input' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const { action, target: _target, ...inputArgs } = input
+  const { target: _target, ...action } = input
   void _target
-  const command = action === 'double_click' || action === 'right_click' ? 'click' : action
-  const args: Record<string, unknown> = { ...inputArgs }
-  if (action === 'double_click') args.count = 2
-  if (action === 'right_click') args.button = 'right'
+  const { command, args } = computerInputDriverCommand(action as ComputerInputAction)
   try {
     const result = await executeComputerActionWithTakeover(
       resolved.computer.controlledByUserId,
@@ -1763,7 +1750,7 @@ export async function executeComputerInput(
     if (isRecord(result) && isRecord(result.result) && result.result.success === false) {
       return result.result
     }
-    return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
+    return { success: true as const, acknowledgement: `${input.action.replace('_', ' ')} completed.` }
   } catch (err) {
     return computerErrorResult(err, 'Computer input failed')
   }

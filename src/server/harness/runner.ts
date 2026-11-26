@@ -33,6 +33,7 @@ import {
 } from './tool-outcome-persistence'
 import { stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from './textual-tool-calls'
 import { HarnessWaitRollover } from './waits'
+import { describeHarnessFailureCause, harnessDiagnosticForFailure } from './harness-diagnostics'
 import { buildHarnessRunnerCheckpoint } from './runner-checkpoint'
 import {
   handleWaitingState as handleHarnessWaitingState,
@@ -174,6 +175,51 @@ async function shouldRecoverModelInvocation(
   return await ports.recoverModelFailure?.(receiptId) ?? false
 }
 
+
+// An Overlay fault (its own records disagreed, or an unclassified error) between a
+// model boundary and the first tool of that step can be replayed without repeating
+// work. Bounded per workflow segment; a fault that repeats still ends the run.
+const MAX_INTERNAL_FAULT_RESUMES = 2
+
+type InvocationOutcome = Awaited<ReturnType<typeof runHarnessModelInvocation>>
+
+async function resumeAfterInternalFault(
+  invoke: () => Promise<InvocationOutcome>,
+  resume: (error: unknown) => Promise<InvocationOutcome | null>,
+): Promise<InvocationOutcome> {
+  try {
+    return await invoke()
+  } catch (error) {
+    const resumed = await resume(error)
+    if (!resumed) throw error
+    return resumed
+  }
+}
+
+/** Returns the next model call number when the run may replay from its last boundary, else null. */
+export async function settleInternalFault(
+  error: unknown,
+  ports: Pick<HarnessExecutionPorts, 'read' | 'recoverModelFailure' | 'pause'>,
+  execution: { executionOwner: string; executionGeneration: number; modelCall: number; toolsStarted: number; resumes: number },
+): Promise<number | null> {
+  if (execution.toolsStarted > 0 || execution.resumes >= MAX_INTERNAL_FAULT_RESUMES) return null
+  const state = await ports.read()
+  if (state.status !== 'running' || state.workflowRunId !== execution.executionOwner
+    || (state.executionGeneration ?? 0) !== execution.executionGeneration
+    || harnessDiagnosticForFailure(state.runId, state, error, 'model').code !== 'INTERNAL_ERROR') return null
+  const reservation = state.modelReservation
+  // eslint-disable-next-line no-console
+  console.warn(`[harness] resuming after an internal fault ${JSON.stringify({
+    runId: state.runId, reserved: reservation?.id ?? null, cause: describeHarnessFailureCause(error),
+  })}`)
+  if (!reservation) {
+    await ports.pause?.(5_000)
+    return execution.modelCall
+  }
+  // The interrupted call is settled as a zero-usage receipt, which also paces the retry.
+  if (!await ports.recoverModelFailure?.(reservation.id, error, { internalFault: true })) return null
+  return reservation.id === `model:${execution.modelCall}` ? execution.modelCall + 1 : execution.modelCall
+}
 
 export const HARNESS_CUT_OFF_CONTINUATION_MESSAGE = 'Your previous message stopped at the output limit. Continue it from the exact character where it stopped, even mid-word or mid-sentence. If it stopped after a complete word, begin with the space or punctuation that comes next. Output only the continuation: no preamble, acknowledgement or restart, and do not repeat anything already written.'
 
@@ -332,8 +378,26 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? false)
   let publicProgressActive = false
   let silentToolBatches = input.continuation?.publicProgress?.silentToolBatches ?? 0
-  const { tools, approvals } = createHarnessAuthorizedTools(input.tools, ports, controls, input.continuation?.toolApprovals, {
+  // Tools that began running since the last model boundary. An interrupted step is
+  // only replayed when this is zero, so no tool can run twice.
+  let toolsStartedSinceBoundary = 0
+  let internalFaultResumes = 0
+  // A child joined inside a tool call can outlast this workflow segment. The tool
+  // then returns the child as still working and the run moves to its next segment.
+  let joinRolledOver = false
+  const toolPorts: HarnessExecutionPorts = Object.assign(Object.create(ports) as HarnessExecutionPorts, {
+    waitForChildren: async (childRunIds: string[]) => {
+      try {
+        await ports.waitForChildren(childRunIds)
+      } catch (error) {
+        if (!(error instanceof HarnessWaitRollover)) throw error
+        joinRolledOver = true
+      }
+    },
+  })
+  const { tools, approvals } = createHarnessAuthorizedTools(input.tools, toolPorts, controls, input.continuation?.toolApprovals, {
     publicProgress: () => publicProgressActive,
+    toolStarted: () => { toolsStartedSinceBoundary++ },
   })
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
@@ -362,7 +426,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     if (isTerminal(state)) {
       return withObservedToolOutcomes({ outcome: 'finished', snapshot: state, messages, steps: deliverySteps, stepReceiptIds }, executionOutcomes, authenticatedDenials)
     }
-    if (segmentLimitReached(state, modelCall, segmentModelCallStart, segmentStartedAt)) return handoff()
+    if (joinRolledOver || segmentLimitReached(state, modelCall, segmentModelCallStart, segmentStartedAt)) return handoff()
     const waiting = await processHarnessWait({
       state, messages, ports, invocation, pendingApproval, tools, approvals, authenticatedDenials,
     })
@@ -422,7 +486,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
         previous = progress
         return commentaryInvocation || (publicProgressEnabled && publicProgressDue)
-          || observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3
+          || observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3 || joinRolledOver
           || (observedState.policy.executionPolicyVersion === 2
             && (modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60 * 1000))
       }],
@@ -430,6 +494,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         // This boundary includes completed tools, but none of the next call's partial output.
         recoveryMessages = withoutHarnessStateMessages(prompt.filter(message => message.role !== 'system'))
         recoverySteps = [...settledSteps]
+        toolsStartedSinceBoundary = 0
         // Authority and the lease are renewed once, just before the call is reserved.
         let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, false)
         const assignmentIssues = await ports.readAssignmentIssues?.() ?? []
@@ -512,7 +577,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     })
 
     let pending: HarnessApprovalRequest[] = []
-    const invocationResult = await runHarnessModelInvocation(
+    const invocationResult = await resumeAfterInternalFault(() => runHarnessModelInvocation(
       () => agent.stream({ messages, writable: input.writable, preventClose: true, sendFinish: false }),
       () => ({ messages: recoveryMessages, steps: recoverySteps, preparedReceiptId, modelCall }),
       unresolvedApprovalCalls,
@@ -527,7 +592,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           && (blocked.executionGeneration ?? 0) === executionGeneration
           && blocked.status === 'waiting_for_input' && blocked.blocker?.kind === 'stuck'
       },
-    )
+    ), async error => {
+      const resumedModelCall = await settleInternalFault(error, ports, {
+        executionOwner, executionGeneration, modelCall, toolsStarted: toolsStartedSinceBoundary, resumes: internalFaultResumes,
+      })
+      if (resumedModelCall === null) return null
+      internalFaultResumes++
+      return { messages: recoveryMessages, steps: recoverySteps, preparedReceiptId, modelCall: resumedModelCall, pending: [], recovered: true }
+    })
     invocationMessages = invocationResult.messages
     invocationSteps = invocationResult.steps
     preparedReceiptId = invocationResult.preparedReceiptId

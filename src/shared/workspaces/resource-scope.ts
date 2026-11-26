@@ -177,6 +177,7 @@ export function scopeErrorMessage(reason: string): string {
     case 'already_archived': return 'It is already archived.'
     case 'not_archived': return 'It is not archived.'
     case 'not_found': return 'Not found.'
+    case 'workspace_items_only': return 'That item is Personal. In a room others can read, or a workspace automation, only Workspace items can be changed.'
     default: return 'You do not have access to do that.'
   }
 }

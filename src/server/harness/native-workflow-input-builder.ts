@@ -1,4 +1,5 @@
 import 'server-only'
+import { includedItemsOfMessage, includedItemsPrompt } from '@/shared/agents/included-items'
 
 import type { NativeHarnessWorkflowInput } from './native-workflow-input'
 import type { HarnessModelSettings } from './ports'
@@ -101,6 +102,7 @@ function buildNativeWorkflowInput(
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
   })
   const settings = nativeWorkflowSettingsForReasoning(prepared.agent.reasoning)
+  const included = includedItemsPrompt(includedItemsOfMessage(room.history.find(message => message._id === run.userMessageId)))
   return {
     access: {
       actorUserId: run.userId,
@@ -131,7 +133,7 @@ function buildNativeWorkflowInput(
       hasTools: prepared.toolDefinitions.length > 0,
       instructions: prepared.agent.instructions,
       isDefaultMaster: Boolean(prepared.agent.isDefault),
-    }) + (workBlock ? `\n\n${workBlock}` : ''),
+    }) + (workBlock ? `\n\n${workBlock}` : '') + (included ? `\n\n${included}` : ''),
     messages: prepared.turnContext.messages,
     ...(settings ? { settings } : {}),
   }

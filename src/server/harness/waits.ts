@@ -164,11 +164,11 @@ export function createHarnessWaitPorts(input: {
       try {
         await joinChildren(childRunIds, () => { projectedWaiting = true })
       } catch (error) {
-        // The join can end with an error the agent then sees as a tool failure. The
-        // agent keeps running, so its delivery must not stay waiting_for_children:
-        // its next tool call would fail the ownership check and stop the whole task.
-        // A rollover hands the wait to the next workflow, which keeps it waiting.
-        if (projectedWaiting && !(error instanceof HarnessWaitRollover)) {
+        // The join ended without the children settling: an error the agent sees as a
+        // tool failure, or the hourly rollover. Either way the agent may run again
+        // before it waits again, so its delivery must not keep saying it is waiting.
+        // A successor that resumes the wait projects it again.
+        if (projectedWaiting) {
           // Best effort: the original error is the one to report.
           await input.projectWait({ status: 'running' }).catch((_error: unknown) => undefined)
         }
