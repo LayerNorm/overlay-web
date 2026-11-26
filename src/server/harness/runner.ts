@@ -332,7 +332,20 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? false)
   let publicProgressActive = false
   let silentToolBatches = input.continuation?.publicProgress?.silentToolBatches ?? 0
-  const { tools, approvals } = createHarnessAuthorizedTools(input.tools, ports, controls, input.continuation?.toolApprovals, {
+  // A child joined inside a tool call can outlast this workflow segment. The tool
+  // then returns the child as still working and the run moves to its next segment.
+  let joinRolledOver = false
+  const toolPorts: HarnessExecutionPorts = Object.assign(Object.create(ports) as HarnessExecutionPorts, {
+    waitForChildren: async (childRunIds: string[]) => {
+      try {
+        await ports.waitForChildren(childRunIds)
+      } catch (error) {
+        if (!(error instanceof HarnessWaitRollover)) throw error
+        joinRolledOver = true
+      }
+    },
+  })
+  const { tools, approvals } = createHarnessAuthorizedTools(input.tools, toolPorts, controls, input.continuation?.toolApprovals, {
     publicProgress: () => publicProgressActive,
   })
   const toolDefinitions = await prepareToolDefinitions(tools)
@@ -362,7 +375,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     if (isTerminal(state)) {
       return withObservedToolOutcomes({ outcome: 'finished', snapshot: state, messages, steps: deliverySteps, stepReceiptIds }, executionOutcomes, authenticatedDenials)
     }
-    if (segmentLimitReached(state, modelCall, segmentModelCallStart, segmentStartedAt)) return handoff()
+    if (joinRolledOver || segmentLimitReached(state, modelCall, segmentModelCallStart, segmentStartedAt)) return handoff()
     const waiting = await processHarnessWait({
       state, messages, ports, invocation, pendingApproval, tools, approvals, authenticatedDenials,
     })
@@ -422,7 +435,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
         previous = progress
         return commentaryInvocation || (publicProgressEnabled && publicProgressDue)
-          || observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3
+          || observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3 || joinRolledOver
           || (observedState.policy.executionPolicyVersion === 2
             && (modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60 * 1000))
       }],

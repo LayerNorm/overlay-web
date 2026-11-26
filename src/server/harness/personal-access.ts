@@ -150,20 +150,16 @@ function assertWorkspaceConversationIdentity(
 
 function assertDeliveryOwnership(
   access: PersonalHarnessAccess,
-  state: HarnessState,
   root: HarnessState,
   agentRun: Awaited<ReturnType<ServerContext['appData']['repositories']['conversations']['getLatestAgentRun']>>,
-  renewalMode = false,
 ): void {
   if (!agentRun || agentRun.id !== access.agentRunId || agentRun.userId !== access.actorUserId
     || agentRun.conversationId !== access.conversationId || agentRun.harnessRunId !== root.runId
     || agentRun.runner !== 'workflow' || agentRun.executionEngine !== 'overlay_harness' || agentRun.mode === 'room'
-    || (agentRun.status !== 'running' && !(state.parentRunId
-      && ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources'].includes(agentRun.status))
-      // The run shows what it is waiting on, which can differ from the harness status:
-      // a child joined inside a tool call leaves the harness running.
-      && !(renewalMode && state.runId === root.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(agentRun.status)))) {
+    // The run's status is what the person is shown and can lag the harness (a child
+    // joined inside a tool call leaves the harness running). The harness state and the
+    // owner check below decide who may act, so a waiting run never stops a task.
+    || !['running', 'waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources'].includes(agentRun.status)) {
     throw new FatalError('Personal harness resource access has changed.')
   }
   const deliveryOwner = root.workflowRunId ?? root.handoffWorkflowRunId
@@ -355,7 +351,7 @@ export async function refreshPersonalHarnessAccess(
     server.authorizationService.resolveSubject(access.actorUserId),
   ])
   assertWorkspaceConversationIdentity(access, workspace, conversation)
-  assertDeliveryOwnership(access, state, root, agentRun, options.renewalMode === true)
+  assertDeliveryOwnership(access, root, agentRun)
   const authorization = server.authorizationService
   assertPersonalCapabilities(authorization, subject, context, toolName)
   await assertModelCatalogAccess(authorization, subject, context.effectiveModelId)

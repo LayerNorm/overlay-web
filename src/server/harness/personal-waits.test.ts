@@ -173,7 +173,7 @@ test('a join that fails after projecting the wait returns the delivery to runnin
   expect(mocks.project).toHaveBeenLastCalledWith(access, { status: 'running' })
 })
 
-test('a join rollover keeps the delivery waiting for the successor', async () => {
+test('a join rollover returns the delivery to running; a successor that waits again says so', async () => {
   const clock = vi.spyOn(Date, 'now')
   let now = 1_000
   clock.mockImplementation(() => now)
@@ -184,7 +184,8 @@ test('a join rollover keeps the delivery waiting for the successor', async () =>
     const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}) })
     now += 60 * 60_000
     await expect(ports.waitForChildren(['child'])).rejects.toBeInstanceOf(HarnessWaitRollover)
-    expect(mocks.project).toHaveBeenCalledExactlyOnceWith(access, { status: 'waiting_for_children' })
+    expect(mocks.project).toHaveBeenNthCalledWith(1, access, { status: 'waiting_for_children' })
+    expect(mocks.project).toHaveBeenLastCalledWith(access, { status: 'running' })
   } finally {
     clock.mockRestore()
   }

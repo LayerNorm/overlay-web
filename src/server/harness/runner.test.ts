@@ -237,6 +237,52 @@ test('V2 input rollover checkpoints the invocation and resumes through the succe
   expect(resumed.snapshot.resultSummary).toBe('The selected document is ready.')
 })
 
+test('a child join that outlasts the segment reports the child as still working and resumes in the successor', async () => {
+  const f = fixture(false, ['ask_agent'], { executionPolicyVersion: 2 })
+  const childRunId = 'workspace:child'
+  const parent = await f.ports.read()
+  const running = state.createHarnessSnapshot({ runId: childRunId, parentRunId: parent.runId,
+    rootRunId: parent.runId, depth: 1, goal: 'Send the requests', constraints: [],
+    policy: { ...parent.policy, allowedToolIds: [], maxCostMicros: 0 } }, Date.now())
+  let child: typeof running = running
+  // An open plan step of its own keeps the agent running, so it joins inside a tool call.
+  f.setSnapshot(state.replaceHarnessPlan(parent, [{ id: 'report', title: 'Report what was sent',
+    acceptanceCriteria: ['The person knows what was sent.'], dependsOn: [] }], Date.now()))
+  f.ports.readChild = vi.fn(async () => child)
+  f.ports.waitForChildren = async () => { throw new HarnessWaitRollover() }
+  const tools = {
+    ask_agent: tool({ inputSchema: z.object({}), execute: async () => {
+      f.setSnapshot(state.admitHarnessNamedChild(await f.ports.read(), {
+        id: childRunId, stepId: 'ask:child', status: 'running', maxCostMicros: 0, costMicros: 0,
+        allowedToolIds: [], evidenceRefs: [],
+      }, { title: 'Ask the specialist', acceptanceCriteria: ['The specialist responds.'] }, Date.now()))
+      return { status: 'working', childRunIds: [childRunId] }
+    } }),
+  }
+  model(index => index === 0 ? [call('ask_agent', 'ask', {})] : [call('harness_read_child', 'join', { childRunId })])
+  const first = await runOverlayHarness({ ...input, tools }, f.ports)
+  // The rollover is not a tool failure: the agent is told the child is still working.
+  expect(first.outcome).toBe('continued')
+  const checkpoint = f.checkpoints[0]!
+  const joined = JSON.stringify(checkpoint.messages)
+  expect(joined).toContain('The child is still working')
+  expect(joined).not.toContain('error-text')
+
+  f.setOwner('join-successor', 1)
+  child = { ...running, status: 'completed', resultSummary: 'Sent 12 requests.' }
+  f.ports.waitForChildren = async () => {
+    f.setSnapshot(state.settleHarnessChild(await f.ports.read(), child, Date.now()))
+  }
+  model(index => {
+    if (index === 0) return [call('harness_read_child', 'join-again', { childRunId })]
+    if (index === 1) return [call('harness_update_step', 'done', { id: 'report', status: 'done' })]
+    return 'The specialist sent 12 requests.'
+  })
+  const resumed = await runOverlayHarness({ ...input, continuation: checkpoint, tools }, f.ports)
+  expect(resumed.snapshot.status).toBe('completed')
+  expect(resumed.snapshot.resultSummary).toBe('The specialist sent 12 requests.')
+})
+
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
 
 test('assignment obligations keep resolution tools available and permit only one resolved parent finish without a plan', async () => {
