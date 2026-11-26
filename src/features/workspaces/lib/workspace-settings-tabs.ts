@@ -1,4 +1,4 @@
-import { Bot, Link2, Shield, UserPlus, Users, UsersRound, WalletCards } from 'lucide-react'
+import { Bot, Link2, Shield, Users, UsersRound, WalletCards } from 'lucide-react'
 import type { WorkspaceSettingsTab } from '@/shared/workspaces/types'
 
 export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
@@ -32,14 +32,6 @@ export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<{
     emptyTitle: 'No teams yet',
     emptyDescription: 'Group people and agents so access can be managed together.',
     action: 'Create team',
-  },
-  {
-    id: 'guests',
-    label: 'Guests',
-    icon: UserPlus,
-    emptyTitle: 'No guests',
-    emptyDescription: 'Guests only see the chats and resources explicitly shared with them.',
-    action: 'Invite guest',
   },
   {
     id: 'roles',

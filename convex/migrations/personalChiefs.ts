@@ -78,7 +78,7 @@ export const retireSharedPersonalChiefsByServer = mutation({
  * automations keep running with their saved thread. The owner's own threads and personal automations go to the owner's
  * private Personal Chief (created if needed); everything else (other members' threads and automations, workspace
  * automations) goes to the workspace chief. An automation's thread always follows the automation. In an archived
- * workspace nothing moves, and an owner who left or is now a guest keeps their own threads and personal automations on
+ * workspace nothing moves, and an owner who left keeps their own threads and personal automations on
  * the archived copy; both are counted.
  */
 async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefinitions'>, dryRun: boolean, now: number) {
@@ -102,7 +102,7 @@ async function moveToOwnChief(ctx: MutationCtx, shared: Doc<'workspaceAgentDefin
   const membership = owner ? await ctx.db.query('workspaceMemberships')
     .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', shared.workspaceId).eq('principalId', owner.principalId))
     .unique() : null
-  const ownerEligible = Boolean(owner && membership?.status === 'active' && membership.role !== 'guest')
+  const ownerEligible = Boolean(owner && membership?.status === 'active')
 
   // Where each thread and automation goes: 'own' (owner's private chief), 'workspace', or null (left behind).
   // Another member's personal automation used the copy because it was workspace-visible; the workspace chief is the

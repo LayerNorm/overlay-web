@@ -16,16 +16,20 @@ public rewrite, shared account pool, auth files, background credential refresh,
 or provider/domain fallback. Its only background work is downloading the
 published model catalogs (see "Keeping model lists current").
 
-Subscription connections support explicit, immutable `personal` or `workspace`
-scope. Missing scope on legacy rows is personal; creation defaults to personal,
-and workspace identity comes from the authenticated active-workspace context.
-Only active members of that exact active workspace may list or use a shared
-subscription. API-key connections remain unchanged and are never workspace-
-shared. Lifecycle management and Vault references remain owner-only; nonowner
-shared rows reach the picker with `canManage: false`, are excluded from Settings
-management, and expose no reconnect URL. The scope selector defaults to Personal,
-offers Workspace only with an active workspace, and locks scope once authorization
-starts. Reconnects preserve the stored scope. Requests pin the active workspace
+Provider connections (subscriptions and API keys) have an explicit, immutable
+`personal` or `workspace` scope. Missing scope on legacy rows is personal, and
+workspace identity comes from the authenticated active-workspace context. Only
+active members of that exact active workspace may list or use a workspace
+connection. Lifecycle management and Vault references remain owner-only; a
+teammate's workspace rows reach the picker with `canManage: false` and are
+read-only in Settings, with no reconnect URL. Settings → Providers follows the
+Workspace | Personal mode: Personal lists and adds your own connections,
+Workspace lists and adds the workspace's (a new connection takes the mode's
+scope; the dialog says who can use it). Reconnects preserve the stored scope.
+Workspace agents may only run on hosted models and workspace connections
+(`assertAgentModelSelectable` with the agent's visibility, the agent pickers'
+`modelsForAgentVisibility`); `migrations/workspaceAgentModels` moved existing
+ones off personal connections. Requests pin the active workspace
 through the workspace header, not a client-controlled body field.
 Model visibility does not grant execution access:
 existing paid-access requirements still apply to all models, including BYOK.

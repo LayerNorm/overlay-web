@@ -19,7 +19,6 @@ type InviteRole = Exclude<WorkspaceMembershipRole, 'owner'>
 
 export function InviteWorkspaceDialog({
   open,
-  guest = false,
   busy,
   error,
   invitePath,
@@ -27,7 +26,6 @@ export function InviteWorkspaceDialog({
   onInvite,
 }: {
   open: boolean
-  guest?: boolean
   busy?: boolean
   error?: string | null
   invitePath?: string | null
@@ -38,9 +36,7 @@ export function InviteWorkspaceDialog({
   }): Promise<void>
 }) {
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<InviteRole>(
-    guest ? 'guest' : 'member',
-  )
+  const [role, setRole] = useState<InviteRole>('member')
 
   const normalizedEmail = email.trim()
   const canSubmit = normalizedEmail.includes('@') && !busy
@@ -53,10 +49,8 @@ export function InviteWorkspaceDialog({
     <DialogFrame
       open={open}
       onOpenChange={onOpenChange}
-      title={guest ? 'Invite a guest' : 'Invite people'}
-      description={guest
-        ? 'Guests only see resources and rooms explicitly shared with them.'
-        : 'Invite someone to collaborate across this workspace.'}
+      title="Invite people"
+      description="Invite someone to collaborate across this workspace."
       footer={(
         <InviteDialogFooter
           hasInvite={Boolean(invitePath)}
@@ -71,7 +65,6 @@ export function InviteWorkspaceDialog({
         <InviteLinkPanel inviteUrl={absoluteInviteUrl} />
       ) : (
         <InviteRequestForm
-          guest={guest}
           email={email}
           role={role}
           canSubmit={canSubmit}
@@ -153,7 +146,6 @@ function InviteLinkPanel({ inviteUrl }: { inviteUrl?: string | null }) {
 }
 
 function InviteRequestForm({
-  guest,
   email,
   role,
   canSubmit,
@@ -161,7 +153,6 @@ function InviteRequestForm({
   onRoleChange,
   onSubmit,
 }: {
-  guest: boolean
   email: string
   role: InviteRole
   canSubmit: boolean
@@ -193,22 +184,20 @@ function InviteRequestForm({
           onChange={(event) => onEmailChange(event.target.value)}
         />
       </div>
-      {!guest ? (
-        <div>
-          <label htmlFor="workspace-invite-role" className="text-xs font-medium text-(--foreground)">
-            Workspace role
-          </label>
-          <Select
-            id="workspace-invite-role"
-            className="mt-2 w-full"
-            value={role}
-            onChange={(event) => onRoleChange(event.target.value as InviteRole)}
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </Select>
-        </div>
-      ) : null}
+      <div>
+        <label htmlFor="workspace-invite-role" className="text-xs font-medium text-(--foreground)">
+          Workspace role
+        </label>
+        <Select
+          id="workspace-invite-role"
+          className="mt-2 w-full"
+          value={role}
+          onChange={(event) => onRoleChange(event.target.value as InviteRole)}
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </Select>
+      </div>
     </form>
   )
 }

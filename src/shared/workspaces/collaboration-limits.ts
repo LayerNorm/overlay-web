@@ -1,7 +1,7 @@
 /**
  * Abuse limits for collaboration. Every limit is keyed by the workspace first so
  * one tenant can never consume another's budget, then narrowed to the principal,
- * room, agent, or guest that actually performed the action.
+ * room, or agent that actually performed the action.
  */
 export type CollaborationLimitSpec = {
   bucket: string
@@ -14,8 +14,6 @@ export type CollaborationLimitScope = {
   principalId?: string
   conversationId?: string
   agentId?: string
-  /** Guests are limited harder than members because they are external. */
-  guest?: boolean
 }
 
 export type CollaborationAction =
@@ -33,40 +31,33 @@ const HOUR = 60 * MINUTE
 const ACTION_LIMITS: Record<CollaborationAction, {
   workspace: CollaborationLimitSpec
   principal: CollaborationLimitSpec
-  guestPrincipal?: CollaborationLimitSpec
   narrow?: CollaborationLimitSpec
 }> = {
   'message.send': {
     workspace: { bucket: 'workspace', limit: 3_000, windowMs: MINUTE },
     principal: { bucket: 'principal', limit: 120, windowMs: MINUTE },
-    guestPrincipal: { bucket: 'guest', limit: 30, windowMs: MINUTE },
     narrow: { bucket: 'room', limit: 600, windowMs: MINUTE },
   },
   'agent.invoke': {
     workspace: { bucket: 'workspace', limit: 600, windowMs: MINUTE },
     principal: { bucket: 'principal', limit: 60, windowMs: MINUTE },
-    guestPrincipal: { bucket: 'guest', limit: 10, windowMs: MINUTE },
     narrow: { bucket: 'agent', limit: 120, windowMs: MINUTE },
   },
   'invitation.create': {
     workspace: { bucket: 'workspace', limit: 200, windowMs: HOUR },
     principal: { bucket: 'principal', limit: 50, windowMs: HOUR },
-    guestPrincipal: { bucket: 'guest', limit: 0, windowMs: HOUR },
   },
   'share.grant': {
     workspace: { bucket: 'workspace', limit: 1_000, windowMs: HOUR },
     principal: { bucket: 'principal', limit: 200, windowMs: HOUR },
-    guestPrincipal: { bucket: 'guest', limit: 0, windowMs: HOUR },
   },
   'search.query': {
     workspace: { bucket: 'workspace', limit: 6_000, windowMs: MINUTE },
     principal: { bucket: 'principal', limit: 120, windowMs: MINUTE },
-    guestPrincipal: { bucket: 'guest', limit: 60, windowMs: MINUTE },
   },
   'audit.export': {
     workspace: { bucket: 'workspace', limit: 12, windowMs: HOUR },
     principal: { bucket: 'principal', limit: 6, windowMs: HOUR },
-    guestPrincipal: { bucket: 'guest', limit: 0, windowMs: HOUR },
   },
 }
 
@@ -75,11 +66,7 @@ export type ResolvedCollaborationLimit = {
   limits: CollaborationLimitSpec[]
 }
 
-/**
- * Builds the rate-limit keys for an action. Guests get their own bucket rather
- * than sharing the member bucket, so a guest burst cannot exhaust a member's
- * allowance or hide inside it.
- */
+/** Builds the rate-limit keys for an action: workspace, principal, and narrow target. */
 export function resolveCollaborationLimits(
   action: CollaborationAction,
   scope: CollaborationLimitScope,
@@ -90,12 +77,9 @@ export function resolveCollaborationLimits(
     limits: [config.workspace],
   }]
   if (scope.principalId) {
-    const principalSpec = scope.guest && config.guestPrincipal
-      ? config.guestPrincipal
-      : config.principal
     resolved.push({
-      key: `collab:${action}:${scope.guest ? 'guest' : 'principal'}:${scope.workspaceId}:${scope.principalId}`,
-      limits: [principalSpec],
+      key: `collab:${action}:principal:${scope.workspaceId}:${scope.principalId}`,
+      limits: [config.principal],
     })
   }
   const narrowTarget = scope.agentId ?? scope.conversationId

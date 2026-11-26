@@ -1,5 +1,5 @@
 export type HarnessDiagnosticCode =
-  | 'TASK_DEADLINE' | 'TASK_SPEND_LIMIT' | 'WORKSPACE_FUNDS'
+  | 'TASK_DEADLINE' | 'TASK_SPEND_LIMIT' | 'WORKSPACE_FUNDS' | 'MEMBER_SPEND_LIMIT' | 'WORKSPACE_PERSONAL_MODEL'
   | 'PROVIDER_REJECTED' | 'PROVIDER_REQUEST_INVALID' | 'PROVIDER_ACCOUNT' | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
   | 'TOOL_FAILED' | 'MODEL_OUTCOME_UNKNOWN'
   /** Stored on runs from when a thrown tool call ended the run. Never produced now: the agent gets the failure. */
@@ -35,6 +35,8 @@ export function stableHarnessDiagnosticId(runId: string, operationId: string, re
 const descriptions: Record<HarnessDiagnosticCode, Pick<HarnessDiagnostic, 'safeMessage' | 'nextAction' | 'retryability'>> = {
   TASK_DEADLINE: { safeMessage: 'This task reached its explicit time limit.', nextAction: 'Review the saved work and start a new task with a longer limit.', retryability: 'user_action' },
   TASK_SPEND_LIMIT: { safeMessage: 'This task reached its explicit model-spend limit, not its workspace credit limit.', nextAction: 'Review the saved work and increase the task spending limit before continuing.', retryability: 'user_action' },
+  WORKSPACE_PERSONAL_MODEL: { safeMessage: 'This agent is set to a personal provider, which can\'t be used where others can read or in a workspace automation.', nextAction: 'Pick an Overlay model or a workspace provider for this agent, then send your message again.', retryability: 'user_action' },
+  MEMBER_SPEND_LIMIT: { safeMessage: 'You have reached the spending cap a workspace admin set for you, so this task stopped.', nextAction: 'Ask a workspace owner or admin to raise your cap in Workspace → Billing.', retryability: 'user_action' },
   WORKSPACE_FUNDS: { safeMessage: 'The workspace has less than 2% of its budget left, so this task stopped.', nextAction: 'Add usage to the workspace, then ask the agent to continue.', retryability: 'user_action' },
   PROVIDER_TIMEOUT: { safeMessage: 'The model provider did not respond in time.', nextAction: 'Review the saved work before retrying the request.', retryability: 'user_action' },
   PROVIDER_RATE_LIMIT: { safeMessage: 'The model provider temporarily limited requests.', nextAction: 'Wait before retrying, or select another available model.', retryability: 'user_action' },

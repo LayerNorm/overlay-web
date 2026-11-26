@@ -2406,7 +2406,7 @@ export default defineSchema({
     membershipId: v.string(),
     workspaceId: v.string(),
     principalId: v.string(),
-    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member'), v.literal('guest')),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member')),
     status: v.union(v.literal('active'), v.literal('suspended')),
     invitedByPrincipalId: v.optional(v.string()),
     joinedAt: v.number(),
@@ -2477,29 +2477,11 @@ export default defineSchema({
     .index('by_grantId', ['grantId'])
     .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
 
-  workspaceResourceGuests: defineTable({
-    resourceGuestId: v.string(),
-    workspaceId: v.string(),
-    resourceType: v.string(),
-    resourceId: v.string(),
-    principalId: v.string(),
-    accessRole: v.union(v.literal('viewer'), v.literal('editor')),
-    status: v.union(v.literal('pending'), v.literal('active'), v.literal('expired'), v.literal('revoked')),
-    grantedByPrincipalId: v.string(),
-    expiresAt: v.optional(v.number()),
-    revokedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_resourceGuestId', ['resourceGuestId'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
-
   workspaceInvitations: defineTable({
     invitationId: v.string(),
     workspaceId: v.string(),
     email: v.string(),
-    role: v.union(v.literal('admin'), v.literal('member'), v.literal('guest')),
+    role: v.union(v.literal('admin'), v.literal('member')),
     status: v.union(v.literal('pending'), v.literal('accepted'), v.literal('expired'), v.literal('cancelled'), v.literal('replaced')),
     invitedByPrincipalId: v.string(),
     expiresAt: v.number(),
@@ -2529,7 +2511,6 @@ export default defineSchema({
     workspaceContentEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
     memberCanMoveScope: v.optional(v.boolean()),
     usageTopUpBy: v.optional(v.union(v.literal('members'), v.literal('admins'))),
-    guestExpirationDays: v.optional(v.number()),
     allowedAgentHarnesses: v.optional(v.array(v.string())),
     agentRunBudgetCents: v.optional(v.number()),
     channelRetentionDays: v.optional(v.number()),

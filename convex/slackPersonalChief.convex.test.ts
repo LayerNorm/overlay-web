@@ -15,9 +15,10 @@ async function fixture() {
   const t = convexTest(schema, modules)
   await t.run(async (ctx) => {
     await ctx.db.insert('workspaces', { workspaceId: 'ws', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: now, updatedAt: now })
-    for (const [userId, displayName, role] of [['ada', 'Ada Lovelace', 'member'], ['gus', 'Gus Guest', 'guest']] as const) {
+    // Gus is suspended, so he can't have a personal chief.
+    for (const [userId, displayName, status] of [['ada', 'Ada Lovelace', 'active'], ['gus', 'Gus Away', 'suspended']] as const) {
       await ctx.db.insert('workspacePrincipals', { workspaceId: 'ws', principalId: `p-${userId}`, userId, type: 'human', displayName, createdAt: now, updatedAt: now })
-      await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws', principalId: `p-${userId}`, membershipId: `m-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws', principalId: `p-${userId}`, membershipId: `m-${userId}`, role: 'member', status, joinedAt: now, updatedAt: now })
     }
   })
   return t

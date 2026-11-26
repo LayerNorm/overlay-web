@@ -13,6 +13,10 @@ test('read-only tools run in parallel; control, approval-gated and unknown tools
   expect(harnessToolRunMode('computer_exec', { command: 'ls' }, { needsApproval: true })).toEqual({ kind: 'exclusive' })
   expect(harnessToolRunMode('create_note', { title: 'x' })).toEqual({ kind: 'exclusive' })
   expect(harnessToolRunMode('some_mcp_tool', {})).toEqual({ kind: 'exclusive' })
+
+  // Paid API runs each check the remaining budget before starting, so they never overlap.
+  expect(harnessToolRunMode('search_apis', {})).toEqual({ kind: 'parallel' })
+  expect(harnessToolRunMode('run_api', {})).toEqual({ kind: 'exclusive' })
 })
 
 test('file locks let reads overlap and keep writes to one path in order', () => {

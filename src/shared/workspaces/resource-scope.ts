@@ -46,7 +46,7 @@ export type ScopedRow = {
 export type ResourceViewer = {
   userId: string
   /** The viewer's active role in the workspace; null when they are not an active member. */
-  role: 'owner' | 'admin' | 'member' | 'guest' | null
+  role: 'owner' | 'admin' | 'member' | null
 }
 
 function isManager(viewer: ResourceViewer): boolean {
@@ -68,7 +68,7 @@ export function rowView(row: ScopedRow): ResourceView {
   return row.archivedAt !== undefined ? 'archived' : rowScope(row)
 }
 
-/** Personal rows are readable by their creator only; workspace rows by every active member (not guests). */
+/** Personal rows are readable by their creator only; workspace rows by every active member. */
 export function canReadResource(row: ScopedRow, viewer: ResourceViewer): boolean {
   if (!isMember(viewer)) return false
   return rowScope(row) === 'workspace' || row.userId === viewer.userId

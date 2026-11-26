@@ -7,20 +7,19 @@ const owner: ResourceViewer = { userId: 'owner', role: 'owner' }
 const admin: ResourceViewer = { userId: 'admin', role: 'admin' }
 const alice: ResourceViewer = { userId: 'alice', role: 'member' }
 const bob: ResourceViewer = { userId: 'bob', role: 'member' }
-const gus: ResourceViewer = { userId: 'gus', role: 'guest' }
+const outsider: ResourceViewer = { userId: 'out', role: null }
 const adminsOnly: ResourceScopePolicy = { workspaceExtensionsEditors: 'members', workspaceContentEditors: 'admins', memberCanMoveScope: true }
 
 test('personal tasks are only worked on by their creator', () => {
   const row = { userId: 'alice', scope: 'personal' as const }
   assert.ok(canWorkOnItem(row, alice, 'p-alice'))
-  for (const viewer of [owner, admin, bob, gus]) assert.ok(!canWorkOnItem(row, viewer, `p-${viewer.userId}`), viewer.userId)
+  for (const viewer of [owner, admin, bob, outsider]) assert.ok(!canWorkOnItem(row, viewer, `p-${viewer.userId}`), viewer.userId)
 })
 
 test('workspace tasks can be worked on by members when the workspace lets members edit content', () => {
   const row = { userId: 'alice', scope: 'workspace' as const }
   for (const viewer of [owner, admin, alice, bob]) assert.ok(canWorkOnItem(row, viewer, `p-${viewer.userId}`), viewer.userId)
-  assert.ok(!canWorkOnItem(row, gus, 'p-gus'))
-  assert.ok(!canWorkOnItem(row, { userId: 'out', role: null }, null))
+  assert.ok(!canWorkOnItem(row, outsider, null))
 })
 
 test('when only admins edit workspace content, a member can still work on a task assigned to them', () => {

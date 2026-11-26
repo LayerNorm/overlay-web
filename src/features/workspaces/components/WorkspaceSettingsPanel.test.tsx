@@ -25,7 +25,7 @@ test('workspace settings renders loading, empty, and error lifecycle states', ()
   )
   const error = renderToStaticMarkup(
     <WorkspaceManagementContent
-      tab="guests"
+      tab="roles"
       state={{ status: 'error', message: 'Request failed' }}
       onRetry={() => undefined}
     />,
@@ -186,7 +186,6 @@ test('governance panel exposes every workspace policy and its rollout state', ()
         memberCanInvite: true,
         legalHold: true,
         rolloutStage: 'invited',
-        guestExpirationDays: 30,
         channelRetentionDays: 180,
       }}
       onToggle={() => undefined}
@@ -199,7 +198,6 @@ test('governance panel exposes every workspace policy and its rollout state', ()
   assert.match(html, /Legal hold/)
   assert.match(html, /Hold active — nothing is swept/)
   assert.match(html, /Invited workspaces/)
-  assert.match(html, /30 days/)
   assert.match(html, /180 days/)
 })
 

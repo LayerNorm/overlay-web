@@ -282,7 +282,6 @@ export class WorkspaceSharingService {
       this.deps.conversations.listConversations({ userId: actorUserId, workspaceId }),
     ])
     const accessible = new Set(accessibleRoomIds)
-    const actor = await this.deps.workspaces.resolveActiveWorkspace(actorUserId, workspaceId)
     return {
       principals: members
         .filter(({ principal, membership }) => !principal.archivedAt && membership.status === 'active')
@@ -308,7 +307,6 @@ export class WorkspaceSharingService {
           kind: conversation.conversationType === 'channel' ? 'channel' as const : 'dm' as const,
           targetType: 'room' as const,
         })),
-      canInvite: actor.membership.role === 'owner' || actor.membership.role === 'admin',
     }
   }
 

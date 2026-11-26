@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { chargeSpendLimits, spendSubjectsFor } from '../lib/spendLimitCharges'
 import type { Doc, Id } from '../_generated/dataModel'
 import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
@@ -371,13 +372,14 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
   const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
   const chargeMicros = Math.min(Math.round(cents * 10_000), workspaceAvailableMicros(balance))
   if (chargeMicros > 0) {
-    const limit = await ctx.db.query('billingAccountSpendLimits')
-      .withIndex('by_account_subject', (q) => q
-        .eq('billingAccountId', args.billingAccountId)
-        .eq('subjectKind', args.programmaticSubjectId ? 'programmatic' : 'member')
-        .eq('subjectId', args.programmaticSubjectId ?? args.userId))
-      .unique()
-    await finalizeWorkspaceLedger(ctx, { actualMicros: chargeMicros, balance, limit, reservedMicros: 0 })
+    // The person's cap counts everything they start; a paying program's cap counts its own runs too.
+    await chargeSpendLimits(ctx, {
+      billingAccountId: args.billingAccountId,
+      subjects: spendSubjectsFor(args.userId, args.programmaticSubjectId ? { kind: 'programmatic', id: args.programmaticSubjectId } : undefined),
+      micros: chargeMicros,
+      now: Date.now(),
+    })
+    await finalizeWorkspaceLedger(ctx, { actualMicros: chargeMicros, balance, limit: null, reservedMicros: 0 })
   }
   await ctx.db.insert('usageOperations', {
     userId: args.userId,

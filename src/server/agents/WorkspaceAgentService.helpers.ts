@@ -5,7 +5,6 @@ import type {
 } from '@overlay/workspace-contracts'
 import { WorkspaceAgentServiceError, unique } from './workspace-agent-validation'
 
-export function canCreateAgent(role: WorkspaceMembershipRole) { return role !== 'guest' }
 export function canSeeAgent(agent: Pick<WorkspaceAgentDirectoryItem, 'visibility' | 'createdByPrincipalId'>, principalId: string) {
   return agent.visibility !== 'creator' || agent.createdByPrincipalId === principalId
 }
@@ -20,9 +19,7 @@ export function withAgentDirectoryMetadata(
 ): WorkspaceAgentDirectoryItem {
   let canEdit: boolean
   if (agent.agentRole === 'personal_chief') {
-    canEdit = args.role !== 'guest' && agent.chiefOwnerUserId === args.actorUserId
-  } else if (agent.agentRole === 'workspace_chief' && args.role === 'guest') {
-    canEdit = false
+    canEdit = agent.chiefOwnerUserId === args.actorUserId
   } else if (args.role === 'owner' || args.role === 'admin') {
     canEdit = true
   } else {

@@ -243,13 +243,6 @@ test('list hides creator-only agents from other members but shows them to the cr
   assert.deepEqual(creatorIds.sort(), ['agent-default', 'agent-private', 'agent-shared'])
 })
 
-test('guest directory reads do not lazily provision agents', async () => {
-  const { service, created } = serviceFor(OTHER_PRINCIPAL_ID, 'guest')
-  const result = await service.list({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID })
-  assert.deepEqual(result.agents, [])
-  assert.deepEqual(created, [])
-})
-
 test('list hides creator-only agents from workspace admins', async () => {
   const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-private', visibility: 'creator' })]
   const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'admin', seed)

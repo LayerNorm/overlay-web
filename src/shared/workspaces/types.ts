@@ -72,6 +72,8 @@ export interface WorkspaceManagementClient {
   createBillingCheckout(workspaceId: string, input: WorkspaceBillingCheckoutInput): Promise<{ url: string | null }>
   createBillingTopUp(workspaceId: string, input: WorkspaceBillingTopUpInput): Promise<{ url: string | null }>
   updateBillingAutoTopUp(workspaceId: string, input: WorkspaceBillingAutoTopUpInput): Promise<WorkspaceBillingSummaryResponse>
+  /** Owners and admins: a member's monthly spending cap, or null to remove it. */
+  setMemberSpendCap(workspaceId: string, input: { userId: string; capCents: number | null }): Promise<{ capCents: number | null }>
   createBillingPortal(workspaceId: string): Promise<{ url: string | null }>
   /** PR previews only: makes the workspace paid for testing, without a card. */
   grantPreviewTestPlan?(workspaceId: string): Promise<{ granted: boolean }>

@@ -224,6 +224,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/workspaces/[workspaceId]/audit-export`
 - `POST /api/v1/workspaces/[workspaceId]/billing/checkout`
 - `POST /api/v1/workspaces/[workspaceId]/billing/auto-top-up`
+- `POST /api/v1/workspaces/[workspaceId]/billing/member-caps`
 - `POST /api/v1/workspaces/[workspaceId]/billing/portal`
 - `GET, POST /api/v1/workspaces/[workspaceId]/billing`
 - `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`

@@ -92,6 +92,8 @@ export function applyAgentCapabilityFilter(args: {
  * it: nothing is attributed to an agent, memory is the person's own (so every app
  * they connect shares one memory), and there is no conversation to attach to.
  */
+export const EXTERNAL_APP_API_RUN_WAIT_MS = 4 * 60_000
+
 export async function buildExternalAppTooling(args: {
   actorUserId: string
   effectiveModelId: string
@@ -111,6 +113,8 @@ export async function buildExternalAppTooling(args: {
     effectiveModelId: args.effectiveModelId,
     entitlements: args.entitlements,
     grantedToolSurface: true,
+    // The MCP route stops at 300 s: leave time to stop and settle a Monid run before the request is cut off.
+    apiRunWaitMs: EXTERNAL_APP_API_RUN_WAIT_MS,
     idempotencyKey: args.idempotencyKey,
     mediaToolIntent: null,
     memoryEnabled: true,

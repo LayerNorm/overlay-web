@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { WORKSPACE_RUN_PERSONAL_MODEL_ERROR } from '@/shared/ai/workspace-run-model'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   getGatewayImageModel,
@@ -37,9 +38,7 @@ async function getUserByokConnection(
   })
 }
 
-/** Thrown when a workspace run would spend someone's personal key or subscription. */
-export const WORKSPACE_RUN_PERSONAL_MODEL_ERROR =
-  'Workspace runs use workspace accounts: this model is connected with a personal key or subscription. Pick a workspace model.'
+export { WORKSPACE_RUN_PERSONAL_MODEL_ERROR }
 
 /**
  * `workspaceOnly` is for workspace runs (shared rooms and workspace automations, internal/plans/

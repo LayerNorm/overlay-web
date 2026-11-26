@@ -70,6 +70,8 @@ Remaining budget is the unused allowance plus the top-up balance, minus legacy h
 
 The workspace balance is the only automatic spending limit, plus an optional fixed-period subject limit an admin sets. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Wallet creation grants no credits; funding remains an explicit later operation.
 
+**Spend per person.** Workspace → Billing shows owners and admins what each member spent this billing period, live (`billing/memberSpend:members`, summed from `usageOperations` by the person who started each charge, so their automations and agents count too), and lets them set a cap per person (`POST /api/v1/workspaces/:workspaceId/billing/member-caps`). A cap is a `member` spend limit. Every charge counts against the person's cap and, when a program pays, the program's limit as well (`spendSubjectsFor`, `chargeSpendLimits` in `convex/lib/spendLimitCharges.ts`; machine time through `chargeSandboxSpendLimits`); every check before a paid call reads both (`ensureProviderBudgetNotLow`, `providerBudgetGate`, and the Harness model boundary through `spendLimitRefusal` in `assertWorkspaceBudgetNotLow`). Limits renew every period of their own length (`src/shared/billing/spend-limit-period.ts`): outside the stored period nothing counts as used, and the next charge rolls the period forward. A new cap starts with what the person already spent this period.
+
 **Check before, charge after.** Model calls, tools, media, transcription, connected agents, automations, embeddings and memory work never estimate, reserve or hold what a call will cost:
 
 - Before a paid call, `ensureProviderBudgetNotLow` (`src/server/billing/billing-runtime.ts`) reads the real balance. Under 2% left, it tries one automatic top-up to the 2% line (`workspaceBudgetStopLineCents`) and refuses with `402 insufficient_budget` only if the workspace is still under 2%. It also refuses when the subject's spend limit is used up. Convex background work (embeddings, memory extraction, memory profiles) uses `billing/providerBudget:providerBudgetGate`, which applies the same check without a top-up.
@@ -208,3 +210,7 @@ Background memory extraction charges SDK-reported token usage on structured-outp
 validation failures using the same pricing as successful calls.
 Invalid output is never stored. A call with missing usage or unknown pricing charges
 nothing and logs the gap.
+
+## Data and APIs runs
+
+`run_api` follows the same direct-charge path as web search: the 2% check before, then a charge of Monid's `reportedCost` with the usage markup after, under the operation id `monid.run:<runId>`. Its Monid `maxCost` is the remaining budget without the markup, so a run cannot overspend the workspace. See `monid.md`.

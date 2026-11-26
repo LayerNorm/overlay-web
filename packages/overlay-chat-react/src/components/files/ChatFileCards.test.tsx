@@ -134,3 +134,13 @@ test('three or more notes from one turn collapse into one list, and the open not
   const single = renderToStaticMarkup(<ChatFilesProvider value={listHost}><ChatFileCardStrip fileIds={['b']} /></ChatFilesProvider>)
   assert.match(single, /aria-current="true"/)
 })
+
+test('an API run shows a card for every file it saved and for its whole output', () => {
+  const blocks: AssistantVisualBlock[] = [
+    tool('run_api', { success: true, files: [{ fileId: 'glb1' }, { fileId: 'png1' }], fullOutputFile: { fileId: 'json1' } }, { provider: 'meshy', endpoint: '/x' }),
+    tool('run_api', { success: false, files: [{ fileId: 'failed1' }] }, { provider: 'meshy', endpoint: '/x' }),
+    tool('run_api', { success: true, output: { people: [] } }, { provider: 'apollo', endpoint: '/y' }),
+    { kind: 'text', text: '![preview](/api/v1/files/png1/content)' },
+  ]
+  assert.deepEqual(collectCreatedFileIds(blocks), ['glb1', 'json1'])
+})

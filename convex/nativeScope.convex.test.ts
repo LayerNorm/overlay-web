@@ -56,9 +56,9 @@ test('membership revocation and archived principals/workspaces invalidate subseq
   await t.run(ctx => ctx.db.patch(ids.memberships[0]!, { status: 'suspended' }))
   await expect(user.query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
   await t.run(async ctx => {
-    await ctx.db.patch(ids.memberships[0]!, { status: 'active', role: 'guest' })
+    await ctx.db.patch(ids.memberships[0]!, { status: 'active', role: 'member' })
   })
-  expect(await user.query(workspace, { workspaceId: args.workspaceId })).toMatchObject({ role: 'guest' })
+  expect(await user.query(workspace, { workspaceId: args.workspaceId })).toMatchObject({ role: 'member' })
   await t.run(ctx => ctx.db.patch(ids.principals[0]!, { archivedAt: 0 }))
   await expect(user.query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
   await t.run(async ctx => {

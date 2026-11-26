@@ -63,7 +63,7 @@ import { IdentityImageEditor, type IdentityImageChoice } from '@/components/iden
 import { identityRequest } from '@/hooks/useIdentityProfile'
 import { workspaceIconUrl } from '@/shared/workspaces/icon-presets'
 
-const MANAGEMENT_TABS: readonly WorkspaceManagementTab[] = ['people', 'guests', 'teams', 'roles', 'chats-agents']
+const MANAGEMENT_TABS: readonly WorkspaceManagementTab[] = ['people', 'teams', 'roles', 'chats-agents']
 const NO_MANAGEMENT_ITEMS: WorkspaceManagementItem[] = []
 
 export type WorkspaceManagementState =
@@ -192,8 +192,8 @@ export function WorkspaceManagementContent({
     const actionEnabled = Boolean(
       onPrimaryAction
       && (
-        (tab === 'teams' && state.currentRole !== 'guest')
-        || ((tab === 'people' || tab === 'guests') && state.canManage)
+        tab === 'teams'
+        || (tab === 'people' && state.canManage)
       ),
     )
     return (
@@ -282,7 +282,6 @@ export type WorkspaceSharingPolicyState =
     membersCanTopUp: boolean
     legalHold: boolean
     rolloutStage: WorkspaceRolloutStage
-    guestExpirationDays?: number
     channelRetentionDays?: number
     metrics?: WorkspaceOperationalMetrics
   }
@@ -309,7 +308,6 @@ function policyStateFrom(
     membersCanTopUp: policy.usageTopUpBy === 'members',
     legalHold: policy.legalHold,
     rolloutStage: policy.rolloutStage,
-    guestExpirationDays: policy.guestExpirationDays,
     channelRetentionDays: policy.channelRetentionDays,
     metrics,
   }
@@ -441,7 +439,7 @@ export function WorkspaceSharingPolicySection({
         <div className="rounded-xl border border-(--border) p-4" aria-hidden>
           <p className="text-sm font-medium text-(--foreground)">Rollout and retention</p>
           <dl className="mt-2 grid gap-2 text-xs text-(--muted) sm:grid-cols-2">
-            {['Rollout stage', 'Guest expiry', 'Channel retention', 'Audit export'].map((label) => (
+            {['Rollout stage', 'Channel retention', 'Audit export'].map((label) => (
               <div key={label}>
                 <dt className="text-(--muted-light)">{label}</dt>
                 <dd className="flex h-4 items-center"><span className="ui-skeleton-line block h-2.5 w-28 rounded-sm" /></dd>
@@ -501,12 +499,6 @@ export function WorkspaceSharingPolicySection({
           <div>
             <dt className="text-(--muted-light)">Rollout stage</dt>
             <dd className="text-(--foreground)">{describeRolloutStage(state.rolloutStage)}</dd>
-          </div>
-          <div>
-            <dt className="text-(--muted-light)">Guest expiry</dt>
-            <dd className="text-(--foreground)">
-              {state.guestExpirationDays ? `${state.guestExpirationDays} days` : 'No automatic expiry'}
-            </dd>
           </div>
           <div>
             <dt className="text-(--muted-light)">Channel retention</dt>
@@ -582,7 +574,6 @@ function WorkspaceItemActions({
     return (
       <TeamItemActions
         item={item}
-        canArchive={state.currentRole !== 'guest'}
         onManageTeam={onManageTeam}
         onArchiveTeam={onArchiveTeam}
       />
@@ -652,7 +643,6 @@ function MemberItemActions({
         >
           <option value="member">Member</option>
           <option value="admin">Admin</option>
-          <option value="guest">Guest</option>
           {state.currentRole === 'owner' && state.workspaceKind === 'organization' ? (
             <option value="owner">Owner</option>
           ) : null}
@@ -677,12 +667,10 @@ function MemberItemActions({
 
 function TeamItemActions({
   item,
-  canArchive,
   onManageTeam,
   onArchiveTeam,
 }: {
   item: WorkspaceManagementItem
-  canArchive: boolean
   onManageTeam?(item: WorkspaceManagementItem): void
   onArchiveTeam?(item: WorkspaceManagementItem): void
 }) {
@@ -691,17 +679,15 @@ function TeamItemActions({
       <Button size="sm" variant="ghost" onClick={() => onManageTeam?.(item)}>
         Manage
       </Button>
-      {canArchive ? (
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
-          aria-label={`Archive ${item.name}`}
-          onClick={() => onArchiveTeam?.(item)}
-        >
-          <Archive size={13} />
-        </Button>
-      ) : null}
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-8 w-8"
+        aria-label={`Archive ${item.name}`}
+        onClick={() => onArchiveTeam?.(item)}
+      >
+        <Archive size={13} />
+      </Button>
     </span>
   )
 }
@@ -713,7 +699,7 @@ function unavailableActionTitle(tab: WorkspaceSettingsTab): string {
 }
 
 type WorkspacePanelAction =
-  | { type: 'invite'; guest: boolean }
+  | { type: 'invite' }
   | { type: 'create-team' }
   | { type: 'manage-team'; team: WorkspaceManagementItem }
   | { type: 'remove-member'; item: WorkspaceManagementItem }
@@ -809,7 +795,7 @@ export function WorkspaceSettingsPanel({
     setAction(
       activeTab === 'teams'
         ? { type: 'create-team' }
-        : { type: 'invite', guest: activeTab === 'guests' },
+        : { type: 'invite' },
     )
   }
 
@@ -880,8 +866,8 @@ export function WorkspaceSettingsPanel({
   const showHeaderPrimaryAction = activeTab !== 'sharing' && activeTab !== 'billing'
     && state.status === 'ready'
     && (
-      (activeTab === 'teams' && state.currentRole !== 'guest')
-      || ((activeTab === 'people' || activeTab === 'guests') && state.canManage)
+      activeTab === 'teams'
+      || (activeTab === 'people' && state.canManage)
     )
   const headerPrimaryLabel = TABS.find((tab) => tab.id === activeTab)?.action
   const refresh = () => setRefreshKey((current) => current + 1)
@@ -1289,7 +1275,6 @@ function WorkspaceActionDialogs({
       {action?.type === 'invite' ? (
       <InviteWorkspaceDialog
         open
-        guest={action.guest}
         busy={actionBusy}
         error={actionError}
         invitePath={invitePath}

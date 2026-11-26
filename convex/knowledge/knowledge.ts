@@ -461,7 +461,7 @@ export const searchChunksLexical = internalQuery({
   },
 })
 
-/** Whether this person may search the workspace's files: an active member who isn't a guest (`canReadResource`). */
+/** Whether this person may search the workspace's files: any active member (`canReadResource`). */
 export const canSearchWorkspaceFiles = internalQuery({
   args: { requestingUserId: v.string(), workspaceId: v.string() },
   returns: v.boolean(),
@@ -473,7 +473,7 @@ export const canSearchWorkspaceFiles = internalQuery({
     const membership = await ctx.db.query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId))
       .unique()
-    return membership?.status === 'active' && membership.role !== 'guest'
+    return membership?.status === 'active'
   },
 })
 
@@ -1594,7 +1594,7 @@ export const hybridSearch = action({
     const memberKinds = (['memory', 'message'] as const).filter(
       (kind) => kind === 'memory' ? wantsMemory : wantsMessage,
     )
-    // Files in Workspace are indexed once for the workspace (P7), searched for every member who isn't a guest.
+    // Files in Workspace are indexed once for the workspace (P7), searched for every active member.
     const workspaceFiles = args.workspaceId && wantsFile && await ctx.runQuery(internal.knowledge.knowledge.canSearchWorkspaceFiles, {
       requestingUserId: args.userId, workspaceId: args.workspaceId,
     })

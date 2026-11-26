@@ -20,10 +20,9 @@ import { postSlackEphemeral, type SlackBot, type SlackBotMessage, type SlackBotT
 
 export type SlackRequester = {
   workspaceId: string
-  settings: { whoCanAsk: string; unlinkedPeople: string; guests: boolean; slackConnect: boolean; actionsInChannels: string }
+  settings: { whoCanAsk: string; unlinkedPeople: string; slackConnect: boolean; actionsInChannels: string }
   userId: string | null
   principalId: string | null
-  guest: boolean
   /** Who can ask lets this linked member ask (not blocked, or on the allow list). */
   allowed: boolean
 }
@@ -54,7 +53,7 @@ export type SlackAdmission =
   | { status: 'started'; conversationId: string; turnId: string }
   | { status: 'not_installed' }
   | { status: 'link_required'; workspaceId: string }
-  | { status: 'not_allowed'; reason: 'slack_connect' | 'outsider' | 'guest' | 'not_listed' }
+  | { status: 'not_allowed'; reason: 'slack_connect' | 'outsider' | 'not_listed' }
   | { status: 'empty' }
   /** Admitted, but the turn could not start (governance, budget, no Overlay to answer); openUrl shows why. */
   | { status: 'start_failed'; openUrl: string }
@@ -127,7 +126,6 @@ export async function admitSlackMessage(input: SlackInbound, dependencies: Slack
   if (input.external && !requester.settings.slackConnect) return { status: 'not_allowed', reason: 'slack_connect' }
   if (input.outsider) return { status: 'not_allowed', reason: 'outsider' }
   if (!requester.userId || !requester.principalId) return { status: 'link_required', workspaceId: requester.workspaceId }
-  if (requester.guest && !requester.settings.guests) return { status: 'not_allowed', reason: 'guest' }
   if (!requester.allowed) return { status: 'not_allowed', reason: 'not_listed' }
   try {
     const started = await startSlackRequest({
@@ -235,7 +233,6 @@ export async function startSlackTurn(args: {
 const NOT_ALLOWED_TEXT = {
   slack_connect: 'Overlay doesn’t answer in channels shared with other organizations here.',
   outsider: 'Overlay only answers members of the workspace that added it.',
-  guest: 'Overlay doesn’t answer guests in this workspace.',
   not_listed: 'You can’t ask Overlay in Slack. Ask a workspace owner or admin for access.',
 } as const
 

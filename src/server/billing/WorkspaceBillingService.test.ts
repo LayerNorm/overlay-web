@@ -131,9 +131,8 @@ test('members may add usage only when the workspace lets them, and never change 
   )
   const restricted = fixture({ role: 'member', usageTopUpBy: 'admins', provider: recording })
   assert.equal((await restricted.summary({ actorUserId: 'member_1', workspaceId: 'workspace_1' })).canTopUp, false)
-  const guest = fixture({ role: 'guest', usageTopUpBy: 'members', provider: recording })
   await assert.rejects(
-    guest.createTopUp({ actorUserId: 'guest_1', workspaceId: 'workspace_1', amountCents: 800 }),
+    restricted.createTopUp({ actorUserId: 'member_1', workspaceId: 'workspace_1', amountCents: 800 }),
     (error: unknown) => error instanceof BillingServiceError && error.statusCode === 403,
   )
   assert.equal(checkouts.length, 1)
@@ -280,7 +279,7 @@ test('a preview test plan creates a missing wallet first, and members cannot gra
 function fixture(args: {
   provider?: BillingProvider
   repository?: BillingRepository
-  role: 'owner' | 'admin' | 'member' | 'guest'
+  role: 'owner' | 'admin' | 'member'
   usageTopUpBy?: 'members' | 'admins'
   kind?: 'organization' | 'personal'
 }) {
