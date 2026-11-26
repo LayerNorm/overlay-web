@@ -1,4 +1,5 @@
 import 'server-only'
+import { includedItemsOfMessage } from '@/shared/agents/included-items'
 
 import { nativeAgentModelId } from '@/shared/agents/agent-model'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -148,6 +149,7 @@ export async function loadRoomTurnContext(args: {
     throw new WorkspaceAgentInvocationError('not_a_collaboration_room')
   }
   const triggeringMessage = history.find((message) => message._id === args.messageId)
+  const includedItems = includedItemsOfMessage(triggeringMessage)
   const latestUserText = triggeringMessage?.content
     ?? history.filter((message) => !message.deletedAt).at(-1)?.content
     ?? ''
@@ -157,6 +159,7 @@ export async function loadRoomTurnContext(args: {
     conversationType,
     directory,
     history,
+    includedItems,
     latestUserText,
     participants,
     server,

@@ -175,6 +175,8 @@ export async function buildWorkspaceAgentTooling(args: {
   /** Stable per-turn key so a retried turn does not repeat side effects. */
   idempotencyKey: string
   latestUserText?: string
+  /** Personal items the asking message included on purpose; reachable even in a room others can read. */
+  includedItemIds?: readonly string[]
   memoryEnabled: boolean
   /** The agent whose memories this turn saves; `memoryOwnerForPlace` picks the owner from the room. */
   memoryAgent: MemoryPlaceAgent
@@ -225,6 +227,7 @@ export async function buildWorkspaceAgentTooling(args: {
     idempotencyKey: args.idempotencyKey,
     artifactPublicationAuthority: args.artifactPublicationAuthority,
     latestUserText: args.latestUserText,
+    ...(args.includedItemIds?.length ? { includedItemIds: args.includedItemIds } : {}),
     mediaToolIntent: null,
     memoryEnabled: args.memoryEnabled,
     memoryOwnerId: memoryOwnerForPlace({

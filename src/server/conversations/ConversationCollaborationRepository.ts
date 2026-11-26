@@ -1,4 +1,5 @@
 import 'server-only'
+import type { IncludedItem } from '@/shared/agents/included-items'
 import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 
 import type {
@@ -48,6 +49,7 @@ export interface ConversationCollaborationRepository {
     clientNonce?: string
     content: string
     conversationId: string
+    includedItems?: IncludedItem[]
     parts?: Array<Record<string, unknown>>
     replySnippet?: string
     replyToTurnId?: string

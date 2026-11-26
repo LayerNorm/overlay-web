@@ -516,6 +516,8 @@ export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemote
   }
 }
 
+const MAX_INCLUDED_ITEMS = 10
+
 export const addMessage = mutation({
   args: {
     actorUserId: v.string(),
@@ -529,6 +531,11 @@ export const addMessage = mutation({
     turnId: v.string(),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
+    includedItems: v.optional(v.array(v.object({
+      type: v.union(v.literal('file'), v.literal('automation')),
+      id: v.string(),
+      name: v.string(),
+    }))),
   },
   handler: async (ctx, args) => {
     return await insertCollaborationMessage(ctx, args)
@@ -549,6 +556,7 @@ export async function insertCollaborationMessage(
     turnId: string
     workspaceId: string
     serverSecret?: string
+    includedItems?: Doc<'conversationMessages'>['includedItems']
   },
 ) {
   const access = await requireConversationAccess(ctx, args)
@@ -588,6 +596,7 @@ export async function insertCollaborationMessage(
     replySnippet: args.replySnippet,
     clientNonce: args.clientNonce,
     threadRootMessageId: args.threadRootMessageId,
+    ...(args.includedItems?.length ? { includedItems: args.includedItems.slice(0, MAX_INCLUDED_ITEMS) } : {}),
     status: 'completed',
     createdAt: now,
     updatedAt: now,

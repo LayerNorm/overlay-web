@@ -71,6 +71,8 @@ export interface ConversationMessageRequest {
   clientNonce?: string
   threadRootMessageId?: string
   mentionedPrincipalIds?: string[]
+  /** Personal items @-mentioned in a room message to include on purpose (at most 10). */
+  includedItems?: Array<{ type: 'file' | 'automation'; id: string; name: string }>
   memoryEnabled?: boolean
 }
 
