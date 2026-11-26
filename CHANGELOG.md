@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix large tool results being wrapped over and over when a reply is saved. Each save stage (live progress, model stream, transcript, delivery, message save) shrank tool inputs and outputs over 4,000 characters again, including ones an earlier stage had already shrunk, so a result ended up three or four layers deep with its budget spent on escape characters and only about 150 characters of real data. Later turns, `read_chat` and trace views lost what earlier tools returned. Shrinking is now done once and left alone afterwards.
+
 - Keep workspace agents off personal providers, and scope Settings → Providers by mode. A workspace agent set to its creator's personal key or subscription failed every turn in a channel or Slack thread (workspace runs may only spend workspace connections), and only showed "internal error".
   - Settings → Providers follows the Workspace | Personal switch: Personal lists and adds your own connections, Workspace lists and adds the workspace's, which every member can use (a teammate's are read-only). API keys can now be workspace connections too, not only subscriptions. The add dialog says who can use the new connection; onboarding adds the workspace's.
   - Workspace agents can only be saved, or moved to the workspace, with an Overlay model or a workspace provider, and their model pickers offer only those.
