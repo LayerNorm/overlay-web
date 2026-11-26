@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-25
+## [0.5.0] - 2026-11-26
 
 - Give private threads their agent's Overlay tools (memory, files, notes, tasks, web search…). Before each turn the app asks Overlay for a one-hour token for that person, workspace and agent with its own signed-in session, so the page never holds it, and hands it to the bundled Agent Host (now 0.7.0), which calls the tools over Overlay's MCP server at this app's own server address. The conversation still stays on this computer. Without a token (signed out, offline) the turn runs with this computer's tools only. Which tools a thread gets, and the free tier for workspaces without a plan, are decided by the server.
 - Private threads get the same screen tools as synced threads on this computer: screenshots and mouse and keyboard input on macOS, and the browser and open-URL tools on macOS and Linux, with the same approval rules. Long private threads are summarized before they outgrow the model's context window, and screenshot images aren't kept after a turn. These come with the bundled Agent Host 0.7.0, now resolved from npm in the bundle lockfile.
