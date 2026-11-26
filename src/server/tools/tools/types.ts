@@ -66,6 +66,11 @@ export interface OverlayToolsOptions {
    * brought into the room by default.
    */
   sharedRoom?: boolean
+  /**
+   * Personal items the person included on purpose by @-mentioning them in the message that started this turn. In a
+   * shared room, by-id reads and edits may reach these (and only these) Personal items (`refusesRoomItem`).
+   */
+  includedItemIds?: readonly string[]
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
   idempotencyKey?: string
   artifactPublicationAuthority?: ArtifactPublicationAuthority

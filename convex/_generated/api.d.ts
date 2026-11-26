@@ -177,10 +177,13 @@ import type * as migrations_backfillAuditWorkspaceIds from "../migrations/backfi
 import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as migrations_doubleSidebar from "../migrations/doubleSidebar.js";
+import type * as migrations_grantApiTools from "../migrations/grantApiTools.js";
 import type * as migrations_grantLocalComputer from "../migrations/grantLocalComputer.js";
 import type * as migrations_notesToMarkdown from "../migrations/notesToMarkdown.js";
 import type * as migrations_notesToMarkdownData from "../migrations/notesToMarkdownData.js";
+import type * as migrations_outputWorkspaces from "../migrations/outputWorkspaces.js";
 import type * as migrations_personalChiefs from "../migrations/personalChiefs.js";
+import type * as migrations_personalMemoryVisibility from "../migrations/personalMemoryVisibility.js";
 import type * as migrations_purgeConnectedAgents from "../migrations/purgeConnectedAgents.js";
 import type * as migrations_renameGenericWorkspaces from "../migrations/renameGenericWorkspaces.js";
 import type * as migrations_workspaceAgentModels from "../migrations/workspaceAgentModels.js";
@@ -386,10 +389,13 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "migrations/doubleSidebar": typeof migrations_doubleSidebar;
+  "migrations/grantApiTools": typeof migrations_grantApiTools;
   "migrations/grantLocalComputer": typeof migrations_grantLocalComputer;
   "migrations/notesToMarkdown": typeof migrations_notesToMarkdown;
   "migrations/notesToMarkdownData": typeof migrations_notesToMarkdownData;
+  "migrations/outputWorkspaces": typeof migrations_outputWorkspaces;
   "migrations/personalChiefs": typeof migrations_personalChiefs;
+  "migrations/personalMemoryVisibility": typeof migrations_personalMemoryVisibility;
   "migrations/purgeConnectedAgents": typeof migrations_purgeConnectedAgents;
   "migrations/renameGenericWorkspaces": typeof migrations_renameGenericWorkspaces;
   "migrations/workspaceAgentModels": typeof migrations_workspaceAgentModels;

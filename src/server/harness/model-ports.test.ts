@@ -747,6 +747,21 @@ test('a call that failed before it was sent settles its marker and retries', asy
   expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
 })
 
+test('an Overlay fault is retried only when the runner says no tool had started', async () => {
+  const fault = new Error('Native delivery execution changed.')
+  let current = recordOperationsOn(dispatchedState())
+  mocks.recovery.mockResolvedValue(true)
+  expect(await interruptedPorts().recoverModelFailure!('model:1', fault)).toBe(false)
+  expect(mocks.recovery).not.toHaveBeenCalled()
+  current = recordOperationsOn(dispatchedState())
+  expect(await interruptedPorts().recoverModelFailure!('model:1', fault, { internalFault: true })).toBe(true)
+  expect(current().modelReservation).toBeUndefined()
+  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
+  // A revoked authorization would repeat, whatever the runner asks.
+  recordOperationsOn(dispatchedState())
+  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('Native harness permissions were revoked.'), { internalFault: true })).toBe(false)
+})
+
 test('a permanent provider failure closes the dispatch without retrying', async () => {
   const current = recordOperationsOn(dispatchedState())
   const unauthorized = new APICallError({

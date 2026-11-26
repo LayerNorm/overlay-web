@@ -11,7 +11,7 @@ import {
 import type { ResourceKind, ScopedRow } from '../../src/shared/workspaces/resource-scope'
 
 type ScopedDoc = ScopedRow & { workspaceId?: string }
-type ScopeMutationArgs = { id: string; userId: string; workspaceId?: string; accessToken?: string; serverSecret?: string; actingAgentPrincipalId?: string }
+type ScopeMutationArgs = { id: string; userId: string; workspaceId?: string; accessToken?: string; serverSecret?: string; actingAgentPrincipalId?: string; workspaceItemsOnly?: boolean }
 type LooseDb = {
   get(id: unknown): Promise<ScopedDoc | null>
   patch(id: unknown, patch: Record<string, unknown>): Promise<void>
@@ -19,6 +19,22 @@ type LooseDb = {
 
 function rowScopeOf(row: ScopedDoc): 'personal' | 'workspace' {
   return row.scope ?? 'personal'
+}
+
+/** In a workspace context only Workspace items change; an archived item counts as the scope it was archived from. */
+function outsideWorkspaceContext(args: { workspaceItemsOnly?: boolean }, row: ScopedDoc | null): boolean {
+  if (args.workspaceItemsOnly !== true || !row) return false
+  return (row.archivedAt !== undefined ? row.archivedFromScope ?? row.scope : row.scope) !== 'workspace'
+}
+
+/**
+ * May an archive or restore of a folder carry this child with it? Only what the caller could archive or restore on its
+ * own: a row they can edit and, in a workspace context, a Workspace row. A mixed tree (a teammate's Personal file in a
+ * Workspace folder) keeps the rows the caller has no right to.
+ */
+function childPermission(ctx: unknown, args: { userId: string; workspaceItemsOnly?: boolean }) {
+  const loader = scopeContextLoader(ctx as never, args.userId)
+  return async (child: ScopedDoc): Promise<boolean> => !outsideWorkspaceContext(args, child) && await loader.canEdit(child as never)
 }
 
 const scopeValidator = v.union(v.literal('personal'), v.literal('workspace'))
@@ -68,6 +84,8 @@ export function scopeMutations(
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
     actingAgentPrincipalId: v.optional(v.string()),
+    /** Set for a workspace context (a room others can read, a workspace automation): only Workspace items may change. */
+    workspaceItemsOnly: v.optional(v.boolean()),
   }
 
   /** The row, only if it exists, is in the workspace being asked about, and the caller can read it. */
@@ -83,6 +101,8 @@ export function scopeMutations(
   async function applyScope(ctx: MutationCtx, args: ScopeMutationArgs & { to: 'personal' | 'workspace'; withAgent?: boolean }): Promise<ScopeMutationResult> {
     await authorize(args, options?.requireServerAuthentication)
     const { db, id, row } = await readableRow(ctx, args)
+    // Moving shares a Personal item, which is its creator's call from their own place, not from a room or automation.
+    if (args.workspaceItemsOnly === true && row) return { ok: false, reason: 'workspace_items_only' }
     const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
     if (!plan.ok || !id || !row) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
     const extra = options?.beforeMove
@@ -110,13 +130,15 @@ export function scopeMutations(
     handler: async (ctx, args): Promise<ScopeMutationResult> => {
       await authorize(args, options?.requireServerAuthentication)
       const { db, id, row } = await readableRow(ctx, args)
+      if (outsideWorkspaceContext(args, row)) return { ok: false, reason: 'workspace_items_only' }
       const plan = await planArchive(ctx, { row, userId: args.userId, now: Date.now() })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       await db.patch(id, { ...plan.patch, ...(options?.onArchive ?? {}) })
       const affectedIds = [id]
+      const mayChange = childPermission(ctx, args)
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
-        if (child && !child.archivedAt && child.userId === row?.userId) {
+        if (child && !child.archivedAt && child.userId === row?.userId && await mayChange(child)) {
           await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
           affectedIds.push(childId)
         }
@@ -131,15 +153,17 @@ export function scopeMutations(
     handler: async (ctx, args): Promise<ScopeMutationResult> => {
       await authorize(args, options?.requireServerAuthentication)
       const { db, id, row } = await readableRow(ctx, args)
+      if (outsideWorkspaceContext(args, row)) return { ok: false, reason: 'workspace_items_only' }
       const plan = await planRestore(ctx, { row, userId: args.userId })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       const archivedAt = row?.archivedAt
       await db.patch(id, { scope: plan.scope, archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
       const affectedIds = [id]
+      const mayChange = childPermission(ctx, args)
       // Only the contents that were archived together with it come back.
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
-        if (child && child.archivedAt !== undefined && child.archivedAt === archivedAt) {
+        if (child && child.archivedAt !== undefined && child.archivedAt === archivedAt && await mayChange(child)) {
           await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
           affectedIds.push(childId)
         }

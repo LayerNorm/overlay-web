@@ -89,6 +89,7 @@ import {
 } from './files-executes'
 import { runInToolCallScope } from './internal-api'
 import { executeInspectApi, executeRunApi, executeSaveApiFile, executeSearchApis } from './monid'
+import { executeArchiveItem, executeMoveToWorkspace, executeRestoreItem, SCOPE_TOOL_RESOURCES } from './scope-executes'
 import type { OverlayToolsOptions } from './types'
 
 /** Optional on every computer tool: run on the cloud Computer or on the user's own connected Mac. */
@@ -114,6 +115,11 @@ const toolScopeSchema = z
   .enum(['personal', 'workspace'])
   .optional()
   .describe('Which items to list: personal (only yours) or workspace (shared with the workspace). Omit for everything active that you can see. Archived items are never listed.')
+
+const outputScopeSchema = z
+  .enum(['personal', 'workspace'])
+  .optional()
+  .describe('Where the saved output goes: Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.')
 
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
@@ -624,10 +630,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.list_files = tool({
       description:
         'List files and folders in the Overlay workspace (id, name, type, parent folder, size, last edit). ' +
-        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
+        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree. ' +
+        'Set archived to true to list archived files, notes and outputs instead, for example to find the id for restore_item.',
       inputSchema: z.object({
         folderId: z.string().optional().describe('Folder id from a previous list_files result'),
         scope: toolScopeSchema,
+        archived: z.boolean().optional().describe('List archived items instead of active ones'),
       }),
       execute: async (input) => {
         assertToolAllowed('list_files')
@@ -698,6 +706,49 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('move_file')
         return executeMoveFile(options, input)
+      },
+    })
+  }
+
+  const scopeTarget = {
+    resource: z.enum(SCOPE_TOOL_RESOURCES).describe('file covers files, folders, notes and generated outputs'),
+    id: z.string().describe('The item id from a list or search result (fileId, noteId, skill, automation or task id)'),
+  }
+
+  if (shouldExposeTool('move_to_workspace')) {
+    tools.move_to_workspace = tool({
+      description:
+        'Move one of the person\'s Personal items to Workspace so every member can see it, as the Move to Workspace button does. ' +
+        'One-way: it cannot be moved back. Only the person who made it can move it. Use only when the person asks to share it.',
+      inputSchema: z.object({
+        ...scopeTarget,
+        withAgent: z.boolean().optional().describe('Automations only: also move its agent when that agent is only visible to the person'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('move_to_workspace')
+        return executeMoveToWorkspace(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('archive_item')) {
+    tools.archive_item = tool({
+      description: 'Archive a file, note, output, skill, automation or task (it leaves the lists and can be restored). Needs the right to edit it.',
+      inputSchema: z.object(scopeTarget),
+      execute: async (input) => {
+        assertToolAllowed('archive_item')
+        return executeArchiveItem(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('restore_item')) {
+    tools.restore_item = tool({
+      description: 'Restore an archived file, note, output, skill, automation or task to the scope it was archived from.',
+      inputSchema: z.object(scopeTarget),
+      execute: async (input) => {
+        assertToolAllowed('restore_item')
+        return executeRestoreItem(options, input)
       },
     })
   }
@@ -1407,6 +1458,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .string()
           .optional()
           .describe('URL or data URL of a reference image to edit or use as style source'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('generate_image')
@@ -1428,6 +1480,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.enum(t2vModelIds).optional().describe('Specific model to use (optional)'),
         aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: 16:9)'),
         duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('generate_video')
@@ -1450,6 +1503,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.enum(i2vModelIds).optional().describe('Specific model to use (optional)'),
         aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: matches input image)'),
         duration: z.number().min(3).max(15).optional().describe('Duration in seconds (default: 5)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('animate_image')
@@ -1472,10 +1526,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         referenceUrl: z.string().describe('URL of a reference image or video showing the character'),
         modelId: z.enum(r2vModelIds).optional().describe('Specific model to use (optional)'),
         duration: z.number().min(2).max(10).optional().describe('Duration in seconds (default: 5)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('generate_video_with_reference')
-        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl })
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl, scope: input.scope })
       },
     })
   }
@@ -1493,10 +1548,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         characterImageUrl: z.string().describe('URL of the character image to apply motion to'),
         referenceVideoUrl: z.string().describe('URL of the reference video whose motion to transfer'),
         modelId: z.enum(motionModelIds).optional().describe('Specific model to use (optional)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('apply_motion_control')
-        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl })
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl, scope: input.scope })
       },
     })
   }
@@ -1513,10 +1569,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         prompt: z.string().describe('Description of the edits to apply to the video'),
         videoUrl: z.string().describe('URL of the source video to edit'),
         modelId: z.enum(editVideoModelIds).optional().describe('Specific model to use (optional)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('edit_video')
-        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl, scope: input.scope })
       },
     })
   }

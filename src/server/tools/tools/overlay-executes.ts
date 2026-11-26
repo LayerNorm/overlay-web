@@ -606,8 +606,10 @@ async function roomAutomationRefusal(options: OverlayToolsOptions, automationId:
     options.accessToken, options.baseUrl, options.forwardCookie, options.serverSecret, options.userId, options.workspaceId,
   )
   if (!res.ok) return { success: false, error: 'Automation not found' }
-  const automation = await res.json().catch((_error) => null) as { scope?: string } | null
-  return !automation || refusesRoomItem(options, automation) ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
+  const automation = await res.json().catch((_error) => null) as { scope?: string; _id?: string } | null
+  // The id asked for is the one the person may have included; the row's own id must match it.
+  return !automation || refusesRoomItem(options, { ...automation, _id: automation._id ?? automationId.trim() })
+    ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
 }
 
 export async function executeCreateAutomation(
@@ -838,6 +840,7 @@ export async function executeGenerateImage(
     modelId?: string
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
     referenceImageUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, referenceImageUrl } = input
@@ -851,6 +854,7 @@ export async function executeGenerateImage(
         imageUrl: referenceImageUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -890,6 +894,7 @@ export async function executeGenerateVideo(
     videoSubMode?: string
     imageUrl?: string
     referenceVideoUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, duration, videoSubMode, imageUrl, referenceVideoUrl } = input
@@ -905,6 +910,7 @@ export async function executeGenerateVideo(
         imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -951,6 +957,13 @@ export async function executeGenerateVideo(
               status: 'failed',
               outputId: outputId ?? (event.outputId as string),
               error: event.error,
+            }
+          } else if (event.type === 'error') {
+            // Nothing was started (budget, policy, or the output could not be saved), so nothing is pending.
+            return {
+              success: false,
+              status: 'failed',
+              error: (event.message as string | undefined) ?? (event.error as string | undefined) ?? 'Video generation failed',
             }
           }
         } catch (_error) {

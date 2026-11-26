@@ -10,7 +10,8 @@ import { buildHarnessStepInstructions } from './context'
 import { createHarnessTools } from './tools'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
-import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, runOverlayHarness } from './runner'
+import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, runOverlayHarness, settleInternalFault } from './runner'
+import { createHarnessAuthorizedTools } from './authorized-tools'
 import { publicHarnessStepPersistence } from './harness-transcript'
 import { buildNativeHarnessDelivery } from './native-tool-metrics'
 import { harnessToolResultEvidence } from './tool-evidence'
@@ -235,6 +236,130 @@ test('V2 input rollover checkpoints the invocation and resumes through the succe
   const resumed = await runOverlayHarness({ ...input, continuation: checkpoint, tools: {} }, f.ports)
   expect(resumed.snapshot.status).toBe('completed')
   expect(resumed.snapshot.resultSummary).toBe('The selected document is ready.')
+})
+
+test('a child join that outlasts the segment reports the child as still working and resumes in the successor', async () => {
+  const f = fixture(false, ['ask_agent'], { executionPolicyVersion: 2 })
+  const childRunId = 'workspace:child'
+  const parent = await f.ports.read()
+  const running = state.createHarnessSnapshot({ runId: childRunId, parentRunId: parent.runId,
+    rootRunId: parent.runId, depth: 1, goal: 'Send the requests', constraints: [],
+    policy: { ...parent.policy, allowedToolIds: [], maxCostMicros: 0 } }, Date.now())
+  let child: typeof running = running
+  // An open plan step of its own keeps the agent running, so it joins inside a tool call.
+  f.setSnapshot(state.replaceHarnessPlan(parent, [{ id: 'report', title: 'Report what was sent',
+    acceptanceCriteria: ['The person knows what was sent.'], dependsOn: [] }], Date.now()))
+  f.ports.readChild = vi.fn(async () => child)
+  f.ports.waitForChildren = async () => { throw new HarnessWaitRollover() }
+  const tools = {
+    ask_agent: tool({ inputSchema: z.object({}), execute: async () => {
+      f.setSnapshot(state.admitHarnessNamedChild(await f.ports.read(), {
+        id: childRunId, stepId: 'ask:child', status: 'running', maxCostMicros: 0, costMicros: 0,
+        allowedToolIds: [], evidenceRefs: [],
+      }, { title: 'Ask the specialist', acceptanceCriteria: ['The specialist responds.'] }, Date.now()))
+      return { status: 'working', childRunIds: [childRunId] }
+    } }),
+  }
+  model(index => index === 0 ? [call('ask_agent', 'ask', {})] : [call('harness_read_child', 'join', { childRunId })])
+  const first = await runOverlayHarness({ ...input, tools }, f.ports)
+  // The rollover is not a tool failure: the agent is told the child is still working.
+  expect(first.outcome).toBe('continued')
+  const checkpoint = f.checkpoints[0]!
+  const joined = JSON.stringify(checkpoint.messages)
+  expect(joined).toContain('The child is still working')
+  expect(joined).not.toContain('error-text')
+
+  f.setOwner('join-successor', 1)
+  child = { ...running, status: 'completed', resultSummary: 'Sent 12 requests.' }
+  f.ports.waitForChildren = async () => {
+    f.setSnapshot(state.settleHarnessChild(await f.ports.read(), child, Date.now()))
+  }
+  model(index => {
+    if (index === 0) return [call('harness_read_child', 'join-again', { childRunId })]
+    if (index === 1) return [call('harness_update_step', 'done', { id: 'report', status: 'done' })]
+    return 'The specialist sent 12 requests.'
+  })
+  const resumed = await runOverlayHarness({ ...input, continuation: checkpoint, tools }, f.ports)
+  expect(resumed.snapshot.status).toBe('completed')
+  expect(resumed.snapshot.resultSummary).toBe('The specialist sent 12 requests.')
+})
+
+function settleInterruptedCalls(f: ReturnType<typeof fixture>) {
+  const recover = vi.fn(async (id: string, _error?: unknown, options?: { internalFault?: boolean }) => {
+    if (!options?.internalFault) return false
+    f.setSnapshot(state.recordHarnessReceipt(await f.ports.read(), {
+      id, modelId: 'fixture/model', provider: 'interrupted', inputTokens: 0, outputTokens: 0, reasoningTokens: 0,
+      cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 1000, costMicros: 0, responseFailure: 'provider_error',
+    }, Date.now()))
+    return true
+  })
+  f.ports.recoverModelFailure = recover
+  return recover
+}
+
+test('an internal fault before any tool starts replays the step instead of ending the task', async () => {
+  const f = fixture(false)
+  const recover = settleInterruptedCalls(f)
+  const execute = vi.fn(async () => 'Record 7')
+  const provider = model(index => {
+    // The call was reserved and then Overlay's own records disagreed.
+    if (index === 0) throw new Error('Native delivery execution changed.')
+    return index === 1 ? [call('read', 'read')] : 'Record 7 was read.'
+  })
+  const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) } }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('Record 7 was read.')
+  expect(recover).toHaveBeenCalledWith('model:0', expect.any(Error), { internalFault: true })
+  expect(execute).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls).toHaveLength(3)
+})
+
+test('an internal fault after a tool started is not replayed, so no tool runs twice', async () => {
+  const f = fixture(false)
+  const recover = settleInterruptedCalls(f)
+  await f.ports.claim()
+  await f.ports.apply('reserve', { type: 'reserve_model', id: 'model:0', maxCostMicros: 0 })
+  const fault = new Error('Native delivery execution changed.')
+  const execution = { executionOwner: 'workflow', executionGeneration: 0, modelCall: 0, resumes: 0 }
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 1 })).resolves.toBeNull()
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0, resumes: 2 })).resolves.toBeNull()
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0, executionOwner: 'another-workflow' })).resolves.toBeNull()
+  expect(recover).not.toHaveBeenCalled()
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0 })).resolves.toBe(1)
+  expect(recover).toHaveBeenCalledExactlyOnceWith('model:0', fault, { internalFault: true })
+})
+
+test('a tool that starts running is reported, and one refused before running is not', async () => {
+  const f = fixture(false)
+  const started = vi.fn()
+  const { tools } = createHarnessAuthorizedTools({
+    read: tool({ inputSchema: z.object({}), execute: async () => 'Record 7' }),
+    write: tool({ inputSchema: z.object({}), execute: async () => 'Written' }),
+  }, f.ports, new Set(), undefined, { publicProgress: () => false, toolStarted: started })
+  await f.ports.claim()
+  const options = { toolCallId: 'call', messages: [] } as never
+  f.ports.authorizeTool = async name => { if (name === 'write') throw new Error('This native tool is no longer authorized.') }
+  await expect(tools.write!.execute!({}, options)).rejects.toThrow()
+  expect(started).not.toHaveBeenCalled()
+  await tools.read!.execute!({}, options)
+  expect(started).toHaveBeenCalledOnce()
+})
+
+test('an internal fault that keeps repeating still ends the task after two replays', async () => {
+  const f = fixture(false)
+  settleInterruptedCalls(f)
+  const provider = model(() => { throw new Error('Native delivery execution changed.') })
+  await expect(runOverlayHarness({ ...input, tools: {} }, f.ports)).rejects.toThrow('Native delivery execution changed.')
+  expect(provider.doStreamCalls).toHaveLength(3)
+})
+
+test('a revoked authorization is never replayed as an internal fault', async () => {
+  const f = fixture(false)
+  const recover = settleInterruptedCalls(f)
+  const provider = model(() => { throw new Error('Native harness permissions were revoked.') })
+  await expect(runOverlayHarness({ ...input, tools: {} }, f.ports)).rejects.toThrow('permissions were revoked')
+  expect(provider.doStreamCalls).toHaveLength(1)
+  expect(recover).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), { internalFault: true })
 })
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }

@@ -85,6 +85,11 @@ function resolvePerson(value: string | null | undefined, context: TaskContext, f
   throw new NameResolutionError(`Unknown ${field} "${normalized}". Options: ${available}.`)
 }
 
+/** Who made the task, by name (people come from the Work context, so no extra lookup). */
+function creatorName(item: Pick<WorkItem, 'createdBy'>, people: readonly WorkPerson[]): string | null {
+  return people.find((person) => person.userId === item.createdBy)?.displayName ?? null
+}
+
 function compactTask(item: WorkItem, people: readonly WorkPerson[]) {
   const assignee = people.find((person) => person.principalId === item.assigneePrincipalId)
   return {
@@ -95,6 +100,7 @@ function compactTask(item: WorkItem, people: readonly WorkPerson[]) {
     assignee: assignee?.displayName ?? null,
     dueDate: item.dueDate,
     scope: item.scope,
+    createdBy: creatorName(item, people),
     revision: revisionOf(item),
   }
 }
@@ -104,6 +110,7 @@ function fullTask(item: WorkItem, people: readonly WorkPerson[]) {
     ...item,
     priority: PRIORITY_LABEL[item.priority],
     assigneeName: people.find((person) => person.principalId === item.assigneePrincipalId)?.displayName ?? null,
+    createdByName: creatorName(item, people),
     reviewerName: people.find((person) => person.userId === item.reviewerUserId)?.displayName ?? null,
     revision: revisionOf(item),
   }

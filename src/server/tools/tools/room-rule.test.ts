@@ -4,9 +4,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ToolSet } from 'ai'
 import { executeListFiles } from './files-executes'
-import { executeListNotes } from './notes-executes'
+import { executeGetNote, executeListNotes } from './notes-executes'
 import { executeListAutomations, executeListSkills, executeSearchKnowledge, executeSearchMemory, executeSearchMessages } from './overlay-executes'
-import { roomListScope } from './room-scope'
+import { roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
 import type { OverlayToolsOptions } from './types'
 import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '../shared-room-policy'
 
@@ -161,5 +161,22 @@ test('computer tools never reach a person’s own computer from a shared room', 
     const resolved = await computerInstanceFor(options as OverlayToolsOptions)
     assert.equal(resolved.ok, false)
     assert.match('error' in resolved ? String(resolved.error) : '', /own cloud computer/)
+  }
+})
+
+test('a Personal item the person included on purpose is reachable by id in a shared room; others still are not', async () => {
+  const included: OverlayToolsOptions = { ...inRoom, includedItemIds: ['note_mine'] }
+  const original = globalThis.fetch
+  globalThis.fetch = (async (input) => {
+    const id = new URL(String(input)).searchParams.get('noteId') ?? ''
+    return Response.json({ _id: id, title: 'Plan', content: '# Plan', tags: [], scope: 'personal', createdAt: 1, updatedAt: 1 })
+  }) as typeof fetch
+  try {
+    const mine = await executeGetNote(included, { noteId: 'note_mine' }) as { success: boolean }
+    assert.equal(mine.success, true)
+    const other = await executeGetNote(included, { noteId: 'note_other' }) as { success: boolean; error?: string }
+    assert.deepEqual(other, { success: false, error: ROOM_PERSONAL_ITEM_ERROR })
+  } finally {
+    globalThis.fetch = original
   }
 })

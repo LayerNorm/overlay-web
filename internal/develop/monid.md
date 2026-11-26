@@ -17,7 +17,7 @@ Code: `src/server/integrations/monid/client.ts` (HTTP client), `src/server/tools
 
 - Offered only when Overlay has a Monid key (`MONID_API_KEY`, WorkOS Vault first, then env) and the workspace is on a paid plan (`withoutUnavailableApiTools` in `act/tooling.ts`). The gate is the plan, not today's balance: a low balance is refused by `run_api`'s budget check, which is also where auto top-up starts. The hosted-provider kill switch also turns them off.
 - Personal chat: always in the base set (`exposure-policy.ts`), because requests for them rarely name a tool.
-- Agents: the `apis` group. New agents get it; agents saved before it existed must turn it on.
+- Agents: the `apis` group. New agents get it, and the default agent with no saved list holds every group. Agents saved before the group existed got it from the one-time `migrations/grantApiTools:run` (every agent with a non-empty saved list; run once per Convex deployment after it ships). Turning the group off afterwards sticks.
 - Outside apps over MCP: the Everything level. The MCP route stops at 300 seconds, so `run_api` there waits at most 4 minutes (`EXTERNAL_APP_API_RUN_WAIT_MS`, passed as `apiRunWaitMs`) and still has time to stop and settle the run.
 - Shared rooms: allowed. Runs touch no private data; files land in workspace Files there.
 

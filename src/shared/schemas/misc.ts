@@ -28,6 +28,8 @@ export const ScopeActionRequest = z.object({
   to: z.enum(['personal', 'workspace']).optional(),
   /** Automations: also move the automation's creator-only agent to the workspace. */
   withAgent: z.boolean().optional(),
+  /** Agent tools in a room others can read or a workspace automation: refuse moves and Personal items. */
+  workspaceItemsOnly: z.boolean().optional(),
 })
 
 export const EntityMutationRequest = z.object({
