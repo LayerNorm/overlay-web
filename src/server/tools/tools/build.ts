@@ -2,6 +2,16 @@ import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod/v3'
+import {
+  computerBrowserFields,
+  computerBrowserUrlSchema,
+  computerBrowserVariants,
+  computerInputFields,
+  computerInputVariants,
+  computerTerminalFields,
+  computerTerminalVariants,
+  computerToolInputSchema,
+} from '@layernorm/overlay-agent-bridge-protocol'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
@@ -81,14 +91,6 @@ import { runInToolCallScope } from './internal-api'
 import { executeInspectApi, executeRunApi, executeSaveApiFile, executeSearchApis } from './monid'
 import type { OverlayToolsOptions } from './types'
 
-const computerPointSchema = z.object({
-  x: z.number().int().min(0).max(8192),
-  y: z.number().int().min(0).max(8192),
-}).strict()
-const computerBrowserUrlSchema = z.string().url().refine(
-  (value) => /^https?:\/\//i.test(value),
-  'URL must use HTTP or HTTPS.',
-)
 /** Optional on every computer tool: run on the cloud Computer or on the user's own connected Mac. */
 const computerTargetSchema = z.enum(['cloud', 'local']).optional().describe(
   'Where to run: "local" is the user\'s own Mac (their files, apps and signed-in browser), "cloud" is the cloud Computer. '
@@ -99,153 +101,10 @@ function withoutTarget<T extends { target?: unknown }>(input: T): Omit<T, 'targe
   void _target
   return rest
 }
-const computerInputVariants = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('click'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-    button: z.enum(['left', 'middle', 'right']).optional(),
-    count: z.number().int().min(1).max(25).optional(),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('double_click'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('right_click'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('move'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-  }).strict(),
-  z.object({ action: z.literal('drag'), from: computerPointSchema, to: computerPointSchema }).strict(),
-  z.object({ action: z.literal('type'), text: z.string().max(10000) }).strict(),
-  z.object({ action: z.literal('key'), keys: z.string().min(1).max(100) }).strict(),
-  z.object({
-    action: z.literal('scroll'),
-    x: z.number().int().min(0).max(8192).optional(),
-    y: z.number().int().min(0).max(8192).optional(),
-    direction: z.enum(['up', 'down', 'left', 'right']),
-    amount: z.number().int().min(1).max(25),
-  }).strict(),
-  z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(10000) }).strict(),
-])
-const computerInputSchema = z.object({
-  action: z.enum([
-    'click', 'double_click', 'right_click', 'move', 'drag', 'type', 'key', 'scroll', 'wait',
-  ]),
-  x: z.number().int().min(0).max(8192).optional(),
-  y: z.number().int().min(0).max(8192).optional(),
-  button: z.enum(['left', 'middle', 'right']).optional(),
-  count: z.number().int().min(1).max(25).optional(),
-  confirm: z.boolean().optional(),
-  from: computerPointSchema.optional(),
-  to: computerPointSchema.optional(),
-  text: z.string().max(10000).optional(),
-  keys: z.string().min(1).max(100).optional(),
-  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
-  amount: z.number().int().min(1).max(25).optional(),
-  ms: z.number().int().min(0).max(10000).optional(),
-  target: computerTargetSchema,
-}).strict().superRefine((input, ctx) => {
-  const parsed = computerInputVariants.safeParse(withoutTarget(input))
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) ctx.addIssue(issue)
-  }
-})
-const computerBrowserVariants = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('navigate'), url: computerBrowserUrlSchema }).strict(),
-  z.object({ action: z.literal('back') }).strict(),
-  z.object({ action: z.literal('forward') }).strict(),
-  z.object({ action: z.literal('reload') }).strict(),
-  z.object({ action: z.literal('snapshot') }).strict(),
-  z.object({
-    action: z.literal('click'),
-    ref: z.string().min(1).max(64),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('type'),
-    ref: z.string().min(1).max(64),
-    text: z.string().max(10000),
-    submit: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('scroll'),
-    direction: z.enum(['up', 'down', 'left', 'right']),
-    amount: z.number().int().min(1).max(25),
-  }).strict(),
-  z.object({
-    action: z.literal('press'),
-    keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']),
-  }).strict(),
-  z.object({ action: z.literal('tabs') }).strict(),
-  z.object({ action: z.literal('switch_tab'), index: z.number().int().min(0).max(49) }).strict(),
-  z.object({ action: z.literal('new_tab'), url: computerBrowserUrlSchema }).strict(),
-])
-const computerBrowserSchema = z.object({
-  action: z.enum([
-    'navigate', 'back', 'forward', 'reload', 'snapshot', 'click', 'type',
-    'scroll', 'press', 'tabs', 'switch_tab', 'new_tab',
-  ]),
-  url: computerBrowserUrlSchema.optional(),
-  ref: z.string().min(1).max(64).optional(),
-  confirm: z.boolean().optional(),
-  text: z.string().max(10000).optional(),
-  submit: z.boolean().optional(),
-  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
-  amount: z.number().int().min(1).max(25).optional(),
-  keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']).optional(),
-  index: z.number().int().min(0).max(49).optional(),
-  target: computerTargetSchema,
-}).strict().superRefine((input, ctx) => {
-  const parsed = computerBrowserVariants.safeParse(withoutTarget(input))
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) ctx.addIssue(issue)
-  }
-})
-const computerTerminalIdSchema = z.string().regex(/^t-[0-9a-f]{12}$/)
-const computerTerminalVariants = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('start'),
-    command: z.string().min(1).max(100000),
-    cwd: z.string().max(4096).optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('read'),
-    id: computerTerminalIdSchema,
-    offset: z.number().int().min(0).optional(),
-    maxBytes: z.number().int().min(1).max(65536).optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('cancel'),
-    id: computerTerminalIdSchema,
-    signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
-  }).strict(),
-  z.object({ action: z.literal('list') }).strict(),
-])
-const computerTerminalSchema = z.object({
-  action: z.enum(['start', 'read', 'cancel', 'list']),
-  command: z.string().min(1).max(100000).optional(),
-  cwd: z.string().max(4096).optional(),
-  id: computerTerminalIdSchema.optional(),
-  offset: z.number().int().min(0).optional(),
-  maxBytes: z.number().int().min(1).max(65536).optional(),
-  signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
-  target: computerTargetSchema,
-}).strict().superRefine((input, ctx) => {
-  const parsed = computerTerminalVariants.safeParse(withoutTarget(input))
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) ctx.addIssue(issue)
-  }
-})
+// Inputs and approval rules are shared with private threads in the Agent Host.
+const computerInputSchema = computerToolInputSchema({ ...computerInputFields, target: computerTargetSchema }, computerInputVariants, ['target'])
+const computerBrowserSchema = computerToolInputSchema({ ...computerBrowserFields, target: computerTargetSchema }, computerBrowserVariants, ['target'])
+const computerTerminalSchema = computerToolInputSchema({ ...computerTerminalFields, target: computerTargetSchema }, computerTerminalVariants, ['target'])
 
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.

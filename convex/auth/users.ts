@@ -425,6 +425,12 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
+        .query('privateThreadAllowances')
+        .withIndex('by_userId_period', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
         .query('tokenUsage')
         .withIndex('by_userId_period', (q) => q.eq('userId', userId))
         .collect(),

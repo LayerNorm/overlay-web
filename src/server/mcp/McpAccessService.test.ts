@@ -166,3 +166,38 @@ test('personal tokens carry the chosen level, never refresh, and are not accepte
   assert.equal(await service.authenticate('ovmcu_a_forged.sig'), null)
   assert.equal(await service.authenticate(null), null)
 })
+
+test('a private thread token carries its agent and stops working when the person leaves the workspace', async () => {
+  const { service, members, grants } = setup()
+  const { token, expiresAt } = await service.issuePrivateThreadToken({ userId: 'user-1', workspaceId: 'ws-1', agentId: 'agent-1' })
+  assert.ok(token.startsWith('ovmcu_t_'))
+  assert.ok(expiresAt > Date.now())
+  assert.equal(grants.rows.size, 0, 'no grant row: the desktop asks for a new token each turn')
+  const principal = await service.authenticate(token)
+  assert.deepEqual(principal, {
+    grantId: 'private:user-1:agent-1', userId: 'user-1', workspaceId: 'ws-1', access: 'full', clientName: 'Private thread', agentId: 'agent-1',
+  })
+  members.delete('user-1:ws-1')
+  assert.equal(await service.authenticate(token), null)
+})
+
+test('a private thread token is refused for a workspace the person is not in, and cannot pass as another kind', async () => {
+  const { service } = setup()
+  await assert.rejects(service.issuePrivateThreadToken({ userId: 'user-1', workspaceId: 'ws-2', agentId: 'agent-1' }), McpOAuthError)
+  const { token } = await service.issuePrivateThreadToken({ userId: 'user-1', workspaceId: 'ws-1', agentId: 'agent-1' })
+  assert.equal(await service.authenticate(`ovmcu_p_${token.slice('ovmcu_t_'.length)}`), null)
+})
+
+test('a private thread token expires after an hour', async () => {
+  let now = Date.now()
+  const realNow = Date.now
+  const { service } = setup({ now: () => now })
+  const { token } = await service.issuePrivateThreadToken({ userId: 'user-1', workspaceId: 'ws-1', agentId: 'agent-1' })
+  Date.now = () => now + 61 * 60_000
+  try {
+    assert.equal(await service.authenticate(token), null)
+  } finally {
+    Date.now = realNow
+    now = 0
+  }
+})

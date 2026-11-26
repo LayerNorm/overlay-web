@@ -1,3 +1,7 @@
+// The source file, not the package: Convex's bundler and the admin app resolve workspace packages through their
+// entry points, and the protocol's entry point is its build output, which exists only when the package is published.
+import { computerActionRequiresApproval, computerToolRequiresApproval } from '../../overlay-agent-bridge-protocol/src/computer-tools'
+
 /** Max model tool rounds - ToolLoopAgent (act) uses this. */
 export const MAX_TOOL_STEPS_ACT = 12
 
@@ -89,20 +93,7 @@ export const OVERLAY_TOOL_IDS = [
 
 const OVERLAY_TOOL_ID_SET = new Set<string>(OVERLAY_TOOL_IDS)
 
-export function computerActionRequiresApproval(toolName: string, input: unknown): boolean {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return false
-  const action = (input as { action?: unknown }).action
-  if (toolName === 'computer_input') {
-    return action === 'type' || action === 'key'
-      || (['click', 'double_click', 'right_click'].includes(String(action))
-        && (input as { confirm?: unknown }).confirm === true)
-  }
-  if (toolName === 'computer_browser') {
-    return action === 'type' || action === 'press'
-      || (action === 'click' && (input as { confirm?: unknown }).confirm === true)
-  }
-  return false
-}
+export { computerActionRequiresApproval }
 
 export function toolRequiresApproval(
   toolName: string,
@@ -113,17 +104,8 @@ export function toolRequiresApproval(
   } = {},
 ): boolean {
   if (options.approvalMode === 'auto') return false
-  if (computerActionRequiresApproval(toolName, input)) return true
-  if (toolName === 'computer_exec') return true
-  if (toolName === 'computer_terminal') {
-    return Boolean(input && typeof input === 'object' && !Array.isArray(input)
-      && (input as { action?: unknown }).action === 'start')
-  }
-  // Recording itself is private; making it public shares the screen outside the workspace, so ask first.
-  if (toolName === 'computer_recording') {
-    return Boolean(input && typeof input === 'object' && !Array.isArray(input)
-      && (input as { action?: unknown }).action === 'stop' && (input as { public?: unknown }).public === true)
-  }
+  // Computer tool rules are shared with private threads in the Agent Host.
+  if (computerToolRequiresApproval(toolName, input)) return true
   if (toolName === 'EXECUTOR_EXECUTE_TOOL') return options.executorRequiresApproval !== false
   return false
 }

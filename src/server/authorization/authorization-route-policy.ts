@@ -419,6 +419,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
   { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
+  // A private thread's tools token: the agent lookup checks the caller can see the agent in that workspace.
+  { path: '/api/v1/mcp/private-thread', methods: { POST: authenticated() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
   {

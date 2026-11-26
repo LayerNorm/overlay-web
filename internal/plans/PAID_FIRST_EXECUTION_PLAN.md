@@ -35,6 +35,22 @@ Pre-payment access is bounded setup, not a replacement free productivity plan: n
 
 Self-hosted/billing-disabled deployments retain their existing administrator-controlled policy. The hosted payment requirement must not silently break that mode. Explicit institutional/contract access needs a deliberate policy mapping, not an accidental exception based on a nonzero balance.
 
+### Amendment (owner, 2026-11-24): private threads
+
+Overlay-hosted execution stays paid-first. One exception: **private threads**
+(`LOCAL_PRIVATE_THREADS_PLAN.md` Decision 4) run their agent loop and model
+calls on the person's own computer with their own keys or local subscriptions,
+so Overlay runs no inference for them. In a personal workspace with no paid plan
+they may use the agent's Overlay tools through `/api/mcp` within a capped free
+allowance counted per person on the server: notes, tasks, memory and knowledge
+within 100 MB of Overlay Files storage (searched by words only; embeddings stay
+paid), and 50 web searches a month. Overlay
+Cloud computers, media generation, transcription, automations, browser tasks,
+Overlay-billed models and synced threads stay paid. Team workspaces are
+paid-only. This is not a revival of the removed free router or its
+allowances: it is a separate, capped path that never starts hosted inference
+or compute, and the removal step in section 3E must not delete it.
+
 ## 2. Current code and system overview
 
 Reviewed the local checkout at `14c84149b`. These are source observations, not assertions about live Stripe configuration or production behavior.

@@ -86,6 +86,7 @@ The person's enabled Overlay skills are offered as MCP prompts (`prompts/list`, 
 - Rate limits: per grant on `/api/mcp`; loose per-IP backstops on registration and token exchange because hosted apps share egress IPs across all their users.
 - Account deletion removes the person's grants; tokens also die with their workspace membership.
 - Users see, name, and revoke every connection in Settings → Connected apps.
+- **Private-thread tokens are the one exception to grant rows.** Overlay Desktop asks `POST /api/v1/mcp/private-thread` for one before each private-thread turn (`internal/develop/private-threads.md`). The token is a `private_thread` envelope (`ovmcu_t_…`) that carries the person, workspace and agent ids and lives one hour. There is no grant row behind it, so it is not listed in Connected apps and cannot be revoked one by one. Instead, every request re-checks that the person is still an active member of the workspace, the issuing route checks that they may use the agent, and the tools it reaches are the agent's grant (paid workspace) or the free tier (unpaid workspace with just this person; `src/server/mcp/private-thread-tools.ts`). Computer tools and the other tools withheld from outside apps stay withheld. The rate limit uses the key `private:<user>:<agent>`, which no row backs.
 
 ## Verifying
 

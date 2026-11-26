@@ -47,7 +47,7 @@ export function CloudSyncChoice({ synced, disabled, onChoose }: { synced: boolea
         </DropdownMenuItem>
         <div role="separator" className="my-1 h-px bg-(--border)" />
         <p className="px-2 py-1.5 text-[11px] leading-relaxed text-(--muted-light)">
-          Not synced runs with your own model keys and this computer’s tools.
+          Not synced runs with your own model keys and this computer’s tools. The agent’s Overlay tools send only what each call needs; the conversation stays here.
         </p>
       </DropdownMenuContent>
     </DropdownMenu>
