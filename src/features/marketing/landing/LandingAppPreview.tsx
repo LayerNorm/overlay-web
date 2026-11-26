@@ -6,7 +6,7 @@ import { unstyledButton } from '@overlay/ui/control-reset'
 import {
   ArrowUp, AtSign, Bell, Bot, Check, ChevronDown, ChevronRight, CircleAlert, Circle, CircleCheck, CircleDot, Ellipsis,
   FileCode, FileSpreadsheet, FileText, Files, Folder, Hash, Image, Kanban, Layers, List, ListChecks, Lock, MessageSquare,
-  Moon, PanelLeft, PanelRight, Pin, Plus, Receipt, Rocket, RotateCw, Search, Settings, Upload, User, Users, X,
+  Moon, PanelLeft, PanelRight, Pin, Plus, RotateCw, Search, Settings, Upload, User, Users, X,
   type LucideIcon,
 } from 'lucide-react'
 import { LANDING_AGENTS, LANDING_PEOPLE, LandingAgent, LandingPerson, type LandingAgentId } from './LandingAgent'
@@ -172,7 +172,6 @@ export function LandingAppPreview({ initial, className = '', label }: { initial?
     const filters: Array<[WorkFilter, LucideIcon, string]> = [['mine', User, 'Assigned to me'], ['needs', CircleAlert, 'Needs you'], ['all', Layers, 'Everything']]
     side = <>{sideHead('Work')}{seg}
       {filters.map(([f, Icon, t]) => <Hit key={f} className={st.work === f ? 'a-item on' : 'a-item'} onClick={() => set({ work: f })}><Icon className="i sm" /><span>{t}</span>{f === 'needs' && needs ? <span className="a-n">{needs}</span> : null}</Hit>)}
-      {st.scope === 'workspace' ? <><div className="a-grp">Projects<ChevronDown className="i xs" /></div><span className="a-item"><Rocket className="i sm" /><span>Atlas launch</span></span><span className="a-item"><Receipt className="i sm" /><span>November close</span></span></> : null}
     </>
     main = <>
       <header className="a-head"><PanelLeft className="i sm" /><Crumb scope={st.scope} view="Work">{filters.find((f) => f[0] === st.work)![2]}</Crumb><span className="a-icons"><List className="i sm" /><Kanban className="i sm" /><Plus className="i sm" /></span></header>

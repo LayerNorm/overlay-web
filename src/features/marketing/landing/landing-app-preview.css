@@ -11,7 +11,6 @@
   --a-page: #0c0c0e; --a-panel: #121214; --a-line: #26262a; --a-active: #1e1e22; --a-seg: #1c1c20; --a-seg-on: #2a2a2f;
   --a-text: #f4f4f5; --a-muted: #a1a1aa; --a-faint: #6b6b73; --a-av: #232327; --a-comp: #18181b; --a-bubble: #232327; --a-ok: #4ade80;
 }
-.sl .i.xs { width: 12px; height: 12px; }
 .sl .lapp > * { min-height: 0; min-width: 0; }
 .sl .a-panel { background: var(--a-panel); border: 1px solid var(--a-line); border-radius: 12px; overflow: hidden; }
 .sl .a-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 6px; color: var(--a-muted); }
