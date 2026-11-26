@@ -5,6 +5,7 @@ import type { FunctionReturnType } from 'convex/server'
 import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
 import { queryAllPages, subscribeAllPages } from './convexPagination'
 import { mapNativePersonalMessageRows } from '../lib/toNativeChatMessage'
+import { getCurrentMode } from './modeState'
 import {
   generateChatId,
   type Chat,
@@ -230,7 +231,7 @@ export async function createNewChat(
   const clientId = options.clientId ?? generateChatId()
   const id = await mutateConvex(api.chat.personal.create, {
     workspaceId: options.workspaceId ?? convexWorkspaceId(), clientId, title: options.title || 'New Chat',
-    askModelIds: modelId ? [modelId] : [], actModelId: modelId ?? '', lastMode: 'act',
+    askModelIds: modelId ? [modelId] : [], actModelId: modelId ?? '', lastMode: 'act', scope: getCurrentMode(),
   })
   if (options.signal?.aborted) throw Object.assign(new Error('The operation was cancelled.'), { name: 'AbortError' })
   const chat = await loadChat(id, options.workspaceId)

@@ -1,6 +1,7 @@
 import { appJson, getRequestWorkspaceId } from './appApi'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { api, convexWorkspaceId, queryConvex, subscribeConvex, type Id } from './convexClient'
+import { getCurrentMode } from './modeState'
 import type {
   AutomationRunDetail,
   AutomationRunEvent,
@@ -10,7 +11,7 @@ import type {
 } from '@overlay/app-core'
 
 export async function listAutomations(): Promise<AutomationSummary[]> {
-  const rows = await queryConvex(api.automations.browse.list, { workspaceId: convexWorkspaceId(), includeAgentBound: true })
+  const rows = await queryConvex(api.automations.browse.list, { workspaceId: convexWorkspaceId(), includeAgentBound: true, view: getCurrentMode() })
   if (rows === null) throw new Error('Automations are unavailable in this workspace.')
   return rows
 }
@@ -43,7 +44,7 @@ export async function createAutomation(input: {
 }): Promise<{ success: boolean; id: string }> {
   return appJson<{ success: boolean; id: string }>('/api/v1/automations', { workspaceId: getRequestWorkspaceId(),
     method: 'POST',
-    json: input,
+    json: { ...input, scope: getCurrentMode() },
   })
 }
 

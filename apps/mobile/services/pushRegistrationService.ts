@@ -2,13 +2,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Crypto from 'expo-crypto'
 import * as Notifications from 'expo-notifications'
 import { AppState, Platform } from 'react-native'
-import { api, mutateConvex } from './convexClient'
+import { makeFunctionReference } from 'convex/server'
+import { mutateConvex } from './convexClient'
 import { loadAuthSession } from './authService'
 import { preparePushRegistration, setRemoteNotificationFilter } from './notificationsService'
 import { allowsBanner, loadBannerPreferences } from './bannerPreferencesService'
 import { parsePushUrl } from '../lib/pushRoutes'
 
 const DEVICE_KEY = 'overlay-push-device-id'
+
+/**
+ * Server-side push tokens (`notifications/tokens`) are not on the production
+ * backend yet. Until they are, the app keeps its local notifications (the
+ * activity watcher) and skips registering the device with the server.
+ */
+const SERVER_PUSH_TOKENS_AVAILABLE = false
+const registerToken = makeFunctionReference<'mutation', { expoToken: string; platform: 'ios' | 'android'; deviceId: string }>('notifications/tokens:register')
+const unregisterToken = makeFunctionReference<'mutation', { deviceId: string }>('notifications/tokens:unregister')
 let activeUser: string | null = null
 let generation = 0
 let registered: string | null = null
@@ -47,11 +57,11 @@ export async function syncPushRegistration(userId: string): Promise<void> {
   const version = generation
   const current = () => generation === version && activeUser === userId
   const promise = enqueue(async () => {
-    if (!current()) return
+    if (!current() || !SERVER_PUSH_TOKENS_AVAILABLE) return
     if (!(await Notifications.getPermissionsAsync()).granted) {
       const deviceId = await AsyncStorage.getItem(DEVICE_KEY)
       if (deviceId && current())
-        await bounded(mutateConvex(api.notifications.tokens.unregister, { deviceId }))
+        await bounded(mutateConvex(unregisterToken, { deviceId }))
       registered = null
       registeredToken = null
       return
@@ -72,7 +82,7 @@ export async function syncPushRegistration(userId: string): Promise<void> {
     if (registered === userId && registeredToken === stored.token) return
     if (stored.platform !== 'ios' && stored.platform !== 'android') return
     await bounded(
-      mutateConvex(api.notifications.tokens.register, {
+      mutateConvex(registerToken, {
         expoToken: stored.token,
         platform: stored.platform,
         deviceId,
@@ -144,8 +154,8 @@ export async function unregisterPushRegistration(userId: string): Promise<void> 
     await bounded(
       enqueue(async () => {
         const deviceId = await AsyncStorage.getItem(DEVICE_KEY)
-        if (deviceId && (await loadAuthSession())?.user.id === userId)
-          await bounded(mutateConvex(api.notifications.tokens.unregister, { deviceId }), 3000)
+        if (SERVER_PUSH_TOKENS_AVAILABLE && deviceId && (await loadAuthSession())?.user.id === userId)
+          await bounded(mutateConvex(unregisterToken, { deviceId }), 3000)
       }),
       3000,
     )

@@ -524,6 +524,7 @@ export function WorkDetailView({
   onPatch,
   onStatus,
   onComment,
+  onMoveToWorkspace,
   busy,
   error,
   editable = true,
@@ -539,6 +540,8 @@ export function WorkDetailView({
   onPatch: (patch: UpdateWorkItemRequest) => Promise<boolean>
   onStatus: (status: WorkStatus) => Promise<boolean>
   onComment: (body: string) => Promise<boolean>
+  /** Personal tasks only: moves the task into the workspace (one-way). */
+  onMoveToWorkspace?: () => void
   busy: boolean
   error?: string | null
   editable?: boolean
@@ -603,6 +606,14 @@ export function WorkDetailView({
             accessibilityLabel="Done"
             onPress={() => void editorField.current?.blur()}
           />
+        </Stack.Toolbar>
+      ) : onMoveToWorkspace && item.scope === 'personal' ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="Task options">
+            <Stack.Toolbar.MenuAction icon="building.2" disabled={busy} onPress={onMoveToWorkspace}>
+              Move to workspace
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
         </Stack.Toolbar>
       ) : null}
       <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>

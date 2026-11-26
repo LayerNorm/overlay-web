@@ -1,7 +1,7 @@
 /**
  * Workspace management facade — wraps the typed `mobileOverlayAppClient`
  * workspaces + sharing surfaces plus the raw endpoints the typed client
- * doesn't cover (governance metrics, Slack import, audit export).
+ * doesn't cover (governance metrics, audit export).
  *
  * Mirrors the web `workspaceManagementClient` / `WorkspaceSettingsPanel`
  * call graph: every call carries the active-workspace header (Phase 0
@@ -54,7 +54,7 @@ export async function loadManagementView(
   workspaceId: string,
   view: WorkspaceManagementView,
 ): Promise<WorkspaceManagementResponse> {
-  if (view === 'sharing' || view === 'import') return mobileOverlayAppClient.workspaces.management(workspaceId, view)
+  if (view === 'sharing') return mobileOverlayAppClient.workspaces.management(workspaceId, view)
   const result = await queryConvex(api.collaboration.management.view, { workspaceId, view })
   if (!result) throw new Error('Workspace management is unavailable.')
   return result
@@ -91,6 +91,15 @@ export async function updateWorkspaceMember(
   input: WorkspaceMemberMutationInput,
 ): Promise<void> {
   await mobileOverlayAppClient.workspaces.updateMember(workspaceId, input)
+}
+
+/** Owners and admins set (cents) or remove (`null`) a person's spending cap for each billing period. */
+export async function setMemberSpendCap(workspaceId: string, userId: string, capCents: number | null): Promise<void> {
+  await appJson(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/member-caps`, {
+    method: 'POST',
+    workspaceId,
+    json: { userId, capCents },
+  })
 }
 
 export async function removeWorkspaceMember(
@@ -271,74 +280,6 @@ export async function shareImpact(
 ): Promise<WorkspaceShareImpact> {
   const { impact } = await mobileOverlayAppClient.sharing.impact(resource, target)
   return impact
-}
-
-// ---------------------------------------------------------------------------
-// Slack import — `/api/v1/imports/slack` (no typed client surface).
-// ---------------------------------------------------------------------------
-
-export interface SlackImportChannel {
-  id: string
-  name: string
-  type: 'public_channel' | 'private_channel' | 'im' | 'mpim'
-  isPrivate: boolean
-  memberCount: number
-}
-
-export interface SlackImportJob {
-  _id: string
-  status: string
-  selectedChannelIds: string[]
-  totalChannels?: number
-  processedChannels?: number
-  totalMessages?: number
-  coverage?: {
-    publicChannels: number
-    privateChannels: number
-    dms: number
-    mpims: number
-    messagesImported: number
-    filesDownloaded: number
-    threadsImported: number
-  }
-  error?: string
-  createdAt: number
-  updatedAt: number
-  completedAt?: number
-}
-
-export interface SlackImportJobsPage {
-  jobs: SlackImportJob[]
-  connected: boolean
-}
-
-export async function loadSlackImportJobs(): Promise<SlackImportJobsPage> {
-  return appJson<SlackImportJobsPage>('/api/v1/imports/slack', {
-    query: { action: 'jobs' },
-  })
-}
-
-export async function loadSlackChannels(
-  cursor?: string,
-): Promise<{ channels: SlackImportChannel[]; nextCursor?: string; hasMore: boolean }> {
-  return appJson('/api/v1/imports/slack', {
-    query: { action: 'channels', ...(cursor ? { cursor } : {}) },
-    timeoutMs: 60_000,
-  })
-}
-
-export async function startSlackImport(selectedChannelIds: string[]): Promise<{ jobId: string }> {
-  return appJson('/api/v1/imports/slack', {
-    method: 'POST',
-    json: { action: 'start', selectedChannelIds },
-  })
-}
-
-export async function cancelSlackImport(jobId: string): Promise<void> {
-  await appJson('/api/v1/imports/slack', {
-    method: 'POST',
-    json: { action: 'cancel', jobId },
-  })
 }
 
 export type { ConversationParticipant, ChannelVisibility }

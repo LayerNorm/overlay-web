@@ -9,6 +9,7 @@ import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useLiveResource } from '../../hooks/useLiveResource'
 import { api } from '../../services/convexClient'
 import { useShellChats } from '../../hooks/useShellData'
+import { useMode } from '../../contexts/ModeContext'
 import { useAgentDirectory, type DirectoryAgent } from '../../hooks/useAgentDirectory'
 import { TabToolbar } from '../navigation/nativeHeader'
 import { newChatRoute } from '../../lib/newChatRoute'
@@ -24,6 +25,9 @@ import { RoomConfirmDialog, type RoomConfirmation } from './RoomSheets'
 import { archiveConversation, deleteConversation, renameConversation } from '../../services/conversationActionsService'
 
 type SectionId = 'agents' | 'channels' | 'dms' | 'chats'
+
+/** Rows shown per section before "Show more"; every row carries a native menu and swipe actions. */
+const SECTION_PREVIEW = 8
 
 /**
  * Chats home, laid out like a team inbox: shortcut cards on top, then
@@ -45,15 +49,18 @@ export function ChatsScreen(): React.ReactElement {
     chats: false,
   })
   const [openError, setOpenError] = useState('')
-  const personal = useShellChats(activeWorkspaceId, 'personal')
-  const workspace = useShellChats(activeWorkspaceId, 'workspace')
-  const directory = useAgentDirectory(activeWorkspaceId)
-  const loading = personal.loading && workspace.loading
-  const error = personal.error && workspace.error ? workspace.error : null
+  // Workspace mode: shared agents, channels, DMs and workspace chats.
+  // Personal mode: your chief, your only-me agents and your personal chats.
+  const { mode } = useMode()
+  const shell = useShellChats(activeWorkspaceId, mode)
+  const directory = useAgentDirectory(activeWorkspaceId, 0, mode)
+  const { loading, error } = shell
+  // Long lists start with the most recent rows; each section can show all.
+  const [expanded, setExpanded] = useState<Partial<Record<SectionId, boolean>>>({})
 
   // Forget a hidden id once the server list drops it, so a chat that is later
   // unarchived shows up again without leaving the screen.
-  const listedIds = [...workspace.chats, ...personal.chats].map((chat) => chat.id).join(',')
+  const listedIds = shell.chats.map((chat) => chat.id).join(',')
   useEffect(() => {
     const listed = new Set(listedIds.split(','))
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Prune optimistic hides as the live list catches up.
@@ -61,14 +68,14 @@ export function ChatsScreen(): React.ReactElement {
   }, [listedIds])
   const chats = useMemo(() => {
     const seen = new Set<string>()
-    return [...workspace.chats, ...personal.chats].filter((chat) => {
+    return shell.chats.filter((chat) => {
       const key = `${chat.kind}:${chat.id}`
       if (hidden.includes(chat.id)) return false
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
-  }, [personal.chats, workspace.chats, hidden])
+  }, [shell.chats, hidden])
   const channels = chats.filter((chat) => chat.kind === 'channel')
   const dms = chats.filter((chat) => chat.kind === 'dm')
   const personalChats = chats.filter((chat) => chat.kind === 'personal')
@@ -139,6 +146,11 @@ export function ChatsScreen(): React.ReactElement {
     { label: 'Archive', icon: 'archivebox.fill', onPress: () => archive(chat) },
     ...(chat.kind === 'personal' ? [{ label: 'Delete', icon: 'trash.fill', destructive: true, onPress: () => remove(chat) }] : []),
   ]
+  const visible = <T,>(id: SectionId, rows: T[]) => (expanded[id] ? rows : rows.slice(0, SECTION_PREVIEW))
+  const more = (id: SectionId, rows: unknown[]) =>
+    !expanded[id] && rows.length > SECTION_PREVIEW ? (
+      <MoreRow count={rows.length - SECTION_PREVIEW} onPress={() => setExpanded((previous) => ({ ...previous, [id]: true }))} />
+    ) : null
   const toggle = (id: SectionId) => {
     hapticSelect()
     setCollapsed((previous) => ({ ...previous, [id]: !previous[id] }))
@@ -151,12 +163,16 @@ export function ChatsScreen(): React.ReactElement {
           <Stack.Toolbar.MenuAction icon="sparkles" onPress={newChat}>
             New chat
           </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="person" onPress={newMessage}>
-            New message
-          </Stack.Toolbar.MenuAction>
-          <Stack.Toolbar.MenuAction icon="number" onPress={newChannel}>
-            New channel
-          </Stack.Toolbar.MenuAction>
+          {mode === 'workspace' ? (
+            <Stack.Toolbar.MenuAction icon="person" onPress={newMessage}>
+              New message
+            </Stack.Toolbar.MenuAction>
+          ) : null}
+          {mode === 'workspace' ? (
+            <Stack.Toolbar.MenuAction icon="number" onPress={newChannel}>
+              New channel
+            </Stack.Toolbar.MenuAction>
+          ) : null}
         </Stack.Toolbar.Menu>
       </TabToolbar>
       <ScrollView
@@ -216,19 +232,22 @@ export function ChatsScreen(): React.ReactElement {
                 ) : null}
               </Section>
             ) : null}
+            {mode === 'workspace' ? (
+            <>
             <Section
               title="Channels"
               collapsed={collapsed.channels}
               onToggle={() => toggle('channels')}
               onAdd={newChannel}
             >
-              {channels.map((chat) => (
+              {visible('channels', channels).map((chat) => (
                 <RowMenu key={chat.id} actions={chatActions(chat)}>
                   <SwipeRow trailing={swipeActions(chat)}>
                     <ChatRow chat={chat} onPress={() => open(chat)} />
                   </SwipeRow>
                 </RowMenu>
               ))}
+              {more('channels', channels)}
               <AddRow label="Add channel" onPress={newChannel} />
             </Section>
             <Section
@@ -237,23 +256,27 @@ export function ChatsScreen(): React.ReactElement {
               onToggle={() => toggle('dms')}
               onAdd={newMessage}
             >
-              {dms.map((chat) => (
+              {visible('dms', dms).map((chat) => (
                 <RowMenu key={chat.id} actions={chatActions(chat)}>
                   <SwipeRow trailing={swipeActions(chat)}>
                     <ChatRow chat={chat} onPress={() => open(chat)} />
                   </SwipeRow>
                 </RowMenu>
               ))}
+              {more('dms', dms)}
               <AddRow label="New message" onPress={newMessage} />
             </Section>
+            </>
+            ) : null}
             <Section title="Chats" collapsed={collapsed.chats} onToggle={() => toggle('chats')} onAdd={newChat}>
-              {personalChats.map((chat) => (
+              {visible('chats', personalChats).map((chat) => (
                 <RowMenu key={chat.id} actions={chatActions(chat)}>
                   <SwipeRow trailing={swipeActions(chat)}>
                     <ChatRow chat={chat} onPress={() => open(chat)} />
                   </SwipeRow>
                 </RowMenu>
               ))}
+              {more('chats', personalChats)}
               <AddRow label="New chat" onPress={newChat} />
             </Section>
           </>
@@ -450,6 +473,18 @@ function ChatRow({ chat, onPress }: { chat: SidebarChat; onPress: () => void }) 
       />
     )
   return <Row title={title} leading={leading} unread={unread} onPress={onPress} />
+}
+
+function MoreRow({ count, onPress }: { count: number; onPress: () => void }) {
+  const { theme } = useTheme()
+  return (
+    <Row
+      title={`Show ${count} more`}
+      muted
+      leading={<Image source="sf:ellipsis" style={{ width: 17, height: 17 }} contentFit="contain" tintColor={theme.muted as string} />}
+      onPress={onPress}
+    />
+  )
 }
 
 function AddRow({ label, onPress }: { label: string; onPress: () => void }) {

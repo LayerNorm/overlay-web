@@ -55,13 +55,14 @@ export function useTabRootOptions(title: string): NativeStackNavigationOptions {
 }
 
 /**
- * Trailing header items for a tab's root screen. Screen-specific buttons
- * and menus go first; the account button is always last.
+ * Trailing header items for a tab's root screen: Search first, then the
+ * screen's own buttons and menus, and the account button last.
  */
 export function TabToolbar({ children }: { children?: React.ReactNode }) {
   const router = useRouter()
   return (
     <Stack.Toolbar placement="right">
+      <Stack.Toolbar.Button icon="magnifyingglass" accessibilityLabel="Search" onPress={() => router.push('/search')} />
       {children}
       <Stack.Toolbar.Button
         icon="person.crop.circle"

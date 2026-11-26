@@ -21,6 +21,7 @@ import type { IntegrationSummary, McpServerSummary, SkillSummary } from '@overla
 import { useTheme } from '../../hooks/useTheme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAppSession } from '../../contexts/AppSessionContext'
+import { useMode } from '../../contexts/ModeContext'
 import { useSwitchTint } from '../../lib/nativeControls'
 import { extensionsChanged } from '../../lib/changeSignal'
 import { primeRecord } from './ExtensionForms'
@@ -49,25 +50,19 @@ const INTEGRATION_RETURN_URL = 'overlay://extensions'
 export function ToolsScreen(): React.ReactElement {
   const { activeWorkspaceId, activeWorkspace } = useWorkspace()
   const { isFeatureEnabled } = useAppSession()
-  const [selection, setSelection] = useState<{ workspaceId: string; scope: IntegrationScope }>()
+  // Extensions follow the app's Workspace | Personal mode: your own accounts
+  // and skills in Personal, the workspace's in Workspace.
+  const { mode } = useMode()
   if (!isFeatureEnabled('extensions')) return <FeatureGate title="Extensions are turned off" />
   if (!activeWorkspaceId) return <FeatureGate title="Choose a workspace to view extensions" />
   const canShare = Boolean(activeWorkspace && activeWorkspace.kind !== 'personal')
-  const scope = canShare && selection?.workspaceId === activeWorkspaceId ? selection.scope : 'personal'
-  return (
-    <ScopedToolsScreen
-      key={activeWorkspaceId + ':' + scope}
-      workspaceId={activeWorkspaceId}
-      scope={scope}
-      onScopeChange={canShare ? (next) => setSelection({ workspaceId: activeWorkspaceId, scope: next }) : undefined}
-    />
-  )
+  const scope: IntegrationScope = canShare ? mode : 'personal'
+  return <ScopedToolsScreen key={activeWorkspaceId + ':' + scope} workspaceId={activeWorkspaceId} scope={scope} />
 }
 
-function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
+function ScopedToolsScreen({ workspaceId, scope }: {
   workspaceId: string
   scope: IntegrationScope
-  onScopeChange?: (scope: IntegrationScope) => void
 }): React.ReactElement {
   const [tab, setTab] = useState<ToolTab>('integrations')
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([])
@@ -339,17 +334,6 @@ function ScopedToolsScreen({ workspaceId, scope, onScopeChange }: {
               <SwiftText modifiers={[tag('skills')]}>Skills</SwiftText>
               <SwiftText modifiers={[tag('mcps')]}>MCPs</SwiftText>
             </Picker>
-            {tab === 'integrations' && onScopeChange ? (
-              <Picker
-                label="Connections for"
-                selection={scope}
-                onSelectionChange={(next: IntegrationScope) => { if (!connectionBusy.current) onScopeChange(next) }}
-                modifiers={[pickerStyle('menu')]}
-              >
-                <SwiftText modifiers={[tag('personal')]}>Just me</SwiftText>
-                <SwiftText modifiers={[tag('workspace')]}>Workspace</SwiftText>
-              </Picker>
-            ) : null}
           </Section>
           {list}
         </Form>

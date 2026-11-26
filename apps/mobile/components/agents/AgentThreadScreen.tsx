@@ -8,6 +8,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { api, subscribeConvex } from '../../services/convexClient'
+import { useAgentDirectory } from '../../hooks/useAgentDirectory'
+import { useMode } from '../../contexts/ModeContext'
 import { openAgentThread } from '../../services/shellService'
 import {
   archiveAgentThread,
@@ -22,7 +24,6 @@ import {
   decideAgentApproval,
   sendAgentMessage,
   stopAgentReply,
-  resolveAgentRemoteRequest,
   type AgentRecord,
   type AgentComputer,
   type AgentFiles,
@@ -359,15 +360,6 @@ function ConnectedAgentThread({
           request,
           text,
         ),
-      remote: (request, decision, response) =>
-        resolveAgentRemoteRequest(
-          workspaceId,
-          conversationId,
-          String(request.runId),
-          String(request.requestKey),
-          decision,
-          response,
-        ),
     }),
     [workspaceId, conversationId, user?.id],
   )
@@ -580,42 +572,11 @@ function ConnectedAgentDirectory({
 }) {
   const { theme, isDark } = useTheme()
   const router = useRouter()
-  const [directory, set] = useState<NonNullable<
-    Parameters<typeof AgentDirectoryView>[0]['agents']
-  > | null>()
-  const [canCreate, setCanCreate] = useState(false)
-  const [error, setError] = useState('')
+  const { mode } = useMode()
   const [attempt, retry] = useState(0)
-  useEffect(() => {
-    if (!workspaceId) return
-    let active = true
-    try {
-      const stop = subscribeConvex(
-        api.agents.directory.list,
-        { workspaceId },
-        (value) => {
-          if (active) {
-            set(value?.agents ?? null)
-            setCanCreate(value?.canCreate ?? false)
-          }
-        },
-        (reason) => {
-          if (active) setError(String(reason))
-        },
-      )
-      return () => {
-        active = false
-        stop()
-      }
-    } catch (reason) {
-      void Promise.resolve().then(() => {
-        if (active) setError(String(reason))
-      })
-    }
-    return () => {
-      active = false
-    }
-  }, [workspaceId, attempt])
+  const { agents: directory, canCreate, error: loadError } = useAgentDirectory(workspaceId, attempt, mode)
+  const [openError, setError] = useState('')
+  const error = loadError || openError
   if (error)
     return (
       <AgentState
@@ -629,6 +590,17 @@ function ConnectedAgentDirectory({
   if (directory === undefined) return <AgentLoading />
   if (!directory)
     return <AgentState text="Agents are unavailable in this workspace." />
+  if (!directory.length)
+    return (
+      <>
+        <TabToolbar>
+          {canCreate ? (
+            <Stack.Toolbar.Button icon="plus" accessibilityLabel="New agent" onPress={() => router.push('/agent-create')} />
+          ) : null}
+        </TabToolbar>
+        <AgentState text={mode === 'personal' ? 'Your Personal Chief is getting ready.' : 'No workspace agents yet.'} />
+      </>
+    )
   return (
     <>
       <TabToolbar>

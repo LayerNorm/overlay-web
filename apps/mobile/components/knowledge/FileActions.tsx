@@ -11,6 +11,8 @@ import { moveFile, renameFile } from '../../services/filesService'
 import { getRequestWorkspaceId } from '../../services/appApi'
 import { ShareSheet } from '../workspace/ShareSheet'
 import { RoomConfirmDialog, type RoomConfirmation } from '../chat/RoomSheets'
+import { moveToWorkspace } from '../../services/scopeService'
+import { moveToWorkspaceConfirmation } from '../../lib/moveToWorkspace'
 
 const isFolder = (file: KnowledgeFile) => file.type === 'folder' || file.kind === 'folder'
 
@@ -69,6 +71,11 @@ export function useFileActions({ onDeleted }: { onDeleted?: (file: KnowledgeFile
     )
   const move = (file: KnowledgeFile, parentId: string | null) =>
     run('Could not move', () => moveFile(file._id, parentId))
+  // Personal → Workspace only, after a confirmation; nothing moves back.
+  const toWorkspace = (file: KnowledgeFile) =>
+    setConfirmation(
+      moveToWorkspaceConfirmation(file.name, () => run('Could not move to workspace', () => moveToWorkspace('files', file._id))),
+    )
   const remove = (file: KnowledgeFile) =>
     setConfirmation({
       title: `Delete “${file.name}”?`,
@@ -91,7 +98,7 @@ export function useFileActions({ onDeleted }: { onDeleted?: (file: KnowledgeFile
       />
     </>
   )
-  return { rename, move, remove, share: canShare ? (file: KnowledgeFile) => setSharing(file) : null, overlays }
+  return { rename, move, toWorkspace, remove, share: canShare ? (file: KnowledgeFile) => setSharing(file) : null, overlays }
 }
 
 export type FileActions = ReturnType<typeof useFileActions>
@@ -109,6 +116,9 @@ function MenuItems({ file, files, actions, onOpen }: { file: KnowledgeFile; file
           <Button key={folder._id} label={folder.name} systemImage="folder" onPress={() => actions.move(file, folder._id)} />
         ))}
       </Menu>
+      {file.scope !== 'workspace' ? (
+        <Button label="Move to workspace" systemImage="building.2" onPress={() => actions.toWorkspace(file)} />
+      ) : null}
       {actions.share ? <Button label="Share" systemImage="square.and.arrow.up" onPress={() => actions.share!(file)} /> : null}
       <Divider />
       <Button label="Delete" systemImage="trash" role="destructive" onPress={() => actions.remove(file)} />
@@ -188,6 +198,11 @@ export function FileToolbarMenu({
               )),
             ]}
           </Stack.Toolbar.Menu>,
+          file.scope !== 'workspace' ? (
+            <Stack.Toolbar.MenuAction key="workspace" icon="building.2" onPress={() => actions.toWorkspace(file)}>
+              Move to workspace
+            </Stack.Toolbar.MenuAction>
+          ) : null,
           actions.share ? (
             <Stack.Toolbar.MenuAction key="share" icon="person.crop.circle.badge.plus" onPress={() => actions.share!(file)}>
               Share

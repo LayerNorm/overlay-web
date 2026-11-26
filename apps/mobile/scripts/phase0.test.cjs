@@ -74,14 +74,6 @@ test('restored collaboration and search do not bring back retired HTTP endpoints
   assert.match(source, /api\.search\.browse\.mentions/)
 })
 
-test('Hermes is not offered by built-in or environment-advertised adapters', () => {
-  const api = load('lib/agentByo.ts', { './agentToolGroups': {} })
-  assert.equal(api.BUILT_IN_BYO_HARNESSES.map((item) => item.id).join(','), 'codex,claude-code')
-  assert.equal(api.acpAdaptersForEnvironment({ capabilities: { adapters: [] } }).length, 0)
-  const environment = { capabilities: { adapters: [{ protocol: 'acp', id: 'hermes' }, { protocol: 'acp', id: 'custom-acp' }] } }
-  assert.equal(api.acpAdaptersForEnvironment(environment).length, 0)
-})
-
 test('retired routes and endpoint calls are absent', () => {
   for (const file of ['app/(tabs)/projects.tsx', 'app/knowledge-base/[id].tsx', 'services/projectsService.ts', 'services/knowledgeBasesService.ts']) {
     assert.equal(fs.existsSync(path.join(root, file)), false, file)

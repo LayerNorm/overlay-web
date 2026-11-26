@@ -6,13 +6,17 @@ import { useTheme } from '../../hooks/useTheme'
 import { useWork } from '../../hooks/useWork'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { commentWork, moveWork, updateWork, type WorkView } from '../../services/workService'
+import { commentWork, moveWork, updateWork } from '../../services/workService'
 import { canWorkOnItem } from '../../lib/work'
 import { parseWorkErrorReason, workErrorMessage } from '../../../src/shared/work/errors'
 import { Button } from '../shell/primitives'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { WorkDetailView, WorkListView, workLayouts, type WorkLayout } from './WorkViews'
 import { TabToolbar } from '../navigation/nativeHeader'
+import { useMode } from '../../contexts/ModeContext'
+import { RoomConfirmDialog, type RoomConfirmation } from '../chat/RoomSheets'
+import { moveToWorkspace } from '../../services/scopeService'
+import { moveToWorkspaceConfirmation } from '../../lib/moveToWorkspace'
 import { workError } from './WorkForms'
 
 export function WorkScreen({ id }: { id?: string }) {
@@ -30,11 +34,13 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
   const { theme, isDark } = useTheme()
   const { user } = useAuth()
   const router = useRouter()
-  const [view, setView] = useState<WorkView>('workspace')
+  // Work follows the app's Workspace | Personal mode.
+  const { mode: view } = useMode()
   const [layout, setLayout] = useState<WorkLayout>('List')
   const [busy, setBusy] = useState(false)
   const lock = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
   const data = useWork(workspaceId, view, id)
   async function perform(action: () => Promise<unknown>): Promise<boolean> {
     if (lock.current) return false
@@ -109,24 +115,6 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
       ) : (
         <TabToolbar>
           <Stack.Toolbar.Menu icon="line.3.horizontal.decrease" accessibilityLabel="View options">
-            <Stack.Toolbar.Menu inline title="Scope">
-              <Stack.Toolbar.MenuAction
-                icon="building.2"
-                isOn={view === 'workspace'}
-                disabled={busy}
-                onPress={() => setView('workspace')}
-              >
-                Workspace
-              </Stack.Toolbar.MenuAction>
-              <Stack.Toolbar.MenuAction
-                icon="person"
-                isOn={view === 'personal'}
-                disabled={busy}
-                onPress={() => setView('personal')}
-              >
-                Personal
-              </Stack.Toolbar.MenuAction>
-            </Stack.Toolbar.Menu>
             <Stack.Toolbar.Menu inline title="Layout">
               {workLayouts.map((entry) => (
                 <Stack.Toolbar.MenuAction
@@ -192,6 +180,15 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           onPatch={onPatch}
           onStatus={onStatus}
           onComment={onComment}
+          onMoveToWorkspace={() => {
+            const task = data.item
+            if (!task || !workspaceId) return
+            setConfirmation(
+              moveToWorkspaceConfirmation(task.title || 'this task', () =>
+                void perform(() => moveToWorkspace('work', task.id)),
+              ),
+            )
+          }}
           busy={busy}
           error={error}
           editable={canEdit(data.item)}
@@ -222,6 +219,7 @@ function ConnectedWork({ workspaceId, id }: { workspaceId: string | null; id?: s
           onSchedule={(item) => router.push({ pathname: '/work/schedule', params: { id: item.id, scope: view } })}
         />
       )}
+      <RoomConfirmDialog request={confirmation} onClose={() => setConfirmation(null)} />
     </View>
   )
 }

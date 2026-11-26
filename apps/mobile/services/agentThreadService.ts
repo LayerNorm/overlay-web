@@ -94,25 +94,6 @@ export function watchAgentMessages(
   }
 }
 
-export function resolveAgentRemoteRequest(
-  workspaceId: string,
-  conversationId: string,
-  runId: string,
-  requestKey: string,
-  decision: string,
-  response?: Record<string, unknown>,
-) {
-  currentWorkspace(workspaceId)
-  return mobileOverlayAppClient.conversations.resolveRemoteRequest({
-    workspaceId,
-    conversationId,
-    runId,
-    requestKey,
-    decision,
-    response,
-  })
-}
-
 export function watchAgent(
   workspaceId: string,
   agentId: string,

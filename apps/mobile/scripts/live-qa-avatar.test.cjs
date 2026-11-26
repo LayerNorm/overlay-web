@@ -6,7 +6,7 @@ const vm = require('node:vm')
 const test = require('node:test')
 const ts = require('typescript')
 const exportsObject = {}
-vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/agentByo.ts'), 'utf8'), {
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/agentEditorInput.ts'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText, { exports: exportsObject, require: () => ({}) })
 const { buildWorkspaceAgentUpdateInput } = exportsObject

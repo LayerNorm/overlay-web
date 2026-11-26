@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import type { SearchBarCommands } from 'react-native-screens'
 import { Alert } from 'react-native'
 import { Stack } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
@@ -25,7 +26,6 @@ import { openAgentThread } from '../../services/shellService'
 import { openConversationDestination } from '../../lib/notificationRouting'
 import type { WorkspaceSearchResult } from '../../services/searchService'
 import { useResourceScope } from '../knowledge/ResourceScreens'
-import { TabToolbar } from '../navigation/nativeHeader'
 
 const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })
 const rowButton = [buttonStyle('borderless')]
@@ -65,6 +65,12 @@ const sentence = (value: string) => value.charAt(0).toUpperCase() + value.slice(
 export function WorkspaceSearchScreen() {
   const { workspaceId, isDark, theme, router } = useResourceScope()
   const [query, setQuery] = useState('')
+  const searchBar = useRef<SearchBarCommands>(null)
+  // Opened from the header's Search button: start typing straight away.
+  useEffect(() => {
+    const timer = setTimeout(() => searchBar.current?.focus(), 350)
+    return () => clearTimeout(timer)
+  }, [])
   const [debounced, setDebounced] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   useEffect(() => {
@@ -137,8 +143,8 @@ export function WorkspaceSearchScreen() {
     <>
       <Stack.Screen
         options={{
-          title: '',
           headerSearchBarOptions: {
+            ref: searchBar,
             placeholder: 'Search or @name',
             autoCapitalize: 'none',
             hideWhenScrolling: false,
@@ -147,7 +153,6 @@ export function WorkspaceSearchScreen() {
           },
         }}
       />
-      <TabToolbar />
       <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
         {!canSearch ? (
           <ContentUnavailableView

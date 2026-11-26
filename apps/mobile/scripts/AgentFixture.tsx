@@ -61,7 +61,6 @@ export function AgentFixture({
   const actions: AgentActions = {
     approval: async (_, approved) => run(approved ? 'approved' : 'denied'),
     answer: async (_, text) => run('answered:' + text),
-    remote: async (_, decision) => run(decision),
   }
   const approval = initialScreen === 'agent-approval'
   const messages: RoomMessageRecord[] = [

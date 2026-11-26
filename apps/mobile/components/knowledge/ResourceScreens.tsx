@@ -27,6 +27,7 @@ import { AUTH_BASE_URL } from '../../services/appConfig'
 import { appRequest, getRequestWorkspaceId } from '../../services/appApi'
 import { normalizeHtmlForMobileMarkdown, toStoredHtml } from '../../services/noteContentFormat'
 import { TabToolbar } from '../navigation/nativeHeader'
+import { useMode } from '../../contexts/ModeContext'
 import { FeatureGate } from '../ui/FeatureGate'
 import {
   FilePaper,
@@ -51,9 +52,11 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
   const { workspaceId, theme, router } = useResourceScope()
   const { capabilities } = useAppSession()
   const [query, setQuery] = useState('')
+  // Files follow the app's Workspace | Personal mode, as on the web.
+  const { mode } = useMode()
   const files = useLiveResource(
     api.files.browse.list,
-    workspaceId && capabilities.files ? { workspaceId } : null,
+    workspaceId && capabilities.files ? { workspaceId, view: mode } : null,
   )
   const [folder] = useState<{ workspaceId: string; id: string | null } | null>(
     initialParentId && workspaceId ? { workspaceId, id: initialParentId } : null,
@@ -61,22 +64,11 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
   const [busy, setBusy] = useState(false)
   const actions = useFileActions()
   const parentId = folder?.workspaceId === workspaceId ? folder.id : null
-  const personal = useLiveResource(
+  const children = useLiveResource(
     api.files.browse.children,
-    workspaceId && parentId ? { workspaceId, parentId, view: 'personal' } : null,
+    workspaceId && parentId ? { workspaceId, parentId, view: mode } : null,
   )
-  const shared = useLiveResource(
-    api.files.browse.children,
-    workspaceId && parentId ? { workspaceId, parentId, view: 'workspace' } : null,
-  )
-  const childRows = [
-    ...new Map(
-      [...(personal.data?.files ?? []), ...(shared.data?.files ?? [])].map((file) => [
-        file._id,
-        file,
-      ]),
-    ).values(),
-  ]
+  const childRows = children.data?.files ?? []
   const displayed =
     parentId && files.data
       ? [...files.data.filter((file) => file.parentId !== parentId), ...childRows]
@@ -168,11 +160,7 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
         {displayed &&
         !(
           parentId &&
-          (personal.loading ||
-            shared.loading ||
-            personal.error ||
-            shared.error ||
-            (personal.data === null && shared.data === null))
+          (children.loading || children.error || children.data === null)
         ) ? (
           <>
             <FilesBrowser
@@ -193,7 +181,7 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
                 )
               }
             />
-            {personal.data?.complete === false || shared.data?.complete === false ? (
+            {children.data?.complete === false ? (
               <ResourceState
                 theme={theme}
                 empty="Some files are not shown. Open this folder on web to browse the full list."
@@ -206,21 +194,19 @@ export function FilesBrowserScreen({ initialParentId }: { initialParentId?: stri
             loading={
               files.loading ||
               !workspaceId ||
-              Boolean(parentId && (personal.loading || shared.loading))
+              Boolean(parentId && children.loading)
             }
             error={
               files.error ||
-              personal.error ||
-              shared.error ||
-              (parentId && personal.data === null && shared.data === null
+              children.error ||
+              (parentId && children.data === null
                 ? 'This folder is no longer available.'
                 : undefined) ||
               (files.data === null ? 'Files are unavailable in this workspace.' : undefined)
             }
             onRetry={() => {
               files.retry()
-              personal.retry()
-              shared.retry()
+              children.retry()
             }}
           />
         )}

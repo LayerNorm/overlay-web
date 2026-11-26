@@ -13,6 +13,7 @@ import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import { AppSessionProvider, useAppSession } from '../contexts/AppSessionContext'
 import { WorkspaceProvider, useWorkspace } from '../contexts/WorkspaceContext'
+import { ModeProvider } from '../contexts/ModeContext'
 import { activateLinkWorkspace } from '../lib/incomingLinks'
 import { ConvexAuthProvider, useNativeDataReady } from '../contexts/ConvexAuthProvider'
 import { SettingsLiveBridge } from '../components/settings/SettingsLiveBridge'
@@ -169,6 +170,7 @@ function RootLayoutNav(): React.ReactElement {
         />
         {[
           ['settings', 'Settings'],
+          ['search', 'Search'],
           ['automations', 'Automations'],
           ['activity', 'Activity'],
           ['voice', 'Voice'],
@@ -324,11 +326,13 @@ export default function RootLayout(): React.ReactElement {
             <AppSessionProvider>
               <SettingsLiveBridge />
               <WorkspaceProvider>
-                <DrawerProvider>
-                  <AppShell>
-                    <RootLayoutNav />
-                  </AppShell>
-                </DrawerProvider>
+                <ModeProvider>
+                  <DrawerProvider>
+                    <AppShell>
+                      <RootLayoutNav />
+                    </AppShell>
+                  </DrawerProvider>
+                </ModeProvider>
               </WorkspaceProvider>
             </AppSessionProvider>
           </ConvexAuthProvider>

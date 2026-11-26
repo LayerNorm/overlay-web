@@ -1,23 +1,20 @@
 /**
  * Agent editor — create/edit an agent as a pushed screen.
  *
- * Mirrors web `AgentEditorPage` semantics: overlay vs BYO type, tool-group
- * grants (capability grant ids), creature avatar, model + instructions,
- * visibility, environment binding upsert/disable, and agent-computer
- * provision/destroy on save. Layout is a native SwiftUI form under the
- * navigation bar, saved from the toolbar check.
+ * Mirrors web `AgentEditorPage` semantics: tool-group grants (capability
+ * grant ids), creature avatar, model + instructions, who can use it, and
+ * agent-computer provision/destroy on save. Visibility is one-way: an only-me
+ * agent can move to the workspace, never back. Layout is a native SwiftUI
+ * form under the navigation bar, saved from the toolbar check.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, ScrollView, View, useWindowDimensions } from 'react-native'
 import { Stack, useRouter } from 'expo-router'
-import { Button, Form, Host, Menu, Picker, RNHostView, Section, Text, TextField, Toggle } from '@expo/ui/swift-ui'
+import { Button, ConfirmationDialog, Form, Host, LabeledContent, Menu, RNHostView, Section, Text, TextField, Toggle } from '@expo/ui/swift-ui'
 import {
-  autocorrectionDisabled,
   lineLimit,
-  pickerStyle,
   scrollDismissesKeyboard,
   submitLabel,
-  tag,
   textInputAutocapitalization,
   tint,
 } from '@expo/ui/swift-ui/modifiers'
@@ -34,26 +31,21 @@ import { useSwitchTint } from '../../lib/nativeControls'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import type { Theme } from '../../constants/theme'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useMode } from '../../contexts/ModeContext'
 import { FeatureGate } from '../ui/FeatureGate'
 import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { AgentComputerPanel } from './AgentComputerPreview'
 import { getRequestWorkspaceId } from '../../services/appApi'
-import { ConnectMachineSheet } from './ConnectMachineSheet'
 import {
   archiveAgent,
   createAgent,
   destroyAgentComputer,
-  disableAgentBindings,
   getAgent,
-  listAgentBindings,
   listAgentComputers,
-  listAgentEnvironments,
   openAgentChat,
   provisionAgentComputer,
   updateAgent,
-  upsertAgentBinding,
-  type AgentEnvironmentItem,
 } from '../../services/agentsService'
 import {
   CREATURE_COLORS,
@@ -66,17 +58,12 @@ import {
   enabledAgentToolGroupIds,
 } from '../../lib/agentToolGroups'
 import {
-  availableByoHarnesses,
+  agentSaveErrorMessage,
   buildWorkspaceAgentInput,
   buildWorkspaceAgentUpdateInput,
-  defaultWorkingDirectory,
-  environmentSupportsHarness,
   isAgentEditorValid,
   isDefaultMasterAgent,
-  workspaceAgentUsesByo,
-} from '../../lib/agentByo'
-
-type AgentType = 'overlay' | 'byo'
+} from '../../lib/agentEditorInput'
 
 export function AgentEditorScreen({ agentId }: { agentId: string }): React.ReactElement {
   const { theme, isDark } = useTheme()
@@ -99,16 +86,11 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   const [modelId, setModelId] = useState('')
   const [avatarColor, setAvatarColor] = useState<string>(DEFAULT_AGENT_AVATAR_COLOR)
   const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>('circle')
-  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>('workspace')
+  // New agents belong to the mode they are made in (only you in Personal).
+  const { mode } = useMode()
+  const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(mode === 'personal' ? 'creator' : 'workspace')
+  const [confirmMove, setConfirmMove] = useState(false)
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(new Set(DEFAULT_AGENT_TOOL_GROUP_IDS))
-  const [agentType, setAgentType] = useState<AgentType>('overlay')
-
-  // BYO state
-  const [environments, setEnvironments] = useState<AgentEnvironmentItem[]>([])
-  const [environmentId, setEnvironmentId] = useState('')
-  const [adapterId, setAdapterId] = useState('codex')
-  const [workingDirectory, setWorkingDirectory] = useState('')
-  const [connectOpen, setConnectOpen] = useState(false)
 
   // Agent computer (computer tool group ↔ persistent desktop)
   const [agentComputer, setAgentComputer] = useState<Computer | null>(null)
@@ -119,7 +101,6 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   const [chatBusy, setChatBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const connectedAgentsEnabled = capabilities.connectedAgents
   const computersAvailable = capabilities.computers
   const isMaster = isDefaultMasterAgent(agent)
 
@@ -127,17 +108,6 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     () => [...chatModels].sort((a, b) => b.intelligence - a.intelligence),
     [chatModels],
   )
-
-  const harnessOptions = useMemo(() => availableByoHarnesses(environments), [environments])
-  const compatibleEnvironments = useMemo(
-    () => environments.filter((environment) => (
-      environment.status !== 'pending'
-        && environment.status !== 'revoked'
-        && environmentSupportsHarness(environment, adapterId)
-    )),
-    [adapterId, environments],
-  )
-  const bindingValid = Boolean(environmentId && ['codex', 'claude-code'].includes(adapterId) && workingDirectory.trim())
 
   const toolGroups = useMemo(
     () => (computersAvailable ? AGENT_TOOL_GROUPS : AGENT_TOOL_GROUPS.filter((group) => group.id !== 'computer')),
@@ -163,14 +133,8 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     setLoadError(null)
     void Promise.all([
       getAgent(workspaceId, agentId),
-      connectedAgentsEnabled
-        ? Promise.all([
-            listAgentEnvironments(workspaceId),
-            listAgentBindings(workspaceId, agentId),
-          ])
-        : Promise.resolve(null),
       computersAvailable ? listAgentComputers(workspaceId).catch(() => [] as Computer[]) : Promise.resolve([] as Computer[]),
-    ]).then(([loaded, byo, computers]) => {
+    ]).then(([loaded, computers]) => {
       if (cancelled) return
       setAgent(loaded)
       setEditable(loaded.canEdit)
@@ -182,24 +146,6 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
       setAvatarShape(loaded.avatarShape ?? 'circle')
       setVisibility(loaded.visibility)
       setEnabledToolGroups(enabledAgentToolGroupIds(loaded.allowedToolIds))
-      if (byo) {
-        const [envList, bindings] = byo
-        setEnvironments(envList)
-        const binding = bindings[0]
-        if (binding && workspaceAgentUsesByo(loaded)) {
-          setAgentType('byo')
-          setEnvironmentId(binding.environmentId)
-          const bindingAdapterId = typeof binding.adapterConfig.adapterId === 'string'
-            ? binding.adapterConfig.adapterId
-            : 'codex'
-          setAdapterId(bindingAdapterId)
-          setWorkingDirectory(typeof binding.adapterConfig.workingDirectory === 'string'
-            ? binding.adapterConfig.workingDirectory
-            : '')
-        }
-      } else if (workspaceAgentUsesByo(loaded)) {
-        setAgentType('byo')
-      }
       setAgentComputer(
         computers.find((computer) => computer.ownerType === 'agent' && computer.ownerId === loaded.id) ?? null,
       )
@@ -212,21 +158,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [agentId, computersAvailable, connectedAgentsEnabled, defaultModelId, isNew, workspaceId])
-
-  // Keep the environment list fresh while editing a BYO agent.
-  const refreshEnvironments = useCallback(async () => {
-    try {
-      setEnvironments(await listAgentEnvironments(workspaceId))
-    } catch {
-      // Non-blocking; the picker shows whatever loaded last.
-    }
-  }, [workspaceId])
-
-  const chooseEnvironment = useCallback((nextId: string) => {
-    setEnvironmentId(nextId)
-    setWorkingDirectory(defaultWorkingDirectory(environments.find((env) => env.id === nextId)))
-  }, [environments])
+  }, [agentId, computersAvailable, defaultModelId, isNew, workspaceId])
 
   const toggleToolGroup = useCallback((groupId: string) => {
     hapticSelect()
@@ -238,21 +170,12 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     })
   }, [])
 
-  const isValid = isAgentEditorValid({
-    name,
-    instructions,
-    modelId,
-    agentType,
-    connectedAgentsEnabled,
-    bindingValid,
-  })
+  const isValid = isAgentEditorValid({ name, instructions, modelId })
 
   const performSave = useCallback(async () => {
     const input = {
       ...buildWorkspaceAgentInput({
-        name, description, instructions, agentType,
-        harnessLabel: harnessOptions.find((harness) => harness.id === adapterId)?.label ?? adapterId,
-        adapterId, modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
+        name, description, instructions, modelId, avatarColor, avatarShape, enabledToolGroups, visibility,
       }),
       teamIds: agent?.teamIds ?? [],
     }
@@ -260,19 +183,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     let saved: WorkspaceAgentDirectoryItem
     if (isNew) {
       saved = await createAgent(workspaceId, input)
-      if (agentType === 'byo') {
-        try {
-          await upsertAgentBinding(workspaceId, {
-            agentId: saved.id, environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-          })
-        } catch {
-          // Agent identity is durable — land on the new agent's editor so a
-          // retry never creates a duplicate (web parity).
-          router.replace({ pathname: '/agent/[id]', params: { id: saved.id } })
-          return
-        }
-      }
-      if (agentType === 'overlay' && computersAvailable && enabledToolGroups.has('computer')) {
+      if (computersAvailable && enabledToolGroups.has('computer')) {
         try {
           await provisionAgentComputer(workspaceId, saved.id, `${saved.name} computer`)
         } catch {
@@ -284,14 +195,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
       saved = await updateAgent(workspaceId, agent.id, buildWorkspaceAgentUpdateInput(
         input, agent.avatarColor ?? DEFAULT_AGENT_AVATAR_COLOR,
       ))
-      if (agentType === 'byo') {
-        await upsertAgentBinding(workspaceId, {
-          agentId: saved.id, environmentId, adapterId, workingDirectory: workingDirectory.trim(),
-        })
-      } else if (workspaceAgentUsesByo(agent)) {
-        await disableAgentBindings(workspaceId, saved.id).catch(() => undefined)
-      }
-      if (agentType === 'overlay' && computersAvailable) {
+      if (computersAvailable) {
         if (enabledToolGroups.has('computer') && (!agentComputer || agentComputer.status === 'error')) {
           await provisionAgentComputer(workspaceId, saved.id, `${saved.name} computer`)
         } else if (!enabledToolGroups.has('computer') && agentComputer) {
@@ -303,15 +207,15 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     }
     if (getRequestWorkspaceId() === workspaceId) router.back()
   }, [
-    adapterId, agent, agentComputer, agentType, avatarColor, avatarShape, computersAvailable,
-    description, enabledToolGroups, environmentId, harnessOptions, instructions, isNew, modelId,
-    name, router, visibility, workingDirectory, workspaceId,
+    agent, agentComputer, avatarColor, avatarShape, computersAvailable,
+    description, enabledToolGroups, instructions, isNew, modelId,
+    name, router, visibility, workspaceId,
   ])
 
   const save = useCallback(() => {
     if (!isValid || busy) return
     // Disabling the computer group destroys a provisioned machine — confirm first.
-    if (agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer')) {
+    if (agentComputer && !enabledToolGroups.has('computer')) {
       Alert.alert(
         `Delete ${agent?.name ?? 'this agent'}'s computer?`,
         'Its disk state is destroyed permanently.',
@@ -324,7 +228,7 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
               setBusy(true)
               setError(null)
               void performSave()
-                .catch((nextError) => setError(nextError instanceof Error ? nextError.message : 'Could not save agent.'))
+                .catch((nextError) => setError(agentSaveErrorMessage(nextError, 'Could not save agent.')))
                 .finally(() => setBusy(false))
             },
           },
@@ -335,9 +239,23 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
     setBusy(true)
     setError(null)
     void performSave()
-      .catch((nextError) => setError(nextError instanceof Error ? nextError.message : 'Could not save agent.'))
+      .catch((nextError) => setError(agentSaveErrorMessage(nextError, 'Could not save agent.')))
       .finally(() => setBusy(false))
-  }, [agent?.name, agentComputer, agentType, busy, enabledToolGroups, isValid, performSave])
+  }, [agent?.name, agentComputer, busy, enabledToolGroups, isValid, performSave])
+
+  // One-way move: an only-me agent becomes a workspace agent, never the reverse.
+  const moveToWorkspace = useCallback(() => {
+    if (!agent || busy) return
+    setBusy(true)
+    setError(null)
+    void updateAgent(workspaceId, agent.id, { visibility: 'workspace' })
+      .then((saved) => {
+        setAgent((current) => (current ? { ...current, ...saved } : current))
+        setVisibility('workspace')
+      })
+      .catch((nextError) => setError(agentSaveErrorMessage(nextError, 'Could not move this agent to the workspace.')))
+      .finally(() => setBusy(false))
+  }, [agent, busy, workspaceId])
 
   const confirmArchive = useCallback(() => {
     if (!agent) return
@@ -430,6 +348,11 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
   const providerSections = modelSections(sortedModels, [])
   const fieldModifiers = [textInputAutocapitalization('sentences')]
   const canSave = isValid && !busy && editable
+  // Chiefs keep their place; only an only-me agent you can edit may move, and only to the workspace.
+  const canMove = Boolean(
+    !isNew && agent && editable && visibility === 'creator' &&
+      agent.agentRole !== 'personal_chief' && agent.agentRole !== 'workspace_chief',
+  )
 
   return (
     <>
@@ -496,131 +419,90 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
             />
           </Section>
 
-          {!isMaster && connectedAgentsEnabled ? (
-            <Section title="Runs on">
-              <Picker
-                selection={agentType}
-                onSelectionChange={(value: AgentType) => setAgentType(value)}
-                modifiers={[pickerStyle('segmented')]}
-              >
-                <Text modifiers={[tag('overlay')]}>Overlay</Text>
-                <Text modifiers={[tag('byo')]}>Your machine</Text>
-              </Picker>
+          <Section title="Model">
+            <Menu label={selectedModel?.name ?? 'Choose a model'}>
+              {providerSections.map((section) => (
+                <Menu key={section.id} label={section.label}>
+                  {section.models
+                    .map((model) => (
+                      <Button
+                        key={model.id}
+                        label={model.name}
+                        systemImage={model.id === modelId ? 'checkmark' : undefined}
+                        onPress={() => {
+                          hapticSelect()
+                          setModelId(model.id)
+                        }}
+                      />
+                    ))}
+                </Menu>
+              ))}
+            </Menu>
+          </Section>
+
+          <Section title="Instructions" footer={<Text>How the agent should behave, what it owns and how it replies.</Text>}>
+            <TextField
+              key={`instructions:${loadedKey}`}
+              defaultValue={instructions}
+              placeholder="You are a helpful assistant."
+              axis="vertical"
+              onValueChange={setInstructions}
+              modifiers={[...fieldModifiers, lineLimit({ min: 4, max: 12 })]}
+            />
+          </Section>
+
+          <Section
+            title="Tools"
+            footer={computersAvailable && enabledToolGroups.has('computer') && !agentComputer
+              ? <Text>A cloud computer is set up for this agent when you save.</Text>
+              : undefined}
+          >
+            {toolGroups.map((group) => (
+              <Toggle
+                modifiers={switchTint}
+                key={group.id}
+                label={group.label}
+                isOn={enabledToolGroups.has(group.id)}
+                onIsOnChange={() => toggleToolGroup(group.id)}
+              />
+            ))}
+          </Section>
+
+          {computerPreview ? (
+            <Section title="Computer">
+              <RNHostView matchContents>
+                <View style={{ paddingVertical: 4 }}>{computerPreview}</View>
+              </RNHostView>
             </Section>
           ) : null}
 
-          {agentType === 'overlay' ? (
-            <>
-              <Section title="Model">
-                <Menu label={selectedModel?.name ?? 'Choose a model'}>
-                  {providerSections.map((section) => (
-                    <Menu key={section.id} label={section.label}>
-                      {section.models
-                        .map((model) => (
-                          <Button
-                            key={model.id}
-                            label={model.name}
-                            systemImage={model.id === modelId ? 'checkmark' : undefined}
-                            onPress={() => {
-                              hapticSelect()
-                              setModelId(model.id)
-                            }}
-                          />
-                        ))}
-                    </Menu>
-                  ))}
-                </Menu>
-              </Section>
-
-              <Section title="Instructions" footer={<Text>How the agent should behave, what it owns and how it replies.</Text>}>
-                <TextField
-                  key={`instructions:${loadedKey}`}
-                  defaultValue={instructions}
-                  placeholder="You are a helpful assistant."
-                  axis="vertical"
-                  onValueChange={setInstructions}
-                  modifiers={[...fieldModifiers, lineLimit({ min: 4, max: 12 })]}
-                />
-              </Section>
-
-              <Section
-                title="Tools"
-                footer={computersAvailable && enabledToolGroups.has('computer') && !agentComputer
-                  ? <Text>A cloud computer is set up for this agent when you save.</Text>
-                  : undefined}
+          <Section
+            title="Who can use it"
+            footer={visibility === 'creator'
+              ? <Text>Only you can use this agent. Moving it to the workspace lets everyone use it, and it can’t move back.</Text>
+              : undefined}
+          >
+            <LabeledContent label="Access">
+              <Text>{visibility === 'creator' ? 'Only me' : 'Workspace'}</Text>
+            </LabeledContent>
+            {canMove ? (
+              <ConfirmationDialog
+                title="Move to workspace?"
+                titleVisibility="visible"
+                isPresented={confirmMove}
+                onIsPresentedChange={setConfirmMove}
               >
-                {toolGroups.map((group) => (
-                  <Toggle
-                    modifiers={switchTint}
-                    key={group.id}
-                    label={group.label}
-                    isOn={enabledToolGroups.has(group.id)}
-                    onIsOnChange={() => toggleToolGroup(group.id)}
-                  />
-                ))}
-              </Section>
-
-              {computerPreview ? (
-                <Section title="Computer">
-                  <RNHostView matchContents>
-                    <View style={{ paddingVertical: 4 }}>{computerPreview}</View>
-                  </RNHostView>
-                </Section>
-              ) : null}
-            </>
-          ) : (
-            <Section
-              title="Your machine"
-              footer={<Text>The folder must be inside the machine&apos;s approved roots.</Text>}
-            >
-              <Picker
-                label="Harness"
-                selection={adapterId}
-                onSelectionChange={(value: string) => {
-                  setAdapterId(value)
-                  const selected = environments.find((env) => env.id === environmentId)
-                  if (selected && !environmentSupportsHarness(selected, value)) {
-                    setEnvironmentId('')
-                    setWorkingDirectory('')
-                  }
-                }}
-                modifiers={[pickerStyle('menu')]}
-              >
-                {harnessOptions.map((harness) => (
-                  <Text key={harness.id} modifiers={[tag(harness.id)]}>{harness.label}</Text>
-                ))}
-              </Picker>
-              <Picker
-                label="Machine"
-                selection={environmentId}
-                onSelectionChange={(value: string) => chooseEnvironment(value)}
-                modifiers={[pickerStyle('menu')]}
-              >
-                <Text modifiers={[tag('')]}>{compatibleEnvironments.length ? 'Choose' : 'None available'}</Text>
-                {compatibleEnvironments.map((environment) => (
-                  <Text key={environment.id} modifiers={[tag(environment.id)]}>{environment.name}</Text>
-                ))}
-              </Picker>
-              <TextField
-                key={`folder:${loadedKey}:${environmentId}`}
-                defaultValue={workingDirectory}
-                placeholder="/Users/you/Projects/app"
-                onValueChange={setWorkingDirectory}
-                modifiers={[textInputAutocapitalization('never'), autocorrectionDisabled(true)]}
-              />
-              <Button label="Connect a machine" systemImage="plus" onPress={() => setConnectOpen(true)} />
-            </Section>
-          )}
-
-          <Section title="Who can use it">
-            <Picker
-              selection={visibility}
-              onSelectionChange={(value: WorkspaceAgentVisibility) => setVisibility(value)}
-              modifiers={[pickerStyle('inline')]}
-            >
-              <Text modifiers={[tag('workspace')]}>Everyone in the workspace</Text>
-              <Text modifiers={[tag('creator')]}>Only me</Text>
-            </Picker>
+                <ConfirmationDialog.Trigger>
+                  <Button label="Move to workspace" systemImage="arrow.up.right.square" onPress={() => setConfirmMove(true)} />
+                </ConfirmationDialog.Trigger>
+                <ConfirmationDialog.Actions>
+                  <Button label="Move to workspace" onPress={moveToWorkspace} />
+                </ConfirmationDialog.Actions>
+                <ConfirmationDialog.Message>
+                  <Text>Everyone in the workspace will be able to use it. You can’t move it back to Personal.</Text>
+                </ConfirmationDialog.Message>
+              </ConfirmationDialog>
+            ) : null}
           </Section>
 
           {error ? (
@@ -636,18 +518,6 @@ export function AgentEditorScreen({ agentId }: { agentId: string }): React.React
           ) : null}
         </Form>
       </Host>
-
-      <ConnectMachineSheet
-        theme={theme}
-        visible={connectOpen}
-        workspaceId={workspaceId}
-        onClose={() => setConnectOpen(false)}
-        onConnected={(environment) => {
-          setConnectOpen(false)
-          void refreshEnvironments()
-          chooseEnvironment(environment.id)
-        }}
-      />
     </>
   )
 }

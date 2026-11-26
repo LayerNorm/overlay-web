@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FunctionArgs } from 'convex/server'
 import { withUnreadActivity } from '../lib/sidebarChats'
-import { agentsForCreatorScope } from '../../src/shared/agents/last-agent-by-workspace'
+import { agentsForMode } from '../../src/shared/agents/last-agent-by-workspace'
 import { pinChiefs } from '../../src/shared/agents/chief-identity'
 import type { SidebarAgent, SidebarChat } from '../components/shell/SidebarView'
 import { api, subscribeConvex } from '../services/convexClient'
@@ -99,7 +99,7 @@ export function useShellAgents(workspaceId: string | null, scope: 'personal' | '
     }
   }, [workspaceId])
   return {
-    agents: pinChiefs(agentsForCreatorScope(agents, viewerPrincipalId, scope), viewerPrincipalId),
+    agents: pinChiefs(agentsForMode(agents, viewerPrincipalId, scope), viewerPrincipalId),
     loading,
     error,
   }

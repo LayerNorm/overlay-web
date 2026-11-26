@@ -35,7 +35,7 @@ function service() {
       async mutateConvex(query, args) { calls.push([query, clean(args)]); if (failure) throw failure; return result },
     },
     './appApi': { getRequestWorkspaceId: () => workspace },
-    './overlayClient': { mobileOverlayAppClient: { conversations: Object.fromEntries(['addMessage', 'stopResponse', 'submitRunApproval', 'submitRunInput', 'resolveRemoteRequest'].map(name => [name, async (...args) => { calls.push([name, ...clean(args)]); if (failure) throw failure; return result }])) } },
+    './overlayClient': { mobileOverlayAppClient: { conversations: Object.fromEntries(['addMessage', 'stopResponse', 'submitRunApproval', 'submitRunInput'].map(name => [name, async (...args) => { calls.push([name, ...clean(args)]); if (failure) throw failure; return result }])) } },
   })
   return { adapter, watches, calls, workspace: value => { workspace = value }, result: value => { result = value }, fail: value => { failure = value }, failQuery: value => { failQuery = value } }
 }
@@ -102,9 +102,6 @@ test('approval, denial and ask answers enforce request owner/conversation and we
   await assert.rejects(s.adapter.answerAgentQuestion('ws', 'other', 'u', request, 'answer'), /person who started/)
   await assert.rejects(s.adapter.answerAgentQuestion('ws', 'c', 'u', request, ' '), /Write an answer/)
   s.result({ success: false }); await assert.rejects(s.adapter.decideAgentApproval('ws', 'c', 'u', request, false), /Could not send/); await assert.rejects(s.adapter.answerAgentQuestion('ws', 'c', 'u', request, 'answer'), /Could not send/)
-  await s.adapter.resolveAgentRemoteRequest('ws', 'c', 'run', 'key', 'accept', { required: false })
-  assert.deepEqual(s.calls.at(-1), ['resolveRemoteRequest', { workspaceId: 'ws', conversationId: 'c', runId: 'run', requestKey: 'key', decision: 'accept', response: { required: false } }])
-  s.workspace('changed'); assert.throws(() => s.adapter.resolveAgentRemoteRequest('ws', 'c', 'run', 'key', 'deny'), /Workspace changed/)
 })
 
 test('markdown streaming emits complete paragraphs/fences and terminal tails without character churn', () => {
@@ -148,31 +145,32 @@ test('eye motion is periodic, eyes-only, and reduced-motion/settled replies rele
   effects.forEach(effect => effect.cleanup?.()); assert.equal(removed, true)
 })
 
-test('external adapters allow Claude Code/Codex only and default identity uses isDefault', () => {
-  const api = load('lib/agentByo.ts', { './agentToolGroups': {} })
-  const adapters = api.acpAdaptersForEnvironment({ capabilities: { adapters: ['codex', 'claude-code', 'hermes', 'custom-acp'].map(id => ({ id, protocol: 'acp' })) } })
-  assert.equal(adapters.map(adapter => adapter.id).join(','), 'codex,claude-code')
+test('default identity uses isDefault, not the name', () => {
+  const api = load('lib/agentEditorInput.ts', { './agentToolGroups': {} })
   assert.equal(api.isDefaultMasterAgent({ name: 'Renamed', isDefault: true }), true)
   assert.equal(api.isDefaultMasterAgent({ name: 'Overlay', isDefault: false }), false)
 })
 
-test('agent editor reads are Convex projections, enum narrowing fails closed, and writes retain web endpoints', async () => {
-  const contract = { ...load('../packages/overlay-workspace-contracts/src/types.ts'), ...load('../packages/overlay-workspace-contracts/src/connected-agents.ts') }
+test('agent save errors read as plain language', () => {
+  const api = load('lib/agentEditorInput.ts', { './agentToolGroups': {} })
+  assert.match(api.agentSaveErrorMessage(new Error('WORKSPACE_AGENT_VISIBILITY_ONE_WAY'), 'x'), /can’t move back to Personal/)
+  assert.match(api.agentSaveErrorMessage(Object.assign(new Error('Refused'), { code: 'WORKSPACE_PERSONAL_MODEL' }), 'x'), /personal provider/)
+  assert.equal(api.agentSaveErrorMessage(null, 'Could not save agent.'), 'Could not save agent.')
+})
+
+test('agent editor reads are Convex projections and writes retain web endpoints', async () => {
+  const contract = load('../packages/overlay-workspace-contracts/src/types.ts')
   let result, failure
   const calls = []
   const api = load('services/agentsService.ts', {
     '@overlay/workspace-contracts': contract,
     './appApi': {},
-    './convexClient': { api: { agents: { directory: { list: 'list', get: 'get' }, environmentsBrowse: { list: 'environments', bindings: 'bindings' } }, computers: { browse: { list: 'computers' } } }, async queryConvex(reference, args) { calls.push([reference, clean(args)]); if (failure) throw failure; return result } },
+    './convexClient': { api: { agents: { directory: { list: 'list', get: 'get' }}, computers: { browse: { list: 'computers' } } }, async queryConvex(reference, args) { calls.push([reference, clean(args)]); if (failure) throw failure; return result } },
     './overlayClient': { mobileOverlayAppClient: { agents: { async create(workspace, input) { calls.push(['create', workspace, clean(input)]); return { agent: input } }, async update(workspace, id, input) { calls.push(['update', workspace, id, clean(input)]); if (failure) throw failure; return { agent: input } } } } },
   })
   result = { agents: [], canCreate: false }; assert.equal((await api.listAgents('ws')).agents.length, 0)
   result = { id: 'agent', name: 'Scout', avatarShape: 'unknown', canEdit: false }; assert.equal((await api.getAgent('ws', 'agent')).avatarShape, 'circle'); assert.equal((await api.getAgent('ws', 'agent')).canEdit, false)
-  result = [{ status: 'online', kind: 'local', capabilities: {} }]; assert.equal((await api.listAgentEnvironments('ws'))[0].status, 'online')
-  result = [{ status: 'unsupported', kind: 'local' }]; await assert.rejects(api.listAgentEnvironments('ws'), /not supported/)
-  result = [{ protocolAdapter: 'acp' }]; assert.equal((await api.listAgentBindings('ws', 'agent'))[0].protocolAdapter, 'acp')
-  result = [{ protocolAdapter: 'unsupported' }]; await assert.rejects(api.listAgentBindings('ws'), /not supported/)
-  result = null; await assert.rejects(api.getAgent('ws', 'missing'), /unavailable/); await assert.rejects(api.listAgents('ws'), /unavailable/); assert.equal((await api.listAgentEnvironments('ws')).length, 0)
+  result = null; await assert.rejects(api.getAgent('ws', 'missing'), /unavailable/); await assert.rejects(api.listAgents('ws'), /unavailable/)
   await api.createAgent('ws', { name: 'Scout' }); await api.updateAgent('ws', 'agent', { name: 'Edited' }); assert.deepEqual(calls.slice(-2), [['create', 'ws', { name: 'Scout' }], ['update', 'ws', 'agent', { name: 'Edited' }]])
   failure = new Error('denied'); await assert.rejects(api.getAgent('ws', 'agent'), /denied/); await assert.rejects(api.updateAgent('ws', 'agent', {}), /denied/)
 })

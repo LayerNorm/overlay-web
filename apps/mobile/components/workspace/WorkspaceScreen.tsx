@@ -4,12 +4,12 @@
  * `/workspace` is a SwiftUI `Form` home; each section is its own pushed page
  * (`/workspace?section=people`), like Settings. Member, invitation and team
  * rows are native menus; destructive steps confirm with a native dialog.
- * People, agents, teams, guests and billing read live Convex views, so lists
+ * People, agents, teams and billing read live Convex views, so lists
  * update on their own after an action. Billing stays read-only (checkout and
  * the portal live on web).
  */
 import React, { useCallback, useEffect, useState } from 'react'
-import { Alert, ScrollView, View } from 'react-native'
+import { Alert } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
@@ -69,6 +69,7 @@ import {
   loadSharingPolicy,
   removeWorkspaceMember,
   resendWorkspaceInvitation,
+  setMemberSpendCap,
   setTeamMembership,
   updateSharingPolicy,
   updateWorkspaceMember,
@@ -76,24 +77,21 @@ import {
 } from '../../services/workspaceManagementService'
 import { FeatureGate } from '../ui/FeatureGate'
 import { RoomConfirmDialog, type RoomConfirmation } from '../chat/RoomSheets'
-import { SlackImportPanel } from './SlackImportPanel'
 
 const secondary = foregroundStyle({ type: 'hierarchical', style: 'secondary' })
 const rowButton = [buttonStyle('borderless')]
 const rowShape = contentShape(shapes.rectangle())
 type SymbolName = NonNullable<React.ComponentProps<typeof Symbol>['systemName']>
-type LiveView = 'people' | 'teams' | 'guests' | 'chats-agents'
+type LiveView = 'people' | 'teams' | 'chats-agents'
 
-type SectionKey = 'people' | 'agents' | 'teams' | 'guests' | 'sharing' | 'billing' | 'import' | 'shared' | 'team'
+type SectionKey = 'people' | 'agents' | 'teams' | 'sharing' | 'billing' | 'shared' | 'team'
 
 const SECTIONS: Array<{ key: Exclude<SectionKey, 'team'>; title: string; icon: SymbolName; view?: LiveView }> = [
   { key: 'people', title: 'People', icon: 'person.2', view: 'people' },
   { key: 'agents', title: 'Agents', icon: 'sparkles', view: 'chats-agents' },
   { key: 'teams', title: 'Teams', icon: 'person.3', view: 'teams' },
-  { key: 'guests', title: 'Guests', icon: 'person.badge.clock', view: 'guests' },
   { key: 'sharing', title: 'Sharing and policies', icon: 'lock.shield' },
   { key: 'billing', title: 'Billing', icon: 'creditcard' },
-  { key: 'import', title: 'Import from Slack', icon: 'square.and.arrow.down' },
   { key: 'shared', title: 'Shared with me', icon: 'tray' },
 ]
 
@@ -278,7 +276,7 @@ function WorkspaceHome() {
 }
 
 // ---------------------------------------------------------------------------
-// People, agents and guests
+// People and agents
 
 function MemberMenu({
   item,
@@ -306,7 +304,6 @@ function MemberMenu({
       >
         <Text modifiers={[tag('member')]}>Member</Text>
         <Text modifiers={[tag('admin')]}>Admin</Text>
-        <Text modifiers={[tag('guest')]}>Guest</Text>
       </Picker>
       {canTransfer ? (
         <Button
@@ -373,10 +370,9 @@ function InvitationMenu({ item, label, onConfirm }: { item: WorkspaceManagementI
 const EMPTY: Record<string, [string, SymbolName, string]> = {
   people: ['No other people yet', 'person.2', 'Invite teammates to work together in chats and on shared files.'],
   agents: ['No shared agents', 'sparkles', 'Named agents for this workspace are managed from Agents.'],
-  guests: ['No guests', 'person.badge.clock', 'Guests only see the chats and files shared with them.'],
 }
 
-function MembersPage({ section }: { section: 'people' | 'agents' | 'guests' }) {
+function MembersPage({ section }: { section: 'people' | 'agents' }) {
   const router = useRouter()
   const { activeWorkspace } = useWorkspace()
   const meta = SECTIONS.find((candidate) => candidate.key === section)!
@@ -388,8 +384,8 @@ function MembersPage({ section }: { section: 'people' | 'agents' | 'guests' }) {
     <Stack.Toolbar placement="right">
       <Stack.Toolbar.Button
         icon="plus"
-        accessibilityLabel={section === 'guests' ? 'Invite guest' : 'Invite people'}
-        onPress={() => router.push({ pathname: '/settings', params: { section: 'invite', ...(section === 'guests' ? { role: 'guest' } : {}) } })}
+        accessibilityLabel="Invite people"
+        onPress={() => router.push({ pathname: '/settings', params: { section: 'invite' } })}
       />
     </Stack.Toolbar>
   ) : null
@@ -455,7 +451,7 @@ function TeamsPage() {
   const result = useManagementView('teams')
   const run = useScopedAction()
   const [confirmation, setConfirmation] = useState<RoomConfirmation | null>(null)
-  const canEdit = result.data && result.data.currentRole !== 'guest'
+  const canEdit = Boolean(result.data)
   const newTeam = () =>
     Alert.prompt('New team', 'Group people and agents so you can share with them together.', [
       { text: 'Cancel', style: 'cancel' },
@@ -536,7 +532,7 @@ function TeamPage({ teamId }: { teamId: string }) {
   const [pending, setPending] = useState<Record<string, boolean>>({})
   if (teams.data && !team) return <Empty title="Team not found" systemImage="person.3" description="It may have been archived." />
   const members = new Set(team?.teamMemberPrincipalIds ?? [])
-  const editable = teams.data?.currentRole !== 'guest'
+  const editable = Boolean(teams.data)
   const candidates = (items: WorkspaceManagementItem[] | undefined) =>
     (items ?? []).filter((item) => item.kind === 'member' && item.principalId)
   const toggle = (principalId: string, on: boolean) => {
@@ -660,9 +656,6 @@ function SharingPage() {
           <LabeledContent label="Rollout">
             <Text>{value.rolloutStage === 'dogfood' ? 'Internal' : value.rolloutStage === 'invited' ? 'Selected workspaces' : 'General'}</Text>
           </LabeledContent>
-          <LabeledContent label="Guest access expires">
-            <Text>{value.guestExpirationDays ? `After ${value.guestExpirationDays} days` : 'Never'}</Text>
-          </LabeledContent>
           <LabeledContent label="Channel history">
             <Text>{value.channelRetentionDays ? `${value.channelRetentionDays} days` : 'Kept forever'}</Text>
           </LabeledContent>
@@ -747,6 +740,7 @@ function BillingPage() {
               <Text modifiers={[secondary, font({ size: 13 })]}>{`${Math.round(data.credits.allowancePercentUsed)}% of allowance used`}</Text>
             </VStack>
           </Section>
+          {data.canManage && activeWorkspaceId ? <SpendPerPerson workspaceId={activeWorkspaceId} /> : null}
           <Section title="Plan" footer={<Text>One wallet for the whole workspace, with unlimited members. Change the plan on the web.</Text>}>
             <LabeledContent label="Plan">
               <Text>{data.subscription.planKind === 'paid' ? `$${data.subscription.planAmountCents / 100} a month` : 'No subscription'}</Text>
@@ -763,8 +757,90 @@ function BillingPage() {
   )
 }
 
+const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`
+
+/** Parses "$1,250.50" style input; null when it is not a cap of $0 or more. */
+function parseDollars(value: string | undefined): number | null {
+  const amount = Number((value ?? '').replace(/[$,]/g, '').trim())
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : null
+}
+
+/**
+ * Workspace → Billing → Spend per person (owners and admins): what each person
+ * spent this billing period, their own automations and agents included, and an
+ * optional cap that renews every period.
+ */
+function SpendPerPerson({ workspaceId }: { workspaceId: string }) {
+  const ready = useNativeDataReady()
+  const run = useScopedAction()
+  const spend = useLiveResource(api.billing.memberSpend.members, ready ? { workspaceId } : null)
+  const data = spend.data
+  if (!data) return null
+  const setCap = (person: { userId: string; name: string; capCents: number | null }) =>
+    Alert.prompt(
+      `Spending cap for ${person.name}`,
+      'Dollars per billing period. Everything they start counts, their automations and agents included.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (value?: string) => {
+            const cents = parseDollars(value)
+            if (cents === null) {
+              Alert.alert('Enter a cap of $0 or more.')
+              return
+            }
+            run('Could not set the cap', (scope) => setMemberSpendCap(scope, person.userId, cents))
+          },
+        },
+      ],
+      'plain-text',
+      person.capCents === null ? '' : String(person.capCents / 100),
+      'decimal-pad',
+    )
+  return (
+    <Section
+      title="Spend per person"
+      footer={
+        <Text>
+          {!data.hasBillingAccount
+            ? 'Set up billing for this workspace before setting caps.'
+            : data.truncated
+              ? 'This period has more charges than can be counted here, so some totals are low.'
+              : 'This billing period. Tap a person to set or remove their cap.'}
+        </Text>
+      }
+    >
+      {data.people.map((person) => {
+        const label = (
+          <RowLabel
+            icon="person"
+            title={person.name}
+            subtitle={person.capCents === null ? 'No cap' : `Cap ${dollars(person.capCents)} · ${dollars(person.capUsedCents)} used`}
+            trailing={<Text modifiers={[secondary]}>{dollars(person.spentCents)}</Text>}
+          />
+        )
+        if (!data.hasBillingAccount) return <React.Fragment key={person.userId}>{label}</React.Fragment>
+        return (
+          <Menu key={person.userId} label={label}>
+            <Button label={person.capCents === null ? 'Set a cap' : 'Change cap'} systemImage="gauge.with.dots.needle.33percent" onPress={() => setCap(person)} />
+            {person.capCents !== null ? (
+              <Button
+                label="Remove cap"
+                systemImage="xmark"
+                role="destructive"
+                onPress={() => run('Could not remove the cap', (scope) => setMemberSpendCap(scope, person.userId, null))}
+              />
+            ) : null}
+          </Menu>
+        )
+      })}
+    </Section>
+  )
+}
+
 // ---------------------------------------------------------------------------
-// Shared with me and Slack import
+// Shared with me
 
 const SHARED_ICONS: Record<WorkspaceSharedResource['kind'], SymbolName> = {
   conversation: 'bubble.left',
@@ -818,20 +894,6 @@ function SharedPage() {
   )
 }
 
-function ImportPage() {
-  const { theme } = useTheme()
-  return (
-    <>
-      <Stack.Screen options={{ title: 'Import from Slack', headerLargeTitle: false }} />
-      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 16 }}>
-        <View>
-          <SlackImportPanel theme={theme} />
-        </View>
-      </ScrollView>
-    </>
-  )
-}
-
 // ---------------------------------------------------------------------------
 
 export function WorkspaceScreen(): React.ReactElement {
@@ -842,8 +904,7 @@ export function WorkspaceScreen(): React.ReactElement {
   switch (section as SectionKey | undefined) {
     case 'people':
     case 'agents':
-    case 'guests':
-      return <MembersPage section={section as 'people' | 'agents' | 'guests'} />
+      return <MembersPage section={section as 'people' | 'agents'} />
     case 'teams':
       return <TeamsPage />
     case 'team':
@@ -852,8 +913,6 @@ export function WorkspaceScreen(): React.ReactElement {
       return <SharingPage />
     case 'billing':
       return <BillingPage />
-    case 'import':
-      return <ImportPage />
     case 'shared':
       return <SharedPage />
     default:

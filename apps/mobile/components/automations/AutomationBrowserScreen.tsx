@@ -24,6 +24,9 @@ import { FeatureGate } from '../ui/FeatureGate'
 import { RoomConfirmDialog, type RoomConfirmation } from '../chat/RoomSheets'
 import { AutomationRunSheet } from './AutomationRunSheet'
 import { formatSchedule } from '../../lib/automationSchedule'
+import { useMode } from '../../contexts/ModeContext'
+import { moveToWorkspace } from '../../services/scopeService'
+import { moveToWorkspaceConfirmation } from '../../lib/moveToWorkspace'
 
 export function AutomationBrowserScreen() {
   const { workspaceId, theme, openDrawer, top, router } = useResourceScope()
@@ -35,10 +38,12 @@ export function AutomationBrowserScreen() {
   )
   const id = selection ? (selection.scope === workspaceId ? selection.id : null) : routeId || null
   const enabled = isFeatureEnabled('automations')
+  // Automations follow the app's Workspace | Personal mode.
+  const { mode } = useMode()
   const scope = enabled ? workspaceId : null
   const items = useLiveResource(
     api.automations.browse.list,
-    scope ? { workspaceId: scope, includeAgentBound: true } : null,
+    scope ? { workspaceId: scope, includeAgentBound: true, view: mode } : null,
   )
   const detail = useLiveResource(
     api.automations.browse.get,
@@ -183,6 +188,25 @@ export function AutomationBrowserScreen() {
             <Stack.Toolbar.MenuAction icon="pencil" onPress={() => router.push({ pathname: '/automation-edit', params: { id } })}>
               Edit
             </Stack.Toolbar.MenuAction>
+            {detail.data.scope !== 'workspace' ? (
+              <Stack.Toolbar.MenuAction
+                icon="building.2"
+                onPress={() => {
+                  const automation = detail.data
+                  if (!automation) return
+                  const confirmation = moveToWorkspaceConfirmation(automation.name || automation.title || 'this automation', () =>
+                    void action(() => moveToWorkspace('automations', id, { withAgent: Boolean(automation.agentId) })),
+                  )
+                  setConfirmation(
+                    automation.agentId
+                      ? { ...confirmation, message: `${confirmation.message} If its agent is yours and only you can use it, the agent moves too.` }
+                      : confirmation,
+                  )
+                }}
+              >
+                Move to workspace
+              </Stack.Toolbar.MenuAction>
+            ) : null}
             <Stack.Toolbar.Menu inline title="">
               <Stack.Toolbar.MenuAction
                 icon="trash"

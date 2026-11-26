@@ -3,6 +3,7 @@ import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 import { getFile, listFiles, moveFile, renameFile } from './filesService'
 import { readMemories } from './settingsNativeService'
 import { createIdempotencyKey } from '@overlay/api-client'
+import { getCurrentMode } from './modeState'
 
 export interface KnowledgeSearchChunk {
   sourceId: string
@@ -93,6 +94,7 @@ export async function createKnowledgeFile(
     json: {
       name: input.name,
       type: 'file',
+      scope: getCurrentMode(),
       content: input.content || '',
       parentId: input.parentId ?? undefined,
     },
@@ -107,6 +109,7 @@ export async function createKnowledgeFolder(
     json: {
       name: input.name,
       type: 'folder',
+      scope: getCurrentMode(),
       parentId: input.parentId ?? undefined,
     },
   })
@@ -202,6 +205,7 @@ export async function createFileWithStorage(
     json: {
       name: input.name,
       type: 'file',
+      scope: getCurrentMode(),
       r2Key: input.r2Key,
       sizeBytes: input.sizeBytes,
       parentId: input.parentId ?? undefined,

@@ -3,6 +3,7 @@ import { appJson, appRequest, getRequestWorkspaceId } from './appApi'
 import type { Note, NoteMeta } from './types'
 import { getFile, listFiles, moveFile, renameFile } from './filesService'
 import { getKnowledgeFileContent } from './knowledgeService'
+import { getCurrentMode } from './modeState'
 
 function mapNote(note: NoteDoc): Note {
   return {
@@ -30,6 +31,7 @@ export async function createNote(
       title: initial?.title || 'Untitled',
       content: initial?.content || '<p></p>',
       tags: [],
+      scope: getCurrentMode(),
     },
   })
   return mapNote(response.note)

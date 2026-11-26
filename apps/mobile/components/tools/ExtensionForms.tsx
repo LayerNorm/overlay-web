@@ -27,6 +27,8 @@ import {
   updateMcpServer,
   updateSkill,
 } from '../../services/integrationsService'
+import { moveToWorkspace } from '../../services/scopeService'
+import { moveToWorkspaceConfirmation } from '../../lib/moveToWorkspace'
 
 function SheetChrome({ title, save, children }: { title: string; save: { label: string; disabled: boolean; onPress: () => void }; children: React.ReactNode }) {
   const { theme, isDark } = useTheme()
@@ -82,14 +84,14 @@ function useRecord<T extends { _id: string }>(id: string | undefined, load: () =
 }
 
 /** A destructive row that asks in a native confirmation dialog first. */
-function DeleteRow({ label, title, message, onConfirm }: { label: string; title: string; message: string; onConfirm: () => void }) {
+function DeleteRow({ label, title, message, onConfirm, symbol = 'trash', destructive = true }: { label: string; title: string; message: string; onConfirm: () => void; symbol?: 'trash' | 'building.2'; destructive?: boolean }) {
   const [asking, setAsking] = useState(false)
   return (
     <Section>
       <Button onPress={() => setAsking(true)}>
         <HStack spacing={12}>
-          <Symbol systemName="trash" size={17} color="#FF3B30" />
-          <Text modifiers={[foregroundStyle('#FF3B30')]}>{label}</Text>
+          <Symbol systemName={symbol} size={17} color={destructive ? '#FF3B30' : undefined} />
+          <Text modifiers={destructive ? [foregroundStyle('#FF3B30')] : []}>{label}</Text>
           <Spacer />
           {/* The dialog needs an anchor view; a button inside its trigger slot stops taking taps. */}
           <ConfirmationDialog title={title} titleVisibility="visible" isPresented={asking} onIsPresentedChange={setAsking}>
@@ -97,7 +99,7 @@ function DeleteRow({ label, title, message, onConfirm }: { label: string; title:
               <Text modifiers={[frame({ width: 1, height: 1 })]}>{' '}</Text>
             </ConfirmationDialog.Trigger>
             <ConfirmationDialog.Actions>
-              <Button label={label} role="destructive" onPress={() => { setAsking(false); onConfirm() }} />
+              <Button label={label} role={destructive ? 'destructive' : undefined} onPress={() => { setAsking(false); onConfirm() }} />
             </ConfirmationDialog.Actions>
             <ConfirmationDialog.Message>
               <Text>{message}</Text>
@@ -106,6 +108,21 @@ function DeleteRow({ label, title, message, onConfirm }: { label: string; title:
         </HStack>
       </Button>
     </Section>
+  )
+}
+
+/** Personal → Workspace, one-way, after a confirmation. */
+function MoveRow({ name, extra, onConfirm }: { name: string; extra?: string; onConfirm: () => void }) {
+  const confirmation = moveToWorkspaceConfirmation(name, onConfirm)
+  return (
+    <DeleteRow
+      label={confirmation.label}
+      title={confirmation.title}
+      message={extra ? `${confirmation.message} ${extra}` : (confirmation.message ?? '')}
+      onConfirm={onConfirm}
+      symbol="building.2"
+      destructive={false}
+    />
   )
 }
 
@@ -160,6 +177,9 @@ function SkillForm({ skill }: { skill: SkillSummary | null }) {
             modifiers={[lineLimit({ min: 6, max: 20 })]}
           />
         </Section>
+        {skill && skill.scope !== 'workspace' ? (
+          <MoveRow name={skill.name} onConfirm={() => void run(() => moveToWorkspace('skills', skill._id), 'Could not move the skill to the workspace.')} />
+        ) : null}
         {skill ? (
           <DeleteRow
             label="Delete skill"
@@ -275,6 +295,13 @@ function McpForm({ server }: { server: McpServerSummary | null }) {
             </HStack>
           </Button>
         </Section>
+        {server && server.scope !== 'workspace' ? (
+          <MoveRow
+            name={server.name}
+            extra="Its sign-in stays with you: connect it for the workspace and turn it on again after the move."
+            onConfirm={() => void run(() => moveToWorkspace('mcp-servers', server._id), 'Could not move the MCP server to the workspace.')}
+          />
+        ) : null}
         {server ? (
           <DeleteRow
             label="Delete MCP server"

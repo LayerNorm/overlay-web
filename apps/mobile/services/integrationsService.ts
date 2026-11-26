@@ -1,5 +1,6 @@
 import { appJson, appList } from './appApi'
 import type { IntegrationSummary, McpServerSummary, SkillSummary } from '@overlay/app-core'
+import { getCurrentMode } from './modeState'
 
 export async function listConnectedIntegrations(): Promise<{ connected: string[] }> {
   return appJson<{ connected: string[] }>('/api/v1/integrations')
@@ -30,7 +31,7 @@ export async function searchIntegrations(
 }
 
 export async function listSkills(): Promise<SkillSummary[]> {
-  return appList<SkillSummary>('/api/v1/skills')
+  return appList<SkillSummary>('/api/v1/skills', { query: { view: getCurrentMode() } })
 }
 
 export async function connectIntegration(toolkit: string, options: IntegrationRequestScope): Promise<{
@@ -61,7 +62,7 @@ export async function createSkill(input: {
 }, requestOptions: { workspaceId?: string; signal?: AbortSignal } = {}): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/skills', {
     method: 'POST',
-    json: input,
+    json: { ...input, scope: getCurrentMode() },
     ...requestOptions,
   })
 }
@@ -84,7 +85,7 @@ export async function deleteSkill(skillId: string): Promise<void> {
 }
 
 export async function listMcpServers(): Promise<McpServerSummary[]> {
-  return appList<McpServerSummary>('/api/v1/mcps')
+  return appList<McpServerSummary>('/api/v1/mcps', { query: { view: getCurrentMode() } })
 }
 
 export async function createMcpServer(input: {
@@ -99,7 +100,7 @@ export async function createMcpServer(input: {
 }): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/mcps', {
     method: 'POST',
-    json: input,
+    json: { ...input, scope: getCurrentMode() },
   })
 }
 

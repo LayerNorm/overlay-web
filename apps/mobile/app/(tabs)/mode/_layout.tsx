@@ -4,10 +4,10 @@ import { useNativeHeaderOptions, useTabRootOptions } from '../../../components/n
 
 export const unstable_settings = { initialRouteName: 'index' }
 
-export default function SearchLayout(): React.ReactElement {
+export default function ModeLayout(): React.ReactElement {
   return (
     <Stack screenOptions={useNativeHeaderOptions()}>
-      <Stack.Screen name="index" options={useTabRootOptions('Search')} />
+      <Stack.Screen name="index" options={useTabRootOptions('Mode')} />
     </Stack>
   )
 }

@@ -2,7 +2,7 @@
  * Per-resource share sheet — native counterpart of web `ShareDialog`:
  * grants list with role changes and impact-confirmed revokes, a directory
  * picker (people / agents / teams / rooms) where team+room grants disclose
- * who gains access before commit, guest invite, and the public-link row.
+ * who gains access before commit, and the public-link row.
  *
  * All calls go through `workspaceManagementService` → the typed
  * `SharingClient`; the resource ref is `{workspaceId, resourceType,
@@ -15,7 +15,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -30,7 +29,6 @@ import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import {
   grantResourceShare,
-  inviteToWorkspace,
   loadResourceShares,
   revokeResourceShare,
   shareImpact,
@@ -90,7 +88,6 @@ export function ShareSheet({
 }) {
   const [grants, setGrants] = useState<WorkspaceResourceGrant[]>([])
   const [directory, setDirectory] = useState<WorkspaceShareDirectoryEntry[]>([])
-  const [canInvite, setCanInvite] = useState(false)
   const [publicLinksEnabled, setPublicLinksEnabled] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,7 +97,6 @@ export function ShareSheet({
   const [query, setQuery] = useState('')
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
   const [role, setRole] = useState<WorkspaceShareAccessRole>('viewer')
-  const [inviteEmail, setInviteEmail] = useState('')
   const [linkUrl, setLinkUrl] = useState<string | null>(publicUrl ?? null)
   const [linkVisibility, setLinkVisibility] = useState<'private' | 'public'>(
     publicVisibility ?? 'private',
@@ -139,7 +135,6 @@ export function ShareSheet({
         ...response.directory.teams,
         ...response.directory.rooms,
       ])
-      setCanInvite(response.directory.canInvite)
       setPublicLinksEnabled(response.publicLinksEnabled)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load sharing')
@@ -153,7 +148,6 @@ export function ShareSheet({
     setSelectedTarget(null)
     setQuery('')
     setNotice(null)
-    setInviteEmail('')
     setLinkUrl(publicUrl ?? null)
     setLinkVisibility(publicVisibility ?? 'private')
     void load()
@@ -284,21 +278,6 @@ export function ShareSheet({
     },
     [entriesByKey, changeRole],
   )
-
-  const inviteGuest = useCallback(async () => {
-    const email = inviteEmail.trim()
-    if (!resource?.workspaceId || !email) return
-    setBusyKey('invite')
-    try {
-      await inviteToWorkspace(resource.workspaceId, email, 'guest')
-      setNotice('Invitation sent. Share with them after they join the workspace.')
-      setInviteEmail('')
-    } catch (inviteError) {
-      setNotice(inviteError instanceof Error ? inviteError.message : 'Could not send invitation')
-    } finally {
-      setBusyKey(null)
-    }
-  }, [resource, inviteEmail])
 
   return (
     <BottomSheet
@@ -502,41 +481,6 @@ export function ShareSheet({
               ) : null}
             </View>
 
-            {canInvite ? (
-              <View style={styles.addBlock}>
-                <Text style={[styles.addLabel, { color: theme.textSecondary }]}>
-                  Invite a guest to this workspace
-                </Text>
-                <View style={styles.inviteRow}>
-                  <TextInput
-                    value={inviteEmail}
-                    onChangeText={setInviteEmail}
-                    placeholder="name@example.com"
-                    placeholderTextColor={theme.textDisabled}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    style={[
-                      styles.inviteInput,
-                      { color: theme.text, backgroundColor: theme.surfaceSubtle, borderColor: theme.border },
-                    ]}
-                  />
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    disabled={busyKey !== null || !inviteEmail.trim()}
-                    onPress={() => void inviteGuest()}
-                    style={[
-                      styles.grantButton,
-                      {
-                        backgroundColor: theme.foreground,
-                        opacity: inviteEmail.trim() ? 1 : 0.45,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.grantButtonText, { color: theme.background }]}>Invite</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
           </>
         )}
       </ScrollView>
@@ -562,13 +506,4 @@ const styles = StyleSheet.create({
     minWidth: 76,
   },
   grantButtonText: { fontSize: fontSize.sm, fontWeight: '700' },
-  inviteRow: { flexDirection: 'row', gap: spacing.sm },
-  inviteInput: {
-    flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
-    minHeight: 42,
-    fontSize: fontSize.md,
-  },
 })

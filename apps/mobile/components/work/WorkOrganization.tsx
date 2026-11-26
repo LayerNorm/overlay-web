@@ -6,38 +6,36 @@ import {
   HStack,
   Host,
   Image as Symbol,
-  Picker,
   RNHostView,
   Section,
   Spacer,
   Text,
   VStack,
 } from '@expo/ui/swift-ui'
-import { font, lineLimit, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers'
-import { agentsForCreatorScope } from '../../../src/shared/agents/last-agent-by-workspace'
+import { font, lineLimit, tint } from '@expo/ui/swift-ui/modifiers'
+import { agentsForMode } from '../../../src/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '../../../src/shared/agents/chief-identity'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useTheme } from '../../hooks/useTheme'
+import { useMode } from '../../contexts/ModeContext'
 import { subscribeAgents, type ShellAgent } from '../../services/shellService'
 import { AgentAvatar } from '../shell/AgentAvatar'
 import { secondary } from './WorkForms'
 
-type Scope = 'workspace' | 'personal'
 type Directory = { agents: ShellAgent[]; viewerPrincipalId: string | null }
 
 export function WorkOrganization({
   workspaceId,
   workspaceName,
-  initialScope,
 }: {
   workspaceId: string | null
   workspaceName?: string
-  initialScope: Scope
 }) {
   const { theme, isDark } = useTheme()
   const ready = useNativeDataReady()
   const router = useRouter()
-  const [scope, setScope] = useState(initialScope)
+  // The organization of the mode you are in.
+  const { mode: scope } = useMode()
   const [directory, setDirectory] = useState<Directory | null>(null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -56,7 +54,7 @@ export function WorkOrganization({
 
   const viewer = directory?.viewerPrincipalId
   const agents = pinChiefs(
-    agentsForCreatorScope(
+    agentsForMode(
       (directory?.agents ?? []).filter((agent) => !agent.archivedAt),
       viewer,
       scope,
@@ -99,12 +97,6 @@ export function WorkOrganization({
       <Stack.Screen options={{ title: 'Organization', headerLargeTitle: false }} />
       <Host style={{ flex: 1 }} colorScheme={isDark ? 'dark' : 'light'}>
         <Form modifiers={[tint(theme.foreground as string)]}>
-          <Section>
-            <Picker selection={scope} onSelectionChange={(value: Scope) => setScope(value)} modifiers={[pickerStyle('segmented')]}>
-              <Text modifiers={[tag('workspace')]}>Workspace</Text>
-              <Text modifiers={[tag('personal')]}>Personal</Text>
-            </Picker>
-          </Section>
           {failed ? (
             <Section footer={<Text>Could not load the organization.</Text>}>
               <Button label="Try again" onPress={() => { setFailed(false); setAttempt(attempt + 1) }} />

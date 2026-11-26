@@ -11,7 +11,6 @@ import {
   Pressable,
   ScrollView,
   Share,
-  Switch,
   TextInput,
   View,
 } from 'react-native'
@@ -52,11 +51,6 @@ export type AgentActions = {
   answer: (
     request: NonNullable<ReturnType<typeof agentMessageProjection>['question']>,
     text: string,
-  ) => Promise<unknown>
-  remote: (
-    request: Record<string, unknown>,
-    decision: string,
-    response?: Record<string, unknown>,
   ) => Promise<unknown>
 }
 
@@ -413,201 +407,6 @@ function AgentQuestion({
   )
 }
 
-function RemoteRequest({
-  request,
-  theme,
-  onResolve,
-}: {
-  request: Record<string, unknown>
-  theme: Theme
-  onResolve: AgentActions['remote']
-}) {
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [values, setValues] = useState<Record<string, unknown>>({})
-  const lock = useRef(false)
-  const schema = request.requestedSchema as
-    | {
-        properties?: Record<
-          string,
-          { type?: string; title?: string; enum?: unknown[] }
-        >
-        required?: string[]
-      }
-    | undefined
-  async function resolve(decision: string) {
-    if (lock.current || sent) return
-    lock.current = true
-    setBusy(true)
-    setError('')
-    try {
-      await onResolve(
-        request,
-        decision,
-        decision === 'accept'
-          ? {
-              ...Object.fromEntries(
-                Object.entries(schema?.properties ?? {})
-                  .filter(([, property]) => property.type === 'boolean')
-                  .map(([key]) => [key, false]),
-              ),
-              ...values,
-            }
-          : undefined,
-      )
-      setSent(true)
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : 'Could not send decision.',
-      )
-    } finally {
-      lock.current = false
-      setBusy(false)
-    }
-  }
-  return (
-    <View
-      style={{
-        padding: 14,
-        backgroundColor: theme.surfaceSubtle,
-        borderRadius: 8,
-        gap: 10,
-      }}
-    >
-      <T style={{ color: theme.foreground }}>
-        {String(request.prompt ?? 'Agent needs your input')}
-      </T>
-      {request.state === 'decision_pending' || sent ? (
-        <T style={{ color: theme.muted }}>Decision pending delivery</T>
-      ) : (
-        <>
-          {request.kind === 'elicitation'
-            ? Object.entries(schema?.properties ?? {}).map(
-                ([key, property]) => (
-                  <View key={key} style={{ gap: 5 }}>
-                    <T style={{ color: theme.muted, fontSize: 12 }}>
-                      {property.title ?? key}
-                    </T>
-                    {property.type === 'boolean' ? (
-                      <Switch
-                        accessibilityLabel={property.title ?? key}
-                        value={values[key] === true}
-                        onValueChange={(value) =>
-                          setValues((old) => ({ ...old, [key]: value }))
-                        }
-                      />
-                    ) : property.enum ? (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                        {property.enum.map((value) => (
-                          <Button
-                            key={String(value)}
-                            theme={theme}
-                            secondary={values[key] === value}
-                            onPress={() =>
-                              setValues((old) => ({ ...old, [key]: value }))
-                            }
-                          >
-                            {String(value)}
-                          </Button>
-                        ))}
-                      </View>
-                    ) : (
-                      <TextInput
-                        accessibilityLabel={property.title ?? key}
-                        value={String(values[key] ?? '')}
-                        onChangeText={(text) =>
-                          setValues((old) => ({
-                            ...old,
-                            [key]:
-                              property.type === 'number' ||
-                              property.type === 'integer'
-                                ? text === ''
-                                  ? ''
-                                  : Number(text)
-                                : property.type === 'array'
-                                  ? text
-                                      .split(',')
-                                      .map((value) => value.trim())
-                                      .filter(Boolean)
-                                  : text,
-                          }))
-                        }
-                        style={{
-                          color: theme.foreground,
-                          fontFamily: 'Geist',
-                          borderWidth: 1,
-                          borderColor: theme.border,
-                          padding: 10,
-                          borderRadius: 6,
-                        }}
-                      />
-                    )}
-                  </View>
-                ),
-              )
-            : null}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-            {request.kind === 'permission' ? (
-              (Array.isArray(request.options)
-                ? (request.options as Array<{
-                    id: string
-                    name?: string
-                    label?: string
-                  }>)
-                : []
-              ).map((option) => (
-                <Button
-                  key={option.id}
-                  theme={theme}
-                  secondary
-                  disabled={busy}
-                  onPress={() => void resolve(option.id)}
-                >
-                  {option.name ?? option.label ?? option.id}
-                </Button>
-              ))
-            ) : (
-              <>
-                <Button
-                  theme={theme}
-                  secondary
-                  disabled={
-                    busy ||
-                    Boolean(
-                      schema?.required?.some(
-                        (key) =>
-                          (values[key] === undefined &&
-                            schema.properties?.[key]?.type !== 'boolean') ||
-                          values[key] === '',
-                      ),
-                    )
-                  }
-                  onPress={() => void resolve('accept')}
-                >
-                  Submit
-                </Button>
-                <Button
-                  theme={theme}
-                  disabled={busy}
-                  onPress={() => void resolve('decline')}
-                >
-                  Decline
-                </Button>
-              </>
-            )}
-          </View>
-        </>
-      )}
-      {error ? (
-        <T accessibilityRole="alert" style={{ color: theme.foreground }}>
-          {error}
-        </T>
-      ) : null}
-    </View>
-  )
-}
-
 const AgentReply = memo(function AgentReply({
   message,
   agent,
@@ -721,14 +520,6 @@ const AgentReply = memo(function AgentReply({
           userId={userId}
           theme={theme}
           onAnswer={actions.answer}
-        />
-      ) : null}
-      {projection.remoteRequest && !readOnly ? (
-        <RemoteRequest
-          key={String(projection.remoteRequest.requestKey)}
-          request={projection.remoteRequest}
-          theme={theme}
-          onResolve={actions.remote}
         />
       ) : null}
       {message.status === 'error' ? (

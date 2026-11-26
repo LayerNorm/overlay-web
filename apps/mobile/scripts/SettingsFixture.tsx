@@ -129,6 +129,7 @@ export function SettingsFixture({
             total: 10000,
             used: 5720,
             remaining: 4280,
+            allowance: 10000,
             allowancePercentUsed: 57,
             topUpBalance: 0,
           },

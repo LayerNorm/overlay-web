@@ -6,10 +6,11 @@ import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 import { useTheme } from '../hooks/useTheme'
 import { useAppSession } from '../contexts/AppSessionContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useMode } from '../contexts/ModeContext'
 import { AgentAvatar } from '../components/shell/AgentAvatar'
 import { CREATURE_COLORS, CREATURE_SHAPES } from '../lib/agentCreature'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../lib/agentToolGroups'
-import { buildWorkspaceAgentInput } from '../lib/agentByo'
+import { agentSaveErrorMessage, buildWorkspaceAgentInput } from '../lib/agentEditorInput'
 import { hapticSelect } from '../lib/haptics'
 import { createAgent } from '../services/agentsService'
 import { openAgentThread } from '../services/shellService'
@@ -26,6 +27,8 @@ export default function CreateAgentSheet(): React.ReactElement {
   const { theme, isDark } = useTheme()
   const { chatModels, uiSettings } = useAppSession()
   const { activeWorkspaceId } = useWorkspace()
+  // New agents belong to the mode they are made in: only you in Personal.
+  const { mode } = useMode()
   const [name, setName] = useState('')
   const [purpose, setPurpose] = useState('')
   const [shape, setShape] = useState<WorkspaceAgentCreatureShape>('cloud')
@@ -51,20 +54,17 @@ export default function CreateAgentSheet(): React.ReactElement {
         instructions: purpose.trim()
           ? `You are ${name.trim()}. Help with: ${purpose.trim()}`
           : 'You are a helpful assistant.',
-        agentType: 'overlay',
-        harnessLabel: 'Overlay',
-        adapterId: '',
         modelId,
         avatarColor: color,
         avatarShape: shape,
         enabledToolGroups: new Set(DEFAULT_AGENT_TOOL_GROUP_IDS),
-        visibility: 'workspace',
+        visibility: mode === 'personal' ? 'creator' : 'workspace',
       }))
       const thread = await openAgentThread(activeWorkspaceId, agent.id)
       router.dismiss()
       if (thread) router.push(`/dm/${thread.conversationId}` as never)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not create this agent.')
+      setError(agentSaveErrorMessage(reason, 'Could not create this agent.'))
     } finally {
       setBusy(false)
     }
