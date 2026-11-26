@@ -91,6 +91,21 @@ describe('agent tools in a workspace context', () => {
     expect(await open('alice', ids.personal)).toMatchObject({ name: 'dog.png' })
   })
 
+  test('an archived automation cannot be turned on; restoring it first is the way back', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const automationId = await convex.run((ctx) => ctx.db.insert('automations', {
+      userId: 'alice', workspaceId, name: 'Morning Digest', description: '', instructions: 'Summarize', enabled: false,
+      timezone: 'UTC', scope: 'workspace', archivedAt: now, archivedBy: 'alice', archivedFromScope: 'workspace', createdAt: now, updatedAt: now,
+    } as never))
+    await expect(convex.mutation(m('automations/automations:update'), { ...auth, userId: 'alice', automationId, enabled: true }))
+      .rejects.toThrow(/AUTOMATION_ARCHIVED/)
+    // Other edits to an archived automation, such as its name, still save.
+    await convex.mutation(m('automations/automations:update'), { ...auth, userId: 'alice', automationId, name: 'Evening Digest' })
+    expect(await convex.run(async (ctx) => (await ctx.db.get(automationId as never) as { name: string; enabled: boolean } | null)))
+      .toMatchObject({ name: 'Evening Digest', enabled: false })
+  })
+
   test('owner names are given only to a member, only for this workspace’s people', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
