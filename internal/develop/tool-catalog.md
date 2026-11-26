@@ -156,8 +156,8 @@ They are request-only (`REQUEST_ONLY_TOOL_IDS`): an agent's grant does not offer
 automation or Slack reply gets them only when that turn's message asks. Outside apps and private threads never get them
 (`MCP_EXTERNAL_WITHHELD_TOOL_IDS`): the scope API checks the person's rights, not an app's access level, and these reach
 automations. Archiving or restoring a folder carries only the contents the caller could change on their own (rows they
-can edit, and in a workspace context only Workspace rows). `list_files` and `list_tasks` take `archived: true` to find an
-id to restore; in a room the archived list keeps to Workspace items.
+can edit, and in a workspace context only Workspace rows). `list_files`, `list_tasks`, `list_skills` and `list_automations` take
+`archived: true` to find an id to restore; in a room the archived list keeps to Workspace items.
 Outside apps at Read and write get them with the Files group.
 
 ## Who gets what

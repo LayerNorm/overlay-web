@@ -68,7 +68,8 @@ async function compileCss() {
   const css = await readFile(source, 'utf8')
   const chat = await readFile(path.join(root, 'packages/overlay-chat-react/src/styles/chat-surface.css'), 'utf8')
   const result = await postcss([tailwind()]).process(css, { from: source })
-  return `${result.css}\n${chat}`
+  // A feature may add its own CSS (feature.css), appended after the app's styles.
+  return `${result.css}\n${chat}\n${feature?.css ?? ''}`
 }
 
 const [css, bundle] = await Promise.all([

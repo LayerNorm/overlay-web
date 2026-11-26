@@ -274,10 +274,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     description:
       'List all active skills configured by the user. Skills are custom instructions the user has set up for specific task types. ' +
       'IMPORTANT: Call this before taking action on any task to discover whether a relevant skill applies — especially when the request touches a domain the user may have customized (writing style, workflows, personas, integrations, etc.). ' +
-      'Use the optional query parameter to filter skills by keyword.',
+      'Use the optional query parameter to filter skills by keyword. Set archived to true to list archived skills instead, for example to find the id for restore_item.',
     inputSchema: z.object({
       query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
       scope: toolScopeSchema,
+      archived: z.boolean().optional().describe('List archived skills instead of active ones'),
     }),
     execute: async (input) => {
       assertToolAllowed('list_skills')
@@ -367,10 +368,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('list_automations')) {
     tools.list_automations = tool({
       description:
-        'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations.',
+        'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations. ' +
+        'Set archived to true to list archived automations instead, for example to find the id for restore_item.',
       inputSchema: z.object({
         query: z.string().optional().describe('Optional keyword to filter automations by name, description, or instructions'),
         scope: toolScopeSchema,
+        archived: z.boolean().optional().describe('List archived automations instead of active ones'),
       }),
       execute: async (input) => {
         assertToolAllowed('list_automations')

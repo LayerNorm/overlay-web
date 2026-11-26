@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Bell, Loader2, Plus, Search } from 'lucide-react'
 import { cn } from '@overlay/ui'
 import { Button, PanelResizeHandle, Sidebar, SidebarContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@overlay/ui/primitives'
@@ -64,7 +64,7 @@ const ignoreResizing = () => {}
 /** The rail stays mounted and usable while only the contextual panel collapses. */
 export function DoubleSidebar({
   railBrand, title, collapsed, onCollapsedChange, items, footerItems = [], panelKind,
-  panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, activityOnly, onToggleActivity, helpMenu, scope,
+  panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, activityOnly, onToggleActivity, scope,
   account, keyboardShortcut = false, resizable = false, settingsGroups, customization, children,
   className, panelId, themePreset,
 }: DoubleSidebarProps) {
@@ -120,7 +120,6 @@ export function DoubleSidebar({
     <div data-double-sidebar data-shell-preset={themePreset} className={cn('double-sidebar flex h-full shrink-0', className)}>
       <Sidebar ref={railRef} aria-label="Primary navigation" className="double-sidebar-rail w-[60px] overflow-visible border-0 bg-transparent px-2.5 py-1.5">
         <div className="-mb-px flex size-10 shrink-0 items-center justify-center">{railBrand}</div>
-        <RailModeSwitch scope={scope} onChange={changeScope} />
         <SidebarContent className="overflow-visible">
           <nav aria-label="Primary">
             <SidebarMenu className="gap-1">
@@ -132,7 +131,8 @@ export function DoubleSidebar({
           </nav>
         </SidebarContent>
         <div className="mt-auto flex flex-col gap-1">
-          <SidebarMenu className="gap-1">{footerItems.map((item) => item.id === 'help' && helpMenu ? <Fragment key={item.id}>{helpMenu}</Fragment> : <NavRow key={item.id} item={item.id === 'settings' ? select(item) : item} collapsed />)}</SidebarMenu>
+          <SidebarMenu className="gap-1">{footerItems.map((item) => <NavRow key={item.id} item={item} collapsed />)}</SidebarMenu>
+          <RailModeSwitch scope={scope} onChange={changeScope} />
           {account}
         </div>
       </Sidebar>
