@@ -13,7 +13,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
  * access token, or a code as either.
  */
 
-export type McpSealedKind = 'client' | 'code' | 'access' | 'refresh' | 'personal'
+export type McpSealedKind = 'client' | 'code' | 'access' | 'refresh' | 'personal' | 'private_thread'
 
 const PREFIX: Record<McpSealedKind, string> = {
   client: 'ovclient_',
@@ -21,11 +21,14 @@ const PREFIX: Record<McpSealedKind, string> = {
   access: 'ovmcu_a_',
   refresh: 'ovmcu_r_',
   personal: 'ovmcu_p_',
+  private_thread: 'ovmcu_t_',
 }
 
 export const MCP_ACCESS_TOKEN_TTL_MS = 60 * 60_000
 export const MCP_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60_000
 export const MCP_CODE_TTL_MS = 60_000
+/** A private thread's token: the desktop asks for a new one each turn, so an hour covers a long turn. */
+export const MCP_PRIVATE_THREAD_TOKEN_TTL_MS = 60 * 60_000
 
 function signingSecret(): string | null {
   return process.env.OVERLAY_MCP_OAUTH_SECRET?.trim()
@@ -66,7 +69,7 @@ export function openMcpValue(kind: McpSealedKind, value: string | null | undefin
 
 /** The value looks like one of Overlay's MCP access credentials (used to pick a 401 vs a malformed-request response). */
 export function isMcpBearerCandidate(value: string | null | undefined): boolean {
-  return Boolean(value && (value.startsWith(PREFIX.access) || value.startsWith(PREFIX.personal)))
+  return Boolean(value && (value.startsWith(PREFIX.access) || value.startsWith(PREFIX.personal) || value.startsWith(PREFIX.private_thread)))
 }
 
 /** PKCE S256: the verifier the client presents must hash to the challenge it sent when authorizing. */

@@ -150,18 +150,20 @@ export function createHarnessModelPorts(input: {
   })
 
   return {
-    recoverModelFailure: async (receiptId, error) => {
+    recoverModelFailure: async (receiptId, error, options) => {
       let state = await readHarnessState(reference)
-      const dispatch = state.modelReservation?.id === receiptId ? state.modelReservation.dispatch : undefined
-      // The call threw after it was sent and before the provider reported usage. No
+      const reserved = state.modelReservation?.id === receiptId
+      const dispatch = reserved ? state.modelReservation?.dispatch : undefined
+      // The call threw before the provider reported usage: after it was sent, or
+      // before it was sent at all (a dropped connection while claiming it). No
       // billing hold exists (billingReservationId is always null), so settle it as a
-      // failed zero-usage receipt. That closes the dispatch and starts the normal
+      // failed zero-usage receipt. That closes the reservation and starts the normal
       // retry; a real hold would still need reconciliation.
-      if (state.status === 'running' && dispatch && dispatch.billingReservationId === null) {
+      if (state.status === 'running' && reserved && (!dispatch || dispatch.billingReservationId === null)) {
         try {
           state = await applyHarnessOperation(reference, `interrupted:${receiptId}`, {
             type: 'record_receipt', receipt: {
-              id: receiptId, modelId: dispatch.modelId, provider: INTERRUPTED_MODEL_CALL_PROVIDER,
+              id: receiptId, modelId: dispatch?.modelId ?? input.modelId, provider: INTERRUPTED_MODEL_CALL_PROVIDER,
               inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
               contextWindow: preparedCalls.get(receiptId)?.contextWindow ?? null,
               costMicros: 0, costSource: 'catalog', responseFailure: 'provider_error',
@@ -171,8 +173,10 @@ export function createHarnessModelPorts(input: {
           return false
         }
         const cause = harnessDiagnosticForFailure(reference.runId, state, error, 'model').code
-        if (!RETRYABLE_INTERRUPTIONS.has(cause)
-          || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
+        // The runner asks for an Overlay fault to be retried only when no tool had
+        // started in the interrupted step, so nothing can run twice.
+        const retryable = RETRYABLE_INTERRUPTIONS.has(cause) || (options?.internalFault === true && cause === 'INTERNAL_ERROR')
+        if (!retryable || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
       }
       const receipt = state.latestReceipt
       if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId) return false

@@ -218,6 +218,9 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         const result = { status: assignment?.runStatus ?? child.status, summary: assignment?.summary ?? child.resultSummary ?? child.workingSummary,
           evidence: child.evidence, blocker: assignment?.blocker ?? child.blocker,
           ...(assignment ? { assignment, reply: assignment.reply, publicationPending: assignment.state === 'publication_pending' } : {}) }
+        if (!['completed', 'failed', 'cancelled'].includes(child.status) && !assignment?.blocker) {
+          return { ...result, hint: 'The child is still working. Nothing went wrong; read it again to keep waiting for its result.' }
+        }
         if (assignment && assignment.state !== 'ready') return result
         if (result.status !== 'completed') return result
         await ports.apply(`settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })

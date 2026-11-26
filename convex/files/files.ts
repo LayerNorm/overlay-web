@@ -692,10 +692,14 @@ export const getStorageUrlForProxy = query({
       return null
     }
     const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId || file.deletedAt) return null
+    if (!file || file.deletedAt) return null
+    // The creator, or a member who can read it (a Workspace file, generated media saved to Workspace).
+    if (file.userId !== userId && !(await scopeContextLoader(ctx, userId).canRead(file))) return null
     if (file.r2Key) {
-      if (!validStorageKeyForKind(userId, inferKind(file), file.r2Key)) return null
+      // The object lives under its creator's storage prefix, whoever is opening it.
+      if (!validStorageKeyForKind(file.userId, inferKind(file), file.r2Key)) return null
       return {
+        ownerUserId: file.userId,
         r2Key: file.r2Key,
         name: file.name,
         mimeType: file.mimeType,

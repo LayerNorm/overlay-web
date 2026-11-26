@@ -1,6 +1,8 @@
 import { z } from 'zod/v3'
 import { localToolsCapabilitySchema } from './local-tools.js'
 export * from './local-tools.js'
+export * from './computer-tools.js'
+export * from './agent-context.js'
 
 /**
  * Contract between Overlay and an Agent Host: enrollment, device-signed host

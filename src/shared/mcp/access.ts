@@ -47,6 +47,11 @@ export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
   'post_message',
   // Accepting or excluding an assignment's result belongs to the Chief's native Harness run that made it.
   'resolve_assignment',
+  // Moving to Workspace is one-way and archiving hides an item from everyone; both are asked for in Overlay, and these
+  // reach automations, which only Everything access may change.
+  'move_to_workspace',
+  'archive_item',
+  'restore_item',
 ]
 
 /**

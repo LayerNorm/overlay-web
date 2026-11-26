@@ -94,6 +94,50 @@ export function createHarnessWaitPorts(input: {
     return result
   }
 
+  const joinChildren = async (childRunIds: string[], onWaitProjected: () => void): Promise<void> => {
+    while (true) {
+      const state = await readHarnessState(access)
+      if (['completed', 'cancelled', 'failed'].includes(state.status)) return
+      let settled = false
+      for (const childRunId of childRunIds) {
+        const child = await readHarnessChild(access, childRunId)
+        if (['completed', 'cancelled', 'failed'].includes(child.status)) {
+          if (child.modelReservation || child.children.some(descendant => ['running', 'cancelled'].includes(descendant.status))) {
+            throw new FatalError('A child ended with unresolved model usage. Its billing holds were preserved; reconcile before continuing.')
+          }
+          await applyHarnessOperation(access, `settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
+          settled = true
+        }
+      }
+      if (settled || !childRunIds.length) {
+        if (ownsDelivery(state)) await input.projectWait({ status: 'running' })
+        return
+      }
+      if (ownsDelivery(state)) {
+        const [wait] = await listHarnessWaits(access)
+        const projected = await input.projectWait(wait ? { wait } : { status: 'waiting_for_children' })
+        if (projected === 'projected') onWaitProjected()
+        if (projected === 'inactive') return
+        if (projected === 'stale') continue
+      }
+      if (state.policy.executionPolicyVersion === 2) {
+        checkRollover()
+        const wake = await Promise.race([
+          nextWake().then(event => ({ kind: 'notification' as const, event })),
+          sleep(new Date(Date.now() + 60_000)).then(() => ({ kind: 'poll' as const })),
+        ])
+        if (wake.kind === 'notification') {
+          if (wake.event.done) throw new FatalError('Child notification channel closed before completion.')
+        } else {
+          await input.renewLease()
+        }
+      } else {
+        const wake = await withDeadline(nextWake(), effectiveHarnessDeadlineAt(state.policy))
+        if (wake.done) throw new FatalError('Child notification channel closed before completion.')
+      }
+    }
+  }
+
   return {
     waitForInput: async () => {
       const token = `harness:wait:${access.workflowRunId}:${sequence++}`
@@ -116,45 +160,19 @@ export function createHarnessWaitPorts(input: {
       return requests.map(request => ({ approvalId: request.approvalId, ...parsed.data }))
     },
     waitForChildren: async childRunIds => {
-      while (true) {
-        const state = await readHarnessState(access)
-        if (['completed', 'cancelled', 'failed'].includes(state.status)) return
-        let settled = false
-        for (const childRunId of childRunIds) {
-          const child = await readHarnessChild(access, childRunId)
-          if (['completed', 'cancelled', 'failed'].includes(child.status)) {
-            if (child.modelReservation || child.children.some(descendant => ['running', 'cancelled'].includes(descendant.status))) {
-              throw new FatalError('A child ended with unresolved model usage. Its billing holds were preserved; reconcile before continuing.')
-            }
-            await applyHarnessOperation(access, `settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
-            settled = true
-          }
+      let projectedWaiting = false
+      try {
+        await joinChildren(childRunIds, () => { projectedWaiting = true })
+      } catch (error) {
+        // The join ended without the children settling: an error the agent sees as a
+        // tool failure, or the hourly rollover. Either way the agent may run again
+        // before it waits again, so its delivery must not keep saying it is waiting.
+        // A successor that resumes the wait projects it again.
+        if (projectedWaiting) {
+          // Best effort: the original error is the one to report.
+          await input.projectWait({ status: 'running' }).catch((_error: unknown) => undefined)
         }
-        if (settled || !childRunIds.length) {
-          if (ownsDelivery(state)) await input.projectWait({ status: 'running' })
-          return
-        }
-        if (ownsDelivery(state)) {
-          const [wait] = await listHarnessWaits(access)
-          const projected = await input.projectWait(wait ? { wait } : { status: 'waiting_for_children' })
-          if (projected === 'inactive') return
-          if (projected === 'stale') continue
-        }
-        if (state.policy.executionPolicyVersion === 2) {
-          checkRollover()
-          const wake = await Promise.race([
-            nextWake().then(event => ({ kind: 'notification' as const, event })),
-            sleep(new Date(Date.now() + 60_000)).then(() => ({ kind: 'poll' as const })),
-          ])
-          if (wake.kind === 'notification') {
-            if (wake.event.done) throw new FatalError('Child notification channel closed before completion.')
-          } else {
-            await input.renewLease()
-          }
-        } else {
-          const wake = await withDeadline(nextWake(), effectiveHarnessDeadlineAt(state.policy))
-          if (wake.done) throw new FatalError('Child notification channel closed before completion.')
-        }
+        throw error
       }
     },
   }

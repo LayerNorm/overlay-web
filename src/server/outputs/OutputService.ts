@@ -60,12 +60,16 @@ export class OutputService {
     conversationId?: string
     turnId?: string
     workspaceId?: string
+    /** Personal (the default) or Workspace; the workspace's content rules decide whether Workspace is allowed. */
+    scope?: 'personal' | 'workspace'
   }): Promise<string> {
     if (!isKnownOutputType(args.type)) throw new Error(`Unsupported output type: ${args.type}`)
     const now = Date.now()
     const fileName = args.fileName?.trim() || `${args.type}-${now}`
     const id = await this.deps.repository.createFile({
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      ...(args.scope ? { scope: args.scope } : {}),
       name: fileName,
       type: 'file',
       kind: 'output',

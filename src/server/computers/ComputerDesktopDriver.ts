@@ -7,7 +7,7 @@ import {
   type SandboxInstance,
 } from '@overlay/sandbox-runtime'
 import { logger } from '@/server/observability/logger'
-import type { LocalDriverCommand } from '@layernorm/overlay-agent-bridge-protocol'
+import { browserActionText, type LocalDriverCommand } from '@layernorm/overlay-agent-bridge-protocol'
 import { LocalComputerError } from './local/LocalComputerService'
 import { isLocalHostSandboxInstance, type LocalHostSandboxInstance } from './local/LocalHostSandboxInstance'
 
@@ -418,41 +418,6 @@ export async function openUrl(
   return { openedWith: 'browser' }
 }
 
-function browserActionText(
-  action: string,
-  args: Record<string, unknown>,
-  result: Record<string, unknown>,
-): string {
-  if (action === 'snapshot') {
-    const elements = Array.isArray(result.elements) ? result.elements.filter(isRecord) : []
-    const lines = elements.map((element) => {
-      const bbox = isRecord(element.bbox) ? element.bbox : {}
-      return [
-        `${String(element.ref ?? '')} ${String(element.role ?? '')}: ${String(element.name ?? '')}`,
-        `  bbox x=${String(bbox.x ?? 0)} y=${String(bbox.y ?? 0)} width=${String(bbox.width ?? 0)} height=${String(bbox.height ?? 0)}`,
-      ].join('\n')
-    })
-    return [
-      `URL: ${String(result.url ?? '')}`,
-      `Title: ${String(result.title ?? '')}`,
-      'Visible text:',
-      String(result.text ?? '').slice(0, 20_000),
-      `Interactive elements (${elements.length}):`,
-      ...lines,
-    ].join('\n')
-  }
-  if (action === 'tabs') {
-    const tabs = Array.isArray(result.tabs) ? result.tabs.filter(isRecord) : []
-    return [
-      `Open tabs (${tabs.length}):`,
-      ...tabs.map((tab) => `${String(tab.index ?? '')}: ${String(tab.title ?? '')} ${String(tab.url ?? '')}`),
-    ].join('\n')
-  }
-  if (action === 'navigate') return `Navigated to ${String(args.url ?? 'the requested URL')}.`
-  if (action === 'switch_tab') return `Switched to browser tab ${String(result.index ?? args.index ?? '')}.`
-  if (action === 'new_tab') return 'Opened a new browser tab.'
-  return `Browser ${action.replaceAll('_', ' ')} completed.`
-}
 
 export async function runBrowserAction(
   instance: SandboxInstance,
