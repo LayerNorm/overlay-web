@@ -93,7 +93,9 @@ export interface HarnessExecutionPorts {
   }>
   recordModelStep(step: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], receiptId: string): Promise<void>
   /** The error is present when the call threw rather than settling with a failed response. */
-  recoverModelFailure?(receiptId: string, error?: unknown): Promise<boolean>
+  recoverModelFailure?(receiptId: string, error?: unknown, options?: { internalFault?: boolean }): Promise<boolean>
+  /** A durable pause between attempts. Absent outside a workflow. */
+  pause?(milliseconds: number): Promise<void>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   /** A refused admission comes back as a result the model can act on, never as a run failure. */
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild | HarnessDelegationRejection>
