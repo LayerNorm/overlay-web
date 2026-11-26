@@ -1,22 +1,31 @@
 'use client'
 
 import { useId, useRef, useState, type FormEvent } from 'react'
-import { CircleHelp, FilePlus2, Loader2, Trash2 } from 'lucide-react'
+import { FilePlus2, Loader2, Trash2 } from 'lucide-react'
 import {
   Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-  Input, Label, Popover, PopoverContent, PopoverTrigger, SidebarMenuButton,
-  SidebarMenuItem, Textarea,
+  Input, Label, Textarea,
 } from '@overlay/ui/primitives'
 import { BUG_REPORT_ACCEPT, validBugReportFiles } from '@/shared/storage/bug-report'
 
-export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: string }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [dialogOpen, setDialogOpen] = useState(false)
+/**
+ * The "Submit a bug" dialog, opened from the account menu. Reports become public GitHub issues through
+ * `/api/bug-report`.
+ */
+export function BugReportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const dialogOpen = open
+  const setDialogOpen = onOpenChange
   const [description, setDescription] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [error, setError] = useState('')
+  const [wasOpen, setWasOpen] = useState(open)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ url: string; emailSent: boolean } | null>(null)
+  if (open !== wasOpen) {
+    // A new opening starts clean, without the previous report's result or error.
+    setWasOpen(open)
+    if (open) { setResult(null); setError('') }
+  }
   const fileInput = useRef<HTMLInputElement>(null)
   const preparedUpload = useRef<{ files: File[]; ticket: string; expiresAt: number } | null>(null)
   const submission = useRef<{ payload: string; key: string } | null>(null)
@@ -73,23 +82,6 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
   }
 
   return <>
-    <SidebarMenuItem>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <SidebarMenuButton size="lg" className={collapsed ? 'justify-center px-0' : '[&>svg]:mx-1'} aria-label="Help" aria-expanded={menuOpen} title={collapsed ? 'Help' : undefined}>
-            <CircleHelp size={18} aria-hidden />{collapsed ? null : <span>Help</span>}
-          </SidebarMenuButton>
-        </PopoverTrigger>
-        <PopoverContent side="right" align="end" className="w-44 p-1">
-          <Button variant="ghost" asChild className="w-full justify-start text-sm">
-            <a href={docsUrl} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
-          </Button>
-          <Button type="button" variant="ghost" className="w-full justify-start text-sm" onClick={() => { setMenuOpen(false); setResult(null); setError(''); setDialogOpen(true) }}>
-            Submit a bug
-          </Button>
-        </PopoverContent>
-      </Popover>
-    </SidebarMenuItem>
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!busy) setDialogOpen(open) }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[480px]" onInteractOutside={(event) => { if (busy) event.preventDefault() }}>
         <DialogHeader className="flex-col items-start gap-2 pr-6">

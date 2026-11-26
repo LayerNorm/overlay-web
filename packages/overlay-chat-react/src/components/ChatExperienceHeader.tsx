@@ -57,7 +57,7 @@ function TemporaryChatButton({
         className={unstyledButton(`flex h-8 min-h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-[background-color,border-color,box-shadow,color] duration-300 ${
           active
             ? 'temporary-chat-inverse-surface border-dashed border-(--temporary-chat-border) shadow-xs'
-            : 'border-transparent bg-(--surface-subtle) text-(--muted) hover:bg-(--border) hover:text-(--foreground)'
+            : 'border-transparent bg-transparent text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`)}
       >
         <span
