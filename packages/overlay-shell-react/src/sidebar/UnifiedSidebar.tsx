@@ -295,7 +295,6 @@ export interface UnifiedSidebarProps {
   onSearch?: (() => void) | null
   activityOnly?: boolean
   onToggleActivity?: () => void
-  helpMenu?: ReactNode
   scope: PanelScope
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
@@ -414,7 +413,6 @@ export function UnifiedSidebar({
   onSearch,
   activityOnly,
   onToggleActivity,
-  helpMenu,
   scope,
   account,
   keyboardShortcut = false,
@@ -494,7 +492,7 @@ export function UnifiedSidebar({
       <SidebarFooter className="border-t-0">
         {footerItems.length > 0 && !settingsNav ? (
           <SidebarMenu>
-            {footerItems.map((item) => item.id === 'help' && helpMenu ? <Fragment key={item.id}>{helpMenu}</Fragment> : <NavRow key={item.id} item={item} collapsed={collapsed} />)}
+            {footerItems.map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
           </SidebarMenu>
         ) : null}
         {account}
