@@ -20,7 +20,7 @@ export const MCP_ACCESS_LABEL: Record<McpAccessLevel, string> = {
 export const MCP_ACCESS_DESCRIPTION: Record<McpAccessLevel, string> = {
   read: 'Search and read your memory, files, notes, and tasks. Nothing is changed or spent.',
   write: 'Read, plus create and edit tasks, notes, files, memory, and skills, and search the web.',
-  full: 'Write, plus automations, connected apps, your MCP servers, media generation, and asking agents. Never editing agents or computers.',
+  full: 'Write, plus automations, connected apps, your MCP servers, media generation, paid data and APIs, and asking agents. Never editing agents or computers.',
 }
 
 /** Tools that only read. Group membership alone cannot express "read": a group mixes both. */
@@ -67,6 +67,7 @@ export const MCP_GROUP_COVERAGE: {
     memory: { exposed: true }, files: { exposed: true }, web_search: { exposed: true },
     integrations: { exposed: true }, mcp: { exposed: true }, skills: { exposed: true },
     automations: { exposed: true }, media: { exposed: true }, agents: { exposed: true }, tasks: { exposed: true },
+    apis: { exposed: true },
     computer: { exposed: false, reason: 'The agent already runs on a machine of its own; a second computer would only duplicate it.' },
     local_computer: { exposed: false, reason: 'A person\'s own computer is used only by a thread they run on it in Overlay, never by an agent on another machine.' },
   },
@@ -77,6 +78,7 @@ export const MCP_GROUP_COVERAGE: {
     // Asking agents is offered; creating and editing them is withheld per tool (MCP_EXTERNAL_WITHHELD_TOOL_IDS).
     agents: { exposed: true },
     tasks: { exposed: true },
+    apis: { exposed: true },
     computer: { exposed: false, reason: 'A paid desktop that belongs to the person\'s agents, not something an outside app should start.' },
     local_computer: { exposed: false, reason: 'A person\'s own computer is used only by a thread they run on it in Overlay, which an outside app does not have.' },
   },

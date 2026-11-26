@@ -733,6 +733,20 @@ test('a dropped stream on an unheld dispatch settles a failed zero receipt and r
   expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
 })
 
+test('a call that failed before it was sent settles its marker and retries', async () => {
+  const current = recordOperationsOn({ ...dispatchedState(), modelReservation: { id: 'model:1', maxCostMicros: 0 } })
+  mocks.recovery.mockResolvedValue(true)
+  const dropped = Object.assign(new TypeError('fetch failed'), {
+    cause: Object.assign(new Error('HTTP/2: "GOAWAY" frame received with code 0'), { name: 'InformationalError' }),
+  })
+  expect(await interruptedPorts().recoverModelFailure!('model:1', dropped)).toBe(true)
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(reference, 'interrupted:model:1', {
+    type: 'record_receipt', receipt: expect.objectContaining({ id: 'model:1', modelId: 'byok/anthropic/model', provider: 'interrupted', costMicros: 0 }),
+  })
+  expect(current().modelReservation).toBeUndefined()
+  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
+})
+
 test('a permanent provider failure closes the dispatch without retrying', async () => {
   const current = recordOperationsOn(dispatchedState())
   const unauthorized = new APICallError({

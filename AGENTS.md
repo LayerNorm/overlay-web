@@ -127,6 +127,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/e2b-sandbox.md` | Any change to the E2B sandbox adapter for self-hosted deployments. |
 | `internal/develop/mcp-access.md` | Any change to Overlay's MCP server for other AI apps: OAuth endpoints, grants, access levels, token formats, consent page, or Settings → Connected apps. |
 | `internal/develop/convex-only-self-hosting.md` | Any change to the Convex-only backend decision, the Postgres-layer deletion plan, self-hosted Convex topology/scaling, the data-mirror/Data Sync integration path, or the big-brain control-plane plan. |
+| `internal/develop/monid.md` | Any change to Data and APIs (`search_apis`, `inspect_api`, `run_api`): the Monid client, the read-only rule, how runs are billed, saved files, who gets the tools, or the Monid key and wallet. |
 
 **Rules:**
 1. Read the relevant doc(s) before starting work in a new area.

@@ -33,10 +33,11 @@ Do not verticalize for a small one-off task. Do the task with general knowledge 
 2. Scope. Write the domain slug (lowercase, hyphenated, e.g. 3d-design) and 3 to 8 subareas the task needs. Pick the ones the current task depends on first; do not boil the ocean.
 3. Reuse before writing. Follow the skill-reuse skill: search_skill_registries for each subarea and adopt or adapt good public skills. Most domains already have partial skills written by practitioners.
 4. Research what is missing. Follow the frontier-research skill, one subarea at a time, or one sub-agent per subarea when you can delegate. Your training data is stale; anything that may have changed must be found live and dated.
-5. Write skills. Follow skill-authoring. One skill per repeatable procedure, plus one domain_map skill for the domain.
-6. Test. Follow skill-testing. A skill that does not beat working without it is not saved.
-7. Save. save_skill with domain, triggers and provenance. Agent-written skills save as personal; tell the user they can share them with the workspace after review.
-8. Use. Load the new skill and do the original task with it. Report what you learned, the skills you saved, and what you could not verify.
+5. Find the domain's tools. When search_apis is available, search it for the data and generation APIs the domain runs on (for 3D design: text-to-3D, remeshing, format conversion; for GTM: lead search, enrichment). Inspect the best ones and record in the skill which provider and endpoint to use for each step, its input shape, price and pitfalls, so later runs call it directly instead of telling the user to buy a subscription.
+6. Write skills. Follow skill-authoring. One skill per repeatable procedure, plus one domain_map skill for the domain.
+7. Test. Follow skill-testing. A skill that does not beat working without it is not saved.
+8. Save. save_skill with domain, triggers and provenance. Agent-written skills save as personal; tell the user they can share them with the workspace after review.
+9. Use. Load the new skill and do the original task with it. Report what you learned, the skills you saved, and what you could not verify.
 
 ## Budget
 Default to about 20 tool calls of research per subarea and stop early when sources repeat. Ask the user before a large acquisition (more than 5 subareas or long-running computer work).
@@ -71,6 +72,7 @@ Your knowledge has a cutoff. Treat it as a hypothesis map. Search for what chang
 
 ## Access
 - Use web_search for discovery, deep_search for multi-source synthesis and academic domains, web_fetch to read a page.
+- Use search_apis for structured data no web page gives cleanly (company and people data, reviews, social posts, prices); runs are billed, so keep them small.
 - X, Reddit and Discord are poorly covered by search. When a Computer is bound, the signed-in browser can read them; go slowly and read, never post.
 - For paywalled papers use arXiv, author preprints and abstracts. Do not try to bypass paywalls.
 

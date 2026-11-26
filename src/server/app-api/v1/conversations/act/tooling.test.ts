@@ -6,6 +6,7 @@ import {
   buildActTooling,
   withAgentGrantToolIds,
   withPersonalComputerToolIds,
+  withoutUnavailableApiTools,
 } from './tooling'
 import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
@@ -111,4 +112,11 @@ test('personal Computers enable Computer tools only in eligible Work chats', asy
   })
   assert.deepEqual(nonWorkToolIds, baseToolIds)
   assert.equal(lookupCalled, false)
+})
+
+test('Data and APIs tools need both Overlay\'s Monid key and a paid plan', () => {
+  const ids = ['search_knowledge', 'search_apis', 'inspect_api', 'run_api', 'save_api_file']
+  assert.deepEqual(withoutUnavailableApiTools(ids, { paid: true, configured: true }), ids)
+  assert.deepEqual(withoutUnavailableApiTools(ids, { paid: false, configured: true }), ['search_knowledge'])
+  assert.deepEqual(withoutUnavailableApiTools(ids, { paid: true, configured: false }), ['search_knowledge'])
 })

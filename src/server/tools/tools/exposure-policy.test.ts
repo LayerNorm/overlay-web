@@ -102,3 +102,13 @@ test('automation execution hides automation management tools even for automation
     assert.equal(automateModeTools.includes(toolId), true)
   }
 })
+
+test('Data and APIs are offered on every personal turn, since requests for them rarely name a tool', async () => {
+  const { allowedOverlayToolIdsForTurn } = await import(
+    new URL('./exposure-policy.ts', import.meta.url).href,
+  )
+  for (const text of ['find 20 heads of growth at Series B fintechs', 'make a 3D model of a coffee mug', 'hi']) {
+    const ids: string[] = allowedOverlayToolIdsForTurn({ latestUserText: text })
+    for (const id of ['search_apis', 'inspect_api', 'run_api', 'save_api_file']) assert.ok(ids.includes(id), `${id} for ${text}`)
+  }
+})
