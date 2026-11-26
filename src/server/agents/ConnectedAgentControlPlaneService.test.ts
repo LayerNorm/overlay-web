@@ -269,9 +269,15 @@ test('at the computer limit, connecting replaces the person’s own offline comp
 })
 
 test('at the computer limit, an online or another member’s computer is never replaced', async () => {
-  for (const overrides of [{ status: 'online' as const, approvedByUserId: 'user-1' }, { status: 'offline' as const, approvedByUserId: 'user-2' }]) {
+  for (const overrides of [{ status: 'online' as const, lastSeenAt: NOW - 1_000, approvedByUserId: 'user-1' }, { status: 'offline' as const, approvedByUserId: 'user-2' }]) {
     const f = atComputerLimit(overrides)
     await assertControlPlaneError(() => f.service.createEnrollmentSession({ actorUserId: 'user-1', workspaceId: 'workspace-1' }), 'environment_limit_reached')
     assert.deepEqual(f.revoked, [])
   }
+})
+
+test('at the computer limit, a computer still marked online but long unheard from counts as offline', async () => {
+  const f = atComputerLimit({ status: 'online', lastSeenAt: NOW - 24 * 60 * 60_000, approvedByUserId: 'user-1' })
+  await f.service.createEnrollmentSession({ actorUserId: 'user-1', workspaceId: 'workspace-1' })
+  assert.deepEqual(f.revoked, ['environment-1'])
 })

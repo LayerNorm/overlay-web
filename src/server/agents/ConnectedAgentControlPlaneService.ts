@@ -410,8 +410,10 @@ export class ConnectedAgentControlPlaneService {
    * Online computers and other members' computers are never touched.
    */
   private async replaceOwnOfflineComputers(args: { actorUserId: string; workspaceId: string }, needed: number) {
+    const now = this.now()
+    // The stored status stays `online` when a host just disappears; what counts is when it was last heard from.
     const replaceable = (await this.dependencies.repository.listEnvironments({ workspaceId: args.workspaceId }))
-      .filter((environment) => environment.kind === 'local' && environment.status === 'offline'
+      .filter((environment) => environment.kind === 'local' && effectiveAgentEnvironmentStatus(environment, now) === 'offline'
         && environment.approvedByUserId === args.actorUserId)
       .sort((a, b) => (a.lastSeenAt ?? a.createdAt) - (b.lastSeenAt ?? b.createdAt))
     if (replaceable.length < needed) {
