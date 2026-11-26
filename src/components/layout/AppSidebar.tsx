@@ -187,7 +187,11 @@ export default function AppSidebar({
     <AccountMenuActions
       theme={theme === 'dark' ? 'dark' : theme ? 'light' : undefined}
       onToggleTheme={() => { void appSettings?.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' }) }}
-      onOpenSettings={() => s.router.push(s.activeWorkspaceId ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings') : '/app/settings')}
+      onOpenSettings={() => {
+        // Settings lives in the contextual panel, so a collapsed panel opens with it (as the old rail button did).
+        s.setSidebarCollapsed(false)
+        s.router.push(s.activeWorkspaceId ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings') : '/app/settings')
+      }}
       docsUrl={`${MARKETING_DOCS_URL}/help`}
       onReportBug={() => setBugReportOpen(true)}
       onClose={close}
