@@ -1,0 +1,77 @@
+{
+  "name": "overlay-desktop",
+  "version": "0.6.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "description": "overlay - personal computing, reimagined",
+  "main": "./out/main/index.js",
+  "author": "DevelopedByDev",
+  "homepage": "https://github.com/LayerNorm/overlay-desktop",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LayerNorm/overlay-desktop.git"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "lint": "eslint --cache .",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "check:native-artifacts": "node scripts/verify-native-artifacts.mjs",
+    "check:public-source-secrets": "node scripts/check-public-source-secrets.mjs",
+    "check:dependencies:prod": "npm audit --omit=dev --audit-level=high",
+    "check:dependencies:all": "npm audit --audit-level=high",
+    "license:check": "node --experimental-strip-types scripts/check-licensing.ts",
+    "generate:sbom": "node scripts/generate-sbom.mjs",
+    "test:watch": "vitest",
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev",
+    "postinstall": "electron-builder install-app-deps",
+    "build:ax-helper": "bash scripts/build-ax-helper.sh",
+    "build:whisperkit": "bash scripts/build-whisperkit-bundle.sh",
+    "build:parakeet": "bash scripts/build-parakeet-bundle.sh",
+    "build:agent-host": "node scripts/build-agent-host-bundle.mjs",
+    "build:unpack": "npm run build && npm run build:agent-host && electron-builder --dir",
+    "build:mac": "npm run build:mac:ci",
+    "build:mac:ci": "node scripts/build-macos-ci.mjs",
+    "verify:mac-artifact": "node scripts/verify-macos-artifact.mjs",
+    "typecheck": "npm run check:no-provider-sdks && npm run typecheck:node",
+    "test": "vitest run",
+    "build": "npm run typecheck && electron-vite build",
+    "test:e2e": "npm run build && playwright test",
+    "check:no-provider-sdks": "node scripts/check-no-provider-sdks.mjs",
+    "check:release-security": "node scripts/check-release-security.mjs && node scripts/verify-native-artifacts.mjs",
+    "security:verify:source": "npm run check:public-source-secrets && npm run check:no-provider-sdks && npm run check:release-security && npm run check:dependencies:prod && npm test"
+  },
+  "dependencies": {
+    "@overlay/desktop-bridge": "0.0.1",
+    "@sentry/electron": "7.15.0",
+    "axios": "1.21.0",
+    "dotenv": "^17.2.3",
+    "electron-updater": "^6.3.9",
+    "uiohook-napi": "^1.5.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-prettier": "^3.0.0",
+    "@electron-toolkit/eslint-config-ts": "^3.1.0",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@electron/asar": "4.2.1",
+    "@electron/fuses": "2.1.3",
+    "@playwright/test": "1.61.1",
+    "@types/node": "^22.18.6",
+    "electron": "42.11.18",
+    "electron-builder": "26.15.3",
+    "electron-vite": "^4.0.1",
+    "esbuild": "0.25.12",
+    "eslint": "^9.36.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "vite": "7.3.6",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

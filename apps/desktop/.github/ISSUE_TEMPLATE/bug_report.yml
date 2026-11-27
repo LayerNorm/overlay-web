@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible non-security problem in Overlay Desktop.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not use this form for security vulnerabilities or include tokens, private files, customer data, or private logs. Follow SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.23 or a full commit SHA
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac model
+      placeholder: macOS 15.5, Apple M-series
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Use non-sensitive test data and list the smallest reliable steps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: This report contains no vulnerability details, credentials, private files, customer data, or unredacted logs.
+          required: true
