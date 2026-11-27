@@ -6,10 +6,9 @@ import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { spendLimitRow } from '../lib/spendLimitCharges'
 import { workspaceBillingAccountFor } from './accounts'
 import { accountPlanFor } from './accountSubscriptions'
+import { spendByUserFor } from './usageTotals'
 import { spendLimitUsedNow } from '@/shared/billing/spend-limit-period'
 
-/** Enough for a busy month; beyond it the list says it is `truncated` rather than silently undercounting. */
-const MAX_CHARGES = 20_000
 const DAY_MS = 24 * 60 * 60 * 1000
 
 type Member = { userId: string; principalId: string; name: string; role: string }
@@ -43,18 +42,6 @@ async function currentPeriod(ctx: Pick<QueryCtx, 'db'>, billingAccountId: string
   return { periodStart, periodEnd: periodStart + 30 * DAY_MS }
 }
 
-/** Everything each person triggered since `periodStart`, their automations and agents included, in cents. */
-async function spendByPerson(ctx: Pick<QueryCtx, 'db'>, billingAccountId: string, periodStart: number) {
-  const rows = await ctx.db.query('usageOperations')
-    .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId).gte('createdAt', periodStart))
-    .take(MAX_CHARGES + 1)
-  const spent = new Map<string, number>()
-  for (const row of rows.slice(0, MAX_CHARGES)) {
-    if (row.cents) spent.set(row.userId, (spent.get(row.userId) ?? 0) + row.cents)
-  }
-  return { spent, truncated: rows.length > MAX_CHARGES }
-}
-
 /**
  * Workspace → Billing → Spend per person, live, for owners and admins: what each member has spent this billing period
  * and their cap, if any. Null for anyone else.
@@ -71,7 +58,8 @@ export const members = query({
     }
     const now = Date.now()
     const period = await currentPeriod(ctx, account.billingAccountId, now)
-    const { spent, truncated } = await spendByPerson(ctx, account.billingAccountId, period.periodStart)
+    // Everything each person triggered this period, their automations and agents included.
+    const { spent, truncated } = await spendByUserFor(ctx, { billingAccountId: account.billingAccountId, periodStart: period.periodStart })
     const rows = await Promise.all(people.map(async (person) => {
       const cap = await spendLimitRow(ctx, account.billingAccountId, { kind: 'member', id: person.userId })
       return {
@@ -123,7 +111,7 @@ export const setMemberCapByServer = mutation({
       return { capCents: args.capCents }
     }
     const period = await currentPeriod(ctx, account.billingAccountId, now)
-    const { spent } = await spendByPerson(ctx, account.billingAccountId, period.periodStart)
+    const { spent } = await spendByUserFor(ctx, { billingAccountId: account.billingAccountId, periodStart: period.periodStart })
     await ctx.db.insert('billingAccountSpendLimits', {
       billingAccountId: account.billingAccountId,
       subjectKind: 'member',

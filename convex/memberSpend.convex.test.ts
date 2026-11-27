@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import { chargeSpendLimits, spendLimitsReached, spendSubjectsFor } from './lib/spendLimitCharges'
+import { insertUsageOperation } from './billing/usageTotals'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'member-spend-secret'
@@ -28,7 +29,7 @@ async function seed() {
       autoTopUpAmountCents: 0, currentPeriodStart: now - 10 * 86_400_000, currentPeriodEnd: now + 20 * 86_400_000, createdAt: 1, updatedAt: 1 })
     // Alice already spent 3¢ this period; Bob 1¢.
     for (const [userId, cents] of [['alice', 2], ['alice', 1], ['bob', 1]] as const) {
-      await ctx.db.insert('usageOperations', { userId, billingAccountId: 'ba-ws', operationId: `op-${userId}-${cents}`, recorded: 1, cents, kind: 'agent', createdAt: Date.now() - 1_000 })
+      await insertUsageOperation(ctx, { userId, billingAccountId: 'ba-ws', operationId: `op-${userId}-${cents}`, recorded: 1, cents, kind: 'agent', createdAt: Date.now() - 1_000 })
     }
   })
   return convex
