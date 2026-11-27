@@ -1,8 +1,8 @@
 # Native push wiring
 
-Backend dependency: web branch `devin/1794359561-mobile-push`, which adds native
-`notifications/tokens.register/unregister` and internal Expo delivery. Deploy that
-backend before testing mobile. No HTTP token endpoint or public Expo secret exists.
+Backend: `convex/notifications/tokens.ts` (native `register`/`unregister`) and the
+Expo delivery in `convex/lib/mobilePush.ts`, both on `main` and production; see
+`internal/develop/mobile-push.md`. No HTTP token endpoint or public Expo secret exists.
 
 `usePushNotifications` starts only after native authentication is ready. Launch
 and foreground only inspect existing permission; they never request it. Settings
@@ -47,7 +47,3 @@ The local watcher remains a foreground-only fallback if registration is unavaila
   are best-effort. Simulator exports/mocked tests do not establish live delivery.
 
 No customer deployment or real Expo delivery is part of local mocked verification.
-
-Current-main portability: the web API schema barrel reached onboarding through
-one runtime `@/` import. The backend branch changes that dependency to a relative
-path; Android/iOS source-map inspection must stay at zero runtime web aliases.

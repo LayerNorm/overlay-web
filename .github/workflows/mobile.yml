@@ -1,21 +1,28 @@
 name: Mobile app
 
 # Checks apps/mobile against the monorepo's current shared code. The app imports
-# packages/, src/shared and convex/_generated from the repository root, so the
-# root workspace is installed first.
-#
-# Triggers stay on mobile's own folder until its suite is green against current
-# web; then they widen to packages/, src/shared/ and convex/ (see
-# internal/plans/MONOREPO_SURFACES_PLAN.md).
+# packages/, src/shared, src/features/automations and convex/ from the
+# repository root, so the root workspace is installed first, and changes there
+# run this workflow too.
 on:
   pull_request:
     paths:
       - apps/mobile/**
+      - packages/**
+      - src/shared/**
+      - src/features/automations/**
+      - convex/**
+      - package-lock.json
       - .github/workflows/mobile.yml
   push:
     branches: [main]
     paths:
       - apps/mobile/**
+      - packages/**
+      - src/shared/**
+      - src/features/automations/**
+      - convex/**
+      - package-lock.json
       - .github/workflows/mobile.yml
   workflow_dispatch:
 

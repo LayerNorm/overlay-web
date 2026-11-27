@@ -179,8 +179,10 @@ test('Computer tab renders only status and Open on web with accurate loading/emp
   const element = (type, props, ...children) => ({ type, props, children })
   const dependencies = {
     react: { default: { createElement: element }, memo: fn => fn, useRef: value => ({ current: value }), useState: () => ['Computer', () => {}] },
-    'react-native': Object.fromEntries(['View', 'Pressable', 'ScrollView', 'TextInput', 'Switch', 'KeyboardAvoidingView'].map(key => [key, key])),
+    'react-native': { ...Object.fromEntries(['View', 'Pressable', 'ScrollView', 'TextInput', 'Switch', 'KeyboardAvoidingView', 'Share'].map(key => [key, key])), Platform: { OS: 'ios' } },
     'lucide-react-native': {}, '../shell/primitives': { T: 'T', Button: 'Button', IconButton: 'IconButton' }, '../shell/AgentAvatar': {}, '../work/WorkMarkdown': {},
+    '../navigation/NativeSegmented': { NativeSegmented: 'NativeSegmented' }, '@react-navigation/elements': {}, 'expo-clipboard': {}, 'expo-image': {},
+    '../../lib/haptics': {}, '../chat/MessageCapsule': {}, '../../lib/agentThread': {}, '../../lib/agentCreature': {},
   }
   const { AgentDetailsView } = load('components/agents/AgentThreadViews.tsx', dependencies)
   const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.children)] : []

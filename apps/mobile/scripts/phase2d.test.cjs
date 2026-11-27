@@ -98,10 +98,10 @@ test('favorites queued before storage loads preserve saved values and stale read
 test('personal Convex submit preserves exact typed payload, nonce, scope and backend failures', async () => {
   let workspace = 'ws', failure, result = { conversationId: 'c', userMessageId: 'u' }
   const calls = [], watches = []
-  const service = load('services/personalChatService.ts', { './appApi': { getRequestWorkspaceId: () => workspace }, './convexClient': { api: { chat: { personal: { submit: 'submit', getExecution: 'execution' } } }, convexWorkspaceId: () => workspace, mutateConvex: async (ref, args) => { calls.push([ref, clean(args)]); if (failure) throw failure; return result }, subscribeConvex: (ref, args, value, error) => { const watch = { ref, args, value, error, stopped: false }; watches.push(watch); return () => { watch.stopped = true } } } })
+  const service = load('services/personalChatService.ts', { './modeState': { getCurrentMode: () => 'personal' }, './appApi': { getRequestWorkspaceId: () => workspace }, './convexClient': { api: { chat: { personal: { submit: 'submit', getExecution: 'execution' } } }, convexWorkspaceId: () => workspace, mutateConvex: async (ref, args) => { calls.push([ref, clean(args)]); if (failure) throw failure; return result }, subscribeConvex: (ref, args, value, error) => { const watch = { ref, args, value, error, stopped: false }; watches.push(watch); return () => { watch.stopped = true } } } })
   const turn = { conversationId: 'c', turnId: 'stable', modelId: 'model', mode: 'act', contentType: 'text', parts: [{ type: 'text', text: 'Hello' }], replyToTurnId: 'prior', replySnippet: 'Reply' }
   assert.equal((await service.submitPersonalTurn(turn)).conversationId, 'c')
-  assert.deepEqual(calls[0], ['submit', { ...turn, workspaceId: 'ws' }])
+  assert.deepEqual(calls[0], ['submit', { scope: 'personal', ...turn, workspaceId: 'ws' }])
   failure = new Error('denied'); await assert.rejects(service.submitPersonalTurn(turn), /denied/)
   workspace = 'other'; await assert.rejects(service.submitPersonalTurn(turn, 'ws'), /Workspace changed/)
   const values = [], errors = [], stop = service.watchPersonalExecution('ws', 'c', value => values.push(value), error => errors.push(error))

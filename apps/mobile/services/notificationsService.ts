@@ -115,9 +115,10 @@ export async function getStoredPushToken(userId: string): Promise<StoredPushToke
 }
 
 /**
- * Fires an immediate local notification — the foreground-banner mechanism
- * used until server push exists (§9.3). `data` carries routing info for the
- * response listener in `_layout`.
+ * Fires an immediate local notification — the foreground banner for activity
+ * that arrives while the app is open, and the fallback when this device has no
+ * server push registration. `data` carries routing info for the response
+ * listener in `_layout`.
  */
 export async function presentLocalBanner(input: {
   title: string

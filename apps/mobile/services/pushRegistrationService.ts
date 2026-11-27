@@ -2,8 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Crypto from 'expo-crypto'
 import * as Notifications from 'expo-notifications'
 import { AppState, Platform } from 'react-native'
-import { makeFunctionReference } from 'convex/server'
-import { mutateConvex } from './convexClient'
+import { api, mutateConvex } from './convexClient'
 import { loadAuthSession } from './authService'
 import { preparePushRegistration, setRemoteNotificationFilter } from './notificationsService'
 import { allowsBanner, loadBannerPreferences } from './bannerPreferencesService'
@@ -12,13 +11,13 @@ import { parsePushUrl } from '../lib/pushRoutes'
 const DEVICE_KEY = 'overlay-push-device-id'
 
 /**
- * Server-side push tokens (`notifications/tokens`) are not on the production
- * backend yet. Until they are, the app keeps its local notifications (the
- * activity watcher) and skips registering the device with the server.
+ * The device's Expo token is registered with `notifications/tokens` so the
+ * backend can deliver mentions while the app is closed (see
+ * internal/develop/mobile-push.md). The activity watcher's local notifications
+ * still cover the app while it is open.
  */
-const SERVER_PUSH_TOKENS_AVAILABLE = false
-const registerToken = makeFunctionReference<'mutation', { expoToken: string; platform: 'ios' | 'android'; deviceId: string }>('notifications/tokens:register')
-const unregisterToken = makeFunctionReference<'mutation', { deviceId: string }>('notifications/tokens:unregister')
+const registerToken = api.notifications.tokens.register
+const unregisterToken = api.notifications.tokens.unregister
 let activeUser: string | null = null
 let generation = 0
 let registered: string | null = null
@@ -57,7 +56,7 @@ export async function syncPushRegistration(userId: string): Promise<void> {
   const version = generation
   const current = () => generation === version && activeUser === userId
   const promise = enqueue(async () => {
-    if (!current() || !SERVER_PUSH_TOKENS_AVAILABLE) return
+    if (!current()) return
     if (!(await Notifications.getPermissionsAsync()).granted) {
       const deviceId = await AsyncStorage.getItem(DEVICE_KEY)
       if (deviceId && current())
@@ -154,7 +153,7 @@ export async function unregisterPushRegistration(userId: string): Promise<void> 
     await bounded(
       enqueue(async () => {
         const deviceId = await AsyncStorage.getItem(DEVICE_KEY)
-        if (SERVER_PUSH_TOKENS_AVAILABLE && deviceId && (await loadAuthSession())?.user.id === userId)
+        if (deviceId && (await loadAuthSession())?.user.id === userId)
           await bounded(mutateConvex(unregisterToken, { deviceId }), 3000)
       }),
       3000,

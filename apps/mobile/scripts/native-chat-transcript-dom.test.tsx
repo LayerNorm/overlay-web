@@ -250,6 +250,32 @@ async function prepareOutsidePointerRelease(page: Page, point: { x: number; y: n
   assert.ok(outsideViewport, 'release target should be outside the transcript viewport')
 }
 
+/**
+ * Resolves once the transcript viewport's scroll position and content height have
+ * held still for several frames. Shared Markdown paces streamed text word by word,
+ * so growth and the follow scroll that tracks it land over many frames; pointer
+ * targets and scroll baselines must be read after that settles.
+ */
+async function waitForSettledViewport(page: Page) {
+  // A string body keeps the test transpiler's function-name helpers out of the page.
+  await page.evaluate(`new Promise((resolve, reject) => {
+    const viewport = document.querySelector('[aria-label="Conversation"]')
+    if (!viewport) return reject(new Error('transcript viewport not found'))
+    let last = [viewport.scrollTop, viewport.scrollHeight]
+    let stableFrames = 0
+    requestAnimationFrame(function tick() {
+      const current = [viewport.scrollTop, viewport.scrollHeight]
+      if (current[0] === last[0] && current[1] === last[1]) stableFrames += 1
+      else {
+        last = current
+        stableFrames = 0
+      }
+      if (stableFrames >= 10) resolve()
+      else requestAnimationFrame(tick)
+    })
+  })`)
+}
+
 async function removeOutsidePointerRelease(page: Page) {
   await page.locator('[data-test-outside-pointer-release]').evaluate((element) => element.remove())
 }
@@ -1920,6 +1946,7 @@ test('mounted wheel and held-text gestures preserve scroll-away and manual-botto
     await page.mouse.wheel(500, 0)
     await grow('Growth after horizontal wheel at bottom')
 
+    await waitForSettledViewport(page)
     const holdTarget = await page.evaluate(() => {
       const root = document.querySelector('[data-native-assistant-exchange]')!
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
@@ -1945,6 +1972,7 @@ test('mounted wheel and held-text gestures preserve scroll-away and manual-botto
     await prepareOutsidePointerRelease(page, holdTarget)
     await page.mouse.up()
     await removeOutsidePointerRelease(page)
+    await waitForSettledViewport(page)
     const away = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
       const viewport = element as HTMLElement
       return { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight }
@@ -1958,6 +1986,7 @@ test('mounted wheel and held-text gestures preserve scroll-away and manual-botto
       const viewport = document.querySelector<HTMLElement>('[aria-label="Conversation"]')
       return Boolean(viewport && viewport.scrollHeight > height)
     }, away.scrollHeight)
+    await waitForSettledViewport(page)
     const afterAwayGrowth = await page.locator('[aria-label="Conversation"]').evaluate((element) => {
       const viewport = element as HTMLElement
       return { scrollTop: viewport.scrollTop, distanceFromBottom: viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight }
@@ -2452,6 +2481,7 @@ test('mounted short text taps restore follow and interactive links do not start 
       return Boolean(viewport && viewport.scrollHeight > height && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)
     }, cancelledHeight)
 
+    await waitForSettledViewport(page)
     const link = page.getByRole('link', { name: 'interactive link' })
     const linkBox = await link.boundingBox()
     assert.ok(linkBox)

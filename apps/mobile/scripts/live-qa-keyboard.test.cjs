@@ -76,7 +76,7 @@ test('Android explicitly requests resize rather than pan for the native keyboard
 })
 
 for (const [file, composer, androidBehavior, webBehavior] of [
-  ['components/agents/AgentThreadViews.tsx', 'TextInput', 'height', 'height'],
+  ['components/agents/AgentThreadViews.tsx', 'MessageCapsule', 'height', 'height'],
   ['components/chat/RoomScreen.tsx', 'Composer', 'padding', undefined],
   ['components/chat/ChatScreen.tsx', 'Composer', 'padding', undefined],
 ]) test(`${file} encloses its composer with native-resize / iOS-padding keyboard handling`, () => {

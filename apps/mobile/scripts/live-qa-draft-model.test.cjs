@@ -36,6 +36,7 @@ function storage() {
     './appApi': {}, '../../../src/shared/chat/public-stream-projection': {}, './convexPagination': { queryAllPages: async () => [] }, '../lib/agentThread': {},
     '../lib/toNativeChatMessage': loadNativeChatMessageMapper(),
     './chatTypes': { generateChatId: () => 'chat-generated' },
+    './modeState': { getCurrentMode: () => 'personal' },
     './convexClient': {
       api: { chat: { personal: { rename: 'rename', setPreferences: 'preferences', create: 'create', getSummary: 'summary', getMessages: 'messages' } } },
       convexWorkspaceId: () => 'workspace',
@@ -85,6 +86,7 @@ test('first persistence carries the selected model and later preference writes u
   assert.equal(backend.calls[0][0], 'create')
   assert.equal(backend.calls[0][1].actModelId, 'picked')
   assert.equal(backend.calls[0][1].clientId, draft.id)
+  assert.equal(backend.calls[0][1].scope, 'personal')
   await backend.service.saveChat({ ...draft, id: created.id, clientId: draft.id })
   assert.equal(backend.calls.at(-1)[0], 'preferences')
   assert.equal(backend.calls.at(-1)[1].conversationId, 'durable-conversation')

@@ -36,7 +36,7 @@ backend.
 | --- | --- | --- | --- | --- |
 | Web | `npm ci` at the root | `npm run lint`, `npm run typecheck`, `npm test` | `Security Checks` (every PR and merge group; required) | Native Vercel Git deployment from `main` |
 | Desktop | `npm ci` in `apps/desktop` (self-contained) | `npm run lint && npm test && npm run build`, `npm run test:e2e` | `Desktop app` (`apps/desktop/**`, the bridge package) on macOS | `Desktop release (macOS)`: manual, from one full source SHA; publishes `desktop-v<version>` to this repository's Releases |
-| Mobile | root `npm ci` + agent package builds, then `npm ci` in `apps/mobile` | `npm run check`, `node scripts/lint-mobile.cjs`, node tests, `npm run test:native-transcript`, `expo export` + asset verification | `Mobile app` (`apps/mobile/**`) | EAS Build from `apps/mobile`; its `eas-build-pre-install` hook installs the root workspace |
+| Mobile | root `npm ci` + agent package builds, then `npm ci` in `apps/mobile` | `npm run check`, `node scripts/lint-mobile.cjs`, node tests, `npm run test:native-transcript`, `expo export` + asset verification | `Mobile app` (`apps/mobile/**`, `packages/**`, `src/shared/**`, `src/features/automations/**`, `convex/**`, `package-lock.json`) | EAS Build from `apps/mobile`; its `eas-build-pre-install` hook installs the root workspace |
 | Chrome | root `npm ci`, then `npm ci` in `apps/chrome` | `npm run check` | `Chrome extension` (`apps/chrome/**`) | Built `dist/` loaded unpacked; no store release yet |
 
 - Root lint (`eslint.config.mjs` ignores `apps/**`), typecheck (`tsconfig.json` excludes
@@ -55,13 +55,17 @@ backend.
 - **Mobile EAS builds** upload the repository from the root and build `apps/mobile`. Mobile's
   `scripts/prepare-eas-workspace.cjs` refuses to run outside the monorepo, so a mobile build
   always uses the same shared code as web at that commit.
+- **Shared transcript actions.** Copy and download buttons in `@overlay/chat-react` and
+  `@overlay/ui` go through `usePlatformActions` from `@overlay/ui/platform-actions`
+  (browser clipboard and Blob download by default). Mobile's DOM transcript wraps each
+  message in a `PlatformActionsProvider` so the native app performs the copy or download
+  for exactly that message; never patch `navigator.clipboard` instead.
+- **Mobile transcript tests and streamed text.** Shared Markdown paces streamed text word
+  by word, so mounted transcript tests that grow a response must wait for the viewport to
+  settle (`waitForSettledViewport`) before reading pointer targets or scroll baselines.
 
 ## Known gaps
 
-- Mobile's node and DOM transcript suites have failures against current web (20 and 18
-  tests). They predate the monorepo: mobile's old repository tested against a pinned,
-  older web commit. The mobile workflow therefore only runs on `apps/mobile/**` changes
-  until the suite is green, then widens to `packages/**`, `src/shared/**` and `convex/**`.
 - The Chrome side panel imports `MessageList`, which `@overlay/chat-react` no longer
   exports, and its React types are older than the root's, so the extension does not
   typecheck or build. Its workflow runs only on `apps/chrome/**` until it is ported.
@@ -82,5 +86,6 @@ the desktop app too: it renders the web app, adding only the native rows marked 
 | Extensions / tools and MCP | Yes | Yes (Tools) | No |
 | Workspace and Personal modes | Yes | Yes | No |
 | Voice input | Desktop dictation | Yes | No |
+| Push notifications while closed (mentions, DMs, approvals) | No | Yes (`mobile-push.md`) | No |
 | Browser tab context and actions | No | No | Yes |
 | This Mac (local computer), private threads, first-run setup | Desktop only | No | No |

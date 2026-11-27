@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Turn server push notifications back on now that the backend is in production. With notification permission, this device registers with the server on sign-in, so mentions, direct messages and agent approvals arrive while the app is closed; signing out unregisters it.
+- Fix Copy and Download in chat transcripts acting on the wrong message or doing nothing. Copy now copies the message you tapped, and Download on a generated draft saves it through the app, with "Download failed. Try again." if it can't.
 - Add the web app's Workspace | Personal switch. The separate circle at the bottom right of the tab bar, where Search was, now shows the mode you are in (a building for Workspace, a person for Personal); tap it for a native menu to switch. The choice is remembered on this device for each workspace, Workspace is the default, and opening Personal for the first time creates your Personal Chief, as on the web. Every tab follows the mode:
   - Agents and the Chats tab's Agents list show Overlay and shared agents in Workspace, and your own chief (pinned first) and only-you agents in Personal.
   - Chats shows channels, direct messages and workspace chats in Workspace, and only your personal chats in Personal.

@@ -5,6 +5,8 @@ import React, { act, type ReactElement } from 'react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import type { GeneratedUiData, GeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import { GeneratedUiCard } from './GeneratedUiCard'
+import { FlashCopyIconButton } from './DraftReviewModal'
+import { PlatformActionsProvider } from '@overlay/ui/platform-actions'
 import { AssistantVisualBlocks } from './transcript/AssistantVisualBlocks'
 import { ChatExchange, type ChatExchangeProps } from './transcript/ChatExchange'
 
@@ -34,6 +36,21 @@ const part: GeneratedUiPart = {
 }
 const blocks = [{ kind: 'generated-ui', part }] satisfies AssistantVisualBlock[]
 const noop = () => undefined
+
+function deferred() {
+  let resolve!: () => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = () => resolvePromise()
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function hasCheckIcon(node: TestNode): boolean {
+  if (node.type === 'svg' && String(node.props.className).includes('lucide-check')) return true
+  return node.children.some((child) => typeof child !== 'string' && hasCheckIcon(child))
+}
 
 function browser(t: TestContext) {
   const callbacks: Array<() => Promise<void>> = []
@@ -154,6 +171,155 @@ test('read-only generated cards keep copy/download but do not offer Edit', async
   assert.equal(findButton(renderer, 'Edit'), undefined)
   assert.ok(findButton(renderer, 'Copy'))
   assert.ok(findButton(renderer, 'Download'))
+})
+
+test('FlashCopyIconButton uses injected copy, keeps failures unflashed, and respects disabled', async (t) => {
+  const env = browser(t)
+  const calls: string[] = []
+  const copyText = async (text: string) => { calls.push(text); throw new Error('denied') }
+  const renderer = await mount(t, env, <PlatformActionsProvider copyText={copyText}><FlashCopyIconButton copyText="instructions" /></PlatformActionsProvider>)
+  const button = findButton(renderer, 'Copy')
+  assert.ok(button)
+  await act(async () => { click(button); await new Promise((resolve) => setTimeout(resolve, 0)) })
+  assert.deepEqual(calls, ['instructions'])
+  assert.equal(hasCheckIcon(button), false)
+  await act(async () => { renderer.update(<PlatformActionsProvider copyText={copyText}><FlashCopyIconButton copyText="instructions" disabled /></PlatformActionsProvider>) })
+  const disabled = findButton(renderer, 'Copy')
+  assert.ok(disabled)
+  await act(async () => { click(disabled) })
+  assert.equal(calls.length, 1)
+})
+
+test('FlashCopyIconButton flashes only after injected copy resolves', async (t) => {
+  const env = browser(t)
+  const action = deferred()
+  const calls: string[] = []
+  const copyText = (text: string) => { calls.push(text); return action.promise }
+  const renderer = await mount(t, env, <PlatformActionsProvider copyText={copyText}><FlashCopyIconButton copyText="instructions" /></PlatformActionsProvider>)
+  const button = findButton(renderer, 'Copy')
+  assert.ok(button)
+
+  await act(async () => { click(button); await Promise.resolve() })
+  assert.deepEqual(calls, ['instructions'])
+  assert.equal(hasCheckIcon(button), false)
+
+  await act(async () => { action.resolve(); await action.promise })
+  const current = findButton(renderer, 'Copy')
+  assert.ok(current)
+  assert.equal(hasCheckIcon(current), true)
+})
+
+test('GeneratedUiCard uses injected copy and does not show success when it rejects', async (t) => {
+  const env = browser(t)
+  const calls: string[] = []
+  const copyText = async (text: string) => { calls.push(text); throw new Error('denied') }
+  const renderer = await mount(t, env, <PlatformActionsProvider copyText={copyText}><GeneratedUiCard part={part} readOnly /></PlatformActionsProvider>)
+  const button = findButton(renderer, 'Copy')
+  assert.ok(button)
+  await act(async () => { click(button); await new Promise((resolve) => setTimeout(resolve, 0)) })
+  assert.match(calls[0], /Original body/)
+  const current = findButton(renderer, 'Copy')
+  assert.ok(current)
+  assert.equal(hasCheckIcon(current), false)
+})
+
+test('GeneratedUiCard flashes only after injected copy resolves', async (t) => {
+  const env = browser(t)
+  const action = deferred()
+  const calls: string[] = []
+  const copyText = (text: string) => { calls.push(text); return action.promise }
+  const renderer = await mount(t, env, <PlatformActionsProvider copyText={copyText}><GeneratedUiCard part={part} readOnly /></PlatformActionsProvider>)
+  const button = findButton(renderer, 'Copy')
+  assert.ok(button)
+
+  await act(async () => { click(button); await Promise.resolve() })
+  assert.match(calls[0] ?? '', /Original body/)
+  assert.equal(hasCheckIcon(button), false)
+
+  await act(async () => { action.resolve(); await action.promise })
+  const current = findButton(renderer, 'Copy')
+  assert.ok(current)
+  assert.equal(hasCheckIcon(current), true)
+})
+
+test('GeneratedUiCard reports failed downloads, retries, and clears errors when the part changes', async (t) => {
+  const env = browser(t)
+  let attempts = 0
+  const calls: Array<[string, string]> = []
+  const downloadText = async (filename: string, text: string) => { calls.push([filename, text]); attempts++; if (attempts === 1) throw new Error('denied') }
+  const renderer = await mount(t, env, <PlatformActionsProvider downloadText={downloadText}><GeneratedUiCard part={part} readOnly /></PlatformActionsProvider>)
+  const clickDownload = async () => {
+    const button = findButton(renderer, 'Download')
+    assert.ok(button)
+    await act(async () => { click(button); await new Promise((resolve) => setTimeout(resolve, 0)) })
+  }
+  await clickDownload()
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert')[0]?.children[0], 'Download failed. Try again.')
+  await act(async () => { renderer.update(<PlatformActionsProvider downloadText={downloadText}><GeneratedUiCard part={{ ...part, id: 'draft-2' }} readOnly /></PlatformActionsProvider>) })
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
+  await clickDownload()
+  assert.equal(attempts, 2)
+  assert.equal(calls[0]?.[0], 'original-title.txt')
+  assert.match(calls[0]?.[1] ?? '', /Original body/)
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
+})
+
+test('GeneratedUiCard scopes pending downloads to the active part and blocks duplicate clicks', async (t) => {
+  const env = browser(t)
+  const first = deferred()
+  const second = deferred()
+  let attempts = 0
+  const downloadText = () => attempts++ === 0 ? first.promise : second.promise
+  const render = (currentPart: GeneratedUiPart) => (
+    <PlatformActionsProvider downloadText={downloadText}><GeneratedUiCard part={currentPart} readOnly /></PlatformActionsProvider>
+  )
+  const renderer = await mount(t, env, render(part))
+  const firstButton = findButton(renderer, 'Download')
+  assert.ok(firstButton)
+  await act(async () => { click(firstButton); await Promise.resolve() })
+  assert.equal(findButton(renderer, 'Download')?.props.disabled, true)
+  await act(async () => { click(findButton(renderer, 'Download')!); await Promise.resolve() })
+  assert.equal(attempts, 1)
+
+  const nextPart: GeneratedUiPart = {
+    ...part,
+    id: 'draft-2',
+    data: { version: 1, kind: 'draft.text', title: 'Second title', body: 'Second body' },
+  }
+  await act(async () => { renderer.update(render(nextPart)) })
+  assert.equal(findButton(renderer, 'Download')?.props.disabled, false)
+  const secondButton = findButton(renderer, 'Download')
+  assert.ok(secondButton)
+  await act(async () => { click(secondButton); await Promise.resolve() })
+  assert.equal(attempts, 2)
+
+  await act(async () => { second.reject(new Error('new part failed')); await second.promise.catch(() => undefined) })
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert')[0]?.children[0], 'Download failed. Try again.')
+  await act(async () => { first.reject(new Error('old part failed')); await first.promise.catch(() => undefined) })
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert')[0]?.children[0], 'Download failed. Try again.')
+})
+
+test('GeneratedUiCard ignores a stale failed download after retrying the same part', async (t) => {
+  const env = browser(t)
+  const first = deferred()
+  const second = deferred()
+  let attempts = 0
+  const downloadText = () => attempts++ === 0 ? first.promise : second.promise
+  const render = (currentPart: GeneratedUiPart) => (
+    <PlatformActionsProvider downloadText={downloadText}><GeneratedUiCard part={currentPart} readOnly /></PlatformActionsProvider>
+  )
+  const renderer = await mount(t, env, render(part))
+  await act(async () => { click(findButton(renderer, 'Download')!); await Promise.resolve() })
+
+  await act(async () => { renderer.update(render({ ...part, id: 'draft-2' })) })
+  await act(async () => { renderer.update(render(part)) })
+  await act(async () => { click(findButton(renderer, 'Download')!); await Promise.resolve() })
+  assert.equal(attempts, 2)
+
+  await act(async () => { second.resolve(); await second.promise })
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
+  await act(async () => { first.reject(new Error('stale failure')); await first.promise.catch(() => undefined) })
+  assert.equal(renderer.root.findAll((node) => node.props.role === 'alert').length, 0)
 })
 
 test('generated cards without a persistence callback do not offer local-only Edit', async (t) => {

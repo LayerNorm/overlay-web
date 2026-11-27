@@ -30,7 +30,8 @@ required to obtain an Expo token. No registration is fabricated when unavailable
 `mcp/agentNetwork.ts` (an absent connected agent's waiting-message notice). Each
 write and its scheduled action commit atomically. Agent approvals are harness waits,
 so they push through the wait producer below. While no device has ever registered a token, `schedulePush` schedules nothing,
-so notifications cost no delivery action before the app turns server push on. `harness/runs.publishWait` schedules new
+so a workspace whose members never installed the app pays for no delivery action. The
+app registers every signed-in device that has notification permission (`apps/mobile/services/pushRegistrationService.ts`). `harness/runs.publishWait` schedules new
 input/approval/stuck waits; idempotent updates and already-resolved records do not
 schedule duplicate alerts. Needs-you here means agent approval/input waits.
 The Work list's derived Needs you filter is not a separate notification producer.

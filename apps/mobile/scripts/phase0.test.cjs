@@ -18,6 +18,7 @@ function load(file, dependencies = {}) {
     if (id === '@overlay/api-client') return { createIdempotencyKey: () => 'search-request' }
     if (id === './filesService') return {}
     if (id === './settingsNativeService') return {}
+    if (id === './modeState') return { getCurrentMode: () => 'workspace' }
     assert.ok(Object.hasOwn(dependencies, id), 'Unexpected dependency: ' + id)
     return dependencies[id]
   }

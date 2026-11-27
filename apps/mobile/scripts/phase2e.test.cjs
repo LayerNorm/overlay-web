@@ -178,6 +178,7 @@ test('automation list/detail/runs and ordered workflow events are native; execut
     service = load('services/automationsService.ts', {
       '@overlay/api-client': { createIdempotencyKey: () => 'automation-request' },
       './convexClient': b.convex,
+      './modeState': { getCurrentMode: () => 'personal' },
       './appApi': {
         appJson: async (...args) => {
           http.push(args)
@@ -190,6 +191,7 @@ test('automation list/detail/runs and ordered workflow events are native; execut
   await service.getAutomation('a')
   await service.listAutomationRuns('a')
   assert.deepEqual(clean(b.calls.map((call) => call[0])), ['auto.list', 'auto.get', 'auto.runs'])
+  assert.equal(b.calls[0][1].view, 'personal')
   const values = [],
     errors = [],
     stop = service.subscribeWorkflowSteps(
@@ -236,6 +238,7 @@ test('notes read native metadata and storage bodies, guard workspace changes and
     updatedAt: 3,
   }
   const notes = load('services/noteStorage.ts', {
+    './modeState': { getCurrentMode: () => 'personal' },
     './appApi': {
       getRequestWorkspaceId: () => workspace,
       appJson: async (...args) => {

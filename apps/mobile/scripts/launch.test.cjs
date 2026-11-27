@@ -88,6 +88,7 @@ test('integration requests keep workspace and connection scope for reads and wri
     {
       exports,
       require: (name) => {
+        if (name === './modeState') return { getCurrentMode: () => 'personal' }
         assert.equal(name, './appApi')
         return { appJson: async (endpoint, options) => { calls.push({ endpoint, ...options }) } }
       },

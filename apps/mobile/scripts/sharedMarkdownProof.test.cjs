@@ -89,7 +89,7 @@ test('Expo route tree excludes the synthetic screen and preserves personal Chat'
     assert.doesNotMatch(source, /SharedTranscriptProofMode|shared-transcript-proof-workspace|dev\/shared-markdown/)
   }
 
-  const chatRoute = fs.readFileSync(path.join(appRoot, '(tabs)/chat.tsx'), 'utf8')
+  const chatRoute = fs.readFileSync(path.join(appRoot, 'chat/index.tsx'), 'utf8')
   const chatScreen = fs.readFileSync(path.join(projectRoot, 'components/chat/ChatScreen.tsx'), 'utf8')
   assert.match(chatRoute, /ChatScreen/)
   assert.match(chatScreen, /NativePersonalChatTranscript/)

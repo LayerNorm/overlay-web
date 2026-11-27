@@ -11,6 +11,7 @@ import type { DraftModalState } from '../../../../packages/overlay-chat-core/src
 import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller, useMessageScrollerScrollable } from '../../../../packages/overlay-ui/src/ai'
 import { Button } from '../../../../packages/overlay-ui/src/primitives'
 import { DelayedTooltip } from '../../../../packages/overlay-ui/src/components/overlays/DelayedTooltip'
+import { PlatformActionsProvider } from '../../../../packages/overlay-ui/src/platform-actions'
 import { ChevronDown, ChevronLeft, ChevronRight, Eye, Reply } from 'lucide-react'
 import { ChatExchange } from '../../../../packages/overlay-chat-react/src/components/transcript/ChatExchange'
 import { ChatTranscript } from '../../../../packages/overlay-chat-react/src/components/transcript/ChatTranscript'
@@ -469,29 +470,6 @@ function JumpToLatestControl({
       </div>
     </div>
   )
-}
-
-type CopyText = (text: string) => Promise<void>
-let activeCopy: CopyText | null = null
-let clipboardRouted = false
-
-/**
- * Routes the shared transcript's copy buttons (which call
- * `navigator.clipboard.writeText`) to the native app for the message the tap
- * landed in: a capturing click marks which message's handler is active.
- */
-function PlatformActionsProvider({ copyText, children }: { copyText: CopyText; downloadText?: (filename: string, text: string) => Promise<void>; children: React.ReactNode }) {
-  useEffect(() => {
-    if (clipboardRouted || typeof navigator === 'undefined') return
-    clipboardRouted = true
-    const writeText = (text: string) => (activeCopy ? activeCopy(text) : Promise.reject(new Error('Copy unavailable')))
-    try {
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { ...(navigator.clipboard ?? {}), writeText } })
-    } catch {
-      clipboardRouted = false
-    }
-  }, [])
-  return <div style={{ display: 'contents' }} onClickCapture={() => { activeCopy = copyText }}>{children}</div>
 }
 
 export default function NativeSharedTranscript(props: Props) {

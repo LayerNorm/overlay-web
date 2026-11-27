@@ -216,6 +216,7 @@ function fixture() {
     './convexClient': convex,
     './convexPagination': load('services/convexPagination.ts', { './convexClient': convex }),
     './appApi': {}, './chatTypes': { generateChatId: () => 'draft-1' },
+    './modeState': { getCurrentMode: () => 'personal' },
     '../../../src/shared/chat/public-stream-projection': projection,
   })
   const emit = (ref, value) => { values.set(ref, value); watches.get(ref)?.() }
