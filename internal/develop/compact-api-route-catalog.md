@@ -75,6 +75,7 @@ For a description of what each route does and its associated implementation file
 ## Connected agents and environments
 
 - `POST /api/v1/harness/continuation`
+- `POST /api/v1/harness/stalled`
 - `POST /api/v1/agent-environments/[environmentId]/approve`
 - `POST /api/v1/agent-environments/[environmentId]/copy-to-files`
 - `PUT /api/v1/agent-environments/[environmentId]/capabilities`

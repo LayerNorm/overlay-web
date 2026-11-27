@@ -109,6 +109,7 @@ import type * as harness_diagnosticIndex from "../harness/diagnosticIndex.js";
 import type * as harness_nativeDelivery from "../harness/nativeDelivery.js";
 import type * as harness_resourceValidators from "../harness/resourceValidators.js";
 import type * as harness_runs from "../harness/runs.js";
+import type * as harness_stalledRuns from "../harness/stalledRuns.js";
 import type * as http from "../http.js";
 import type * as integrations_githubInstallations from "../integrations/githubInstallations.js";
 import type * as integrations_mcpBrowse from "../integrations/mcpBrowse.js";
@@ -321,6 +322,7 @@ declare const fullApi: ApiFromModules<{
   "harness/nativeDelivery": typeof harness_nativeDelivery;
   "harness/resourceValidators": typeof harness_resourceValidators;
   "harness/runs": typeof harness_runs;
+  "harness/stalledRuns": typeof harness_stalledRuns;
   http: typeof http;
   "integrations/githubInstallations": typeof integrations_githubInstallations;
   "integrations/mcpBrowse": typeof integrations_mcpBrowse;

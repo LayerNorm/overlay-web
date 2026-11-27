@@ -315,10 +315,12 @@
     "src/features/account/components/AccountWorkspaces.tsx"
   ],
   "workspaces.createBillingCheckout": [
-    "src/app/_components/onboarding/OnboardingPayment.tsx"
+    "src/app/_components/onboarding/OnboardingPayment.tsx",
+    "src/app/_components/onboarding/desktop/DesktopOnboarding.tsx"
   ],
   "workspaces.initializeBilling": [
-    "src/app/_components/onboarding/OnboardingPayment.tsx"
+    "src/app/_components/onboarding/OnboardingPayment.tsx",
+    "src/app/_components/onboarding/desktop/DesktopOnboarding.tsx"
   ],
   "workspaces.invite": [
     "src/app/_components/onboarding/OnboardingConversation.tsx",

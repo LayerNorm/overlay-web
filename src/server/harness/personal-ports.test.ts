@@ -8,7 +8,7 @@ import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { admitPersonalHarnessExecution, createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
-import { createHarnessModelPorts, MAX_INTERRUPTED_MODEL_RETRIES } from './model-ports'
+import { createHarnessModelPorts } from './model-ports'
 import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
 import { isHarnessStateMessage, withoutHarnessStateMessages } from './prompt-cache'
@@ -105,17 +105,25 @@ test('shared model preparation delegates surface authority without requiring per
   expect(mocks.refresh).not.toHaveBeenCalled()
 })
 
-test('an interrupted provider call settles at zero, retries the same model and stops at the retry limit', async () => {
-  const failed = new MockLanguageModelV4({ doStream: async () => { throw new Error('Network timeout') } })
-  mocks.model.mockResolvedValue(failed)
+test('an interrupted provider call settles at zero and retries the same model until it answers', async () => {
+  const failures = 5
+  let calls = 0
+  const flaky = new MockLanguageModelV4({ doStream: async () => {
+    if (calls++ < failures) throw new Error('Network timeout')
+    const parts: LanguageModelV4StreamPart[] = [{ type: 'stream-start', warnings: [] }, { type: 'text-start', id: 'text' },
+      { type: 'text-delta', id: 'text', delta: 'The observations are checked.' }, { type: 'text-end', id: 'text' },
+      { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' },
+        usage: { inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 10, text: 10, reasoning: 0 } } }]
+    return { stream: new ReadableStream({ start(controller) { parts.forEach(part => controller.enqueue(part)); controller.close() } }) }
+  } })
+  mocks.model.mockResolvedValue(flaky)
   const ports = createPersonalHarnessExecutionPorts({ access, context }, surface)
-  await expect(runOverlayHarness(execution, ports)).rejects.toThrow('Network timeout')
-  expect(mocks.model).toHaveBeenCalledTimes(MAX_INTERRUPTED_MODEL_RETRIES + 1)
+  const result = await runOverlayHarness(execution, ports)
+  // More failures than the former retry limit (3), and the run still finishes.
+  expect(calls).toBe(failures + 1)
+  expect(result.snapshot.status).toBe('completed')
   expect(mocks.authorize.mock.calls.every(([reference]) => reference.modelId === 'fixture/model')).toBe(true)
-  expect(mocks.settle).not.toHaveBeenCalled()
   expect(current.modelReservation).toBeUndefined()
-  expect(current.latestReceipt).toMatchObject({ provider: 'interrupted', costMicros: 0, responseFailure: 'provider_error' })
-  expect(current.usage.costMicros).toBe(0)
 })
 
 test('Kimi K3 reasoning is prepared for the selected model', async () => {

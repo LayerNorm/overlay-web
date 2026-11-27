@@ -14,6 +14,7 @@ export const capabilities = [
   "agentHost",
   "localComputer",
   "localThreads",
+  "localSetup",
   "updates",
   "diagnostics",
 ] as const;
@@ -183,6 +184,23 @@ export const methodSchemas = {
   "localThreads.models": z
     .object({ provider: z.enum(localModelProviders) })
     .strict(),
+  /** Names and counts of the AI tools' settings on this computer (Claude Code, Codex…); never contents or secrets. */
+  "localSetup.scan": empty,
+  /** Reads the chosen items again and adds them to the workspace with the app's own session. */
+  "localSetup.import": z
+    .object({
+      workspaceId: id,
+      itemIds: z.array(id).min(1).max(200),
+      /** The model and tools new agents start with, as the web app picks them for any new agent. */
+      agentDefaults: z
+        .object({ modelId: id, allowedToolIds: z.array(id).max(300) })
+        .strict(),
+    })
+    .strict(),
+  /** Checks a model key found in the login shell's environment, then keeps it in the system keychain. */
+  "localSetup.useShellKey": z
+    .object({ provider: z.enum(localModelProviders) })
+    .strict(),
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -240,6 +258,40 @@ export type LocalThreadMessage = {
 };
 export type LocalThreadTurnState = "running" | "finished" | "stopped" | "error";
 export type LocalModelKeys = Record<LocalModelProvider, boolean>;
+/** What an AI tool keeps on this computer, and what it becomes in Overlay when imported. */
+export type LocalSetupItemKind =
+  | "instructions"
+  | "skill"
+  | "agent"
+  | "mcp_remote"
+  | "mcp_local";
+export type LocalSetupItem = {
+  /** Stable for this computer: the app, kind and name. */
+  id: string;
+  kind: LocalSetupItemKind;
+  name: string;
+  detail: string;
+  /** Local (command) MCP servers can't be imported yet. */
+  importable: boolean;
+};
+export type LocalSetupApp = {
+  id: "claude_code" | "codex" | "claude_desktop" | "cursor" | "gemini_cli";
+  name: string;
+  /** Where its settings live, with the home folder written as `~`. */
+  location: string;
+  items: LocalSetupItem[];
+};
+export type LocalSetupScan = {
+  apps: LocalSetupApp[];
+  /** Model keys set in the login shell's environment; only the variable name and the key's last four characters. */
+  shellKeys: { provider: LocalModelProvider; variable: string; hint: string }[];
+  /** Model plans this computer is signed in to, for using them in private threads later. */
+  subscriptions: { claude: boolean; chatgpt: boolean };
+};
+export type LocalSetupImportResult = {
+  imported: { id: string; kind: LocalSetupItemKind; name: string }[];
+  failed: { id: string; name: string; error: string }[];
+};
 export type UpdateStatus = {
   state: string;
   version?: string;
@@ -302,6 +354,9 @@ export type Results = {
   "localThreads.keys": LocalModelKeys;
   "localThreads.setKey": LocalModelKeys;
   "localThreads.models": { models: { id: string; name: string }[] };
+  "localSetup.scan": LocalSetupScan;
+  "localSetup.import": LocalSetupImportResult;
+  "localSetup.useShellKey": LocalModelKeys;
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;

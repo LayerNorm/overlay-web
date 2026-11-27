@@ -18,6 +18,8 @@ import {
   isMissingSandboxError,
 } from './ComputerLifecycleHelpers'
 import { ComputerBilling } from './ComputerBilling'
+import { runComputerDriverCommand } from './ComputerDesktopDriver'
+import { logger } from '@/server/observability/logger'
 import { claimComputerMaintenanceWithRetry } from './ComputerMaintenanceClaim'
 import type { ComputerLeaseSeed, ComputerRepository } from './ComputerRepository'
 
@@ -338,7 +340,25 @@ export class ComputerLifecycleService {
       now: () => this.now(),
       stop: (...args) => this.stop(...args),
       provision: (args) => this.provision(args),
+      hasRunningTerminalSessions: (computer) => this.hasRunningTerminalSessions(computer),
     })
+  }
+
+  /** Asks the running machine (never waking a stopped one) whether any terminal session is still running. */
+  private async hasRunningTerminalSessions(computer: Computer): Promise<boolean> {
+    if (!computer.providerRef) return false
+    try {
+      const instance = await this.requireRuntime(computer.provider).reconnect(computer.providerRef, { resume: false })
+      const result = await runComputerDriverCommand(instance, 'terminal_list', {}, { requireDesktop: false }) as {
+        sessions?: Array<{ running?: boolean }>
+      }
+      return (result.sessions ?? []).some((session) => session.running === true)
+    } catch (error) {
+      logger.warn('[computer] terminal session check failed; treating the computer as idle', {
+        computerId: computer.id, error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+      })
+      return false
+    }
   }
 
   async stop(computer: Computer, actorUserId: string, explicitDelete = false, idle = false, reconcileToken?: string): Promise<void> {

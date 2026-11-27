@@ -21,16 +21,19 @@ import { harnessDiagnosticForFailure, INTERRUPTED_MODEL_CALL_PROVIDER } from './
 
 export type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
+import { reportHarnessRetrying } from './harness-alerts'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
 
-/** Consecutive retries of calls that ended before the provider reported usage. */
-export const MAX_INTERRUPTED_MODEL_RETRIES = 3
-// Only transient causes are retried. Account, request, content-filter, authorization,
-// deadline and funding failures would repeat, so they end the run with their real cause.
+/** Every this many consecutive failures of one call, an alert says the run keeps retrying. It is never a limit. */
+export const MODEL_RETRY_ALERT_EVERY = 5
+// Only transient causes are retried, and they are retried until the call succeeds (with the backoff in
+// `nextModelRecovery`): a dropped connection or an outage never ends a run. Account, request, content-filter,
+// authorization, deadline and funding failures would repeat, so they end the run with their real cause.
 const RETRYABLE_INTERRUPTIONS = new Set<HarnessDiagnosticCode>([
   'MODEL_OUTCOME_UNKNOWN', 'PROVIDER_TIMEOUT', 'PROVIDER_RATE_LIMIT', 'PROVIDER_UNAVAILABLE',
 ])
+const INTERNAL_FAULT_CAUSES = new Set<HarnessDiagnosticCode>(['INTERNAL_ERROR', 'TOOL_OUTCOME_UNKNOWN', 'BACKEND_UNAVAILABLE'])
 
 function recordPreparationMetricIfEligible(
   reference: HarnessExecutionReference,
@@ -173,10 +176,15 @@ export function createHarnessModelPorts(input: {
           return false
         }
         const cause = harnessDiagnosticForFailure(reference.runId, state, error, 'model').code
-        // The runner asks for an Overlay fault to be retried only when no tool had
-        // started in the interrupted step, so nothing can run twice.
-        const retryable = RETRYABLE_INTERRUPTIONS.has(cause) || (options?.internalFault === true && cause === 'INTERNAL_ERROR')
-        if (!retryable || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
+        // A fault the runner replays (`settleInternalFault`) may also be an Overlay error or a lost tool outcome; the
+        // runner tells the model about any tools the interrupted step started. Permanent causes are never retried.
+        const retryable = RETRYABLE_INTERRUPTIONS.has(cause)
+          || (options?.internalFault === true && INTERNAL_FAULT_CAUSES.has(cause))
+        if (!retryable) return false
+        const attempt = state.modelRecovery?.attempt ?? 0
+        if (attempt > 0 && attempt % MODEL_RETRY_ALERT_EVERY === 0) {
+          await reportHarnessRetrying({ runId: reference.runId, code: cause, attempts: attempt, kind: 'model' })
+        }
       }
       const receipt = state.latestReceipt
       if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId) return false
