@@ -150,8 +150,10 @@ async function saveProviderConnection({
   apiKey,
   testResult,
   providerId,
+  scope,
   onSaved,
 }: {
+  scope?: 'personal' | 'workspace'
   isEdit: boolean
   existing: ByokConnectionRow | null
   preset: ByokProviderPreset | undefined
@@ -195,6 +197,7 @@ async function saveProviderConnection({
       displayName,
       apiKey,
       enabledModelIds,
+      ...(scope ? { scope } : {}),
     }),
   })
   if (!res.ok) throw new Error('Could not save provider connection.')
@@ -566,6 +569,7 @@ function useProviderForm({ state, isEdit, onBusyChange, onSaved }: {
         apiKey,
         testResult,
         providerId,
+        scope: state.mode === 'add' ? state.scope : undefined,
         onSaved,
       })
       toast.success(isEdit ? 'Provider connection updated.' : 'Provider connected.')

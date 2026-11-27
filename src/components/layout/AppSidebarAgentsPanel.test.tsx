@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { afterEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ directory: vi.fn(), mutate: vi.fn(), push: vi.fn(), replace: vi.fn() }))
-vi.mock('@/hooks/use-agent-directory', () => ({ useAgentDirectory: mocks.directory }))
+vi.mock('@/hooks/use-agent-directory', () => ({ useAgentDirectory: mocks.directory, useEnsurePersonalChief: () => {} }))
 vi.mock('@/hooks/use-solo-workspace', () => ({ useIsSoloWorkspace: () => true }))
 vi.mock('@/hooks/use-workspace-href', () => ({ useWorkspaceHref: () => (_id: string | null, path: string) => path }))
 vi.mock('@/contexts/WorkspaceContext', () => ({ useOptionalWorkspace: () => null }))
@@ -15,7 +15,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => null,
 }))
 vi.mock('@overlay/ui/primitives', () => ({
-  SidebarMenu: 'ul', SidebarMenuItem: 'li', SidebarMenuSkeleton: 'span',
+  SidebarMenu: 'ul', SidebarMenuItem: 'li',
   SidebarMenuButton: 'button', SidebarMenuAction: 'button', SidebarMenuSubButton: 'button',
   SidebarMenuSubItem: 'li', Button: 'button', toast: { error: vi.fn() },
 }))
@@ -70,7 +70,7 @@ test('clicking an agent only expands its threads and never navigates', async () 
   mocks.mutate.mockClear()
   mocks.directory.mockReturnValue({
     status: 'ready', viewerPrincipalId: 'viewer',
-    agents: ['alpha', 'beta'].map(id => ({ id, name: id, principalId: id, createdByPrincipalId: 'viewer' })),
+    agents: ['alpha', 'beta'].map(id => ({ id, name: id, principalId: id, createdByPrincipalId: 'viewer', visibility: 'workspace' })),
   })
   let renderer!: ReturnType<typeof create>
   try {
@@ -102,4 +102,35 @@ test('agents with no in-progress threads show no subtitle', async () => {
   await act(() => renderer.update(<AgentActivitySummary activity={[{ conversationId: 'c', status: 'working' } as never]} />))
   expect(JSON.stringify(renderer.toJSON())).toContain('working')
   await act(() => renderer.unmount())
+})
+
+test('each mode lists the agents its visibility puts there', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  vi.stubGlobal('window', new EventTarget())
+  mocks.directory.mockReturnValue({
+    status: 'ready', viewerPrincipalId: 'viewer',
+    agents: [
+      { id: 'overlay', name: 'Overlay', principalId: 'p0', createdByPrincipalId: 'other', agentRole: 'workspace_chief', visibility: 'workspace' },
+      { id: 'chief', name: 'My Chief', principalId: 'p1', createdByPrincipalId: 'viewer', agentRole: 'personal_chief', visibility: 'creator' },
+      { id: 'private', name: 'Private', principalId: 'p2', createdByPrincipalId: 'viewer', visibility: 'creator' },
+      { id: 'shared', name: 'Shared', principalId: 'p3', createdByPrincipalId: 'viewer', visibility: 'workspace' },
+    ],
+  })
+  let renderer!: ReturnType<typeof create>
+  try {
+    await act(() => { renderer = create(<AgentsInlinePanel workspaceId="workspace_1" />) })
+    const workspace = JSON.stringify(renderer.toJSON())
+    expect(workspace).toContain('Overlay')
+    expect(workspace).toContain('Shared')
+    expect(workspace).not.toContain('My Chief')
+    expect(workspace).not.toContain('Private')
+    await act(() => renderer.update(<AgentsInlinePanel workspaceId="workspace_1" view="personal" />))
+    const personal = JSON.stringify(renderer.toJSON())
+    expect(personal).toContain('My Chief')
+    expect(personal).toContain('Private')
+    expect(personal).not.toContain('Shared')
+    expect(personal).not.toContain('Overlay')
+  } finally {
+    if (renderer) await act(() => renderer.unmount())
+  }
 })

@@ -1,4 +1,5 @@
 'use client'
+import { parseIncludedItems, type IncludedItem } from '@/shared/agents/included-items'
 
 import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
 import { useTranscriptHasContentBelow } from './collaboration/useTranscriptHasContentBelow'
@@ -1239,6 +1240,7 @@ export function useSendMessage({
         mentionedPrincipalIds,
         memoryEnabled,
         threadRootMessageId,
+        ...(options?.includedItems?.length ? { includedItems: options.includedItems } : {}),
         ...(parts?.length ? { parts: parts as Array<Record<string, unknown>> } : {}),
         ...(options?.attachmentNames?.length ? { attachmentNames: options.attachmentNames } : {}),
         ...(options?.reply?.replyToTurnId
@@ -1498,6 +1500,7 @@ export function useRoomComposer({
       existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
       parts: payload.partsForModel,
       attachmentNames: payload.indexedFileNames,
+      includedItems: parseIncludedItems(mentions),
       onSubmitted: clearSubmittedDraft,
       ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
     })
@@ -1680,6 +1683,7 @@ export function useRoomComposerQueue({
       existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
       parts: payload.partsForModel,
       attachmentNames: [],
+      includedItems: parseIncludedItems(item.mentions),
     })
     return result.accepted
   }, [sendMessage])
@@ -2170,6 +2174,8 @@ export type SendMessage = (content: string, options?: {
   parts?: RoomMessageRecord['parts']
   attachmentNames?: string[]
   reply?: { replyToTurnId?: string; snippet: string } | null
+  /** Notes, files and automations @-mentioned in the message, which the agent may open even in a shared room. */
+  includedItems?: IncludedItem[]
 }) => Promise<RoomSendResult>
 
 export function buildRoomMessageContext({

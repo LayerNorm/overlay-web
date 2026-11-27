@@ -98,6 +98,7 @@ test('the computer group maps to all computer tool ids', () => {
     'computer_open_url',
     'computer_publish_file',
     'computer_read_file',
+    'computer_recording',
     'computer_screenshot',
     'computer_terminal',
     'computer_write_file',
@@ -206,4 +207,18 @@ test('related tools share one group: files with notes, images with video, asking
   for (const id of ['ask_agent', 'read_agent_reply', 'create_agent', 'update_agent']) assert.ok(groups.agents!.toolIds.includes(id), id)
   const everyTool = AGENT_TOOL_GROUPS.flatMap((group) => group.toolIds)
   assert.equal(new Set(everyTool).size, everyTool.length, 'no tool belongs to two groups')
+})
+
+test('Data and APIs is its own group, granted to new agents and offered at the Everything MCP level', async () => {
+  const groups = await import('./tool-groups')
+  const apis = groups.AGENT_TOOL_GROUPS.find(group => group.id === 'apis')
+  assert.deepEqual(apis?.toolIds, ['search_apis', 'inspect_api', 'run_api', 'save_api_file'])
+  assert.ok(groups.DEFAULT_AGENT_TOOL_GROUP_IDS.includes('apis'))
+  assert.ok(!groups.AGENT_TOOL_PRESETS.standard.includes('apis'))
+  const { mcpToolGrantFor } = await import('@/shared/mcp/access')
+  for (const id of ['search_apis', 'inspect_api', 'run_api', 'save_api_file']) {
+    assert.ok(mcpToolGrantFor('full').includes(id), id)
+    assert.ok(!mcpToolGrantFor('write').includes(id), id)
+    assert.ok(!mcpToolGrantFor('read').includes(id), id)
+  }
 })

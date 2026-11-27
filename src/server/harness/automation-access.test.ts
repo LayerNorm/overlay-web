@@ -4,6 +4,7 @@ import { assertAutomationAdmissionSource, refreshAutomationHarnessSource } from 
 import type { PersonalHarnessAccess } from './personal-access'
 
 const mocks = vi.hoisted(() => ({
+  list: vi.fn(),
   run: vi.fn(), automation: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), agentRun: vi.fn(), agent: vi.fn(),
   capabilities: ['integrations', 'web_search'] as string[],
 }))
@@ -24,7 +25,7 @@ vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
     getConversationById: mocks.conversation, getLatestAgentRun: mocks.agentRun,
   } } },
   workspaceService: { resolveActiveWorkspace: mocks.workspace },
-  workspaceAgentService: { get: mocks.agent },
+  workspaceAgentService: { get: mocks.agent, list: mocks.list },
 }) }))
 
 const automation = {
@@ -91,7 +92,14 @@ test('post-wait refresh rejects cancelled runs and intersects a revoked agent gr
   const refreshed = await refreshAutomationHarnessSource(access, context)
   expect(refreshed.allowedToolIds).toEqual(['read_file', 'gmail_send'])
   expect(refreshed.approvalMode).toBe('ask')
-  expect(refreshed.agent).toEqual({ agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'agent-memory:agent' })
+  // A personal automation's agent remembers privately for its owner.
+  expect(refreshed.agent).toEqual({ agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'user' })
+  expect(refreshed.workspaceReach).toBe(false)
+  // A workspace automation is a workspace context: workspace reach only, and what its agent learns is workspace knowledge.
+  mocks.run.mockResolvedValueOnce({ automation: { ...automation, scope: 'workspace' }, run })
+  const workspaceGrant = await refreshAutomationHarnessSource(access, context)
+  expect(workspaceGrant.agent?.memoryOwnerId).toBe('agent-memory:agent')
+  expect(workspaceGrant.workspaceReach).toBe(true)
   mocks.run.mockResolvedValueOnce({ automation, run: { ...run, status: 'cancelled' } })
   await expect(refreshAutomationHarnessSource(access, context)).rejects.toBeInstanceOf(FatalError)
   mocks.agent.mockResolvedValueOnce({ harness: 'other', allowedToolIds: [] })
@@ -109,8 +117,17 @@ test('the refreshed grant names the connected-app router tools exactly as admiss
   mocks.run.mockResolvedValue({ automation: { ...automation, agentId: undefined }, run })
   expect(await refreshAutomationHarnessSource(access, context as never)).toEqual({
     approvalMode: 'ask', allowedToolIds: ['read_file', 'COMPOSIO_SEARCH_TOOLS'], allowedConnectorIds: [], withheldToolIds: [],
+    workspaceReach: false,
   })
   expect(mocks.agent).not.toHaveBeenCalled()
+  // An agentless workspace automation keeps what it learns with the workspace chief.
+  mocks.run.mockResolvedValueOnce({ automation: { ...automation, agentId: undefined, scope: 'workspace' }, run })
+  mocks.list.mockResolvedValueOnce({ agents: [
+    { id: 'chief-personal', agentRole: 'personal_chief' }, { id: 'chief', agentRole: 'workspace_chief' },
+  ] })
+  expect(await refreshAutomationHarnessSource(access, context as never)).toMatchObject({
+    workspaceReach: true, memoryOwnerId: 'agent-memory:chief',
+  })
   // With an agent that may use integrations: the same, intersected with its overlay tools.
   mocks.run.mockResolvedValue({ automation, run })
   expect((await refreshAutomationHarnessSource(access, context as never)).allowedToolIds)
@@ -120,7 +137,7 @@ test('the refreshed grant names the connected-app router tools exactly as admiss
   expect(await refreshAutomationHarnessSource(access, { ...context, accountAllowedConnectorIds: ['gmail'] } as never))
     .toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [],
       withheldToolIds: ['web_search', 'deep_search', 'web_fetch', 'COMPOSIO_SEARCH_TOOLS'],
-      agent: { agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'agent-memory:agent' } })
+      agent: { agentId: 'agent', agentPrincipalId: 'agent-principal', memoryOwnerId: 'user' }, workspaceReach: false })
 })
 
 test('a run claimed by the Convex scheduler is admitted with the turn ID derived from its run', async () => {

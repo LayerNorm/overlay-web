@@ -1,4 +1,5 @@
 import { hydrateRemoteMessages, hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
+import { insertPushNotification } from '../lib/mobilePush'
 import { v } from 'convex/values'
 import type { ObjectType } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
@@ -12,7 +13,8 @@ import { recordConversationEvent } from './events'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
-import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
+import { agentMemoryOwnerId, memoryOwnerForPlace } from '../../src/shared/agents/agent-memory'
+import { conversationIsWorkspaceContext } from '../harness/runs'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
@@ -20,6 +22,7 @@ import { enqueueNativeTurn } from './nativeTurnQueue'
 import { cleanupTerminalPublicStreams, readActivePublicStreams } from '../lib/publicStreamRead'
 import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
 import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
+import { mergeAgentToolProgressPart } from '../../src/shared/chat/agent-tool-progress'
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
@@ -514,6 +517,8 @@ export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemote
   }
 }
 
+const MAX_INCLUDED_ITEMS = 10
+
 export const addMessage = mutation({
   args: {
     actorUserId: v.string(),
@@ -527,6 +532,11 @@ export const addMessage = mutation({
     turnId: v.string(),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
+    includedItems: v.optional(v.array(v.object({
+      type: v.union(v.literal('file'), v.literal('automation')),
+      id: v.string(),
+      name: v.string(),
+    }))),
   },
   handler: async (ctx, args) => {
     return await insertCollaborationMessage(ctx, args)
@@ -547,6 +557,7 @@ export async function insertCollaborationMessage(
     turnId: string
     workspaceId: string
     serverSecret?: string
+    includedItems?: Doc<'conversationMessages'>['includedItems']
   },
 ) {
   const access = await requireConversationAccess(ctx, args)
@@ -586,6 +597,7 @@ export async function insertCollaborationMessage(
     replySnippet: args.replySnippet,
     clientNonce: args.clientNonce,
     threadRootMessageId: args.threadRootMessageId,
+    ...(args.includedItems?.length ? { includedItems: args.includedItems.slice(0, MAX_INCLUDED_ITEMS) } : {}),
     status: 'completed',
     createdAt: now,
     updatedAt: now,
@@ -705,6 +717,7 @@ export const enqueueMemoryExtraction = mutation({
       || message.deletedAt
     ) throw new Error('MESSAGE_NOT_FOUND')
 
+    let memoryOwnerId = args.memoryOwnerId
     if (args.targetActor === 'human') {
       if (message.authorKind !== 'human' || message.userId !== args.memoryOwnerId) {
         throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
@@ -722,13 +735,26 @@ export const enqueueMemoryExtraction = mutation({
         || !principal.agentId
         || agentMemoryOwnerId(principal.agentId) !== args.memoryOwnerId
       ) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      const agent = await ctx.db.query('workspaceAgentDefinitions')
+        .withIndex('by_agentId', (q) => q.eq('agentId', principal.agentId!))
+        .unique()
+      if (!agent || agent.workspaceId !== args.workspaceId) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
+      // Memories follow the place: workspace knowledge only from a room others can read or a thread asked from one.
+      memoryOwnerId = memoryOwnerForPlace({
+        actorUserId: args.actorUserId,
+        agent: { ...agent, id: agent.agentId },
+        workspaceContext: await conversationIsWorkspaceContext(ctx, {
+          workspaceId: args.workspaceId, actorUserId: args.actorUserId,
+          conversationId: args.conversationId, serverSecret: args.serverSecret,
+        }),
+      })
     }
 
     // No daily count: extraction is charged to the workspace budget like other work.
     await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
       billingActorUserId: args.actorUserId,
       conversationId: args.conversationId,
-      memoryOwnerId: args.memoryOwnerId,
+      memoryOwnerId,
       messageId: args.messageId,
       targetActor: args.targetActor,
       turnId: args.turnId,
@@ -1047,6 +1073,8 @@ export const appendAgentMessageDelta = mutation({
     emitEvent: v.optional(v.boolean()),
     messageId: v.id('conversationMessages'),
     parts: v.optional(v.array(v.any())),
+    /** One tool call's live progress, merged into the saved parts here so overlapping calls keep each other's. */
+    toolPart: v.optional(v.any()),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
@@ -1055,9 +1083,13 @@ export const appendAgentMessageDelta = mutation({
     const message = await loadGeneratingAgentMessage(ctx, args)
     if (!message) return
     const currentApprovalPart = (message.parts ?? []).find((part) => part.type === 'data-native-agent-approval')
-    const nextParts = args.parts
+    const replacementParts = args.toolPart
+      ? mergeAgentToolProgressPart((message.parts ?? []) as Array<Record<string, unknown>>, args.toolPart)
+      : args.parts
+    if (args.toolPart && !replacementParts) return
+    const nextParts = replacementParts
       ? [
-          ...args.parts.filter((part) => part.type !== 'data-native-agent-approval'),
+          ...replacementParts.filter((part) => part.type !== 'data-native-agent-approval'),
           ...(currentApprovalPart ? [currentApprovalPart] : []),
         ]
       : undefined
@@ -1349,6 +1381,18 @@ export const createDirectMessage = mutation({
       return principal
     }))
     const principals = resolved
+    if (principals.filter((principal) => principal.type === 'human').length > 1) {
+      // A group with other people is a shared room: no personal chief or creator-only agent may be in it.
+      for (const principal of principals) {
+        const agentId = principal.type === 'agent' ? principal.agentId : undefined
+        if (!agentId) continue
+        const agent = await ctx.db.query('workspaceAgentDefinitions')
+          .withIndex('by_agentId', (q) => q.eq('agentId', agentId)).unique()
+        if (agent && (agent.agentRole === 'personal_chief' || agent.visibility === 'creator')) {
+          throw new Error('PERSONAL_AGENT_NOT_IN_SHARED_ROOMS')
+        }
+      }
+    }
 
     // A one-to-one DM whose counterpart is an agent principal is that
     // agent's main thread: it binds the conversation to the agent so it
@@ -1461,7 +1505,7 @@ export const createDirectMessage = mutation({
         lastReadAt: principal.principalId === actor.principalId ? now : undefined,
       })] as Promise<unknown>[]
       if (principal.principalId !== actor.principalId) {
-        writes.push(ctx.db.insert('workspaceNotifications', {
+        writes.push(insertPushNotification(ctx, {
           notificationId: crypto.randomUUID(),
           workspaceId: args.workspaceId,
           recipientPrincipalId: principal.principalId,
@@ -1589,6 +1633,15 @@ export async function addParticipantFor(ctx: MutationCtx, args: ObjectType<typeo
     || (principal.type !== 'human' && principal.type !== 'agent')
     || membership?.status !== 'active'
   ) throw new Error('Participant is not eligible')
+  if (principal.type === 'agent' && principal.agentId) {
+    // Shared rooms never take a personal chief or a creator-only agent: they live in their owner's Personal mode.
+    const agentId = principal.agentId
+    const agent = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', (q) => q.eq('agentId', agentId)).unique()
+    if (agent && (agent.agentRole === 'personal_chief' || agent.visibility === 'creator')) {
+      throw new Error('PERSONAL_AGENT_NOT_IN_SHARED_ROOMS')
+    }
+  }
   const existing = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', (q) => (
       q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
@@ -1617,7 +1670,7 @@ export async function addParticipantFor(ctx: MutationCtx, args: ObjectType<typeo
     })
     participant = (await ctx.db.get(id))!
   }
-  await ctx.db.insert('workspaceNotifications', {
+  await insertPushNotification(ctx, {
     notificationId: crypto.randomUUID(),
     workspaceId: args.workspaceId,
     recipientPrincipalId: args.principalId,
@@ -1949,7 +2002,7 @@ export const recordMessageActivity = mutation({
  * looking elsewhere is one you never learn about.
  */
 async function fanOutMessageNotifications(
-  ctx: Pick<MutationCtx, 'db'>,
+  ctx: Pick<MutationCtx, 'db' | 'scheduler'>,
   args: {
     actorDisplayName: string
     actorPrincipalId: string
@@ -2018,7 +2071,7 @@ async function fanOutMessageNotifications(
       }
       const type = mentioned || broadcast ? 'mention' as const : followedThread ? 'thread' as const : 'message' as const
       const mentionScope = mentioned ? 'direct' as const : hasChannelMention ? 'channel' as const : hasHereMention ? 'here' as const : undefined
-      notifications.push(ctx.db.insert('workspaceNotifications', {
+      notifications.push(insertPushNotification(ctx, {
         notificationId: crypto.randomUUID(),
         workspaceId: args.workspaceId,
         recipientPrincipalId: participant.principalId,
@@ -2048,7 +2101,7 @@ async function fanOutMessageNotifications(
  * fail the turn that produced the reply.
  */
 async function notifyAgentMessage(
-  ctx: Pick<MutationCtx, 'db'>,
+  ctx: Pick<MutationCtx, 'db' | 'scheduler'>,
   args: { conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'>; workspaceId: string },
 ) {
   const message = await ctx.db.get(args.messageId)

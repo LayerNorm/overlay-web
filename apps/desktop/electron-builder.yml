@@ -1,0 +1,73 @@
+appId: com.layernorm.overlay
+productName: Overlay
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!**/*.md'
+  - '!**/*.map'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!whisperkit-bundle'
+  - '!whisperkit-bundle/**/*'
+  - '!parakeet-bundle'
+  - '!parakeet-bundle/**/*'
+  - '!ParakeetServer'
+  - '!ParakeetServer/**/*'
+  - '!agent-host-bundle'
+  - '!agent-host-bundle/**/*'
+  - '!scripts'
+  - '!scripts/**/*'
+asarUnpack:
+  - resources/**
+extraResources:
+  - from: resources
+    to: resources
+    filter:
+      - '**/*'
+  - from: whisperkit-bundle
+    to: whisperkit
+    filter:
+      - 'whisperkit-cli'
+      - '!Models/**'
+  - from: parakeet-bundle
+    to: parakeet
+    filter:
+      - '**/*'
+  - from: agent-host-bundle/runtime
+    to: agent-host
+    filter:
+      - '**/*'
+      - '!.bundle-stamp'
+mac:
+  icon: resources/icon.png
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: true
+  target:
+    - dmg
+    - zip
+dmg:
+  artifactName: overlay-${version}.${ext}
+npmRebuild: true
+publish:
+  provider: github
+  owner: LayerNorm
+  repo: overlay
+  releaseType: release

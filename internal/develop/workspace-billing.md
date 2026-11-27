@@ -50,7 +50,7 @@ Both are built by the same shared code the routes use: `src/shared/billing/works
 - The reply text comes from `agentStartFailureMessage` in `src/server/app-api/v1/conversations/message/agent-start-failure.ts`.
 - `agentStartFailureReason` stores a short reason as a `data-native-agent-error` part. That replaces the generic "No failure reason is available" line.
 
-Checkout, top-ups, the portal, verification and automatic top-ups still run on the server, because they call Stripe. The summary's itemized usage reads up to the charge cap per refresh. Only the Billing tab and onboarding subscribe to it; the frequent consumers use the light `entitlements` query.
+Checkout, top-ups, the portal, verification and automatic top-ups still run on the server, because they call Stripe. The summary's itemized usage and Spend per person add up daily totals (`usageDays`: one row per account, UTC day, person, resource and model, kept by `insertUsageOperation` in `convex/billing/usageTotals.ts`, the only writer of `usageOperations`) and read individual charges only for the partial day a period starts on. Summing every charge outgrew a query's read limit and timed out on first load. Only the Billing tab and onboarding subscribe to it; the frequent consumers use the light `entitlements` query.
 
 ## Workspace execution foundation
 
@@ -69,6 +69,8 @@ Billing settings presents uninitialized and initialized-but-unpaid workspaces as
 Remaining budget is the unused allowance plus the top-up balance, minus legacy holds: `max(0, included − allowanceUsed) + topUpBalance − reserved`. Charges come out of the allowance first and then out of `topUpBalance`, while `used` grows by the full charge, so `used` must never be subtracted from `topUpBalance` again. The total is the allowance plus every top-up dollar of the period (`included + topUpBalance + (used − allowanceUsed)`), so the 2% stop line scales with what was bought. The Billing tab's credit bar uses the same total (`credits.total`, with `credits.allowance` marked as a tick), so it moves when top-ups are spent.
 
 The workspace balance is the only automatic spending limit, plus an optional fixed-period subject limit an admin sets. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Wallet creation grants no credits; funding remains an explicit later operation.
+
+**Spend per person.** Workspace → Billing shows owners and admins what each member spent this billing period, live (`billing/memberSpend:members`, summed from the daily totals by the person who started each charge, so their automations and agents count too), and lets them set a cap per person (`POST /api/v1/workspaces/:workspaceId/billing/member-caps`). A cap is a `member` spend limit. Every charge counts against the person's cap and, when a program pays, the program's limit as well (`spendSubjectsFor`, `chargeSpendLimits` in `convex/lib/spendLimitCharges.ts`; machine time through `chargeSandboxSpendLimits`); every check before a paid call reads both (`ensureProviderBudgetNotLow`, `providerBudgetGate`, and the Harness model boundary through `spendLimitRefusal` in `assertWorkspaceBudgetNotLow`). Limits renew every period of their own length (`src/shared/billing/spend-limit-period.ts`): outside the stored period nothing counts as used, and the next charge rolls the period forward. A new cap starts with what the person already spent this period.
 
 **Check before, charge after.** Model calls, tools, media, transcription, connected agents, automations, embeddings and memory work never estimate, reserve or hold what a call will cost:
 
@@ -208,3 +210,7 @@ Background memory extraction charges SDK-reported token usage on structured-outp
 validation failures using the same pricing as successful calls.
 Invalid output is never stored. A call with missing usage or unknown pricing charges
 nothing and logs the gap.
+
+## Data and APIs runs
+
+`run_api` follows the same direct-charge path as web search: the 2% check before, then a charge of Monid's `reportedCost` with the usage markup after, under the operation id `monid.run:<runId>`. Its Monid `maxCost` is the remaining budget without the markup, so a run cannot overspend the workspace. See `monid.md`.

@@ -1,6 +1,11 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
+  "seo": {
+    "metatags": {
+      "canonical": "https://overlay.works/docs"
+    }
+  },
   "name": "Overlay",
   "description": "Documentation for Overlay: using the web app, self-hosting, and building on the API.",
   "colors": {
@@ -50,7 +55,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/LayerNorm/overlay-web",
+      "github": "https://github.com/LayerNorm/overlay",
       "discord": "https://discord.gg/cag4HPkU6Z"
     }
   },

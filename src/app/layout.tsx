@@ -11,13 +11,14 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 export const metadata: Metadata = {
   metadataBase: new URL("https://overlay.works"),
   title: {
-    default: "Overlay: Enabling self-driving companies with AI employees",
+    default: "Overlay: The AI Chief of Staff that works with your team",
     template: "%s | Overlay",
   },
   description:
-    "Overlay is the control plane for AI employees. Create, deploy, and manage every agent in one workspace. Bring your own agents, or run Overlay's, in one shared workspace on the web and desktop.",
+    "Overlay is the AI Chief of Staff that works with your team. Create, manage and deploy swarms of AI coworkers to solve your hardest problems, on the web, on Mac, in Slack and in any MCP app.",
   applicationName: "Overlay",
   keywords: [
+    "AI chief of staff",
     "self-driving companies",
     "control plane for AI employees",
     "AI employees",
@@ -29,8 +30,8 @@ export const metadata: Metadata = {
     "AI agent workspace",
     "multi-agent platform",
     "AI agents",
-    "Codex",
-    "Claude Code",
+    "model subscriptions",
+    "connected computers",
     "Overlay",
     "open source AI",
   ],
@@ -57,9 +58,9 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: "Overlay: Enabling self-driving companies with AI employees",
+    title: "Overlay: The AI Chief of Staff that works with your team",
     description:
-      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, in one shared workspace on the web and desktop.",
+      "Create, manage and deploy swarms of AI coworkers to solve your hardest problems. Overlay runs them like a chief of staff, with your team.",
     type: "website",
     url: "https://overlay.works",
     siteName: "Overlay",
@@ -75,9 +76,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Overlay: Enabling self-driving companies with AI employees",
+    title: "Overlay: The AI Chief of Staff that works with your team",
     description:
-      "One workspace to create, deploy, and manage every AI agent. Bring your own agents or run Overlay's, in one shared workspace on the web and desktop.",
+      "Create, manage and deploy swarms of AI coworkers to solve your hardest problems. Overlay runs them like a chief of staff, with your team.",
     images: ["https://overlay.works/assets/overlay-share-linkedin-thumb.png"],
   },
 };

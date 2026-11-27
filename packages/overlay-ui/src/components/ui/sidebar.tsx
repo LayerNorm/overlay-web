@@ -257,29 +257,6 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
   )
 }
 
-/** Loading placeholder rows with the same height and rhythm as the rows they stand in for. */
-function SidebarMenuSkeleton({
-  className,
-  showIcon = true,
-  index = 0,
-  ...props
-}: React.ComponentProps<'div'> & { showIcon?: boolean; index?: number }) {
-  // A fixed spread of widths (by position), so server and client render the same bars.
-  const width = ['70%', '52%', '62%', '45%', '58%'][index % 5]
-  return (
-    <div
-      data-slot="sidebar-menu-skeleton"
-      role="status"
-      aria-label="Loading"
-      className={cn('flex h-8 items-center gap-2 rounded-md px-2.5', className)}
-      {...props}
-    >
-      {showIcon ? <div className="ui-skeleton-line size-3.5 shrink-0 rounded-md" /> : null}
-      <div className="ui-skeleton-line h-2.5 max-w-full flex-1 rounded-md" style={{ maxWidth: width }} />
-    </div>
-  )
-}
-
 /** The indented tree under a menu row, with shadcn's vertical guide line. */
 function SidebarMenuSub({ className, ...props }: React.ComponentProps<'ul'>) {
   return (
@@ -377,7 +354,6 @@ export {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSkeleton,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,

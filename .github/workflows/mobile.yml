@@ -1,0 +1,96 @@
+name: Mobile app
+
+# Checks apps/mobile against the monorepo's current shared code. The app imports
+# packages/, src/shared, src/features/automations and convex/ from the
+# repository root, so the root workspace is installed first, and changes there
+# run this workflow too.
+on:
+  pull_request:
+    paths:
+      - apps/mobile/**
+      - packages/**
+      - src/shared/**
+      - src/features/automations/**
+      - convex/**
+      - package-lock.json
+      - .github/workflows/mobile.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/mobile/**
+      - packages/**
+      - src/shared/**
+      - src/features/automations/**
+      - convex/**
+      - package-lock.json
+      - .github/workflows/mobile.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/mobile
+
+jobs:
+  validate:
+    name: Mobile typecheck, lint, bundles and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/mobile/package-lock.json
+      - name: Install the root workspace and build agent package entrypoints
+        working-directory: .
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build --workspace @layernorm/overlay-agent-bridge-protocol
+          npm run build --workspace @layernorm/overlay-agent-host
+      - name: Install mobile
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium for mounted transcript tests
+        run: npx playwright install --with-deps chromium
+      - name: Build shared Markdown CSS
+        run: npm run build:shared-markdown-css
+      - name: Typecheck, boundaries and lint
+        run: |
+          npm run check
+          node scripts/lint-mobile.cjs
+      - name: Export and inspect native bundles
+        env:
+          EXPO_NO_BUNDLE_SPLITTING: '1'
+        run: |
+          npx expo export --platform android --source-maps --no-bytecode --output-dir dist/android
+          node scripts/verify-shared-markdown-assets.cjs --export-dir dist/android --platform android
+          node scripts/verify-native-transcript-reachability.cjs dist/android
+          npx expo export --platform ios --source-maps --no-bytecode --output-dir dist/ios
+          node scripts/verify-shared-markdown-assets.cjs --export-dir dist/ios --platform ios
+          node scripts/verify-native-transcript-reachability.cjs dist/ios
+          node scripts/inspect-bundles.cjs dist/android dist/ios
+      - name: Unit and transcript tests
+        run: |
+          node --test $(find scripts -maxdepth 1 -type f -name '*.test.cjs' ! -name 'native-chat-transcript-actions.test.cjs' -print | sort)
+          npm run test:native-transcript
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: mobile-export-diagnostics
+          path: apps/mobile/dist
+          if-no-files-found: ignore

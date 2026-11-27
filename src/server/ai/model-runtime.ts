@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { WORKSPACE_RUN_PERSONAL_MODEL_ERROR } from '@/shared/ai/workspace-run-model'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   getGatewayImageModel,
@@ -37,15 +38,26 @@ async function getUserByokConnection(
   })
 }
 
+export { WORKSPACE_RUN_PERSONAL_MODEL_ERROR }
+
+/**
+ * `workspaceOnly` is for workspace runs (shared rooms and workspace automations, internal/plans/
+ * internal/develop/workspace-and-personal.md): they may spend only a connection the workspace holds, never the
+ * summoner's or automation owner's personal one.
+ */
 export async function assertUserCanUseByokModel(
   modelId: string,
   userId: string,
   workspaceId?: string,
+  options: { workspaceOnly?: boolean } = {},
 ): Promise<{ connection: ProviderConnectionRecord; rawModelId: string }> {
   const parsed = parseByokModelId(modelId)
   if (!parsed) throw new Error('Invalid BYOK model id.')
   const connection = await getUserByokConnection(userId, parsed.connectionId, workspaceId)
   if (!connection) throw new Error('BYOK connection not found.')
+  if (options.workspaceOnly && (connection.scope ?? 'personal') !== 'workspace') {
+    throw new Error(WORKSPACE_RUN_PERSONAL_MODEL_ERROR)
+  }
   if (connection.authKind === 'subscription' || connection.providerId.startsWith('subscription:')) {
     if (!isSubscriptionConnection(connection) ||
         !isSubscriptionProviderId(connection.subscriptionProvider) ||

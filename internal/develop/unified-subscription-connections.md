@@ -16,16 +16,20 @@ public rewrite, shared account pool, auth files, background credential refresh,
 or provider/domain fallback. Its only background work is downloading the
 published model catalogs (see "Keeping model lists current").
 
-Subscription connections support explicit, immutable `personal` or `workspace`
-scope. Missing scope on legacy rows is personal; creation defaults to personal,
-and workspace identity comes from the authenticated active-workspace context.
-Only active members of that exact active workspace may list or use a shared
-subscription. API-key connections remain unchanged and are never workspace-
-shared. Lifecycle management and Vault references remain owner-only; nonowner
-shared rows reach the picker with `canManage: false`, are excluded from Settings
-management, and expose no reconnect URL. The scope selector defaults to Personal,
-offers Workspace only with an active workspace, and locks scope once authorization
-starts. Reconnects preserve the stored scope. Requests pin the active workspace
+Provider connections (subscriptions and API keys) have an explicit, immutable
+`personal` or `workspace` scope. Missing scope on legacy rows is personal, and
+workspace identity comes from the authenticated active-workspace context. Only
+active members of that exact active workspace may list or use a workspace
+connection. Lifecycle management and Vault references remain owner-only; a
+teammate's workspace rows reach the picker with `canManage: false` and are
+read-only in Settings, with no reconnect URL. Settings → Providers follows the
+Workspace | Personal mode: Personal lists and adds your own connections,
+Workspace lists and adds the workspace's (a new connection takes the mode's
+scope; the dialog says who can use it). Reconnects preserve the stored scope.
+Workspace agents may only run on hosted models and workspace connections
+(`assertAgentModelSelectable` with the agent's visibility, the agent pickers'
+`modelsForAgentVisibility`); `migrations/workspaceAgentModels` moved existing
+ones off personal connections. Requests pin the active workspace
 through the workspace header, not a client-controlled body field.
 Model visibility does not grant execution access:
 existing paid-access requirements still apply to all models, including BYOK.
@@ -69,6 +73,39 @@ ID and conversation scope, and are not migrated from the legacy global effort.
 Native agents persist one optional model reasoning choice and pass it through
 their workflow settings. Missing values on legacy agents remain provider-managed.
 Neither capability metadata nor a saved effort changes paid-access enforcement.
+
+## OpenCode (API-key subscription)
+
+OpenCode sells Go (monthly plan) and Zen (pay-as-you-go credits) through one
+account API key, not an OAuth sign-in, so it does not use the CLIProxyAPI
+bridge. The Subscription tab lists it after the bridge providers
+(`OpenCodeSubscriptionPanel.tsx`) and keeps it usable when the bridge is
+unavailable. Connecting tests the key through
+`POST /api/v1/providers/connections/test`, then saves an ordinary personal
+API-key connection on the locked `opencode-go` (`https://opencode.ai/zen/go/v1`)
+or `opencode-zen` (`https://opencode.ai/zen/v1`) preset with every discovered
+chat model enabled. It is never workspace-shared, like other API-key rows, and
+is not offered when reconnecting a bridge subscription.
+
+OpenCode Go is displayed as a subscription (`isApiKeySubscriptionConnection` in
+`subscription-providers.ts`): its picker models carry `sourceLabel:
+'Subscription'` and a `subscription` marker, so they get their own section at the
+top, the plug badge and no "API key" tag, and their recovery link opens
+Settings → Providers rather than a bridge reconnect. Zen stays an API key in the
+picker. Both use the `opencode` logo (`byokPresetLogo`). This is display only:
+server dispatch still keys off `isSubscriptionConnection`, so OpenCode never
+reaches the bridge.
+
+The key check differs per plan (`src/server/ai/gateway/opencode-probe.ts`). The
+model lists are public, so discovery alone proves nothing. Go runs one short
+chat probe on a free model. Zen requests a nonexistent model: a valid key gets a
+model error and an invalid one gets 401, so the check spends no credits; a Zen
+key with no credit balance therefore connects and fails at first use. Discovery
+keeps only `type: chat` entries. Both presets send `x-opencode-session` (Go
+refuses requests without it) and route `gpt-`, `grok-` and `muse-` to Responses
+and `claude-` to Messages; Zen also routes the Qwen Plus/Flash models to
+Messages per its endpoint table. Everything else uses chat completions, which
+OpenCode accepts for its Gemini, Qwen, MiniMax and other chat models.
 
 ## Responsibilities
 

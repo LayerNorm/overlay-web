@@ -2,6 +2,7 @@
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { readWorkspacePathScope } from '@/shared/workspaces/routing'
+import { DEFAULT_PANEL_SCOPE } from '@/shared/workspaces/panel-scope'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -11,7 +12,7 @@ import {
   Pin,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button, toast } from '@overlay/ui/primitives'
+import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, Button, toast } from '@overlay/ui/primitives'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -22,7 +23,8 @@ import {
   type AgentDraftPreviewPatch,
 } from '@/shared/workspace/sidebar-events'
 import {
-  agentsForCreatorScope,
+  agentModeForViewer,
+  agentsForMode,
   getAgentOpenedAt,
   getLastOpenedAgentId,
   rememberAgentOpened,
@@ -42,13 +44,12 @@ import {
 } from './sidebar-nav'
 import { AgentThreadRows } from './AppSidebarAgentThreads'
 import { isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
-import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
 import { useFlipReorder } from './sidebar/useFlipReorder'
 import { AgentThreadActivityProvider, useAgentActivityMap, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
 import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
 import { hasThreadActivity } from '@/shared/agents/thread-activity'
-import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useAgentDirectory, useEnsurePersonalChief } from '@/hooks/use-agent-directory'
 import { useMutation, useQueries } from 'convex/react'
 import { useLocalThreadList } from '@/components/desktop/useLocalThreads'
 import { api } from '../../../convex/_generated/api'
@@ -373,7 +374,7 @@ function AgentListRow({
   if (pinned && !activityOnly) {
     return (
       <>
-        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className={`row-start-1 min-w-0 ${pinnedAlone ? 'mx-auto w-1/2' : ''}`}>
+        <div data-agent-row={agent.id} data-pinned-chief={agent.id} className={`row-start-1 min-w-0 ${pinnedAlone ? 'mx-auto w-fit min-w-1/2 max-w-full' : ''}`}>
           <div className="group/tile relative">
             <Button variant="ghost" type="button" disabled={anyOpening} aria-expanded={isExpanded}
               aria-current={isActive ? 'page' : undefined} onClick={() => onToggleExpanded(agent.id)}
@@ -452,6 +453,37 @@ function AgentListRow({
   )
 }
 
+const AGENT_NAME_WIDTHS = ['58%', '44%', '66%']
+
+/**
+ * The Agents panel while the directory loads: the pinned chief tile (the `AgentListRow` tile: 40px avatar over its
+ * name) above `h-10` agent rows (24px avatar, name). Activity mode lists chiefs as rows, so it has no tile.
+ */
+export function AgentsPanelSkeleton({ activityOnly = false }: { activityOnly?: boolean }) {
+  return (
+    <SidebarMenu role="status" aria-label="Loading agents">
+      {activityOnly ? null : (
+        <SidebarMenuItem aria-hidden className="pb-2 pt-1">
+          <div className="mx-auto flex w-1/2 flex-col items-center gap-2 px-3 pb-2.5 pt-3.5 text-[13px]">
+            <div className="ui-skeleton-line size-10 shrink-0 rounded-full" />
+            <div className="flex h-[1lh] w-full items-center justify-center">
+              <div className="ui-skeleton-line h-2.5 w-3/5 rounded-sm" />
+            </div>
+          </div>
+        </SidebarMenuItem>
+      )}
+      {AGENT_NAME_WIDTHS.map((width) => (
+        <SidebarMenuItem key={width} aria-hidden>
+          <div className="flex h-10 items-center gap-2.5 px-2">
+            <div className="ui-skeleton-line size-6 shrink-0 rounded-full" />
+            <div className="ui-skeleton-line h-2.5 flex-1 rounded-sm" style={{ maxWidth: width }} />
+          </div>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  )
+}
+
 function ActivityAgentRow({ agentId, activityOnly, children }: { agentId: string; activityOnly: boolean; children: React.ReactNode }) {
   const activity = useAgentThreadActivity(agentId)
   if (activityOnly && !activity?.some((item) => hasThreadActivity(item.status))) return null
@@ -468,7 +500,7 @@ function AgentActivityEmptyState({ agentIds }: { agentIds: string[] }) {
 export function AgentsInlinePanel({
   workspaceId,
   baseHref = '/app/agents',
-  view = 'personal',
+  view = DEFAULT_PANEL_SCOPE,
   onNavigate,
   activityOnly = false,
 }: {
@@ -483,10 +515,11 @@ export function AgentsInlinePanel({
   const searchParams = useSearchParams()
   const activeAgentId = searchParams?.get('agent') ?? searchParams?.get('agentId') ?? null
   const activeConversationId = searchParams?.get('id') ?? null
-  // Member count is independent of the creator-relative Personal/Workspace views.
+  // Member count is independent of the Personal/Workspace modes.
   const solo = useIsSoloWorkspace()
   const buildWorkspaceHref = useWorkspaceHref()
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
+  useEnsurePersonalChief(view === 'personal')
 
   const [activityCollapsed, setActivityCollapsed] = useState<Set<string>>(new Set())
   const {
@@ -506,10 +539,11 @@ export function AgentsInlinePanel({
     [agents, draftPreviews],
   )
 
-  // Live agents split into Personal (created by me) and Workspace (the rest). Archived agents and threads live in
+  // Live agents split by mode: Personal (my Personal Chief and my creator-only agents) and Workspace (Overlay and
+  // workspace-visible agents). Archived agents and threads live in
   // Settings → Archived, not here.
   const tabAgents = useMemo(
-    () => agentsForCreatorScope(
+    () => agentsForMode(
       previewedAgents.filter((agent) => !agent.archivedAt),
       viewerPrincipalId,
       view,
@@ -593,9 +627,8 @@ export function AgentsInlinePanel({
     const viewParam = searchParams.get('scope') ?? searchParams.get('view')
     const active = agents.find((agent) => agent.id === activeAgentId)
     if (!active || active.archivedAt) return
-    const correctView: AgentsPanelView = agentBelongsToCreatorScope(active, viewerPrincipalId, 'personal')
-        ? 'personal'
-        : 'workspace'
+    const correctView: AgentsPanelView | null = agentModeForViewer(active, viewerPrincipalId)
+    if (!correctView) return
     const pathScope = readWorkspacePathScope(pathname)
     if (pathScope === correctView || (!pathScope && viewParam === correctView)) return
     const params = new URLSearchParams(searchParams.toString())
@@ -634,15 +667,12 @@ export function AgentsInlinePanel({
     )
   }
 
+  if (loading) return <AgentsPanelSkeleton activityOnly={activityOnly} />
+
   return (
     <AgentThreadActivityProvider workspaceId={workspaceId} agentIds={activityAgentIds}>
     <SidebarMenu ref={listRef}>
-      {loading ? (
-        // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
-        [0, 1, 2].map((index) => (
-          <SidebarMenuItem key={index}><SidebarMenuSkeleton index={index} /></SidebarMenuItem>
-        ))
-      ) : sortedAgents.length ? (
+      {sortedAgents.length ? (
         [
           pinnedAgents.length ? (
             <SidebarMenuItem key="pinned-chiefs" data-pinned-chiefs className="grid gap-x-1.5 pb-2 pt-1"

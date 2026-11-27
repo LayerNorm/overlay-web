@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desktop Onboarding</title>
+<style>
+/* Tokens copied from packages/overlay-ui/src/styles.css (as in desktop-signed-out-home.html) */
+:root{
+  --background:#fafafa;--foreground:#0a0a0a;--muted:#71717a;--muted-light:#a1a1aa;--border:#e4e4e7;
+  --surface:#ffffff;--surface-hover:#f4f4f5;--selected-border:#a1a1aa;--chip:#f4f4f5;
+  --btn-primary-bg:#dcdce1;--btn-primary-hover:#ccccd3;--btn-primary-text:#27272a;
+  --btn-secondary-bg:#eaeaed;--btn-secondary-hover:#dedee4;--btn-secondary-text:#27272a;
+  --ok:#16a34a;--desk:#e9e9ec;--chrome-shadow:0 30px 80px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.08);
+  --bar-bg:rgba(255,255,255,.85);
+}
+:root[data-theme="dark"]{
+  --background:#09090b;--foreground:#f5f5f5;--muted:#a1a1aa;--muted-light:#71717a;--border:#27272a;
+  --surface:#18181b;--surface-hover:#1f1f23;--selected-border:#52525b;--chip:#232327;
+  --btn-primary-bg:#3b3b42;--btn-primary-hover:#484850;--btn-primary-text:#ededf0;
+  --btn-secondary-bg:#252529;--btn-secondary-hover:#303036;--btn-secondary-text:#ededf0;
+  --ok:#22c55e;--desk:#1a1a1d;--chrome-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08);
+  --bar-bg:rgba(24,24,27,.85);
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--desk);color:var(--foreground);font-family:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;display:flex;align-items:center;justify-content:center;padding:24px 16px 88px}
+button,input{font:inherit;color:inherit}
+
+/* The Mac window (context only) */
+.window{position:relative;width:min(1040px,100%);height:min(700px,calc(100vh - 120px));min-height:560px;
+  background:var(--background);border-radius:12px;box-shadow:var(--chrome-shadow);overflow:hidden;display:flex;flex-direction:column}
+body[data-size="small"] .window{width:min(800px,100%);height:min(600px,calc(100vh - 120px))}
+.titlebar{height:40px;flex:none;position:relative}
+.lights{position:absolute;top:14px;left:14px;display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.account{position:absolute;top:10px;right:14px;display:flex;align-items:center;gap:4px}
+
+/* The proposed screens */
+.stage{flex:1;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:12px 24px 0}
+.step{width:100%;max-width:520px;margin:auto 0;padding:16px 0 24px}
+.step.wide{max-width:640px}
+.mark{width:28px;height:28px;color:var(--foreground);margin-bottom:20px;display:block}
+h1{font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.01em}
+.sub{margin-top:6px;font-size:14px;line-height:20px;color:var(--muted)}
+.label{margin:24px 0 8px;font-size:13px;font-weight:500}
+.label .opt{color:var(--muted-light);font-weight:400}
+.hint{margin-top:8px;font-size:12px;line-height:18px;color:var(--muted)}
+
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:24px}
+body[data-size="small"] .choices.collapse{grid-template-columns:1fr}
+.choice{appearance:none;text-align:left;border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:14px;cursor:pointer;
+  display:flex;flex-direction:column;gap:12px;transition:border-color .15s ease,background-color .15s ease}
+.choice:hover{background:var(--surface-hover)}
+.choice[aria-pressed="true"]{border-color:var(--selected-border)}
+.choice .top{display:flex;justify-content:space-between;align-items:flex-start}
+.choice b{display:block;font-size:14px;font-weight:500}
+.choice .desc{display:block;margin-top:2px;font-size:13px;color:var(--muted);line-height:18px}
+.radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--muted-light);flex:none;display:grid;place-items:center}
+[aria-pressed="true"] .radio{border-color:var(--foreground)}
+[aria-pressed="true"] .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--foreground)}
+.tile{width:32px;height:32px;border-radius:8px;background:var(--chip);display:grid;place-items:center;flex:none;color:var(--muted)}
+.tile img{width:18px;height:18px}
+
+.input{width:100%;height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface);padding:0 12px;font-size:14px;outline:none}
+.input:focus{border-color:var(--selected-border)}
+.input::placeholder{color:var(--muted-light)}
+.who{display:flex;gap:12px;align-items:flex-end;margin-top:24px}
+.who .avatar{width:44px;height:44px;border-radius:50%;background:var(--chip);display:grid;place-items:center;font-weight:500;color:var(--muted);flex:none}
+.who .field{flex:1}
+.who .field .label{margin-top:0}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipbtn{appearance:none;border:1px solid var(--border);background:var(--surface);border-radius:999px;height:30px;padding:0 12px;font-size:13px;cursor:pointer}
+.chipbtn:hover{background:var(--surface-hover)}
+.chipbtn[aria-pressed="true"]{border-color:var(--selected-border);background:var(--chip)}
+
+.list{margin-top:20px;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;min-height:56px}
+.row+.row,.group+.group{border-top:1px solid var(--border)}
+.row .text{flex:1;min-width:0}
+.row b{display:block;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row span.d{display:block;margin-top:1px;font-size:12px;color:var(--muted);line-height:17px}
+.row .end{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;white-space:nowrap}
+.mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.soon{font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:2px 8px}
+.done{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.done svg{color:var(--ok)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block}
+
+.group summary{list-style:none;cursor:pointer}
+.group summary::-webkit-details-marker{display:none}
+.group summary .chev{transition:transform .15s ease;color:var(--muted)}
+.group[open] summary .chev{transform:rotate(90deg)}
+.items{padding:0 14px 10px 58px}
+.item{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px}
+.item .name{flex:1;min-width:0}
+.item .name small{display:block;color:var(--muted);font-size:12px}
+.item .to{color:var(--muted);font-size:12px;white-space:nowrap}
+.item[data-off] .name{color:var(--muted)}
+.check{appearance:none;width:16px;height:16px;border-radius:4px;border:1.5px solid var(--muted-light);display:grid;place-items:center;cursor:pointer;flex:none;margin:0}
+.check:checked{background:var(--foreground);border-color:var(--foreground)}
+.check:checked::after{content:"";width:8px;height:4px;border:solid var(--background);border-width:0 0 2px 2px;transform:translateY(-1px) rotate(-45deg)}
+.check:disabled{opacity:.4;cursor:default}
+.privacy{display:flex;gap:8px;margin-top:14px;font-size:12px;line-height:18px;color:var(--muted)}
+.privacy svg{flex:none;margin-top:1px}
+.scanning{margin-top:28px;display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 0;color:var(--muted);font-size:13px}
+
+.toggle{appearance:none;width:30px;height:18px;border-radius:999px;background:var(--btn-secondary-hover);position:relative;cursor:pointer;flex:none;transition:background-color .15s ease}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--background);transition:transform .15s ease}
+.toggle:checked{background:var(--foreground)}
+.toggle:checked::after{transform:translateX(12px)}
+
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:24px}
+body[data-size="small"] .plans{grid-template-columns:1fr}
+.plan{border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:14px;cursor:pointer;text-align:left;appearance:none}
+.plan[aria-pressed="true"]{border-color:var(--selected-border)}
+.plan[disabled]{opacity:.5;cursor:default}
+.plan .price{font-size:24px;font-weight:600;letter-spacing:-.01em}
+.plan .price small{font-size:13px;font-weight:400;color:var(--muted)}
+.plan ul{list-style:none;padding:0;display:flex;flex-direction:column;gap:7px;font-size:13px}
+.plan li{display:flex;gap:8px;align-items:flex-start;color:var(--foreground)}
+.plan li svg{flex:none;margin-top:2px;color:var(--muted)}
+.plan .head{display:flex;justify-content:space-between;align-items:flex-start}
+.plan .head b{font-size:14px;font-weight:500}
+
+.btn{appearance:none;border:0;height:36px;border-radius:8px;padding:0 14px;font:500 14px/1 Geist,system-ui,sans-serif;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background-color .15s ease;white-space:nowrap}
+.btn.sm{height:30px;font-size:13px;padding:0 10px;border-radius:7px}
+.primary{background:var(--btn-primary-bg);color:var(--btn-primary-text)}
+.primary:hover{background:var(--btn-primary-hover)}
+.secondary{background:var(--btn-secondary-bg);color:var(--btn-secondary-text)}
+.secondary:hover{background:var(--btn-secondary-hover)}
+.ghost{background:transparent;color:var(--muted);font-weight:400}
+.ghost:hover{color:var(--foreground)}
+.btn[disabled]{opacity:.5;cursor:default}
+.actions{display:flex;align-items:center;gap:8px;margin-top:28px}
+.actions .spacer{flex:1}
+
+.dots{flex:none;display:flex;justify-content:center;gap:6px;padding:14px 0 18px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--border)}
+.dots i.on{background:var(--muted)}
+
+/* Hand-off: the existing Overlay conversation, starting at "daily" */
+.convo{width:100%;max-width:600px;margin:auto 0;display:flex;flex-direction:column;gap:16px;padding-bottom:24px}
+.msg{display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:21px}
+.msg .who{margin:0}
+.msg .face{width:28px;height:28px;flex:none;color:var(--foreground)}
+.msg .body p+p{margin-top:8px}
+.composer{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--muted-light);height:84px}
+
+/* Loading and invite states */
+.center{margin:auto 0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.lockup{height:40px;width:auto;color:var(--foreground);display:block}
+.tagline{margin-top:30px;font-size:14px;line-height:21px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.enter{animation:enter .3s ease-out both}
+@keyframes enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.enter,.spin{animation:none}}
+
+/* Mockup controls (not part of the design) */
+.bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:4px;padding:4px;border-radius:10px;
+  background:var(--bar-bg);backdrop-filter:blur(12px);box-shadow:0 0 0 1px var(--border),0 8px 24px rgba(0,0,0,.08);
+  max-width:calc(100vw - 32px);overflow-x:auto}
+.bar button{appearance:none;border:0;background:transparent;color:var(--muted);font:500 12px Geist,system-ui;padding:7px 9px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.bar button[aria-pressed="true"]{background:var(--btn-secondary-bg);color:var(--foreground)}
+.bar hr{border:0;width:1px;background:var(--border);margin:4px 2px}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar" data-drag><div class="lights"><i></i><i></i><i></i></div><div class="account" id="account"></div></div>
+  <main class="stage" id="stage"></main>
+  <div class="dots" id="dots"></div>
+</div>
+
+<nav class="bar" aria-label="Mockup controls">
+  <button data-scenario="new" aria-pressed="true">New account</button>
+  <button data-scenario="existing">Has workspaces</button>
+  <button data-scenario="invited">Invited</button>
+  <hr>
+  <span id="stepButtons" style="display:contents"></span>
+  <hr>
+  <button id="size">Small window</button>
+  <button id="theme">Dark</button>
+</nav>
+
+<script>
+const LOGOS = /*LOGOS*/{}
+const LOCKUP = `/*LOCKUP*/`
+const MARK = `/*MARK*/`
+
+/* Lucide icons (paths from lucide-static) */
+const P = {
+  user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+  building:'<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/>',
+  arrowLeft:'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  chevron:'<path d="m9 18 6-6-6-6"/>',
+  lock:'<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  circleCheck:'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  laptop:'<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
+  folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  folderPlus:'<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  monitor:'<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  pointer:'<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>',
+  key:'<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+  terminal:'<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
+  loader:'<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  mail:'<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+}
+const icon = (name, size = 16) => `<svg class="i" viewBox="0 0 24 24" style="width:${size}px;height:${size}px" aria-hidden="true">${P[name]}</svg>`
+const logo = (name) => {
+  const dark = document.documentElement.dataset.theme === 'dark'
+  return `<img src="${(dark && LOGOS[name + '_dark']) || LOGOS[name]}" alt="">`
+}
+
+const state = {
+  scenario: 'new', step: 1, forTeam: false, workspace: '', name: 'Sam Rivera', role: 'Operations',
+  scanned: false, keys: {}, connected: false, folders: ['Documents'], screen: false, access: false, keep: true, plan: 'free',
+}
+const STEPS = ['Who', 'About you', 'Your setup', 'Models', 'This computer', 'Plan', 'Overlay']
+
+/* What the scan found (fixture). Names and counts only reach the page. */
+const FOUND = [
+  { app: 'Claude Code', logo: 'claude', where: '~/.claude', items: [
+    { id: 'cc-instr', name: 'Instructions', small: 'CLAUDE.md · 38 lines', to: 'Memories', on: true },
+    { id: 'cc-skills', name: '5 skills', small: 'weekly-report, meeting-notes, competitor-scan +2', to: 'Skills', on: true },
+    { id: 'cc-agents', name: '2 subagents', small: 'researcher, editor', to: 'Agents', on: true },
+    { id: 'cc-linear', name: 'Linear', small: 'MCP server · mcp.linear.app', to: 'MCP server', on: true },
+    { id: 'cc-fs', name: 'filesystem', small: 'MCP server · runs a command on this computer', to: 'Coming later', off: true },
+  ] },
+  { app: 'Codex', logo: 'openai', where: '~/.codex', items: [
+    { id: 'cx-instr', name: 'Instructions', small: 'AGENTS.md · 12 lines', to: 'Memories', on: true },
+    { id: 'cx-notion', name: 'Notion', small: 'MCP server · signs in again', to: 'MCP server', on: true },
+  ] },
+  { app: 'Claude Desktop', logo: 'claude', where: 'claude_desktop_config.json', items: [
+    { id: 'cd-hubspot', name: 'HubSpot', small: 'MCP server · header token', to: 'MCP server', on: false },
+    { id: 'cd-sqlite', name: 'sqlite', small: 'MCP server · runs a command on this computer', to: 'Coming later', off: true },
+  ] },
+  { app: 'Cursor', logo: 'cursor', where: '~/.cursor/mcp.json', items: [
+    { id: 'cu-sentry', name: 'Sentry', small: 'MCP server · mcp.sentry.dev', to: 'MCP server', on: false },
+  ] },
+]
+const picked = new Set(FOUND.flatMap((g) => g.items.filter((i) => i.on && !i.off).map((i) => i.id)))
+
+const stage = document.getElementById('stage')
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const actions = ({ back = true, skip = false, next = 'Continue', nextDisabled = false } = {}) => `
+  <div class="actions">
+    ${back ? `<button class="btn ghost" data-go="-1">${icon('arrowLeft')}Back</button>` : ''}
+    <span class="spacer"></span>
+    ${skip ? `<button class="btn ghost" data-go="1">Skip</button>` : ''}
+    <button class="btn primary" data-go="1" ${nextDisabled ? 'disabled' : ''}>${next}</button>
+  </div>`
+
+const screens = {
+  1: () => `
+    <section class="step enter">
+      <span class="mark">${MARK}</span>
+      <h1>Who is this workspace for?</h1>
+      <p class="sub">You can invite people later either way</p>
+      <div class="choices collapse">
+        <button class="choice" data-team="0" aria-pressed="${!state.forTeam}">
+          <div class="top"><span class="tile">${icon('user')}</span><i class="radio"></i></div>
+          <div><b>Just me</b><span class="desc">Your agents, files and notes</span></div>
+        </button>
+        <button class="choice" data-team="1" aria-pressed="${state.forTeam}">
+          <div class="top"><span class="tile">${icon('building')}</span><i class="radio"></i></div>
+          <div><b>My team</b><span class="desc">Shared agents, channels and work</span></div>
+        </button>
+      </div>
+      ${state.forTeam ? `
+        <p class="label">Workspace name</p>
+        <input class="input" id="wsName" placeholder="Northwind" value="${esc(state.workspace)}" autofocus>
+        <p class="hint">Team workspaces are on the paid plan.</p>` : ''}
+      ${actions({ back: false, nextDisabled: state.forTeam && !state.workspace.trim() })}
+    </section>`,
+
+  2: () => `
+    <section class="step enter">
+      <h1>About you</h1>
+      <p class="sub">Overlay uses this to suggest agents and a first task</p>
+      <div class="who">
+        <span class="avatar">${esc(state.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2) || '?')}</span>
+        <div class="field"><p class="label">Your name</p><input class="input" id="name" value="${esc(state.name)}"></div>
+      </div>
+      <p class="label">What kind of work do you do?</p>
+      <div class="chips">
+        ${['Founder', 'Operations', 'Sales', 'Marketing', 'Product', 'Research', 'Finance', 'Engineering', 'Recruiting'].map((r) =>
+          `<button class="chipbtn" data-role="${r}" aria-pressed="${state.role === r}">${r}</button>`).join('')}
+      </div>
+      <input class="input" style="margin-top:10px" placeholder="Or describe it in your own words">
+      ${actions()}
+    </section>`,
+
+  3: () => state.scanned ? `
+    <section class="step wide enter">
+      <h1>Bring your setup</h1>
+      <p class="sub">We found AI tools on this computer. Choose what Overlay should bring in.</p>
+      <div class="list">
+        ${FOUND.map((g, gi) => {
+          const count = g.items.filter((i) => picked.has(i.id)).length
+          return `<details class="group" ${gi === 0 ? 'open' : ''}>
+            <summary class="row">
+              <span class="tile">${logo(g.logo)}</span>
+              <span class="text"><b>${g.app}</b><span class="d mono">${esc(g.where)}</span></span>
+              <span class="end">${count ? `${count} of ${g.items.length}` : `${g.items.length} found`}${icon('chevron').replace('class="i"', 'class="i chev"')}</span>
+            </summary>
+            <div class="items">
+              ${g.items.map((i) => `
+                <label class="item" ${i.off ? 'data-off' : ''}>
+                  <input type="checkbox" class="check" data-pick="${i.id}" ${picked.has(i.id) ? 'checked' : ''} ${i.off ? 'disabled' : ''}>
+                  <span class="name">${esc(i.name)}<small>${esc(i.small)}</small></span>
+                  <span class="to">${i.off ? '<span class="soon">Coming later</span>' : esc(i.to)}</span>
+                </label>`).join('')}
+            </div>
+          </details>`
+        }).join('')}
+      </div>
+      <p class="privacy">${icon('lock', 14)}<span>Overlay read these settings on this computer and changed nothing. Only what you tick is sent to your workspace; tokens you leave unticked stay here.</span></p>
+      ${actions({ skip: true, next: picked.size ? `Import ${picked.size} ${picked.size === 1 ? 'item' : 'items'}` : 'Continue' })}
+    </section>` : `
+    <section class="step enter">
+      <h1>Bring your setup</h1>
+      <p class="sub">Looking for Claude Code, Codex, Claude Desktop, Cursor and Gemini CLI on this computer</p>
+      <div class="scanning">${icon('loader', 18).replace('class="i"', 'class="i spin"')}Checking known settings files…</div>
+      ${actions({ skip: true, nextDisabled: true })}
+    </section>`,
+
+  4: () => {
+    const keyRow = (id, logoName, title, env, masked) => state.keys[id]
+      ? `<div class="row"><span class="tile">${logo(logoName)}</span><span class="text"><b>${title}</b><span class="d">Checked with ${title} · in your keychain</span></span><span class="done">${icon('circleCheck', 14)}Added</span></div>`
+      : `<div class="row"><span class="tile">${logo(logoName)}</span><span class="text"><b>${title}</b><span class="d">Found <span class="mono">${env}</span> in your shell · <span class="mono">${masked}</span></span></span><button class="btn secondary sm" data-key="${id}">Use this key</button></div>`
+    return `
+    <section class="step wide enter">
+      <h1>How private threads think</h1>
+      <p class="sub">Threads that stay on this computer call a model with your own key. Synced threads use Overlay's models.</p>
+      <p class="label">Found on this computer</p>
+      <div class="list" style="margin-top:0">
+        ${keyRow('anthropic', 'anthropic', 'Anthropic', 'ANTHROPIC_API_KEY', 'sk-ant-…4f2c')}
+        ${keyRow('openai', 'openai', 'OpenAI', 'OPENAI_API_KEY', 'sk-…9e1a')}
+      </div>
+      <p class="label">Add another key <span class="opt">optional</span></p>
+      <div class="list" style="margin-top:0">
+        <div class="row"><span class="tile">${logo('google')}</span><span class="text"><b>Google</b><span class="d">Gemini models</span></span><button class="btn ghost sm">${icon('key', 14)}Add key</button></div>
+        <div class="row"><span class="tile">${logo('openrouter')}</span><span class="text"><b>OpenRouter</b><span class="d">Hundreds of models with one key</span></span><button class="btn ghost sm">${icon('key', 14)}Add key</button></div>
+      </div>
+      <p class="label">Use a plan you already pay for</p>
+      <div class="list" style="margin-top:0">
+        <div class="row"><span class="tile">${logo('claude')}</span><span class="text"><b>Claude plan</b><span class="d"><span class="dot"></span>&nbsp;Signed in to Claude Code</span></span><span class="soon">Coming soon</span></div>
+        <div class="row"><span class="tile">${logo('openai')}</span><span class="text"><b>ChatGPT plan</b><span class="d"><span class="dot"></span>&nbsp;Signed in to Codex</span></span><span class="soon">Coming soon</span></div>
+      </div>
+      ${actions({ skip: true })}
+    </section>`
+  },
+
+  5: () => `
+    <section class="step wide enter">
+      <h1>This computer</h1>
+      <p class="sub">Agents can work here: read and write files in the folders you choose and run commands, asking first</p>
+      <div class="list">
+        <div class="row">
+          <span class="tile">${icon('laptop')}</span>
+          <span class="text"><b>Sam's MacBook Pro</b><span class="d">${state.connected ? '<span class="dot"></span>&nbsp;Connected to your workspace' : 'Not connected yet'}</span></span>
+          ${state.connected ? `<span class="done">${icon('circleCheck', 14)}Connected</span>` : `<button class="btn secondary sm" data-connect>Connect</button>`}
+        </div>
+      </div>
+      <p class="label">Folders agents may use</p>
+      <div class="list" style="margin-top:0">
+        <div class="row"><span class="tile">${icon('folder')}</span><span class="text"><b>Overlay Files</b><span class="d mono">~/Overlay Files</span></span><span class="end">Always</span></div>
+        ${state.folders.map((f) => `<div class="row"><span class="tile">${icon('folder')}</span><span class="text"><b>${f}</b><span class="d mono">~/${f}</span></span><button class="btn ghost sm" data-unfolder="${f}">Remove</button></div>`).join('')}
+        <div class="row"><span class="tile">${icon('folderPlus')}</span><span class="text"><b>Choose a folder…</b><span class="d">Opens the system folder picker</span></span><button class="btn ghost sm" data-folder>Choose</button></div>
+      </div>
+      <p class="label">Screen tools <span class="opt">optional</span></p>
+      <div class="list" style="margin-top:0">
+        <div class="row"><span class="tile">${icon('monitor')}</span><span class="text"><b>Screen Recording</b><span class="d">Lets agents take screenshots</span></span>${state.screen ? `<span class="done">${icon('circleCheck', 14)}Allowed</span>` : `<button class="btn ghost sm" data-perm="screen">Allow</button>`}</div>
+        <div class="row"><span class="tile">${icon('pointer')}</span><span class="text"><b>Accessibility</b><span class="d">Lets agents click and type, always asking first</span></span>${state.access ? `<span class="done">${icon('circleCheck', 14)}Allowed</span>` : `<button class="btn ghost sm" data-perm="access">Allow</button>`}</div>
+        <label class="row"><span class="tile">${icon('laptop')}</span><span class="text"><b>Keep available when Overlay is closed</b><span class="d">Agents can still reach this computer while it's awake</span></span><input type="checkbox" class="toggle" data-keep ${state.keep ? 'checked' : ''}></label>
+      </div>
+      ${actions({ skip: true, nextDisabled: false })}
+    </section>`,
+
+  6: () => {
+    const team = state.forTeam
+    const plan = team ? 'paid' : state.plan
+    const li = (t) => `<li>${icon('check', 14)}<span>${t}</span></li>`
+    return `
+    <section class="step wide enter">
+      <h1>Pick a plan</h1>
+      <p class="sub">${team ? `${esc(state.workspace || 'Your workspace')} is a team workspace, so it needs the paid plan` : 'Start free on this computer. Upgrade any time in Settings.'}</p>
+      <div class="plans">
+        <button class="plan" data-plan="free" aria-pressed="${plan === 'free'}" ${team ? 'disabled' : ''}>
+          <div class="head"><b>Free</b><i class="radio"></i></div>
+          <p class="price">$0 <small>forever</small></p>
+          <ul>${li('Private threads on this computer')}${li('Your own model keys')}${li('Memory, notes, tasks and files up to 100 MB')}${li('50 web searches a month')}</ul>
+        </button>
+        <button class="plan" data-plan="paid" aria-pressed="${plan === 'paid'}">
+          <div class="head"><b>Overlay</b><i class="radio"></i></div>
+          <p class="price">$8 <small>/ month</small></p>
+          <ul>${li('Everything in Free')}${li('$8 of usage credit every month')}${li("Overlay's models, synced threads and Cloud computer")}${li('Gmail, Calendar, Slack, Notion and more')}${li('Invite your team')}</ul>
+        </button>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" data-go="-1">${icon('arrowLeft')}Back</button>
+        <span class="spacer"></span>
+        <button class="btn primary" data-go="1">${plan === 'paid' ? 'Subscribe' : 'Continue free'}</button>
+      </div>
+    </section>`
+  },
+
+  7: () => {
+    const imported = picked.size
+    return `
+    <section class="convo enter">
+      <div class="msg"><span class="face">${MARK}</span><div class="body">
+        <p>Nice to meet you, ${esc(state.name.split(' ')[0] || 'there')}.${imported ? ` I brought in your Claude Code and Codex instructions, 5 skills, 2 agents and 2 MCP servers. I'll ask you to check the instructions in a moment.` : ''}</p>
+        <p>What takes up most of your week right now?</p>
+      </div></div>
+      <div class="chips" style="padding-left:40px">
+        ${['Reporting and updates', 'Email and scheduling', 'Research', 'Hiring', 'Customer follow-ups'].map((c) => `<button class="chipbtn">${c}</button>`).join('')}
+      </div>
+      <div class="composer">Or describe what takes up your time</div>
+      <p class="hint" style="text-align:center">The existing Overlay conversation continues from here: agents, apps, teammates and a first task.</p>
+    </section>`
+  },
+}
+
+const gateScreens = {
+  existing: () => `
+    <section class="center enter">
+      <span class="lockup">${LOCKUP}</span>
+      <p class="tagline">${icon('loader').replace('class="i"', 'class="i spin"')}Opening Workspace…</p>
+      <p class="hint" style="margin-top:40px">Accounts with a workspace skip setup and open the app, as today.</p>
+    </section>`,
+  invited: () => `
+    <section class="step enter">
+      <span class="mark">${MARK}</span>
+      <h1>You're invited to Northwind</h1>
+      <p class="sub">Jordan Lee invited you as a member</p>
+      <div class="list">
+        <div class="row"><span class="tile" style="font-weight:600;color:var(--foreground)">N</span><span class="text"><b>Northwind</b><span class="d">14 members</span></span><button class="btn primary sm">Join Northwind</button></div>
+      </div>
+      <div class="actions"><button class="btn ghost" data-scenario-go="new">Start my own workspace instead</button></div>
+    </section>`,
+}
+
+function render() {
+  const s = state.scenario
+  document.getElementById('account').innerHTML = s === 'existing' ? '' :
+    `<button class="btn ghost sm" title="Sign out">${icon('logout', 14)}Sign out</button>`
+  const key = s === 'new' ? `${s}:${state.step}:${state.scanned}` : s
+  let html = s === 'new' ? screens[state.step]() : gateScreens[s]()
+  // Fade in only when the screen changes, not on every choice.
+  if (key === render.last) html = html.replace(/ enter"/g, '"')
+  render.last = key
+  stage.innerHTML = html
+  document.getElementById('dots').innerHTML = s === 'new' && state.step < 7
+    ? Array.from({ length: 6 }, (_, i) => `<i class="${i + 1 === state.step ? 'on' : ''}"></i>`).join('') : ''
+  document.getElementById('stepButtons').innerHTML = STEPS.map((label, i) =>
+    `<button data-jump="${i + 1}" aria-pressed="${s === 'new' && state.step === i + 1}">${i + 1}. ${label}</button>`).join('')
+  document.querySelectorAll('[data-scenario]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scenario === s)))
+  if (s === 'new' && state.step === 3 && !state.scanned) setTimeout(() => { if (state.step === 3 && !state.scanned) { state.scanned = true; render() } }, 1400)
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button, input')
+  if (!t) return
+  const d = t.dataset
+  if (d.go) { state.step = Math.min(7, Math.max(1, state.step + Number(d.go))); render() }
+  else if (d.jump) { state.scenario = 'new'; state.step = Number(d.jump); render() }
+  else if (d.scenario) { state.scenario = d.scenario; render() }
+  else if (d.scenarioGo) { state.scenario = d.scenarioGo; state.step = 1; render() }
+  else if (d.team !== undefined) { state.forTeam = d.team === '1'; if (state.forTeam) state.plan = 'paid'; render() }
+  else if (d.role) { state.role = d.role; render() }
+  else if (d.pick) { t.checked ? picked.add(d.pick) : picked.delete(d.pick); const open = [...document.querySelectorAll('details')].map((x) => x.open); render(); document.querySelectorAll('details').forEach((x, i) => { x.open = open[i] }) }
+  else if (d.key) { state.keys[d.key] = true; render() }
+  else if (d.connect !== undefined) { state.connected = true; render() }
+  else if (d.folder !== undefined) { if (!state.folders.includes('Projects')) state.folders.push('Projects'); render() }
+  else if (d.unfolder) { state.folders = state.folders.filter((f) => f !== d.unfolder); render() }
+  else if (d.perm) { state[d.perm === 'screen' ? 'screen' : 'access'] = true; render() }
+  else if (d.keep !== undefined) { state.keep = t.checked }
+  else if (d.plan && !t.disabled) { state.plan = d.plan; render() }
+})
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'wsName') { state.workspace = e.target.value; const btn = document.querySelector('.actions .primary'); if (btn) btn.disabled = !state.workspace.trim() }
+  if (e.target.id === 'name') state.name = e.target.value
+})
+document.getElementById('theme').addEventListener('click', (e) => {
+  const dark = document.documentElement.dataset.theme !== 'dark'
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+  e.target.textContent = dark ? 'Light' : 'Dark'; render()
+})
+document.getElementById('size').addEventListener('click', (e) => {
+  const small = document.body.dataset.size !== 'small'
+  document.body.dataset.size = small ? 'small' : ''
+  e.target.setAttribute('aria-pressed', String(small))
+})
+const params = new URLSearchParams(location.search)
+if (params.get('theme') === 'dark') { document.documentElement.dataset.theme = 'dark'; document.getElementById('theme').textContent = 'Light' }
+if (params.get('step')) state.step = Number(params.get('step'))
+if (params.get('scenario')) state.scenario = params.get('scenario')
+if (params.get('scanned')) state.scanned = true
+if (params.get('team')) { state.forTeam = true; state.workspace = 'Northwind'; state.plan = 'paid' }
+if (params.get('size') === 'small') document.body.dataset.size = 'small'
+render()
+</script>
+</body>
+</html>

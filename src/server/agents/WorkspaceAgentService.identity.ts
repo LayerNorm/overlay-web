@@ -33,6 +33,7 @@ export async function applyChiefIdentityUpdate(
     workspaceId: access.workspace.id,
     actorUserId: args.actorUserId,
     actorPrincipalId: access.principal.id,
+    includePersonal: true,
     now: now(),
   })
   const agent = await repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })

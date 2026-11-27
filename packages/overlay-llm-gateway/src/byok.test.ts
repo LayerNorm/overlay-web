@@ -108,6 +108,21 @@ test('OpenCode Go locks its endpoint and resolves model protocols', async () => 
   assert.equal(getByokModelProtocol(preset, 'other-model'), 'chat')
 })
 
+test('OpenCode Zen locks its endpoint and follows the Zen protocol table', async () => {
+  const { getByokModelProtocol, getByokPreset } = await import('./adapters/byok-presets')
+  const preset = getByokPreset('opencode-zen')
+  assert.ok(preset)
+  assert.equal(preset.defaultBaseURL, 'https://opencode.ai/zen/v1')
+  assert.equal(preset.sessionHeader, 'x-opencode-session')
+  assert.equal(getByokModelProtocol(preset, 'gpt-5.5'), 'responses')
+  assert.equal(getByokModelProtocol(preset, 'muse-spark-1.3'), 'responses')
+  assert.equal(getByokModelProtocol(preset, 'claude-sonnet-5-5'), 'messages')
+  assert.equal(getByokModelProtocol(preset, 'qwen3.6-plus'), 'messages')
+  assert.equal(getByokModelProtocol(preset, 'qwen3.8-max'), 'chat')
+  assert.equal(getByokModelProtocol(preset, 'kimi-k3'), 'chat')
+  assert.equal(getByokModelProtocol('opencode-go', 'muse-spark-1.3-contributor'), 'responses')
+})
+
 test('OpenCode Go sends stable session headers and selects protocol routes', async () => {
   const requests: Request[] = []
   const fetcher: typeof fetch = async (input, init) => {

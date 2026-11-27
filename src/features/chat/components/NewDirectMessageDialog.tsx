@@ -208,9 +208,15 @@ function CandidateListBody({
   return (
     <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
       {loading ? (
-        <div className="space-y-2 py-2" aria-label="Loading people">
-          {[0, 1, 2].map((row) => (
-            <div key={row} className="h-11 animate-pulse rounded-lg bg-(--surface-subtle)" />
+        <div className="space-y-1" role="status" aria-label="Loading people">
+          {['w-28', 'w-36', 'w-24'].map((width) => (
+            <div key={width} className="flex items-center gap-3 px-3 py-2.5" aria-hidden>
+              <div className="ui-skeleton-line size-8 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <div className="flex h-5 items-center"><div className={`ui-skeleton-line h-3 ${width}`} /></div>
+                <div className="flex h-4 items-center"><div className="ui-skeleton-line h-2.5 w-44" /></div>
+              </div>
+            </div>
           ))}
         </div>
       ) : candidates.length > 0 ? candidates.map((item) => (

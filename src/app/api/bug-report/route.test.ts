@@ -31,7 +31,7 @@ beforeEach(() => {
   mocks.limit.mockResolvedValue(null)
   mocks.send.mockResolvedValue({ status: 'sent' })
   mocks.idempotent.mockImplementation((_request, _userId, run) => run())
-  mocks.fetch.mockResolvedValue(Response.json({ html_url: 'https://github.com/LayerNorm/overlay-web/issues/123', number: 123 }, { status: 201 }))
+  mocks.fetch.mockResolvedValue(Response.json({ html_url: 'https://github.com/LayerNorm/overlay/issues/123', number: 123 }, { status: 201 }))
   mocks.presign.mockResolvedValue('https://storage.example/upload')
 })
 
@@ -68,7 +68,7 @@ describe('bug report route without real external side effects', () => {
   it('creates the issue and sends the owner an email with the issue link and reporter, without exposing the reporter publicly', async () => {
     const response = await POST(request({ description: 'Broken <script>alert(1)</script>' }))
     expect(response.status).toBe(201)
-    expect(await response.json()).toEqual({ url: 'https://github.com/LayerNorm/overlay-web/issues/123', emailSent: true })
+    expect(await response.json()).toEqual({ url: 'https://github.com/LayerNorm/overlay/issues/123', emailSent: true })
     expect(mocks.idempotent).toHaveBeenCalledOnce()
     const issue = JSON.parse(mocks.fetch.mock.calls[0][1].body)
     expect(issue.body).toContain('&lt;script&gt;')

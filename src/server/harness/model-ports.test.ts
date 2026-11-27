@@ -4,10 +4,10 @@ import { createHarnessSnapshot, recordHarnessReceipt, type HarnessSnapshot } fro
 import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import type { PreparedHarnessModel } from './model-ports'
-import { createHarnessModelPorts, harnessOutputLimits, harnessReasoningSetting, MAX_INTERRUPTED_MODEL_RETRIES } from './model-ports'
+import { createHarnessModelPorts, harnessOutputLimits, harnessReasoningSetting, MODEL_RETRY_ALERT_EVERY } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
-  read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
+  read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(), retrying: vi.fn(),
   stream: vi.fn(), agentOptions: [] as Array<Record<string, unknown>>,
   identifyArtifact: vi.fn(), storeArtifact: vi.fn(), readArtifactMetadata: vi.fn(),
 }))
@@ -20,6 +20,7 @@ vi.mock('./model-recovery', async importOriginal => ({
   ...await importOriginal<typeof import('./model-recovery')>(), waitForHarnessModelRecovery: mocks.recovery,
 }))
 vi.mock('./model-preparation', () => ({ readHarnessModelLimits: mocks.limits }))
+vi.mock('./harness-alerts', () => ({ reportHarnessRetrying: mocks.retrying, reportHarnessStopped: vi.fn() }))
 vi.mock('./resource-boundary', () => ({
   waitForHarnessModelResources: vi.fn((_reference, _cost, read) => read()),
 }))
@@ -733,6 +734,35 @@ test('a dropped stream on an unheld dispatch settles a failed zero receipt and r
   expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
 })
 
+test('a call that failed before it was sent settles its marker and retries', async () => {
+  const current = recordOperationsOn({ ...dispatchedState(), modelReservation: { id: 'model:1', maxCostMicros: 0 } })
+  mocks.recovery.mockResolvedValue(true)
+  const dropped = Object.assign(new TypeError('fetch failed'), {
+    cause: Object.assign(new Error('HTTP/2: "GOAWAY" frame received with code 0'), { name: 'InformationalError' }),
+  })
+  expect(await interruptedPorts().recoverModelFailure!('model:1', dropped)).toBe(true)
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(reference, 'interrupted:model:1', {
+    type: 'record_receipt', receipt: expect.objectContaining({ id: 'model:1', modelId: 'byok/anthropic/model', provider: 'interrupted', costMicros: 0 }),
+  })
+  expect(current().modelReservation).toBeUndefined()
+  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
+})
+
+test('an Overlay fault is retried only when the runner says no tool had started', async () => {
+  const fault = new Error('Native delivery execution changed.')
+  let current = recordOperationsOn(dispatchedState())
+  mocks.recovery.mockResolvedValue(true)
+  expect(await interruptedPorts().recoverModelFailure!('model:1', fault)).toBe(false)
+  expect(mocks.recovery).not.toHaveBeenCalled()
+  current = recordOperationsOn(dispatchedState())
+  expect(await interruptedPorts().recoverModelFailure!('model:1', fault, { internalFault: true })).toBe(true)
+  expect(current().modelReservation).toBeUndefined()
+  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:1')
+  // A revoked authorization would repeat, whatever the runner asks.
+  recordOperationsOn(dispatchedState())
+  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('Native harness permissions were revoked.'), { internalFault: true })).toBe(false)
+})
+
 test('a permanent provider failure closes the dispatch without retrying', async () => {
   const current = recordOperationsOn(dispatchedState())
   const unauthorized = new APICallError({
@@ -743,13 +773,15 @@ test('a permanent provider failure closes the dispatch without retrying', async 
   expect(mocks.recovery).not.toHaveBeenCalled()
 })
 
-test('interrupted calls stop retrying after the retry limit', async () => {
+test('interrupted calls never stop retrying, and every few failures raise an alert instead', async () => {
+  mocks.recovery.mockResolvedValue(true)
   const previous = { receiptId: 'model:0', modelId: 'byok/anthropic/model', code: 'provider_error' as const,
-    attempt: MAX_INTERRUPTED_MODEL_RETRIES, firstFailureAt: 1, nextRetryAt: 2 }
+    attempt: MODEL_RETRY_ALERT_EVERY * 4 - 1, firstFailureAt: 1, nextRetryAt: 2 }
   const current = recordOperationsOn(dispatchedState(null, previous))
-  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('terminated'))).toBe(false)
-  expect(current().modelRecovery?.attempt).toBe(MAX_INTERRUPTED_MODEL_RETRIES + 1)
-  expect(mocks.recovery).not.toHaveBeenCalled()
+  expect(await interruptedPorts().recoverModelFailure!('model:1', new Error('terminated'))).toBe(true)
+  expect(current().modelRecovery?.attempt).toBe(MODEL_RETRY_ALERT_EVERY * 4)
+  expect(mocks.recovery).toHaveBeenCalledOnce()
+  expect(mocks.retrying).toHaveBeenCalledWith(expect.objectContaining({ attempts: MODEL_RETRY_ALERT_EVERY * 4, kind: 'model' }))
 })
 
 test('a dispatch bound to a billing hold is left for reconciliation', async () => {

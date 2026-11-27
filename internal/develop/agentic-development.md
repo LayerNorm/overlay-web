@@ -43,8 +43,13 @@ Read `AGENTS.md` and relevant living docs first. Fetch before creating a worktre
 
 ```bash
 git fetch origin
-git worktree add ../overlay-landing-<slug> -b codex/<slug> origin/main
+git worktree add ../overlay-worktrees/<slug> -b codex/<slug> origin/main
 ```
+
+The canonical checkout is the `overlay` folder; feature worktrees sit together in
+the sibling `overlay-worktrees/` folder. Every surface (web, `apps/desktop`,
+`apps/mobile`, `apps/chrome`) is in the same checkout, so one worktree covers a
+change across surfaces (see `surfaces.md`).
 
 One active task owns one descriptive branch and worktree. Preserve unrelated
 canonical edits. Keep canonical `main` clean for production. Do not share feature

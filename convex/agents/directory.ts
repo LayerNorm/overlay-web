@@ -6,7 +6,7 @@ import { requireNativeWorkspace } from '../lib/nativeViewer'
 import {
   directoryValue,
   ensureWorkspaceChiefs,
-  isActiveNonGuestHumanOwner,
+  isActiveHumanMember,
 } from '../collaboration/agents'
 
 type Viewer = Awaited<ReturnType<typeof requireNativeWorkspace>>
@@ -30,8 +30,7 @@ export function canSee(row: Row, viewer: Viewer) {
 
 function canEdit(row: Row, viewer: Viewer) {
   const role = viewer.membership.role
-  if (row.agentRole === 'personal_chief') return role !== 'guest' && row.chiefOwnerUserId === viewer.userId
-  if (row.agentRole === 'workspace_chief' && role === 'guest') return false
+  if (row.agentRole === 'personal_chief') return row.chiefOwnerUserId === viewer.userId
   if (role === 'owner' || role === 'admin') return true
   return row.createdByPrincipalId === viewer.principal.principalId
 }
@@ -55,7 +54,7 @@ async function project(ctx: QueryCtx, row: Row, viewer: Viewer) {
 export async function visibleRow(ctx: QueryCtx, row: Row | null, viewer: Viewer) {
   if (!row || row.workspaceId !== viewer.workspaceId || row.deletedAt || !canSee(row, viewer)) return null
   if (row.agentRole === 'personal_chief' && row.chiefOwnerUserId
-    && !await isActiveNonGuestHumanOwner(ctx, row.workspaceId, row.chiefOwnerUserId)) return null
+    && !await isActiveHumanMember(ctx, row.workspaceId, row.chiefOwnerUserId)) return null
   return row
 }
 
@@ -75,7 +74,7 @@ export const list = query({
     visible.sort((a, b) => a.name.localeCompare(b.name) || a.agentId.localeCompare(b.agentId))
     return {
       agents: await Promise.all(visible.map(row => project(ctx, row, viewer))),
-      canCreate: viewer.membership.role !== 'guest',
+      canCreate: true,
       viewerPrincipalId: viewer.principal.principalId,
     }
   },
@@ -94,16 +93,19 @@ export const get = query({
   },
 })
 
-/** Provisions the viewer's chief agents. Idempotent; the directory query reflects the result. */
+/**
+ * Provisions the workspace chief and, with `includePersonal` (the viewer opened Personal), the viewer's own personal
+ * chief. Never anyone else's. Idempotent; the directory query reflects the result.
+ */
 export const ensureChiefs = mutation({
-  args: { workspaceId: v.string() },
+  args: { workspaceId: v.string(), includePersonal: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
-    if (viewer.membership.role === 'guest') return null
     await ensureWorkspaceChiefs(ctx, {
       workspaceId: args.workspaceId,
       actorUserId: viewer.userId,
       actorPrincipalId: viewer.principal.principalId,
+      includePersonal: args.includePersonal === true,
       now: Date.now(),
     })
     return null

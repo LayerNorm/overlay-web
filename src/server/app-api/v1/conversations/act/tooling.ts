@@ -29,6 +29,7 @@ import {
 import { createMcpLazyMetaTools, type McpToolApprovalFn } from '@/server/tools/mcp-tools'
 import {
   allowedOverlayToolIdsForTurn,
+  REQUEST_ONLY_TOOL_IDS,
 } from '@/server/tools/tools/exposure-policy'
 import { createWebTools } from '@/server/web/web-tools'
 import type { ComputerTarget } from '@/server/tools/tools/types'
@@ -39,8 +40,11 @@ import {
 } from '@/shared/security/safe-log'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
 import type { Entitlements } from '@/shared/app/app-contracts'
+import { isPaidPlan } from '@/server/billing/billing-runtime-details'
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
 import { COMPUTER_TOOL_IDS } from '@/shared/agents/tool-groups'
+import { API_TOOL_IDS } from '@overlay/tools-core/policy'
+import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { withoutSharedRoomWithheldTools, workspaceToolsOnly } from '@/server/tools/shared-room-policy'
 import { withPersonalComputerToolIds } from './personal-computer-tooling'
 export { withPersonalComputerToolIds }
@@ -159,11 +163,13 @@ export async function prepareActTooling(params: {
   agentId?: string
   agentPrincipalId?: string
   /**
-   * The turn is in a room others can read (internal/plans/TOOL_SCOPING_PLAN.md, T4): the person's private reach is withheld.
+   * The turn is in a room others can read (internal/develop/tool-catalog.md, "Rooms others can read"): the person's private reach is withheld.
    * Searches and lists see only what the workspace shares, tools that read the person's own chats and files are not
    * offered, connected accounts are the workspace's only, and MCP servers are the workspace's shared ones.
    */
   sharedRoom?: boolean
+  /** Personal items the asking message included on purpose: by-id reads and edits may reach them in a shared room. */
+  includedItemIds?: readonly string[]
   /**
    * The account tool allow-list is the caller's whole tool surface (an outside app
    * connected over MCP), as it is for a workspace agent, rather than a narrowing of
@@ -176,6 +182,8 @@ export async function prepareActTooling(params: {
   preloadTasks: ActToolPreloadTasks
   requestFingerprint: string
   billingProgrammaticSubjectId?: string
+  /** How long run_api may wait for a Monid run (see OverlayToolsOptions.apiRunWaitMs). */
+  apiRunWaitMs?: number
   workspaceId?: string
   requestedToolIds?: readonly ChatToolRequestId[]
   /** A Notebook chat turn: the open note's read and edit tools are always offered. */
@@ -220,10 +228,11 @@ export async function prepareActTooling(params: {
       }),
     },
   )
-  const policyToolIds = applyAccountToolPolicy(applyRuntimeToolGates(
+  const policyToolIds = applyAccountToolPolicy(withoutUnavailableApiTools(applyRuntimeToolGates(
     baseToolIds,
     capabilities,
-  ), params.accountAllowedToolIds)
+  // The plan, not today's balance: run_api's own budget check is where a low balance triggers auto top-up.
+  ), { paid: isPaidPlan(params.entitlements), configured: await apiToolsConfigured() }), params.accountAllowedToolIds)
   const allowedOverlayToolIds = params.sharedRoom
     ? withoutSharedRoomWithheldTools(policyToolIds)
     : policyToolIds
@@ -266,9 +275,15 @@ export async function prepareActTooling(params: {
         agentId: params.agentId,
         agentPrincipalId: params.agentPrincipalId,
         sharedRoom: params.sharedRoom,
+        ...(params.includedItemIds?.length ? { includedItemIds: params.includedItemIds } : {}),
         workspaceId: params.workspaceId,
         idempotencyKey: params.idempotencyKey,
         artifactPublicationAuthority: params.artifactPublicationAuthority,
+        billing: {
+          entitlements: params.entitlements,
+          programmaticSubjectId: params.billingProgrammaticSubjectId,
+        },
+        ...(params.apiRunWaitMs !== undefined ? { apiRunWaitMs: params.apiRunWaitMs } : {}),
       }),
     ),
     capabilities.webSearch
@@ -346,7 +361,9 @@ export function withAgentGrantToolIds(
   isAgentTurn: boolean,
 ): string[] {
   if (!isAgentTurn || accountAllowedToolIds === undefined) return [...intentToolIds]
-  return [...new Set([...intentToolIds, ...accountAllowedToolIds])]
+  // Request-only tools (moving to Workspace, archiving) stay with the turn's own request, granted or not.
+  const requestOnly = new Set(REQUEST_ONLY_TOOL_IDS)
+  return [...new Set([...intentToolIds, ...accountAllowedToolIds.filter((id) => !requestOnly.has(id))])]
 }
 
 export function applyAccountToolPolicy(
@@ -470,6 +487,26 @@ function withRequestedOverlayToolIds(
   }
 
   return Array.from(allowed)
+}
+
+/**
+ * Data and APIs (internal/develop/monid.md) need Overlay's Monid key and a paid plan, since every run is charged to the
+ * workspace. Without either, the tools are not offered at all. `paid` is the plan alone: a low balance is refused by
+ * run_api's budget check, which is also where auto top-up starts.
+ */
+export function withoutUnavailableApiTools(toolIds: string[], state: { paid: boolean; configured: boolean }): string[] {
+  if (state.paid && state.configured) return toolIds
+  const apiToolIds = new Set<string>(API_TOOL_IDS)
+  return toolIds.filter((toolId) => !apiToolIds.has(toolId))
+}
+
+async function apiToolsConfigured(): Promise<boolean> {
+  try {
+    return Boolean(await getServerProviderKey('monid'))
+  } catch (_error) {
+    // The hosted-provider kill switch is on: no paid third-party calls.
+    return false
+  }
 }
 
 export function applyRuntimeToolGates(

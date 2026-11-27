@@ -5,8 +5,9 @@ import { WORKSPACE_TOOL_PREFIX } from '@/shared/integrations/workspace-connector
 
 /**
  * Overlay tools that read the person's own private material by design, so they are not offered in a room others can read:
- * their chats (`list_chats`, `read_chat`) and the text of their personal files (`search_in_files`, which has no shared copy
- * to search). Everything else that reads is limited to what the workspace shares (see `roomListScope`, `workspaceOnly`).
+ * their chats (`list_chats`, `read_chat`) and file text by id (`search_in_files`, which reads the caller's personal files as
+ * well as workspace ones; workspace files are found with `search_knowledge` instead). Everything else that reads is limited
+ * to what the workspace shares (see `roomListScope`, `workspaceOnly`).
  */
 export const SHARED_ROOM_WITHHELD_TOOL_IDS: ReadonlySet<string> = new Set(['list_chats', 'read_chat', 'search_in_files'])
 

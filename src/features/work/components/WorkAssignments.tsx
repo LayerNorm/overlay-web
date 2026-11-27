@@ -12,6 +12,7 @@ import type { AssignmentExecution } from '@/shared/work/assignment-execution'
 import { assignmentWorkState, type AssignmentGlyph } from '@/shared/work/assignment-state'
 import { useEscapeToClose } from '../lib/use-work-task'
 import { Avatar, StatusIcon, Tag } from './work-ui'
+import { PropertyGridSkeleton } from './WorkSkeletons'
 
 /** The task status glyph, or an alert for a run that failed. */
 export function AssignmentGlyphIcon({ glyph, size = 16 }: { glyph: AssignmentGlyph; size?: number }) {
@@ -40,7 +41,7 @@ export function WorkAssignmentRow({ item, selected, onOpen }: { item: Assignment
       data-assignment-id={item.assignmentId}
       aria-selected={selected}
       onClick={() => onOpen(item.assignmentId)}
-      className={`flex h-10 cursor-pointer items-center gap-3 border-b border-(--border)/60 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
+      className={`flex h-10 cursor-pointer items-center gap-3 px-6 transition-colors hover:bg-(--surface-muted) ${selected ? 'bg-(--surface-subtle)' : ''}`}
     >
       <AssignmentGlyphIcon glyph={state.glyph} />
       <Button variant="ghost" type="button" className={unstyledButton(`min-w-0 flex-1 truncate text-left text-sm leading-5 ${item.status === 'completed' ? 'text-(--muted)' : 'text-(--foreground)'}`)} title={item.title}>{item.title}</Button>
@@ -139,9 +140,9 @@ export function WorkAssignmentPeek({ assignmentId, items, loading, onClose }: {
   if (!item && loading) {
     return (
       <PanelMessage onClose={onClose}>
-        <div className="px-6 py-10" role="status" aria-label="Loading assignment">
-          <div className="ui-skeleton-line mb-4 h-6 w-2/3 rounded-md" />
-          <div className="ui-skeleton-line h-3 w-1/2 rounded-md" />
+        <div className="px-7 pb-10 pt-6" role="status" aria-label="Loading assignment">
+          <div className="mb-3 flex items-center"><span className="font-serif text-2xl leading-tight" aria-hidden>{'\u200b'}</span><div className="ui-skeleton-line h-5 w-2/3 rounded-md" aria-hidden /></div>
+          <PropertyGridSkeleton rows={4} />
         </div>
       </PanelMessage>
     )

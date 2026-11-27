@@ -15,7 +15,6 @@ import {
   type WorkspaceMember,
   type WorkspacePrincipal,
   type WorkspacePrincipalType,
-  type WorkspaceResourceGuest,
   type WorkspaceResourceScope,
   type WorkspaceSharingPolicy,
   type WorkspaceRolloutStage,
@@ -560,7 +559,7 @@ export class WorkspaceService {
     name: string
     description?: string
   }): Promise<WorkspaceTeam> {
-    const actor = await this.requireWorkspaceCreator(args)
+    const actor = await this.requireActiveMember(args)
     return await this.repository.createTeam({
       id: this.id(),
       workspaceId: actor.workspace.id,
@@ -821,56 +820,6 @@ export class WorkspaceService {
     return invitation
   }
 
-  async addResourceGuest(args: {
-    actorUserId: string
-    workspaceId: string
-    resourceType: string
-    resourceId: string
-    principalId: string
-    accessRole: WorkspaceResourceGuest['accessRole']
-    expiresAt?: number
-  }): Promise<WorkspaceResourceGuest> {
-    const actor = await this.requireManager(args)
-    await this.assertResourceWorkspace({
-      actorUserId: args.actorUserId,
-      workspaceId: actor.workspace.id,
-      resourceType: args.resourceType,
-      resourceId: args.resourceId,
-    })
-    const principal = await this.repository.getPrincipal(required(args.principalId, 'principalId'))
-    if (
-      !principal
-      || principal.workspaceId !== actor.workspace.id
-      || principal.type !== 'human'
-      || principal.archivedAt
-    ) {
-      throw validation('Resource guests must be active human principals in this workspace')
-    }
-    const membership = await this.repository.getMembership({
-      workspaceId: actor.workspace.id,
-      principalId: principal.id,
-    })
-    if (!membership || membership.role !== 'guest' || membership.status !== 'active') {
-      throw validation('Resource guests require an active workspace guest membership')
-    }
-    return await this.repository.createResourceGuest({
-      id: this.id(),
-      workspaceId: actor.workspace.id,
-      resourceType: required(args.resourceType, 'resourceType'),
-      resourceId: required(args.resourceId, 'resourceId'),
-      principalId: principal.id,
-      accessRole: args.accessRole,
-      status: 'active',
-      grantedByPrincipalId: actor.principal.id,
-      // An explicit expiry wins; otherwise workspace policy decides.
-      expiresAt: args.expiresAt ?? await this.resolveGuestExpiry({
-        actorUserId: args.actorUserId,
-        workspaceId: actor.workspace.id,
-      }),
-      now: this.now(),
-    })
-  }
-
   async bindResource(args: {
     actorUserId: string
     workspaceId: string
@@ -980,7 +929,6 @@ export class WorkspaceService {
   }): Promise<void> {
     const access = await this.requireActiveMember(args)
     if (canManageWorkspace(access.membership.role)) return
-    if (access.membership.role === 'guest') throw forbidden()
     const policy = await this.resolveSharingPolicy(access.workspace.id)
     const allowed = args.capability === 'channel'
       ? policy.memberCanCreateChannels
@@ -1038,17 +986,6 @@ export class WorkspaceService {
     }
   }
 
-  /** Guest expiry from policy, so every guest path uses one rule. */
-  async resolveGuestExpiry(args: {
-    actorUserId: string
-    workspaceId: string
-  }): Promise<number | undefined> {
-    const access = await this.requireActiveMember(args)
-    const policy = await this.resolveSharingPolicy(access.workspace.id)
-    if (!policy.guestExpirationDays) return undefined
-    return this.now() + policy.guestExpirationDays * 24 * 60 * 60 * 1_000
-  }
-
   /**
    * Called before a resource is made publicly linkable. Public links are
    * General access, never a collaborator grant, so they follow workspace policy
@@ -1077,53 +1014,12 @@ export class WorkspaceService {
     return stored ?? { ...DEFAULT_WORKSPACE_POLICY, workspaceId, updatedAt: 0 }
   }
 
-  async listResourceGuests(args: {
-    actorUserId: string
-    workspaceId: string
-  }): Promise<WorkspaceResourceGuest[]> {
-    const actor = await this.requireManager(args)
-    return await this.repository.listResourceGuests({
-      workspaceId: actor.workspace.id,
-      includeInactive: true,
-    })
-  }
-
-  async revokeResourceGuest(args: {
-    actorUserId: string
-    workspaceId: string
-    resourceGuestId: string
-  }): Promise<WorkspaceResourceGuest> {
-    const actor = await this.requireManager(args)
-    const guests = await this.repository.listResourceGuests({
-      workspaceId: actor.workspace.id,
-      includeInactive: true,
-    })
-    const guest = guests.find((candidate) => candidate.id === args.resourceGuestId)
-    if (!guest) throw notFound()
-    const revoked = await this.repository.revokeResourceGuest({
-      id: guest.id,
-      revokedByPrincipalId: actor.principal.id,
-      now: this.now(),
-    })
-    if (!revoked) throw notFound()
-    return revoked
-  }
-
   private async requireManager(args: {
     actorUserId: string
     workspaceId: string
   }): Promise<WorkspaceAccess> {
     const access = await this.requireActiveMember(args)
     if (!canManageWorkspace(access.membership.role)) throw forbidden()
-    return access
-  }
-
-  private async requireWorkspaceCreator(args: {
-    actorUserId: string
-    workspaceId: string
-  }): Promise<WorkspaceAccess> {
-    const access = await this.requireActiveMember(args)
-    if (access.membership.role === 'guest') throw forbidden()
     return access
   }
 
@@ -1231,7 +1127,6 @@ function validatePolicyPatch(patch: WorkspaceSharingPolicyPatch): WorkspaceShari
       throw new WorkspaceServiceError(`${key} must be members or admins`, 400, 'validation')
     }
   }
-  assertRange(validated.guestExpirationDays, 'guestExpirationDays', 1, 365)
   assertRange(validated.channelRetentionDays, 'channelRetentionDays', 1, 3_650)
   assertRange(validated.agentRunBudgetCents, 'agentRunBudgetCents', 0, 100_000_000)
   if (

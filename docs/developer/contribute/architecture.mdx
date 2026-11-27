@@ -16,14 +16,13 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
 - `apps/admin/**` holds the standalone operator console (see `internal/develop/admin-console.md`): its own Next.js app, WorkOS sign-in, session cookie, and a single `convex-admin` module that reaches the `admin/console:*` Convex functions with `ADMIN_API_SECRET`. `apps/admin` may not import `src/**` and `src/**` may not import it back.
 - `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/release/` (hosted build wrappers and trusted PR preview lifecycle control), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` stays at root. The retired staging ignore-build script is removed; `overlay-landing` uses native Git deployment and the hosted build wrapper.
+- Every Overlay surface lives in this one repository. The web app and its backend (`src/`, `convex/`) sit at the root and are authoritative; the other surfaces are `apps/desktop/**` (Electron Mac app), `apps/mobile/**` (Expo iOS app) and `apps/chrome/**` (Chrome extension), beside `apps/admin/**`. Each app imports shared code from `packages/*` (and mobile from `src/shared/*` and `convex/_generated`) instead of copying it, so a change to a shared contract, package or API is made and checked on every surface in one change. Each app keeps its own `package.json`, lockfile, CI workflow and release path; root lint, typecheck, tests, Docker and Vercel builds skip them, and the web production build is skipped when a commit only touches them. See `internal/develop/surfaces.md`.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 - `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
-  and the list-page system: `Tile`/`TileGrid`/`TileIcon`/`TileSkeleton`/`CreateTile` for grid
-  tiles, `ListRow` for list rows, and `HeaderSearch` for collapsible header search). List pages
-  (Files, Agents, Extensions) must render their tiles, rows, and headers
-  through these primitives instead of hand-rolled markup so spacing, radii, hover language, and
-  dark-mode surfaces stay uniform.
+  `HeaderSearch` for collapsible header search, and loading skeletons in `@overlay/ui/feedback`). A
+  skeleton mirrors the geometry of the rows it stands in for, so spacing, radii and dark-mode
+  surfaces stay uniform and nothing shifts when data arrives.
 - `packages/overlay-agent-bridge-protocol/**` owns the vendor-neutral, versioned Zod wire
   protocol between Overlay and connected execution environments.
 - `packages/overlay-agent-host/**` is the portable outbound-only host executable. It owns local
@@ -302,8 +301,8 @@ analytics.
 ## Convex
 
 Development commonly uses a separate dev deployment from production. Follow
-[Worktree Staging QA](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/worktree-staging-qa.md) and
-[Convex Workflow](https://github.com/LayerNorm/overlay-web/blob/main/internal/develop/convex-workflow.md) for the deployment lane that matches
+[Worktree Staging QA](https://github.com/LayerNorm/overlay/blob/main/internal/develop/worktree-staging-qa.md) and
+[Convex Workflow](https://github.com/LayerNorm/overlay/blob/main/internal/develop/convex-workflow.md) for the deployment lane that matches
 the current revision. Deploy Convex only from the matching release worktree:
 
 ```bash

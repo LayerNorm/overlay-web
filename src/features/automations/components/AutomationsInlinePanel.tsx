@@ -50,7 +50,8 @@ export function AutomationsInlinePanel({
     for (const [id, name] of renames) rows = applyAutomationRename(rows, id, name)
     return rows
   }, [live, renames])
-  const loading = live === undefined
+  // Rows wait for the agent directory too, so an agent's creature is the first icon shown, not a Workflow icon it replaces.
+  const loading = live === undefined || directory.status === 'loading'
   const forgetRename = useCallback((id: string) => setRenames((current) => {
     if (!current.has(id)) return current
     const next = new Map(current)
@@ -106,7 +107,7 @@ export function AutomationsInlinePanel({
     }
   }
 
-  if (loading) return <SidebarListSkeleton rows={3} />
+  if (loading) return <SidebarListSkeleton rows={3} icon="round" className="gap-px" />
 
   return (
     <div className="space-y-0.5">

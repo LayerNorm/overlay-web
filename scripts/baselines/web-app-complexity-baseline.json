@@ -1261,13 +1261,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/api/v1/automations/project-events/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 4,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/api/v1/automations/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 15,

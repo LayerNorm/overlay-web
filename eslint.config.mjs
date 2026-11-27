@@ -166,9 +166,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    // Every app under apps/ runs its own lint; the root config covers web, convex and packages.
     "apps/**",
-    "overlay-desktop/**",
-    "overlay-chrome/dist/**",
     "next-env.d.ts",
   ]),
 ]);

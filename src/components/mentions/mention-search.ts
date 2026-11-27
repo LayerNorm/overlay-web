@@ -87,6 +87,7 @@ export async function searchMentions(
       name: file.name || 'Untitled',
       description: file.kind === 'note' ? 'note' : file.kind || file.mimeType || 'file',
       icon: 'FileText',
+      meta: { scope: file.scope },
     }))),
     ...category('connector', 'Connectors', 'Plug', matchingConnectors),
     ...category('automation', 'Automations', 'Zap', result.automations.map((automation) => ({
@@ -95,6 +96,7 @@ export async function searchMentions(
       name: automation.name || 'Untitled automation',
       description: automation.description || '',
       icon: 'Zap',
+      meta: { scope: automation.scope },
     }))),
     ...category('skill', 'Skills', 'Sparkles', result.skills.map((skill) => ({
       type: 'skill' as const,
@@ -102,6 +104,7 @@ export async function searchMentions(
       name: skill.name,
       description: skill.description || '',
       icon: 'Sparkles',
+      meta: { scope: skill.scope },
     }))),
     ...category('mcp', 'MCP Servers', 'Server', result.mcpServers.map((server) => ({
       type: 'mcp' as const,
@@ -109,12 +112,14 @@ export async function searchMentions(
       name: server.name,
       description: server.description || '',
       icon: 'Server',
+      meta: { scope: server.scope },
     }))),
     ...category('chat', 'Chats', 'MessageSquare', result.chats.map((chat) => ({
       type: 'chat' as const,
       id: chat.id,
       name: chat.title || 'Untitled chat',
       icon: 'MessageSquare',
+      meta: { scope: chat.scope },
     }))),
   ]
 }

@@ -62,13 +62,19 @@ function createPublicNetworkLookup(): LookupFunction {
 // DNS validation happens inside the connector lookup used for the socket. This
 // pins the connection to the addresses that were checked and prevents a DNS
 // rebinding change between a preflight lookup and the actual request.
+export const BYOK_STREAM_SILENCE_TIMEOUT_MS = 780_000
+
 const providerDispatcher = new Agent({
   connect: {
     lookup: createPublicNetworkLookup(),
   },
   connectTimeout: 10_000,
   headersTimeout: 60_000,
-  bodyTimeout: 300_000,
+  // Longest silence allowed between response chunks. OpenAI-compatible endpoints
+  // send nothing while a reasoning model thinks or builds a large tool call, which
+  // can exceed five minutes. Kept just under the 800-second workflow step limit so a
+  // truly stalled stream still ends as a classified provider timeout.
+  bodyTimeout: BYOK_STREAM_SILENCE_TIMEOUT_MS,
   keepAliveMaxTimeout: 30_000,
   maxResponseSize: MAX_PROVIDER_RESPONSE_BYTES,
   connections: 10,

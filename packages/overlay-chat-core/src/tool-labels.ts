@@ -205,6 +205,9 @@ export function getDescriptiveToolLabel(
     read_file: 'Reading a file',
     write_file: 'Writing a file',
     create_folder: 'Creating a folder',
+    move_to_workspace: 'Moving to Workspace',
+    archive_item: 'Archiving',
+    restore_item: 'Restoring',
     move_file: 'Moving a file',
     list_chats: 'Looking through your chats',
     read_chat: 'Reading a chat',
@@ -237,6 +240,7 @@ export function getDescriptiveToolLabel(
     computer_input: 'Interacting with the computer',
     computer_browser: 'Controlling the browser on the computer',
     computer_terminal: 'Managing a terminal session on the computer',
+    computer_recording: 'Recording the computer screen',
   }
   if (map[toolName]) return map[toolName]!
 

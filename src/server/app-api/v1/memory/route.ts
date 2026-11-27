@@ -10,9 +10,9 @@ import { agentIdFromMemoryOwnerId, agentMemoryOwnerId, isAgentMemoryOwnerId } fr
 /**
  * Resolves who owns the memory this request writes.
  *
- * A memory is normally owned by the authenticated user. An agent turn instead
- * passes the agent's memory owner id so the agent accumulates its own memory
- * rather than writing into the memory of whoever happened to summon it. The id
+ * A memory is normally owned by the authenticated user. An agent turn in a
+ * workspace context instead passes the agent's memory owner id, so what it learns
+ * there is workspace knowledge (`memoryOwnerForPlace`). The id
  * is never trusted as given: it only resolves if it names a live agent in the
  * caller's active workspace, which is also what keeps the row inside a
  * workspace the caller can already see.
@@ -31,6 +31,10 @@ async function resolveMemoryOwner(
   })
   const agent = agents.agents.find((item) => item.id === agentId && !item.archivedAt)
   if (!agent) throw new MemoryServiceError('Unknown agent memory owner', 400)
+  // Only an agent the whole workspace sees keeps workspace knowledge (memoryOwnerForPlace).
+  if (agent.visibility === 'creator' || agent.agentRole === 'personal_chief') {
+    throw new MemoryServiceError('This agent does not keep workspace memories', 400)
+  }
   return { actor: 'agent', userId: agentMemoryOwnerId(agent.id) }
 }
 

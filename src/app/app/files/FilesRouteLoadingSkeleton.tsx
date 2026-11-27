@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import { resolveKnowledgeLayout } from '@overlay/app-core'
-import { FilesRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { FilesRouteSkeleton } from '../_components/PageRouteSkeletons'
 
 export function FilesRouteLoadingSkeleton() {
   const searchParams = useSearchParams()

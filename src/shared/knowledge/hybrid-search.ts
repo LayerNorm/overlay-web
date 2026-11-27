@@ -3,6 +3,8 @@ export type HybridSearchChunk = {
   score: number
   /** Raw vector similarity when the chunk ranked via vector search — absent for lexical-only hits. `score` is the fused RRF value. */
   vecScore?: number
+  /** Personal (only its owner sees it) or Workspace (every member does). */
+  scope?: 'personal' | 'workspace'
   sourceId: string
   sourceKind: 'file' | 'memory' | 'message'
   text: string

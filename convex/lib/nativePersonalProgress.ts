@@ -24,11 +24,14 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
   ])
   if (!conversation || !conversation.workspaceId
     || conversation.workspaceId !== metadata.policy.workspaceId || conversation.deletedAt !== undefined
-    || !user || user.role !== 'user' || user.deletedAt !== undefined
+    || !user || user.deletedAt !== undefined
     || !message || message.role !== 'assistant' || message.status !== 'generating' || message.deletedAt !== undefined
     || [user, message].some(row => row.conversationId !== delivery.conversationId)
-    // The reply always carries the delivery's turn. In an agent thread (room or work) the
-    // person's message keeps its own turn id, so only chat deliveries share one turn.
+    // In an agent thread (room or work) the trigger may be another agent's reply, as
+    // admission allows; every other delivery answers a person's message.
+    || (delivery.mode !== 'room' && delivery.mode !== 'work' && user.role !== 'user')
+    // The reply always carries the delivery's turn. In an agent thread the trigger keeps
+    // its own turn id, so only chat deliveries share one turn.
     || message.turnId !== delivery.turnId
     || (delivery.mode === 'chat' && user.turnId !== delivery.turnId)
     || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)) return null

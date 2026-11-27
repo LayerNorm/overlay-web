@@ -114,7 +114,7 @@ export const linkedThread = query({
   },
 })
 
-/** Who is asking and who a task can be given to. Null for guests and without Work access. */
+/** Who is asking and who a task can be given to. Null without Work access. */
 export const context = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, { workspaceId }) => {

@@ -1,1 +1,1 @@
-export { IntegrationsLoadingRouteSkeleton as default } from '../_components/AppRouteSkeletons'
+export { default } from '../tools/loading'

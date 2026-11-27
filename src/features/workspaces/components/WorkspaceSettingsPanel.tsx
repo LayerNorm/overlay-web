@@ -63,7 +63,7 @@ import { IdentityImageEditor, type IdentityImageChoice } from '@/components/iden
 import { identityRequest } from '@/hooks/useIdentityProfile'
 import { workspaceIconUrl } from '@/shared/workspaces/icon-presets'
 
-const MANAGEMENT_TABS: readonly WorkspaceManagementTab[] = ['people', 'guests', 'teams', 'roles', 'chats-agents']
+const MANAGEMENT_TABS: readonly WorkspaceManagementTab[] = ['people', 'teams', 'roles', 'chats-agents']
 const NO_MANAGEMENT_ITEMS: WorkspaceManagementItem[] = []
 
 export type WorkspaceManagementState =
@@ -155,11 +155,15 @@ export function WorkspaceManagementContent({
 
   if (state.status === 'loading') {
     return (
-      <div className="space-y-3 p-5" aria-label={`Loading ${config.label.toLowerCase()}`}>
+      <div className="divide-y divide-(--border)" role="status" aria-label={`Loading ${config.label.toLowerCase()}`}>
         {[0, 1, 2].map((item) => (
-          <div key={item} className="flex items-center gap-3 rounded-xl border border-(--border) p-3">
-            <span className="h-9 w-9 animate-pulse rounded-lg bg-(--surface-subtle)" />
-            <span className="h-3 w-2/5 animate-pulse rounded-sm bg-(--surface-subtle)" />
+          <div key={item} className="flex min-h-16 items-center gap-3 px-5 py-3" aria-hidden>
+            <span className={`ui-skeleton-line size-9 shrink-0 ${tab === 'teams' ? 'rounded-lg' : 'rounded-full'}`} />
+            <span className="min-w-0 flex-1">
+              <span className="flex h-5 items-center"><span className={`ui-skeleton-line block h-3 rounded-sm ${item === 1 ? 'w-28' : 'w-36'}`} /></span>
+              <span className="mt-0.5 flex h-4 items-center"><span className={`ui-skeleton-line block h-2.5 rounded-sm ${item === 1 ? 'w-44' : 'w-52'}`} /></span>
+            </span>
+            <span className="ui-skeleton-line h-2.5 w-14 shrink-0 rounded-sm" />
           </div>
         ))}
       </div>
@@ -188,8 +192,8 @@ export function WorkspaceManagementContent({
     const actionEnabled = Boolean(
       onPrimaryAction
       && (
-        (tab === 'teams' && state.currentRole !== 'guest')
-        || ((tab === 'people' || tab === 'guests') && state.canManage)
+        tab === 'teams'
+        || (tab === 'people' && state.canManage)
       ),
     )
     return (
@@ -278,7 +282,6 @@ export type WorkspaceSharingPolicyState =
     membersCanTopUp: boolean
     legalHold: boolean
     rolloutStage: WorkspaceRolloutStage
-    guestExpirationDays?: number
     channelRetentionDays?: number
     metrics?: WorkspaceOperationalMetrics
   }
@@ -305,7 +308,6 @@ function policyStateFrom(
     membersCanTopUp: policy.usageTopUpBy === 'members',
     legalHold: policy.legalHold,
     rolloutStage: policy.rolloutStage,
-    guestExpirationDays: policy.guestExpirationDays,
     channelRetentionDays: policy.channelRetentionDays,
     metrics,
   }
@@ -420,8 +422,31 @@ export function WorkspaceSharingPolicySection({
 }) {
   if (state.status === 'loading') {
     return (
-      <div className="space-y-3 p-5" aria-label="Loading sharing & links">
-        <div className="h-16 animate-pulse rounded-xl bg-(--surface-subtle)" />
+      <div className="space-y-3 p-5" role="status" aria-label="Loading sharing & links">
+        {POLICY_TOGGLES.map((toggle) => (
+          <div key={toggle.key} className="flex items-start gap-3 rounded-xl border border-(--border) p-4" aria-hidden>
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-(--border) bg-(--surface-subtle) text-(--muted)">
+              <Link2 size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-(--foreground)">{toggle.label}</p>
+              <p className="mt-1 text-xs leading-5 text-(--muted)">{toggle.description}</p>
+              <p className="mt-2 flex h-[16.5px] items-center"><span className="ui-skeleton-line block h-2 w-24 rounded-sm" /></p>
+            </div>
+            <span className="ui-skeleton-line h-8 w-[74px] shrink-0 rounded-md" />
+          </div>
+        ))}
+        <div className="rounded-xl border border-(--border) p-4" aria-hidden>
+          <p className="text-sm font-medium text-(--foreground)">Rollout and retention</p>
+          <dl className="mt-2 grid gap-2 text-xs text-(--muted) sm:grid-cols-2">
+            {['Rollout stage', 'Channel retention', 'Audit export'].map((label) => (
+              <div key={label}>
+                <dt className="text-(--muted-light)">{label}</dt>
+                <dd className="flex h-4 items-center"><span className="ui-skeleton-line block h-2.5 w-28 rounded-sm" /></dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
     )
   }
@@ -474,12 +499,6 @@ export function WorkspaceSharingPolicySection({
           <div>
             <dt className="text-(--muted-light)">Rollout stage</dt>
             <dd className="text-(--foreground)">{describeRolloutStage(state.rolloutStage)}</dd>
-          </div>
-          <div>
-            <dt className="text-(--muted-light)">Guest expiry</dt>
-            <dd className="text-(--foreground)">
-              {state.guestExpirationDays ? `${state.guestExpirationDays} days` : 'No automatic expiry'}
-            </dd>
           </div>
           <div>
             <dt className="text-(--muted-light)">Channel retention</dt>
@@ -555,7 +574,6 @@ function WorkspaceItemActions({
     return (
       <TeamItemActions
         item={item}
-        canArchive={state.currentRole !== 'guest'}
         onManageTeam={onManageTeam}
         onArchiveTeam={onArchiveTeam}
       />
@@ -625,7 +643,6 @@ function MemberItemActions({
         >
           <option value="member">Member</option>
           <option value="admin">Admin</option>
-          <option value="guest">Guest</option>
           {state.currentRole === 'owner' && state.workspaceKind === 'organization' ? (
             <option value="owner">Owner</option>
           ) : null}
@@ -650,12 +667,10 @@ function MemberItemActions({
 
 function TeamItemActions({
   item,
-  canArchive,
   onManageTeam,
   onArchiveTeam,
 }: {
   item: WorkspaceManagementItem
-  canArchive: boolean
   onManageTeam?(item: WorkspaceManagementItem): void
   onArchiveTeam?(item: WorkspaceManagementItem): void
 }) {
@@ -664,17 +679,15 @@ function TeamItemActions({
       <Button size="sm" variant="ghost" onClick={() => onManageTeam?.(item)}>
         Manage
       </Button>
-      {canArchive ? (
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
-          aria-label={`Archive ${item.name}`}
-          onClick={() => onArchiveTeam?.(item)}
-        >
-          <Archive size={13} />
-        </Button>
-      ) : null}
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-8 w-8"
+        aria-label={`Archive ${item.name}`}
+        onClick={() => onArchiveTeam?.(item)}
+      >
+        <Archive size={13} />
+      </Button>
     </span>
   )
 }
@@ -686,7 +699,7 @@ function unavailableActionTitle(tab: WorkspaceSettingsTab): string {
 }
 
 type WorkspacePanelAction =
-  | { type: 'invite'; guest: boolean }
+  | { type: 'invite' }
   | { type: 'create-team' }
   | { type: 'manage-team'; team: WorkspaceManagementItem }
   | { type: 'remove-member'; item: WorkspaceManagementItem }
@@ -782,7 +795,7 @@ export function WorkspaceSettingsPanel({
     setAction(
       activeTab === 'teams'
         ? { type: 'create-team' }
-        : { type: 'invite', guest: activeTab === 'guests' },
+        : { type: 'invite' },
     )
   }
 
@@ -844,6 +857,8 @@ export function WorkspaceSettingsPanel({
         status={workspaceStatus}
         error={workspaceError}
         onRetry={refreshWorkspaces}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
       />
     )
   }
@@ -851,8 +866,8 @@ export function WorkspaceSettingsPanel({
   const showHeaderPrimaryAction = activeTab !== 'sharing' && activeTab !== 'billing'
     && state.status === 'ready'
     && (
-      (activeTab === 'teams' && state.currentRole !== 'guest')
-      || ((activeTab === 'people' || activeTab === 'guests') && state.canManage)
+      activeTab === 'teams'
+      || (activeTab === 'people' && state.canManage)
     )
   const headerPrimaryLabel = TABS.find((tab) => tab.id === activeTab)?.action
   const refresh = () => setRefreshKey((current) => current + 1)
@@ -909,17 +924,32 @@ function WorkspaceSettingsGate({
   status,
   error,
   onRetry,
+  activeTab,
+  onTabChange,
 }: {
   status: WorkspaceLifecycleStatus
   error: string | null
   onRetry(): Promise<void>
+  activeTab: WorkspaceSettingsTab
+  onTabChange(tab: WorkspaceSettingsTab): void
 }) {
   if (status === 'loading' || status === 'idle') {
+    // The loaded panel's frame: workspace header, real tabs, and the open tab's own loading rows.
     return (
-      <div className="flex min-h-72 items-center justify-center text-sm text-(--muted)">
-        <Loader2 size={16} className="mr-2 animate-spin" />
-        Loading workspace…
-      </div>
+      <section className="overflow-hidden rounded-2xl border border-(--border) bg-(--surface-elevated)" aria-label="Loading workspace">
+        <header className="flex items-center gap-3 px-5 py-4" aria-hidden>
+          <span className="ui-skeleton-line size-10 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1">
+            <div className="flex h-5 items-center"><span className="ui-skeleton-line block h-3 w-32 rounded-sm" /></div>
+            <div className="mt-0.5 flex h-4 items-center"><span className="ui-skeleton-line block h-2.5 w-24 rounded-sm" /></div>
+          </div>
+          <span className="ui-skeleton-line h-[25px] w-16 shrink-0 rounded-full" />
+        </header>
+        <WorkspaceSettingsTabs activeTab={activeTab} onTabChange={onTabChange} />
+        {activeTab === 'sharing'
+          ? <WorkspaceSharingPolicySection state={{ status: 'loading' }} />
+          : <WorkspaceManagementContent tab={activeTab} state={{ status: 'loading' }} />}
+      </section>
     )
   }
 
@@ -1245,7 +1275,6 @@ function WorkspaceActionDialogs({
       {action?.type === 'invite' ? (
       <InviteWorkspaceDialog
         open
-        guest={action.guest}
         busy={actionBusy}
         error={actionError}
         invitePath={invitePath}

@@ -1,9 +1,9 @@
 # Overlay
 
 > Overlay is the control plane for AI employees: one workspace to create,
-> deploy, and manage every AI agent in one place. Bring your own agents
-> (Codex, Claude Code, Hermes) or run Overlay's own, and put them to work in
-> one shared workspace on the web and desktop. Built by LayerNorm Inc.
+> deploy, and manage AI agents in one place. Give Overlay agents instructions,
+> tools, models and computers in a shared workspace on the web and desktop.
+> Built by LayerNorm Inc.
 > Open source under AGPL-3.0, with hosted and self-hosted options.
 
 Overlay unifies AI agents: a single roster, shared context and memory,
@@ -19,10 +19,24 @@ card.
 - [Manifesto](https://overlay.works/manifesto): why AI should amplify human potential
 - [Self-hosting](https://overlay.works/self-hosting): run Overlay on infrastructure you control
 
+## Compare
+
+- [All comparisons](https://overlay.works/compare): Overlay alternatives and product comparisons
+- [Best open-source Devin alternatives](https://overlay.works/compare/devin-alternatives): Overlay, OpenHands and Devin compared
+- [Overlay vs Devin](https://overlay.works/compare/devin): licence, self-hosting, multiplayer, pricing
+- [Overlay vs OpenHands](https://overlay.works/compare/openhands): control plane for AI employees vs coding agent platform
+- [Overlay vs Lindy](https://overlay.works/compare/lindy): open-source AI employees vs hosted per-seat AI employees
+- [How to run AI employees](https://overlay.works/compare/ai-employee-platforms): what a control plane for AI agents does
+
 ## Docs
 
 - [Documentation](https://overlay.works/docs): product and developer documentation
+- [Agent tools](https://overlay.works/docs/help/tools): what Overlay agents can do and how tool permissions work
+- [Connect ChatGPT, Claude and other apps](https://overlay.works/docs/help/connect-other-apps): use an Overlay workspace from any MCP app
+- [Plans and credit](https://overlay.works/docs/help/billing): free workspaces, $8-$500/month usage credit
+- [Self-hosting overview](https://overlay.works/docs/self-hosting/overview): run Overlay yourself
+- [Full context for LLMs](https://overlay.works/llms-full.txt): a single-file summary of Overlay, pricing and comparisons
 
 ## Source
 
-- [GitHub](https://github.com/LayerNorm/overlay-web): source code (AGPL-3.0)
+- [GitHub](https://github.com/LayerNorm/overlay): source code (AGPL-3.0)

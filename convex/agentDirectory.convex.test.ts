@@ -14,7 +14,7 @@ async function fixture() {
   const t = convexTest(schema, modules)
   await t.run(async ctx => {
     await ctx.db.insert('workspaces', { workspaceId: 'ws', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 })
-    const members: Array<[string, 'owner' | 'member' | 'guest']> = [['owner', 'owner'], ['alice', 'member'], ['bob', 'member'], ['guest', 'guest']]
+    const members: Array<[string, 'owner' | 'member']> = [['owner', 'owner'], ['alice', 'member'], ['bob', 'member']]
     for (const [userId, role] of members) {
       await ctx.db.insert('workspacePrincipals', { workspaceId: 'ws', principalId: `p-${userId}`, userId, type: 'human', displayName: userId, createdAt: 1, updatedAt: 1 })
       await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws', principalId: `p-${userId}`, membershipId: `m-${userId}`, role, status: 'active', joinedAt: 1, updatedAt: 1 })
@@ -46,14 +46,14 @@ test('members see shared agents, and only the creator sees a creator-only agent'
   expect(await as('alice').query(get, { workspaceId: 'ws', agentId: 'archived' })).toBeNull()
 })
 
-test('edit rights follow the creator and workspace managers, and guests cannot create', async () => {
+test('edit rights follow the creator and workspace managers, and every member can create', async () => {
   const { as } = await fixture()
   const canEdit = async (subject: string) =>
     (await as(subject).query(list, { workspaceId: 'ws' }) as Listed).agents.find(agent => agent.id === 'shared')?.canEdit
   expect(await canEdit('alice')).toBe(true)
   expect(await canEdit('owner')).toBe(true)
   expect(await canEdit('bob')).toBe(false)
-  expect((await as('guest').query(list, { workspaceId: 'ws' }) as Listed).canCreate).toBe(false)
+  expect((await as('bob').query(list, { workspaceId: 'ws' }) as Listed).canCreate).toBe(true)
   expect((await as('bob').query(list, { workspaceId: 'ws' }) as Listed).agents[0]?.createdByDisplayName).toBe('alice')
 })
 
@@ -66,14 +66,26 @@ test('non-members and signed-out callers read nothing and cannot provision chief
   await expect(as('stranger').mutation(ensureChiefs, { workspaceId: 'ws' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
 
-test('ensureChiefs provisions the chiefs once and the guest call is a no-op', async () => {
+test('ensureChiefs provisions the workspace chief once', async () => {
   const { as } = await fixture()
-  await as('guest').mutation(ensureChiefs, { workspaceId: 'ws' })
   expect(ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)).toEqual(['private', 'shared'])
   await as('alice').mutation(ensureChiefs, { workspaceId: 'ws' })
   const first = ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)
   await as('alice').mutation(ensureChiefs, { workspaceId: 'ws' })
   expect(ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)).toEqual(first)
   expect(first).toContain('workspace-chief-ws')
-  expect(first.length).toBeGreaterThan(2)
+  expect(first).toEqual(['workspace-chief-ws', 'private', 'shared'])
+})
+
+test('includePersonal creates only the caller’s own personal chief, visible only to them', async () => {
+  const { as } = await fixture()
+  await as('alice').mutation(ensureChiefs, { workspaceId: 'ws' })
+  expect(ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)).not.toContain('personal-chief-ws-alice')
+  await as('alice').mutation(ensureChiefs, { workspaceId: 'ws', includePersonal: true })
+  await as('alice').mutation(ensureChiefs, { workspaceId: 'ws', includePersonal: true })
+  const alice = ids(await as('alice').query(list, { workspaceId: 'ws' }) as Listed)
+  expect(alice.filter(id => id.startsWith('personal-chief-'))).toEqual(['personal-chief-ws-alice'])
+  const bob = ids(await as('bob').query(list, { workspaceId: 'ws' }) as Listed)
+  expect(bob.some(id => id.startsWith('personal-chief-'))).toBe(false)
+  expect(await as('owner').query(get, { workspaceId: 'ws', agentId: 'personal-chief-ws-alice' })).toBeNull()
 })

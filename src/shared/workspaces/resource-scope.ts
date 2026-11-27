@@ -46,7 +46,7 @@ export type ScopedRow = {
 export type ResourceViewer = {
   userId: string
   /** The viewer's active role in the workspace; null when they are not an active member. */
-  role: 'owner' | 'admin' | 'member' | 'guest' | null
+  role: 'owner' | 'admin' | 'member' | null
 }
 
 function isManager(viewer: ResourceViewer): boolean {
@@ -68,7 +68,7 @@ export function rowView(row: ScopedRow): ResourceView {
   return row.archivedAt !== undefined ? 'archived' : rowScope(row)
 }
 
-/** Personal rows are readable by their creator only; workspace rows by every active member (not guests). */
+/** Personal rows are readable by their creator only; workspace rows by every active member. */
 export function canReadResource(row: ScopedRow, viewer: ResourceViewer): boolean {
   if (!isMember(viewer)) return false
   return rowScope(row) === 'workspace' || row.userId === viewer.userId
@@ -97,12 +97,12 @@ export function canEditResource(row: ScopedRow, viewer: ResourceViewer): boolean
   return rowScope(row) === 'workspace' && isManager(viewer)
 }
 
-export type MoveDenial = 'not_creator' | 'archived' | 'same_scope' | 'move_disabled' | 'workspace_creation_restricted'
+export type MoveDenial = 'one_way' | 'not_creator' | 'archived' | 'same_scope' | 'move_disabled' | 'workspace_creation_restricted'
 
 /**
- * Moving an item between Personal and Workspace: only its creator, only when the policy lets members move items
- * (owners and admins always can, for items they created), and moving *to* Workspace needs permission to create there.
- * No one, admins included, moves someone else's item.
+ * Moving an item from Personal to Workspace: only its creator, only when the policy lets members move items (owners and
+ * admins always can, for items they created), and only with permission to create in Workspace. Moves are one-way:
+ * nothing moves back to Personal, since others may already rely on it. No one, admins included, moves someone else's item.
  */
 export function checkMoveResource(
   kind: ResourceKind,
@@ -111,6 +111,7 @@ export function checkMoveResource(
   viewer: ResourceViewer,
   policy: ResourceScopePolicy = DEFAULT_RESOURCE_SCOPE_POLICY,
 ): { ok: true } | { ok: false; reason: MoveDenial } {
+  if (to === 'personal') return { ok: false, reason: 'one_way' }
   if (!isMember(viewer) || row.userId !== viewer.userId) return { ok: false, reason: 'not_creator' }
   if (row.archivedAt !== undefined) return { ok: false, reason: 'archived' }
   if (rowScope(row) === to) return { ok: false, reason: 'same_scope' }
@@ -121,12 +122,12 @@ export function checkMoveResource(
   return { ok: true }
 }
 
-/** What an item row offers the viewer: the scope they may move it to, and whether they may archive or restore it. */
-export type ScopeItemOptions = { moveTo: ResourceScope | null; canArchive: boolean; canRestore: boolean }
+/** What an item row offers the viewer: whether they may move it to Workspace, archive it, or restore it. */
+export type ScopeItemOptions = { moveTo: 'workspace' | null; canArchive: boolean; canRestore: boolean }
 
 /**
- * The same rules the server enforces, as the buttons to show: only what will work. Move goes to the other scope;
- * archive and restore are for whoever may edit the item.
+ * The same rules the server enforces, as the buttons to show: only what will work. Only a personal item offers a move
+ * (to Workspace); archive and restore are for whoever may edit the item.
  */
 export function scopeItemOptions(
   kind: ResourceKind,
@@ -136,9 +137,8 @@ export function scopeItemOptions(
 ): ScopeItemOptions {
   const archived = row.archivedAt !== undefined
   const editable = canEditResource(row, viewer)
-  const to: ResourceScope = rowScope(row) === 'workspace' ? 'personal' : 'workspace'
-  const move = checkMoveResource(kind, row, to, viewer, policy)
-  return { moveTo: move.ok ? to : null, canArchive: editable && !archived, canRestore: editable && archived }
+  const move = rowScope(row) === 'personal' && checkMoveResource(kind, row, 'workspace', viewer, policy).ok
+  return { moveTo: move ? 'workspace' : null, canArchive: editable && !archived, canRestore: editable && archived }
 }
 
 /** The fields to write when archiving: the row remembers who archived it and from which scope. */
@@ -163,14 +163,21 @@ export function parseResourceScope(value: unknown): ResourceScope | undefined {
 /** Plain-language message for a failed move/archive/restore reason. */
 export function scopeErrorMessage(reason: string): string {
   switch (reason) {
+    case 'one_way': return "Items can't move back to Personal."
+    case 'connector_reconnect_for_workspace': return 'A connected account stays yours. Connect a workspace account instead.'
+    case 'automation_agent_personal': return 'Its agent is only visible to you. Move the agent to the workspace too.'
+    case 'automation_agent_not_yours': return 'Its agent is only visible to the person who made it, so this automation cannot move to the workspace.'
+    case 'automation_agent_chief': return 'Your Chief stays in Personal. Choose a workspace agent for this automation first.'
+    case 'automation_agent_missing': return 'Its agent no longer exists. Choose another agent first.'
     case 'not_creator': return 'Only the person who created this can move it.'
     case 'archived': return 'Restore it first.'
     case 'same_scope': return 'It is already there.'
-    case 'move_disabled': return 'This workspace does not let members move items between Personal and Workspace.'
+    case 'move_disabled': return 'This workspace does not let members move items to Workspace.'
     case 'workspace_creation_restricted': return 'Only owners and admins can create this in the workspace.'
     case 'already_archived': return 'It is already archived.'
     case 'not_archived': return 'It is not archived.'
     case 'not_found': return 'Not found.'
+    case 'workspace_items_only': return 'That item is Personal. In a room others can read, or a workspace automation, only Workspace items can be changed.'
     default: return 'You do not have access to do that.'
   }
 }

@@ -1,4 +1,4 @@
-import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { ChatRouteSkeleton } from '@/features/chat/components/ChatSkeletons'
 
 export default function Loading() {
   return <ChatRouteSkeleton mode="automate" />

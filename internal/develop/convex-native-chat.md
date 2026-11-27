@@ -233,6 +233,9 @@ Only chat deliveries share one turn id between the person's message and the repl
 agent threads (room and work) give the person's message its own turn id, so the
 projection matches only the reply's turn there. Requiring both once skipped every
 agent-thread reply, which then showed tool rows and only the latest sentence.
+An agent thread's trigger may also be another agent's reply (admission accepts
+any message in the conversation), so only chat, automation and other non-agent
+deliveries require the trigger to be a person's message.
 The browser places live stream text before the trailing tool rows that native tool
 progress stores for the running call (they have no part `id`; settled transcript
 parts do), so a sentence stays ahead of the tool it starts.

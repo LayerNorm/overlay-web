@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Bell, Loader2, Plus, Search } from 'lucide-react'
 import { cn } from '@overlay/ui'
 import { Button, PanelResizeHandle, Sidebar, SidebarContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@overlay/ui/primitives'
@@ -11,7 +11,9 @@ import { PageSections } from './PageSections'
 import { SettingsSidebarNav } from './SettingsSidebarNav'
 import { publishPageSubviews } from './pageSubviewStore'
 import { orderSidebarItems } from './CustomizeSidebarDialog'
-import { groupMoreItems, MoreMenu, NavRow, ScopeToggle, scopeChildren, useCollapseShortcut, type UnifiedSidebarProps } from './UnifiedSidebar'
+import { RailModeSwitch } from './ModeSwitch'
+import type { PanelScope } from '../types'
+import { groupMoreItems, MoreMenu, NavRow, scopeChildren, useCollapseShortcut, type UnifiedSidebarProps } from './UnifiedSidebar'
 
 const MORE_GROUPS = [{ ids: ['files', 'extensions', 'automations'] }]
 
@@ -62,7 +64,7 @@ const ignoreResizing = () => {}
 /** The rail stays mounted and usable while only the contextual panel collapses. */
 export function DoubleSidebar({
   railBrand, title, collapsed, onCollapsedChange, items, footerItems = [], panelKind,
-  panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, activityOnly, onToggleActivity, helpMenu, scope,
+  panelNav, panelAction, sectionActions, renderSection, sectionRows, onSearch, activityOnly, onToggleActivity, scope,
   account, keyboardShortcut = false, resizable = false, settingsGroups, customization, children,
   className, panelId, themePreset,
 }: DoubleSidebarProps) {
@@ -73,6 +75,12 @@ export function DoubleSidebar({
   const panelHadFocusRef = useRef(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const scopedNav = settingsNav ? undefined : panelNav
+  // The mode applies to every section; Settings has no scoped nav, so it only remembers the choice.
+  const changeScope = (next: PanelScope) => {
+    if (next === scope) return
+    if (scopedNav) scopedNav.onSelect(next)
+    else rememberScope(next)
+  }
   const setCollapsed = (next: boolean) => {
     if (next && panelRef.current?.contains(document.activeElement)) panelHadFocusRef.current = true
     onCollapsedChange(next)
@@ -123,7 +131,8 @@ export function DoubleSidebar({
           </nav>
         </SidebarContent>
         <div className="mt-auto flex flex-col gap-1">
-          <SidebarMenu className="gap-1">{footerItems.map((item) => item.id === 'help' && helpMenu ? <Fragment key={item.id}>{helpMenu}</Fragment> : <NavRow key={item.id} item={item.id === 'settings' ? select(item) : item} collapsed />)}</SidebarMenu>
+          <SidebarMenu className="gap-1">{footerItems.map((item) => <NavRow key={item.id} item={item} collapsed />)}</SidebarMenu>
+          <RailModeSwitch scope={scope} onChange={changeScope} />
           {account}
         </div>
       </Sidebar>
@@ -144,7 +153,6 @@ export function DoubleSidebar({
             {onSearch ? <DelayedTooltip label="Search" side="bottom"><Button variant="ghost" size="icon" aria-label={`Search ${title.toLowerCase()}`} onClick={onSearch} className="size-8 text-(--muted)"><Search size={16} aria-hidden /></Button></DelayedTooltip> : null}
             {panelAction ? <DelayedTooltip label={panelAction.label} side="bottom"><Button variant="ghost" size="icon" aria-label={panelAction.label} onClick={panelAction.onClick} className="size-8 text-(--muted)"><Plus size={16} aria-hidden /></Button></DelayedTooltip> : null}
           </div>
-          {!settingsNav ? <ScopeToggle scope={scope} workspaceLocked={false} onChange={(next) => { if (next !== scope) { if (scopedNav) scopedNav.onSelect(next); else rememberScope(next) } }} /> : null}
           <SidebarContent className="pb-3">
             {settingsNav ? <SettingsSidebarNav nav={settingsNav} collapsed={false} onBack={items.find((item) => item.id === 'settings-close')?.onSelect} settingsGroups={settingsGroups} /> : (
               <>

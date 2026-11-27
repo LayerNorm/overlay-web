@@ -7,16 +7,20 @@ import { Button } from '@overlay/ui/primitives'
 
 export function SidebarAccountMenu({
   usageMeters,
+  extraItems,
   itemPaddingClass = 'py-2',
   onSignOut,
 }: {
   usageMeters?: ReactNode
+  /** App actions shown between the usage meters and Sign out (theme, Settings, help). */
+  extraItems?: ReactNode
   itemPaddingClass?: string
   onSignOut: () => void
 }) {
   return (
     <>
       {usageMeters}
+      {extraItems}
       <div className="border-t border-(--border)">
         <Button variant="ghost"
           type="button"

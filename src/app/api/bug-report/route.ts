@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       }
       const title = `Bug report: ${description.trim().split('\n')[0].slice(0, 80)}`
       const issueBody = `Reported from Overlay.\n\n<pre>${escapeHtml(description.trim())}</pre>${links.length ? `\n\nAttachments (public download links):\n${links.join('\n')}` : ''}`
-      const response = await fetch('https://api.github.com/repos/LayerNorm/overlay-web/issues', {
+      const response = await fetch('https://api.github.com/repos/LayerNorm/overlay/issues', {
         method: 'POST',
         headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, body: issueBody }),
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       })
       if (!response.ok) throw new Error(`GitHub rejected bug report (${response.status})`)
       const issue = await response.json() as { html_url?: string; number?: number }
-      if (!issue.html_url?.startsWith('https://github.com/LayerNorm/overlay-web/issues/') || !issue.number) throw new Error('GitHub returned an invalid issue')
+      if (!issue.html_url?.startsWith('https://github.com/LayerNorm/overlay/issues/') || !issue.number) throw new Error('GitHub returned an invalid issue')
 
       let emailSent = false
       try {

@@ -11,7 +11,6 @@ import {
   Folder,
   Hash,
   ListChecks,
-  Loader2,
   MessageCircle,
   MessageSquare,
   NotebookText,
@@ -210,13 +209,7 @@ export function ArchivedSettings() {
     }
   }
 
-  if (items === null || nativePersonal.archived.status === 'loading') {
-    return (
-      <div className="flex min-h-48 items-center justify-center text-(--muted)">
-        <Loader2 size={18} className="animate-spin" aria-label="Loading archived items" />
-      </div>
-    )
-  }
+  const loading = items === null || nativePersonal.archived.status === 'loading'
 
   return (
     <div className="space-y-3">
@@ -248,14 +241,32 @@ export function ArchivedSettings() {
           Could not load archived {reportedFailedSources.join(', ')}. The rest are shown below.
         </p>
       ) : null}
-      {visible.length === 0 ? (
+      {loading ? (
+        // The list card's own geometry: the h-10 header row, then two-line item rows.
+        <div className="overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)" role="status" aria-label="Loading archived items">
+          <div className="flex h-10 items-center gap-3 border-b border-(--border) px-3" aria-hidden>
+            <div className="ui-skeleton-line size-3.5 rounded-sm" />
+            <div className="ui-skeleton-line h-2.5 w-14" />
+          </div>
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="flex items-center gap-3 border-b border-(--border) px-3 py-2 last:border-b-0" aria-hidden>
+              <div className="ui-skeleton-line size-3.5 rounded-sm" />
+              <div className="ui-skeleton-line size-[15px] rounded-sm" />
+              <div className="min-w-0 flex-1">
+                <div className="flex h-5 items-center"><div className={`ui-skeleton-line h-3 ${['w-1/2', 'w-2/5', 'w-3/5'][index]}`} /></div>
+                <div className="flex h-4 items-center"><div className="ui-skeleton-line h-2.5 w-1/4" /></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-(--border) px-6 py-14 text-center">
           <Archive size={28} strokeWidth={1.25} className="text-(--muted-light)" aria-hidden />
           <p className="text-sm font-medium text-(--foreground)">
-            {items.length === 0 ? 'Nothing archived' : 'No matches'}
+            {items?.length ? 'No matches' : 'Nothing archived'}
           </p>
           <p className="text-xs text-(--muted-light)">
-            {items.length === 0
+            {!items?.length
               ? 'Chats, files, tasks, agents, extensions, and automations you archive show up here.'
               : 'Try another kind or search.'}
           </p>

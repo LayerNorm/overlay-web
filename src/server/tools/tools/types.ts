@@ -1,7 +1,14 @@
 import 'server-only'
 
 import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublicationAuthority'
+import type { Entitlements } from '@/shared/app/app-contracts'
 export type { ToolCategory } from '@overlay/tools-core'
+
+/** Who pays for a paid tool call: checked before it runs and charged after (workspace budget only). */
+export type ToolBillingContext = {
+  entitlements: Entitlements
+  programmaticSubjectId?: string
+}
 
 /**
  * Unified overlay-native tools (Act agent). See build.ts for composition.
@@ -54,12 +61,24 @@ export interface OverlayToolsOptions {
   agentId?: string
   agentPrincipalId?: string
   /**
-   * Set when the turn is in a room others can read (internal/plans/TOOL_SCOPING_PLAN.md, T4): searches return only what the
+   * Set when the turn is in a room others can read (internal/develop/tool-catalog.md, "Rooms others can read"): searches return only what the
    * workspace shares, and the list tools are limited to the Workspace scope, so the person's private items are not
    * brought into the room by default.
    */
   sharedRoom?: boolean
+  /**
+   * Personal items the person included on purpose by @-mentioning them in the message that started this turn. In a
+   * shared room, by-id reads and edits may reach these (and only these) Personal items (`refusesRoomItem`).
+   */
+  includedItemIds?: readonly string[]
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
   idempotencyKey?: string
   artifactPublicationAuthority?: ArtifactPublicationAuthority
+  /** Required by paid tools that charge the workspace directly (`run_api`). */
+  billing?: ToolBillingContext
+  /**
+   * How long run_api waits for an asynchronous Monid run before stopping it. Defaults to ten minutes; callers on a
+   * shorter request limit (MCP, 300 s) pass less so the run is stopped and settled before the request is cut off.
+   */
+  apiRunWaitMs?: number
 }

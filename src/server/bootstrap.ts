@@ -51,7 +51,8 @@ import {
   KnowledgeSearchService,
 } from '@/server/knowledge'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
-import { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
+import { BillingPayerResolutionError, BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
+import { createUnsubscribedEntitlements } from '@overlay/billing'
 import { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { ConvexWorkspaceRepository } from '@/server/workspaces/ConvexWorkspaceRepository'
 import { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentService'
@@ -275,7 +276,13 @@ export function createOverlayServerContext(
     agentOwner: async (workspaceId, agentId) => {
       const agent = await workspaceAgentRepository.get({ agentId, workspaceId })
       return agent
-        ? { visibility: agent.visibility, createdByPrincipalId: agent.createdByPrincipalId }
+        ? {
+            visibility: agent.visibility,
+            createdByPrincipalId: agent.createdByPrincipalId,
+            ...(agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId
+              ? { personalChiefOwnerUserId: agent.chiefOwnerUserId }
+              : {}),
+          }
         : null
     },
     limits: computerLimits,
@@ -310,6 +317,10 @@ export function createOverlayServerContext(
       agentId,
     }),
     directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
+    roomIsShared: async (args) => {
+      const { resolveSharedRoom } = await import('@/server/agents/shared-room')
+      return await resolveSharedRoom(args)
+    },
     claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }>(
       'agents/agentAsks:claimAgentAskByServer',
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
@@ -335,7 +346,11 @@ export function createOverlayServerContext(
     workspaces: workspaceService,
     isEnabled: () => runtimeConfig?.features.computers === true,
     policyLimits: async ({ userId, workspaceId, entitlements: currentPolicy }) => {
-      const entitlements = currentPolicy ?? await chatUsagePolicy.getEntitlements({ userId, workspaceId })
+      // A workspace that never set up billing gets the free limits (one computer), so private threads can run on it.
+      const entitlements = currentPolicy ?? await chatUsagePolicy.getEntitlements({ userId, workspaceId }).catch((error: unknown) => {
+        if (error instanceof BillingPayerResolutionError && error.code === 'workspace_wallet_not_configured') return createUnsubscribedEntitlements()
+        throw error
+      })
       if (!entitlements) throw new Error('connected_agent_entitlements_unavailable')
       return connectedAgentPolicyFor(entitlements)
     },

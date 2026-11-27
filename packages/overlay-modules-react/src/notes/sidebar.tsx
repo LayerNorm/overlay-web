@@ -85,9 +85,11 @@ const NotebookNoteRow = memo(function NotebookNoteRow({
 
 export interface NotebookEmptyStateProps {
   onCreateNote: () => void
+  /** While Notes loads: the same screen with the button disabled. */
+  disabled?: boolean
 }
 
-export function NotebookEmptyState({ onCreateNote }: NotebookEmptyStateProps) {
+export function NotebookEmptyState({ onCreateNote, disabled = false }: NotebookEmptyStateProps) {
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center">
@@ -96,6 +98,7 @@ export function NotebookEmptyState({ onCreateNote }: NotebookEmptyStateProps) {
         </p>
         <p className="text-sm text-(--muted) mb-4">Select a note or create a new one</p>
         <Button variant="secondary" size="md" type="submit"
+          disabled={disabled}
           onClick={onCreateNote}
         >
           <Plus size={14} />

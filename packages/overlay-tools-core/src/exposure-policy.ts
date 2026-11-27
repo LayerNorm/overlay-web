@@ -1,3 +1,5 @@
+import { API_TOOL_IDS } from './policy'
+
 const DEFAULT_BASE_TOOL_IDS = [
   'search_knowledge',
   'search_in_files',
@@ -17,6 +19,9 @@ const DEFAULT_BASE_TOOL_IDS = [
   'search_skill_registries',
   // Always personal and archivable, so the self-verticalize workflow can persist what it learned on any specialized turn.
   'save_skill',
+  // Data and APIs: what a person asks for (leads, enrichment, 3D models…) rarely names a tool, so they are always offered
+  // where the plan and deployment allow them (withoutUnavailableApiTools).
+  ...API_TOOL_IDS,
 ] as const
 
 const MEMORY_MUTATION_TOOL_IDS = ['update_memory', 'delete_memory'] as const
@@ -29,6 +34,13 @@ const NOTE_MUTATION_TOOL_IDS = [
   'delete_note',
 ] as const
 const FILE_MUTATION_TOOL_IDS = ['write_file', 'create_folder', 'move_file'] as const
+const SCOPE_TOOL_IDS = ['move_to_workspace', 'archive_item', 'restore_item'] as const
+
+/**
+ * Tools an agent's grant does not offer by itself: the person's own message in this turn has to ask for them. Moving to
+ * Workspace is one-way and archiving hides an item from everyone, so an agent never does either on its own initiative.
+ */
+export const REQUEST_ONLY_TOOL_IDS: readonly string[] = SCOPE_TOOL_IDS
 const IMAGE_TOOL_IDS = ['generate_image'] as const
 const VIDEO_TOOL_IDS = [
   'generate_video',
@@ -81,6 +93,14 @@ function isExplicitFileMutationRequest(text: string): boolean {
   return matchesAny(text, [
     /\b(create|write|make|save|add|edit|update|rename|move|organi[sz]e)\b.{0,40}\b(file|files|folder|folders|document|csv|markdown|txt)\b/i,
     /\b(file|files|folder|folders)\b.{0,40}\b(create|write|make|save|edit|update|rename|move|organi[sz]e)\b/i,
+  ])
+}
+
+/** Sharing to the workspace, archiving or restoring: only when the person asks for it in this message. */
+function isExplicitScopeRequest(text: string): boolean {
+  return matchesAny(text, [
+    /\b(move|share|publish|put)\b.{0,60}\b(workspace|team|everyone)\b/i,
+    /\b(archive|unarchive|restore)\b/i,
   ])
 }
 
@@ -141,6 +161,9 @@ export function allowedOverlayToolIdsForTurn(params: {
   }
   if (isExplicitFileMutationRequest(text)) {
     addAll(allowed, FILE_MUTATION_TOOL_IDS)
+  }
+  if (isExplicitScopeRequest(text)) {
+    addAll(allowed, SCOPE_TOOL_IDS)
   }
   if (isExplicitBrowserRequest(text) && !isExtensionClient) {
     addAll(allowed, BROWSER_TOOL_IDS)

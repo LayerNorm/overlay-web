@@ -13,7 +13,6 @@ import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
 import {
   assertChiefBindingUpdateAllowed,
-  canCreateAgent,
   canSeeAgent,
   mapThreadError,
   validateWorkspaceAgentTeamIds,
@@ -22,7 +21,12 @@ import {
 import { applyChiefIdentityUpdate } from './WorkspaceAgentService.identity'
 import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, assertValidOverlayPermissionMode, normalizeVisibility, required, optional, color, shape, unique, workspaceAgentCreateModelFields, workspaceAgentUpdateModelFields } from './workspace-agent-validation'
 export { WorkspaceAgentServiceError } from './workspace-agent-validation'
-export { canCreateAgent, canSeeAgent } from './WorkspaceAgentService.helpers'
+export { canSeeAgent } from './WorkspaceAgentService.helpers'
+
+/** The ID a personal chief is created with (adopted older defaults keep their own). */
+export function personalChiefAgentId(workspaceId: string, userId: string) {
+  return `personal-chief-${workspaceId}-${userId}`
+}
 
 export class WorkspaceAgentService {
   constructor(
@@ -30,19 +34,23 @@ export class WorkspaceAgentService {
     private readonly workspaces: WorkspaceService,
     private readonly id: () => string = randomUUID,
     private readonly now: () => number = Date.now,
-    private readonly assertModelSelectable: (modelId: string, actorUserId: string, workspaceId: string) => Promise<void> = async () => {},
+    private readonly assertModelSelectable: (modelId: string, actorUserId: string, workspaceId: string, visibility: 'workspace' | 'creator') => Promise<void> = async () => {},
   ) {}
 
-  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
+  /**
+   * The agents the actor may see. Always ensures the workspace chief; `includePersonal` (the actor is in Personal mode)
+   * also ensures their own personal chief, which is otherwise created only when they first open Personal.
+   */
+  async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean; includePersonal?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.membership.role !== 'guest') {
-      await this.repository.ensureChiefs({
-        workspaceId: access.workspace.id,
-        actorUserId: args.actorUserId,
-        actorPrincipalId: access.principal.id,
-        now: this.now(),
-      })
-    }
+    await this.repository.ensureChiefs({
+      workspaceId: access.workspace.id,
+      actorUserId: args.actorUserId,
+      actorPrincipalId: access.principal.id,
+      // Sent only when set, so a backend that predates the argument keeps serving the workspace-only call.
+      ...(args.includePersonal ? { includePersonal: true } : {}),
+      now: this.now(),
+    })
     const agents = await this.repository.list({
       workspaceId: access.workspace.id,
       includeArchived: args.includeArchived,
@@ -69,7 +77,7 @@ export class WorkspaceAgentService {
         ...viewer,
         createdByDisplayName: creators[index]?.displayName,
       })),
-      canCreate: canCreateAgent(access.membership.role),
+      canCreate: true,
       viewerPrincipalId: access.principal.id,
       archivedThreads,
     }
@@ -77,14 +85,14 @@ export class WorkspaceAgentService {
 
   async get(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (access.membership.role !== 'guest') {
-      await this.repository.ensureChiefs({
-        workspaceId: access.workspace.id,
-        actorUserId: args.actorUserId,
-        actorPrincipalId: access.principal.id,
-        now: this.now(),
-      })
-    }
+    await this.repository.ensureChiefs({
+      workspaceId: access.workspace.id,
+      actorUserId: args.actorUserId,
+      actorPrincipalId: access.principal.id,
+      // Opening one's own personal chief by its ID (a link, or the first visit) creates it.
+      ...(args.agentId === personalChiefAgentId(access.workspace.id, args.actorUserId) ? { includePersonal: true } : {}),
+      now: this.now(),
+    })
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
     // Invisible agents report as not found so their existence does not leak to
     // other members.
@@ -145,9 +153,6 @@ export class WorkspaceAgentService {
     input: WorkspaceAgentCreateInput
   }): Promise<WorkspaceAgentDirectoryItem> {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    if (!canCreateAgent(access.membership.role)) {
-      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot create agents')
-    }
     // Workspace policy can restrict agent creation to owners and admins, and can
     // restrict which runtimes are allowed to exist at all.
     await this.workspaces.assertMemberMayCreate({
@@ -161,7 +166,7 @@ export class WorkspaceAgentService {
     const harness = args.input.harness ?? 'overlay'
     assertSupportedWorkspaceAgentHarness(harness)
     assertSupportedAgentConfiguration(modelId, harness)
-    await this.assertModelSelectable(modelId, args.actorUserId, access.workspace.id)
+    await this.assertModelSelectable(modelId, args.actorUserId, access.workspace.id, normalizeVisibility(args.input.visibility))
     assertValidOverlayPermissionMode(harness, args.input.permissionMode)
     await this.workspaces.assertAgentHarnessAllowed({
       actorUserId: args.actorUserId,
@@ -206,6 +211,23 @@ export class WorkspaceAgentService {
     }
   }
 
+  /**
+   * An unchanged model is left alone so an agent whose model was withdrawn can still be edited, except when the agent
+   * moves to the workspace: then its model must be one a workspace agent may use (never a personal provider).
+   */
+  private async assertUpdatedModelSelectable(
+    agent: { modelId: string; visibility?: 'workspace' | 'creator' },
+    input: WorkspaceAgentUpdateInput,
+    actorUserId: string,
+    workspaceId: string,
+  ) {
+    const nextVisibility = input.visibility ?? agent.visibility ?? 'workspace'
+    const movesToWorkspace = (agent.visibility ?? 'workspace') === 'creator' && nextVisibility === 'workspace'
+    const modelChanges = input.modelId !== undefined && input.modelId.trim() !== agent.modelId
+    if (!modelChanges && !movesToWorkspace) return
+    await this.assertModelSelectable((input.modelId ?? agent.modelId).trim(), actorUserId, workspaceId, nextVisibility)
+  }
+
   async update(args: {
     actorUserId: string
     workspaceId: string
@@ -214,6 +236,7 @@ export class WorkspaceAgentService {
   }) {
     const { access, agent } = await this.requireEditor(args)
     assertChiefBindingUpdateAllowed(agent, args.input)
+    assertVisibilityMoveAllowed(agent, args.input, access.principal.id)
     // Changing the model also writes the Overlay harness, which moves an agent saved for a removed third-party
     // harness onto Overlay's own.
     const nextHarness = args.input.harness ?? (args.input.modelId === undefined ? undefined : 'overlay')
@@ -224,10 +247,7 @@ export class WorkspaceAgentService {
         nextHarness,
       )
     }
-    // An unchanged model is left alone so an agent whose model was withdrawn can still be edited.
-    if (args.input.modelId !== undefined && args.input.modelId.trim() !== agent.modelId) {
-      await this.assertModelSelectable(args.input.modelId.trim(), args.actorUserId, access.workspace.id)
-    }
+    await this.assertUpdatedModelSelectable(agent, args.input, args.actorUserId, access.workspace.id)
     if (args.input.harness !== undefined) {
       await this.workspaces.assertAgentHarnessAllowed({
         actorUserId: args.actorUserId,
@@ -261,6 +281,11 @@ export class WorkspaceAgentService {
       ...(teamIds === undefined ? {} : { teamIds }),
       updatedByPrincipalId: access.principal.id,
       now: this.now(),
+    }).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes('WORKSPACE_AGENT_MOVE_DISABLED')) {
+        throw new WorkspaceAgentServiceError('forbidden', 'This workspace does not let members move items to Workspace.')
+      }
+      throw error
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     const creator = await this.workspaces.resolvePrincipal(updated.createdByPrincipalId)
@@ -318,12 +343,8 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
-    if (access.membership.role === 'guest'
-      && (agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')) {
-      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot edit chief agents')
-    }
     if (agent.agentRole === 'personal_chief'
-      && (access.membership.role === 'guest' || agent.chiefOwnerUserId !== args.actorUserId)) {
+      && agent.chiefOwnerUserId !== args.actorUserId) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can change this agent')
     }
     if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
@@ -496,10 +517,6 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
-    if (access.membership.role === 'guest'
-      && (agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')) {
-      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot edit chief agents')
-    }
     if (agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId !== args.actorUserId) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can edit this agent')
     }
@@ -528,5 +545,24 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can archive this agent')
     }
     return { access, agent }
+  }
+}
+
+/**
+ * Agent visibility is one-way, like every Personal → Workspace move: a creator-only agent may be moved to the workspace
+ * by its creator, and a workspace agent never goes back to creator-only.
+ */
+function assertVisibilityMoveAllowed(
+  agent: { visibility?: 'creator' | 'workspace'; createdByPrincipalId: string },
+  input: { visibility?: 'creator' | 'workspace' },
+  actorPrincipalId: string,
+) {
+  const current = agent.visibility ?? 'workspace'
+  if (input.visibility === undefined || input.visibility === current) return
+  if (input.visibility === 'creator') {
+    throw new WorkspaceAgentServiceError('validation', "A workspace agent can't be made private again.")
+  }
+  if (agent.createdByPrincipalId !== actorPrincipalId) {
+    throw new WorkspaceAgentServiceError('forbidden', 'Only the person who created this agent can move it to the workspace.')
   }
 }

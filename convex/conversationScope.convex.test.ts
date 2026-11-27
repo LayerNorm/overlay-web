@@ -28,6 +28,31 @@ describe('conversation scope', () => {
     })).rejects.toThrow('Unauthorized')
   })
 
+  test('a workspace automation’s instructions never become its creator’s private memory (P6)', async () => {
+    process.env.INTERNAL_API_SECRET = serverSecret
+    const convex = convexTest(schema, modules)
+    const auth = { userId: 'user', serverSecret, workspaceId: 'workspace' }
+    const threadFor = async (scope: 'workspace' | 'personal') => {
+      const conversationId = await convex.mutation(api.chat.conversations.create, { ...auth, title: `${scope} automation` })
+      await convex.run(async (ctx) => { await ctx.db.insert('automations', {
+        userId: 'user', workspaceId: 'workspace', name: scope, instructions: 'x', enabled: true, conversationId, scope,
+        createdAt: 1, updatedAt: 1,
+      } as never) })
+      await convex.mutation(api.chat.conversations.addMessage, {
+        ...auth, conversationId, turnId: `turn-${scope}`, role: 'user', mode: 'act', contentType: 'text',
+        content: 'Summarise the pipeline', parts: [{ type: 'text', text: 'Summarise the pipeline' }],
+      })
+      return conversationId
+    }
+    const workspaceThread = await threadFor('workspace')
+    const personalThread = await threadFor('personal')
+    const extractions = await convex.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect())
+      .filter((job) => job.name.includes('extractFromTurn'))
+      .map((job) => (job.args[0] as { conversationId: string }).conversationId))
+    expect(extractions).toEqual([personalThread])
+    expect(extractions).not.toContain(workspaceThread)
+  })
+
   test('workspace AI chats keep their scope and existing chats stay personal', async () => {
     process.env.INTERNAL_API_SECRET = serverSecret
     const convex = convexTest(schema, modules)

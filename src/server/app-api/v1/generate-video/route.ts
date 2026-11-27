@@ -28,7 +28,7 @@ function sseChunk(data: Record<string, unknown>): string {
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   const bodyResult = await readValidatedJson(request, context, GenerateVideoRequest)
   if (!bodyResult.ok) return bodyResult.response
-  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat } = bodyResult.data
+  const { prompt, modelId, aspectRatio, duration, conversationId, turnId, videoSubMode, imageUrl, temporaryChat, scope } = bodyResult.data
 
   const { auth } = context
   const workspaceId = context.workspace.workspace.id
@@ -181,6 +181,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
                 mimeType: 'video/mp4',
                 ...(conversationId ? { conversationId } : {}),
                 ...(turnId ? { turnId } : {}),
+                ...(scope ? { scope } : {}),
             })
           } catch (err) {
             logger.error('[GenerateVideo] Failed to create output record:', err)

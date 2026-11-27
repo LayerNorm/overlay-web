@@ -8,7 +8,6 @@ import type {
   WorkspaceInvitation,
   WorkspaceMembership,
   WorkspacePrincipal,
-  WorkspaceResourceGuest,
   WorkspaceResourceScope,
   WorkspaceAuditExportRecord,
   WorkspaceIdentityMapping,
@@ -37,7 +36,6 @@ type ConvexMembership = WorkspaceMembership
 type ConvexInvitation = Omit<WorkspaceInvitation, 'id'> & { invitationId: string }
 type ConvexTeam = Omit<WorkspaceTeam, 'id'> & { teamId: string }
 type ConvexTeamMember = WorkspaceTeamMember & { teamMembershipId: string }
-type ConvexResourceGuest = Omit<WorkspaceResourceGuest, 'id'> & { resourceGuestId: string }
 type ConvexResourceScope = WorkspaceResourceScope
 type ConvexAccess = {
   workspace: ConvexWorkspace
@@ -487,24 +485,6 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return result?.expired ?? 0
   }
 
-  async createResourceGuest(input: Parameters<WorkspaceRepository['createResourceGuest']>[0]) {
-    return resourceGuest(await requiredMutation<ConvexResourceGuest>(
-      'createResourceGuestByServer',
-      {
-        resourceGuestId: input.id,
-        workspaceId: input.workspaceId,
-        resourceType: input.resourceType,
-        resourceId: input.resourceId,
-        principalId: input.principalId,
-        accessRole: input.accessRole,
-        status: input.status ?? 'active',
-        grantedByPrincipalId: input.grantedByPrincipalId,
-        expiresAt: input.expiresAt,
-        now: input.now,
-      },
-    ))
-  }
-
   async bindResource(input: Parameters<WorkspaceRepository['bindResource']>[0]) {
     return clean(await requiredMutation<ConvexResourceScope>('bindResourceByServer', input))
   }
@@ -575,36 +555,6 @@ export class ConvexWorkspaceRepository implements WorkspaceRepository {
     return rows.map(clean)
   }
 
-  async listResourceGuests(args: Parameters<WorkspaceRepository['listResourceGuests']>[0]) {
-    const rows = await query<ConvexResourceGuest[]>('listResourceGuestsByServer', {
-      workspaceId: args.workspaceId,
-      resourceType: args.resourceType,
-      resourceId: args.resourceId,
-    }) ?? []
-    return rows
-      .map(resourceGuest)
-      .filter((guest) => args.includeInactive || guest.status === 'active')
-  }
-
-  async revokeResourceGuest(args: Parameters<WorkspaceRepository['revokeResourceGuest']>[0]) {
-    const existing = await query<ConvexResourceGuest | null>('getResourceGuestByServer', {
-      resourceGuestId: args.id,
-    })
-    if (!existing) return null
-    try {
-      const row = await mutation<ConvexResourceGuest | null>('revokeResourceGuestByServer', {
-        resourceGuestId: args.id,
-        workspaceId: existing.workspaceId,
-        revokedByPrincipalId: args.revokedByPrincipalId,
-        now: args.now,
-      })
-      return row ? resourceGuest(row) : null
-    } catch (error) {
-      if (hasCode(error, 'WORKSPACE_RESOURCE_GUEST_NOT_FOUND')) return null
-      throw error
-    }
-  }
-
   private async getRawMembership(
     workspaceId: string,
     principalId: string,
@@ -671,11 +621,6 @@ function team(row: ConvexTeam): WorkspaceTeam {
 function teamMember(row: ConvexTeamMember): WorkspaceTeamMember {
   const { teamMembershipId: _, ...value } = clean(row)
   return value
-}
-
-function resourceGuest(row: ConvexResourceGuest): WorkspaceResourceGuest {
-  const { resourceGuestId, ...value } = clean(row)
-  return { ...value, id: resourceGuestId }
 }
 
 function access(row: ConvexAccess): WorkspaceAccess {

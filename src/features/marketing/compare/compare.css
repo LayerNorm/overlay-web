@@ -1,0 +1,9 @@
+/* Comparison pages (/compare/*). Scoped under the marketing shell's .sl root. */
+.sl .compare-table-wrap { margin-top: 16px; overflow-x: auto; }
+.sl .compare-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.55; }
+.sl .compare-table th, .sl .compare-table td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--sl-line); color: var(--sl-muted); }
+.sl .compare-table thead th { color: var(--sl-text); font-weight: 500; }
+.sl .compare-table tbody th { color: var(--sl-text); font-weight: 500; width: 26%; }
+.sl .compare-q { margin-top: 20px; font-size: 16px; line-height: 1.4; color: var(--sl-text); }
+.sl .compare-sources { margin-top: 12px; padding-left: 18px; list-style: disc; color: var(--sl-muted); font-size: 14px; line-height: 1.8; }
+.sl .compare-sources a, .sl .doc-sec h2 a { text-decoration: underline; text-underline-offset: 3px; }

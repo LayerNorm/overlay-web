@@ -1,7 +1,21 @@
 import 'server-only'
-import { roomListScope } from './room-scope'
+import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
+import {
+  computerRecordingChapters,
+  computerRecordingFileName,
+  parseComputerRecordingStop,
+  summarizeComputerRecording,
+  type ComputerRecordingStatus,
+  type ComputerRecordingStop,
+} from './computer-recording'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
+import {
+  computerInputDriverCommand,
+  type ComputerBrowserAction,
+  type ComputerInputAction,
+  type ComputerTerminalAction,
+} from '@layernorm/overlay-agent-bridge-protocol'
 import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
@@ -21,7 +35,7 @@ import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-ap
 import type { OverlayToolsOptions } from './types'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
 import { publishComputerFile } from '@/server/files/computer-publication'
-import { LocalComputerError } from '@/server/computers/local/LocalComputerService'
+import { LocalComputerError, type LocalComputerUnavailableReason } from '@/server/computers/local/LocalComputerService'
 import { LocalHostSandboxInstance, isLocalHostSandboxInstance } from '@/server/computers/local/LocalHostSandboxInstance'
 import type { ComputerTarget } from './types'
 
@@ -241,6 +255,7 @@ export async function executeSearchMemory(
       content: chunk.text,
       memoryId: chunk.sourceId,
       title: chunk.title,
+      scope: chunk.scope,
     }))
     return {
       success: true,
@@ -293,6 +308,7 @@ export async function executeSearchMessages(
       content: chunk.text,
       messageId: chunk.sourceId,
       title: chunk.title,
+      scope: chunk.scope,
     }))
     return {
       success: true,
@@ -415,13 +431,30 @@ export async function executeDeleteMemory(options: OverlayToolsOptions, input: {
   }
 }
 
+/** At most this many pages of 100 archived automations are searched. */
+const ARCHIVED_AUTOMATION_PAGES = 5
+
+type ListViewInput = { scope?: 'personal' | 'workspace'; archived?: boolean }
+
+/** `&view=…` for a scope-aware list: archived when asked, else the room's Workspace scope or the requested one. */
+function listViewParam(options: OverlayToolsOptions, input: ListViewInput): string {
+  const view = input.archived ? 'archived' : roomListScope(options, input.scope)
+  return view ? `&view=${view}` : ''
+}
+
+/** The archived view spans Personal and Workspace; a room (or a scope asked for) keeps to its own. */
+function inArchivedScope<T extends { scope?: 'personal' | 'workspace' }>(options: OverlayToolsOptions, input: ListViewInput, rows: T[]): T[] {
+  const scope = input.archived ? roomListScope(options, input.scope) : undefined
+  return scope ? rows.filter((row) => (row.scope === 'workspace' ? 'workspace' : 'personal') === scope) : rows
+}
+
 export async function executeListSkills(
   options: OverlayToolsOptions,
-  input: { query?: string; scope?: 'personal' | 'workspace' },
+  input: { query?: string; scope?: 'personal' | 'workspace'; archived?: boolean },
 ) {
   try {
     const res = await callInternalApiGet(
-      `/api/v1/skills?limit=100${roomListScope(options, input.scope) ? `&view=${roomListScope(options, input.scope)}` : ''}`,
+      `/api/v1/skills?limit=100${listViewParam(options, input)}`,
       options.accessToken,
       options.baseUrl,
       options.forwardCookie,
@@ -438,8 +471,10 @@ export async function executeListSkills(
       description?: string
       instructions: string
       enabled?: boolean
+      scope?: 'personal' | 'workspace'
     }>(await res.json())
-    const enabledSkills = skills.filter((s) => s.enabled !== false)
+    // Archived skills are listed whether or not they were on, so one can be found to restore.
+    const enabledSkills = inArchivedScope(options, input, skills).filter((s) => input.archived || s.enabled !== false)
     if (input.query) {
       const q = input.query.toLowerCase()
       const filtered = enabledSkills.filter(
@@ -461,22 +496,10 @@ export async function executeListSkills(
 
 export async function executeListAutomations(
   options: OverlayToolsOptions,
-  input: { query?: string; scope?: 'personal' | 'workspace' },
+  input: { query?: string; scope?: 'personal' | 'workspace'; archived?: boolean },
 ) {
   try {
-    const res = await callInternalApiGet(
-      `/api/v1/automations?limit=100${roomListScope(options, input.scope) ? `&view=${roomListScope(options, input.scope)}` : ''}`,
-      options.accessToken,
-      options.baseUrl,
-      options.forwardCookie,
-      options.serverSecret,
-      options.userId,
-      options.workspaceId,
-    )
-    if (!res.ok) {
-      return { success: false, error: 'Failed to fetch automations' }
-    }
-    const automations = unwrapPaginatedData<{
+    type AutomationRow = {
       _id: string
       name: string
       description?: string
@@ -486,7 +509,31 @@ export async function executeListAutomations(
       nextRunAt?: number
       lastRunAt?: number
       lastError?: string
-    }>(await res.json())
+      scope?: 'personal' | 'workspace'
+      updatedAt?: number
+    }
+    // Archived automations can be many and old; page through them (100 a page) so an older one can still be found.
+    const listed: AutomationRow[] = []
+    let before: number | undefined
+    for (let page = 0; page < (input.archived ? ARCHIVED_AUTOMATION_PAGES : 1); page++) {
+      const res = await callInternalApiGet(
+        `/api/v1/automations?limit=100${listViewParam(options, input)}${before !== undefined ? `&beforeUpdatedAt=${before}` : ''}`,
+        options.accessToken,
+        options.baseUrl,
+        options.forwardCookie,
+        options.serverSecret,
+        options.userId,
+        options.workspaceId,
+      )
+      if (!res.ok) {
+        return { success: false, error: 'Failed to fetch automations' }
+      }
+      const rows = unwrapPaginatedData<AutomationRow>(await res.json())
+      listed.push(...rows)
+      before = rows.at(-1)?.updatedAt
+      if (rows.length < 100 || before === undefined) break
+    }
+    const automations = inArchivedScope(options, input, listed)
     if (input.query) {
       const q = input.query.toLowerCase()
       return {
@@ -582,6 +629,20 @@ async function savedAutomation(
   }
 }
 
+/** Changing an automation by id in a workspace context reaches only Workspace automations. */
+async function roomAutomationRefusal(options: OverlayToolsOptions, automationId: string): Promise<{ success: false; error: string } | null> {
+  if (!options.sharedRoom) return null
+  const res = await callInternalApiGet(
+    `/api/v1/automations?${new URLSearchParams({ automationId: automationId.trim() })}`,
+    options.accessToken, options.baseUrl, options.forwardCookie, options.serverSecret, options.userId, options.workspaceId,
+  )
+  if (!res.ok) return { success: false, error: 'Automation not found' }
+  const automation = await res.json().catch((_error) => null) as { scope?: string; _id?: string } | null
+  // The id asked for is the one the person may have included; the row's own id must match it.
+  return !automation || refusesRoomItem(options, { ...automation, _id: automation._id ?? automationId.trim() })
+    ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
+}
+
 export async function executeCreateAutomation(
   options: OverlayToolsOptions,
   input: {
@@ -594,6 +655,7 @@ export async function executeCreateAutomation(
     modelId?: string
     graphSource?: string
     sourceConversationId?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   try {
@@ -609,7 +671,7 @@ export async function executeCreateAutomation(
         ...(automationId ? { automationId } : {}),
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
-        ...(automationId ? {} : { byAgent: true }),
+        ...(automationId ? {} : { byAgent: true, scope: roomCreateScope(options, input.scope) }),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -655,6 +717,8 @@ export async function executeUpdateAutomation(
   },
 ) {
   try {
+    const refused = await roomAutomationRefusal(options, input.automationId)
+    if (refused) return refused
     const schedule = input.schedule ? normalizeScheduleInput(input.schedule) : input.schedule
     const res = await callInternalApi(
       '/api/v1/automations',
@@ -687,6 +751,8 @@ export async function executeUpdateAutomation(
 
 export async function executePauseAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
+    const refused = await roomAutomationRefusal(options, input.automationId)
+    if (refused) return refused
     const res = await callInternalApi(
       '/api/v1/automations',
       { ...toolAuthBody(options), automationId: input.automationId, action: 'pause' },
@@ -776,6 +842,8 @@ export async function executeUpdateAgent(
 
 export async function executeDeleteAutomation(options: OverlayToolsOptions, input: { automationId: string }) {
   try {
+    const refused = await roomAutomationRefusal(options, input.automationId)
+    if (refused) return refused
     const res = await callInternalApi(
       '/api/v1/automations',
       { ...toolAuthBody(options), automationId: input.automationId },
@@ -803,6 +871,7 @@ export async function executeGenerateImage(
     modelId?: string
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
     referenceImageUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, referenceImageUrl } = input
@@ -816,6 +885,7 @@ export async function executeGenerateImage(
         imageUrl: referenceImageUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -855,6 +925,7 @@ export async function executeGenerateVideo(
     videoSubMode?: string
     imageUrl?: string
     referenceVideoUrl?: string
+    scope?: 'personal' | 'workspace'
   },
 ) {
   const { prompt, modelId, aspectRatio, duration, videoSubMode, imageUrl, referenceVideoUrl } = input
@@ -870,6 +941,7 @@ export async function executeGenerateVideo(
         imageUrl: imageUrl ?? referenceVideoUrl,
         conversationId: options.conversationId,
         turnId: options.turnId,
+        scope: roomCreateScope(options, input.scope),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -916,6 +988,13 @@ export async function executeGenerateVideo(
               status: 'failed',
               outputId: outputId ?? (event.outputId as string),
               error: event.error,
+            }
+          } else if (event.type === 'error') {
+            // Nothing was started (budget, policy, or the output could not be saved), so nothing is pending.
+            return {
+              success: false,
+              status: 'failed',
+              error: (event.message as string | undefined) ?? (event.error as string | undefined) ?? 'Video generation failed',
             }
           }
         } catch (_error) {
@@ -1025,6 +1104,40 @@ const LOCAL_TARGET_UNAVAILABLE =
   "The user's computer is not connected to Overlay right now. Do not retry with target \"local\". "
   + 'Ask the user to open the Overlay desktop app on their computer (Settings → Desktop → This computer), or use the cloud Computer.'
 
+const TURN_ON_THIS_COMPUTER = 'In the Overlay desktop app on that Mac, open Settings → Desktop → This computer and turn on '
+  + '"Let agents run threads on this computer". That one switch also keeps it on after the app restarts.'
+const CLOUD_PANEL_NOTE = "The Computer panel in Overlay shows the cloud Computer, a separate machine; it is not the user's Mac "
+  + "and does not have the user's own browser profile."
+
+function timeAgo(then: number, now: number): string {
+  const minutes = Math.max(1, Math.round((now - then) / 60_000))
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  return `${Math.round(hours / 24)} days ago`
+}
+
+/** The agent-facing reason the user's Mac can't take this call, with the one thing the user should change. */
+export function localComputerUnavailableMessage(reason: LocalComputerUnavailableReason, now = Date.now()): string {
+  const noRetry = 'Do not retry with target "local".'
+  switch (reason.kind) {
+    case 'offline':
+      return `The user's Mac "${reason.name}" is offline: it last checked in with Overlay ${reason.lastSeenAt ? timeAgo(reason.lastSeenAt, now) : 'never'}. `
+        + 'The Overlay desktop app can be open while this computer is turned off, which happens after the app restarts or signs out '
+        + `unless "Let agents run threads on this computer" is on. ${noRetry} Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
+    case 'computer_control_off':
+      return `The user's Mac "${reason.name}" is connected to Overlay, but computer control is turned off on it. ${noRetry} `
+        + `Tell the user: ${TURN_ON_THIS_COMPUTER} ${CLOUD_PANEL_NOTE}`
+    case 'not_set_up':
+      return `The user has not connected their own computer to Overlay. ${noRetry} Tell the user: install the Overlay desktop app, `
+        + `sign in, then open Settings → Desktop → This computer and turn it on. Or use the cloud Computer. ${CLOUD_PANEL_NOTE}`
+  }
+}
+
+const ROOM_PERSONAL_COMPUTER_ERROR =
+  'In a room others can read, or a workspace automation, agents can only use their own cloud computer, never a person\'s '
+  + 'own computer. Do not retry with target "local". Ask the person to run this from a personal chat instead.'
+
 const PINNED_MAC_UNAVAILABLE =
   'This thread runs on a computer that is offline, or that belongs to someone else. Do not retry computer tools. '
   + 'Tell the user: open Overlay on that computer, or start a new thread in the cloud. '
@@ -1043,7 +1156,10 @@ async function localComputerFor(options: OverlayToolsOptions, toolName: string) 
     ...(options.localEnvironmentId ? { environmentId: options.localEnvironmentId } : {}),
   })
   if (!computer) {
-    return { ok: false as const, error: options.localEnvironmentId ? PINNED_MAC_UNAVAILABLE : LOCAL_TARGET_UNAVAILABLE }
+    if (options.localEnvironmentId) return { ok: false as const, error: PINNED_MAC_UNAVAILABLE }
+    const reason = await service.unavailableReason({ workspaceId: options.workspaceId, userId: options.userId })
+      .catch((_error: unknown) => null)
+    return { ok: false as const, error: reason ? localComputerUnavailableMessage(reason) : LOCAL_TARGET_UNAVAILABLE }
   }
   const instance = new LocalHostSandboxInstance(computer, service, {
     userId: options.userId, ...(options.agentId ? { agentId: options.agentId } : {}), toolName,
@@ -1068,11 +1184,17 @@ export async function computerInstanceFor(
 ): ReturnType<typeof cloudComputerInstanceFor> {
   const target = selection.target ?? options.computerTarget
   const toolName = selection.toolName ?? 'computer'
+  // A person's own computers (their Mac, their personal cloud computer) hold their private files and signed-in
+  // accounts. In a workspace context only an agent's own cloud computer may be used, and never a fallback to a Mac.
+  if (options.sharedRoom) {
+    if (!options.agentId || target === 'local') return { ok: false as const, error: ROOM_PERSONAL_COMPUTER_ERROR }
+    return await cloudComputerInstanceFor(options)
+  }
   if (target === 'local') return await localComputerFor(options, toolName)
   const cloud = await cloudComputerInstanceFor(options)
   if (cloud.ok || target === 'cloud' || !cloud.unbound) return cloud
-  const local = await localComputerFor(options, toolName)
-  return local.ok ? local : cloud
+  // No cloud Computer is bound, so the Mac was the only candidate: its reason is the one the user can act on.
+  return await localComputerFor(options, toolName)
 }
 
 async function cloudComputerInstanceFor(
@@ -1291,6 +1413,146 @@ export async function executeComputerWriteFile(
   }
 }
 
+export type ComputerRecordingInput = {
+  action: 'start' | 'annotate' | 'stop' | 'status'
+  id?: string
+  title?: string
+  maxSeconds?: number
+  fps?: number
+  label?: string
+  status?: ComputerRecordingStatus
+  name?: string
+  scope?: 'personal' | 'workspace'
+  public?: boolean
+  target?: ComputerTarget
+}
+
+/** The fields each action sends to the driver; anything else is dropped, and missing required fields fail early. */
+export function computerRecordingDriverArgs(input: ComputerRecordingInput):
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; error: string } {
+  const pick = (...keys: Array<keyof ComputerRecordingInput>) =>
+    Object.fromEntries(keys.filter(key => input[key] !== undefined).map(key => [key, input[key]]))
+  if (input.action === 'start') return { ok: true, args: pick('title', 'maxSeconds', 'fps') }
+  if (input.action === 'status') return { ok: true, args: {} }
+  if (!input.id) return { ok: false, error: `${input.action} needs the recording id returned by start.` }
+  if (input.action === 'annotate') {
+    if (!input.label?.trim()) return { ok: false, error: 'annotate needs a label.' }
+    return { ok: true, args: pick('id', 'label', 'status') }
+  }
+  return { ok: true, args: pick('id') }
+}
+
+/** Finalizing an MP4 can take ffmpeg shutdown (10s) + probe (20s) + remux (120s) on the computer. */
+const COMPUTER_RECORDING_STOP_TIMEOUT_MS = 170_000
+
+/**
+ * Screen recordings as proof of work. start/annotate/status are driver calls; stop finalizes an MP4 with one chapter
+ * per annotation, publishes it to Files (kept until deleted) and only creates a public link when asked to.
+ */
+export async function executeComputerRecording(options: OverlayToolsOptions, input: ComputerRecordingInput) {
+  const prepared = computerRecordingDriverArgs(input)
+  if (!prepared.ok) return { success: false as const, code: 'invalid_input', error: prepared.error }
+  const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_recording' })
+  if (!resolved.ok) return { success: false as const, error: resolved.error }
+  const { action } = input
+  let response: Record<string, unknown>
+  try {
+    response = await resolved.operate(async (instance) => {
+      if (isLocalHostSandboxInstance(instance)) {
+        throw new ComputerDesktopDriverError('recording_unsupported', 'Screen recording runs on cloud computers only.')
+      }
+      return await runComputerDriverCommand(instance, `recording_${action}`, prepared.args, {
+        requireDesktop: true,
+        ...(action === 'stop' ? { timeoutMs: COMPUTER_RECORDING_STOP_TIMEOUT_MS } : {}),
+      })
+    }, action === 'stop' ? 180_000 : 45_000)
+  } catch (err) {
+    return computerErrorResult(err, 'Screen recording failed')
+  }
+  if (action !== 'stop') return { success: true as const, action, ...response, computerId: resolved.computer.id }
+  const stop = parseComputerRecordingStop(response)
+  if (!stop) return { success: false as const, error: 'The recording finished but returned no file.' }
+  return await publishComputerRecording(options, input, stop, resolved.computer.id)
+}
+
+async function publishComputerRecording(
+  options: OverlayToolsOptions,
+  input: ComputerRecordingInput,
+  stop: ComputerRecordingStop,
+  computerId: string,
+) {
+  const recording = {
+    id: stop.id,
+    path: stop.path,
+    durationSeconds: stop.durationSeconds,
+    sizeBytes: stop.sizeBytes,
+    summary: summarizeComputerRecording(stop),
+    counts: stop.counts,
+    chapters: computerRecordingChapters(stop.annotations),
+  }
+  const scope = input.scope ?? 'personal'
+  const published = await publishComputerFile({
+    request: {
+      sourcePath: stop.path,
+      name: computerRecordingFileName(stop, input.name),
+      artifactId: `recording-${stop.id}`,
+      mimeType: 'video/mp4',
+      scope: roomListScope(options, scope) ?? scope,
+    },
+    authority: options.artifactPublicationAuthority,
+    grantToolId: 'computer_recording',
+    userId: options.userId,
+    workspaceId: options.workspaceId,
+    resolveComputer: () => computerInstanceFor(options, { target: input.target, toolName: 'computer_recording' }),
+  })
+  if (!published.success) {
+    return {
+      success: true as const, action: 'stop' as const, ...recording, published: false,
+      publishError: published.message,
+      note: 'The MP4 is still on the computer; publish it with computer_publish_file.',
+      computerId,
+    }
+  }
+  const share = input.public === true
+    ? await createComputerRecordingPublicLink(options, published.artifact.fileId)
+    : {}
+  return {
+    success: true as const,
+    action: 'stop' as const,
+    ...recording,
+    published: true,
+    fileId: published.artifact.fileId,
+    downloadUrl: published.downloadUrl,
+    visibility: share.shareUrl ? 'public' as const : 'private' as const,
+    ...share,
+    computerId,
+  }
+}
+
+/** Public links are General access, so they follow the workspace's public-link policy like the Files share route. */
+async function createComputerRecordingPublicLink(
+  options: OverlayToolsOptions,
+  fileId: string,
+): Promise<{ shareUrl?: string; shareError?: string }> {
+  try {
+    await getOverlayServerContext().workspaceService.assertPublicLinksAllowed({
+      actorUserId: options.userId,
+      workspaceId: options.workspaceId,
+    })
+    const { fileService } = await import('@/server/files/http')
+    const share = await fileService.setShare({
+      fileId,
+      origin: options.baseUrl ?? '',
+      userId: options.userId,
+      visibility: 'public',
+    })
+    return share.url ? { shareUrl: share.url } : {}
+  } catch (err) {
+    return { shareError: err instanceof Error ? err.message : 'The public link could not be created.' }
+  }
+}
+
 export async function executeComputerListFiles(
   options: OverlayToolsOptions,
   input: { path?: string; target?: ComputerTarget },
@@ -1394,36 +1656,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export type ComputerInputAction =
-  | { action: 'click'; x: number; y: number; button?: 'left' | 'middle' | 'right'; count?: number; confirm?: boolean }
-  | { action: 'double_click'; x: number; y: number; confirm?: boolean }
-  | { action: 'right_click'; x: number; y: number; confirm?: boolean }
-  | { action: 'move'; x: number; y: number }
-  | { action: 'drag'; from: { x: number; y: number }; to: { x: number; y: number } }
-  | { action: 'type'; text: string }
-  | { action: 'key'; keys: string }
-  | { action: 'scroll'; x?: number; y?: number; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
-  | { action: 'wait'; ms: number }
-
-export type ComputerBrowserAction =
-  | { action: 'navigate'; url: string }
-  | { action: 'back' }
-  | { action: 'forward' }
-  | { action: 'reload' }
-  | { action: 'snapshot' }
-  | { action: 'click'; ref: string; confirm?: boolean }
-  | { action: 'type'; ref: string; text: string; submit?: boolean }
-  | { action: 'scroll'; direction: 'up' | 'down' | 'left' | 'right'; amount: number }
-  | { action: 'press'; keys: 'Enter' | 'Tab' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'PageDown' }
-  | { action: 'tabs' }
-  | { action: 'switch_tab'; index: number }
-  | { action: 'new_tab'; url: string }
-
-export type ComputerTerminalAction =
-  | { action: 'start'; command: string; cwd?: string }
-  | { action: 'read'; id: string; offset?: number; maxBytes?: number }
-  | { action: 'cancel'; id: string; signal?: 'INT' | 'TERM' | 'KILL' }
-  | { action: 'list' }
+export type { ComputerBrowserAction, ComputerInputAction, ComputerTerminalAction }
 
 const COMPUTER_ACTION_APPROVAL_MESSAGE =
   "This action needs approval. Review it in personal chat with a connected Computer, or set this agent's Permissions to Auto."
@@ -1465,7 +1698,7 @@ function isComputerUserInControlResult(
 
 export async function executeComputerActionWithApproval<T>(
   options: Pick<OverlayToolsOptions, 'approvalMode' | 'computerApprovalContext'>,
-  toolName: 'computer_input' | 'computer_browser' | 'computer_exec' | 'computer_terminal',
+  toolName: 'computer_input' | 'computer_browser' | 'computer_exec' | 'computer_terminal' | 'computer_recording',
   input: unknown,
   operate: () => Promise<T>,
 ): Promise<T | { success: false; error: 'approval_required'; message: string }> {
@@ -1525,12 +1758,9 @@ export async function executeComputerInput(
 ) {
   const resolved = await computerInstanceFor(options, { target: input.target, toolName: 'computer_input' })
   if (!resolved.ok) return { success: false as const, error: resolved.error }
-  const { action, target: _target, ...inputArgs } = input
+  const { target: _target, ...action } = input
   void _target
-  const command = action === 'double_click' || action === 'right_click' ? 'click' : action
-  const args: Record<string, unknown> = { ...inputArgs }
-  if (action === 'double_click') args.count = 2
-  if (action === 'right_click') args.button = 'right'
+  const { command, args } = computerInputDriverCommand(action as ComputerInputAction)
   try {
     const result = await executeComputerActionWithTakeover(
       resolved.computer.controlledByUserId,
@@ -1551,7 +1781,7 @@ export async function executeComputerInput(
     if (isRecord(result) && isRecord(result.result) && result.result.success === false) {
       return result.result
     }
-    return { success: true as const, acknowledgement: `${action.replace('_', ' ')} completed.` }
+    return { success: true as const, acknowledgement: `${input.action.replace('_', ' ')} completed.` }
   } catch (err) {
     return computerErrorResult(err, 'Computer input failed')
   }

@@ -269,3 +269,9 @@ async function syncAgentComputer({
     setAgentComputer(null)
   }
 }
+
+/** Moves a saved "Only me" agent to the workspace. One way: the server refuses the reverse move. */
+export async function moveAgentToWorkspace(workspaceId: string, agentId: string): Promise<WorkspaceAgentDirectoryItem> {
+  const saved = await overlayAppClient.agents.update(workspaceId, agentId, { visibility: 'workspace' })
+  return saved.agent
+}

@@ -9,17 +9,19 @@ import type { QueryCtx } from '../_generated/server'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { canSee } from '../agents/directory'
-import { invitationValueWithExpiry, resolvedPrincipalValues, resourceGuestValueWithExpiry } from './workspaces'
+import { invitationValueWithExpiry, resolvedPrincipalValues } from './workspaces'
 
 const MAX_ROWS = 500
 type Viewer = Awaited<ReturnType<typeof requireNativeWorkspace>>
-type Member = { principal: Awaited<ReturnType<typeof resolvedPrincipalValues>>[number]; membership: Doc<'workspaceMemberships'> }
+type Member = {
+  principal: Awaited<ReturnType<typeof resolvedPrincipalValues>>[number]
+  membership: Doc<'workspaceMemberships'>
+}
 
 const ROLE_DESCRIPTIONS = {
   owner: 'Full control, ownership transfer, and workspace archive',
-  admin: 'Manage people, invitations, teams, guests, and policy',
+  admin: 'Manage people, invitations, teams, and policy',
   member: 'Create and collaborate in workspace resources',
-  guest: 'Access only explicitly shared rooms and resources',
 } as const
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
@@ -34,7 +36,7 @@ async function activeMembers(ctx: Pick<QueryCtx, 'db'>, workspaceId: string): Pr
   const byId = new Map(resolved.map(principal => [principal.principalId, principal]))
   return memberships.flatMap(membership => {
     const principal = membership.status === 'active' ? byId.get(membership.principalId) : undefined
-    return principal ? [{ principal, membership }] : []
+    return principal ? [{ principal, membership: { ...membership, role: membership.role } }] : []
   })
 }
 
@@ -80,29 +82,9 @@ function invitationItem(invitation: ReturnType<typeof invitationValueWithExpiry>
 async function peopleItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer) {
   const [members, invitations] = await Promise.all([activeMembers(ctx, viewer.workspaceId), pendingInvitations(ctx, viewer)])
   return [
-    ...members.filter(({ principal, membership }) => principal.type === 'human' && membership.role !== 'guest')
+    ...members.filter(({ principal }) => principal.type === 'human')
       .map(member => memberItem(member, member.principal.email ?? 'Workspace member', member.membership.role)),
-    ...invitations.filter(invitation => invitation.role !== 'guest').map(invitation => invitationItem(invitation, invitation.role)),
-  ]
-}
-
-async function guestItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer) {
-  const manager = canManageWorkspace(viewer.membership.role)
-  const [members, invitations, grants] = await Promise.all([
-    activeMembers(ctx, viewer.workspaceId),
-    pendingInvitations(ctx, viewer),
-    manager
-      ? ctx.db.query('workspaceResourceGuests').withIndex('by_workspaceId', q => q.eq('workspaceId', viewer.workspaceId)).take(MAX_ROWS)
-      : Promise.resolve([]),
-  ])
-  const activeGrants = new Map<string, number>()
-  for (const grant of grants.map(resourceGuestValueWithExpiry)) {
-    if (grant.status === 'active') activeGrants.set(grant.principalId, (activeGrants.get(grant.principalId) ?? 0) + 1)
-  }
-  return [
-    ...members.filter(({ membership }) => membership.role === 'guest').map(member =>
-      memberItem(member, member.principal.email ?? 'Workspace guest', plural(activeGrants.get(member.principal.principalId) ?? 0, 'resource', 'resources'))),
-    ...invitations.filter(invitation => invitation.role === 'guest').map(invitation => invitationItem(invitation, invitation.status)),
+    ...invitations.map(invitation => invitationItem(invitation, invitation.role)),
   ]
 }
 
@@ -124,7 +106,7 @@ async function teamItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer): Promise<Wor
 
 async function roleItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer): Promise<WorkspaceManagementItem[]> {
   const members = await activeMembers(ctx, viewer.workspaceId)
-  return (['owner', 'admin', 'member', 'guest'] as const).map(role => ({
+  return (['owner', 'admin', 'member'] as const).map(role => ({
     id: role,
     kind: 'role' as const,
     name: role[0]!.toUpperCase() + role.slice(1),
@@ -139,33 +121,36 @@ async function agentItems(ctx: Pick<QueryCtx, 'db'>, viewer: Viewer): Promise<Wo
     activeMembers(ctx, viewer.workspaceId),
     ctx.db.query('workspaceAgentDefinitions').withIndex('by_workspaceId', q => q.eq('workspaceId', viewer.workspaceId)).take(MAX_ROWS),
   ])
-  // Each agent's own avatar, for agents this person may see, so pickers show it rather than a generic icon.
+  // Only agents this person may see, never a personal chief: it lives in its owner's Personal mode, so it is not
+  // mentioned, listed with the people or shown in Settings → Agents.
   const byPrincipal = new Map(agents
-    .filter(agent => agent.archivedAt === undefined && agent.deletedAt === undefined && canSee(agent, viewer))
+    .filter(agent => agent.archivedAt === undefined && agent.deletedAt === undefined
+      && agent.agentRole !== 'personal_chief' && canSee(agent, viewer))
     .map(agent => [agent.principalId, agent]))
-  return members.filter(({ principal }) => principal.type === 'agent').map(({ principal, membership }) => {
-    const agent = byPrincipal.get(principal.principalId)
-    return {
+  return members.flatMap(({ principal, membership }) => {
+    const agent = principal.type === 'agent' ? byPrincipal.get(principal.principalId) : undefined
+    if (!agent) return []
+    return [{
       id: principal.principalId,
       kind: 'member' as const,
       name: principal.displayName,
-      description: agent?.description?.trim() || 'Named workspace agent',
+      description: agent.description?.trim() || 'Named workspace agent',
       detail: membership.role,
       badge: principal.type,
       principalId: principal.principalId,
       principalType: principal.type,
-      ...(agent?.avatarColor ? { avatarColor: agent.avatarColor } : {}),
-      ...(agent?.avatarShape ? { avatarShape: agent.avatarShape } : {}),
-      isDefault: agent?.isDefault,
+      ...(agent.avatarColor ? { avatarColor: agent.avatarColor } : {}),
+      ...(agent.avatarShape ? { avatarShape: agent.avatarShape } : {}),
+      isDefault: agent.isDefault,
+      ...(agent.visibility === 'creator' ? { personal: true } : {}),
       role: membership.role,
       status: membership.status,
-    }
+    }]
   })
 }
 
 const VIEWS = {
   people: peopleItems,
-  guests: guestItems,
   teams: teamItems,
   roles: roleItems,
   'chats-agents': agentItems,
@@ -173,14 +158,14 @@ const VIEWS = {
 
 /**
  * One tab of workspace settings, live, with the same rows and rules as the server's management view: active members
- * with their current names and photos, pending invitations and guest grants for owners and admins only, teams, role
+ * with their current names and photos, pending invitations for owners and admins only, teams, role
  * counts and agents. A role change, removal, invitation, acceptance or rename reaches every open settings page and
  * picker at once; losing access returns null. Writes (invites send email) stay on the server.
  */
 export const view = query({
   args: {
     workspaceId: v.string(),
-    view: v.union(v.literal('people'), v.literal('guests'), v.literal('teams'), v.literal('roles'), v.literal('chats-agents')),
+    view: v.union(v.literal('people'), v.literal('teams'), v.literal('roles'), v.literal('chats-agents')),
   },
   handler: async (ctx, args): Promise<WorkspaceManagementResponse | null> => {
     let viewer

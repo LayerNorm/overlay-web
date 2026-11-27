@@ -2,12 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ProviderChoicePanel, SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeSelector } from './SubscriptionDialogPanels'
+import { ProviderChoicePanel, SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeNote } from './SubscriptionDialogPanels'
 import { subscriptionAuthorizationBody, subscriptionRequest } from './subscription-connection-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { ProviderConnectionRow } from './ProviderConnectionRow'
 import { SUBSCRIPTION_PROVIDERS } from '@/shared/ai/gateway/subscription-providers'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
+import { OPENCODE_SUBSCRIPTION_OPTION, OpenCodeKeyPanel } from './OpenCodeSubscriptionPanel'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -34,15 +35,10 @@ test('connection rows display persisted scope and treat legacy subscriptions as 
   assert.match(render(), /Subscription · Personal/)
 })
 
-test('scope selector explains personal isolation and explicit workspace sharing', () => {
-  const render = (scope: 'personal' | 'workspace', disabled = false, workspaceAvailable = true) => renderToStaticMarkup(
-    <SubscriptionScopeSelector scope={scope} onScopeChange={() => {}} workspaceName="Acme" workspaceAvailable={workspaceAvailable} disabled={disabled} />,
-  )
+test('the scope note says who can use the new connection', () => {
+  const render = (scope: 'personal' | 'workspace') => renderToStaticMarkup(<SubscriptionScopeNote scope={scope} workspaceName="Acme" />)
   assert.match(render('personal'), /Only you can use this connection/)
-  assert.match(render('personal'), /aria-pressed="true"[^>]*>.*?Personal/)
   assert.match(render('workspace'), /Members of the Acme workspace can use this connection/)
-  assert.match(render('workspace', true), /<fieldset[^>]*disabled/)
-  assert.match(render('personal', false, false), /<button[^>]*disabled=""[^>]*>.*?Workspace/)
   const privacy = renderToStaticMarkup(<SubscriptionPrivacyNote />)
   assert.doesNotMatch(privacy, /stays personal|border-t/)
   assert.match(privacy, /will not switch to paid inference/)
@@ -100,4 +96,55 @@ test('subscription choices show one Kimi and SVG logos', () => {
   }
   assert.match(html, /viewBox="0 0 425 425"/)
 
+})
+
+test('OpenCode is offered with an API key even when the subscription bridge is unavailable', () => {
+  const flow: React.ComponentProps<typeof ProviderChoicePanel>['flow'] = {
+    availability: { available: false, providers: SUBSCRIPTION_PROVIDERS.map(provider => ({ ...provider, enabled: true })) },
+    login: null, connected: null, error: null, busy: false, stopped: false, selectionLocked: false,
+    start: async () => {}, completeCallback: async () => {}, close: () => {},
+  }
+  const html = renderToStaticMarkup(
+    <ProviderChoicePanel flow={flow} providerId="opencode" onProviderChange={() => {}} extraProviders={[OPENCODE_SUBSCRIPTION_OPTION]} />,
+  )
+  assert.match(html, /<svg[^>]*data-provider="opencode"/)
+  const buttons = html.split('<button').slice(1)
+  const openCodeButton = buttons.find((button) => button.includes('data-provider="opencode"')) ?? ''
+  assert.match(openCodeButton, /aria-pressed="true"/)
+  assert.doesNotMatch(openCodeButton, /disabled=""/)
+  assert.ok(buttons.filter((button) => !button.includes('opencode')).every((button) => /disabled=""/.test(button)))
+
+  const reconnect = renderToStaticMarkup(
+    <ProviderChoicePanel flow={flow} connection={{ _id: 'c', providerId: 'subscription:claude', subscriptionProvider: 'claude', endpoint: '', displayName: 'Claude', enabledModelIds: [], status: 'active', isDefault: false, isDeletable: true }} providerId="claude" onProviderChange={() => {}} extraProviders={[OPENCODE_SUBSCRIPTION_OPTION]} />,
+  )
+  assert.doesNotMatch(reconnect, /OpenCode/)
+
+  const keyPanel = renderToStaticMarkup(<OpenCodeKeyPanel openCode={{
+    plan: 'opencode-zen', setPlan: () => {}, apiKey: '', setApiKey: () => {}, busy: false, error: null,
+    connected: null, connect: async () => {}, canConnect: false,
+  }} />)
+  assert.match(keyPanel, /Pay as you go/)
+  assert.match(keyPanel, /type="password"/)
+  assert.match(keyPanel, /href="https:\/\/opencode.ai\/zen"/)
+})
+
+test('OpenCode Go rows show the OpenCode logo and a personal subscription label', () => {
+  const html = renderToStaticMarkup(
+    <ProviderConnectionRow
+      connection={{ _id: 'oc', providerId: 'opencode-go', endpoint: 'https://opencode.ai/zen/go/v1', displayName: 'OpenCode Go', enabledModelIds: ['kimi-k3'], discoveredModelsJson: JSON.stringify({ data: [{ id: 'kimi-k3' }] }), status: 'active', isDefault: false, isDeletable: true }}
+      gatewayModels={[]}
+      gatewayLoading={false}
+      settingsEnabledModelIds={[]}
+      settingsModelOrder={[]}
+      settingsDisabled={false}
+      onSettingsChange={async () => {}}
+      onRefreshConnections={async () => {}}
+      onUpdateConnection={() => {}}
+      onRefreshGateway={async () => {}}
+      onEdit={() => {}}
+      onDelete={() => {}}
+    />,
+  )
+  assert.match(html, /<svg[^>]*data-provider="opencode"/)
+  assert.match(html, /Subscription · Personal/)
 })

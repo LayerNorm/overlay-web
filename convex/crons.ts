@@ -6,6 +6,8 @@ const crons = cronJobs()
 crons.interval('native deployment policy refresh', { minutes: 1 }, internal.platform.nativePolicy.refresh, {})
 
 crons.interval('Harness continuation reconciliation', { minutes: 1 }, internal.harness.continuations.dispatchDue, {})
+// Runs whose workflow died while they were still running are reported (internal/plans/NEVER_STOP_RUNS_PLAN.md, N2).
+crons.interval('Harness stalled-run sweep', { minutes: 10 }, internal.harness.stalledRuns.sweep, {})
 
 
 crons.interval('expired local tool calls', { minutes: 15 }, internal.agents.localToolCalls.cleanupExpired)
@@ -67,6 +69,13 @@ crons.interval(
 )
 
 crons.interval(
+  'expired Slack state cleanup',
+  { hours: 1 },
+  internal.integrations.slack.cleanupExpiredState,
+  {},
+)
+
+crons.interval(
   'api idempotency cleanup',
   { hours: 1 },
   internal.platform.idempotency.cleanupExpiredInternal,
@@ -112,17 +121,6 @@ crons.interval(
   { minutes: 1 },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (internal as any).files.ingestion.runner.runMinuteTick,
-  {},
-)
-
-// Project workflow step events from the Workflow SDK into Convex so clients
-// can subscribe via Convex subscription instead of polling the SSE endpoint
-// every 2 seconds. This runs every 10 seconds for near-realtime updates.
-crons.interval(
-  'workflow step event projector',
-  { seconds: 10 },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (internal as any).automations.workflowEventProjectorRunner.runProjectionTick,
   {},
 )
 

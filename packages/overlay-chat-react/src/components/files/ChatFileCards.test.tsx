@@ -53,6 +53,15 @@ test('a finished reply that only links to its video still shows the video card',
   assert.deepEqual(collectCreatedFileIds(blocks), ['vid1'])
 })
 
+test('a saved screen recording gets a card; start and unpublished stops do not', () => {
+  const blocks: AssistantVisualBlock[] = [
+    tool('computer_recording', { success: true, action: 'start', id: 'r-1' }),
+    tool('computer_recording', { success: true, action: 'stop', published: false, path: '/tmp/r.mp4' }),
+    tool('computer_recording', { success: true, action: 'stop', published: true, fileId: 'vid1' }),
+  ]
+  assert.deepEqual(collectCreatedFileIds(blocks), ['vid1'])
+})
+
 test('the strip renders videos, images and notes as compact cards', () => {
   const html = withHost(<ChatFileCardStrip fileIds={['vid1', 'img1', 'note1', 'unreadable']} />)
   assert.match(html, /aria-label="Play day-01\.mp4"/)
@@ -124,4 +133,14 @@ test('three or more notes from one turn collapse into one list, and the open not
   assert.doesNotMatch(html, /h-32/)
   const single = renderToStaticMarkup(<ChatFilesProvider value={listHost}><ChatFileCardStrip fileIds={['b']} /></ChatFilesProvider>)
   assert.match(single, /aria-current="true"/)
+})
+
+test('an API run shows a card for every file it saved and for its whole output', () => {
+  const blocks: AssistantVisualBlock[] = [
+    tool('run_api', { success: true, files: [{ fileId: 'glb1' }, { fileId: 'png1' }], fullOutputFile: { fileId: 'json1' } }, { provider: 'meshy', endpoint: '/x' }),
+    tool('run_api', { success: false, files: [{ fileId: 'failed1' }] }, { provider: 'meshy', endpoint: '/x' }),
+    tool('run_api', { success: true, output: { people: [] } }, { provider: 'apollo', endpoint: '/y' }),
+    { kind: 'text', text: '![preview](/api/v1/files/png1/content)' },
+  ]
+  assert.deepEqual(collectCreatedFileIds(blocks), ['glb1', 'json1'])
 })

@@ -3,7 +3,7 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useConvex } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { Settings, X } from 'lucide-react'
+import { CalendarDays, GitFork, Plus, Settings, User, X } from 'lucide-react'
 import { Button, Popover, PopoverContent, PopoverTrigger, Textarea } from '@overlay/ui/primitives'
 import { unstyledTextarea } from '@overlay/ui/control-reset'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
@@ -14,7 +14,7 @@ import { WORK_LIMITS, WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/wor
 import { composerRequest, emptyComposerDraft, type ComposerDraft } from '../lib/composer-draft'
 import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkData } from './WorkDataProvider'
-import { ComposerAssignee, ComposerDependencies, ComposerSchedule } from './WorkComposerPickers'
+import { ComposerAssignee, ComposerDependencies, ComposerPickerButton, ComposerSchedule } from './WorkComposerPickers'
 import { WorkComposerContext } from './WorkComposerContext'
 import { searchContext } from './WorkPeekSections'
 
@@ -152,3 +152,24 @@ export const WorkTaskComposer = forwardRef<WorkTaskComposerHandle, { disabled?: 
   const search = useCallback((query: string) => activeWorkspaceId ? searchContext(convex, activeWorkspaceId, query) : Promise.resolve([]), [activeWorkspaceId, convex])
   return <WorkTaskComposerForm key={`${activeWorkspaceId}:${scope}`} ref={ref} disabled={disabled} people={people} tasks={items} scope={scope} principalId={viewer?.principalId ?? null} createTask={createTask} search={search} />
 })
+
+/** The composer as it looks before Work's data loads: the same card and footer, disabled. Used by loading skeletons. */
+export function WorkComposerPlaceholder() {
+  return <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4" aria-hidden>
+    <div className="@container/work-composer mx-auto w-full min-w-0 max-w-4xl">
+      <PromptInput><PromptInputBody>
+        <Textarea rows={1} tabIndex={-1} aria-label="Describe a task" placeholder="Describe a task" disabled readOnly
+          className={unstyledTextarea('block min-h-11 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-0.5 py-1 text-sm leading-6 text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
+        <PromptInputFooter className="flex-nowrap">
+          <PromptInputButton aria-label="Add context" disabled tabIndex={-1}><Plus size={16} /></PromptInputButton>
+          <ComposerPickerButton label="Assignee" icon={<User size={14} />} disabled tabIndex={-1} />
+          <ComposerPickerButton label="Schedule" icon={<CalendarDays size={14} />} disabled tabIndex={-1} />
+          <ComposerPickerButton label="Depends on" icon={<GitFork size={14} />} disabled tabIndex={-1} />
+          <PromptInputButton aria-label="Task settings" disabled tabIndex={-1}><Settings size={15} /></PromptInputButton>
+          <span className="min-w-0 flex-1" />
+          <PromptInputSubmit aria-label="Add task" status="ready" disabled tabIndex={-1} />
+        </PromptInputFooter>
+      </PromptInputBody></PromptInput>
+    </div>
+  </div>
+}

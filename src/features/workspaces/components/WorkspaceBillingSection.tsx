@@ -20,6 +20,7 @@ import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
+import { WorkspaceMemberSpendCard } from './WorkspaceMemberSpendCard'
 
 
 /** PR previews (pr-<n>.preview.overlay.works) offer a card-free paid plan for testing; the server enforces it too. */
@@ -338,6 +339,8 @@ function WalletOverview({
       </div>
 
       {summary.usage ? <WorkspaceUsagePanel usage={summary.usage} /> : null}
+
+      {summary.canManage ? <WorkspaceMemberSpendCard client={client} workspaceId={workspaceId} /> : null}
 
       {summary.autoTopUp ? (
         <WorkspaceAutoTopUpCard

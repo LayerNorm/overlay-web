@@ -1,5 +1,27 @@
 # Todos
 
+## Overlay in Slack (needs Divyansh)
+
+Plan: `internal/plans/SLACK_WORKSPACE_OVERLAY_PLAN.md`. Setup and status: `internal/develop/slack-integration.md`.
+
+- [ ] **Create the test Slack app for PR Preview QA** (added 2026-11-23). At api.slack.com/apps → Create New App → From scratch:
+  - OAuth redirect URLs: `https://pr-607.preview.overlay.works/api/v1/integrations/slack/oauth` and `…/api/v1/integrations/slack/link/callback` (for later PRs, the same paths on that PR's preview).
+  - Bot scopes: `app_mentions:read, channels:history, channels:read, chat:write, groups:history, groups:read, im:history, im:read, im:write, users:read`.
+  - Event Subscriptions request URL `…/api/v1/integrations/slack/events`, with the bot events `app_mention`, `message.im` and `app_uninstalled`. Save this after the preview is live, because Slack checks the URL.
+  - Interactivity request URL: the same `…/api/v1/integrations/slack/events` (Phase 2 approval and private-handoff buttons).
+  - App Home: Messages tab on.
+  - Preview environment on `overlay-landing`: `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` and `SLACK_ENCRYPTION_KEY` (`openssl rand -base64 32`). Then tell the agent so it can run the Slack QA end to end.
+- [x] **Production Slack app** (added 2026-11-23, done 2026-11-24). The "Overlay" app points at overlay.works, the four `SLACK_*` values are in Production, and Public Distribution is on, so any Slack workspace can install it from Settings. Not listed on the Slack Marketplace; that is a separate review if wanted.
+- [ ] **Confirm web-reply attribution** (added 2026-11-23). Phase 2 posts a member's web reply into Slack as the Overlay bot, with their name on the message. Posting as the person would need Slack user tokens, or `chat:write.customize`, which the plan rules out. Change this if you want it to look different.
+- [ ] **Confirm what Slack users without an Overlay account get** (added 2026-11-23). Phase 1 only offers *Ask them to link*. *Channel access only* (answers without workspace data) is Phase 3.
+
+- [ ] **Decide who pays for Slack answers to people without an Overlay account** (added 2026-11-23). *Channel access only* would let anyone in the Slack workspace ask Overlay, without workspace data or actions. They have no Overlay user, so the model cost has to land on the workspace, on whoever installed the app, or the option stays off. Phase 3 ships without it.
+
+## Workspace and Personal
+
+Rules and where they're enforced: `internal/develop/workspace-and-personal.md`. The plan shipped in full (P1–P7, PRs 616, 617, 620, 621).
+
+
 ## Chief of Staff harness
 
 - [ ] **Additional Slack audiences** — support DMs to Overlay, private channels and Slack Connect (shared) channels with explicit identity and audience policies. These are intentionally disabled in Phase 4.

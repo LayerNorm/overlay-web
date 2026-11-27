@@ -1,11 +1,12 @@
 import 'server-only'
+import { includedItemsOfMessage } from '@/shared/agents/included-items'
 
 import { nativeAgentModelId } from '@/shared/agents/agent-model'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
-import { agentFormattingNote, computerCapabilityNote, generatedUiNote, knowledgeNote } from '@/server/agent/shared-agent-instructions'
+import { agentFormattingNote, apiToolsNote, computerCapabilityNote, generatedUiNote, knowledgeNote } from '@/server/agent/shared-agent-instructions'
 import { SHARED_AGENT_BEHAVIOR_CONSTANTS } from '@/server/agent/shared-agent-instruction-constants'
 import { chiefOrchestrationInstructions } from './chief-orchestration'
 
@@ -148,6 +149,7 @@ export async function loadRoomTurnContext(args: {
     throw new WorkspaceAgentInvocationError('not_a_collaboration_room')
   }
   const triggeringMessage = history.find((message) => message._id === args.messageId)
+  const includedItems = includedItemsOfMessage(triggeringMessage)
   const latestUserText = triggeringMessage?.content
     ?? history.filter((message) => !message.deletedAt).at(-1)?.content
     ?? ''
@@ -157,6 +159,7 @@ export async function loadRoomTurnContext(args: {
     conversationType,
     directory,
     history,
+    includedItems,
     latestUserText,
     participants,
     server,
@@ -333,6 +336,7 @@ export function buildAgentSystemPrompt(args: {
     args.hasTools ? AGENT_CLOSING_SUMMARY_INSTRUCTION : '',
     computerCapabilityNote(new Set(args.exposedToolIds)),
     generatedUiNote(new Set(args.exposedToolIds)),
+    apiToolsNote(new Set(args.exposedToolIds)),
     knowledgeNote({ constants: SHARED_AGENT_BEHAVIOR_CONSTANTS, memoryEnabled: args.memoryEnabled }, new Set(args.exposedToolIds)),
     args.contextBlock,
     agentFormattingNote(SHARED_AGENT_BEHAVIOR_CONSTANTS),

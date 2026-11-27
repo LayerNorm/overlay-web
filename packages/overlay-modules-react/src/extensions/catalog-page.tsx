@@ -162,15 +162,66 @@ export function ExtensionCatalogEmpty({ icon: Icon, title, body, action }: { ico
   )
 }
 
-function CatalogSkeleton() {
+const CATALOG_PAGE = 'mx-auto max-w-[920px] px-10 pt-7 pb-14 max-lg:px-6 max-lg:pt-6 max-lg:pb-12 max-md:px-3.5 max-md:pt-4 max-md:pb-10'
+const CATALOG_SEARCH = 'relative flex w-60 items-center max-[860px]:w-auto max-[860px]:flex-1'
+const CATALOG_TAB = 'h-8 rounded-full px-3.5 text-[13px] font-[450] text-(--muted) data-active:bg-(--shell-fill,var(--surface-subtle)) data-active:text-(--foreground)'
+
+/** Loading sections: each with its `h-8` heading and a two-column grid of 40px-tile rows, as the loaded Browse view. */
+function CatalogSkeleton({ sections = 2 }: { sections?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-x-7 gap-y-0.5 pt-[22px] max-md:grid-cols-1" aria-hidden>
-      {Array.from({ length: 6 }, (_, index) => (
-        <div key={index} className="flex items-center gap-3.5 p-2.5">
-          <Skeleton className="size-10 rounded-[10px]" />
-          <div className="flex-1 space-y-2"><Skeleton className="h-3 w-28" /><Skeleton className="h-3 w-44" /></div>
-        </div>
+    <div aria-hidden>
+      {Array.from({ length: sections }, (_, section) => (
+        <section key={section} className="pt-[22px]">
+          <div className="mb-2 flex h-8 items-center"><Skeleton className="h-3.5 w-28" /></div>
+          <div className="grid grid-cols-2 gap-x-7 gap-y-0.5 max-md:grid-cols-1">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="flex items-center gap-3.5 p-2.5 max-md:pl-1.5">
+                <Skeleton className="size-10 shrink-0 rounded-[10px]" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex h-5 items-center"><Skeleton className="h-3 w-28" /></div>
+                  <div className="flex h-[18px] items-center"><Skeleton className={cn('h-2.5', index % 2 ? 'w-36' : 'w-44')} /></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       ))}
+    </div>
+  )
+}
+
+/**
+ * The catalog page while its view or data loads: the same column, title block, search, Add and tabs, with placeholder
+ * rows. Pass what the view already knows (title, subtitle, noun, tab label); the rest renders as placeholders.
+ */
+export function ExtensionCatalogPageSkeleton({ title, subtitle, noun, yoursLabel, add = true }: {
+  title?: string
+  subtitle?: string
+  noun?: string
+  yoursLabel?: string
+  /** The view shows the Add menu. */
+  add?: boolean
+}) {
+  return (
+    <div className={CATALOG_PAGE} role="status" aria-label="Loading">
+      <div className="mb-[18px] flex items-start justify-between gap-6 max-[860px]:flex-col max-[860px]:gap-3.5">
+        <div className="min-w-0">
+          {title ? <h1 className="text-[22px] leading-8 font-semibold tracking-[-0.015em]">{title}</h1> : <div className="flex h-8 items-center"><Skeleton className="h-5 w-32" /></div>}
+          {subtitle ? <p className="mt-0.5 text-sm text-(--muted)">{subtitle}</p> : <div className="mt-0.5 flex h-5 items-center"><Skeleton className="h-3 w-72 max-w-full" /></div>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2 pt-0.5 max-[860px]:w-full">
+          <div className={CATALOG_SEARCH}>
+            <Search size={15} aria-hidden className="pointer-events-none absolute left-[11px] text-(--muted)" />
+            <Input type="search" disabled placeholder={noun ? `Search ${noun}` : 'Search'} aria-label={noun ? `Search ${noun}` : 'Search'} className="h-9 rounded-[10px] bg-transparent pr-[30px] pl-[33px] text-[13px] disabled:cursor-default disabled:opacity-100" />
+          </div>
+          {add ? <Skeleton className="h-9 w-[86px] shrink-0 rounded-[10px] max-md:w-9" /> : null}
+        </div>
+      </div>
+      <div className="-ml-0.5 mb-1.5 flex gap-1" aria-hidden>
+        <span data-active className={cn('inline-flex items-center', CATALOG_TAB)}>Browse</span>
+        <span className={cn('inline-flex items-center', CATALOG_TAB)}>{yoursLabel ?? <Skeleton className="h-3 w-12" />}</span>
+      </div>
+      <CatalogSkeleton />
     </div>
   )
 }
@@ -204,7 +255,7 @@ export function ExtensionCatalogPage({
     body = results.length
       ? <ExtensionCatalogSectionView title="Results" count={results.length}><ExtensionCatalogGrid entries={results} /></ExtensionCatalogSectionView>
       : searching
-        ? <CatalogSkeleton />
+        ? <CatalogSkeleton sections={1} />
         : <ExtensionCatalogEmpty icon={SearchX} title={`No ${noun} match “${q}”`} body={noResults.body} action={noResults.action} />
   } else if (openSection) {
     body = <section className="pt-[22px]"><ExtensionCatalogGrid entries={openSection.items} /></section>
@@ -225,7 +276,7 @@ export function ExtensionCatalogPage({
   }
 
   return (
-    <div className="mx-auto max-w-[920px] px-10 pt-7 pb-14 max-lg:px-6 max-lg:pt-6 max-lg:pb-12 max-md:px-3.5 max-md:pt-4 max-md:pb-10">
+    <div className={CATALOG_PAGE}>
       <div className="mb-[18px] flex items-start justify-between gap-6 max-[860px]:flex-col max-[860px]:gap-3.5">
         <div className="flex min-w-0 items-start gap-1.5">
           {inCategory ? (
@@ -237,7 +288,7 @@ export function ExtensionCatalogPage({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-0.5 max-[860px]:w-full">
-          <div className="relative flex w-60 items-center max-[860px]:w-auto max-[860px]:flex-1">
+          <div className={CATALOG_SEARCH}>
             <Search size={15} aria-hidden className="pointer-events-none absolute left-[11px] text-(--muted)" />
             <Input
               type="search"
@@ -273,7 +324,7 @@ export function ExtensionCatalogPage({
               variant="ghost"
               size="sm"
               data-active={tab === id || undefined}
-              className="h-8 rounded-full px-3.5 text-[13px] font-[450] text-(--muted) data-active:bg-(--shell-fill,var(--surface-subtle)) data-active:text-(--foreground)"
+              className={CATALOG_TAB}
               onClick={() => setTab(id)}
             >
               {id === 'browse' ? 'Browse' : yoursLabel}

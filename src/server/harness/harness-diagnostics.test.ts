@@ -5,6 +5,7 @@ import {
   HarnessPersistenceError, harnessDiagnosticForFailure, harnessDiagnosticTerminalError, INTERRUPTED_MODEL_CALL_PROVIDER,
   describeHarnessFailureCause, logHarnessFailure, stableHarnessDiagnosticId,
 } from './harness-diagnostics'
+import { preserveHarnessSDKFailure } from './execution-failure'
 
 function snapshot(overrides: Partial<HarnessSnapshot> = {}): HarnessSnapshot {
   return {
@@ -49,6 +50,13 @@ test('an unrecognized failure is an internal error, never UNKNOWN, and keeps its
   expect(harnessDiagnosticTerminalError(diagnostic).message).not.toContain('budget was rejected')
 })
 
+test('a workspace run refused a personal model says so, even when the step wrapped the error', () => {
+  const error = new Error('Step "authorizeNativeHarnessExecution" failed after 3 retries: Workspace runs use workspace accounts: this model is connected with a personal key or subscription. Pick a workspace model.')
+  const diagnostic = harnessDiagnosticForFailure('root', snapshot(), error, 'tool')
+  expect(diagnostic).toMatchObject({ code: 'WORKSPACE_PERSONAL_MODEL', stage: 'model', retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(diagnostic).message).toContain('personal provider')
+})
+
 const openDispatch = {
   modelReservation: { id: 'model:7', maxCostMicros: 0, dispatch: { modelId: 'fixture/model', billingReservationId: null } },
 } satisfies Partial<HarnessSnapshot>
@@ -67,6 +75,30 @@ test('an open dispatch with no known cause becomes MODEL_OUTCOME_UNKNOWN with pl
     retryable: true,
     message: `The model connection dropped before the response finished. Send your message again. Diagnostic ID: ${diagnostic.diagnosticId}`,
   })
+})
+
+test.each(['UND_ERR_BODY_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'ETIMEDOUT'])(
+  'a provider request that ends with network timeout %s is a provider timeout, not a dropped connection',
+  (code) => {
+    const networkError = Object.assign(new Error('private socket detail'), { code })
+    const apiError = new APICallError({
+      message: 'Cannot connect to API: private', url: 'https://provider.invalid', requestBodyValues: {},
+      cause: Object.assign(new TypeError('terminated'), { cause: networkError }),
+    })
+    const preserved = preserveHarnessSDKFailure(apiError)
+    expect(preserved).toMatchObject({ name: 'HarnessModelFailure', message: 'The model provider request timed out. (AI_APICallError)' })
+    const open = snapshot(openDispatch)
+    expect(harnessDiagnosticForFailure('root', open, { name: 'FatalError', cause: preserved }, 'model').code).toBe('PROVIDER_TIMEOUT')
+  },
+)
+
+test('a provider request that fails without a status or timeout stays an unknown model outcome', () => {
+  const apiError = new APICallError({
+    message: 'Cannot connect to API: private', url: 'https://provider.invalid', requestBodyValues: {},
+    cause: Object.assign(new Error('socket closed'), { code: 'ECONNRESET' }),
+  })
+  expect(harnessDiagnosticForFailure('root', snapshot(openDispatch), preserveHarnessSDKFailure(apiError), 'model').code)
+    .toBe('MODEL_OUTCOME_UNKNOWN')
 })
 
 test('the real provider cause is classified before an open dispatch', () => {

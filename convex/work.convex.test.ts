@@ -19,13 +19,13 @@ const m = (name: string) => makeFunctionReference<'mutation'>(name)
 type Convex = ReturnType<typeof convexTest>
 type Item = { _id: string; title: string; status: string; rank: string; scope: string; parentId?: string; assigneePrincipalId?: string; assignmentExecution?: { assignedByUserId: string; assigneePrincipalId: string; generation: number; status: 'pending' | 'starting' | 'started' | 'failed'; conversationId?: string; messageId?: string; turnId?: string; clientNonce?: string }; archivedAt?: number; blocked: boolean; updatedAt: number }
 
-/** A workspace with an owner, an admin, two members, a guest, and an agent. */
+/** A workspace with an owner, an admin, two members, and an agent; `gus` is not in it. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
   await convex.run(async (ctx) => {
     for (const ws of [workspaceId, otherWorkspaceId]) {
       await ctx.db.insert('workspaces', { workspaceId: ws, kind: 'organization', name: ws, slug: ws, status: 'active', createdAt: now, updatedAt: now })
     }
-    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member'], ['gus', 'guest']] as const) {
+    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member']] as const) {
       await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId, type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
@@ -184,7 +184,7 @@ test('task revisions advance for edits, moves and archive/restore within one clo
 })
 
 describe('personal and workspace visibility', () => {
-  test('personal tasks are private; workspace tasks are shared with members but not guests or other workspaces', async () => {
+  test('personal tasks are private; workspace tasks are shared with members but not outsiders or other workspaces', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const work = api(convex)
@@ -225,7 +225,7 @@ describe('personal and workspace visibility', () => {
     await expect(work.create('alice', { title: 'No', scope: 'workspace' })).rejects.toThrow(/workspace_creation_restricted/)
     expect((await work.create('admin', { title: 'Yes', scope: 'workspace' })).scope).toBe('workspace')
     expect((await work.create('alice', { title: 'Personal still fine' })).scope).toBe('personal')
-    await expect(work.create('gus', { title: 'Guest' })).rejects.toThrow()
+    await expect(work.create('gus', { title: 'Outsider' })).rejects.toThrow()
   })
 
   test('members may work on a workspace task when the policy allows, and only on assigned ones when admins-only', async () => {
@@ -273,14 +273,15 @@ describe('move, archive and restore', () => {
     expect(await work.setScope('bob', objective._id, 'workspace')).toEqual({ ok: false, reason: 'not_found' })
     expect(await work.setScope('alice', objective._id, 'workspace')).toEqual({ ok: true })
     expect(await work.titles('bob')).toEqual(['Objective', 'Child'])
-    expect(await work.setScope('admin', objective._id, 'personal')).toEqual({ ok: false, reason: 'not_creator' })
+    expect(await work.setScope('admin', objective._id, 'workspace')).toEqual({ ok: false, reason: 'not_creator' })
+    expect(await work.setScope('alice', objective._id, 'personal')).toEqual({ ok: false, reason: 'one_way' })
     expect(await work.setScope('alice', objective._id, 'workspace')).toEqual({ ok: false, reason: 'same_scope' })
 
     // An admin may archive a member's workspace task; it leaves the workspace view and shows under Archived.
     expect(await work.archive('admin', objective._id)).toEqual({ ok: true })
     expect(await work.titles('bob')).toEqual([])
     expect(await work.titles('bob', 'archived')).toEqual(['Objective', 'Child'])
-    expect(await work.setScope('alice', objective._id, 'personal')).toEqual({ ok: false, reason: 'archived' })
+    expect(await work.setScope('alice', objective._id, 'workspace')).toEqual({ ok: false, reason: 'archived' })
     await expect(work.update('alice', objective._id, { title: 'Edited' })).rejects.toThrow(/archived/)
     expect(await work.restore('alice', objective._id)).toEqual({ ok: true })
     expect(await work.titles('bob', 'workspace')).toEqual(['Objective', 'Child'])
@@ -764,56 +765,48 @@ describe('ordering', () => {
 
 type Linked = Item & { blockedBy?: string[]; reviewerUserId?: string }
 
-describe('moving between Personal and Workspace keeps links valid', () => {
-  test('an owner or reviewer who cannot read a Personal task is dropped when it moves there', async () => {
+describe('moving to Workspace keeps links valid, and nothing moves back', () => {
+  test('a workspace task cannot move back to Personal, by the move or by an edit, and keeps its owner and reviewer', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const work = api(convex)
     const task = await work.create('alice', { title: 'Handed over', scope: 'workspace', assigneePrincipalId: 'p-bob', reviewerUserId: 'bob' })
-    expect(await work.setScope('alice', task._id, 'personal')).toEqual({ ok: true })
-    const moved = (await work.get('alice', task._id)) as Linked
-    expect(moved.scope).toBe('personal')
-    expect(moved.assigneePrincipalId).toBeUndefined()
-    expect(moved.reviewerUserId).toBeUndefined()
-    const kinds = (await work.events('alice', task._id)).map((event) => event.kind)
-    expect(kinds).toEqual(expect.arrayContaining(['assignee', 'reviewer', 'scope']))
-    // Their own assignment survives.
-    const own = await work.create('alice', { title: 'Mine', scope: 'workspace', assigneePrincipalId: 'p-alice' })
-    await work.setScope('alice', own._id, 'personal')
-    expect(((await work.get('alice', own._id)) as Linked).assigneePrincipalId).toBe('p-alice')
+    expect(await work.setScope('alice', task._id, 'personal')).toEqual({ ok: false, reason: 'one_way' })
+    await expect(work.update('alice', task._id, { scope: 'personal' })).rejects.toThrow(/scope_forbidden/)
+    const kept = (await work.get('alice', task._id)) as Linked
+    expect(kept).toMatchObject({ scope: 'workspace', assigneePrincipalId: 'p-bob', reviewerUserId: 'bob' })
+    expect((await work.events('alice', task._id)).map((event) => event.kind)).toEqual(['created'])
   })
 
-  test('a task moved without its parent leaves it; a task moved with its parent keeps it; others\' children are released', async () => {
+  test('a task moved without its Personal parent leaves it; a task moved with its parent keeps it', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const work = api(convex)
-    const parent = await work.create('alice', { title: 'Parent', scope: 'workspace' })
-    const child = await work.create('alice', { title: 'Child', scope: 'workspace', parentId: parent._id })
-    await work.setScope('alice', child._id, 'personal')
+    const parent = await work.create('alice', { title: 'Parent' })
+    const child = await work.create('alice', { title: 'Child', parentId: parent._id })
+    await work.setScope('alice', child._id, 'workspace')
     expect(((await work.get('alice', child._id)) as Linked).parentId).toBeUndefined()
 
-    const whole = await work.create('alice', { title: 'Whole', scope: 'workspace' })
-    const inside = await work.create('alice', { title: 'Inside', scope: 'workspace', parentId: whole._id })
-    const bobsChild = await work.create('bob', { title: 'Bobs child', scope: 'workspace', parentId: whole._id })
-    await work.setScope('alice', whole._id, 'personal')
-    expect(((await work.get('alice', inside._id)) as Linked).parentId).toBe(whole._id)
-    expect(((await work.get('bob', bobsChild._id)) as Linked).parentId).toBeUndefined()
+    const whole = await work.create('alice', { title: 'Whole' })
+    const inside = await work.create('alice', { title: 'Inside', parentId: whole._id })
+    await work.setScope('alice', whole._id, 'workspace')
+    expect((await work.get('bob', inside._id)) as Linked).toMatchObject({ scope: 'workspace', parentId: whole._id })
   })
 
-  test('blockers in the other scope are released in both directions', async () => {
+  test('blockers still in Personal are released in both directions', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)
     const work = api(convex)
-    const first = await work.create('alice', { title: 'First', scope: 'workspace' })
-    const waiting = await work.create('alice', { title: 'Waiting', scope: 'workspace' })
+    const first = await work.create('alice', { title: 'First' })
+    const waiting = await work.create('alice', { title: 'Waiting' })
     await work.update('alice', waiting._id, { blockedBy: [first._id] })
-    await work.setScope('alice', first._id, 'personal')
+    await work.setScope('alice', first._id, 'workspace')
     expect(((await work.get('alice', waiting._id)) as Linked).blockedBy).toEqual([])
 
-    const blocker = await work.create('alice', { title: 'Blocker', scope: 'workspace' })
-    const other = await work.create('alice', { title: 'Other', scope: 'workspace' })
+    const blocker = await work.create('alice', { title: 'Blocker' })
+    const other = await work.create('alice', { title: 'Other' })
     await work.update('alice', other._id, { blockedBy: [blocker._id] })
-    await work.setScope('alice', other._id, 'personal')
+    await work.setScope('alice', other._id, 'workspace')
     expect(((await work.get('alice', other._id)) as Linked).blockedBy).toEqual([])
   })
 

@@ -106,8 +106,6 @@
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.5);
   --selection-bg: rgba(0, 0, 0, 0.1);
-  --scrollbar-thumb: #d4d4d8;
-  --scrollbar-thumb-hover: #a1a1aa;
   --font-serif-family: 'Libre Baskerville';
   --font-serif: var(--font-serif-family), var(--font-sans);
   --accent: #0a0a0a;
@@ -137,8 +135,6 @@
   --glass-bg: rgba(17, 17, 19, 0.72);
   --glass-border: rgba(255, 255, 255, 0.08);
   --selection-bg: rgba(255, 255, 255, 0.16);
-  --scrollbar-thumb: #3f3f46;
-  --scrollbar-thumb-hover: #52525b;
   --chat-badge-free-bg: rgba(16, 185, 129, 0.16);
   --chat-badge-free-fg: #6ee7b7;
   --chat-badge-upgrade-bg: rgba(245, 158, 11, 0.14);
@@ -277,22 +273,16 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar */
+/* No visible scrollbars: lists, transcripts and panels still scroll, and it is evident when they can. `!important`
+   overrides components that ask for thin bars. */
+* {
+  scrollbar-width: none !important;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Glassmorphism utilities */
@@ -346,74 +336,75 @@ html {
   }
 }
 
-.ui-skeleton-mesh {
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  background: var(--surface-muted);
-  min-height: 4rem;
-}
+/* In the components layer so utilities (rounded-full, sizes) on a skeleton win over these defaults. */
+@layer components {
+  .ui-skeleton-mesh {
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    background: var(--surface-muted);
+  }
 
-.ui-skeleton-mesh::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -60%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
-    var(--skeleton-sheen) 50%,
-    color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
-    transparent 100%
-  );
-  filter: blur(0.5px);
-  animation: ui-skeleton-shimmer-slide 1.65s ease-in-out infinite;
-}
+  .ui-skeleton-mesh::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      transparent 0%,
+      color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 38%,
+      var(--skeleton-sheen) 50%,
+      color-mix(in srgb, var(--skeleton-sheen) 13%, transparent) 62%,
+      transparent 100%
+    );
+    filter: blur(0.5px);
+    animation: ui-skeleton-shimmer-slide 1.65s ease-in-out infinite;
+  }
 
-/* Text row skeleton (sidebar lists, settings) */
-.ui-skeleton-line {
-  position: relative;
-  overflow: hidden;
-  border-radius: 0.375rem;
-  background-color: var(--surface-muted);
-  min-height: 0.625rem;
-}
+  /* Text row skeleton (sidebar lists, settings) */
+  .ui-skeleton-line {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.375rem;
+    background-color: var(--surface-muted);
+  }
 
-.ui-skeleton-line::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -55%;
-  width: 55%;
-  height: 100%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(128, 128, 128, 0.06) 35%,
-    rgba(255, 255, 255, 0.45) 50%,
-    rgba(128, 128, 128, 0.06) 65%,
-    transparent 100%
-  );
-  animation: ui-skeleton-shimmer-slide 1.4s ease-in-out infinite;
-}
+  .ui-skeleton-line::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -55%;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(
+      105deg,
+      transparent 0%,
+      rgba(128, 128, 128, 0.06) 35%,
+      rgba(255, 255, 255, 0.45) 50%,
+      rgba(128, 128, 128, 0.06) 65%,
+      transparent 100%
+    );
+    animation: ui-skeleton-shimmer-slide 1.4s ease-in-out infinite;
+  }
 
-[data-theme='dark'] .ui-skeleton-line {
-  background-color: var(--surface-subtle);
-}
+  [data-theme='dark'] .ui-skeleton-line {
+    background-color: var(--surface-subtle);
+  }
 
-[data-theme='dark'] .ui-skeleton-line::after {
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.03) 35%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 255, 255, 0.03) 65%,
-    transparent 100%
-  );
+  [data-theme='dark'] .ui-skeleton-line::after {
+    background: linear-gradient(
+      105deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.03) 35%,
+      rgba(255, 255, 255, 0.12) 50%,
+      rgba(255, 255, 255, 0.03) 65%,
+      transparent 100%
+    );
+  }
 }
 
 

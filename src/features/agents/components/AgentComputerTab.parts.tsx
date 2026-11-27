@@ -63,10 +63,7 @@ export function AgentComputerTabView({
   }
   if (computerLoading) {
     return (
-      <div className="space-y-2">
-        <ConnectingState />
-        <p className="text-center text-xs text-(--muted)">Connecting</p>
-      </div>
+      <ConnectingState label="Connecting" />
     )
   }
   if (computerError) {
@@ -92,24 +89,18 @@ export function AgentComputerTabView({
             {waking ? 'Waking...' : 'Wake'}
           </Button>
         </div>
-        <p className="text-center text-xs text-(--muted)">{agentName}&apos;s computer</p>
+        <p className="text-center text-xs text-(--muted)">{agentName}&apos;s cloud computer</p>
       </div>
     )
   }
   if (computer.status === 'provisioning') {
     return (
-      <div className="space-y-2">
-        <ConnectingState />
-        <p className="text-center text-xs text-(--muted)">Waking up</p>
-      </div>
+      <ConnectingState label="Waking up" />
     )
   }
   if ((computer.status as string) === 'starting') {
     return (
-      <div className="space-y-2">
-        <ConnectingState />
-        <p className="text-center text-xs text-(--muted)">Connecting</p>
-      </div>
+      <ConnectingState label="Connecting" />
     )
   }
   if (computer.status !== 'ready') {
@@ -125,10 +116,7 @@ export function AgentComputerTabView({
   }
   if (ticketLoading || !ticketUrl) {
     return (
-      <div className="space-y-2">
-        <ConnectingState />
-        <p className="text-center text-xs text-(--muted)">Connecting</p>
-      </div>
+      <ConnectingState label="Connecting" />
     )
   }
 
@@ -175,7 +163,7 @@ function ReadyComputerPreview({
     ? `You have control. ${agentName} is paused.`
     : controlledByAnotherUser
       ? `${agentName} is paused. Another member has control.`
-      : `${agentName} is working`
+      : `${agentName} is working in the cloud`
   // Taking control keeps the stream here, in the panel (widened for it), and makes it interactive.
   if (controlled && controlledByCurrentUser) {
     return (
@@ -253,15 +241,19 @@ function ComputerControlStatus({
   )
 }
 
-function ConnectingState() {
+function ConnectingState({ label }: { label: string }) {
   return (
-    <div className="flex aspect-[16/10] flex-col items-center justify-center gap-3 rounded-xl bg-(--surface-subtle) text-xs text-(--muted)" role="status">
-      <span className="flex items-center gap-1" aria-hidden="true">
+    <div className="space-y-2" role="status">
+      <div className="flex aspect-[16/10] items-center justify-center gap-1 rounded-xl bg-(--surface-subtle) text-(--muted)" aria-hidden="true">
         <span className="size-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none" />
         <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms] motion-reduce:animate-none" />
         <span className="size-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms] motion-reduce:animate-none" />
-      </span>
-      Connecting
+      </div>
+      {/* Same caption row as the loaded preview, with a muted dot until the stream is live. */}
+      <p className="flex items-center gap-2 text-xs text-(--muted)">
+        <span className="size-1.5 rounded-full bg-(--muted-light)" />
+        {label}
+      </p>
     </div>
   )
 }

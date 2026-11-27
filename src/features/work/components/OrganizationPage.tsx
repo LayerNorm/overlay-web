@@ -11,10 +11,11 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
+import { agentsForMode } from '@/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { OrganizationAgentDetails } from './OrganizationAgentDetails'
+import { OrganizationChartSkeleton } from './WorkSkeletons'
 
 type Agent = WorkspaceAgentDirectoryItem
 
@@ -47,7 +48,7 @@ export function OrganizationPage() {
   const data = directory.workspaceId === activeWorkspaceId && directory.agents
     ? { agents: directory.agents, viewerPrincipalId: directory.viewerPrincipalId ?? undefined }
     : undefined
-  const agents = pinChiefs(agentsForCreatorScope((data?.agents ?? []).filter(a => !a.archivedAt), data?.viewerPrincipalId, scope), data?.viewerPrincipalId)
+  const agents = pinChiefs(agentsForMode((data?.agents ?? []).filter(a => !a.archivedAt), data?.viewerPrincipalId, scope), data?.viewerPrincipalId)
   const root = agents.find(a => scope === 'workspace' ? a.agentRole === 'workspace_chief' : a.agentRole === 'personal_chief')
   const children = agents.filter(a => a.id !== root?.id)
   const selected = selection?.key === key ? agents.find(a => a.id === selection.id) : undefined
@@ -60,11 +61,11 @@ export function OrganizationPage() {
       rightPanel={selected ? <OrganizationAgentDetails key={`${key}:${selected.id}`} agent={selected} owner={owner(selected)} onClose={() => setSelection(null)} /> : null}
       rightPanelOpen={Boolean(selected)} onRightPanelClose={() => setSelection(null)} rightPanelWidth={320} rightPanelOverlayLabel="Close agent details">
       <AppScreenBody padding="none" maxWidth="none" className="min-w-0 overflow-auto">
-        <div className="mx-auto flex min-h-full max-w-4xl flex-col items-center px-5 py-10 md:px-8">
+        <div className="mx-auto flex min-h-full max-w-4xl flex-col items-center px-3 py-10 sm:px-4">
           <h1 className="text-lg font-medium">{scope === 'workspace' ? activeWorkspace?.name || 'Workspace' : 'Your organization'}</h1>
           <p className="mt-2 text-center text-sm text-(--muted)">{scope === 'workspace' ? 'Workspace agents and member chiefs of staff.' : 'Your chief of staff and personal agents.'}</p>
           {!isLoading && !capabilities.work ? <p className="mt-12 text-sm text-(--muted)">Work is unavailable for this deployment.</p>
-            : isLoading || directory.status === 'loading' ? <p role="status" className="mt-12 text-sm text-(--muted)">Loading organization...</p>
+            : isLoading || directory.status === 'loading' ? <OrganizationChartSkeleton />
               : !data ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p></div>
                 : !root ? <p className="mt-12 text-sm text-(--muted)">No chief of staff is available in this scope.</p> : (
                   <section aria-label="Agent organization" className="mt-10 flex w-full flex-col items-center">

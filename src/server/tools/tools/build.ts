@@ -2,6 +2,16 @@ import 'server-only'
 
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod/v3'
+import {
+  computerBrowserFields,
+  computerBrowserUrlSchema,
+  computerBrowserVariants,
+  computerInputFields,
+  computerInputVariants,
+  computerTerminalFields,
+  computerTerminalVariants,
+  computerToolInputSchema,
+} from '@layernorm/overlay-agent-bridge-protocol'
 import { generatedUiDraftContainsCode } from '@overlay/chat-core/generated-ui'
 import { IMAGE_MODELS, getVideoModelsBySubMode } from '@/shared/ai/gateway/model-data'
 import {
@@ -38,6 +48,7 @@ import {
   executeComputerScreenshot,
   executeComputerWriteFile,
   executeComputerPublishFile,
+  executeComputerRecording,
   executeComputerActionWithApproval,
   type ComputerTerminalAction,
   executeCreateAutomation,
@@ -77,16 +88,10 @@ import {
   executeWriteFile,
 } from './files-executes'
 import { runInToolCallScope } from './internal-api'
+import { executeInspectApi, executeRunApi, executeSaveApiFile, executeSearchApis } from './monid'
+import { executeArchiveItem, executeMoveToWorkspace, executeRestoreItem, SCOPE_TOOL_RESOURCES } from './scope-executes'
 import type { OverlayToolsOptions } from './types'
 
-const computerPointSchema = z.object({
-  x: z.number().int().min(0).max(8192),
-  y: z.number().int().min(0).max(8192),
-}).strict()
-const computerBrowserUrlSchema = z.string().url().refine(
-  (value) => /^https?:\/\//i.test(value),
-  'URL must use HTTP or HTTPS.',
-)
 /** Optional on every computer tool: run on the cloud Computer or on the user's own connected Mac. */
 const computerTargetSchema = z.enum(['cloud', 'local']).optional().describe(
   'Where to run: "local" is the user\'s own Mac (their files, apps and signed-in browser), "cloud" is the cloud Computer. '
@@ -97,153 +102,10 @@ function withoutTarget<T extends { target?: unknown }>(input: T): Omit<T, 'targe
   void _target
   return rest
 }
-const computerInputVariants = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('click'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-    button: z.enum(['left', 'middle', 'right']).optional(),
-    count: z.number().int().min(1).max(25).optional(),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('double_click'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('right_click'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('move'),
-    x: z.number().int().min(0).max(8192),
-    y: z.number().int().min(0).max(8192),
-  }).strict(),
-  z.object({ action: z.literal('drag'), from: computerPointSchema, to: computerPointSchema }).strict(),
-  z.object({ action: z.literal('type'), text: z.string().max(10000) }).strict(),
-  z.object({ action: z.literal('key'), keys: z.string().min(1).max(100) }).strict(),
-  z.object({
-    action: z.literal('scroll'),
-    x: z.number().int().min(0).max(8192).optional(),
-    y: z.number().int().min(0).max(8192).optional(),
-    direction: z.enum(['up', 'down', 'left', 'right']),
-    amount: z.number().int().min(1).max(25),
-  }).strict(),
-  z.object({ action: z.literal('wait'), ms: z.number().int().min(0).max(10000) }).strict(),
-])
-const computerInputSchema = z.object({
-  action: z.enum([
-    'click', 'double_click', 'right_click', 'move', 'drag', 'type', 'key', 'scroll', 'wait',
-  ]),
-  x: z.number().int().min(0).max(8192).optional(),
-  y: z.number().int().min(0).max(8192).optional(),
-  button: z.enum(['left', 'middle', 'right']).optional(),
-  count: z.number().int().min(1).max(25).optional(),
-  confirm: z.boolean().optional(),
-  from: computerPointSchema.optional(),
-  to: computerPointSchema.optional(),
-  text: z.string().max(10000).optional(),
-  keys: z.string().min(1).max(100).optional(),
-  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
-  amount: z.number().int().min(1).max(25).optional(),
-  ms: z.number().int().min(0).max(10000).optional(),
-  target: computerTargetSchema,
-}).strict().superRefine((input, ctx) => {
-  const parsed = computerInputVariants.safeParse(withoutTarget(input))
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) ctx.addIssue(issue)
-  }
-})
-const computerBrowserVariants = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('navigate'), url: computerBrowserUrlSchema }).strict(),
-  z.object({ action: z.literal('back') }).strict(),
-  z.object({ action: z.literal('forward') }).strict(),
-  z.object({ action: z.literal('reload') }).strict(),
-  z.object({ action: z.literal('snapshot') }).strict(),
-  z.object({
-    action: z.literal('click'),
-    ref: z.string().min(1).max(64),
-    confirm: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('type'),
-    ref: z.string().min(1).max(64),
-    text: z.string().max(10000),
-    submit: z.boolean().optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('scroll'),
-    direction: z.enum(['up', 'down', 'left', 'right']),
-    amount: z.number().int().min(1).max(25),
-  }).strict(),
-  z.object({
-    action: z.literal('press'),
-    keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']),
-  }).strict(),
-  z.object({ action: z.literal('tabs') }).strict(),
-  z.object({ action: z.literal('switch_tab'), index: z.number().int().min(0).max(49) }).strict(),
-  z.object({ action: z.literal('new_tab'), url: computerBrowserUrlSchema }).strict(),
-])
-const computerBrowserSchema = z.object({
-  action: z.enum([
-    'navigate', 'back', 'forward', 'reload', 'snapshot', 'click', 'type',
-    'scroll', 'press', 'tabs', 'switch_tab', 'new_tab',
-  ]),
-  url: computerBrowserUrlSchema.optional(),
-  ref: z.string().min(1).max(64).optional(),
-  confirm: z.boolean().optional(),
-  text: z.string().max(10000).optional(),
-  submit: z.boolean().optional(),
-  direction: z.enum(['up', 'down', 'left', 'right']).optional(),
-  amount: z.number().int().min(1).max(25).optional(),
-  keys: z.enum(['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageDown']).optional(),
-  index: z.number().int().min(0).max(49).optional(),
-  target: computerTargetSchema,
-}).strict().superRefine((input, ctx) => {
-  const parsed = computerBrowserVariants.safeParse(withoutTarget(input))
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) ctx.addIssue(issue)
-  }
-})
-const computerTerminalIdSchema = z.string().regex(/^t-[0-9a-f]{12}$/)
-const computerTerminalVariants = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('start'),
-    command: z.string().min(1).max(100000),
-    cwd: z.string().max(4096).optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('read'),
-    id: computerTerminalIdSchema,
-    offset: z.number().int().min(0).optional(),
-    maxBytes: z.number().int().min(1).max(65536).optional(),
-  }).strict(),
-  z.object({
-    action: z.literal('cancel'),
-    id: computerTerminalIdSchema,
-    signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
-  }).strict(),
-  z.object({ action: z.literal('list') }).strict(),
-])
-const computerTerminalSchema = z.object({
-  action: z.enum(['start', 'read', 'cancel', 'list']),
-  command: z.string().min(1).max(100000).optional(),
-  cwd: z.string().max(4096).optional(),
-  id: computerTerminalIdSchema.optional(),
-  offset: z.number().int().min(0).optional(),
-  maxBytes: z.number().int().min(1).max(65536).optional(),
-  signal: z.enum(['INT', 'TERM', 'KILL']).optional(),
-  target: computerTargetSchema,
-}).strict().superRefine((input, ctx) => {
-  const parsed = computerTerminalVariants.safeParse(withoutTarget(input))
-  if (!parsed.success) {
-    for (const issue of parsed.error.issues) ctx.addIssue(issue)
-  }
-})
+// Inputs and approval rules are shared with private threads in the Agent Host.
+const computerInputSchema = computerToolInputSchema({ ...computerInputFields, target: computerTargetSchema }, computerInputVariants, ['target'])
+const computerBrowserSchema = computerToolInputSchema({ ...computerBrowserFields, target: computerTargetSchema }, computerBrowserVariants, ['target'])
+const computerTerminalSchema = computerToolInputSchema({ ...computerTerminalFields, target: computerTargetSchema }, computerTerminalVariants, ['target'])
 
 /**
  * Overlay-defined tools only (no Composio, no web search). Act agent: full tool surface.
@@ -253,6 +115,11 @@ const toolScopeSchema = z
   .enum(['personal', 'workspace'])
   .optional()
   .describe('Which items to list: personal (only yours) or workspace (shared with the workspace). Omit for everything active that you can see. Archived items are never listed.')
+
+const outputScopeSchema = z
+  .enum(['personal', 'workspace'])
+  .optional()
+  .describe('Where the saved output goes: Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.')
 
 export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   const tools: ToolSet = {}
@@ -407,10 +274,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     description:
       'List all active skills configured by the user. Skills are custom instructions the user has set up for specific task types. ' +
       'IMPORTANT: Call this before taking action on any task to discover whether a relevant skill applies — especially when the request touches a domain the user may have customized (writing style, workflows, personas, integrations, etc.). ' +
-      'Use the optional query parameter to filter skills by keyword.',
+      'Use the optional query parameter to filter skills by keyword. Set archived to true to list archived skills instead, for example to find the id for restore_item.',
     inputSchema: z.object({
       query: z.string().optional().describe('Optional keyword to filter skills by name, description, or instructions'),
       scope: toolScopeSchema,
+      archived: z.boolean().optional().describe('List archived skills instead of active ones'),
     }),
     execute: async (input) => {
       assertToolAllowed('list_skills')
@@ -500,10 +368,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('list_automations')) {
     tools.list_automations = tool({
       description:
-        'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations.',
+        'List the user\'s saved automations, including enabled state, schedule metadata, next run, last run, and last error. Use this in Automate mode or when the user asks about automations. ' +
+        'Set archived to true to list archived automations instead, for example to find the id for restore_item.',
       inputSchema: z.object({
         query: z.string().optional().describe('Optional keyword to filter automations by name, description, or instructions'),
         scope: toolScopeSchema,
+        archived: z.boolean().optional().describe('List archived automations instead of active ones'),
       }),
       execute: async (input) => {
         assertToolAllowed('list_automations')
@@ -546,6 +416,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.string().optional(),
         graphSource: z.string().optional(),
         sourceConversationId: z.string().optional(),
+        scope: z.enum(['personal', 'workspace']).optional().describe('Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('create_automation')
@@ -762,10 +633,12 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.list_files = tool({
       description:
         'List files and folders in the Overlay workspace (id, name, type, parent folder, size, last edit). ' +
-        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree.',
+        'Pass folderId to list one folder; omit it to list everything, with parentId showing the folder tree. ' +
+        'Set archived to true to list archived files, notes and outputs instead, for example to find the id for restore_item.',
       inputSchema: z.object({
         folderId: z.string().optional().describe('Folder id from a previous list_files result'),
         scope: toolScopeSchema,
+        archived: z.boolean().optional().describe('List archived items instead of active ones'),
       }),
       execute: async (input) => {
         assertToolAllowed('list_files')
@@ -794,13 +667,16 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.write_file = tool({
       description:
         'Create a text file in the Overlay workspace (name, optional folderId), or replace an existing file\'s text (fileId). ' +
-        'When replacing, pass the revision from read_file as expectedRevision so you never overwrite a newer change.',
+        'When replacing, pass the revision from read_file as expectedRevision so you never overwrite a newer change. ' +
+        'Write the file\'s text exactly as it should be saved: Markdown as plain Markdown (never backslash-escape **, #, [ or _), ' +
+        'and a web page as a complete .html file, which Files shows rendered.',
       inputSchema: z.object({
         fileId: z.string().optional().describe('Existing file to replace; omit to create a new file'),
         name: z.string().optional().describe('File name with extension, e.g. "report.md" (required when creating)'),
         folderId: z.string().optional().describe('Folder to create the file in'),
         content: z.string().describe('The full text of the file'),
         expectedRevision: z.string().optional(),
+        scope: z.enum(['personal', 'workspace']).optional().describe('When creating: Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('write_file')
@@ -815,6 +691,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         name: z.string(),
         parentId: z.string().optional().describe('Parent folder id; omit for the top level'),
+        scope: z.enum(['personal', 'workspace']).optional().describe('Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('create_folder')
@@ -834,6 +711,49 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('move_file')
         return executeMoveFile(options, input)
+      },
+    })
+  }
+
+  const scopeTarget = {
+    resource: z.enum(SCOPE_TOOL_RESOURCES).describe('file covers files, folders, notes and generated outputs'),
+    id: z.string().describe('The item id from a list or search result (fileId, noteId, skill, automation or task id)'),
+  }
+
+  if (shouldExposeTool('move_to_workspace')) {
+    tools.move_to_workspace = tool({
+      description:
+        'Move one of the person\'s Personal items to Workspace so every member can see it, as the Move to Workspace button does. ' +
+        'One-way: it cannot be moved back. Only the person who made it can move it. Use only when the person asks to share it.',
+      inputSchema: z.object({
+        ...scopeTarget,
+        withAgent: z.boolean().optional().describe('Automations only: also move its agent when that agent is only visible to the person'),
+      }),
+      execute: async (input) => {
+        assertToolAllowed('move_to_workspace')
+        return executeMoveToWorkspace(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('archive_item')) {
+    tools.archive_item = tool({
+      description: 'Archive a file, note, output, skill, automation or task (it leaves the lists and can be restored). Needs the right to edit it.',
+      inputSchema: z.object(scopeTarget),
+      execute: async (input) => {
+        assertToolAllowed('archive_item')
+        return executeArchiveItem(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('restore_item')) {
+    tools.restore_item = tool({
+      description: 'Restore an archived file, note, output, skill, automation or task to the scope it was archived from.',
+      inputSchema: z.object(scopeTarget),
+      execute: async (input) => {
+        assertToolAllowed('restore_item')
+        return executeRestoreItem(options, input)
       },
     })
   }
@@ -1126,6 +1046,43 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       })
     }
 
+    if (shouldExposeTool('computer_recording') && shouldExposeTool('write_file')) {
+      tools.computer_recording = tool({
+        description:
+          'Record the bound computer\'s screen as proof of work. start begins a recording (one at a time); annotate marks the current moment with a label and status '
+          + '(setup, step, pass, fail) and becomes a chapter; stop finishes the MP4, saves it to Files and returns a summary such as "3 checks: 2 passed, 1 failed" '
+          + 'plus a downloadUrl. Embed the video in your reply as ![name](downloadUrl). Recordings are private unless you pass public: true on stop, which needs '
+          + 'approval and creates a public share link; only do that when the person asks. status reports the active recording. '
+          + 'Typical use: start, annotate setup, do each check and annotate pass or fail right after, then stop.',
+        inputSchema: z.object({
+          action: z.enum(['start', 'annotate', 'stop', 'status']),
+          id: z.string().regex(/^r-[0-9a-f]{12}$/).optional().describe('Recording id from start (annotate, stop)'),
+          title: z.string().max(200).optional().describe('start: video title and default file name'),
+          maxSeconds: z.number().int().min(5).max(1800).optional().describe('start: hard stop after this many seconds (default 600)'),
+          fps: z.number().int().min(1).max(30).optional().describe('start: frames per second (default 10)'),
+          label: z.string().min(1).max(200).optional().describe('annotate: what is happening or what was checked'),
+          status: z.enum(['setup', 'step', 'pass', 'fail']).optional().describe('annotate: default step'),
+          name: z.string().max(200).optional().describe('stop: file name in Files (default: the title)'),
+          scope: z.enum(['personal', 'workspace']).optional().describe('stop: where to save it in Files (default personal)'),
+          public: z.boolean().optional().describe('stop: create a public share link (needs approval; only when asked)'),
+          target: computerTargetSchema,
+        }),
+        ...(options.computerApprovalContext !== undefined
+          ? { needsApproval: (input) => toolRequiresApproval('computer_recording', input, { approvalMode: options.approvalMode }) }
+          : {}),
+        execute: async (input) => {
+          assertToolAllowed('computer_recording')
+          assertToolAllowed('write_file')
+          return await executeComputerActionWithApproval(
+            options,
+            'computer_recording',
+            input,
+            () => executeComputerRecording(options, input),
+          )
+        },
+      })
+    }
+
     if (shouldExposeTool('computer_list_files')) {
       tools.computer_list_files = tool({
       description: 'List directory entries on the bound computer’s filesystem.',
@@ -1252,7 +1209,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_terminal = tool({
         description:
           'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
-          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer stays up while a session is running, so a long build or render keeps going between your tool calls.',
         inputSchema: computerTerminalSchema,
         ...(options.computerApprovalContext !== undefined
           ? { needsApproval: (input) => toolRequiresApproval('computer_terminal', input, { approvalMode: options.approvalMode }) }
@@ -1277,6 +1234,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         title: z.string().trim().min(1).describe('Note title'),
         content: z.string().describe('Markdown body'),
         tags: z.array(z.string()).optional(),
+        scope: z.enum(['personal', 'workspace']).optional().describe('Personal (only the person sees it, the default) or Workspace (every member does). In a room others can read, or a workspace automation, it is always Workspace.'),
       }),
       execute: async (input) => {
         assertToolAllowed('create_note')
@@ -1443,7 +1401,6 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         taskId: taskIdSchema,
         revision: z.string().optional(),
-        scope: z.enum(['personal', 'workspace']).optional(),
         title: z.string().optional(),
         description: z.string().nullable().optional(),
         status: taskStatusSchema.optional(),
@@ -1506,6 +1463,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
           .string()
           .optional()
           .describe('URL or data URL of a reference image to edit or use as style source'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('generate_image')
@@ -1527,6 +1485,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.enum(t2vModelIds).optional().describe('Specific model to use (optional)'),
         aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: 16:9)'),
         duration: z.number().min(3).max(12).optional().describe('Duration in seconds (default: 8, max 12)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('generate_video')
@@ -1549,6 +1508,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         modelId: z.enum(i2vModelIds).optional().describe('Specific model to use (optional)'),
         aspectRatio: z.enum(['16:9', '9:16', '1:1', '4:3']).optional().describe('Aspect ratio (default: matches input image)'),
         duration: z.number().min(3).max(15).optional().describe('Duration in seconds (default: 5)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('animate_image')
@@ -1571,10 +1531,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         referenceUrl: z.string().describe('URL of a reference image or video showing the character'),
         modelId: z.enum(r2vModelIds).optional().describe('Specific model to use (optional)'),
         duration: z.number().min(2).max(10).optional().describe('Duration in seconds (default: 5)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('generate_video_with_reference')
-        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl })
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, duration: input.duration, videoSubMode: 'reference-to-video', imageUrl: input.referenceUrl, scope: input.scope })
       },
     })
   }
@@ -1592,10 +1553,11 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         characterImageUrl: z.string().describe('URL of the character image to apply motion to'),
         referenceVideoUrl: z.string().describe('URL of the reference video whose motion to transfer'),
         modelId: z.enum(motionModelIds).optional().describe('Specific model to use (optional)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('apply_motion_control')
-        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl })
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'motion-control', imageUrl: input.characterImageUrl, referenceVideoUrl: input.referenceVideoUrl, scope: input.scope })
       },
     })
   }
@@ -1612,10 +1574,94 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
         prompt: z.string().describe('Description of the edits to apply to the video'),
         videoUrl: z.string().describe('URL of the source video to edit'),
         modelId: z.enum(editVideoModelIds).optional().describe('Specific model to use (optional)'),
+        scope: outputScopeSchema,
       }),
       execute: async (input) => {
         assertToolAllowed('edit_video')
-        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl })
+        return executeGenerateVideo(options, { prompt: input.prompt, modelId: input.modelId, videoSubMode: 'video-editing', imageUrl: input.videoUrl, scope: input.scope })
+      },
+    })
+  }
+
+  // ── Data and APIs (Monid) ──────────────────────────────────────────────────
+
+  const apiParamsSchema = z.record(z.unknown())
+  if (shouldExposeTool('search_apis')) {
+    tools.search_apis = tool({
+      description:
+        'Find a paid API for data or results you cannot get otherwise: lead and contact search, company and people ' +
+        'enrichment, social media and review data, scraping specific sites, SEO data, travel and product prices, ' +
+        '3D models, speech and other generation. Searches thousands of read-only endpoints from many providers in ' +
+        'plain words and returns ranked matches with prices. No account or connection is needed; runs are billed to ' +
+        'the workspace. Prefer the user’s connected apps for their own accounts, and web_search for general web pages.',
+      inputSchema: z.object({
+        query: z.string().trim().min(1).max(500).describe('What you need, in plain words, e.g. "find VPs of sales at fintech companies in Berlin"'),
+        category: z.string().trim().min(1).max(80).optional().describe('Optional category id to narrow results, e.g. "lead-generation", "social-media", "3d-generation"'),
+        limit: z.number().int().min(1).max(20).optional().describe('How many matches to return (default 8)'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('search_apis')
+        return await executeSearchApis(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('inspect_api')) {
+    tools.inspect_api = tool({
+      description:
+        'Read one API endpoint found with search_apis before running it: its input JSON Schema (body, queryParams, ' +
+        'pathParams), price, provider notes, typical run time and cheaper alternatives such as free tiers.',
+      inputSchema: z.object({
+        provider: z.string().trim().min(1).max(120).describe('Provider slug from search_apis, e.g. "apollo"'),
+        endpoint: z.string().trim().min(1).max(300).describe('Endpoint path from search_apis, e.g. "/mixed_people/api_search"'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('inspect_api')
+        return await executeInspectApi(options, input)
+      },
+    })
+  }
+
+  if (shouldExposeTool('run_api')) {
+    tools.run_api = tool({
+      description:
+        'Run a read-only API endpoint found with search_apis, after inspect_api. Costs the workspace the endpoint’s ' +
+        'price plus Overlay’s usage fee, so request only what the user needs (set limits such as maxItems). Waits for ' +
+        'slow endpoints up to 10 minutes. Files it produces (3D models, audio, images, documents) are saved to Files; ' +
+        'very large results are saved to Files whole with a preview returned. The result says what was charged.',
+      inputSchema: z.object({
+        provider: z.string().trim().min(1).max(120).describe('Provider slug, e.g. "meshy"'),
+        endpoint: z.string().trim().min(1).max(300).describe('Endpoint path, e.g. "/text-to-3d/preview"'),
+        input: z.object({
+          body: apiParamsSchema.optional().describe('Request body fields, per the body schema from inspect_api'),
+          queryParams: apiParamsSchema.optional().describe('URL query parameters, per the queryParams schema'),
+          pathParams: apiParamsSchema.optional().describe('Values for {placeholders} in the endpoint path'),
+        }).strict().optional(),
+      }).strict(),
+      execute: async (input, callOptions) => {
+        assertToolAllowed('run_api')
+        return await executeRunApi(options, input, {
+          toolCallId: callOptions?.toolCallId,
+          abortSignal: callOptions?.abortSignal,
+        })
+      },
+    })
+  }
+
+  if (shouldExposeTool('save_api_file')) {
+    tools.save_api_file = tool({
+      description:
+        'Save a file that a run_api result links to (for example a 3D model in model_urls, or a PDF or audio link) into ' +
+        'Files. Pass the runId and the URL exactly as run_api returned them; the result has the Overlay file link. ' +
+        'Save only the formats the user needs.',
+      inputSchema: z.object({
+        runId: z.string().trim().min(1).max(100).describe('The runId from run_api'),
+        url: z.string().trim().url().max(4000).describe('A file URL from that run\'s output, exactly as returned'),
+        name: z.string().trim().min(1).max(120).optional().describe('File name to save as; the extension is added if missing'),
+      }).strict(),
+      execute: async (input) => {
+        assertToolAllowed('save_api_file')
+        return await executeSaveApiFile(options, input)
       },
     })
   }

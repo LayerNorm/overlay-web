@@ -1,0 +1,16 @@
+[
+  {
+    "path": "components/chat/DrawerSidebar.tsx",
+    "sha256": "dd70f9d2980376408223c013bda4e9c763628f7219ff50d1644f4f04c22e3789",
+    "rules": {
+      "react-hooks/set-state-in-effect": 2
+    }
+  },
+  {
+    "path": "contexts/ConvexAuthProvider.tsx",
+    "sha256": "90e55d4b6ab6a27942ad2f1afcdd702de34d31c24b25043e29205c4509ef7b42",
+    "rules": {
+      "react-hooks/refs": 2
+    }
+  }
+]

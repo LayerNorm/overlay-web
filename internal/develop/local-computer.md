@@ -31,6 +31,15 @@ heartbeat, capabilities, `commands:poll` (local tool long-poll),
 revokes its credentials. Connecting a machine follows the Computers feature
 (`features.computers`); there are no separate flags.
 
+The workspace's computer limit (one for free workspaces) counts pending, offline
+and online machines. At the limit, creating a code first revokes the requester's
+own offline local machines (judged by when they were last heard from, since a host
+that just disappears stays stored as `online`), longest unseen first, as many as
+needed: the product
+has no other place to remove an old machine, so a reinstall or new laptop would
+otherwise be stuck. Online machines and other members' machines are never
+revoked; if that isn't enough, the request fails with `environment_limit_reached`.
+
 ## Local tools
 
 - **Capability.** The host advertises `localTools` (`version: 1`, `os`,
@@ -69,8 +78,22 @@ revokes its credentials. Connecting a machine follows the Computers feature
   can change its approved folders (`PATCH roots`); the host applies the change
   when it next renews its credential, within 15 minutes. `POST copy-to-files`
   copies one of them into Overlay Files once.
+- **Unavailable reasons.** When no usable Mac is found, `unavailableReason`
+  reports whether the user's Mac is offline (with its last check-in),
+  connected without local tools, or not set up, and the tool result tells the
+  agent what the user should turn on (Settings → Desktop → This computer, the
+  "Let agents run threads on this computer" switch, which also keeps it on after
+  a restart or sign-out). With no target and no cloud Computer bound, the
+  Mac's reason is returned rather than the cloud's.
 - **Folders are a scope, not a sandbox.** Use a restricted account, container or
   VM when strict isolation is needed.
+
+## Who sees which Computer
+
+The same rule holds for every Computer row, in `ComputerService.canAccess` and the live `computers/browse:list`: a
+person's own Computer is theirs only; a workspace-visible agent's is open to members; a personal chief's is its
+person's only, never the workspace owner's; another creator-only agent's is its creator's and the workspace owner's;
+a Computer whose agent is gone falls to the workspace owner so it can still be stopped.
 
 ## Host package
 

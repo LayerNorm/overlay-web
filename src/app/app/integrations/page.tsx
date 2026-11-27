@@ -3,10 +3,10 @@ import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { getOverlaySession } from '@/server/auth/session'
 import { getInitialIntegrationsData } from '@/server/app/route-data'
-import { IntegrationsRouteSkeleton } from '../_components/AppRouteSkeletons'
+import { ExtensionsRouteSkeleton } from '../_components/PageRouteSkeletons'
 
 const IntegrationsView = dynamic(() => import('@/features/integrations/components/IntegrationsView'), {
-  loading: () => <IntegrationsRouteSkeleton />,
+  loading: () => <ExtensionsRouteSkeleton />,
 })
 
 async function IntegrationsRouteContent() {
@@ -18,7 +18,7 @@ async function IntegrationsRouteContent() {
 
 export default function IntegrationsPage() {
   return (
-    <Suspense fallback={<IntegrationsRouteSkeleton />}>
+    <Suspense fallback={<ExtensionsRouteSkeleton />}>
       <IntegrationsRouteContent />
     </Suspense>
   )

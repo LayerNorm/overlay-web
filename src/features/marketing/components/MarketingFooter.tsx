@@ -37,6 +37,7 @@ const FOOTER_COLUMNS: Array<{ title: string; links: FootLink[] }> = [
       { label: "Blog", href: "/blog" },
       { label: "Changelog", href: "/changelog" },
       { label: "Self-hosting", href: "/self-hosting" },
+      { label: "Compare", href: "/compare" },
     ],
   },
   {

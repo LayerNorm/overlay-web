@@ -9,6 +9,7 @@ import { v } from 'convex/values'
 import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
 import { threadPullRequestValidator } from './lib/threadPullRequests'
 import { folderCopyEntryValidator, folderCopyFolderValidator, threadWorkValidator } from './lib/threadWork'
+import { conversationOriginValidator, slackTables } from './lib/slackSchema'
 
 const runPlanStepValidator = v.object({
   id: v.string(),
@@ -17,6 +18,14 @@ const runPlanStepValidator = v.object({
 })
 
 export default defineSchema({
+  pushTokens: defineTable({
+    userId: v.string(),
+    expoToken: v.string(),
+    platform: v.union(v.literal('ios'), v.literal('android')),
+    deviceId: v.string(),
+    updatedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  }).index('by_user', ['userId']).index('by_token', ['expoToken']),
   nativeDeploymentPolicies: defineTable({
     key: v.literal('web'),
     sequence: v.number(),
@@ -273,6 +282,15 @@ export default defineSchema({
     workspaceId: v.string(), dispatchId: v.string(), rootKey: v.string(), turnKey: v.string(),
     state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
   }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
+
+  // Free-tier uses of a private thread's Overlay tools, per person per calendar month (UTC). Only counts, never content.
+  privateThreadAllowances: defineTable({
+    userId: v.string(),
+    /** `2026-11` */
+    period: v.string(),
+    webSearches: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId_period', ['userId', 'period']),
 
   // An access the person granted to another AI app (ChatGPT, Claude, Cursor, a local agent) over
   // Overlay's MCP server. Tokens are signed and carry only this row's id; revoking the row ends
@@ -631,12 +649,34 @@ export default defineSchema({
       pricingVersion: v.string(),
       metadataJson: v.string(),
     })),
+    // True once the charge is counted in `usageDays`. Rows written before the daily totals existed are counted by
+    // the one-time backfill (`billing/usageTotals:backfillDailyTotals`), which sets it.
+    inDailyTotals: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
-    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt']),
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
+    .index('by_inDailyTotals', ['inDailyTotals']),
+
+  // What a billing account was charged per UTC day, person, resource and model, so the usage list and spend per
+  // person add up a few rows per day instead of every charge in the period (which outgrew a query's read limit).
+  usageDays: defineTable({
+    billingAccountId: v.string(),
+    /** UTC midnight, ms. */
+    day: v.number(),
+    userId: v.string(),
+    resource: v.string(),
+    /** Set for the `models` resource only; empty otherwise. */
+    modelId: v.string(),
+    cents: v.number(),
+    count: v.number(),
+    tokens: v.number(),
+    seconds: v.number(),
+  })
+    .index('by_account_day_user_resource_model', ['billingAccountId', 'day', 'userId', 'resource', 'modelId'])
+    .index('by_userId', ['userId']),
 
   administrativePrincipals: defineTable({
     userId: v.string(),
@@ -1374,6 +1414,8 @@ export default defineSchema({
     externalChannelId: v.optional(v.string()),
     externalThreadId: v.optional(v.string()),
     surfaceBindingId: v.optional(v.string()),
+    // Agent threads started from Slack (internal/develop/slack-integration.md): where requests come from and replies go.
+    origin: v.optional(conversationOriginValidator),
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
@@ -1619,6 +1661,15 @@ export default defineSchema({
       receiptId: v.string(),
       invocation: v.number(),
     })),
+    /**
+     * Personal items the human author @-mentioned to include on purpose: in a room others can read, the agent turn this
+     * message starts may open these (and no other Personal items). At most 10.
+     */
+    includedItems: v.optional(v.array(v.object({
+      type: v.union(v.literal('file'), v.literal('automation')),
+      id: v.string(),
+      name: v.string(),
+    }))),
     userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),
@@ -1771,6 +1822,11 @@ export default defineSchema({
               state: v.optional(v.string()),
               toolInput: v.optional(v.any()),
               toolOutput: v.optional(v.any()),
+              // Written by persist-assistant-turn for approved, denied and provider-run tool calls.
+              providerExecuted: v.optional(v.boolean()),
+              approvalId: v.optional(v.string()),
+              approvalStatus: v.optional(v.union(v.literal('requested'), v.literal('approved'), v.literal('denied'))),
+              approvalReason: v.optional(v.string()),
             }),
           }),
           v.object({
@@ -2389,7 +2445,7 @@ export default defineSchema({
     membershipId: v.string(),
     workspaceId: v.string(),
     principalId: v.string(),
-    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member'), v.literal('guest')),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member')),
     status: v.union(v.literal('active'), v.literal('suspended')),
     invitedByPrincipalId: v.optional(v.string()),
     joinedAt: v.number(),
@@ -2460,29 +2516,11 @@ export default defineSchema({
     .index('by_grantId', ['grantId'])
     .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
 
-  workspaceResourceGuests: defineTable({
-    resourceGuestId: v.string(),
-    workspaceId: v.string(),
-    resourceType: v.string(),
-    resourceId: v.string(),
-    principalId: v.string(),
-    accessRole: v.union(v.literal('viewer'), v.literal('editor')),
-    status: v.union(v.literal('pending'), v.literal('active'), v.literal('expired'), v.literal('revoked')),
-    grantedByPrincipalId: v.string(),
-    expiresAt: v.optional(v.number()),
-    revokedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index('by_resourceGuestId', ['resourceGuestId'])
-    .index('by_workspaceId', ['workspaceId'])
-    .index('by_workspaceId_resource', ['workspaceId', 'resourceType', 'resourceId']),
-
   workspaceInvitations: defineTable({
     invitationId: v.string(),
     workspaceId: v.string(),
     email: v.string(),
-    role: v.union(v.literal('admin'), v.literal('member'), v.literal('guest')),
+    role: v.union(v.literal('admin'), v.literal('member')),
     status: v.union(v.literal('pending'), v.literal('accepted'), v.literal('expired'), v.literal('cancelled'), v.literal('replaced')),
     invitedByPrincipalId: v.string(),
     expiresAt: v.number(),
@@ -2512,7 +2550,6 @@ export default defineSchema({
     workspaceContentEditors: v.optional(v.union(v.literal('members'), v.literal('admins'))),
     memberCanMoveScope: v.optional(v.boolean()),
     usageTopUpBy: v.optional(v.union(v.literal('members'), v.literal('admins'))),
-    guestExpirationDays: v.optional(v.number()),
     allowedAgentHarnesses: v.optional(v.array(v.string())),
     agentRunBudgetCents: v.optional(v.number()),
     channelRetentionDays: v.optional(v.number()),
@@ -3027,7 +3064,15 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_runId', ['runId'])
     .index('by_rootRunId', ['rootRunId'])
-    .index('by_parentRunId', ['parentRunId']),
+    .index('by_parentRunId', ['parentRunId'])
+    .index('by_updatedAt', ['updatedAt']),
+
+  /** Runs the stalled-run sweep already reported as orphaned (their workflow ended while the run did not). */
+  harnessStalledAlerts: defineTable({
+    runId: v.string(),
+    workflowRunId: v.string(),
+    alertedAt: v.number(),
+  }).index('by_runId', ['runId']),
 
   harnessPlanSteps: defineTable({
     runId: v.string(),
@@ -3268,4 +3313,6 @@ export default defineSchema({
   })
     .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
     .index('by_runId_generation', ['runId', 'generation']),
+
+  ...slackTables,
 })

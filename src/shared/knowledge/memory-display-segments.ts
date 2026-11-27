@@ -95,6 +95,8 @@ export type MemoryRowForSidebar = {
   tags?: string[]
   actor?: 'user' | 'agent'
   canDelete: boolean
+  /** Only its owner can see it; they may move it to the workspace (one-way). */
+  isPrivate: boolean
   creatorEmail?: string
   creatorName: string
   creatorPrincipalId?: string
@@ -103,12 +105,26 @@ export type MemoryRowForSidebar = {
   updatedAt?: number
 }
 
+/** Most memories one pasted text becomes (POST /api/v1/memory). */
+export const MAX_MEMORY_INGESTION_CHUNKS = 20
+
 /**
  * Split pasted text into multiple stored memories when over ~300 chars
  * (paragraph/sentence aware). Used by POST /api/v1/memory.
+ *
+ * A long paste (a whole context brief, up to the 20,000-character limit) would
+ * make far more than MAX_MEMORY_INGESTION_CHUNKS ~300-char pieces, so neighbouring
+ * pieces are joined into evenly sized groups: every accepted paste is saved whole.
  */
-export function segmentMemoryForIngestion(text: string): string[] {
-  return segmentMemoryForSidebarDisplay(text)
+export function segmentMemoryForIngestion(text: string, maxChunks = MAX_MEMORY_INGESTION_CHUNKS): string[] {
+  const segments = segmentMemoryForSidebarDisplay(text)
+  if (segments.length <= maxChunks) return segments
+  const groupSize = Math.ceil(segments.length / maxChunks)
+  const grouped: string[] = []
+  for (let index = 0; index < segments.length; index += groupSize) {
+    grouped.push(segments.slice(index, index + groupSize).join('\n\n'))
+  }
+  return grouped
 }
 
 /** One row per Convex memory for Knowledge / Memories UI (no virtual segments). */
@@ -126,6 +142,7 @@ export function memoriesToClientListRows(
     turnId?: string
     tags?: string[]
     actor?: 'user' | 'agent'
+    visibility?: 'owner' | 'workspace'
     createdAt: number
     updatedAt?: number
   }>,
@@ -159,6 +176,7 @@ export function memoriesToClientListRows(
       // its own, so any member of the workspace can prune them. A teammate's
       // memories stay theirs to delete.
       canDelete: options?.viewerUserId === m.userId || isAgentMemoryOwnerId(m.userId),
+      isPrivate: m.visibility === 'owner',
       creatorEmail: attribution?.email,
       creatorName: attribution?.name ?? (options?.viewerUserId === m.userId ? 'You' : 'Former member'),
       creatorPrincipalId: attribution?.principalId,
@@ -208,6 +226,7 @@ export function expandMemoriesForSidebarList(
         tags: m.tags,
         actor: m.actor,
         canDelete: false,
+        isPrivate: false,
         creatorName: 'Workspace member',
         creatorUserId: m.userId,
         createdAt: m.createdAt,

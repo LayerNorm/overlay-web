@@ -7,7 +7,7 @@ const modules = import.meta.glob('./**/*.ts')
 
 // Agent threads (room deliveries) keep the person's turn id on their message and
 // the agent's turn id on the reply. Their settled steps must still project.
-test('an agent thread reply keeps every step\'s text in order', async () => {
+async function projectAgentThread(trigger: { role: 'user' | 'assistant'; authorKind: 'human' | 'agent' }) {
   const convex = convexTest(schema, modules)
   const now = Date.now()
   const runId = 'workspace:agent-thread'
@@ -17,7 +17,7 @@ test('an agent thread reply keeps every step\'s text in order', async () => {
       lastMode: 'act', askModelIds: ['model'], actModelId: 'model', conversationType: 'dm',
     })
     const userMessageId = await ctx.db.insert('conversationMessages', {
-      conversationId, userId: 'owner', turnId: 'human_turn', role: 'user', mode: 'act', authorKind: 'human',
+      conversationId, userId: 'owner', turnId: 'human_turn', role: trigger.role, mode: 'act', authorKind: trigger.authorKind,
       content: 'Request', contentType: 'text', status: 'completed', createdAt: now, updatedAt: now,
     })
     const assistantMessageId = await ctx.db.insert('conversationMessages', {
@@ -59,9 +59,22 @@ test('an agent thread reply keeps every step\'s text in order', async () => {
     }, 1)
     return await ctx.db.get(assistantMessageId)
   })
+  return result
+}
+
+test('an agent thread reply keeps every step\'s text in order', async () => {
+  const result = await projectAgentThread({ role: 'user', authorKind: 'human' })
   expect(result?.nativeProgressSequence).toBe(1)
   expect(result?.publicStreamCheckpoint?.receiptId).toBe('model:1')
   expect(result?.parts?.map(part => part.type === 'text' ? part.text : part.type)).toEqual([
     'First, I will search memory.', 'tool-invocation', 'Found 12 memories. Next, notes.', 'tool-invocation',
   ])
+})
+
+// When one agent's reply triggers another agent's turn, the trigger is an assistant
+// message. Admission accepts it, so its steps must project too.
+test('an agent thread answering another agent\'s reply keeps its steps', async () => {
+  const result = await projectAgentThread({ role: 'assistant', authorKind: 'agent' })
+  expect(result?.nativeProgressSequence).toBe(1)
+  expect(result?.publicStreamCheckpoint?.receiptId).toBe('model:1')
 })

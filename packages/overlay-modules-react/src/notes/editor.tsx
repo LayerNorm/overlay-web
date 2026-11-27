@@ -21,6 +21,7 @@ import {
 import { SlashMenu } from './slash-menu'
 import { NoteBlockHandle } from './block-handle'
 import { NotePageMeta, NotePageTitle } from './note-page'
+import { NotePageSkeleton } from './note-page-skeleton'
 import {
   type NotebookEditorConflict,
   type NotebookNote,
@@ -523,9 +524,7 @@ function NotebookEditorBody({
           />
           </>
         ) : resolvingRequestedNote ? (
-          <div className="h-full w-full" aria-busy="true">
-            <span className="sr-only">Loading note</span>
-          </div>
+          <div className="h-full overflow-hidden"><NotePageSkeleton layout={layout} fullWidth={fullWidth} /></div>
         ) : (
           <NotebookEmptyState onCreateNote={() => void mutations.createNote()} />
         )}

@@ -23,6 +23,8 @@ export type FileRecord = {
 }
 
 export type FileStorageProxyTarget = {
+  /** Whose storage prefix `r2Key` is under: the creator's, also when a teammate opens a Workspace file. */
+  ownerUserId?: string
   r2Key?: string
   url?: string
   name: string

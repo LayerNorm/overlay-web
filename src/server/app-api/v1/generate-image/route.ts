@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
     const bodyResult = await readValidatedJson(request, context, GenerateImageRequest)
     if (!bodyResult.ok) return bodyResult.response
-    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat } = bodyResult.data
+    const { prompt, modelId, aspectRatio, conversationId, turnId, imageUrl, temporaryChat, scope } = bodyResult.data
 
     const { auth } = context
     const workspaceId = context.workspace.workspace.id
@@ -219,6 +219,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           mimeType: 'image/png',
           ...(conversationId ? { conversationId } : {}),
           ...(turnId ? { turnId } : {}),
+          ...(scope ? { scope } : {}),
       })
 
       if (!outputId) {

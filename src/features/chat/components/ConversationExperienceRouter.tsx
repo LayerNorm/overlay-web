@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
-import { ChatMessageListPlaceholder } from './ChatMessageListSkeleton'
+import { ChatRouteSkeleton, ConversationRouteSkeleton } from './ChatSkeletons'
 import { useConvex } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -32,7 +32,7 @@ import {
 
 const DirectMessageExperience = dynamic(
   () => import('./DirectMessageExperience').then((module) => ({ default: module.DirectMessageExperience })),
-  { loading: () => <div className="flex h-full min-h-0 flex-col"><ChatMessageListPlaceholder /></div> },
+  { loading: () => <ConversationRouteSkeleton /> },
 )
 
 /**
@@ -174,6 +174,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     <ConversationDetailScopeGate
       routeKey={resourceRouteKey}
       status={scopeRouteStatus}
+      pending={view === 'dms' || view === 'channels' ? <ConversationRouteSkeleton /> : <ChatRouteSkeleton hideHeader={props.hideHeader} />}
       fallback={(
         <ChatSurfaceEmptyState
           icon={Mail}

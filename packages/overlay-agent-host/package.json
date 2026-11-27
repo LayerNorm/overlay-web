@@ -1,16 +1,16 @@
 {
   "name": "@layernorm/overlay-agent-host",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Outbound-only host that lets Overlay's own agents use this machine's tools, and runs private threads for Overlay Desktop.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LayerNorm/overlay-web.git",
+    "url": "git+https://github.com/LayerNorm/overlay.git",
     "directory": "packages/overlay-agent-host"
   },
-  "homepage": "https://github.com/LayerNorm/overlay-web/tree/main/packages/overlay-agent-host#readme",
+  "homepage": "https://github.com/LayerNorm/overlay/tree/main/packages/overlay-agent-host#readme",
   "bugs": {
-    "url": "https://github.com/LayerNorm/overlay-web/issues"
+    "url": "https://github.com/LayerNorm/overlay/issues"
   },
   "type": "module",
   "bin": {
@@ -48,8 +48,9 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.22",
     "@ai-sdk/google": "^4.0.33",
+    "@ai-sdk/mcp": "2.0.45",
     "@ai-sdk/openai": "^4.0.21",
-    "@layernorm/overlay-agent-bridge-protocol": "0.6.0",
+    "@layernorm/overlay-agent-bridge-protocol": "0.7.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "ai": "7.0.93",
     "tsx": "^4.8.1",

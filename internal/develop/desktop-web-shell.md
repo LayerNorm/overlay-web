@@ -7,9 +7,10 @@ code owns only OS integrations. There is no desktop chat pipeline or provider SD
 ## Contract and trust boundary
 
 `packages/overlay-desktop-bridge` defines v1 schemas, result/event types,
-`getDesktopBridge()` and `openExternal()`. Desktop vendors that package; keep both
-copies byte-for-byte synchronized. The package's fingerprint check detects local
-schema drift. App-shell runtime callers load the package through
+`getDesktopBridge()` and `openExternal()`. It is the one copy: `apps/desktop` links
+it as `@overlay/desktop-bridge` (`file:../../packages/overlay-desktop-bridge`), bundles
+it into main and preload, and resolves its `zod` from the desktop's own dependencies.
+A contract change and the desktop code that uses it land in the same commit. App-shell runtime callers load the package through
 `src/components/desktop/desktop-bridge-loader.ts`, which imports it when
 `window.overlayDesktop` exists, so ordinary browser shell traffic does not load
 the shell's bridge contract or zod schemas. This guarantee covers app-shell
@@ -91,6 +92,20 @@ Private threads (bridge capability `localThreads`, macOS only for now) run a thr
 the person's own model keys: the app starts the bundled host as `overlay-agent-host private` over Node.js IPC, keeps
 the keys in the keychain and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains a Model
 keys section. `internal/develop/private-threads.md` has the contract and rules.
+First-run setup (bridge capability `localSetup`, macOS only for now) runs before the onboarding conversation for a
+new account: the server sets `desktopSetup` on `GET /api/v1/onboarding/session` when setup has not started and the
+person's only workspace is their own personal one. `DesktopOnboarding` (`src/app/_components/onboarding/desktop/`)
+shows who the workspace is for, about you, what other AI tools bring, model keys, this computer and a plan, keeps its
+progress in this computer's local storage, and starts the conversation with `{ action: 'start', prefill }`.
+`localSetup.scan` lists Claude Code, Codex, Claude Desktop, Cursor and Gemini CLI instructions, skills, subagents and
+MCP servers by name, plus model keys in the login shell (variable and last four characters) and plan sign-ins.
+`localSetup.import` reads the ticked items again in the main process and adds them through Overlay's own API with the
+app's session (memories, personal skills, creator-only agents, personal MCP servers); contents, header tokens and keys
+never reach the page. `localSetup.useShellKey` checks a shell key and keeps it in the keychain. Local (command) MCP
+servers are listed but not imported. Each import request's idempotency key is a hash of what it sends, so retries never
+duplicate and an edited file imports again. Unpackaged builds may set `OVERLAY_DESKTOP_DEV_SETUP_HOME` to scan a fixture
+folder for QA. Desktop `src/main/services/local-setup*.ts`;
+`internal/plans/DESKTOP_ONBOARDING_PLAN.md` has the plan.
 Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
 press a new combination (Escape cancels). Panels open from one button with docking in a row menu.
 The Agent host row shows its state and keeps the harness, connection code and Start controls in the
@@ -138,13 +153,16 @@ fast initial render cannot leave the launched app hidden.
 ## Verification and release
 
 The chat/files/knowledge CI boundaries retain canonical web renderer checks and
-share a native-shell guard: duplicate desktop renderers/provider clients remain
-retired and both bridge copies must match the canonical source and fingerprint.
+share a native-shell guard (`scripts/ci/desktop-web-shell-boundary.mjs`): duplicate
+desktop renderers/provider clients remain retired, the desktop must link the shared
+bridge package rather than keep a copy, and its Agent Host pin must match web enrollment.
 
 Run bridge package tests, web type/lint checks and desktop `npm test`, `npm run
 build`, `npm run check:no-provider-sdks`, and `npm run test:e2e`. Electron Playwright
-uses throwaway profiles. The macOS clean-clone CI runs the Electron boundary
-fixture and unsigned packaging; heavy compilation and exhaustive tests belong in
+uses throwaway profiles. The macOS `Desktop app` workflow (`.github/workflows/desktop.yml`)
+runs the Electron boundary fixture and unsigned packaging whenever `apps/desktop/**` or the
+bridge package changes; `Desktop release (macOS)` signs, notarizes and publishes
+`desktop-v<version>` releases to this repository, which the updater reads; heavy compilation and exhaustive tests belong in
 CI when laptop responsiveness is a concern. Run local checks sequentially. Its boundary fixture tests the actual sandboxed preload,
 invalid calls, frame/origin isolation, shared panel cookies and sign-out cleanup.
 The configured-server test exercises signed-out web rendering and the PKCE handoff;

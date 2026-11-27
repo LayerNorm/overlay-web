@@ -43,7 +43,7 @@ function fixture({ badLogin = false, badConflict = false, badChat = false, badCl
   } }
   const vercel = async path => path.startsWith('/v9/') ? { id: PRODUCTION.projectId, name: PRODUCTION.projectName,
     accountId: PRODUCTION.teamId, link: { type: 'github', repoId: PRODUCTION.repositoryId,
-      org: 'LayerNorm', repo: 'overlay-web', productionBranch: 'main' } }
+      org: 'LayerNorm', repo: 'overlay', productionBranch: 'main' } }
     : path.startsWith('/v4/') ? { projectId: PRODUCTION.projectId, deployment: { id: 'dpl_prod' } } : deployment
   return { calls, reports, env, sha, deployment, vercel, evidenceDirectory: '/ignored/proof',
     probeRealtime: async args => { assert.equal(args.userId, env.PRODUCTION_SMOKE_USER_ID); calls.push('realtime') },

@@ -10,7 +10,8 @@ import { buildHarnessStepInstructions } from './context'
 import { createHarnessTools } from './tools'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
-import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, runOverlayHarness } from './runner'
+import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, internalFaultPauseMs, interruptedStepNote, REPEATED_FAILURE_NOTE, runOverlayHarness, settleInternalFault, withRecoveryNotes } from './runner'
+import { createHarnessAuthorizedTools } from './authorized-tools'
 import { publicHarnessStepPersistence } from './harness-transcript'
 import { buildNativeHarnessDelivery } from './native-tool-metrics'
 import { harnessToolResultEvidence } from './tool-evidence'
@@ -21,6 +22,8 @@ import { HarnessWaitRollover } from './waits'
 import { joinStepTranscripts } from '@/shared/chat/step-text-join'
 
 vi.mock('server-only', () => ({}))
+const alerts = vi.hoisted(() => ({ retrying: vi.fn(), stopped: vi.fn() }))
+vi.mock('./harness-alerts', () => ({ reportHarnessRetrying: alerts.retrying, reportHarnessStopped: alerts.stopped }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
 
@@ -237,6 +240,155 @@ test('V2 input rollover checkpoints the invocation and resumes through the succe
   expect(resumed.snapshot.resultSummary).toBe('The selected document is ready.')
 })
 
+test('a child join that outlasts the segment reports the child as still working and resumes in the successor', async () => {
+  const f = fixture(false, ['ask_agent'], { executionPolicyVersion: 2 })
+  const childRunId = 'workspace:child'
+  const parent = await f.ports.read()
+  const running = state.createHarnessSnapshot({ runId: childRunId, parentRunId: parent.runId,
+    rootRunId: parent.runId, depth: 1, goal: 'Send the requests', constraints: [],
+    policy: { ...parent.policy, allowedToolIds: [], maxCostMicros: 0 } }, Date.now())
+  let child: typeof running = running
+  // An open plan step of its own keeps the agent running, so it joins inside a tool call.
+  f.setSnapshot(state.replaceHarnessPlan(parent, [{ id: 'report', title: 'Report what was sent',
+    acceptanceCriteria: ['The person knows what was sent.'], dependsOn: [] }], Date.now()))
+  f.ports.readChild = vi.fn(async () => child)
+  f.ports.waitForChildren = async () => { throw new HarnessWaitRollover() }
+  const tools = {
+    ask_agent: tool({ inputSchema: z.object({}), execute: async () => {
+      f.setSnapshot(state.admitHarnessNamedChild(await f.ports.read(), {
+        id: childRunId, stepId: 'ask:child', status: 'running', maxCostMicros: 0, costMicros: 0,
+        allowedToolIds: [], evidenceRefs: [],
+      }, { title: 'Ask the specialist', acceptanceCriteria: ['The specialist responds.'] }, Date.now()))
+      return { status: 'working', childRunIds: [childRunId] }
+    } }),
+  }
+  model(index => index === 0 ? [call('ask_agent', 'ask', {})] : [call('harness_read_child', 'join', { childRunId })])
+  const first = await runOverlayHarness({ ...input, tools }, f.ports)
+  // The rollover is not a tool failure: the agent is told the child is still working.
+  expect(first.outcome).toBe('continued')
+  const checkpoint = f.checkpoints[0]!
+  const joined = JSON.stringify(checkpoint.messages)
+  expect(joined).toContain('The child is still working')
+  expect(joined).not.toContain('error-text')
+
+  f.setOwner('join-successor', 1)
+  child = { ...running, status: 'completed', resultSummary: 'Sent 12 requests.' }
+  f.ports.waitForChildren = async () => {
+    f.setSnapshot(state.settleHarnessChild(await f.ports.read(), child, Date.now()))
+  }
+  model(index => {
+    if (index === 0) return [call('harness_read_child', 'join-again', { childRunId })]
+    if (index === 1) return [call('harness_update_step', 'done', { id: 'report', status: 'done' })]
+    return 'The specialist sent 12 requests.'
+  })
+  const resumed = await runOverlayHarness({ ...input, continuation: checkpoint, tools }, f.ports)
+  expect(resumed.snapshot.status).toBe('completed')
+  expect(resumed.snapshot.resultSummary).toBe('The specialist sent 12 requests.')
+})
+
+function settleInterruptedCalls(f: ReturnType<typeof fixture>) {
+  const recover = vi.fn(async (id: string, _error?: unknown, options?: { internalFault?: boolean }) => {
+    if (!options?.internalFault) return false
+    f.setSnapshot(state.recordHarnessReceipt(await f.ports.read(), {
+      id, modelId: 'fixture/model', provider: 'interrupted', inputTokens: 0, outputTokens: 0, reasoningTokens: 0,
+      cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 1000, costMicros: 0, responseFailure: 'provider_error',
+    }, Date.now()))
+    return true
+  })
+  f.ports.recoverModelFailure = recover
+  return recover
+}
+
+test('an internal fault before any tool starts replays the step instead of ending the task', async () => {
+  const f = fixture(false)
+  const recover = settleInterruptedCalls(f)
+  const execute = vi.fn(async () => 'Record 7')
+  const provider = model(index => {
+    // The call was reserved and then Overlay's own records disagreed.
+    if (index === 0) throw new Error('Native delivery execution changed.')
+    return index === 1 ? [call('read', 'read')] : 'Record 7 was read.'
+  })
+  const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) } }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('Record 7 was read.')
+  expect(recover).toHaveBeenCalledWith('model:0', expect.any(Error), { internalFault: true })
+  expect(execute).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls).toHaveLength(3)
+})
+
+test('an internal fault is replayed however many times it repeats, after tools started too, but only by its owner', async () => {
+  const f = fixture(false)
+  const recover = settleInterruptedCalls(f)
+  await f.ports.claim()
+  await f.ports.apply('reserve', { type: 'reserve_model', id: 'model:0', maxCostMicros: 0 })
+  const fault = new Error('Native delivery execution changed.')
+  const execution = { executionOwner: 'workflow', executionGeneration: 0, modelCall: 0, resumes: 0 }
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0, executionOwner: 'another-workflow' })).resolves.toBeNull()
+  expect(recover).not.toHaveBeenCalled()
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 1, resumes: 9 })).resolves.toBe(1)
+  expect(recover).toHaveBeenCalledExactlyOnceWith('model:0', fault, { internalFault: true })
+})
+
+test('a permanent failure is not replayed as a temporary fault', async () => {
+  const f = fixture(false)
+  await f.ports.claim()
+  const execution = { executionOwner: 'workflow', executionGeneration: 0, modelCall: 0, resumes: 0, toolsStarted: 0 }
+  await expect(settleInternalFault(new Error('Native harness permissions were revoked.'), f.ports, execution)).resolves.toBeNull()
+})
+
+test('replays pause longer each time, up to five minutes', () => {
+  expect([0, 1, 2, 6, 40].map(internalFaultPauseMs)).toEqual([5_000, 10_000, 20_000, 300_000, 300_000])
+})
+
+test('a replayed step tells the model which interrupted tools may have run, and to split work that keeps failing', () => {
+  const base = [{ role: 'user' as const, content: 'Build the page.' }]
+  expect(withRecoveryNotes(base, undefined, 1)).toBe(base)
+  const note = interruptedStepNote(['write_file', 'computer_exec', 'write_file'])
+  expect(note).toContain('write_file, computer_exec')
+  const replay = withRecoveryNotes(base, note, 2)
+  expect(replay).toHaveLength(2)
+  expect(replay[1]).toEqual({ role: 'user', content: `${note}\n\n${REPEATED_FAILURE_NOTE}` })
+})
+
+test('a tool that starts running is reported, and one refused before running is not', async () => {
+  const f = fixture(false)
+  const started = vi.fn()
+  const { tools } = createHarnessAuthorizedTools({
+    read: tool({ inputSchema: z.object({}), execute: async () => 'Record 7' }),
+    write: tool({ inputSchema: z.object({}), execute: async () => 'Written' }),
+  }, f.ports, new Set(), undefined, { publicProgress: () => false, toolStarted: started })
+  await f.ports.claim()
+  const options = { toolCallId: 'call', messages: [] } as never
+  f.ports.authorizeTool = async name => { if (name === 'write') throw new Error('This native tool is no longer authorized.') }
+  await expect(tools.write!.execute!({}, options)).rejects.toThrow()
+  expect(started).not.toHaveBeenCalled()
+  await tools.read!.execute!({}, options)
+  expect(started).toHaveBeenCalledExactlyOnceWith('read')
+})
+
+test('an internal fault that keeps repeating never ends the task, raises an alert, and the task finishes once it clears', async () => {
+  const f = fixture(false)
+  settleInterruptedCalls(f)
+  alerts.retrying.mockClear()
+  const provider = model(index => {
+    if (index < 7) throw new Error('Native delivery execution changed.')
+    return 'Done after the fault cleared.'
+  })
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(provider.doStreamCalls).toHaveLength(8)
+  expect(alerts.retrying).toHaveBeenCalledWith(expect.objectContaining({ kind: 'fault', attempts: 5 }))
+})
+
+test('a revoked authorization is never replayed as an internal fault', async () => {
+  const f = fixture(false)
+  const recover = settleInterruptedCalls(f)
+  const provider = model(() => { throw new Error('Native harness permissions were revoked.') })
+  await expect(runOverlayHarness({ ...input, tools: {} }, f.ports)).rejects.toThrow('permissions were revoked')
+  expect(provider.doStreamCalls).toHaveLength(1)
+  expect(recover).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), { internalFault: true })
+})
+
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
 
 test('assignment obligations keep resolution tools available and permit only one resolved parent finish without a plan', async () => {
@@ -289,9 +441,10 @@ test('a provider-ignored tool-free progress choice cannot execute or request app
   const write = vi.fn(async () => ({ success: true }))
   const waitForApproval = vi.fn(async () => [])
   f.ports.waitForApproval = waitForApproval
-  const provider = model(index => index === 0
-    ? [call('read', 'failed-read')]
-    : index === 1
+  // A failed read, then more silent work: the progress update comes after that batch.
+  const provider = model(index => index <= 1
+    ? [call('read', `failed-read-${index}`)]
+    : index === 2
       ? [call('write', 'ignored-progress-tool')]
       : 'The task is complete.')
 
@@ -304,10 +457,28 @@ test('a provider-ignored tool-free progress choice cannot execute or request app
   }, f.ports)
   expect(result.snapshot.status).toBe('completed')
 
-  expect(provider.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
+  expect(provider.doStreamCalls[2]?.toolChoice).toEqual({ type: 'none' })
   expect(write).not.toHaveBeenCalled()
   expect(waitForApproval).not.toHaveBeenCalled()
   expect((await f.ports.read()).status).toBe('completed')
+})
+
+test('a failed tool followed by the answer gets no separate progress update, so the answer is written once', async () => {
+  const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const read = vi.fn(async () => ({ success: false, error: 'That item is Personal.' }))
+  const provider = model(index => index === 0
+    ? [call('read', 'refused-read')]
+    : 'The note could not be read: it is Personal.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
+  }, f.ports)
+
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(provider.doStreamCalls[1]?.toolChoice).toEqual({ type: 'auto' })
+  expect(result.snapshot.resultSummary).toBe('The note could not be read: it is Personal.')
+  expect(result.steps.filter(step => step.text?.includes('could not be read'))).toHaveLength(1)
 })
 
 test('v2 commentary follows three silent tool batches and does not become the final answer', async () => {
@@ -1339,20 +1510,23 @@ test('deadline refusal identifies the time limit without claiming workspace cred
   expect(provider.doStreamCalls).toHaveLength(0)
 })
 
-test('unexpected runnable-state errors propagate instead of becoming budget blockers', async () => {
-  const f = fixture()
-  const provider = model(() => 'Must not run')
-  const assertRunnable = vi.spyOn(state, 'assertHarnessRunnable').mockImplementation(() => {
-    throw new Error('Unexpected authorization failure')
+test('unexpected runnable-state errors are retried as faults, never turned into budget blockers', async () => {
+  const f = fixture(false)
+  const provider = model(() => 'Recovered after the fault cleared.')
+  const original = state.assertHarnessRunnable
+  let failures = 0
+  const assertRunnable = vi.spyOn(state, 'assertHarnessRunnable').mockImplementation((...args) => {
+    if (failures++ < 3) throw new Error('Unexpected authorization failure')
+    return original(...args)
   })
   try {
-    await expect(runOverlayHarness({ ...input, tools: {} }, f.ports))
-      .rejects.toThrow('Unexpected authorization failure')
+    const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+    expect(result.snapshot.status).toBe('completed')
   } finally {
     assertRunnable.mockRestore()
   }
   expect((await f.ports.read()).blocker).toBeUndefined()
-  expect(provider.doStreamCalls).toHaveLength(0)
+  expect(provider.doStreamCalls).toHaveLength(1)
 })
 
 test('an outstanding model reservation is not reported as a budget blocker', async () => {
@@ -1607,33 +1781,41 @@ test('a recovered stream failure does not persist its partial invocation message
   expect(JSON.stringify({ messages: result.messages, steps: result.steps })).not.toContain('Partial failed invocation.')
 })
 
-test('two recovered interruptions retry before the third interruption fails the run', async () => {
+test('interruptions keep retrying past the former limit of two until the call succeeds', async () => {
   const f = fixture(false)
-  let interruptions = 0
   const recover = vi.fn(async (receiptId: string) => {
     f.recordInterruption(receiptId)
-    interruptions += 1
-    return interruptions <= 2
+    return true
   })
   f.ports.recoverModelFailure = recover
+  let calls = 0
   const provider = new MockLanguageModelV4({
     doStream: async () => ({
       stream: new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           controller.enqueue({ type: 'stream-start', warnings: [] })
-          controller.enqueue({ type: 'text-start', id: 'partial' })
-          controller.enqueue({ type: 'text-delta', id: 'partial', delta: 'Interrupted output.' })
-          controller.error(new Error('stream interruption'))
+          controller.enqueue({ type: 'text-start', id: 'text' })
+          if (calls++ < 4) {
+            controller.enqueue({ type: 'text-delta', id: 'text', delta: 'Interrupted output.' })
+            controller.error(new Error('stream interruption'))
+            return
+          }
+          controller.enqueue({ type: 'text-delta', id: 'text', delta: 'Recovered final answer.' })
+          controller.enqueue({ type: 'text-end', id: 'text' })
+          controller.enqueue({ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' },
+            usage: { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 3, text: 3, reasoning: 0 } } })
+          controller.close()
         },
       }),
     }),
   })
   vi.mocked(getLanguageModel).mockResolvedValue(provider)
 
-  await expect(runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)).rejects.toThrow()
+  const result = await runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)
 
-  expect(recover).toHaveBeenCalledTimes(3)
-  expect(provider.doStreamCalls).toHaveLength(3)
+  expect(recover).toHaveBeenCalledTimes(4)
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(result.snapshot.resultSummary).toBe('Recovered final answer.')
 })
 
 test('model recovery preserves completed tool results and settled steps before the failed call', async () => {
@@ -1699,11 +1881,88 @@ test('an empty progress-only reply settles once and resumes work without abortin
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   let reads = 0
   const read = vi.fn(async () => ({ success: ++reads > 1 }))
-  const provider = model(index => index === 0 ? [call('read', 'failed-read')] : index === 1 ? '' : index === 2 ? [call('read', 'after-empty-progress')] : 'The record was read.')
+  // A failed read, then a silent retry, makes the update due; the update comes back empty.
+  const provider = model(index => index === 0 ? [call('read', 'failed-read')] : index === 1 ? [call('read', 'silent-retry')] : index === 2 ? '' : index === 3 ? [call('read', 'after-empty-progress')] : 'The record was read.')
   const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute: read }) } }, f.ports)
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe('The record was read.')
-  expect(read).toHaveBeenCalledTimes(2)
-  expect(provider.doStreamCalls).toHaveLength(4)
-  expect(f.receipts.size).toBe(4)
+  expect(read).toHaveBeenCalledTimes(3)
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(provider.doStreamCalls[2]?.toolChoice).toEqual({ type: 'none' })
+  expect(f.receipts.size).toBe(5)
+})
+
+test('read-only calls from one model step overlap and their results come back in call order', async () => {
+  const f = fixture(false, ['web_search', 'web_fetch'], { executionPolicyVersion: 2 })
+  const events: string[] = []
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const search = vi.fn(async ({ q }: { q: string }) => {
+    events.push(`start:${q}`)
+    if (events.filter(event => event.startsWith('start:')).length === 3) release()
+    await gate
+    events.push(`end:${q}`)
+    return { q }
+  })
+  const fetchPage = vi.fn(async () => { events.push('start:fetch'); if (events.filter(e => e.startsWith('start:')).length === 3) release(); await gate; events.push('end:fetch'); return { page: 'ok' } })
+  const provider = model(index => index === 0
+    ? [call('web_search', 's1', { q: 'a' }), call('web_search', 's2', { q: 'b' }), call('web_fetch', 'f1', {})]
+    : 'Found both.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: {
+      web_search: tool({ inputSchema: z.object({ q: z.string() }), execute: search }),
+      web_fetch: tool({ inputSchema: z.object({}), execute: fetchPage }),
+    },
+  }, f.ports)
+
+  // All three started before any finished: a serial chain would deadlock on the gate.
+  expect(events.slice(0, 3).every(event => event.startsWith('start:'))).toBe(true)
+  expect(result.snapshot.status).toBe('completed')
+  const results = result.steps[0]?.content.filter(part => part.type === 'tool-result').map(part => part.toolCallId)
+  expect(results).toEqual(['s1', 's2', 'f1'])
+  expect(provider.doStreamCalls).toHaveLength(2)
+})
+
+test('calls that change the same resource still run one at a time in call order', async () => {
+  const f = fixture(false, ['computer_write_file'], { executionPolicyVersion: 2 })
+  const events: string[] = []
+  const write = vi.fn(async ({ path, contents }: { path: string; contents: string }) => {
+    events.push(`start:${contents}`)
+    await new Promise(resolve => setTimeout(resolve, contents === 'one' ? 20 : 0))
+    events.push(`end:${contents}`)
+    return { path }
+  })
+  model(index => index === 0
+    ? [call('computer_write_file', 'w1', { path: '/a', contents: 'one' }), call('computer_write_file', 'w2', { path: '/a', contents: 'two' })]
+    : 'Wrote it twice.')
+  await runOverlayHarness({
+    ...input,
+    tools: { computer_write_file: tool({ inputSchema: z.object({ path: z.string(), contents: z.string() }), execute: write }) },
+  }, f.ports)
+  expect(events).toEqual(['start:one', 'end:one', 'start:two', 'end:two'])
+})
+
+test('overlapping calls renew the lease and authorize one at a time', async () => {
+  const f = fixture(false, ['web_search'], { executionPolicyVersion: 2 })
+  let admitting = 0
+  let overlapped = false
+  const guarded = async () => {
+    admitting += 1
+    if (admitting > 1) overlapped = true
+    await new Promise(resolve => setTimeout(resolve, 5))
+    admitting -= 1
+  }
+  f.ports.renewLease = guarded
+  f.ports.authorizeTool = vi.fn(guarded)
+  model(index => index === 0
+    ? [call('web_search', 's1', { q: 'a' }), call('web_search', 's2', { q: 'b' }), call('web_search', 's3', { q: 'c' })]
+    : 'Done.')
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { web_search: tool({ inputSchema: z.object({ q: z.string() }), execute: async ({ q }) => ({ q }) }) },
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(f.ports.authorizeTool).toHaveBeenCalledTimes(3)
+  expect(overlapped).toBe(false)
 })

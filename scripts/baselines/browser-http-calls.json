@@ -169,7 +169,8 @@
     "src/features/knowledge/adapters/webKnowledgeFilePort.ts"
   ],
   "github.connectUrl": [
-    "src/features/chat/components/thread-work/useThreadWork.ts"
+    "src/features/chat/components/thread-work/useThreadWork.ts",
+    "src/features/settings/components/connected-apps/GitHubSettings.tsx"
   ],
   "github.repositories": [
     "src/features/chat/components/thread-work/useThreadWork.ts"
@@ -314,14 +315,15 @@
     "src/features/account/components/AccountWorkspaces.tsx"
   ],
   "workspaces.createBillingCheckout": [
-    "src/app/_components/onboarding/OnboardingPayment.tsx"
+    "src/app/_components/onboarding/OnboardingPayment.tsx",
+    "src/app/_components/onboarding/desktop/DesktopOnboarding.tsx"
   ],
   "workspaces.initializeBilling": [
-    "src/app/_components/onboarding/OnboardingPayment.tsx"
+    "src/app/_components/onboarding/OnboardingPayment.tsx",
+    "src/app/_components/onboarding/desktop/DesktopOnboarding.tsx"
   ],
   "workspaces.invite": [
     "src/app/_components/onboarding/OnboardingConversation.tsx",
-    "src/components/share/ShareDialog.tsx",
     "src/features/chat/components/NewDirectMessageDialog.tsx"
   ],
   "workspaces.list": [

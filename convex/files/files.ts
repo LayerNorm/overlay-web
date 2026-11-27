@@ -442,6 +442,13 @@ export const { setScope, archive, restore } = scopeMutations('files', 'content',
     }
     return out
   },
+  // A file's search chunks follow it: searchable by every member in Workspace, only by its uploader otherwise (P7).
+  afterApply: async (ctx, { affectedIds }) => {
+    const scheduler = (ctx as MutationCtx).scheduler
+    for (let i = 0; i < affectedIds.length; i += 100) {
+      await scheduler.runAfter(0, internal.knowledge.knowledge.restampFileChunks, { fileIds: affectedIds.slice(i, i + 100) })
+    }
+  },
 })
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -685,10 +692,14 @@ export const getStorageUrlForProxy = query({
       return null
     }
     const file = await ctx.db.get(fileId)
-    if (!file || file.userId !== userId || file.deletedAt) return null
+    if (!file || file.deletedAt) return null
+    // The creator, or a member who can read it (a Workspace file, generated media saved to Workspace).
+    if (file.userId !== userId && !(await scopeContextLoader(ctx, userId).canRead(file))) return null
     if (file.r2Key) {
-      if (!validStorageKeyForKind(userId, inferKind(file), file.r2Key)) return null
+      // The object lives under its creator's storage prefix, whoever is opening it.
+      if (!validStorageKeyForKind(file.userId, inferKind(file), file.r2Key)) return null
       return {
+        ownerUserId: file.userId,
         r2Key: file.r2Key,
         name: file.name,
         mimeType: file.mimeType,

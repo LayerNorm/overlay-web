@@ -6,7 +6,7 @@ import { previewPaymentsFromVercel } from './preview-payments.mjs'
 import { LEGACY_PREVIEW_HOSTNAME_PATTERN, PREVIEW_HOSTNAME_PATTERN, PREVIEW_PARENT_DOMAIN, legacyPreviewHostname } from './preview-domain.mjs'
 
 export const CONFIG = Object.freeze({
-  repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
+  repository: 'LayerNorm/overlay', repositoryId: 1133644268,
   teamId: 'team_VT3uNspuyAOwicxedhtG4SMe',
   projectId: 'prj_wucEZdZyA2xKUurHLXSuQNcS1YPy', projectName: 'overlay-landing',
   convexProjectId: 1649204,
@@ -208,7 +208,7 @@ export class PreviewController {
   async verifyProject() {
     const p = await this.vercel(this.projectPath)
     if (p.id !== CONFIG.projectId || p.name !== CONFIG.projectName || p.link?.type !== 'github'
-      || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm' || p.link.repo !== 'overlay-web') {
+      || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm') {
       throw new Error('Preview project repository identity mismatch')
     }
     const wildcard = await this.vercel(`${this.projectPath}/domains/${segment(CONFIG.previewWildcardDomain)}`)

@@ -4,12 +4,16 @@ import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 // Compatibility wrapper: memory contracts/controllers are shared through @overlay/app-core,
 // with typed transport in @overlay/api-client.
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
-import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X } from 'lucide-react'
+import { Brain, CheckSquare, Copy, Loader2, Lock, Plus, Square, Trash2, UserRound, UsersRound, X } from 'lucide-react'
 import { ListboxSelect, Button, Textarea, toast } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
+import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMemories } from '@/hooks/use-memories'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import { useLiveWorkspaceManagement } from '@/hooks/use-workspace-members'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -30,6 +34,7 @@ interface MemoryListItem {
   tags?: string[];
   actor?: "user" | "agent";
   canDelete: boolean;
+  isPrivate: boolean;
   creatorEmail?: string;
   creatorName: string;
   creatorPrincipalId?: string;
@@ -51,6 +56,7 @@ interface Memory {
   tags: string[];
   actor?: "user" | "agent";
   canDelete: boolean;
+  isPrivate: boolean;
   creatorEmail?: string;
   creatorName: string;
   creatorPrincipalId?: string;
@@ -78,6 +84,7 @@ function uniqueMemoriesFromRows(rows: MemoryListItem[]): Memory[] {
       tags: row.tags ?? [],
       actor: row.actor,
       canDelete: row.canDelete,
+      isPrivate: row.isPrivate,
       creatorEmail: row.creatorEmail,
       creatorName: row.creatorName,
       creatorPrincipalId: row.creatorPrincipalId,
@@ -134,18 +141,17 @@ function useMemoryMembers({
 }: {
   activeWorkspaceId: string | null | undefined
 }) {
-  // Live: members and guests joining, leaving or renamed update the owner filter.
+  // Live: members joining, leaving or renamed update the owner filter.
   const livePeople = useLiveWorkspaceManagement(activeWorkspaceId, 'people')
-  const liveGuests = useLiveWorkspaceManagement(activeWorkspaceId, 'guests')
   const people = useMemo<MemoryMemberOption[]>(() => {
     const byPrincipalId = new Map<string, MemoryMemberOption>()
-    for (const item of [...(livePeople?.items ?? []), ...(liveGuests?.items ?? [])]) {
+    for (const item of livePeople?.items ?? []) {
       if (item.kind === 'member' && item.principalId && item.status === 'active') {
         byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
       }
     }
     return [...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [liveGuests, livePeople])
+  }, [livePeople])
   const { agents: directoryAgents } = useAgentDirectory()
   const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const [selectionMode, setSelectionMode] = useState(false)
@@ -196,6 +202,9 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const [addType, setAddType] = useState<Memory['type']>('fact')
   const [addImportance, setAddImportance] = useState('3')
   const [isSaving, setIsSaving] = useState(false)
+  const [movingMemoryId, setMovingMemoryId] = useState<string | null>(null)
+  const [isMoving, setIsMoving] = useState(false)
+  const moveMemoryToWorkspace = useMutation(api.knowledge.memories.moveToWorkspace)
   const [pendingSavePreview, setPendingSavePreview] = useState<string | null>(null)
   const actionButtonClass =
     'flex items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-subtle) px-3 py-1.5 text-xs text-(--foreground) transition-colors hover:bg-(--border)'
@@ -277,6 +286,22 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     } finally {
       setPendingSavePreview(null);
       setIsSaving(false);
+    }
+  }
+
+  async function confirmMoveToWorkspace() {
+    const memoryId = movingMemoryId
+    if (!memoryId) return
+    setIsMoving(true)
+    try {
+      if (!activeWorkspaceId) return
+      await moveMemoryToWorkspace({ workspaceId: activeWorkspaceId, memoryId: memoryId as Id<'memories'> })
+      toast.success('Moved to workspace.')
+      setMovingMemoryId(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move memory.')
+    } finally {
+      setIsMoving(false)
     }
   }
 
@@ -401,6 +426,17 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
 
   return (
     <div className="flex h-full flex-col">
+      <ConfirmDialog
+        isOpen={movingMemoryId !== null}
+        title="Move to workspace?"
+        description="Everyone in this workspace will be able to see this memory, and their agents can use it. This can't be undone."
+        confirmLabel="Move to workspace"
+        destructive={false}
+        busy={isMoving}
+        busyLabel="Moving…"
+        onConfirm={() => void confirmMoveToWorkspace()}
+        onCancel={() => setMovingMemoryId(null)}
+      />
       {!onHeaderStateChange ? (
         <div className="flex h-16 items-center justify-between border-b border-(--border) px-6">
           <h2 className="text-sm font-medium text-(--foreground)">
@@ -479,6 +515,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
                       onToggleSelected={toggleSelected}
                       onCopy={handleCopy}
                       onDelete={handleDelete}
+                      onMoveToWorkspace={setMovingMemoryId}
                     />
                   ))}
                 </div>
@@ -699,6 +736,12 @@ function MemoryMetaChips({ memory, metaChipClass }: { memory: Memory; metaChipCl
         <UserRound size={10} className="mr-1 inline" />
         {memory.creatorName}
       </span>
+      {memory.isPrivate && (
+        <span className={metaChipClass} title="Only you can see this memory">
+          <Lock size={10} className="mr-1 inline" />
+          Private
+        </span>
+      )}
       {memory.type && (
         <span className={`rounded-full border px-2 py-0.5 text-[10px] ${getBadgeTone(memory.type)}`}>
           {memory.type}
@@ -737,6 +780,7 @@ function MemoryCard({
   onToggleSelected,
   onCopy,
   onDelete,
+  onMoveToWorkspace,
 }: {
   memory: Memory
   isSelected: boolean
@@ -746,6 +790,7 @@ function MemoryCard({
   onToggleSelected: (memoryId: string) => void
   onCopy: (memory: Memory) => Promise<void>
   onDelete: (memoryId: string) => Promise<void>
+  onMoveToWorkspace: (memoryId: string) => void
 }) {
   return (
     <div
@@ -803,6 +848,16 @@ function MemoryCard({
             >
               <Copy size={13} className="text-(--muted)" />
             </Button>
+            {memory.isPrivate && memory.canDelete ? (
+              <Button variant="ghost"
+                onClick={() => onMoveToWorkspace(memory.memoryId)}
+                className={unstyledButton(`rounded-sm p-1 transition-colors hover:bg-(--surface-subtle)`)}
+                title="Move to workspace"
+                aria-label="Move to workspace"
+              >
+                <UsersRound size={13} className="text-(--muted)" />
+              </Button>
+            ) : null}
             {memory.canDelete ? (
               <Button variant="ghost"
                 onClick={() => void onDelete(memory.memoryId)}

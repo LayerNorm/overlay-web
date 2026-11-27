@@ -9,6 +9,7 @@ import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
 import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 import { workspaceBillingService } from '@/server/billing/http'
 import { onboardingTaskMessage } from '@/shared/onboarding/billing-copy'
+import { isNewAccountForDesktopSetup } from '@/server/onboarding/desktop-setup'
 
 function service() {
   const server = getOverlayServerContext()
@@ -33,7 +34,7 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ error: 'Onboarding request failed', code: 'onboarding_failed' }, { status: 500 })
 }
 
-function responseWithCompletionCookie(result: Awaited<ReturnType<ConversationalOnboardingService['get']>>, userId: string) {
+function responseWithCompletionCookie(result: Awaited<ReturnType<ConversationalOnboardingService['get']>> & { desktopSetup?: boolean }, userId: string) {
   const response = NextResponse.json(result)
   if (result.completed) {
     response.cookies.set(ONBOARDING_SEEN_COOKIE, userId, {
@@ -47,7 +48,9 @@ function responseWithCompletionCookie(result: Awaited<ReturnType<ConversationalO
 export async function GET(_request: NextRequest, context: AppApiRouteContext) {
   try {
     const result = await service().get(context.auth.userId, context.workspace.workspace.id)
-    return responseWithCompletionCookie(result, context.auth.userId)
+    const workspaces = getOverlayServerContext().workspaceService
+    const desktopSetup = await isNewAccountForDesktopSetup(result, context, (userId) => workspaces.listForUser(userId))
+    return responseWithCompletionCookie({ ...result, ...(desktopSetup ? { desktopSetup } : {}) }, context.auth.userId)
   } catch (error) {
     return errorResponse(error)
   }
@@ -59,7 +62,10 @@ export async function POST(_request: NextRequest, context: AppApiRouteContext) {
     if (!parsed.success) return NextResponse.json({ error: 'Invalid onboarding action', code: 'validation_error' }, { status: 400 })
     const onboarding = service()
     if (parsed.data.action === 'start') {
-      const result = await onboarding.start(context.auth.userId, context.workspace.workspace.id, { member: !['owner', 'admin'].includes(context.workspace.membership.role) })
+      const result = await onboarding.start(context.auth.userId, context.workspace.workspace.id, {
+        member: !['owner', 'admin'].includes(context.workspace.membership.role),
+        ...(parsed.data.prefill ? { prefill: parsed.data.prefill } : {}),
+      })
       return responseWithCompletionCookie(result, context.auth.userId)
     }
     const result = await onboarding.act(context.auth.userId, context.workspace.workspace.id, parsed.data)

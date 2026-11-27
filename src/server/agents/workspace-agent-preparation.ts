@@ -62,6 +62,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     idempotencyKey: identity.invocationNonce,
     latestUserText: room.latestUserText,
     memoryEnabled: input.memoryEnabled,
+    memoryAgent: agent,
     paid: gate.paid,
     requestFingerprint: identity.requestFingerprint,
     turnId: identity.turnId,

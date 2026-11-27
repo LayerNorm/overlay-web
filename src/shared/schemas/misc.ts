@@ -1,6 +1,6 @@
 import { z } from 'zod/v3'
 import { AuthFields, EmptyQuery, EmptyRequest, FormDataBoundary, PaginationQuery, UnknownResponse } from './common'
-import { OnboardingActionSchema } from '@/shared/onboarding/session'
+import { OnboardingActionSchema } from '../onboarding/session'
 
 export const BootstrapQuery = EmptyQuery
 export const SubscriptionQuery = EmptyQuery
@@ -26,6 +26,10 @@ export const ScopeActionRequest = z.object({
   action: z.enum(['move', 'archive', 'restore']),
   actingAgentPrincipalId: z.string().min(1).optional(),
   to: z.enum(['personal', 'workspace']).optional(),
+  /** Automations: also move the automation's creator-only agent to the workspace. */
+  withAgent: z.boolean().optional(),
+  /** Agent tools in a room others can read or a workspace automation: refuse moves and Personal items. */
+  workspaceItemsOnly: z.boolean().optional(),
 })
 
 export const EntityMutationRequest = z.object({

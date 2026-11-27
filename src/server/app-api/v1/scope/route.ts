@@ -32,13 +32,17 @@ function isAction(value: unknown): value is Action {
 
 function statusFor(reason: string): number {
   if (reason === 'not_found') return 404
+  if (reason === 'workspace_items_only') return 403
   if (reason === 'same_scope' || reason === 'already_archived' || reason === 'not_archived' || reason === 'archived') return 409
   return 403
 }
 
 /**
- * POST /api/v1/scope: move a resource between Personal and Workspace, archive it, or restore it.
- * Body: `{ resource, id, action: 'move' | 'archive' | 'restore', to?: 'personal' | 'workspace' }`.
+ * POST /api/v1/scope: move a resource from Personal to Workspace, archive it, or restore it.
+ * Body: `{ resource, id, action: 'move' | 'archive' | 'restore', to?: 'workspace', withAgent?: boolean, workspaceItemsOnly?: boolean }`.
+ * `workspaceItemsOnly` (agent tools in a room others can read or a workspace automation) refuses Personal items and moves.
+ * Moves are one-way: `to: 'personal'` is refused (`one_way`). `withAgent` (automations) moves the automation's
+ * creator-only agent to the workspace in the same transaction. Connectors never move (`connector_reconnect_for_workspace`).
  * The rules (who may do what) are enforced in Convex; this only translates the outcome to HTTP.
  */
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
@@ -50,7 +54,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
     const to = parseResourceScope(body.to)
     if (action === 'move' && !to) {
-      return NextResponse.json({ error: "move needs `to`: 'personal' or 'workspace'" }, { status: 400 })
+      return NextResponse.json({ error: "move needs `to`: 'workspace'" }, { status: 400 })
     }
     // `/api/v1/work` is gated by `work.use` and the Work kill switch; this shared route must hold Work to the same bar.
     if (resource === 'work') {
@@ -71,7 +75,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       ...(resource === 'work' && context.auth.authType === 'service' && typeof body.actingAgentPrincipalId === 'string'
         ? { actingAgentPrincipalId: body.actingAgentPrincipalId }
         : {}),
+      ...(body.workspaceItemsOnly === true ? { workspaceItemsOnly: true } : {}),
       ...(action === 'move' ? { to } : {}),
+      ...(action === 'move' && resource === 'automations' && body.withAgent === true ? { withAgent: true } : {}),
     }, { throwOnError: true })
     if (!outcome) return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
     await recordScopeAudit({ context, resource, id, action, to, outcome })

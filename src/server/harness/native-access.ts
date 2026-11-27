@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { finalWorkspaceModelRefusal } from './workspace-model-refusal'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { WorkspaceAccess } from '@overlay/workspace-contracts'
@@ -43,9 +44,15 @@ async function assertNativeModelAllowed(
   actorUserId: string,
   workspaceId: string,
   entitlements: Parameters<typeof resolveAuthorizedModelIds>[0]['entitlements'],
+  sharedRoom: boolean,
 ): Promise<void> {
   if (isByokModelId(modelId)) {
-    await assertUserCanUseByokModel(modelId, actorUserId, workspaceId)
+    // A shared room or workspace automation spends only workspace connections (P6).
+    try {
+      await assertUserCanUseByokModel(modelId, actorUserId, workspaceId, { workspaceOnly: sharedRoom })
+    } catch (error) {
+      finalWorkspaceModelRefusal(error)
+    }
   } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
     throw new FatalError('The native model is no longer allowed by server policy.')
   }
@@ -111,25 +118,24 @@ function assertNativeDeliveryIdentity(access: NativeHarnessAccess, run: AgentRun
   }
 }
 
+const DELIVERY_WAITING_STATUSES = ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources']
+
 function nativeDeliveryIsCurrent(
   access: NativeHarnessAccess,
   state: HarnessSnapshot,
   delivery: HarnessSnapshot,
   run: AgentRun,
   allowCancelledToolProgress: boolean,
-  renewalMode: boolean,
 ): boolean {
   const deliveryOwner = delivery.workflowRunId ?? delivery.handoffWorkflowRunId
   const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
   return run.runner === 'workflow' && run.executionEngine === 'overlay_harness' && run.mode === 'room'
     && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
-    && (run.status === 'running' || (state.runId !== delivery.runId
-      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
-      // The delivery's own run shows what it is waiting on. That can differ from the
-      // harness status: a child joined inside a tool call leaves the harness running,
-      // and a descendant's question is shown on the root. Ownership is checked above.
-      || (renewalMode && state.runId === delivery.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status))
+    // The delivery's status is what the person is shown, and it can lag the harness:
+    // a child joined inside a tool call leaves the harness running, and a descendant's
+    // question is shown on the root. Whether this workflow may act is decided by the
+    // harness state and the owner checked above, so a waiting delivery never stops a run.
+    && (run.status === 'running' || DELIVERY_WAITING_STATUSES.includes(run.status)
       || (cancelledToolProgress && run.status === 'cancelled'))
 }
 
@@ -177,10 +183,16 @@ function assertNativeDelivery(
   delivery: HarnessSnapshot,
   run: AgentRun | null,
   allowCancelledToolProgress = false,
-  renewalMode = false,
 ): void {
   assertNativeDeliveryIdentity(access, run)
-  if (!nativeDeliveryIsCurrent(access, state, delivery, run, allowCancelledToolProgress, renewalMode)) {
+  if (!nativeDeliveryIsCurrent(access, state, delivery, run, allowCancelledToolProgress)) {
+    // Says which record disagreed, so the diagnostic ID a person reports is not a dead end.
+    // eslint-disable-next-line no-console
+    console.warn(`[harness] delivery check failed ${JSON.stringify({
+      runId: state.runId, harnessStatus: state.status, deliveryStatus: run.status,
+      ownerMatches: run.workflowRunId === (delivery.workflowRunId ?? delivery.handoffWorkflowRunId),
+      harnessRunMatches: run.harnessRunId === delivery.runId,
+    })}`)
     throw new FatalError('Native delivery execution changed.')
   }
 }
@@ -300,27 +312,25 @@ export async function refreshNativeHarnessAccess(
     new ConvexHarnessRepository().refreshRoomContextRestrictions({ actorUserId: access.actorUserId, runId: access.runId }),
   ])
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
-  assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
+  assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress)
   const { agent, sharedRoom } = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
   await assertNativeCapabilities(access, context, toolName)
   const billingProgrammaticSubjectId = `agent:${access.agentId}`
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
-  await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements)
+  await assertNativeModelAllowed(context.modelId, access.actorUserId, access.workspaceId, gate.runtimeEntitlements, sharedRoom)
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
     const repository = new ConvexHarnessRepository()
-    const current = await repository.get({ actorUserId: access.actorUserId, runId: access.runId })
-    if (!current || current.workflowRunId !== access.workflowRunId
-      || (current.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
+    const renewal = await repository.renewOwnedLease({
+      actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
+      executionGeneration: access.executionGeneration ?? 0,
+    })
+    if (renewal === 'ownership_changed') {
       throw new FatalError('Native harness execution ownership changed during lease renewal.')
     }
-    await repository.renewLease({
-      actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
-      executionGeneration: access.executionGeneration ?? 0, expectedRevision: current.revision,
-      now: Date.now(), leaseMs: 24 * 60 * 60 * 1_000,
-    })
   }
-  return { agent, sharedRoom, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
+  return { agent, sharedRoom, latestUserText: room.latestUserText, includedItemIds: room.includedItems.map(item => item.id),
+    entitlements: gate.runtimeEntitlements, paid: gate.paid,
     billingProgrammaticSubjectId,
     runStatus: state.status,
     requiresZeroDataRetention: gate.paid && gate.appSettings?.onlyAllowZdrModels === true }

@@ -7,7 +7,7 @@ import {
   type SandboxInstance,
 } from '@overlay/sandbox-runtime'
 import { logger } from '@/server/observability/logger'
-import type { LocalDriverCommand } from '@layernorm/overlay-agent-bridge-protocol'
+import { browserActionText, type LocalDriverCommand } from '@layernorm/overlay-agent-bridge-protocol'
 import { LocalComputerError } from './local/LocalComputerService'
 import { isLocalHostSandboxInstance, type LocalHostSandboxInstance } from './local/LocalHostSandboxInstance'
 
@@ -298,15 +298,18 @@ export async function runComputerDriverCommand(
   options: {
     requireDesktop?: boolean
     environment?: Record<string, string>
+    /** Overrides the default 30s command limit for commands that are known to run longer. */
+    timeoutMs?: number
   } = {},
 ): Promise<Record<string, unknown>> {
   if (isLocalHostSandboxInstance(instance)) return await runLocalDriverCommand(instance, command, args)
   const requireDesktop = options.requireDesktop !== false
+  const timeoutMs = options.timeoutMs ?? DRIVER_ACTION_TIMEOUT_MS
   await ensureDriver(instance, requireDesktop)
   const request = command === 'terminal_start'
     ? { ...args, terminalCommand: args.command, command }
     : { ...args, command }
-  let result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS, options.environment)
+  let result = await runCommand(instance, request, timeoutMs, options.environment)
   let response: Record<string, unknown>
   try {
     response = responseFromResult(result)
@@ -322,7 +325,7 @@ export async function runComputerDriverCommand(
     ) {
       throw error
     }
-    result = await runCommand(instance, request, DRIVER_ACTION_TIMEOUT_MS, options.environment)
+    result = await runCommand(instance, request, timeoutMs, options.environment)
     response = responseFromResult(result)
   }
 
@@ -415,41 +418,6 @@ export async function openUrl(
   return { openedWith: 'browser' }
 }
 
-function browserActionText(
-  action: string,
-  args: Record<string, unknown>,
-  result: Record<string, unknown>,
-): string {
-  if (action === 'snapshot') {
-    const elements = Array.isArray(result.elements) ? result.elements.filter(isRecord) : []
-    const lines = elements.map((element) => {
-      const bbox = isRecord(element.bbox) ? element.bbox : {}
-      return [
-        `${String(element.ref ?? '')} ${String(element.role ?? '')}: ${String(element.name ?? '')}`,
-        `  bbox x=${String(bbox.x ?? 0)} y=${String(bbox.y ?? 0)} width=${String(bbox.width ?? 0)} height=${String(bbox.height ?? 0)}`,
-      ].join('\n')
-    })
-    return [
-      `URL: ${String(result.url ?? '')}`,
-      `Title: ${String(result.title ?? '')}`,
-      'Visible text:',
-      String(result.text ?? '').slice(0, 20_000),
-      `Interactive elements (${elements.length}):`,
-      ...lines,
-    ].join('\n')
-  }
-  if (action === 'tabs') {
-    const tabs = Array.isArray(result.tabs) ? result.tabs.filter(isRecord) : []
-    return [
-      `Open tabs (${tabs.length}):`,
-      ...tabs.map((tab) => `${String(tab.index ?? '')}: ${String(tab.title ?? '')} ${String(tab.url ?? '')}`),
-    ].join('\n')
-  }
-  if (action === 'navigate') return `Navigated to ${String(args.url ?? 'the requested URL')}.`
-  if (action === 'switch_tab') return `Switched to browser tab ${String(result.index ?? args.index ?? '')}.`
-  if (action === 'new_tab') return 'Opened a new browser tab.'
-  return `Browser ${action.replaceAll('_', ' ')} completed.`
-}
 
 export async function runBrowserAction(
   instance: SandboxInstance,

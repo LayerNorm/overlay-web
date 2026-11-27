@@ -71,8 +71,33 @@ parent cannot finalize while assignment issues or live child execution remain.
 
 While a parent joins a child inside a tool call, its harness status stays
 `running` and its delivery run shows what it waits on (`waiting_for_children`,
-or a descendant's input or approval wait). The once-a-minute wait renewal
-(`refreshNativeHarnessAccess` in renewal mode) therefore accepts any waiting
-delivery status and relies on the owner checks (workflow, harness run,
-identity). Requiring the two statuses to match stopped every ask that lasted
-over a minute.
+or a descendant's input or approval wait). The delivery status is what the
+person is shown; it never decides whether a run may act. Every access check
+(`refreshNativeHarnessAccess`, `refreshPersonalHarnessAccess`, with or without
+renewal mode) accepts `running` or any waiting delivery status and relies on
+the harness state and the owner checks (workflow, harness run, identity); only
+a terminal delivery status stops the run. Requiring the two statuses to match
+stopped asks three times: every ask over a minute, an ask whose child failed,
+and an ask that outlasted its hour-long workflow segment.
+
+A join inside a tool call that reaches the hourly segment limit is not a tool
+failure. The runner catches the rollover, `harness_read_child` returns the
+child as still working with a hint to read again, and the run hands off to its
+next segment after that step. Any join that ends without its children
+settling (an error or the rollover) sets the delivery back to `running`; a
+successor that waits again projects the wait again.
+
+A temporary fault inside a model invocation (an Overlay bookkeeping check or
+unclassified error, `INTERNAL_ERROR`; a dropped model or tool outcome; a
+provider timeout, outage or rate limit; the backend being unavailable) is
+replayed from the last model boundary instead of ending the run
+(`settleInternalFault` in `runner.ts`), with a pause from 5 seconds up to 5
+minutes and no limit on replays. If tools had started since the boundary, the
+replay tells the model which ones may or may not have taken effect, so it
+checks before repeating them (`interruptedStepNote`); repeated identical creates
+are also refused as duplicates. After two failures in a row the replay also
+tells the model to split large output (`REPEATED_FAILURE_NOTE`). Every fifth
+replay raises a Sentry alert (`harness_run_retrying`). A reserved call is
+settled as a zero-usage interrupted receipt first, and this workflow must
+still own the run. Authorization, funding, deadline and provider-account
+failures are never replayed.

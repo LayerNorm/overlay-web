@@ -2,12 +2,18 @@
 import { Button } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import Link from 'next/link'
-import { MoonStar, SunMedium } from 'lucide-react'
+import { Bot, ChevronDown, Globe, Smartphone, Users, Zap, MoonStar, SunMedium, type LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { GithubMark } from './GithubMark'
 import { useLandingTheme } from '@/contexts/LandingThemeContext'
-import { MARKETING_DISCORD_URL, MARKETING_DOCS_URL, MARKETING_GITHUB_URL } from '@/shared/marketing/marketing'
+import {
+  MARKETING_DISCORD_URL, MARKETING_DOCS_URL, MARKETING_GITHUB_URL, MARKETING_MCP_DOCS_URL, MARKETING_SLACK_INSTALL_PATH,
+} from '@/shared/marketing/marketing'
 import { BrandLockup } from '@/components/brand/BrandLockup'
-import { DESKTOP_DOWNLOAD_PATH } from '@/shared/web/latest-release'
+import { DESKTOP_DOWNLOAD_START_PATH } from '@/shared/web/latest-release'
+import { AppleMark } from './AppleMark'
+import { LandingAgent } from './LandingAgent'
+import { LandingLogo } from './LandingLogo'
 
 /** Discord's mark (256x199 source), drawn in the current text color like the other nav icons. */
 function DiscordMark() {
@@ -15,6 +21,43 @@ function DiscordMark() {
     <svg className="discord" viewBox="0 0 256 199" aria-hidden="true">
       <path d="M216.856 16.597A208.502 208.502 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046-19.692-2.961-39.203-2.961-58.533 0-1.832-4.4-4.55-9.933-6.846-14.046a207.809 207.809 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161.094 161.094 0 0 0 79.735 175.3a136.413 136.413 0 0 1-21.846-10.632 108.636 108.636 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a131.66 131.66 0 0 0 5.355 4.237 136.07 136.07 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848 21.142-6.58 42.646-16.637 64.815-33.213 5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2c12.867 0 23.236 11.804 23.015 26.2.02 14.375-10.148 26.18-23.015 26.18Zm85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2 0 14.375-10.148 26.18-23.015 26.18Z" />
     </svg>
+  )
+}
+
+type MenuRow = { href: string; icon: ReactNode; title: string; detail: string; external?: boolean }
+
+function MenuLink({ row }: { row: MenuRow }) {
+  const body = <>{row.icon}<span><b>{row.title}</b>{row.detail}</span></>
+  return row.external
+    ? <a href={row.href} target="_blank" rel="noopener noreferrer">{body}</a>
+    : <Link href={row.href}>{body}</Link>
+}
+
+const icon = (Icon: LucideIcon) => <Icon className="i sm" />
+
+/** "Product" opens on hover or keyboard focus: what Overlay does, and every place it runs. */
+function ProductMenu({ appHref }: { appHref: string }) {
+  const product: MenuRow[] = [
+    { href: '/home#ai-employees', icon: icon(Bot), title: 'AI employees', detail: 'Agents with memory, tools and a computer' },
+    { href: '/home#chief', icon: <LandingAgent id="overlay" size={16} />, title: 'Chief of staff', detail: 'Overlay runs the team for you' },
+    { href: '/home#multiplayer', icon: icon(Users), title: 'Multiplayer', detail: 'People and agents in one channel' },
+    { href: '/home#self-driving', icon: icon(Zap), title: 'Automations', detail: 'Schedules, triggers and approvals' },
+  ]
+  const platforms: MenuRow[] = [
+    { href: appHref, icon: icon(Globe), title: 'Web', detail: 'Use Overlay in any browser' },
+    { href: DESKTOP_DOWNLOAD_START_PATH, icon: <AppleMark />, title: 'Desktop', detail: 'Overlay for Mac' },
+    { href: appHref, icon: icon(Smartphone), title: 'Mobile', detail: 'Works in your phone’s browser' },
+    { href: MARKETING_SLACK_INSTALL_PATH, icon: <LandingLogo name="slack" className="logo" />, title: 'Slack', detail: 'Mention @Overlay anywhere' },
+    { href: MARKETING_MCP_DOCS_URL, icon: <LandingLogo name="mcp" className="logo" />, title: 'MCP', detail: 'ChatGPT, Claude and any MCP app', external: true },
+  ]
+  return (
+    <div className="menu">
+      <Link href="/home#ai-employees" className="menu-t">Product<ChevronDown className="i xs" /></Link>
+      <div className="menu-p">
+        <div className="menu-col"><div className="menu-h">Product</div>{product.map((row) => <MenuLink key={row.title} row={row} />)}</div>
+        <div className="menu-col"><div className="menu-h">Available on</div>{platforms.map((row) => <MenuLink key={row.title} row={row} />)}</div>
+      </div>
+    </div>
   )
 }
 
@@ -28,11 +71,10 @@ export function LandingNav({ appHref }: { appHref: string }) {
           <BrandLockup />
         </Link>
         <nav className="nav-links" aria-label="Primary">
-          <Link href="/home">Product</Link>
-          <a href={MARKETING_DOCS_URL} target="_blank" rel="noopener noreferrer">Docs</a>
+          <ProductMenu appHref={appHref} />
           <Link href="/pricing">Pricing</Link>
+          <a href={MARKETING_DOCS_URL} target="_blank" rel="noopener noreferrer">Docs</a>
           <Link href="/blog">Blog</Link>
-          <Link href={DESKTOP_DOWNLOAD_PATH}>Download</Link>
         </nav>
         <div className="nav-right">
           <Button variant="ghost" className={unstyledButton('icon-btn')} type="button" onClick={toggleLandingTheme} aria-label="Toggle light / dark mode">

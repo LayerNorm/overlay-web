@@ -21,6 +21,7 @@ import { ProviderLogo } from '@overlay/ui/ai'
 import { subscriptionLogo, subscriptionRequest, type SubscriptionProgress } from './subscription-connection-client'
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
+import { byokPresetLogo, isApiKeySubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 import {
   buildProviderModelOptions,
   filterModels,
@@ -280,7 +281,7 @@ export function ProviderConnectionRow({
   )
   const enabledCount = defaultGateway ? allModels.length : allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
   const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
-  const providerLabel = connection.providerId.startsWith('subscription:') ? `Subscription · ${connection.scope === 'workspace' ? 'Workspace' : 'Personal'}` : preset?.allowsCustomEndpoint && endpointHost
+  const providerLabel = connection.providerId.startsWith('subscription:') || isApiKeySubscriptionConnection(connection) ? `Subscription · ${connection.scope === 'workspace' ? 'Workspace' : 'Personal'}` : preset?.allowsCustomEndpoint && endpointHost
     ? `${preset.label} · ${endpointHost}`
     : (preset?.label ?? connection.providerId)
   const {
@@ -370,10 +371,11 @@ function ProviderConnectionHeader({
 }) {
   const hasError = connection.status === 'error'
   const subscription = connection.providerId.startsWith('subscription:')
+  const showLogo = subscription || Boolean(byokPresetLogo(connection.providerId))
   return (
     <div className="flex items-center gap-3 px-4 py-3.5">
       {/* Status indicator */}
-      {subscription ? <ProviderLogo provider={subscriptionLogo(connection.providerId)} size={22} className="shrink-0" /> : <span
+      {showLogo ? <ProviderLogo provider={subscriptionLogo(connection.providerId)} size={22} className="shrink-0" /> : <span
         className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
           hasError
             ? 'bg-red-500'
@@ -417,8 +419,10 @@ function ProviderConnectionHeader({
         ) : null}
       </div>
 
-      {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1">
+      {/* Actions: a teammate's workspace provider is theirs to change. */}
+      {connection.canManage === false ? (
+        <span className="shrink-0 text-xs text-(--muted)">Added by a teammate</span>
+      ) : <div className="flex shrink-0 items-center gap-1">
         <Button variant="ghost"
           type="button"
           onClick={onDiscover}
@@ -458,7 +462,7 @@ function ProviderConnectionHeader({
             <Trash2 size={14} strokeWidth={1.8} />
           </Button>
         ) : null}
-      </div>
+      </div>}
     </div>
   )
 }

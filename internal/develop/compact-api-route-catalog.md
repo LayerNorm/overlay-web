@@ -75,6 +75,7 @@ For a description of what each route does and its associated implementation file
 ## Connected agents and environments
 
 - `POST /api/v1/harness/continuation`
+- `POST /api/v1/harness/stalled`
 - `POST /api/v1/agent-environments/[environmentId]/approve`
 - `POST /api/v1/agent-environments/[environmentId]/copy-to-files`
 - `PUT /api/v1/agent-environments/[environmentId]/capabilities`
@@ -110,7 +111,6 @@ For a description of what each route does and its associated implementation file
 
 ## Automations
 
-- `POST /api/v1/automations/project-events`
 - `POST /api/v1/automations/[id]/approve`
 - `GET /api/v1/automations/[id]/events`
 - `POST /api/v1/automations/[id]/run`
@@ -164,12 +164,18 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST, PUT /api/v1/extensions/[extensionId]/[...path]`
 - `GET /api/v1/github/callback`
 - `GET /api/v1/github/connect`
+- `GET /api/v1/integrations/slack/install`
+- `GET /api/v1/integrations/slack/link`
+- `GET /api/v1/integrations/slack/link/callback`
+- `GET /api/v1/integrations/slack/oauth`
+- `POST /api/v1/integrations/slack/events`
 - `GET /api/v1/github/repositories`
 - `GET, POST /api/v1/integrations`
 - `GET, POST /api/v1/mcp/agents`
 - `POST /api/v1/mcp/authorize`
 - `GET /api/v1/mcp/client`
 - `DELETE, GET, POST /api/v1/mcp/connections`
+- `POST /api/v1/mcp/private-thread`
 - `GET, POST /api/v1/mcps/oauth/callback`
 - `DELETE, POST /api/v1/mcps/oauth`
 - `DELETE, GET, PATCH, POST /api/v1/mcps`
@@ -219,6 +225,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/workspaces/[workspaceId]/audit-export`
 - `POST /api/v1/workspaces/[workspaceId]/billing/checkout`
 - `POST /api/v1/workspaces/[workspaceId]/billing/auto-top-up`
+- `POST /api/v1/workspaces/[workspaceId]/billing/member-caps`
 - `POST /api/v1/workspaces/[workspaceId]/billing/portal`
 - `GET, POST /api/v1/workspaces/[workspaceId]/billing`
 - `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`

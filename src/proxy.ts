@@ -382,6 +382,17 @@ type ProxySecurityContext = {
   nextResponse: () => NextResponse
 }
 
+/**
+ * Stored file and output content sets its own policy: a script sandbox for HTML and other active types, and a page
+ * policy for `?view=page`. Next.js keeps a header the proxy already set and drops the route's, so the app policy (which
+ * allows inline scripts on API responses) must not be set here, or stored HTML would run on the app origin.
+ */
+const STORED_CONTENT_PATH = /^\/api\/v1\/(?:files\/[^/]+|outputs\/[^/]+)\/content\/?$/
+
+export function ownsContentSecurityPolicy(pathname: string): boolean {
+  return STORED_CONTENT_PATH.test(pathname)
+}
+
 function createProxySecurityContext(request: NextRequest, pathname: string): ProxySecurityContext {
   const cspHeaderName = getCspHeaderName()
   const cspNonce = isNonceEligiblePath(pathname) ? createCspNonce() : undefined
@@ -394,8 +405,9 @@ function createProxySecurityContext(request: NextRequest, pathname: string): Pro
   requestHeaders.delete(ROUTE_WORKSPACE_SCOPE_HEADER)
   requestHeaders.set(cspHeaderName, cspPolicy)
   if (cspNonce) requestHeaders.set('x-nonce', cspNonce)
-  const nextResponse = () =>
-    applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
+  const nextResponse = () => ownsContentSecurityPolicy(pathname)
+    ? NextResponse.next({ request: { headers: requestHeaders } })
+    : applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(
       NextResponse.next({ request: { headers: requestHeaders } }),
       cspHeaderName,
       cspPolicy,
@@ -470,7 +482,7 @@ function rewriteWorkspaceRoute(
     requestHeaders.delete('x-overlay-workspace-handle')
     requestHeaders.set('x-overlay-workspace-id', workspaceRewrite.searchParams.get('workspaceId') ?? '')
     const routeScope = request.nextUrl.searchParams.get('scope')
-    requestHeaders.set(ROUTE_WORKSPACE_SCOPE_HEADER, routeScope === 'workspace' ? 'workspace' : 'personal')
+    requestHeaders.set(ROUTE_WORKSPACE_SCOPE_HEADER, routeScope === 'personal' ? 'personal' : 'workspace')
   }
 
   return applyWorkspaceRouteHeaders(applyBrowserSecurityHeaders(

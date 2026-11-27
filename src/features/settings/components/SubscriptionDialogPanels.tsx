@@ -12,21 +12,14 @@ type Flow = ReturnType<typeof useSubscriptionConnection>
 type Provider = NonNullable<Flow['availability']>['providers'][number]
 type Authorization = NonNullable<Flow['login']>['authorization']
 
-export function SubscriptionScopeSelector({ scope, onScopeChange, workspaceName, workspaceAvailable, disabled }: {
-  scope: SubscriptionScope
-  onScopeChange(scope: SubscriptionScope): void
-  workspaceName?: string
-  workspaceAvailable: boolean
-  disabled: boolean
-}) {
-  return <fieldset className="space-y-2" disabled={disabled}>
-    <legend className="mb-2 text-xs font-medium">Available to</legend>
-    <div className="flex gap-1 rounded-lg bg-(--surface-muted) p-1">
-      <Button type="button" variant={scope === 'personal' ? 'secondary' : 'ghost'} size="sm" className="flex-1" aria-pressed={scope === 'personal'} disabled={disabled} onClick={() => onScopeChange('personal')}><UserRound size={14} />Personal</Button>
-      <Button type="button" variant={scope === 'workspace' ? 'secondary' : 'ghost'} size="sm" className="flex-1" aria-pressed={scope === 'workspace'} disabled={disabled || !workspaceAvailable} onClick={() => onScopeChange('workspace')}><UsersRound size={14} />Workspace</Button>
-    </div>
-    <p className="text-xs leading-relaxed text-muted-foreground">{scope === 'personal' ? 'Only you can use this connection.' : `Members of ${workspaceName ? `the ${workspaceName} workspace` : 'this workspace'} can use this connection.`}</p>
-  </fieldset>
+/** Where a new connection lands: the mode the person is adding it in (Settings → Providers follows Personal | Workspace). */
+export function SubscriptionScopeNote({ scope, workspaceName }: { scope: SubscriptionScope; workspaceName?: string }) {
+  return <p className="flex items-center gap-1.5 text-xs leading-relaxed text-muted-foreground">
+    {scope === 'personal' ? <UserRound size={13} /> : <UsersRound size={13} />}
+    {scope === 'personal'
+      ? 'Only you can use this connection.'
+      : `Members of ${workspaceName ? `the ${workspaceName} workspace` : 'this workspace'} can use this connection, including workspace agents and automations.`}
+  </p>
 }
 
 export function SubscriptionFooter({
@@ -49,10 +42,10 @@ export function SubscriptionFooter({
   </div>
 }
 
-export function ConnectedStatePanel({ flow }: { flow: Flow }) {
+export function ConnectedStatePanel({ modelCount }: { modelCount: number }) {
   return <div className="space-y-3 py-4 text-center" role="status">
     <span className="mx-auto grid size-11 place-items-center rounded-full bg-(--surface-muted)"><Check size={21} /></span>
-    <p className="text-sm">{flow.connected?.enabledModelIds.length} models added to your dropdown.</p>
+    <p className="text-sm">{modelCount} models added to your dropdown.</p>
     <p className="text-xs text-muted-foreground">Choose a model in any compatible Overlay chat or agent.</p>
   </div>
 }
@@ -98,17 +91,24 @@ export function ProviderChoicePanel({
   connection,
   providerId,
   onProviderChange,
+  extraProviders = [],
 }: {
   flow: Flow
   connection?: ByokConnectionRow
   providerId: string
   onProviderChange(providerId: string): void
+  /** API-key subscriptions that never depend on the subscription bridge. */
+  extraProviders?: ReadonlyArray<Provider>
 }) {
+  const choices = [
+    ...(flow.availability?.providers ?? []).map((provider) => ({ provider, usable: provider.enabled && Boolean(flow.availability?.available) })),
+    ...(connection ? [] : extraProviders.map((provider) => ({ provider, usable: provider.enabled }))),
+  ]
   return <>
     {!flow.availability && !flow.error ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" />Loading providers...</p> : null}
     {flow.availability && !flow.availability.available ? <p className="rounded-lg bg-(--surface-muted) p-3 text-xs text-muted-foreground">{flow.availability.reason ?? 'Subscription connections are not configured on this deployment. You can still connect an API key.'}</p> : null}
     <div className="space-y-1.5" aria-label="Subscription providers">
-      {flow.availability?.providers.filter((provider) => !connection || provider.id === providerId).map((provider) => <Button key={provider.id} variant={providerId === provider.id ? 'secondary' : 'ghost'} className="h-auto min-h-14 w-full justify-start gap-3 px-3 py-2.5 text-left" disabled={flow.busy || flow.selectionLocked || !provider.enabled || !flow.availability?.available} aria-pressed={providerId === provider.id} onClick={() => onProviderChange(provider.id)}>
+      {choices.filter(({ provider }) => !connection || provider.id === providerId).map(({ provider, usable }) => <Button key={provider.id} variant={providerId === provider.id ? 'secondary' : 'ghost'} className="h-auto min-h-14 w-full justify-start gap-3 px-3 py-2.5 text-left" disabled={flow.busy || flow.selectionLocked || !usable} aria-pressed={providerId === provider.id} onClick={() => onProviderChange(provider.id)}>
         <ProviderLogo provider={subscriptionLogo(provider.id)} size={21} />
         <span className="min-w-0 flex-1"><span className="block text-sm">{provider.label}</span><span className="block text-xs font-normal text-muted-foreground">{provider.description}</span></span>
         {providerId === provider.id ? <Check size={15} /> : null}

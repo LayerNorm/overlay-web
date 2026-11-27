@@ -47,6 +47,7 @@ type AgentEditorFormSectionProps = {
   saveEdit(): void
   cancelEdit(): void
   archiveAgent(): void
+  movedToWorkspace(agent: WorkspaceAgentDirectoryItem): void
 }
 
 function AgentEditorFormSection({
@@ -64,6 +65,7 @@ function AgentEditorFormSection({
   saveEdit,
   cancelEdit,
   archiveAgent,
+  movedToWorkspace,
 }: AgentEditorFormSectionProps) {
   // One loading state for the whole form: it shows when everything (computer, memories) has loaded,
   // not piece by piece.
@@ -165,7 +167,14 @@ function AgentEditorFormSection({
             onChange={(value) => { setPermissionMode(value); markDirty() }}
           />
 
-          {controls.showAccessSelector ? <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} /> : null}
+          {controls.showAccessSelector ? (
+            <AccessSelector
+              value={visibility}
+              onChange={(value) => { setVisibility(value); markDirty() }}
+              agent={mode === 'edit' ? agent : null}
+              onMovedToWorkspace={movedToWorkspace}
+            />
+          ) : null}
 
           {mode === 'edit' && agent?.principalId ? (
             <AgentMemoriesSection agentPrincipalId={agent.principalId} />
@@ -266,6 +275,7 @@ export function AgentEditorView({
   saveEdit,
   cancelEdit,
   archiveAgent,
+  movedToWorkspace,
 }: {
   presentation: 'page' | 'panel'
   embedded: boolean
@@ -292,6 +302,7 @@ export function AgentEditorView({
   saveEdit(): void
   cancelEdit(): void
   archiveAgent(): void
+  movedToWorkspace(agent: WorkspaceAgentDirectoryItem): void
 }) {
   const editor = (
     <AppScreenShell
@@ -333,7 +344,7 @@ export function AgentEditorView({
         ) : mode === 'new' && !canCreate ? (
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-(--border) bg-(--surface-elevated) p-8 text-center">
             <p className="text-sm font-medium text-(--foreground)">You cannot create agents in this workspace</p>
-            <p className="mt-1 text-xs leading-5 text-(--muted)">Guests can chat with agents but cannot create new ones.</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">Ask a workspace owner or admin for access.</p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : (
@@ -353,6 +364,7 @@ export function AgentEditorView({
             saveEdit={saveEdit}
             cancelEdit={cancelEdit}
             archiveAgent={archiveAgent}
+            movedToWorkspace={movedToWorkspace}
           />
           </EditorLoadGate>
         )}

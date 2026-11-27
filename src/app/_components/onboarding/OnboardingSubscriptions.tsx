@@ -7,11 +7,12 @@ import { ProviderLogo } from '@overlay/ui/ai'
 import { useByokModels } from '@/components/providers/useByokModels'
 import { ConnectProviderDialog } from '@/features/settings/components/ConnectProviderDialog'
 import { subscriptionLogo } from '@/features/settings/components/subscription-connection-client'
+import { isApiKeySubscriptionConnection } from '@/shared/ai/gateway/subscription-providers'
 
 export function OnboardingSubscriptions({ disabled }: { disabled: boolean }) {
   const [open, setOpen] = useState(false)
   const { connections, refresh } = useByokModels()
-  const subscriptions = connections.filter((connection) => connection.providerId.startsWith('subscription:') && connection.status === 'active')
+  const subscriptions = connections.filter((connection) => (connection.providerId.startsWith('subscription:') || isApiKeySubscriptionConnection(connection)) && connection.status === 'active')
   return <div className="mb-5">
     <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">Bring your AI subscription</p>
     <div className="divide-y divide-(--border) overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated)">
@@ -22,11 +23,12 @@ export function OnboardingSubscriptions({ disabled }: { disabled: boolean }) {
       </div>)}
       <Button variant="ghost" className="h-auto w-full justify-start gap-3 rounded-none px-3.5 py-3" disabled={disabled} onClick={() => setOpen(true)}>
         <Link2 size={18} />
-        <span className="flex-1 text-left"><span className="block text-[13px]">Connect a provider</span><span className="block text-xs font-normal text-muted-foreground">Use your connected models in Overlay.</span></span>
+        <span className="flex-1 text-left"><span className="block text-[13px]">Connect a provider</span><span className="block text-xs font-normal text-muted-foreground">Shared with the workspace, so Overlay and your teammates can use it.</span></span>
         <Plus size={15} />
       </Button>
     </div>
     <p className="mt-2 text-xs text-muted-foreground">Optional. You can use Overlay models instead.</p>
-    {open ? <ConnectProviderDialog onClose={() => setOpen(false)} onConnected={refresh} /> : null}
+    {/* Overlay is a workspace agent, so the provider it runs on is the workspace's. */}
+    {open ? <ConnectProviderDialog scope="workspace" onClose={() => setOpen(false)} onConnected={refresh} /> : null}
   </div>
 }

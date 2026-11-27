@@ -102,6 +102,15 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
     )
   },
 
+  async setMemberSpendCap(workspaceId, input) {
+    return await workspaceMutation(
+      workspaceId,
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing/member-caps`,
+      'POST',
+      input,
+    )
+  },
+
   async updateBillingAutoTopUp(workspaceId, input) {
     return await workspaceMutation(
       workspaceId,

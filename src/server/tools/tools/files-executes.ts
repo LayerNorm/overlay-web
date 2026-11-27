@@ -1,9 +1,10 @@
 import 'server-only'
-import { roomListScope } from './room-scope'
+import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
 
 import { utf8ByteLength } from '@/shared/storage/convex-file-content'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { ownerField, ownerNamesFor, type OwnerLabel } from './owner-names'
 
 /**
  * Agent tools over the workspace file system (`/api/v1/files`): list, read,
@@ -28,6 +29,9 @@ type FileSummary = {
   sizeBytes?: number
   updatedAt: number
   isStorageBacked?: boolean
+  scope?: 'personal' | 'workspace'
+  archivedAt?: number
+  userId?: string
 }
 
 type FileDetail = FileSummary & { textContent?: string; textInObjectStore?: boolean }
@@ -84,7 +88,7 @@ function send(options: OverlayToolsOptions, method: 'POST' | 'PATCH', body: Reco
   )
 }
 
-function summarize(file: FileSummary) {
+function summarize(file: FileSummary, owner?: OwnerLabel) {
   return {
     fileId: file._id,
     name: file.name,
@@ -94,7 +98,20 @@ function summarize(file: FileSummary) {
     mimeType: file.mimeType,
     sizeBytes: file.sizeBytes,
     updatedAt: file.updatedAt,
+    // Who can see it: Personal is the owner's alone; Workspace is every member's.
+    scope: file.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+    ...ownerField(owner),
+    ...(file.archivedAt !== undefined ? { archived: true } : {}),
   }
+}
+
+/** A by-id edit in a workspace context may touch only Workspace items: read the item's scope first. */
+async function roomEditRefusal(options: OverlayToolsOptions, fileId: string): Promise<{ success: false; error: string } | null> {
+  if (!options.sharedRoom) return null
+  const res = await get(options, new URLSearchParams({ fileId: fileId.trim() }))
+  if (!res.ok) return { success: false, error: await errorMessage(res, 'File not found') }
+  const file = await res.json() as FileSummary
+  return refusesRoomItem(options, file) ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
 }
 
 async function persistedFilePath(options: OverlayToolsOptions, file: FileSummary): Promise<string> {
@@ -145,7 +162,7 @@ async function savedFile(
 
 export async function executeListFiles(
   options: OverlayToolsOptions,
-  input: { folderId?: string; scope?: 'personal' | 'workspace' },
+  input: { folderId?: string; scope?: 'personal' | 'workspace'; archived?: boolean },
 ) {
   try {
     // The list endpoint returns at most 100 rows per page.
@@ -156,7 +173,8 @@ export async function executeListFiles(
       const params = new URLSearchParams({ summary: 'true', page: 'true', limit: '100' })
       if (input.folderId) params.set('parentId', input.folderId)
       const scope = roomListScope(options, input.scope)
-      if (scope) params.set('view', scope)
+      if (input.archived) params.set('view', 'archived')
+      else if (scope) params.set('view', scope)
       if (cursor) params.set('cursor', cursor)
       const res = await get(options, params)
       if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to list files') }
@@ -165,9 +183,15 @@ export async function executeListFiles(
       hasMore = page.hasMore
       cursor = page.nextCursor
     } while (hasMore && cursor && files.length < LIST_LIMIT)
+    // The archived view spans Personal and Workspace; a room (or a scope asked for) keeps to its own.
+    const archivedScope = input.archived ? roomListScope(options, input.scope) : undefined
+    const listed = files
+      .filter((file) => !archivedScope || (file.scope === 'workspace' ? 'workspace' : 'personal') === archivedScope)
+      .slice(0, LIST_LIMIT)
+    const ownerOf = await ownerNamesFor(options, listed.map((file) => file.userId))
     return {
       success: true,
-      files: files.slice(0, LIST_LIMIT).map(summarize),
+      files: listed.map((file) => summarize(file, ownerOf(file.userId))),
       ...(hasMore || files.length > LIST_LIMIT ? { truncated: true } : {}),
     }
   } catch (err) {
@@ -183,10 +207,12 @@ export async function executeReadFile(
     const res = await get(options, new URLSearchParams({ fileId: input.fileId.trim(), fullText: 'true' }))
     if (!res.ok) return { success: false, error: await errorMessage(res, 'File not found') }
     const file = await res.json() as FileDetail
+    if (refusesRoomItem(options, file)) return { success: false, error: ROOM_PERSONAL_ITEM_ERROR }
     if (file.type === 'folder') return { success: false, error: 'That is a folder; use list_files with its id.' }
     if (file.kind === 'note') return { success: false, error: 'That is a note; use get_note to read it.' }
     const text = file.textContent ?? ''
-    const base = { ...summarize(file), revision: String(file.updatedAt) }
+    const ownerOf = await ownerNamesFor(options, [file.userId])
+    const base = { ...summarize(file, ownerOf(file.userId)), revision: String(file.updatedAt) }
     if (!text) {
       return {
         success: true,
@@ -214,13 +240,15 @@ export async function executeReadFile(
 
 export async function executeWriteFile(
   options: OverlayToolsOptions,
-  input: { fileId?: string; name?: string; folderId?: string; content: string; expectedRevision?: string },
+  input: { fileId?: string; name?: string; folderId?: string; content: string; expectedRevision?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     if (utf8ByteLength(input.content) > MAX_WRITE_BYTES) {
       return { success: false, error: 'Content is over 10 MB; split it into several files.' }
     }
     if (input.fileId) {
+      const refused = await roomEditRefusal(options, input.fileId)
+      if (refused) return refused
       const expectedUpdatedAt = input.expectedRevision ? Number(input.expectedRevision) : undefined
       if (input.expectedRevision && !Number.isFinite(expectedUpdatedAt)) {
         return { success: false, error: 'expectedRevision must be the revision returned by read_file.' }
@@ -256,6 +284,7 @@ export async function executeWriteFile(
       kind: 'upload',
       mimeType: mimeTypeFor(name),
       textContent: input.content,
+      scope: roomCreateScope(options, input.scope),
       ...(options.conversationId ? { conversationId: options.conversationId } : {}),
       ...(input.folderId ? { parentId: input.folderId } : {}),
     })
@@ -276,7 +305,7 @@ export async function executeWriteFile(
 
 export async function executeCreateFolder(
   options: OverlayToolsOptions,
-  input: { name: string; parentId?: string },
+  input: { name: string; parentId?: string; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const name = input.name.trim()
@@ -285,6 +314,7 @@ export async function executeCreateFolder(
       name,
       type: 'folder',
       kind: 'folder',
+      scope: roomCreateScope(options, input.scope),
       ...(input.parentId ? { parentId: input.parentId } : {}),
     })
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create folder') }
@@ -310,6 +340,8 @@ export async function executeMoveFile(
     if (input.folderId === undefined && !input.name?.trim()) {
       return { success: false, error: 'Pass folderId (null for the top level) and/or a new name.' }
     }
+    const refused = await roomEditRefusal(options, input.fileId)
+    if (refused) return refused
     const res = await send(options, 'PATCH', {
       fileId: input.fileId.trim(),
       ...(input.folderId !== undefined ? { parentId: input.folderId } : {}),

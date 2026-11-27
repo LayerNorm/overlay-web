@@ -66,6 +66,20 @@ export class WorkOSAuthProvider implements AuthProvider {
     return claims ? toUserProfile(claims) : null
   }
 
+  async getUserById(userId: string): Promise<UserProfile | null> {
+    const resolved = this.resolveConfig()
+    if (!resolved.apiKey) return null
+    const user = await new WorkOS({ apiKey: resolved.apiKey }).userManagement.getUser(userId)
+    return {
+      id: user.id,
+      email: user.email,
+      ...(user.firstName ? { firstName: user.firstName } : {}),
+      ...(user.lastName ? { lastName: user.lastName } : {}),
+      ...(user.profilePictureUrl ? { profilePictureUrl: user.profilePictureUrl } : {}),
+      emailVerified: user.emailVerified,
+    }
+  }
+
   async deleteUser(userId: string): Promise<void> {
     const resolved = this.resolveConfig()
     if (!resolved.apiKey) {

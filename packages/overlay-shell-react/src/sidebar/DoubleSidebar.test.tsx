@@ -42,15 +42,12 @@ test('double sidebar keeps the rail and account outside the collapsible contextu
   assert.match(panel, /Agent list/)
 })
 
-test('secondary destinations are behind More; header actions and scope stay in the panel', () => {
+test('secondary destinations are behind More; header actions stay in the panel', () => {
   const html = render()
   assert.match(html, /aria-label="More"/)
   for (const href of ['/app/files', '/app/tools', '/app/automations']) assert.ok(!html.includes(`href="${href}"`))
   assert.match(html, /aria-label="Search agents"/)
   assert.match(html, /aria-label="New agent"/)
-  assert.match(html, /aria-label="Scope"/)
-  assert.match(html, /Personal/)
-  assert.match(html, /Workspace/)
   assert.match(html, /272px/)
   assert.doesNotMatch(render({ items: items.slice(0, 3), panelAction: null }), /aria-label="More"|aria-label="New agent"/)
 })
@@ -100,8 +97,21 @@ test('work keeps view navigation plus separately rendered task groups', () => {
   for (const label of ['List', 'Board', 'Timeline', 'tasks-mine', 'tasks-all']) assert.match(html, new RegExp(label))
 })
 
-test('settings retains its own navigation instead of showing a scope selector', () => {
+test('the one mode switch sits at the bottom of the rail just above the account, Workspace first, and not in the panel', () => {
+  const html = render({ scope: 'workspace' })
+  const split = html.indexOf('id="context-panel"')
+  const rail = html.slice(0, split)
+  assert.equal((html.match(/aria-label="Mode"/g) ?? []).length, 1)
+  assert.match(rail, /role="radiogroup" aria-label="Mode"/)
+  assert.ok(rail.indexOf('href="/app/work"') < rail.indexOf('aria-label="Mode"'))
+  assert.ok(rail.indexOf('aria-label="Mode"') < rail.indexOf('Account'))
+  assert.ok(rail.indexOf('aria-label="Workspace"') < rail.indexOf('aria-label="Personal"'))
+  assert.match(rail, /role="radio" aria-checked="true"[^>]*aria-label="Workspace"/)
+  assert.match(rail, /role="radio" aria-checked="false"[^>]*aria-label="Personal"/)
+})
+
+test('settings keeps its own navigation and the rail mode switch', () => {
   const html = render({ title: 'Settings', panelKind: 'settings', panelNav: { items: [{ id: 'general', label: 'General', href: '/app/settings' }], activeId: 'general', onSelect: noop } })
   assert.match(html, /General/)
-  assert.doesNotMatch(html, /aria-label="Scope"/)
+  assert.equal((html.match(/aria-label="Mode"/g) ?? []).length, 1)
 })

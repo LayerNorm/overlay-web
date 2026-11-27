@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import type { Doc } from '../_generated/dataModel'
+import { insertPushNotification } from '../lib/mobilePush'
 
 /**
  * Outside agents joining a workspace over MCP: the request an admin approves, the agent's presence, and the
@@ -238,7 +239,7 @@ export const notifyOwnerAwayByServer = mutation({
     const conversationId = ctx.db.normalizeId('conversations', args.conversationId)
     if (!conversationId) return false
     await ctx.db.patch(join._id, { lastAwayNoticeAt: args.now })
-    await ctx.db.insert('workspaceNotifications', {
+    await insertPushNotification(ctx, {
       notificationId: crypto.randomUUID(), workspaceId: join.workspaceId, recipientPrincipalId: args.ownerPrincipalId,
       type: 'message', conversationId, actorPrincipalId: join.principalId,
       title: `${join.name} has a message waiting`,

@@ -3,7 +3,9 @@
   "ignore": {
     "files": [
       "benchmarks/**",
-      "overlay-desktop/**",
+      "apps/desktop/**",
+      "apps/mobile/**",
+      "apps/chrome/**",
       "scripts/**",
       "convex/_generated/**",
       "**/*.test.*",

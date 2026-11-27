@@ -18,6 +18,7 @@ import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assista
 import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 import { nativeAgentErrorPart } from '../lib/nativeAgentErrorPart'
+import { workspaceAutomationForThread } from '../lib/roomAudience'
 import { harnessDiagnosticValidator } from '../lib/harnessDiagnosticValidator'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
@@ -123,6 +124,11 @@ const messagePart = v.union(
       state: v.optional(v.string()),
       toolInput: v.optional(v.any()),
       toolOutput: v.optional(v.any()),
+      // Written by persist-assistant-turn for approved, denied and provider-run tool calls.
+      providerExecuted: v.optional(v.boolean()),
+      approvalId: v.optional(v.string()),
+      approvalStatus: v.optional(v.union(v.literal('requested'), v.literal('approved'), v.literal('denied'))),
+      approvalReason: v.optional(v.string()),
     }),
   }),
   v.object({
@@ -903,7 +909,9 @@ export const addMessage = mutation({
       messageId: msgId,
     })
 
-	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
+	    // A workspace automation's message is its instructions, not something a person said: it is not their memory (P6).
+	    if (args.role === 'user' && args.skipMemoryExtraction !== true
+	      && !(await workspaceAutomationForThread(ctx, args.conversationId))) {
 	      try {
 	        // No daily count: extraction is charged to the workspace budget like other work.
 	        await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {

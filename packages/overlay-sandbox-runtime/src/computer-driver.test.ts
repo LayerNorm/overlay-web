@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -174,6 +174,87 @@ if (!pythonPath || shellCheck.status !== 0) {
     assert.equal(result.status, 1)
     assert.equal(result.payload.error?.code, 'invalid_input')
   })
+
+  test('recording stop writes chapters at each note, removes the capture and is idempotent', async (t) => {
+    const harness = createHarness(t)
+    installFakeFfmpeg(harness.directory)
+    const started = harness.run('recording_start', { title: 'QA run' })
+    assert.equal(started.status, 0)
+    const id = started.payload.id!
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    assert.equal(harness.run('recording_annotate', { id, label: 'Open settings', status: 'setup' }).status, 0)
+    assert.equal(harness.run('recording_annotate', { id, label: 'Saved', status: 'pass' }).status, 0)
+
+    const stopped = harness.run('recording_stop', { id })
+    assert.equal(stopped.status, 0, stopped.stdout)
+    const recordingDirectory = join(harness.directory, 'computer', 'recordings', id)
+    const chapters = readFileSync(join(recordingDirectory, 'recording.mp4'), 'utf8')
+    const starts = [...chapters.matchAll(/START=(\d+)/g)].map(match => Number(match[1]))
+    const titles = [...chapters.matchAll(/^title=(.*)$/gm)].map(match => match[1])
+    assert.deepEqual(titles, ['QA run', 'Start', '[setup] Open settings', '[pass] Saved'])
+    assert.equal(starts[0], 0)
+    assert.ok(starts[1]! > 0, 'the first note starts its chapter at the note, not at 0')
+    assert.ok(starts[2]! >= starts[1]!)
+    assert.equal(existsSync(join(recordingDirectory, 'capture.mkv')), false)
+
+    const again = harness.run('recording_stop', { id })
+    assert.equal(again.status, 0)
+    assert.deepEqual(again.payload, stopped.payload)
+    assert.deepEqual(harness.run('recording_status', {}).payload, { active: null })
+    assert.equal(harness.run('recording_annotate', { id, label: 'late' }).payload.error?.code, 'recording_stopped')
+  })
+
+  test('recording annotate is rejected once the capture has ended', async (t) => {
+    const harness = createHarness(t)
+    installFakeFfmpeg(harness.directory)
+    const started = harness.run('recording_start', {}, { OVERLAY_FAKE_FFMPEG_SECONDS: '1' })
+    assert.equal(started.status, 0)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const late = harness.run('recording_annotate', { id: started.payload.id, label: 'after the limit' })
+    assert.equal(late.status, 1)
+    assert.equal(late.payload.error?.code, 'recording_ended')
+  })
+
+  test('recording start prunes stopped recordings beyond the newest five', (t) => {
+    const harness = createHarness(t)
+    installFakeFfmpeg(harness.directory)
+    const root = join(harness.directory, 'computer', 'recordings')
+    const ids = Array.from({ length: 7 }, (_, index) => `r-00000000000${index}`)
+    ids.forEach((id, index) => {
+      mkdirSync(join(root, id), { recursive: true })
+      writeFileSync(join(root, id, 'stopped'), '0')
+      utimesSync(join(root, id, 'stopped'), 1_000 + index, 1_000 + index)
+    })
+    const started = harness.run('recording_start', {})
+    assert.equal(started.status, 0)
+    const remaining = readdirSync(root).filter(entry => ids.includes(entry)).sort()
+    assert.equal(harness.run('recording_stop', { id: started.payload.id }).status, 0)
+    assert.deepEqual(remaining, ids.slice(2))
+  })
+}
+
+/** ffmpeg captures until SIGINT (or OVERLAY_FAKE_FFMPEG_SECONDS); the finalize call copies the chapter metadata as the MP4. */
+function installFakeFfmpeg(directory: string) {
+  writeFileSync(join(directory, 'bin', 'ffmpeg'), [
+    '#!/bin/sh',
+    'for last do :; done',
+    'case "$*" in',
+    '  *x11grab*)',
+    '    printf mkv > "$last"',
+    '    trap "exit 0" INT TERM',
+    '    if [ -n "$OVERLAY_FAKE_FFMPEG_SECONDS" ]; then sleep "$OVERLAY_FAKE_FFMPEG_SECONDS"; exit 0; fi',
+    '    while :; do sleep 0.1; done ;;',
+    '  *-map_chapters*)',
+    '    count=0; previous=""',
+    '    for argument do',
+    '      if [ "$previous" = "-i" ]; then count=$((count + 1)); [ "$count" -eq 2 ] && metadata="$argument"; fi',
+    '      previous="$argument"',
+    '    done',
+    '    cp "$metadata" "$last" ;;',
+    'esac',
+    '',
+  ].join('\n'), { mode: 0o700 })
+  writeFileSync(join(directory, 'bin', 'ffprobe'), '#!/bin/sh\nprintf "30\\n"\n', { mode: 0o700 })
 }
 
 function createHarness(t: { after(callback: () => void): void }) {

@@ -441,18 +441,18 @@ Main changes automatically deploy to production through Vercel’s Git integrati
 
 ### Required CI checks
 
-Dependency-owning jobs use Namespace Linux AMD64 profiles: `overlay-ci-small`
-(2 vCPU, 4 GB) for docs/static checks, `overlay-ci-medium` (4 vCPU, 8 GB) for
-standalone typechecking, `overlay-ci-benchmark` (8 vCPU, 16 GB) for compilation,
-and `overlay-ci-tests` (8 vCPU, 16 GB) for Node 24 test shards. Other checks,
-controllers and publication use equivalent explicit Namespace shapes without
-writable cache volumes. CodeQL retains 8 vCPU/16 GB for source analysis; it is
-not a lightweight guard. Runner controls bind jobs to
-`github.run_id` to avoid cross-run assignment, prioritize compilation, and give
-background publishing/canaries lower priority than required checks. Main and
-merge-group checks precede ordinary PRs, which precede Dependabot PRs; compiler
-jobs lead within each class. Priorities order pending work without cancelling
-active checks or weakening any required context. PR revisions
+Every Linux job runs on GitHub's standard `ubuntu-24.04` runner (pinned, not
+`ubuntu-latest`); `workflow-contracts.test.mjs` fails on any other label. The
+repository is public, so these runners cost nothing; on GitHub Free for
+organizations each has 4 vCPU/16 GB and up to 20 jobs run at once (GitHub Team:
+60). CI moved off Namespace on 2026-11-25: its trial capped concurrency at 32
+vCPU, about one PR's worth, so jobs queued 1–3.5 min at p50 and 10–15 min at p95.
+On GitHub (measured 2026-10-24…27) jobs waited ~3 s at p50, while each job ran
+about twice as long on the smaller machines. Re-measure with
+`node scripts/ci/ci-timing-audit.mjs` before changing runners; consider paid
+larger runners for compilation only with measured numbers. GitHub has no job
+priorities, so main and merge-group runs rely on spare concurrency rather than
+jumping ahead of PRs. PR revisions
 cancel obsolete checks; main/merge-group runs use unique concurrency groups so
 GitHub cannot replace an older pending run. Keep Vercel hosting settings separate.
 
@@ -482,18 +482,22 @@ No restore prefix may substitute a different tree. Misses run
 hit. GitHub prevents PR cache writes from replacing main's trees. Docs uses the
 same root install; admin keeps its isolated workspace installation.
 
-Namespace local installed-tree reuse is **opt-in** through the composite action's
-`local-volume-experiment` input. Real runner placements produced cold generations
-instead of reliable warm reuse, so it must demonstrate a benefit before becoming
-the default. Its keys cover full Node/npm versions, OS/architecture, manifests,
-lockfile and helper/install policy; completion is atomic, copies preserve workspace
-links, and retention is bounded to two exact trees. Each cache-owning Namespace
-profile must have account-side Protected branches enabled for `main`; PR-editable
-labels alone are insufficient. Keep default per-profile/repository identities,
-without explicit shared tags. Node 24 tests have a separate profile and background
-jobs have no writable dependency volume, avoiding last-write-wins replacement by
-other roles/runtimes. Never cache secrets or reuse these installed trees in
-privileged publication jobs. The dependency audit remains required.
+The repository's Actions cache is capped at 10 GB and was full, so writes are
+limited to the ones another run can read. The composite action pins exact Node
+patch versions (bump them together in `ci-dependencies/action.yml`): a floating
+major resolved to different patches on different runner images, so PRs missed
+main's tree and saved ~800 MB copies that evicted it. Merge-queue runs never save
+dependencies, and only pushes to main save `.next/cache`; every run still
+restores. Each dependency step leaves a `CI dependency cache` hit/miss notice;
+`node scripts/ci/ci-timing-audit.mjs --cache-hits` counts them and splits recent
+jobs into waiting, setup and running time.
+
+Lint, typecheck, compilation and test jobs check out the tree without
+`internal/plans/**/*.html` (generated mockup pages, ~176 MB of the 202 MB tree),
+which no check reads. Secret scanning and the public-env guard keep the full tree.
+
+Never cache secrets or reuse installed trees in privileged publication jobs.
+The dependency audit remains required.
 
 Persist only `.next/cache` and the content-based ESLint cache for compiler/lint
 reuse. The native checker gets fresh project inputs on each run. Cache keys cover the relevant tool
@@ -554,7 +558,7 @@ is exempted by path filters. Do not treat cancellation, missing output or an
 unexpectedly skipped lane as success. Keep protections synchronized with check
 names. The post-merge main run also protects authorized direct owner pushes.
 
-1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
+1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
 2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.
 3. Integration verifies the exact live SHA. If Convex source, imported shared code or runtime dependencies changed, synchronize the production backend from clean current canonical main after matching web is live; frontend-only releases need no backend push.
    Harness personal admission checks backend readiness before creating a run,

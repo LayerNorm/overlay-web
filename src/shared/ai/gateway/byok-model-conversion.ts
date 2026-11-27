@@ -13,6 +13,8 @@ import type {
   ModelReasoningOption,
 } from '@/shared/ai/gateway/model-types'
 import {
+  byokPresetLogo,
+  isApiKeySubscriptionConnection,
   isSubscriptionProviderId,
   isSubscriptionConnection,
 } from '@/shared/ai/gateway/subscription-providers'
@@ -225,6 +227,8 @@ export function formatByokModelDisplayName(rawModelId: string, discoveredName?: 
 export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatModel[] {
   if (connection.isDefault && connection.providerId === 'vercel-ai-gateway') return []
   const subscription = isSubscriptionConnection(connection)
+  const apiKeySubscription = isApiKeySubscriptionConnection(connection)
+  const showsAsSubscription = subscription || apiKeySubscription
   const provider = subscription
       ? ({
         codex: 'openai',
@@ -234,7 +238,7 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
         kimi: 'moonshotai',
         devin: 'devin',
       } as const)[connection.subscriptionProvider! as 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'devin']
-    : connection.displayName
+    : byokPresetLogo(connection.providerId) ?? connection.displayName
 
   const discovered = parseDiscoveredModels(connection.discoveredModelsJson)
   const discoveredById = new Map(discovered.map((m) => [m.id, m]))
@@ -246,14 +250,18 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
       id: byokModelId(connection._id, rawModelId),
       name: formatByokModelDisplayName(rawModelId, discovered?.name),
       provider,
-      sourceLabel: subscription ? 'Subscription' : 'API key',
+      sourceLabel: showsAsSubscription ? 'Subscription' : 'API key',
       connectionName: connection.displayName,
-      ...(subscription ? { subscription: {
+      connectionScope: connection.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+      ...(showsAsSubscription ? { subscription: {
         connectionId: connection._id,
         scopeLabel: connection.scope === 'workspace' ? 'Workspace' : 'Personal',
         unavailable: connection.status !== 'active',
         ...(connection.canManage === false ? {} : {
-          recoveryHref: `/app/settings?section=providers&reconnect=${encodeURIComponent(connection._id)}`,
+          // API-key subscriptions are fixed by editing their key, not by a bridge reconnect.
+          recoveryHref: apiKeySubscription
+            ? '/app/settings?section=providers'
+            : `/app/settings?section=providers&reconnect=${encodeURIComponent(connection._id)}`,
         }),
       } } : {}),
       intelligence: 0,
@@ -284,4 +292,15 @@ export function byokConnectionsToChatModels(
     models.push(...byokConnectionToChatModels(connection))
   }
   return models
+}
+
+/**
+ * The models an agent may run on. A workspace agent works for everyone, so it may use Overlay's hosted models and the
+ * workspace's own provider connections, never someone's personal key or subscription. A personal agent may use either.
+ */
+export function modelsForAgentVisibility<T extends Pick<ChatModel, 'connectionScope'>>(
+  models: readonly T[],
+  visibility: 'workspace' | 'creator' | undefined,
+): T[] {
+  return (visibility ?? 'workspace') === 'creator' ? [...models] : models.filter((model) => model.connectionScope !== 'personal')
 }

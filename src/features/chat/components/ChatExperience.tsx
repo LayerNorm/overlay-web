@@ -118,6 +118,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
       headerRight: React.ReactNode;
     }) => (
       <FileViewerPanel
+        fileId={preview.fileId}
         name={preview.name}
         content={preview.content}
         url={preview.url}

@@ -57,7 +57,7 @@ export function ConnectedAppsSettings() {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
-        <h2 className="text-sm font-semibold text-(--foreground)">Connected apps</h2>
+        <h2 className="text-sm font-semibold text-(--foreground)">Use Overlay in other AI apps</h2>
         <p className="mt-1 text-sm text-(--muted)">
           Let ChatGPT, Claude, Cursor, and other AI apps use your Overlay notes, files, memory, and knowledge. You choose the workspace and what each app can do, and you can disconnect it here at any time.
         </p>

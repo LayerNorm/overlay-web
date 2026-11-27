@@ -14,17 +14,20 @@ export function previewQaFixtures(value = '') {
   return fixtures
 }
 
+// The repository's numeric ID survives renames; its name does not.
+const OVERLAY_REPOSITORY_ID = '1133644268'
+
 /** A Git push can start building before the draft PR is opened. */
 export async function previewBuildEnvironment(env, { fetchImpl = fetch,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
   if (env.VERCEL_ENV !== 'preview' || /^[1-9]\d*$/.test(env.VERCEL_GIT_PULL_REQUEST_ID ?? '')) return env
-  if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_SLUG !== 'overlay-web'
+  if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_ID !== OVERLAY_REPOSITORY_ID
     || !env.VERCEL_GIT_COMMIT_REF || !/^[a-f0-9]{40}$/.test(env.VERCEL_GIT_COMMIT_SHA ?? '')) {
     throw new Error('Missing trusted Git metadata for PR lookup')
   }
   // This repository is public. Never send provider or deployment credentials
   // to GitHub, and accept only an open internal main PR at this exact revision.
-  const url = new URL('https://api.github.com/repos/LayerNorm/overlay-web/pulls')
+  const url = new URL('https://api.github.com/repos/LayerNorm/overlay/pulls')
   url.search = new URLSearchParams({ state: 'open', base: 'main',
     head: 'LayerNorm:' + env.VERCEL_GIT_COMMIT_REF, per_page: '100' }).toString()
   const deadline = now() + 120_000
@@ -33,8 +36,8 @@ export async function previewBuildEnvironment(env, { fetchImpl = fetch,
       redirect: 'error', signal: AbortSignal.timeout(15_000) })
     if (!response.ok) throw new Error('Public PR lookup failed: HTTP ' + response.status)
     const matches = (await response.json()).filter(pr => pr.state === 'open'
-      && pr.base?.ref === 'main' && pr.base?.repo?.full_name === 'LayerNorm/overlay-web'
-      && pr.head?.repo?.full_name === 'LayerNorm/overlay-web'
+      && pr.base?.ref === 'main' && pr.base?.repo?.full_name === 'LayerNorm/overlay'
+      && pr.head?.repo?.full_name === 'LayerNorm/overlay'
       && pr.head?.ref === env.VERCEL_GIT_COMMIT_REF && pr.head?.sha === env.VERCEL_GIT_COMMIT_SHA)
     if (matches.length > 1) throw new Error('Ambiguous preview PR source')
     if (matches.length === 1 && Number.isSafeInteger(matches[0].number) && matches[0].number > 0) {
@@ -69,7 +72,7 @@ export function buildPlan(env) {
   delete childEnv.NEXT_PUBLIC_DEV_CONVEX_URL
 
   if (env.VERCEL_ENV === 'preview') {
-    if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_SLUG !== 'overlay-web') {
+    if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_ID !== OVERLAY_REPOSITORY_ID) {
       throw new Error('Preview source must be the internal Overlay repository')
     }
     const pr = env.VERCEL_GIT_PULL_REQUEST_ID
