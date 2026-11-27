@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "bash scripts/vercel-ignore-build.sh",
   "git": {
     "deploymentEnabled": {
       "*": false,
@@ -11,6 +10,7 @@
     "web": {
       "root": ".",
       "buildCommand": "bash scripts/vercel-build.sh",
+      "ignoreCommand": "bash scripts/vercel-ignore-build.sh",
       "bindings": [
         {
           "type": "service",

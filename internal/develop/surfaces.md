@@ -44,7 +44,7 @@ backend.
   Docker and Vercel uploads (`.vercelignore`) leave the other apps to their own workflows.
 - Root `npm` workspaces are `packages/*` and `apps/admin`. Desktop, mobile and Chrome keep
   their own lockfiles; joining one root install is a planned later step.
-- **Web deploys skip other-app commits.** `vercel.json` runs `scripts/vercel-ignore-build.sh`:
+- **Web deploys skip other-app commits.** `vercel.json` runs `scripts/vercel-ignore-build.sh` as the `web` service's `ignoreCommand` (a top-level one is rejected when `services` is set):
   a production commit that only changes `apps/desktop`, `apps/mobile`, `apps/chrome` or
   `CHANGELOG.md` skips the web build. Preview builds always run. Anything shared builds.
 - **Desktop updates.** Installed Mac apps ask this repository's *latest* GitHub release for
